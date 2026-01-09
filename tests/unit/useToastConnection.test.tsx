@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useToastConnection } from '@/hooks/useToastConnection';
 import { supabase } from '@/integrations/supabase/client';
+import React from 'react';
 
 // Mock Supabase client
 vi.mock('@/integrations/supabase/client', () => ({
@@ -21,19 +23,31 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 describe('useToastConnection', () => {
+  let queryClient: QueryClient;
+
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    });
     vi.clearAllMocks();
   });
 
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+
   describe('checkConnectionStatus', () => {
     it('should return null when restaurantId is missing', async () => {
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         const status = await result.current.checkConnectionStatus('');
         expect(status).toBeNull();
         expect(result.current.isConnected).toBe(false);
-        expect(result.current.connection).toBeNull();
+        // connection is undefined when no restaurantId is provided to the hook
+        expect(result.current.connection).toBeUndefined();
       });
     });
 
@@ -69,16 +83,19 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      // Initialize hook with restaurantId to enable the query
+      const { result } = renderHook(() => useToastConnection('rest-1'), { wrapper });
 
-      await act(async () => {
-        const status = await result.current.checkConnectionStatus('rest-1');
-        expect(status).toEqual(mockConnection);
-      });
-
+      // Wait for the query to complete
       await waitFor(() => {
         expect(result.current.isConnected).toBe(true);
         expect(result.current.connection).toEqual(mockConnection);
+      });
+
+      // Also test the legacy checkConnectionStatus function
+      await act(async () => {
+        const status = await result.current.checkConnectionStatus('rest-1');
+        expect(status).toEqual(mockConnection);
       });
     });
 
@@ -98,7 +115,7 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         const status = await result.current.checkConnectionStatus('rest-1');
@@ -106,7 +123,8 @@ describe('useToastConnection', () => {
       });
 
       expect(result.current.isConnected).toBe(false);
-      expect(result.current.connection).toBeNull();
+      // connection is undefined when no restaurantId is provided to the hook
+      expect(result.current.connection).toBeUndefined();
     });
 
     it('should handle database errors gracefully', async () => {
@@ -125,11 +143,11 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
+      // The checkConnectionStatus should throw for non-PGRST116 errors
       await act(async () => {
-        const status = await result.current.checkConnectionStatus('rest-1');
-        expect(status).toBeNull();
+        await expect(result.current.checkConnectionStatus('rest-1')).rejects.toThrow();
       });
 
       expect(result.current.isConnected).toBe(false);
@@ -160,7 +178,7 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await result.current.saveCredentials(
@@ -189,7 +207,7 @@ describe('useToastConnection', () => {
 
       (supabase.functions.invoke as any) = mockInvoke;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await expect(
@@ -208,7 +226,7 @@ describe('useToastConnection', () => {
 
       (supabase.functions.invoke as any) = mockInvoke;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         const testResult = await result.current.testConnection('rest-1');
@@ -229,7 +247,7 @@ describe('useToastConnection', () => {
 
       (supabase.functions.invoke as any) = mockInvoke;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await expect(result.current.testConnection('rest-1')).rejects.toThrow('Invalid credentials');
@@ -261,7 +279,7 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await result.current.saveWebhookSecret('rest-1', 'webhook-secret-123');
@@ -287,7 +305,7 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await result.current.disconnectToast('rest-1');
@@ -295,7 +313,8 @@ describe('useToastConnection', () => {
 
       expect(mockUpdate).toHaveBeenCalledWith({ is_active: false });
       expect(result.current.isConnected).toBe(false);
-      expect(result.current.connection).toBeNull();
+      // connection is undefined when no restaurantId is provided to the hook
+      expect(result.current.connection).toBeUndefined();
     });
 
     it('should handle disconnect errors', async () => {
@@ -311,7 +330,7 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await expect(result.current.disconnectToast('rest-1')).rejects.toThrow();
@@ -343,7 +362,7 @@ describe('useToastConnection', () => {
 
       (supabase.from as any) = mockFrom;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         const syncResult = await result.current.triggerManualSync('rest-1');
@@ -364,7 +383,7 @@ describe('useToastConnection', () => {
 
       (supabase.functions.invoke as any) = mockInvoke;
 
-      const { result } = renderHook(() => useToastConnection());
+      const { result } = renderHook(() => useToastConnection(), { wrapper });
 
       await act(async () => {
         await expect(result.current.triggerManualSync('rest-1')).rejects.toThrow('Sync failed');

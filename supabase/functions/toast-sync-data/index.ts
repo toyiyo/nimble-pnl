@@ -7,7 +7,16 @@ import { processOrder } from "../_shared/toastOrderProcessor.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+const FETCH_TIMEOUT_MS = 20000; // 20 seconds for API calls
+
+function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -25,13 +34,28 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    // Validate environment variables
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      console.error('Missing required environment variables');
+      return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // User-scoped client for auth + authorization (RLS enforced)
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user } } = await supabase.auth.getUser();
+    // Service-role client for privileged reads/writes (bypasses RLS)
+    const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: { user } } = await userSupabase.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -39,7 +63,15 @@ serve(async (req) => {
       });
     }
 
-    const { restaurantId } = await req.json();
+    let restaurantId: string | undefined;
+    try {
+      ({ restaurantId } = await req.json());
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!restaurantId) {
       return new Response(JSON.stringify({ error: 'Missing restaurantId' }), {
@@ -48,17 +80,42 @@ serve(async (req) => {
       });
     }
 
-    // Get connection
-    const { data: connection, error: connectionError } = await supabase
+    // Authorization gate: verify user has access to this restaurant via RLS
+    const { data: authorizedConn, error: authorizedConnError } = await userSupabase
       .from('toast_connections')
-      .select('*')
+      .select('id')
       .eq('restaurant_id', restaurantId)
       .eq('is_active', true)
+      .maybeSingle();
+
+    if (authorizedConnError || !authorizedConn?.id) {
+      console.error('Authorization failed:', authorizedConnError?.message || 'No connection found');
+      return new Response(JSON.stringify({ error: 'Forbidden - no access to this restaurant' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Privileged fetch of full connection row (includes encrypted secrets)
+    const { data: connection, error: connectionError } = await serviceSupabase
+      .from('toast_connections')
+      .select('*')
+      .eq('id', authorizedConn.id)
       .single();
 
     if (connectionError || !connection) {
+      console.error('Connection fetch failed:', connectionError?.message);
       return new Response(JSON.stringify({ error: 'No active Toast connection found' }), {
         status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate encrypted fields exist
+    if (!connection.client_secret_encrypted) {
+      console.error('Missing client_secret_encrypted for connection:', connection.id);
+      return new Response(JSON.stringify({ error: 'Integration configuration incomplete - missing credentials' }), {
+        status: 409,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -77,7 +134,7 @@ serve(async (req) => {
       console.log('Refreshing access token...');
       const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
       
-      const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+      const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -85,9 +142,11 @@ serve(async (req) => {
           clientSecret: clientSecret,
           userAccessType: 'TOAST_MACHINE_CLIENT'
         })
-      });
+      }, 15000);
 
       if (!authResponse.ok) {
+        const errorText = await authResponse.text().catch(() => 'Unknown error');
+        console.error('Token refresh failed:', authResponse.status, errorText);
         throw new Error(`Token refresh failed: ${authResponse.status}`);
       }
 
@@ -97,11 +156,16 @@ serve(async (req) => {
       const encryptedToken = await encryption.encrypt(accessToken);
       const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
       
-      await supabase.from('toast_connections').update({
+      const { error: tokenUpdateError } = await serviceSupabase.from('toast_connections').update({
         access_token_encrypted: encryptedToken,
         token_expires_at: expiresAt.toISOString(),
         token_fetched_at: new Date().toISOString()
       }).eq('id', connection.id);
+
+      if (tokenUpdateError) {
+        console.error('Failed to update token:', tokenUpdateError.message);
+        // Continue anyway - we have the token in memory
+      }
     }
 
     // Sync last 25 hours (24h + 1h buffer)
@@ -113,19 +177,58 @@ serve(async (req) => {
     let totalOrders = 0;
     let page = 1;
     let hasMorePages = true;
+    const errors: Array<{ orderGuid: string; message: string }> = [];
+    const MAX_ERRORS = 50; // Cap error collection
 
     while (hasMorePages) {
       const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
       
-      const ordersResponse = await fetch(bulkUrl, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
-        }
-      });
+      let ordersResponse;
+      try {
+        ordersResponse = await fetchWithTimeout(bulkUrl, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+          }
+        }, 20000);
+      } catch (fetchError: any) {
+        console.error('Fetch orders failed:', fetchError.message);
+        throw new Error(`Failed to fetch orders: ${fetchError.message}`);
+      }
 
       if (!ordersResponse.ok) {
-        throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+        // Handle 401 with one retry after token refresh
+        if (ordersResponse.status === 401 && page === 1) {
+          console.log('Got 401, attempting token refresh and retry...');
+          const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
+          
+          const retryAuthResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: connection.client_id,
+              clientSecret: clientSecret,
+              userAccessType: 'TOAST_MACHINE_CLIENT'
+            })
+          }, 15000);
+
+          if (retryAuthResponse.ok) {
+            const authData = await retryAuthResponse.json();
+            accessToken = authData.token.accessToken;
+            
+            // Retry the fetch
+            ordersResponse = await fetchWithTimeout(bulkUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+              }
+            }, 20000);
+          }
+        }
+
+        if (!ordersResponse.ok) {
+          throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+        }
       }
 
       const orders = await ordersResponse.json();
@@ -136,8 +239,19 @@ serve(async (req) => {
       }
 
       for (const order of orders) {
-        await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid);
-        totalOrders++;
+        try {
+          await processOrder(serviceSupabase, order, connection.restaurant_id, connection.toast_restaurant_guid);
+          totalOrders++;
+        } catch (orderError: any) {
+          console.error(`Error processing order ${order.guid || 'unknown'}:`, orderError.message);
+          if (errors.length < MAX_ERRORS) {
+            errors.push({
+              orderGuid: order.guid || order.id || 'unknown',
+              message: orderError.message || 'Unknown error'
+            });
+          }
+          // Continue processing other orders
+        }
       }
 
       if (orders.length < 100) {
@@ -150,28 +264,39 @@ serve(async (req) => {
 
     // Sync to unified_sales
     console.log('Syncing to unified_sales...');
-    await supabase.rpc('sync_toast_to_unified_sales', {
+    const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
       p_restaurant_id: connection.restaurant_id
     });
 
+    if (rpcError) {
+      console.error('RPC sync_toast_to_unified_sales failed:', rpcError.message);
+      throw new Error(`Failed to sync to unified_sales: ${rpcError.message}`);
+    }
+
     // Update last sync time
-    await supabase.from('toast_connections').update({
+    const { error: syncUpdateError } = await serviceSupabase.from('toast_connections').update({
       last_sync_time: new Date().toISOString(),
       connection_status: 'connected',
       last_error: null,
       last_error_at: null
     }).eq('id', connection.id);
 
-    await logSecurityEvent(supabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {
-      ordersSynced: totalOrders
+    if (syncUpdateError) {
+      console.error('Failed to update last_sync_time:', syncUpdateError.message);
+      // Non-fatal, continue
+    }
+
+    await logSecurityEvent(serviceSupabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {
+      ordersSynced: totalOrders,
+      errorCount: errors.length
     });
 
-    console.log(`Manual sync completed: ${totalOrders} orders`);
+    console.log(`Manual sync completed: ${totalOrders} orders, ${errors.length} errors`);
 
     return new Response(JSON.stringify({
       success: true,
       ordersSynced: totalOrders,
-      errors: []
+      errors: errors
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

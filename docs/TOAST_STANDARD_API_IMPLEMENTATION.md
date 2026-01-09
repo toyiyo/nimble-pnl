@@ -85,25 +85,37 @@ Completed full implementation of Toast POS Standard API Access integration, repl
 ### 4. Financial Breakdown RPC (`/supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql`)
 **Purpose**: Create separate `unified_sales` entries for revenue, discounts, tax, tips, refunds
 
+**Storage Convention**: All amounts are stored as **positive values**. Discounts and refunds are stored positive and subtracted in queries. This ensures consistency across all integrations (Toast, Square, etc.).
+
 **Logic**:
 ```sql
--- 1. Delete existing entries for reprocessing
-DELETE FROM unified_sales WHERE pos_system='toast' AND external_order_id IN (...)
+-- 1. Upsert entries (preserves user categorization/overrides)
+-- Updates only POS-sourced fields for existing entries
 
 -- 2. REVENUE entries (from order items)
+-- Stored as positive: unit_price * quantity
 SELECT item_name, quantity, unit_price, total_price, type='revenue'
 
 -- 3. DISCOUNT entries (from order discounts)
-SELECT 'Order Discount', -ABS(discount_amount), type='discount'
+-- Stored as POSITIVE amounts (deducted in reporting queries)
+SELECT 'Order Discount', ABS(discount_amount), type='discount'
 
 -- 4. TAX entries (from order tax)
+-- Stored as positive
 SELECT 'Sales Tax', tax_amount, type='tax'
 
 -- 5. TIP entries (from payments)
+-- Stored as positive
 SELECT 'Tip - ' || payment_type, tip_amount, type='tip'
 
 -- 6. REFUND entries (from negative payments or REFUNDED status)
-SELECT 'Refund - ' || payment_type, -ABS(amount), type='refund'
+-- Stored as POSITIVE amounts (deducted in reporting queries)
+SELECT 'Refund - ' || payment_type, ABS(amount), type='refund'
+
+-- Example query (net revenue calculation):
+-- SELECT SUM(CASE WHEN type='revenue' THEN amount ELSE 0 END) -
+--        SUM(CASE WHEN type='discount' THEN amount ELSE 0 END) -
+--        SUM(CASE WHEN type='refund' THEN amount ELSE 0 END) AS net_revenue
 ```
 
 **Why This Matters**:

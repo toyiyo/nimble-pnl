@@ -101,8 +101,7 @@ serve(async (req) => {
     if (signature !== computedSignature) {
       await logSecurityEvent(supabase, 'TOAST_WEBHOOK_SIGNATURE_FAILED', undefined, connection.restaurant_id, {
         restaurantGuid,
-        providedSignature: signature,
-        computedSignature
+        reason: 'signature_mismatch'
       });
       
       return new Response(JSON.stringify({ error: 'Invalid signature' }), {

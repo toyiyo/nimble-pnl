@@ -2,7 +2,7 @@
 -- Tests for migration 20260106120001_toast_sync_financial_breakdown.sql
 
 BEGIN;
-SELECT plan(7);
+SELECT plan(12);
 
 -- Setup: Disable RLS for test data creation
 SET LOCAL role TO postgres;
@@ -40,8 +40,13 @@ INSERT INTO toast_order_items (toast_item_guid, toast_order_id, toast_order_guid
 ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE SET total_price = 100.00;
 
 INSERT INTO toast_payments (toast_payment_guid, toast_order_guid, restaurant_id, payment_date, payment_type, amount, tip_amount, payment_status, raw_json) VALUES
-  ('toast-payment-001', 'toast-order-001', '00000000-0000-0000-0000-100000000011', '2026-01-01', 'CREDIT', 103.00, 10.00, 'PAID', '{}')
-ON CONFLICT (restaurant_id, toast_payment_guid) DO UPDATE SET amount = 103.00;
+  ('toast-payment-001', 'toast-order-001', '00000000-0000-0000-0000-100000000011', '2026-01-01', 'CREDIT', 103.00, 10.00, 'PAID', '{"refundStatus": "NONE"}')
+ON CONFLICT (restaurant_id, toast_payment_guid) DO UPDATE SET amount = 103.00, raw_json = '{"refundStatus": "NONE"}';
+
+-- Add refunded payment for testing refund detection
+INSERT INTO toast_payments (toast_payment_guid, toast_order_guid, restaurant_id, payment_date, payment_type, amount, tip_amount, payment_status, raw_json) VALUES
+  ('toast-payment-002-refund', 'toast-order-001', '00000000-0000-0000-0000-100000000011', '2026-01-02', 'CREDIT', 50.00, 0, 'REFUNDED', '{"refundStatus": "FULL", "refund": {"refundAmount": 5000}}')
+ON CONFLICT (restaurant_id, toast_payment_guid) DO UPDATE SET amount = 50.00, raw_json = '{"refundStatus": "FULL", "refund": {"refundAmount": 5000}}';
 
 -- ============================================================
 -- TEST CATEGORY 1: Function Signature
@@ -119,6 +124,54 @@ SELECT is(
      AND item_type IN ('sale', 'discount', 'tax', 'tip')),
   4::bigint,
   'Function should create entries for all 4 item_types: sale, discount, tax, tip'
+);
+
+-- ============================================================
+-- TEST CATEGORY 4: Refund Detection
+-- ============================================================
+
+-- Test 8: Alias function exists
+SELECT has_function(
+  'public',
+  'toast_sync_financial_breakdown',
+  ARRAY['text', 'uuid'],
+  'toast_sync_financial_breakdown alias function should exist'
+);
+
+-- Test 9: Alias function works
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-100000000001"}';
+SELECT lives_ok(
+  $$SELECT toast_sync_financial_breakdown('toast-order-001', '00000000-0000-0000-0000-100000000011')$$,
+  'Alias function toast_sync_financial_breakdown should work'
+);
+
+-- Test 10: Refund entries are created for payments with refundStatus FULL
+SELECT ok(
+  (SELECT COUNT(*) FROM unified_sales 
+   WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
+     AND item_type = 'refund' 
+     AND external_item_id = 'toast-payment-002-refund_refund') = 1,
+  'Function should create refund entry for payment with refundStatus=FULL'
+);
+
+-- Test 11: Refund amount is correctly extracted from raw_json and negated
+SELECT is(
+  (SELECT total_price FROM unified_sales 
+   WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
+     AND item_type = 'refund' 
+     AND external_item_id = 'toast-payment-002-refund_refund'),
+  -50.00::numeric,
+  'Refund entry should have negative amount from refund.refundAmount (5000 cents = $50.00)'
+);
+
+-- Test 12: No refund entry for payment without refund
+SELECT is(
+  (SELECT COUNT(*) FROM unified_sales 
+   WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
+     AND item_type = 'refund' 
+     AND external_item_id = 'toast-payment-001_refund'),
+  0::bigint,
+  'Function should NOT create refund entry for payment with refundStatus=NONE'
 );
 
 -- ============================================================

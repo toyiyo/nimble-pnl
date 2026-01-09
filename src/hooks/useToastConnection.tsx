@@ -1,21 +1,30 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { Database } from '@/integrations/supabase/types';
 
-interface ToastConnection {
+// Use proper type from generated schema (or define manually to match actual DB)
+type ToastConnection = {
   id: string;
   restaurant_id: string;
-  toast_restaurant_guid: string;
   client_id: string;
-  is_active: boolean;
+  client_secret_encrypted: string;
+  toast_restaurant_guid: string;
+  access_token_encrypted: string | null;
+  token_expires_at: string | null;
+  token_fetched_at: string | null;
+  webhook_secret_encrypted: string | null;
+  webhook_subscription_guid: string | null;
   webhook_active: boolean;
-  connection_status: string;
   last_sync_time: string | null;
   initial_sync_done: boolean;
+  is_active: boolean;
+  connection_status: string;
   last_error: string | null;
   last_error_at: string | null;
   created_at: string;
-}
+  updated_at: string;
+};
 
 export const useToastConnection = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -32,7 +41,7 @@ export const useToastConnection = () => {
 
     try {
       const { data, error } = await supabase
-        .from('toast_connections' as any)
+        .from('toast_connections')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
@@ -44,9 +53,9 @@ export const useToastConnection = () => {
       }
 
       if (data) {
-        setConnection(data as unknown as ToastConnection);
+        setConnection(data as ToastConnection);
         setIsConnected(true);
-        return data as unknown as ToastConnection;
+        return data as ToastConnection;
       } else {
         setConnection(null);
         setIsConnected(false);
@@ -183,7 +192,7 @@ export const useToastConnection = () => {
     setLoading(true);
     try {
       const { error } = await supabase
-        .from('toast_connections' as any)
+        .from('toast_connections')
         .update({ is_active: false })
         .eq('restaurant_id', restaurantId);
 

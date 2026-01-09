@@ -4,6 +4,17 @@
 -- Uses existing item_type and adjustment_type columns
 -- =====================================================
 
+-- First, add 'refund' to the item_type constraint if not already present
+DO $$ 
+BEGIN
+  -- Drop the existing constraint if it exists
+  ALTER TABLE unified_sales DROP CONSTRAINT IF EXISTS unified_sales_item_type_check;
+  
+  -- Add the new constraint with 'refund' included
+  ALTER TABLE unified_sales ADD CONSTRAINT unified_sales_item_type_check 
+    CHECK (item_type IN ('sale', 'tip', 'tax', 'discount', 'comp', 'service_charge', 'refund', 'other'));
+END $$;
+
 CREATE OR REPLACE FUNCTION sync_toast_to_unified_sales(p_restaurant_id UUID)
 RETURNS INTEGER
 LANGUAGE plpgsql
@@ -227,7 +238,9 @@ BEGIN
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
 
-  -- 5. Insert/Update REFUND entries (from payments with negative amounts or refund status)
+  -- 5. Insert/Update REFUND entries (from payments with refundStatus)
+  -- Toast API uses refundStatus enum: 'NONE', 'PARTIAL', 'FULL'
+  -- Refund amount is in the refund.refundAmount field (positive value)
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -250,8 +263,9 @@ BEGIN
     tp.toast_payment_guid || '_refund',
     'Refund - ' || COALESCE(tp.payment_type, 'Unknown'),
     1,
-    -ABS(tp.amount), -- Negative amount for refund
-    -ABS(tp.amount),
+    -- Use refund amount from raw_json, negate it for accounting
+    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
+    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
     tp.payment_date,
     NULL,
     'refund'::TEXT,
@@ -259,11 +273,8 @@ BEGIN
     NOW()
   FROM public.toast_payments tp
   WHERE tp.restaurant_id = p_restaurant_id
-    AND tp.amount IS NOT NULL
-    AND (
-      tp.payment_status = 'REFUNDED'
-      OR tp.amount < 0
-    )
+    AND tp.raw_json->>'refundStatus' IN ('PARTIAL', 'FULL')
+    AND (tp.raw_json->'refund'->>'refundAmount')::NUMERIC > 0
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
   DO UPDATE SET
@@ -285,5 +296,25 @@ $$;
 -- Grant execution to authenticated users
 GRANT EXECUTE ON FUNCTION sync_toast_to_unified_sales TO authenticated;
 
+-- Create alias for backward compatibility with existing edge function calls
+CREATE OR REPLACE FUNCTION toast_sync_financial_breakdown(
+  p_order_guid TEXT,
+  p_restaurant_id UUID
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Call the main function (ignoring p_order_guid as we sync all orders for the restaurant)
+  RETURN sync_toast_to_unified_sales(p_restaurant_id);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION toast_sync_financial_breakdown TO authenticated;
+
 COMMENT ON FUNCTION sync_toast_to_unified_sales IS 
 'Syncs Toast orders to unified_sales with separate entries for revenue (item_type=sale), discounts (item_type=discount, adjustment_type=discount), tax (item_type=tax, adjustment_type=tax), tips (item_type=tip, adjustment_type=tip), and refunds (item_type=refund). Uses ON CONFLICT to preserve existing categorization when updating records.';
+
+COMMENT ON FUNCTION toast_sync_financial_breakdown IS 
+'Alias for sync_toast_to_unified_sales for backward compatibility. Parameter p_order_guid is accepted but ignored - function syncs all orders for the restaurant.';

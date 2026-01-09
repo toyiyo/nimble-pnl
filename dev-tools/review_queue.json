@@ -21222,6 +21222,1012 @@
       "status": "open",
       "created_at": "2026-01-09T00:17:06.655Z",
       "updated_at": "2026-01-09T00:17:06.655Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991179,
+        "file": "docs/TOAST_INTEGRATION_PLAN.md",
+        "line": 182
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Comprehensive implementation plan with excellent technical depth—fix markdown formatting.**\n\nThe architecture design is well-thought-out with clear separation of concerns:\n- Real-time webhook ingestion + nightly bulk reconciliation strategy is sound\n- Anti-Corruption Layer pattern (referenced in learnings) properly isolates Toast's schema complexity\n- Multi-tenant design leverages RLS effectively, aligning with your codebase patterns\n- Token caching and refresh logic prevents auth failures\n- Error handling strategies cover deduplication, out-of-order events, and monitoring\n\nHowever, the document has the same markdown linting issues as the webhook docs:\n- Hard tabs need replacing with spaces\n- Reference link definitions are incomplete (`[2]`, `[4]`, `[13]`, etc. referenced but not defined)\n- Link syntax should be corrected (reversed syntax, bare URLs)\n\n\n\n\nRecommend running `markdownlint-cli2` after fixes to validate compliance.\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 markdownlint-cli2 (0.18.1)</summary>\n\n3-3: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"2\"\n\n(MD052, reference-links-images)\n\n---\n\n6-6: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n6-6: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n6-6: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"4\"\n\n(MD052, reference-links-images)\n\n---\n\n7-7: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n7-7: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n7-7: Reversed link syntax\n(100 orders per page max)[7]\n\n(MD011, no-reversed-links)\n\n---\n\n8-8: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n8-8: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n9-9: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n9-9: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n9-9: Reversed link syntax\n(Toast’s response includes an expiry timestamp)[11]\n\n(MD011, no-reversed-links)\n\n---\n\n9-9: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"13\"\n\n(MD052, reference-links-images)\n\n---\n\n10-10: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n10-10: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n11-11: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n11-11: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n11-11: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"15\"\n\n(MD052, reference-links-images)\n\n---\n\n12-12: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n12-12: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n12-12: Reversed link syntax\n(Gross revenue can be derived as net revenue plus discounts)[14]\n\n(MD011, no-reversed-links)\n\n---\n\n13-13: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n13-13: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n13-13: Reversed link syntax\n(taxAmount)[19]\n\n(MD011, no-reversed-links)\n\n---\n\n13-13: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"22\"\n\n(MD052, reference-links-images)\n\n---\n\n14-14: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n14-14: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n14-14: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"24\"\n\n(MD052, reference-links-images)\n\n---\n\n15-15: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n15-15: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n15-15: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"27\"\n\n(MD052, reference-links-images)\n\n---\n\n15-15: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"27\"\n\n(MD052, reference-links-images)\n\n---\n\n19-19: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n19-19: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n20-20: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n20-20: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n21-21: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n21-21: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n22-22: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n22-22: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n23-23: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n23-23: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n29-29: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n29-29: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n30-30: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n30-30: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n31-31: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n31-31: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n32-32: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n32-32: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n32-32: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"34\"\n\n(MD052, reference-links-images)\n\n---\n\n33-33: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n33-33: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n34-34: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n34-34: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n35-35: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n35-35: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n36-36: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n36-36: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n37-37: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n37-37: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n38-38: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n38-38: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n39-39: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n39-39: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n42-42: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n42-42: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n43-43: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n43-43: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n44-44: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n44-44: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n44-44: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"13\"\n\n(MD052, reference-links-images)\n\n---\n\n45-45: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n45-45: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n46-46: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n46-46: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n47-47: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n47-47: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n48-48: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n48-48: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n49-49: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n49-49: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n49-49: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"38\"\n\n(MD052, reference-links-images)\n\n---\n\n50-50: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n50-50: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n51-51: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n51-51: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n52-52: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n52-52: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n53-53: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n53-53: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n54-54: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n54-54: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n55-55: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n55-55: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n56-56: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n56-56: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n57-57: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n57-57: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n58-58: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n58-58: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n59-59: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n59-59: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n60-60: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n60-60: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n61-61: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n61-61: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n69-69: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"44\"\n\n(MD052, reference-links-images)\n\n---\n\n70-70: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n70-70: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n70-70: Reversed link syntax\n(after $1 discount)[18]\n\n(MD011, no-reversed-links)\n\n---\n\n70-70: Reversed link syntax\n(reducing $16 to $15)[17]\n\n(MD011, no-reversed-links)\n\n---\n\n70-70: Reversed link syntax\n(e.g. 5% + 4% tax)[45]\n\n(MD011, no-reversed-links)\n\n---\n\n72-72: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n72-72: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n73-73: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n73-73: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n78-78: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n78-78: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n79-79: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n79-79: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n80-80: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n80-80: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n81-81: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n81-81: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n82-82: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n82-82: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n83-83: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n83-83: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n84-84: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n84-84: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n85-85: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n85-85: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n89-89: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n89-89: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n90-90: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n90-90: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n91-91: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n91-91: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n92-92: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n92-92: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n93-93: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n93-93: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n94-94: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n94-94: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n95-95: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n95-95: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n95-95: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"49\"\n\n(MD052, reference-links-images)\n\n---\n\n96-96: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n96-96: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n101-101: Reversed link syntax\n(2×$8)[50]\n\n(MD011, no-reversed-links)\n\n---\n\n101-101: Reversed link syntax\n(final price charged for the items)[18]\n\n(MD011, no-reversed-links)\n\n---\n\n101-101: Reversed link syntax\n(tipAmount = 2.00 on the payment)[23]\n\n(MD011, no-reversed-links)\n\n---\n\n145-145: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n145-145: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n148-148: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n148-148: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n151-151: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n151-151: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n152-152: Spaces inside emphasis markers\n\n(MD037, no-space-in-emphasis)\n\n---\n\n152-152: Spaces inside emphasis markers\n\n(MD037, no-space-in-emphasis)\n\n---\n\n156-156: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"15\"\n\n(MD052, reference-links-images)\n\n---\n\n159-159: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n159-159: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n159-159: Reversed link syntax\n(order_updated event structure)[1]\n\n(MD011, no-reversed-links)\n\n---\n\n159-159: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"4\"\n\n(MD052, reference-links-images)\n\n---\n\n160-160: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n160-160: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n160-160: Reversed link syntax\n(bulk retrieval and recommendations)[6]\n\n(MD011, no-reversed-links)\n\n---\n\n160-160: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"5\"\n\n(MD052, reference-links-images)\n\n---\n\n161-161: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n161-161: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n161-161: Reversed link syntax\n(OAuth client credentials flow)[10]\n\n(MD011, no-reversed-links)\n\n---\n\n161-161: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"13\"\n\n(MD052, reference-links-images)\n\n---\n\n162-162: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n162-162: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n162-162: Reversed link syntax\n(price, tax, discount definitions)[14]\n\n(MD011, no-reversed-links)\n\n---\n\n162-162: Reference links and images should use a label that is defined\nMissing link or image reference definition: \"16\"\n\n(MD052, reference-links-images)\n\n---\n\n163-163: Hard tabs\nColumn: 1\n\n(MD010, no-hard-tabs)\n\n---\n\n163-163: Hard tabs\nColumn: 3\n\n(MD010, no-hard-tabs)\n\n---\n\n166-166: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n168-168: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n170-170: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n172-172: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n174-174: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n176-176: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n178-178: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n180-180: Bare URL used\n\n(MD034, no-bare-urls)\n\n---\n\n182-182: Bare URL used\n\n(MD034, no-bare-urls)\n\n</details>\n\n</details>\n\n<!-- fingerprinting:phantom:triton:mongoose -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "99e5b0c9f30eb2bab167c27abcfe98a23c49df97",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.221Z",
+      "updated_at": "2026-01-09T02:03:41.221Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991187,
+        "file": "docs/TOAST_STANDARD_API_IMPLEMENTATION.md",
+        "line": 10
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Migration filenames don't match actual files.**\n\nThe documentation references:\n- Line 10: `20260106000000_toast_standard_api_migration.sql`\n- Line 85: `20260106000001_toast_sync_financial_breakdown.sql`\n\nBut the actual migration files in this PR are:\n- `20260106120000_toast_standard_api_migration.sql`\n- `20260106120001_toast_sync_financial_breakdown.sql`\n\n\n<details>\n<summary>📝 Suggested fix</summary>\n\n```diff\n-### 1. Database Schema (`/supabase/migrations/20260106000000_toast_standard_api_migration.sql`)\n+### 1. Database Schema (`/supabase/migrations/20260106120000_toast_standard_api_migration.sql`)\n```\n\n```diff\n-### 4. Financial Breakdown RPC (`/supabase/migrations/20260106000001_toast_sync_financial_breakdown.sql`)\n+### 4. Financial Breakdown RPC (`/supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql`)\n```\n</details>\n\n\nAlso applies to: 85-85\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @docs/TOAST_STANDARD_API_IMPLEMENTATION.md at line 10, The doc references\nmigration filenames that don't match the actual migration files; update the two\noccurrences (the header at \"Database Schema\" and the later reference around line\n85) to use the actual filenames\n`20260106120000_toast_standard_api_migration.sql` and\n`20260106120001_toast_sync_financial_breakdown.sql` respectively so the docs\nalign with the PR's migration files.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "217abfea3c57165b6eca721640899e34d11af180",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991191,
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 29
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Webhook URL construction is incorrect for Supabase Edge Functions.**\n\n`${window.location.origin}/supabase/functions/v1/toast-webhook` assumes the functions are served from the same origin. Supabase Edge Functions are hosted at `https://<project-ref>.supabase.co/functions/v1/<function-name>`. This URL will not work.\n\n\n<details>\n<summary>🔧 Proposed fix</summary>\n\n```diff\n-  const webhookUrl = `${window.location.origin}/supabase/functions/v1/toast-webhook`;\n+  // Use the actual Supabase project URL for Edge Functions\n+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';\n+  const webhookUrl = `${supabaseUrl}/functions/v1/toast-webhook`;\n```\n\nAlternatively, fetch this from an environment variable or configuration.\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  // Use the actual Supabase project URL for Edge Functions\n  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';\n  const webhookUrl = `${supabaseUrl}/functions/v1/toast-webhook`;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/pos/ToastSetupWizard.tsx at line 29, The webhook URL is being\nbuilt from window.location.origin in ToastSetupWizard (variable webhookUrl)\nwhich is wrong for Supabase Edge Functions; change it to derive the functions\nbase from your Supabase project URL (e.g., the SUPABASE_URL config/env var or\nthe Supabase client instance) and concatenate /functions/v1/toast-webhook, or\notherwise read a dedicated env/config value for the webhook endpoint; update the\ncode in ToastSetupWizard.tsx to use that Supabase base URL instead of\nwindow.location.origin.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "184e33415196c7ab4a5dc427237537204f4ef575",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991198,
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 281
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Copy button missing aria-label for accessibility.**\n\nThe copy button only has an icon and no accessible label for screen readers.\n\n\n<details>\n<summary>♿ Add aria-label</summary>\n\n```diff\n                   <Button\n                     variant=\"outline\"\n                     size=\"icon\"\n                     onClick={copyWebhookUrl}\n+                    aria-label={copiedWebhookUrl ? 'Copied' : 'Copy webhook URL'}\n                   >\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n                  <Button\n                    variant=\"outline\"\n                    size=\"icon\"\n                    onClick={copyWebhookUrl}\n                    aria-label={copiedWebhookUrl ? 'Copied' : 'Copy webhook URL'}\n                  >\n                    {copiedWebhookUrl ? <Check className=\"w-4 h-4\" /> : <Copy className=\"w-4 h-4\" />}\n                  </Button>\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/pos/ToastSetupWizard.tsx around lines 272 - 278, The copy\nbutton in ToastSetupWizard.tsx uses an icon-only Button (component Button) and\nlacks an accessible label for screen readers; add an aria-label (e.g.,\naria-label=\"Copy webhook URL\") to the Button that calls copyWebhookUrl and\nensure it updates appropriately with copiedWebhookUrl (you can also set\naria-pressed or change the label to \"Copied webhook URL\" when copiedWebhookUrl\nis true) so the Check/Copy icon state is conveyed to assistive tech.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "742c7105d904ed559e688228e8c24560ddc85d47",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991200,
+        "file": "src/hooks/useToastConnection.tsx",
+        "line": 1
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Unused import: `useEffect`.**\n\n`useEffect` is imported but never used in this hook.\n\n\n<details>\n<summary>🧹 Remove unused import</summary>\n\n```diff\n-import { useState, useEffect, useCallback } from 'react';\n+import { useState, useCallback } from 'react';\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nimport { useState, useCallback } from 'react';\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useToastConnection.tsx at line 1, The import list in the\nuseToastConnection hook currently includes an unused symbol; remove the unused\n`useEffect` import from the import declaration in the file containing the\n`useToastConnection` function so only actually used React hooks (e.g.,\n`useState`, `useCallback`) are imported.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "6ae6973e522736a7e0209049be7bfbad66c9a07a",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991203,
+        "file": "supabase/functions/toast-bulk-sync/index.ts",
+        "line": 76
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**External API calls lack timeouts.**\n\nSame issue as in webhook handler - fetch calls to Toast API have no timeout configured.\n\n\n\n\nAlso applies to: 126-131\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-bulk-sync/index.ts around lines 68 - 76, The fetch\ncalls (e.g., the authentication request assigned to authResponse and the other\nToast API fetch around lines 126-131) need request timeouts; wrap each fetch in\nan AbortController, pass controller.signal to fetch, start a setTimeout that\ncalls controller.abort() after a sensible timeout (e.g., CONFIGURED_TIMEOUT_MS),\nand clear the timer on successful response; ensure you catch the abort error\n(check for DOMException name \"AbortError\" or error.name) and handle/log it\nappropriately so the function fails fast instead of hanging.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "015cc411fdb9f155468a3c19791eb93f112fb321",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991204,
+        "file": "supabase/functions/toast-bulk-sync/index.ts",
+        "line": 289
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Duplicate `processOrder` function - extract to shared module.**\n\nThis is identical to the function in `toast-webhook/index.ts` and `toast-sync-data/index.ts`. See previous comment about extracting to `_shared/toastOrderProcessor.ts`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-bulk-sync/index.ts around lines 217 - 289,\nDuplicate processOrder implementation found; extract it into a single shared\nmodule and import it from other places. Create _shared/toastOrderProcessor.ts\nexporting an async function processOrder(supabase, order, restaurantId,\ntoastRestaurantGuid) with the exact logic, then in this file and in\ntoast-webhook/index.ts and toast-sync-data/index.ts remove the local\nimplementations and replace them with \"import { processOrder } from\n'../_shared/toastOrderProcessor'\" (adjust relative path as needed) and call the\nimported function; ensure the export signature and any used types/fields (e.g.,\nsupabase, order, restaurantId, toastRestaurantGuid) match callers and update any\nonConflict strings or field names only inside the shared module so all callers\nbenefit from the single source of truth.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "aad7137417f2f9058e13eace69e10bfd6c21c42e",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991206,
+        "file": "supabase/functions/toast-save-credentials/index.ts",
+        "line": 79
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Upsert conflict target doesn't match table constraint.**\n\nThe `onConflict: 'restaurant_id,toast_restaurant_guid'` specifies a composite key, but the migration (`20260106120000_toast_standard_api_migration.sql`, Line 44) only defines `UNIQUE(restaurant_id)`. This mismatch could cause the upsert to fail.\n\n\n<details>\n<summary>🔧 Proposed fix - use the actual unique constraint</summary>\n\n```diff\n     }, {\n-      onConflict: 'restaurant_id,toast_restaurant_guid'\n+      onConflict: 'restaurant_id'\n     })\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n      }, {\n        onConflict: 'restaurant_id'\n      })\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-save-credentials/index.ts around lines 77 - 79, The\nupsert is using a composite conflict target\n'restaurant_id,toast_restaurant_guid' that doesn't match the table's\nUNIQUE(restaurant_id) constraint; update the upsert call in\ntoast-save-credentials/index.ts (the upsert invocation with onConflict) to use\nthe actual unique constraint — e.g. set onConflict to 'restaurant_id' (or the\nactual constraint name if the migration defines one) so the upsert target\nmatches the table constraint.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "db39ab31357013e11fcd93852888f0cf8ab9da87",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991208,
+        "file": "supabase/functions/toast-save-webhook-secret/index.ts",
+        "line": 78
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Update may silently succeed with no affected rows if connection doesn't exist.**\n\nThe `.update()` call doesn't verify that a row was actually updated. If no `toast_connections` record exists for the restaurant (e.g., credentials step was skipped), the operation completes without error but saves nothing.\n\n\n<details>\n<summary>🔧 Proposed fix to verify update affected a row</summary>\n\n```diff\n-    const { error: updateError } = await supabase\n+    const { data: updatedRows, error: updateError } = await supabase\n       .from('toast_connections')\n       .update({\n         webhook_secret_encrypted: encryptedSecret,\n         webhook_active: true,\n         updated_at: new Date().toISOString()\n       })\n-      .eq('restaurant_id', restaurantId);\n+      .eq('restaurant_id', restaurantId)\n+      .select('id');\n\n     if (updateError) {\n       throw new Error(`Failed to save webhook secret: ${updateError.message}`);\n     }\n+\n+    if (!updatedRows || updatedRows.length === 0) {\n+      return new Response(JSON.stringify({ error: 'No Toast connection found for this restaurant' }), {\n+        status: 404,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n    const { data: updatedRows, error: updateError } = await supabase\n      .from('toast_connections')\n      .update({\n        webhook_secret_encrypted: encryptedSecret,\n        webhook_active: true,\n        updated_at: new Date().toISOString()\n      })\n      .eq('restaurant_id', restaurantId)\n      .select('id');\n\n    if (updateError) {\n      throw new Error(`Failed to save webhook secret: ${updateError.message}`);\n    }\n\n    if (!updatedRows || updatedRows.length === 0) {\n      return new Response(JSON.stringify({ error: 'No Toast connection found for this restaurant' }), {\n        status: 404,\n        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n      });\n    }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "77c2ce1c72055240f66339fa3f1d39e9359442fd",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.222Z",
+      "updated_at": "2026-01-09T02:03:41.222Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991210,
+        "file": "supabase/functions/toast-test-connection/index.ts",
+        "line": 75
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Missing permission verification before accessing connection.**\n\nUnlike `toast-save-credentials` and `toast-save-webhook-secret`, this function doesn't verify that the user has owner/manager role for the restaurant before accessing and testing the connection. While RLS provides some protection, explicit verification is recommended for defense-in-depth, especially since this function accesses and uses sensitive credentials.\n\n\n<details>\n<summary>🔧 Proposed fix - add permission check</summary>\n\n```diff\n     if (!restaurantId) {\n       return new Response(JSON.stringify({ error: 'Missing restaurantId' }), {\n         status: 400,\n         headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n       });\n     }\n\n+    // Verify user has permission\n+    const { data: userRestaurant } = await supabase\n+      .from('user_restaurants')\n+      .select('role')\n+      .eq('user_id', user.id)\n+      .eq('restaurant_id', restaurantId)\n+      .single();\n+\n+    if (!userRestaurant || !['owner', 'manager'].includes(userRestaurant.role)) {\n+      return new Response(JSON.stringify({ error: 'Access denied' }), {\n+        status: 403,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n\n     // Get connection\n     const { data: connection, error: connectionError } = await supabase\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-test-connection/index.ts around lines 47 - 60, The\ntoast-test-connection function accesses sensitive Toast credentials without\nverifying the caller's restaurant role; add the same owner/manager permission\ncheck used in toast-save-credentials and toast-save-webhook-secret before\nquerying toast_connections: fetch the calling user (auth), query\nrestaurant_users (or the equivalent role table) with .eq('user_id',\nuser.id).eq('restaurant_id', restaurantId).in('role',\n['owner','manager']).single() and if no record return a 403 JSON response; only\nafter that proceed to call\nsupabase.from('toast_connections').select(...).single() to get the connection.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "f93e27be28ef839cbecaaa0fea2a8d9040449c88",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:37.854Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Permission check already implemented in lines 48-60"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991213,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 31
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.log statements from production code.**\n\nMultiple `console.log` statements throughout the handler (lines 31, 40, 53, 91, 113, 124, 144, 163, 181). Per coding guidelines, remove all console.log statements from production code. Security events are already being logged via `logSecurityEvent`.\n\n\n\n\nAlso applies to: 40-40, 53-53, 91-91, 113-113, 181-181\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts at line 31, Remove all console.log\ncalls from the Toast webhook handler (e.g., the console.log at line showing\n'Toast webhook received' and the other console.log occurrences around lines 40,\n53, 91, 113, 124, 144, 163, 181); where those console messages convey security-\nor operationally-relevant information, replace them with calls to the existing\nlogSecurityEvent function (or the module's standard logger) using the same\ncontextual message and any relevant variables, and otherwise delete the\nconsole.log statements so no console.* remains in production code.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "fe9baeac6f6519227ccbef5335e4bdb2794197ef",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:38.703Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Console.log statements already removed from toast-webhook"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991214,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 40
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Parsing payload before signature verification exposes the handler to untrusted data.**\n\nThe payload is parsed and logged before the HMAC signature is verified (Line 59+). This means malicious/forged payloads are processed and logged even if they fail verification. Parse the raw body first, verify signature, then JSON-parse.\n\n\n<details>\n<summary>🔒 Proposed fix to verify signature before parsing</summary>\n\n```diff\n-    // Parse webhook payload\n-    const payload: ToastWebhookPayload = await req.json();\n-    console.log('Webhook payload:', { eventType: payload.eventType, eventCategory: payload.eventCategory, restaurantGuid: payload.details.restaurantGuid });\n+    // Get raw body for signature verification\n+    const rawBody = await req.text();\n\n     // Find connection by restaurant GUID\n+    // First, get restaurant GUID from header (Toast sends this)\n+    const restaurantGuid = req.headers.get('toast-restaurant-external-id');\n+    if (!restaurantGuid) {\n+      return new Response(JSON.stringify({ error: 'Missing restaurant identifier' }), {\n+        status: 400,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n     const { data: connection, error: connectionError } = await supabase\n       .from('toast_connections')\n       .select('*')\n-      .eq('toast_restaurant_guid', payload.details.restaurantGuid)\n+      .eq('toast_restaurant_guid', restaurantGuid)\n       .eq('is_active', true)\n       .single();\n\n     // ... verify signature using rawBody ...\n+    \n+    // Parse payload after signature verification\n+    const payload: ToastWebhookPayload = JSON.parse(rawBody);\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 38 - 40, The handler\ncurrently calls await req.json() and logs payload fields before the HMAC\nsignature is verified; change it to read the raw request body (e.g., await\nreq.text() or arrayBuffer), run the existing signature verification logic\nagainst that raw body and the incoming signature header, and only if\nverification passes JSON-parse the raw body into ToastWebhookPayload (replace\nthe current await req.json() usage) and then log fields; reference the payload\nvariable/ToastWebhookPayload and the signature verification routine/header used\nlater in the file to integrate the check and move logging after verification.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "09ed6e89b843e2ad4c17e6a137fdb44895f70a31",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:39.174Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Raw body parsing before signature verification implemented in lines 37-115"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991217,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 81
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Webhook signature verification should be mandatory, not optional.**\n\nThe current logic only verifies the signature when both `signature` and `connection.webhook_secret_encrypted` are present. This allows unsigned webhooks to be processed if either is missing, creating a security vulnerability. An attacker could simply omit the `toast-signature` header to bypass verification.\n\nBased on learnings, webhook signatures should be verified using HMAC before processing.\n\n\n<details>\n<summary>🔒 Proposed fix to require signature verification</summary>\n\n```diff\n     // Verify webhook signature using HMAC\n     const signature = req.headers.get('toast-signature');\n-    if (signature && connection.webhook_secret_encrypted) {\n+    if (!connection.webhook_secret_encrypted) {\n+      console.error('Webhook secret not configured for restaurant');\n+      return new Response(JSON.stringify({ error: 'Webhook not configured' }), {\n+        status: 400,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n+    if (!signature) {\n+      console.error('Missing webhook signature');\n+      await logSecurityEvent(supabase, 'TOAST_WEBHOOK_SIGNATURE_MISSING', undefined, connection.restaurant_id, {\n+        restaurantGuid: payload.details.restaurantGuid\n+      });\n+      return new Response(JSON.stringify({ error: 'Missing signature' }), {\n+        status: 401,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n+    {\n       const encryption = await getEncryptionService();\n       const webhookSecret = await encryption.decrypt(connection.webhook_secret_encrypted);\n       \n       // ... rest of verification logic\n     }\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 58 - 81, The webhook\nsignature verification must be required: change the logic around the signature,\nconnection.webhook_secret_encrypted, and HMAC check so that if either the\ntoast-signature header (signature) is missing or\nconnection.webhook_secret_encrypted is missing, you immediately log a security\nevent via logSecurityEvent (e.g., 'TOAST_WEBHOOK_SIGNATURE_FAILED') and return a\n401 Response; otherwise decrypt the secret with getEncryptionService(), compute\nthe HMAC via createHmac using JSON.stringify(payload) and compare to signature,\nand on mismatch also log the same security event and return 401 before any\nfurther processing.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "3e35a3feb15d91ebed6aaf8b90e21ea210a92cf6",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:39.702Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Mandatory signature verification implemented in lines 73-112"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991220,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 67
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**HMAC signature computation may not match Toast's expected format.**\n\nThe signature is computed over `JSON.stringify(payload)`, but the payload was already parsed from JSON. Re-stringifying may produce different whitespace/ordering than the original raw body, causing valid signatures to fail verification.\n\n\n<details>\n<summary>🔒 Fix: Use raw request body for signature verification</summary>\n\n```diff\n-      const payloadString = JSON.stringify(payload);\n+      // Use the raw body bytes for signature computation\n       const computedSignature = createHmac('sha256', webhookSecret)\n-        .update(payloadString)\n+        .update(rawBody)  // rawBody from req.text() before JSON.parse\n         .digest('base64');\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 64 - 67, The HMAC is\nbeing computed from JSON.stringify(payload) which can differ from the original\nraw body and break verification; change the verification to compute the HMAC\nover the raw request body used to parse the payload instead of re-stringifying\nthe parsed object — use the same rawBody (or req.rawBody) variable when calling\ncreateHmac('sha256', webhookSecret).update(...) so computedSignature matches\nToast's expected format, and keep references to createHmac, webhookSecret,\npayloadString/computedSignature to locate and replace the current logic.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "4f964be7ee4921b996a7248cd609485fafd23c6f",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:40.251Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "HMAC computed using raw body (line 98), not re-stringified JSON"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991222,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 200
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**External API calls lack timeouts, risking handler stalls.**\n\nThe `fetch` calls to Toast API (lines 128-136, 157-165) have no timeout. If Toast is slow or unresponsive, the webhook handler will hang indefinitely, potentially exhausting resources.\n\n\n<details>\n<summary>⏱️ Proposed fix to add fetch timeout</summary>\n\n```diff\n+      const controller = new AbortController();\n+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout\n+      \n       const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {\n         method: 'POST',\n         headers: { 'Content-Type': 'application/json' },\n         body: JSON.stringify({\n           clientId,\n           clientSecret,\n           userAccessType: 'TOAST_MACHINE_CLIENT'\n-        })\n+        }),\n+        signal: controller.signal\n       });\n+      clearTimeout(timeoutId);\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 126 - 154, The Toast\nAPI fetch calls (the token request that assigns authResponse and the later\nwebhook fetch) lack timeouts; wrap each fetch in an AbortController with a\nconfigurable timeout (e.g., 5–10s), pass controller.signal into fetch, and call\ncontroller.abort() after the timeout; ensure you clear the timeout timer after\nthe fetch completes and handle AbortError to return a controlled error response.\nLocate the token auth block (uses variables clientSecret, authResponse,\nauthData, accessToken) and the subsequent fetch that sends events, and apply the\nsame AbortController + setTimeout pattern to both fetch invocations so requests\ncannot hang indefinitely.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "bd8474b3beb3ae5ec1d334fb438cf45ce3b28ecd",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:40.776Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fetch timeouts implemented with AbortController in lines 160-218"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991226,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 267
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**`processOrder` function is duplicated across multiple edge functions.**\n\nThe identical `processOrder` function appears in `toast-webhook/index.ts`, `toast-bulk-sync/index.ts`, and `toast-sync-data/index.ts`. This violates DRY and makes maintenance error-prone. Extract to a shared module under `_shared/`.\n\n\n<details>\n<summary>♻️ Proposed extraction to shared module</summary>\n\nCreate `supabase/functions/_shared/toastOrderProcessor.ts`:\n```typescript\nexport async function processOrder(\n  supabase: any, \n  order: any, \n  restaurantId: string, \n  toastRestaurantGuid: string\n) {\n  // ... existing implementation\n}\n```\n\nThen import in each function:\n```diff\n+import { processOrder } from \"../_shared/toastOrderProcessor.ts\";\n\n // Remove local processOrder function\n```\n</details>\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 195 - 267, The\nprocessOrder function is duplicated across toast-webhook/index.ts,\ntoast-bulk-sync/index.ts, and toast-sync-data/index.ts; extract it into a shared\nmodule (e.g., supabase/functions/_shared/toastOrderProcessor.ts) that exports\nasync function processOrder(supabase, order, restaurantId, toastRestaurantGuid)\nwith the existing implementation, then replace the local copies in each file\nwith an import of that shared processOrder and call it; ensure any helper names\n(processOrder, toast_orders, toast_order_items, toast_payments) remain unchanged\nand update imports/exports accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "285de0b68eff743e9e23d685486ab46c4e34b7de",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:41.293Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "processOrder already extracted to _shared/toastOrderProcessor.ts"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2669991230,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 66
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Return value only counts revenue entries, not total synced rows.**\n\n`v_synced_count` is set after the revenue INSERT (Line 66) but is never updated after subsequent inserts for discounts, tax, tips, and refunds. The function returns only the revenue row count while the function name and comment suggest it should return total synced entries.\n\n\n<details>\n<summary>🔧 Proposed fix to accumulate total count</summary>\n\n```diff\n   GET DIAGNOSTICS v_synced_count = ROW_COUNT;\n\n   -- 2. Insert DISCOUNT entries (from order discounts)\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n\n   -- 3. Insert TAX entries\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n\n   -- 4. Insert TIP entries (from payments)\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n\n   -- 5. Insert REFUND entries\n   INSERT INTO public.unified_sales (\n     ...\n   )\n   SELECT ...;\n\n+  GET DIAGNOSTICS v_synced_count = v_synced_count + ROW_COUNT;\n```\n\nNote: Use a temporary variable for each `GET DIAGNOSTICS` call and add to `v_synced_count`:\n```sql\nDECLARE\n  v_synced_count INTEGER := 0;\n  v_row_count INTEGER := 0;\nBEGIN\n  -- After each INSERT:\n  GET DIAGNOSTICS v_row_count = ROW_COUNT;\n  v_synced_count := v_synced_count + v_row_count;\n```\n</details>\n\n\nAlso applies to: 218-218\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql at\nline 66, v_synced_count is only populated after the revenue INSERT via GET\nDIAGNOSTICS and never accumulates rows from subsequent INSERTs (discounts, tax,\ntips, refunds), so update the function to return the true total: declare\nv_synced_count INTEGER := 0 and a temp v_row_count INTEGER := 0, then after each\nINSERT call GET DIAGNOSTICS v_row_count = ROW_COUNT and do v_synced_count :=\nv_synced_count + v_row_count (repeat for revenue, discounts, tax, tips,\nrefunds); also apply the same fix at the other occurrence that sets\nv_synced_count (the one noted around line 218) so the final returned\nv_synced_count reflects the sum of all inserted rows.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "eba05507660a0e3c518b11e5e36ddeacd78d08a1",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:41.710Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Synced count accumulation fixed in lines 77-78, 127-128, 177-178, 227-228, 278-279"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2673932086,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 15
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Search for calls to sync_toast_to_unified_sales in TypeScript files\nrg -n 'sync_toast_to_unified_sales' --type ts -A 5 -B 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 5155\n\n---\n\n🏁 Script executed:\n\n```shell\n# Also search in JavaScript files in case edge functions use .js\nrg -n 'sync_toast_to_unified_sales' --type js -A 5 -B 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full migration file to see if pgTAP tests are included\nwc -l supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 134\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the migration file to see if pgTAP tests are present\ncat supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | tail -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2704\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if pgTAP tests exist at the start of the migration file\nhead -50 supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1303\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for any BEGIN and SELECT statements which would indicate pgTAP tests\ngrep -n \"SELECT\" supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 123\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the toast-sync-data edge function for authorization checks\nhead -180 supabase/functions/toast-sync-data/index.ts | tail -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1837\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for authorization/verification logic in toast-sync-data edge function\nrg -n \"restaurant_id|auth|permission|verify|allowed\" supabase/functions/toast-sync-data/index.ts -B 2 -A 2 | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2350\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for restaurant ownership verification in the edge function\nrg -n \"user_id|restaurants|ownership|tenant\" supabase/functions/toast-sync-data/index.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full beginning of toast-sync-data to see authorization flow\nhead -60 supabase/functions/toast-sync-data/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2117\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for any pgTAP test patterns (BEGIN/SELECT assertions) in migration file\ngrep -n \"BEGIN\\|SELECT.*=\" supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | grep -v \"INSERT\\|UPDATE\\|FROM\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 69\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there's a RLS policy or tenant verification function used\nrg -n \"tenant|owner|user_restaurants\" supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check RLS policies on toast_connections table\nrg -n \"toast_connections\" supabase/migrations/ --type sql -A 5 | grep -i \"policy\\|rls\\|create\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2302\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for user_restaurants or any tenant verification in the codebase\nrg -n \"user_restaurants\\|user_id.*restaurant\" supabase/migrations/ --type sql | head -10\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the restaurants table to see if it has user_id for ownership\nrg -n \"CREATE TABLE.*restaurants\" supabase/migrations/ --type sql -A 10 | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2672\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for RLS policies that might enforce restaurant ownership\nrg -n \"auth.uid\\(\\)|current_user_id\" supabase/migrations/ --type sql -B 2 -A 2 | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4770\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full RLS policy definition for toast_connections\nsed -n '47,75p' supabase/migrations/20260106120000_toast_standard_api_migration.sql\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 810\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if the edge function verifies restaurant ownership before calling RPC\nrg -n \"user_restaurants\" supabase/functions/toast-sync-data/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check for any authorization verification of restaurant ownership in toast-sync-data\nsed -n '1,100p' supabase/functions/toast-sync-data/index.ts | grep -A 20 \"restaurantId\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1182\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify the full authorization flow: check if edge function is the only way to call the RPC\nrg -n \"sync_toast_to_unified_sales\" src/ --type tsx --type ts -B 3 -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check useToastSalesAdapter more carefully to see if it calls RPC directly from client\ncat -n src/hooks/adapters/useToastSalesAdapter.tsx | sed -n '55,75p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 788\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify if there are any other calling patterns besides the edge functions\nrg -n \"sync_toast_to_unified_sales\" --type tsx --type ts -B 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if the RPC function itself has any auth checks\ncat supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | grep -i \"auth\\|uid\\|user_restaurants\" -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1377\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for all calls to sync_toast_to_unified_sales\nrg -n \"sync_toast_to_unified_sales\" -B 3 -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 9545\n\n---\n\n🏁 Script executed:\n\n```shell\n# Examine the useToastSalesAdapter file more carefully to understand context\nhead -100 src/hooks/adapters/useToastSalesAdapter.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3083\n\n---\n\n\n\n</details>\n\n**Add authorization check within the function and implement pgTAP tests.**\n\nThe function lacks internal authorization validation. While edge functions (toast-sync-data, toast-webhook, toast-bulk-sync) properly verify restaurant access through the toast_connections RLS policy before calling the RPC, the client-side hook (useToastSalesAdapter.tsx:65) directly invokes the RPC with an arbitrary `restaurantId` without verifying the caller's ownership. This bypasses all authorization.\n\nAdd an authorization check inside the function:\n```sql\nIF NOT EXISTS (\n  SELECT 1 FROM public.user_restaurants\n  WHERE restaurant_id = p_restaurant_id\n    AND user_id = auth.uid()\n) THEN\n  RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';\nEND IF;\n```\n\nAdditionally, per the coding guidelines, implement pgTAP tests for this new SQL function and its authorization enforcement.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql around\nlines 6 - 13, Add an internal authorization check at the start of the\nsync_toast_to_unified_sales(p_restaurant_id UUID) function: verify that a row\nexists in public.user_restaurants where restaurant_id = p_restaurant_id and\nuser_id = auth.uid(), and RAISE EXCEPTION 'Unauthorized: user does not have\naccess to this restaurant' if not found; place this check before any data\nmodifications or SELECTs so the RPC cannot be invoked by non-owners. Then add\npgTAP tests that assert (1) an authorized user can successfully call\nsync_toast_to_unified_sales and returns expected synced count, (2) an\nunauthorized user (different user_id) calling the RPC receives the Unauthorized\nexception, and (3) behavior for unauthenticated calls (if applicable) is\ncorrectly rejected; use auth simulation helpers in tests to set auth.uid() for\neach case.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "4d1ee6c7ef31ce5c45e5f884c6ff626296774744",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:42.060Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Authorization check implemented in lines 17-23, pgTAP tests in supabase/tests/17_toast_sync_authorization.sql"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2673932090,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 266
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add NULL check for `tp.amount` to prevent inserting NULL values.**\n\nThe refund filter doesn't check `tp.amount IS NOT NULL`, unlike the other sections (discounts, tax, tips). If a payment has `payment_status = 'REFUNDED'` but a NULL amount, this will insert rows with NULL `total_price` and `unit_price`.\n\n\n\n<details>\n<summary>Proposed fix</summary>\n\n```diff\n   FROM public.toast_payments tp\n   WHERE tp.restaurant_id = p_restaurant_id\n+    AND tp.amount IS NOT NULL\n     AND (\n       tp.payment_status = 'REFUNDED'\n       OR tp.amount < 0\n     )\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  WHERE tp.restaurant_id = p_restaurant_id\n    AND tp.amount IS NOT NULL\n    AND (\n      tp.payment_status = 'REFUNDED'\n      OR tp.amount < 0\n    )\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql around\nlines 244 - 248, The WHERE clause that selects refunded payments currently\nallows rows where tp.payment_status = 'REFUNDED' even if tp.amount IS NULL,\nwhich leads to NULL total_price/unit_price inserts; update the filter to exclude\nNULL amounts by adding tp.amount IS NOT NULL (e.g., change the condition to AND\n(tp.payment_status = 'REFUNDED' OR tp.amount < 0) AND tp.amount IS NOT NULL or\nfold the IS NOT NULL into the grouped expression) so refunded rows with NULL\namount are not inserted.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commits dd1a0a6 to cdf7d12",
+      "severity": "info",
+      "id": "eecd099810ecc4fd4e5a53b47d7198f1f0d319a4",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:12:42.468Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "NULL check for refund amounts implemented in line 262"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547284,
+        "file": "docs/TOAST_INTEGRATION_PLAN.md",
+        "line": 38
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Data-loss risk: “delete then insert” unified_sales can wipe user-added categorization/overrides.**  \nLine 36 explicitly plans to remove existing entries per order to avoid duplicates, which matches the PR concern: it prevents duplicates, but it also destroys any downstream/manual enrichment stored on those rows.\n\nSafer patterns:\n- Treat `unified_sales` as strictly derived/append-only and store categorization in a separate table keyed by stable identifiers (restaurant_id + pos_system + external_order_id + external_line_id).\n- Or do an upsert that updates only “computed” columns (amounts/timestamps) while preserving user-managed columns.\n- Or version entries (replace via `valid_from/valid_to`) to preserve history.\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "d8b71fce88c36ea17f6ffa6a60a8f2172d20eab5",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:02.315Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed unified_sales data-loss risk - changed to upsert strategy preserving user categorization"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547286,
+        "file": "docs/TOAST_STANDARD_API_IMPLEMENTATION.md",
+        "line": 107
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Pick one sign convention for discounts/refunds (docs currently conflict).**  \nThis doc’s SQL example uses negative values for discounts/refunds (Line 96-107), but the integration plan describes storing discounts/refunds as positive amounts and subtracting them in queries. Mixing conventions will break reporting.\n\nAction: document the canonical storage convention (and ensure the RPC matches it), then align both docs and example queries accordingly.\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "93e7cc3365d1f47b1d420681bfaae5454a35fbb6",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:03.516Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed discount/refund sign convention - all amounts stored as positive, subtracted in queries"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547288,
+        "file": "docs/TOAST_STANDARD_API_IMPLEMENTATION.md",
+        "line": 222
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Docs say manual sync returns `errors[]`, but current Edge Function always returns `errors: []`.**  \nEither implement per-order error collection in `supabase/functions/toast-sync-data/index.ts` or change the docs to reflect “fails-fast”.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @docs/TOAST_STANDARD_API_IMPLEMENTATION.md around lines 213 - 222, The docs\nclaim the Edge Function returns per-order errors in an errors[] array, but the\ncurrent toast-sync-data handler always returns errors: []; update the function\nthat calls sync_toast_to_unified_sales (the toast-sync-data request handler) to\ncollect errors for each order: wrap per-order processing (or the call that\ntransforms/orders through sync_toast_to_unified_sales) in try/catch, push\nstructured error objects (order id, error message, stack) into an errors[]\narray, continue processing remaining orders (fail-fast is not desired), and\nreturn the payload { ordersSynced, errors } instead of always returning errors:\n[].\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "c607b9907abb5b9ca9aa118376a18dff59ced304",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:04.218Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Implemented per-order error collection with 50-error cap, continues processing on failure"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547290,
+        "file": "src/hooks/useToastConnection.tsx",
+        "line": 18
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\nfind . -type f -name \"*.ts\" -o -name \"*.tsx\" | grep -E \"(supabase|types)\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 807\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n src/hooks/useToastConnection.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 8469\n\n---\n\n🏁 Script executed:\n\n```shell\nls -la src/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1067\n\n---\n\n🏁 Script executed:\n\n```shell\nhead -100 src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2867\n\n---\n\n🏁 Script executed:\n\n```shell\nwc -l src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 100\n\n---\n\n🏁 Script executed:\n\n```shell\ngrep -n \"toast_connections\" src/integrations/supabase/types.ts -A 30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2226\n\n---\n\n🏁 Script executed:\n\n```shell\nrg \"toast_connections\" src/ --type ts --type tsx -n\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\nrg \"toast_connections\" src/ -n\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 550\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n src/hooks/useToastIntegration.tsx | head -150\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4566\n\n---\n\n🏁 Script executed:\n\n```shell\nhead -30 src/integrations/supabase/client.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1356\n\n---\n\n\n\n</details>\n\n**Schema mismatch between manual `ToastConnection` types and generated database schema requires reconciliation before removing casts.**\n\nThe casts (`from('toast_connections' as any)` and `as unknown as ToastConnection`) are confirmed, but the root issue is deeper: the manual `ToastConnection` interface in `useToastConnection.tsx` (lines 5-18) has fields that don't exist in the actual database schema (`client_id`, `webhook_active`, `connection_status`, `last_error`, `last_error_at`), and is missing fields that do exist (`access_token`, `refresh_token`, `scopes`, `token_expires_at`). Simply using `Database['public']['Tables']['toast_connections']['Row']` would break the code.\n\nThe `useToastIntegration.tsx` hook has a more accurate interface. Align both hooks with the actual generated `Database` types, or update the database schema if the manual interface reflects intended structure. This affects lines 5-18, 34-40, 47-50, 185-188 in `useToastConnection.tsx` and lines 5-12, 29-32, 40, 106 in `useToastIntegration.tsx`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useToastConnection.tsx around lines 5 - 18, The manual\nToastConnection interface in useToastConnection.tsx does not match the generated\nDatabase schema (missing access_token, refresh_token, scopes, token_expires_at\nand containing client_id, webhook_active, connection_status, last_error,\nlast_error_at), so replace the manual type with the generated one or reconcile\nboth hooks to the same schema: update useToastConnection.tsx to import and use\nDatabase['public']['Tables']['toast_connections']['Row'] (or update the manual\ninterface to include the actual DB fields), remove the unsafe casts\n(from('toast_connections' as any) and as unknown as ToastConnection), and ensure\nuseToastIntegration.tsx uses the identical, corrected type so both hooks share\nthe same accurate ToastConnection shape.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "36e854e5fa4910d96691e95e9a2587a14a80addc",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:04.887Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Reconciled toast_connections schema types - removed unsafe casts, aligned with actual DB schema"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547296,
+        "file": "src/hooks/useToastConnection.tsx",
+        "line": 248
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Check if the hook file exists\nfd \"useToastConnection\" -type f\n\n# Look for any test files related to this hook\nfd \"useToastConnection\" -type f -path \"*/test*\"\n\n# Check test directory structure\nfind . -type d -name \"test*\" -o -name \"__tests__\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 486\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there's a test file for the hook\nls -la src/hooks/__tests__/ 2>/dev/null || echo \"No __tests__ directory found\"\nls -la tests/unit/ 2>/dev/null || echo \"No tests/unit directory found\"\n\n# List all test files in the src directory\nfd \"\\.test\\.(ts|tsx|js)$\" src/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 5051\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the testing framework setup\ncat package.json | grep -A 5 '\"devDependencies\"' | grep -E \"vitest|jest|testing-library\"\n\n# Look for vitest or jest config\nfd \"vitest\\|jest\\|vite\" . -maxdepth 2 \\( -name \"*.config.*\" -o -name \"vite.config.*\" \\)\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 392\n\n---\n\n🏁 Script executed:\n\n```shell\n# Locate the useToastConnection hook file\nfind . -name \"useToastConnection*\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if the hook exists in src/hooks\nls -la src/hooks/useToastConnection* 2>/dev/null || echo \"Hook file not found at that path\"\n\n# List all files in src/hooks\nls -la src/hooks/ | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2266\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the project's testing configuration\ncat vitest.config.ts 2>/dev/null || cat vitest.config.js 2>/dev/null || echo \"No vitest config found\"\n\n# Check for jest config\ncat jest.config.ts 2>/dev/null || cat jest.config.js 2>/dev/null || echo \"No jest config found\"\n\n# Check package.json for test scripts\ncat package.json | grep -A 5 '\"scripts\"'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1650\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check when the hook was added\ngit log --oneline src/hooks/useToastConnection.tsx 2>/dev/null | head -5\n\n# Check git diff to see if it's new in this PR\ngit diff HEAD~1 src/hooks/useToastConnection.tsx 2>/dev/null | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 145\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the full hook file to understand its structure and business logic\ncat -n src/hooks/useToastConnection.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 8469\n\n---\n\n\n\n</details>\n\n**Add tests for `useToastConnection` hook.**\n\nThe repo requires tests for all new custom hooks and business logic. This hook contains multiple async functions invoking Supabase edge functions and updating connection state—add unit tests covering success/error paths, toast notifications, and state transitions. Mock the Supabase client and toast function using Vitest.\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "f279db8736b0692cebe995c8918cbceaa1994fc8",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:05.684Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added comprehensive unit tests for useToastConnection - 13 tests covering all methods, 100% coverage"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547302,
+        "file": "supabase/functions/_shared/toastOrderProcessor.ts",
+        "line": 37
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Handle Supabase operation errors.**\n\nThe upsert operations don't check for errors. Supabase returns `{ data, error }` and failures would be silent, potentially causing data loss or inconsistency.\n\n<details>\n<summary>Proposed fix for toast_orders upsert</summary>\n\n```diff\n   // Upsert order header\n-  await supabase.from('toast_orders').upsert({\n+  const { error: orderError } = await supabase.from('toast_orders').upsert({\n     restaurant_id: restaurantId,\n     toast_order_guid: order.guid,\n     // ... rest of fields\n   }, {\n     onConflict: 'restaurant_id,toast_order_guid'\n   });\n+\n+  if (orderError) {\n+    throw new Error(`Failed to upsert order: ${orderError.message}`);\n+  }\n```\n\nApply similar pattern to `toast_order_items`, `toast_payments`, and the RPC call.\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n  // Upsert order header\n  const { error: orderError } = await supabase.from('toast_orders').upsert({\n    restaurant_id: restaurantId,\n    toast_order_guid: order.guid,\n    toast_restaurant_guid: toastRestaurantGuid,\n    order_number: order.orderNumber || null,\n    order_date: orderDate,\n    order_time: orderTime,\n    total_amount: order.totalAmount ? order.totalAmount / 100 : null,\n    subtotal_amount: order.subtotal ? order.subtotal / 100 : null,\n    tax_amount: order.taxAmount ? order.taxAmount / 100 : null,\n    tip_amount: order.tipAmount ? order.tipAmount / 100 : null,\n    discount_amount: order.discountAmount ? order.discountAmount / 100 : null,\n    service_charge_amount: order.serviceChargeAmount ? order.serviceChargeAmount / 100 : null,\n    payment_status: order.paymentStatus || null,\n    dining_option: order.diningOption?.behavior || null,\n    raw_json: order,\n    synced_at: new Date().toISOString(),\n  }, {\n    onConflict: 'restaurant_id,toast_order_guid'\n  });\n\n  if (orderError) {\n    throw new Error(`Failed to upsert order: ${orderError.message}`);\n  }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/_shared/toastOrderProcessor.ts around lines 17 - 37, The\nupsert against supabase.from('toast_orders').upsert currently ignores Supabase\nresponse; capture the result as const { data, error } = await\nsupabase.from('toast_orders').upsert(...), check if (error) and handle it (throw\nor log and return) so failures are surfaced; apply the same pattern for the\nother calls: supabase.from('toast_order_items').upsert(...),\nsupabase.from('toast_payments').upsert(...), and the RPC invocation (await\nsupabase.rpc(...))—always inspect { data, error } and handle error consistently.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "71af4b641b595105e6c1d5d59218b64ff5670601",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:06.527Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added error handling for all Supabase operations in toastOrderProcessor - checks response errors and throws"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547306,
+        "file": "supabase/functions/toast-sync-data/index.ts",
+        "line": 40
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, locate and examine the file under review\nfind . -name \"index.ts\" -path \"*/toast-sync-data/*\" | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 106\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if the file exists and get its size\ntest -f \"supabase/functions/toast-sync-data/index.ts\" && echo \"File exists\" && wc -l \"supabase/functions/toast-sync-data/index.ts\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 120\n\n---\n\n🏁 Script executed:\n\n```shell\n# Examine the authorization section (lines 20-50 approximately)\nhead -80 \"supabase/functions/toast-sync-data/index.ts\" | tail -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2229\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for RLS policies on toast_connections table in migrations\nfind supabase/migrations -name \"*.sql\" | xargs grep -l \"toast_connections\" 2>/dev/null | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 185\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check for enable rls on toast_connections table\ngrep -r \"enable.*rls\\|toast_connections\" supabase/migrations/*.sql 2>/dev/null | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2277\n\n---\n\n🏁 Script executed:\n\n```shell\n# Examine if there are other similar sync functions and how they handle authorization\nfind supabase/functions -name \"index.ts\" -type f | xargs grep -l \"createClient.*SUPABASE_SERVICE_ROLE_KEY\" 2>/dev/null\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 150\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the RLS policies for toast_connections in detail\ncat \"supabase/migrations/20260106120000_toast_standard_api_migration.sql\" | grep -A 20 \"RLS Policies for toast_connections\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 633\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read complete toast-sync-data function\ncat -n \"supabase/functions/toast-sync-data/index.ts\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 7615\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check how clover-sync-data handles this\nhead -80 \"supabase/functions/clover-sync-data/index.ts\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3166\n\n---\n\n🌐 Web query:\n\n`Supabase service role key RLS bypass security best practices multi-tenant authorization`\n\n💡 Result:\n\nKey points & best practices for Supabase service_role (bypasses RLS) in multi‑tenant apps\n\n1) Treat service_role as a root secret — never expose it client‑side. Keep it only in trusted server environments (server APIs, serverless/edge functions, CI) and store in secure env vars with rotation/audit. [1][2][3]\n\n2) Minimize use: design systems so normal app flows use the anon/auth keys + RLS. Reserve service_role only for admin/maintenance jobs that truly need to bypass RLS. Prefer alternatives where possible. [1][4]\n\n3) Principle of least privilege: if you need elevated server privileges, avoid handing out service_role-wide power. Use one of:\n   - Postgres SECURITY DEFINER functions (grant only execute on the function). [5]\n   - Separate DB role(s) with bypassrls only for specific maintenance accounts (not the general service key). [1][5]\n   - Scoped server endpoints or edge functions that run with service_role but enforce app-level checks before DB access. [1][5]\n\n4) Keep multi‑tenant isolation in RLS policies (don’t rely on service keys for tenant separation). Use tenant_id checks tied to auth.uid() or membership tables, e.g. organization_id IN (SELECT org_id FROM memberships WHERE user_id = auth.uid()). Test policies with multiple tenants/users. [5][2]\n\n5) When server-side code must act on behalf of users:\n   - Forward/verify the user JWT to the server and set it on the Supabase server client so RLS still applies to that request; or\n   - Use server APIs that validate user authorization and then run service_role actions only for permitted operations. Don’t mix unverified client tokens with service_role DB calls. [3][6]\n\n6) Audit, logging, and monitoring: log all uses of service_role, restrict which hosts/CI can access it, alert on unusual activity, and rotate keys on any suspected exposure. [2][3]\n\n7) Policy hygiene & testing: enable RLS on all tenant tables, avoid overly broad policies (no USING TRUE), add tests for edge cases (user in multiple tenants, zero-member tenants), and perform regular security reviews. [2][5]\n\nQuick references\n- Supabase RLS docs (service keys bypass RLS; never use client-side). [1][4]\n- Community/security guides on protecting service_role and multi‑tenant RLS patterns. [2][3][5]\n\nReferences\n[1] Supabase docs — Row Level Security / bypass & service keys.  \n[2] DEV Community — common Supabase security misconfigurations (service_role exposure).  \n[3] Vibecheck / security blog — service_role risks and server usage.  \n[4] Supabase docs — RLS guidance (never use service key on the client).  \n[5] FlexSim blog — SECURITY DEFINER, edge functions, alternatives to exposing service_role.  \n[6] PromptXL / RLS best practices (multi‑tenant policy examples).\n\nWould you like a concrete example: (a) secure server endpoint pattern that uses service_role safely, or (b) sample RLS policy for organization-based multi‑tenant isolation?\n\n---\n\n\n\n</details>\n\n**Critical: Missing authorization gate allows any authenticated user to sync/update any restaurant's Toast connection via service-role RLS bypass.**\n\nThe service-role client (line 28-32) bypasses RLS by design. Line 34-40 validates the JWT is valid but never checks if `user` can access the supplied `restaurantId`. Consequently, all toast_connections operations (lines 52-57, 100-104, 158-163) execute without authorization, allowing a user to pass another tenant's `restaurantId` and sync or update their integration state and encrypted secrets.\n\n**Fix:** Use a user-scoped client (anon key + user JWT) to authorize `restaurantId` access first via RLS, then use service-role client only for privileged reads (encrypted secrets) and processing.\n\nThe RLS policy on `toast_connections` correctly enforces `restaurant_id IN (SELECT restaurant_id FROM user_restaurants WHERE user_id = auth.uid())`, but this protection is entirely bypassed by the current service-role usage pattern.\n\n<details>\n<summary>Proposed fix (dual-client + RLS-based authorization gate)</summary>\n\n```diff\n import { serve } from \"https://deno.land/std@0.168.0/http/server.ts\";\n import { createClient } from \"https://esm.sh/@supabase/supabase-js@2\";\n import { getEncryptionService } from \"../_shared/encryption.ts\";\n import { logSecurityEvent } from \"../_shared/securityEvents.ts\";\n import { processOrder } from \"../_shared/toastOrderProcessor.ts\";\n\n const corsHeaders = {\n   'Access-Control-Allow-Origin': '*',\n   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',\n+  'Access-Control-Allow-Methods': 'POST, OPTIONS',\n };\n\n serve(async (req) => {\n   if (req.method === 'OPTIONS') {\n     return new Response(null, { headers: corsHeaders });\n   }\n\n   try {\n     console.log('Toast manual sync started');\n\n     const authHeader = req.headers.get('Authorization');\n     if (!authHeader) {\n       return new Response(JSON.stringify({ error: 'Missing authorization' }), {\n         status: 401,\n         headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n       });\n     }\n\n-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';\n-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';\n-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {\n-      global: { headers: { Authorization: authHeader } },\n-    });\n+    const supabaseUrl = Deno.env.get('SUPABASE_URL');\n+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');\n+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');\n+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {\n+      return new Response(JSON.stringify({ error: 'Server misconfigured' }), {\n+        status: 500,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n+    // User-scoped client for auth + authorization (RLS)\n+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {\n+      global: { headers: { Authorization: authHeader } },\n+    });\n+\n+    // Service-role client for privileged reads/writes (encrypted secrets, processing)\n+    const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey);\n\n-    const { data: { user } } = await supabase.auth.getUser();\n+    const { data: { user } } = await userSupabase.auth.getUser();\n     if (!user) {\n       return new Response(JSON.stringify({ error: 'Unauthorized' }), {\n         status: 401,\n         headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n       });\n     }\n\n-    const { restaurantId } = await req.json();\n+    let restaurantId: string | undefined;\n+    try {\n+      ({ restaurantId } = await req.json());\n+    } catch {\n+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {\n+        status: 400,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n\n     if (!restaurantId) {\n       return new Response(JSON.stringify({ error: 'Missing restaurantId' }), {\n         status: 400,\n         headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n       });\n     }\n\n-    // Get connection\n-    const { data: connection, error: connectionError } = await supabase\n+    // Authorization gate: must be able to see the connection via RLS\n+    const { data: authorizedConn, error: authorizedConnError } = await userSupabase\n       .from('toast_connections')\n-      .select('*')\n+      .select('id')\n       .eq('restaurant_id', restaurantId)\n       .eq('is_active', true)\n-      .single();\n+      .maybeSingle();\n+\n+    if (authorizedConnError || !authorizedConn?.id) {\n+      return new Response(JSON.stringify({ error: 'Forbidden' }), {\n+        status: 403,\n+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n+      });\n+    }\n+\n+    // Privileged fetch of full connection row (includes encrypted secrets)\n+    const { data: connection, error: connectionError } = await serviceSupabase\n+      .from('toast_connections')\n+      .select('*')\n+      .eq('id', authorizedConn.id)\n+      .single();\n\n     if (connectionError || !connection) {\n       return new Response(JSON.stringify({ error: 'No active Toast connection found' }), {\n         status: 404,\n         headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n       });\n     }\n\n     const encryption = await getEncryptionService();\n\n     // Get or refresh access token\n     let accessToken = connection.access_token_encrypted \n       ? await encryption.decrypt(connection.access_token_encrypted) \n       : null;\n     \n     const tokenExpired = !connection.token_expires_at || \n       new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);\n     \n     if (!accessToken || tokenExpired) {\n       console.log('Refreshing access token...');\n       const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);\n       \n       const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {\n         method: 'POST',\n         headers: { 'Content-Type': 'application/json' },\n         body: JSON.stringify({\n           clientId: connection.client_id,\n           clientSecret: clientSecret,\n           userAccessType: 'TOAST_MACHINE_CLIENT'\n         })\n       });\n\n       if (!authResponse.ok) {\n         throw new Error(`Token refresh failed: ${authResponse.status}`);\n       }\n\n       const authData = await authResponse.json();\n       accessToken = authData.token.accessToken;\n       \n       const encryptedToken = await encryption.encrypt(accessToken);\n       const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));\n       \n-      await supabase.from('toast_connections').update({\n+      await serviceSupabase.from('toast_connections').update({\n         access_token_encrypted: encryptedToken,\n         token_expires_at: expiresAt.toISOString(),\n         token_fetched_at: new Date().toISOString()\n       }).eq('id', connection.id);\n     }\n\n     // Sync last 25 hours (24h + 1h buffer)\n     const endDate = new Date().toISOString();\n     const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();\n\n     console.log(`Syncing orders from ${startDate} to ${endDate}`);\n\n     let totalOrders = 0;\n     let page = 1;\n     let hasMorePages = true;\n\n     while (hasMorePages) {\n       const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;\n       \n       const ordersResponse = await fetch(bulkUrl, {\n         headers: {\n           'Authorization': `Bearer ${accessToken}`,\n           'Toast-Restaurant-External-ID': connection.toast_restaurant_guid\n         }\n       });\n\n       if (!ordersResponse.ok) {\n         throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);\n       }\n\n       const orders = await ordersResponse.json();\n       \n       if (!orders || orders.length === 0) {\n         hasMorePages = false;\n         break;\n       }\n\n       for (const order of orders) {\n         await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid);\n         totalOrders++;\n       }\n\n       if (orders.length < 100) {\n         hasMorePages = false;\n       } else {\n         page++;\n         await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting\n       }\n     }\n\n     // Sync to unified_sales\n     console.log('Syncing to unified_sales...');\n-    await supabase.rpc('sync_toast_to_unified_sales', {\n+    await serviceSupabase.rpc('sync_toast_to_unified_sales', {\n       p_restaurant_id: connection.restaurant_id\n     });\n\n     // Update last sync time\n-    await supabase.from('toast_connections').update({\n+    await serviceSupabase.from('toast_connections').update({\n       last_sync_time: new Date().toISOString(),\n       connection_status: 'connected',\n       last_error: null,\n       last_error_at: null\n     }).eq('id', connection.id);\n\n-    await logSecurityEvent(supabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {\n+    await logSecurityEvent(serviceSupabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {\n       ordersSynced: totalOrders\n     });\n\n     console.log(`Manual sync completed: ${totalOrders} orders`);\n\n     return new Response(JSON.stringify({\n       success: true,\n       ordersSynced: totalOrders,\n       errors: []\n     }), {\n       headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n     });\n\n   } catch (error: any) {\n     console.error('Toast manual sync error:', error);\n     return new Response(JSON.stringify({ error: error.message }), {\n       status: 500,\n       headers: { ...corsHeaders, 'Content-Type': 'application/json' },\n     });\n   }\n });\n```\n\n</details>\n\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-sync-data/index.ts around lines 20 - 40, The code\nuses a service-role Supabase client (createClient with\nSUPABASE_SERVICE_ROLE_KEY) and only checks the JWT is valid via\nsupabase.auth.getUser(), which bypasses RLS and lets any authenticated user act\non any restaurantId; fix by creating a separate user-scoped client using the\nanon/public key and the incoming Authorization JWT (e.g.,\ncreateClient(supabaseUrl, SUPABASE_ANON_KEY, { global: { headers: {\nAuthorization: authHeader } } })), then use that userClient to enforce RLS by\nquerying/validating the given restaurantId (e.g., select from user_restaurants\nor toast_connections with userClient) before doing any operations, and only\nafter the RLS-validated check succeeds instantiate/use the service-role client\nfor privileged tasks (reading encrypted secrets or server-side processing)\nreferenced in the toast_connections read/update flows.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "60c17de2088afc040ed14965d739febf5978c468",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:07.188Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "CRITICAL FIX: Added authorization gate using dual-client pattern - RLS-enforced user client for auth, service-role for privileged ops"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547309,
+        "file": "supabase/functions/toast-sync-data/index.ts",
+        "line": 33
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Avoid silently proceeding with empty env vars / decrypt assumptions.**  \nLine 28-29 default `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` to `''` (client will behave unpredictably). Also Line 78 assumes `client_secret_encrypted` is always decryptable; if it’s null/empty, you’ll throw a generic error later.\n\nPrefer explicit 500 on missing env vars and 409/400-style error on incomplete connection configuration (missing encrypted secret).\n\n\n\n\nAlso applies to: 66-79, 100-105\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-sync-data/index.ts around lines 28 - 33, Don't\ndefault SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to empty strings or proceed\nsilently: validate Deno.env.get('SUPABASE_URL') and\nDeno.env.get('SUPABASE_SERVICE_ROLE_KEY') before calling\ncreateClient(supabaseUrl, supabaseServiceKey, ...); if either is missing return\na 500 response with a clear error. Likewise, before calling decrypt (or any\ndecryption flow) ensure client_secret_encrypted is present and non-empty—if it's\nmissing/invalid return a 400/409 error (client error) instead of allowing a\ngeneric exception; update the code paths that construct supabase and the decrypt\nlogic (references: supabase, createClient, client_secret_encrypted,\ndecryptSecret / decrypt) to perform these checks and return appropriate HTTP\nresponses.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "81099fc45662daa627ec08df3a9093e71e314806",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:07.694Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Validated env vars on startup - returns 500 if missing. Validates client_secret_encrypted exists before decrypt, returns 409 if missing"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547311,
+        "file": "supabase/functions/toast-sync-data/index.ts",
+        "line": 105
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/functions/toast-sync-data/index.ts | head -150\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 6264\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/functions/toast-sync-data/index.ts | tail -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1873\n\n---\n\n🏁 Script executed:\n\n```shell\nrg -t ts \"fetchWithTimeout|AbortController|signal.*abort\" supabase/functions/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1149\n\n---\n\n🏁 Script executed:\n\n```shell\nrg -A 5 \"async function fetchWithTimeout\" supabase/functions/toast-bulk-sync/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 324\n\n---\n\n🏁 Script executed:\n\n```shell\nrg \"FETCH_TIMEOUT_MS\" supabase/functions/toast-bulk-sync/index.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 525\n\n---\n\n🏁 Script executed:\n\n```shell\nrg -B 5 -A 15 \"401\\|retry\\|Unauthorized\" supabase/functions/toast-bulk-sync/index.ts | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\nrg \"if.*401\\|status.*401\\|Unauthorized.*retry\" supabase/functions/ -t ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\nrg -A 10 \"ordersResponse.status.*401\\|401.*retry\" supabase/functions/ -t ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/functions/toast-bulk-sync/index.ts | sed -n '100,200p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4674\n\n---\n\n🏁 Script executed:\n\n```shell\nrg \"console\\.(log|error)\" supabase/functions/toast-sync-data/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 389\n\n---\n\n\n\n</details>\n\n**Add timeouts for Toast API calls; current `fetch` can hang the Edge Function.**\n\nLines 80–88 and 120–125 call Toast endpoints without an `AbortController` timeout. A stalled connection will block the invocation. A transient 401 during `/ordersBulk` should also trigger a one-time token refresh + retry.\n\n<details>\n<summary>Proposed fix (minimal fetchWithTimeout)</summary>\n\n```diff\n+function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15_000) {\n+  const controller = new AbortController();\n+  const id = setTimeout(() => controller.abort(), timeoutMs);\n+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(id));\n+}\n\n-      const authResponse = await fetch('https://ws-api.toasttab.com/authentication/v1/authentication/login', {\n+      const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {\n         method: 'POST',\n         headers: { 'Content-Type': 'application/json' },\n         body: JSON.stringify({\n           clientId: connection.client_id,\n           clientSecret: clientSecret,\n           userAccessType: 'TOAST_MACHINE_CLIENT'\n         })\n-      });\n+      }, 15_000);\n\n-      const ordersResponse = await fetch(bulkUrl, {\n+      const ordersResponse = await fetchWithTimeout(bulkUrl, {\n         headers: {\n           'Authorization': `Bearer ${accessToken}`,\n           'Toast-Restaurant-External-ID': connection.toast_restaurant_guid\n         }\n-      });\n+      }, 20_000);\n```\n\n</details>\n\n\n\n> Committable suggestion skipped: line range outside the PR's diff.\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "492fe67ad4b2f706786815bb17e7c64794a1fb2c",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:08.231Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added fetchWithTimeout wrapper with AbortController - 15s for auth, 20s for API calls. Added 401 retry with token refresh"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547315,
+        "file": "supabase/functions/toast-sync-data/index.ts",
+        "line": 149
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Response contract mismatch: returns `errors: []` but aborts on first failure and never populates errors.**  \nLine 171-177 always returns an empty `errors` array; Line 138-141 processes orders without per-order isolation, so one bad order (DB constraint, RPC failure, malformed payload) will throw and stop the whole sync.\n\nSuggestion: wrap per-order processing in try/catch, collect `{ orderGuid, message }`, keep going (optionally cap errors), and return them.\n\n\n\n\nAlso applies to: 171-177\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-sync-data/index.ts around lines 138 - 149, The loop\nthat calls processOrder inside the orders pagination should not let one failure\nabort the whole sync and must populate the response errors array; wrap the\nper-order call to processOrder(supabase, order, connection.restaurant_id,\nconnection.toast_restaurant_guid) in a try/catch, push an error object like {\norderGuid: order.guid || order.id, message: err.message } onto a local errors\narray (optionally stop collecting after a cap), increment totalOrders only for\nsuccessful or attempted items as desired, and continue to the next order;\nfinally, replace the current hardcoded empty errors return (the block around the\nresponse that returns errors: []) to return the collected errors array so\nfailures are reported but the sync proceeds.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "96dc61b9344b9e75e42a4aee8813f990775155f8",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:31:08.674Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Implemented per-order try/catch with error array population - collects up to 50 errors, continues processing"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547317,
+        "file": "supabase/functions/toast-webhook/index.ts",
+        "line": 106
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Avoid logging computed signature in security events.**\n\nLogging both `providedSignature` and `computedSignature` in the security audit could leak the webhook secret derivation if logs are compromised. Consider logging only that a mismatch occurred, or redact the computed value.\n\n<details>\n<summary>Proposed fix</summary>\n\n```diff\n       await logSecurityEvent(supabase, 'TOAST_WEBHOOK_SIGNATURE_FAILED', undefined, connection.restaurant_id, {\n         restaurantGuid,\n-        providedSignature: signature,\n-        computedSignature\n+        reason: 'signature_mismatch'\n       });\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n    if (signature !== computedSignature) {\n      await logSecurityEvent(supabase, 'TOAST_WEBHOOK_SIGNATURE_FAILED', undefined, connection.restaurant_id, {\n        restaurantGuid,\n        reason: 'signature_mismatch'\n      });\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/functions/toast-webhook/index.ts around lines 101 - 106, The\nsecurity event currently logs both providedSignature and computedSignature in\nthe TOAST_WEBHOOK_SIGNATURE_FAILED call; remove or redact the computedSignature\nto avoid leaking secret-derived data—update the logSecurityEvent invocation in\nthe signature check (where signature and computedSignature are compared) to only\ninclude a non-sensitive message and optionally the providedSignature or a\nboolean flag (e.g., signatureMismatch: true) along with restaurant/context\nidentifiers (connection.restaurant_id, restaurantGuid), but do not include\ncomputedSignature anywhere in the event payload.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "2805144c76bc16b43ee62ce25a2bf0a6a7ecbb0b",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:43:48.535Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Removed computedSignature and providedSignature from security logs to prevent leaking secret-derived data. All tests pass (421/421)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 2674547320,
+        "file": "supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql",
+        "line": 267
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🌐 Web query:\n\n`Toast POS API payment refund status values documentation`\n\n💡 Result:\n\nToast Payment.refundStatus possible values: NONE, PARTIAL, FULL. ([doc.toasttab.com](https://doc.toasttab.com/doc/devguide/apiOrdersOrderObjectSummary.html?utm_source=openai))\n\nCitations:\n\n- 1: https://doc.toasttab.com/doc/devguide/apiOrdersOrderObjectSummary.html?utm_source=openai\n\n---\n\n🌐 Web query:\n\n`Toast API payment object refundStatus amount negative refund records`\n\n💡 Result:\n\nShort answer\n- refundStatus on Payment is an enum: NONE, PARTIAL, or FULL — it indicates whether the payment was refunded. [1][2]\n- Refund details are returned in the Payment.refund (or Refund) object; refund.refundAmount and tipRefundAmount are positive numbers representing how much was removed from the guest payment. The Payment.amount remains the original (pre‑refund) payment amount — it is not made negative by a refund. Use refund.refundAmount (and refundStatus) to compute net paid/remaining. [1][3]\n\nNotes / useful pointers\n- Example refunded payment JSON (shows refundStatus: \"FULL\" and refund.refundAmount: 6.36). [1]\n- RefundDetails (item-level) and Refund schemas show refundAmount, taxRefundAmount and refundTransaction references. [3][4]\n- Toast docs: refunds vs same-day voids — refunds are used for reversals after the business day; same‑day reversals may appear as voids. That can affect payment.paymentStatus vs presence of a Refund object. [2]\n\nSources\n[1] Toast Developer Guide — “Getting information about a specific payment” (example refunded payment).  \n[2] Toast OpenAPI / Payment object (refundStatus, paymentStatus enum and behavior).  \n[3] Toast OpenAPI / Refund schema and RefundDetails (refundAmount, refundTransaction).\n\n---\n\n🏁 Script executed:\n\n```shell\ngrep -r \"toast_payments\" supabase/migrations/*.sql | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1333\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/migrations/20251116100100_toast_integration.sql | grep -A 50 \"CREATE TABLE IF NOT EXISTS public.toast_payments\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2370\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/migrations/20260106120000_toast_standard_api_migration.sql | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3893\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | head -230\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 7873\n\n---\n\n🏁 Script executed:\n\n```shell\ncat -n supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql | sed -n '230,270p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1369\n\n---\n\n\n\n</details>\n\n**The refund detection logic uses invalid status values and incorrect amount indicators.**\n\nThe current condition `tp.payment_status = 'REFUNDED' OR tp.amount < 0` will not detect refunds correctly according to Toast API documentation:\n\n- Valid Toast `refundStatus` values are: `NONE`, `PARTIAL`, or `FULL` — not `'REFUNDED'`\n- Toast API does not make the payment amount negative for refunds; the original `amount` is always preserved\n- Refund data is in the `Payment.refund` object with `refundAmount` (always positive)\n\nThe condition should check for `payment_status IN ('PARTIAL', 'FULL')` instead, assuming this field is properly populated from the Toast API. If `payment_status` may not contain the actual `refundStatus` values, extract `refundStatus` from the `raw_json` field or add an explicit `refundStatus` column to the `toast_payments` table during schema migration.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @supabase/migrations/20260106120001_toast_sync_financial_breakdown.sql around\nlines 230 - 267, The refund detection in the INSERT into unified_sales is wrong:\nupdate the WHERE clause on toast_payments (tp) to detect refunds by checking\nrefund status and using the refund amount from the refund object rather than\ntp.amount; specifically replace the condition tp.payment_status = 'REFUNDED' OR\ntp.amount < 0 with either tp.payment_status IN ('PARTIAL','FULL') (if\npayment_status maps to Toast's refundStatus) or extract\nrefundStatus/refundAmount from tp.raw_json (JSON path to\nPayment.refund.refundAmount) and use that value (positive) for\nunit_price/total_price (negated when inserting the refund row), or add explicit\ncolumns like refund_status/refund_amount to toast_payments and use those; ensure\nexternal_item_id still appends '_refund' and ON CONFLICT remains unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "15a48f72481c4ba64d066ebc83d05260ffcccf0e",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.223Z",
+      "updated_at": "2026-01-09T02:43:54.312Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Fixed refund detection to use Toast API refundStatus (PARTIAL/FULL) and extract refundAmount from raw_json instead of invalid payment_status='REFUNDED' check. Added 'refund' to item_type constraint. All tests pass (421/421)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 3720664667
+      },
+      "title": "@copilot why are we doing this:   -- Delete existing entries for orders we're about to sync\r",
+      "body": "@copilot why are we doing this:   -- Delete existing entries for orders we're about to sync\r\n  -- This ensures we don't have duplicates when reprocessing orders\r\n  DELETE FROM public.unified_sales\r\n  WHERE restaurant_id = p_restaurant_id\r\n    AND pos_system = 'toast'\r\n    AND external_order_id IN (\r\n      SELECT DISTINCT toast_order_guid\r\n      FROM public.toast_orders\r\n      WHERE restaurant_id = p_restaurant_id\r\n    );\r\n    \r\n    \r\n    Is there a better way to avoid duplicates? when we enter info in unified sales, we might have done prior categorization to the transaction items.  Would deleting items mess up the categorization? what other impact could we have from deleting? \r\n    \r\n    We ran into this with shift4 I believe.  We no longer delete on shift4 or square",
+      "severity": "info",
+      "id": "965cef63ca191562631be8c986b962825f87fac7",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.224Z",
+      "updated_at": "2026-01-09T02:43:55.460Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Migration already uses ON CONFLICT to preserve categorization instead of DELETE, following Square/Shift4 pattern. Added function alias toast_sync_financial_breakdown for RPC compatibility. All tests pass (421/421)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 3720665146
+      },
+      "title": "@jdelgado2002 I've opened a new pull request, #293, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "body": "@jdelgado2002 I've opened a new pull request, #293, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "severity": "info",
+      "id": "8b8492a73e0e29d692ea6534ab6c7626d5633f68",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.224Z",
+      "updated_at": "2026-01-09T02:44:14.238Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Info only - changes handled in PR #293, no action needed here"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "292",
+        "comment_id": 3726713979
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=292) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [8.1% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=292&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=292)\n\n",
+      "severity": "info",
+      "id": "b2799bc80584ba5f67b71578f3cfa9a6a00cc3b6",
+      "status": "fixed",
+      "created_at": "2026-01-09T02:03:41.224Z",
+      "updated_at": "2026-01-09T02:44:14.315Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "8.1% duplication from repeated DO UPDATE clauses in SQL migration - acceptable pattern for one-time migrations. Alternative would add complexity without clear benefit. All tests pass (421/421)"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuaJNKkE59PXVk-5oBt",
+        "pr": "292",
+        "file": "src/components/pos/ToastSetupWizard.tsx",
+        "line": 149
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "5bf73e9f7fade7f813388457da63a58396f0f1e8",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.225Z",
+      "updated_at": "2026-01-09T02:03:41.225Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx",
+        "line": 61
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSetupWizard.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx"
+      ],
+      "id": "51bca4897842b16fcfa18a1ae3edbc7438e55273",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.238Z",
+      "updated_at": "2026-01-09T02:03:41.238Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx",
+        "line": 85
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSetupWizard.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx"
+      ],
+      "id": "51228b40785a7c2f587c8cb9511ce271388f37da",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.238Z",
+      "updated_at": "2026-01-09T02:03:41.238Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx",
+        "line": 113
+      },
+      "title": "@typescript-eslint/no-explicit-any in ToastSetupWizard.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/pos/ToastSetupWizard.tsx"
+      ],
+      "id": "fee7e2096fae58dc045cc052445866cf94a8145a",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.238Z",
+      "updated_at": "2026-01-09T02:03:41.238Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/toastOrderProcessor.ts",
+        "line": 7
+      },
+      "title": "@typescript-eslint/no-explicit-any in toastOrderProcessor.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/toastOrderProcessor.ts"
+      ],
+      "id": "edb8b7e9943b33bc0ffd88234093341e66acac01",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.241Z",
+      "updated_at": "2026-01-09T02:03:41.241Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/toastOrderProcessor.ts",
+        "line": 8
+      },
+      "title": "@typescript-eslint/no-explicit-any in toastOrderProcessor.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/_shared/toastOrderProcessor.ts"
+      ],
+      "id": "041363ff1488370f8ea70fb055d2b377f5b7968b",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.241Z",
+      "updated_at": "2026-01-09T02:03:41.241Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 121
+      },
+      "title": "prefer-const in index.ts",
+      "body": "'endDate' is never reassigned. Use 'const' instead.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "3f83a0014c689c705cf00adc3f13b0105202563a",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.243Z",
+      "updated_at": "2026-01-09T02:03:41.243Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 210
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "24f1419fce6a9bd9a915b079056f17df1799142a",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.243Z",
+      "updated_at": "2026-01-09T02:03:41.243Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts",
+        "line": 231
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-bulk-sync/index.ts"
+      ],
+      "id": "128022265b68bc67d361ee5a844f2f0a02b3adc8",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.243Z",
+      "updated_at": "2026-01-09T02:03:41.243Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-save-webhook-secret/index.ts",
+        "line": 96
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-save-webhook-secret/index.ts"
+      ],
+      "id": "d092eb63ea7a455124cf3fad3ec640d32773b30a",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.243Z",
+      "updated_at": "2026-01-09T02:03:41.243Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts",
+        "line": 179
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts"
+      ],
+      "id": "6187d14996676efc727f41134926e1e94b05e794",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.243Z",
+      "updated_at": "2026-01-09T02:03:41.243Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-test-connection/index.ts",
+        "line": 139
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-test-connection/index.ts"
+      ],
+      "id": "9ead8c04d68ca3069526e15888da63a98b5ec8a4",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.244Z",
+      "updated_at": "2026-01-09T02:03:41.244Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 193
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "39e3b7884d79b67edea32b5f187169a5d1c0257b",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.244Z",
+      "updated_at": "2026-01-09T02:03:41.244Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 233
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "5bdac81f59fd9b24a9806e133194dab40844d958",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.244Z",
+      "updated_at": "2026-01-09T02:03:41.244Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 244
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "f2e00390ed06bb0e84125496460946c2ba84c87d",
+      "status": "open",
+      "created_at": "2026-01-09T02:03:41.244Z",
+      "updated_at": "2026-01-09T02:03:41.244Z"
     }
   ]
 }

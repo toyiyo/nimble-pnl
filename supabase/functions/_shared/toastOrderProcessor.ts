@@ -15,7 +15,7 @@ export async function processOrder(
   const orderTime = closedDate ? closedDate.toISOString().split('T')[1].split('.')[0] : null;
 
   // Upsert order header
-  await supabase.from('toast_orders').upsert({
+  const { error: orderError } = await supabase.from('toast_orders').upsert({
     restaurant_id: restaurantId,
     toast_order_guid: order.guid,
     toast_restaurant_guid: toastRestaurantGuid,
@@ -36,12 +36,16 @@ export async function processOrder(
     onConflict: 'restaurant_id,toast_order_guid'
   });
 
+  if (orderError) {
+    throw new Error(`Failed to upsert order: ${orderError.message}`);
+  }
+
   // Process order items from checks
   if (order.checks) {
     for (const check of order.checks) {
       if (check.selections) {
         for (const selection of check.selections) {
-          await supabase.from('toast_order_items').upsert({
+          const { error: itemError } = await supabase.from('toast_order_items').upsert({
             restaurant_id: restaurantId,
             toast_item_guid: selection.guid,
             toast_order_guid: order.guid,
@@ -56,13 +60,17 @@ export async function processOrder(
           }, {
             onConflict: 'restaurant_id,toast_item_guid,toast_order_guid'
           });
+
+          if (itemError) {
+            throw new Error(`Failed to upsert order item: ${itemError.message}`);
+          }
         }
       }
 
       // Process payments
       if (check.payments) {
         for (const payment of check.payments) {
-          await supabase.from('toast_payments').upsert({
+          const { error: paymentError } = await supabase.from('toast_payments').upsert({
             restaurant_id: restaurantId,
             toast_payment_guid: payment.guid,
             toast_order_guid: order.guid,
@@ -76,14 +84,22 @@ export async function processOrder(
           }, {
             onConflict: 'restaurant_id,toast_payment_guid,toast_order_guid'
           });
+
+          if (paymentError) {
+            throw new Error(`Failed to upsert payment: ${paymentError.message}`);
+          }
         }
       }
     }
   }
 
   // Call RPC to sync financial breakdown to unified_sales
-  await supabase.rpc('toast_sync_financial_breakdown', {
+  const { error: rpcError } = await supabase.rpc('toast_sync_financial_breakdown', {
     p_order_guid: order.guid,
     p_restaurant_id: restaurantId
   });
+
+  if (rpcError) {
+    throw new Error(`Failed to sync financial breakdown: ${rpcError.message}`);
+  }
 }

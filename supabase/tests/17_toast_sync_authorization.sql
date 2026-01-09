@@ -99,22 +99,81 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- TEST CATEGORY 3: Data Integrity
+-- TEST CATEGORY 3: Data Integrity & Upsert Behavior
 -- ============================================================
 
--- Test 6: Function correctly syncs revenue entries
+-- Test 6: Function preserves user-managed fields during upsert
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-100000000001"}';
 
--- Clear and re-sync
-DELETE FROM unified_sales WHERE restaurant_id = '00000000-0000-0000-0000-100000000011';
+-- Insert a pre-existing unified_sales row with custom_category (user-managed field)
+INSERT INTO unified_sales (
+  restaurant_id,
+  pos_system,
+  external_order_id,
+  external_item_id,
+  item_name,
+  quantity,
+  unit_price,
+  total_price,
+  sale_date,
+  sale_time,
+  item_type,
+  custom_category,
+  synced_at
+) VALUES (
+  '00000000-0000-0000-0000-100000000011',
+  'toast',
+  'toast-order-001',
+  'toast-item-001',
+  'Old Item Name',
+  1,
+  90.00,
+  90.00,
+  '2026-01-01',
+  '11:00:00',
+  'sale',
+  'User Custom Category',
+  NOW() - INTERVAL '1 hour'
+) ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id) 
+  WHERE parent_sale_id IS NULL 
+  DO UPDATE SET custom_category = COALESCE(unified_sales.custom_category, EXCLUDED.custom_category);
+
+-- Run sync which should update POS fields but preserve custom_category
 SELECT sync_toast_to_unified_sales('00000000-0000-0000-0000-100000000011');
 
+-- Assert that the row was updated (not deleted/recreated)
 SELECT ok(
   (SELECT COUNT(*) FROM unified_sales 
    WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
-     AND item_type = 'sale' 
-     AND total_price = 100.00) = 1,
-  'Function should create revenue entry with correct amount and item_type=sale'
+     AND external_item_id = 'toast-item-001'
+     AND item_type = 'sale') = 1,
+  'Function should update existing revenue entry, not create duplicate'
+);
+
+-- Assert POS-sourced fields were updated
+SELECT is(
+  (SELECT item_name FROM unified_sales 
+   WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
+     AND external_item_id = 'toast-item-001'),
+  'Test Item',
+  'Function should update item_name from POS data'
+);
+
+SELECT is(
+  (SELECT total_price FROM unified_sales 
+   WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
+     AND external_item_id = 'toast-item-001'),
+  100.00::numeric,
+  'Function should update total_price from POS data'
+);
+
+-- Assert user-managed field was preserved
+SELECT is(
+  (SELECT custom_category FROM unified_sales 
+   WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
+     AND external_item_id = 'toast-item-001'),
+  'User Custom Category',
+  'CRITICAL: Function should preserve user-managed custom_category field during upsert'
 );
 
 -- Test 7: Function correctly syncs all entry types (sale, discount, tax, tip)

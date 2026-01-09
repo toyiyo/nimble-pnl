@@ -11,6 +11,7 @@ const corsHeaders = {
 };
 
 const FETCH_TIMEOUT_MS = 20000; // 20 seconds for API calls
+const DEBUG = Deno.env.get('DEBUG') === 'true';
 
 function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -24,7 +25,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Toast manual sync started');
+    if (DEBUG) console.log('Toast manual sync started');
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -131,7 +132,7 @@ serve(async (req) => {
       new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);
     
     if (!accessToken || tokenExpired) {
-      console.log('Refreshing access token...');
+      if (DEBUG) console.log('Refreshing access token...');
       const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
       
       const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
@@ -172,7 +173,7 @@ serve(async (req) => {
     const endDate = new Date().toISOString();
     const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
 
-    console.log(`Syncing orders from ${startDate} to ${endDate}`);
+    if (DEBUG) console.log(`Syncing orders from ${startDate} to ${endDate}`);
 
     let totalOrders = 0;
     let page = 1;
@@ -199,7 +200,7 @@ serve(async (req) => {
       if (!ordersResponse.ok) {
         // Handle 401 with one retry after token refresh
         if (ordersResponse.status === 401 && page === 1) {
-          console.log('Got 401, attempting token refresh and retry...');
+          if (DEBUG) console.log('Got 401, attempting token refresh and retry...');
           const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
           
           const retryAuthResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
@@ -263,7 +264,7 @@ serve(async (req) => {
     }
 
     // Sync to unified_sales
-    console.log('Syncing to unified_sales...');
+    if (DEBUG) console.log('Syncing to unified_sales...');
     const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
       p_restaurant_id: connection.restaurant_id
     });
@@ -291,7 +292,7 @@ serve(async (req) => {
       errorCount: errors.length
     });
 
-    console.log(`Manual sync completed: ${totalOrders} orders, ${errors.length} errors`);
+    if (DEBUG) console.log(`Manual sync completed: ${totalOrders} orders, ${errors.length} errors`);
 
     return new Response(JSON.stringify({
       success: true,

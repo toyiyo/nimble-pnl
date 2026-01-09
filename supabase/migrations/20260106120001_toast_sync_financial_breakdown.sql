@@ -112,7 +112,7 @@ BEGIN
     too.toast_order_guid || '_discount',
     'Order Discount',
     1,
-    -ABS(too.discount_amount), -- Negative amount for discount
+    -ABS(too.discount_amount), -- Stored negative to match Square/Shift4 pattern; reduces revenue in SUM calculations
     -ABS(too.discount_amount),
     too.order_date,
     too.order_time,
@@ -240,7 +240,7 @@ BEGIN
 
   -- 5. Insert/Update REFUND entries (from payments with refundStatus)
   -- Toast API uses refundStatus enum: 'NONE', 'PARTIAL', 'FULL'
-  -- Refund amount is in the refund.refundAmount field (positive value)
+  -- Refund amount is in the refund.refundAmount field (positive value from API, negated for storage)
   INSERT INTO public.unified_sales (
     restaurant_id,
     pos_system,
@@ -263,7 +263,7 @@ BEGIN
     tp.toast_payment_guid || '_refund',
     'Refund - ' || COALESCE(tp.payment_type, 'Unknown'),
     1,
-    -- Use refund amount from raw_json, negate it for accounting
+    -- Stored negative to match Square/Shift4 pattern; reduces revenue in SUM calculations
     -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
     -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
     tp.payment_date,

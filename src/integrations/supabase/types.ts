@@ -7370,6 +7370,32 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_uncovered_bank_patterns: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          amount_range: string
+          category_code: string
+          category_name: string
+          date_range: string
+          description: string
+          merchant_name: string
+          normalized_payee: string
+          occurrence_count: number
+          typical_amount: number
+        }[]
+      }
+      get_uncovered_pos_patterns: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          category_code: string
+          category_name: string
+          date_range: string
+          item_name: string
+          occurrence_count: number
+          pos_category: string
+          typical_price: number
+        }[]
+      }
       get_users_by_ids: {
         Args: { user_ids: string[] }
         Returns: {

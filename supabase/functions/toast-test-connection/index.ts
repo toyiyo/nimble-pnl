@@ -44,6 +44,21 @@ serve(async (req) => {
       });
     }
 
+    // Verify user has permission
+    const { data: userRestaurant } = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (!userRestaurant || !['owner', 'manager'].includes(userRestaurant.role)) {
+      return new Response(JSON.stringify({ error: 'Access denied' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Get connection
     const { data: connection, error: connectionError } = await supabase
       .from('toast_connections')

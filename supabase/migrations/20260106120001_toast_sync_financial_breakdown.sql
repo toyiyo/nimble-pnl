@@ -1,6 +1,7 @@
 -- =====================================================
 -- Update sync_toast_to_unified_sales to create separate entries
 -- for revenue, discounts, tax, tips, and refunds
+-- Uses existing item_type and adjustment_type columns
 -- =====================================================
 
 CREATE OR REPLACE FUNCTION sync_toast_to_unified_sales(p_restaurant_id UUID)
@@ -10,7 +11,17 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_synced_count INTEGER := 0;
+  v_row_count INTEGER := 0;
 BEGIN
+  -- Authorization check: verify user has access to this restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
+  END IF;
+
   -- 1. Insert/Update REVENUE entries (from order items)
   -- Use ON CONFLICT to preserve categorization instead of deleting
   INSERT INTO public.unified_sales (
@@ -25,10 +36,9 @@ BEGIN
     sale_date,
     sale_time,
     pos_category,
-    type,
+    item_type,
     raw_data,
-    synced_at,
-    source
+    synced_at
   )
   SELECT
     toi.restaurant_id,
@@ -42,10 +52,9 @@ BEGIN
     too.order_date,
     too.order_time,
     toi.menu_category,
-    'revenue'::TEXT,
+    'sale'::TEXT,
     toi.raw_json,
-    NOW(),
-    'toast_api'
+    NOW()
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too ON toi.toast_order_guid = too.toast_order_guid
     AND toi.restaurant_id = too.restaurant_id
@@ -65,7 +74,8 @@ BEGIN
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at;
 
-  GET DIAGNOSTICS v_synced_count = ROW_COUNT;
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
 
   -- 2. Insert/Update DISCOUNT entries (from order discounts)
   INSERT INTO public.unified_sales (
@@ -79,10 +89,10 @@ BEGIN
     total_price,
     sale_date,
     sale_time,
-    type,
+    item_type,
+    adjustment_type,
     raw_data,
-    synced_at,
-    source
+    synced_at
   )
   SELECT
     too.restaurant_id,
@@ -96,9 +106,9 @@ BEGIN
     too.order_date,
     too.order_time,
     'discount'::TEXT,
+    'discount'::TEXT,
     too.raw_json,
-    NOW(),
-    'toast_api'
+    NOW()
   FROM public.toast_orders too
   WHERE too.restaurant_id = p_restaurant_id
     AND too.discount_amount IS NOT NULL
@@ -114,6 +124,9 @@ BEGIN
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at;
 
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
   -- 3. Insert/Update TAX entries
   INSERT INTO public.unified_sales (
     restaurant_id,
@@ -126,10 +139,10 @@ BEGIN
     total_price,
     sale_date,
     sale_time,
-    type,
+    item_type,
+    adjustment_type,
     raw_data,
-    synced_at,
-    source
+    synced_at
   )
   SELECT
     too.restaurant_id,
@@ -143,9 +156,9 @@ BEGIN
     too.order_date,
     too.order_time,
     'tax'::TEXT,
+    'tax'::TEXT,
     too.raw_json,
-    NOW(),
-    'toast_api'
+    NOW()
   FROM public.toast_orders too
   WHERE too.restaurant_id = p_restaurant_id
     AND too.tax_amount IS NOT NULL
@@ -161,6 +174,9 @@ BEGIN
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at;
 
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
   -- 4. Insert/Update TIP entries (from payments)
   INSERT INTO public.unified_sales (
     restaurant_id,
@@ -173,10 +189,10 @@ BEGIN
     total_price,
     sale_date,
     sale_time,
-    type,
+    item_type,
+    adjustment_type,
     raw_data,
-    synced_at,
-    source
+    synced_at
   )
   SELECT
     tp.restaurant_id,
@@ -190,9 +206,9 @@ BEGIN
     tp.payment_date,
     NULL, -- payment_time not tracked
     'tip'::TEXT,
+    'tip'::TEXT,
     tp.raw_json,
-    NOW(),
-    'toast_api'
+    NOW()
   FROM public.toast_payments tp
   WHERE tp.restaurant_id = p_restaurant_id
     AND tp.tip_amount IS NOT NULL
@@ -208,6 +224,9 @@ BEGIN
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at;
 
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
   -- 5. Insert/Update REFUND entries (from payments with negative amounts or refund status)
   INSERT INTO public.unified_sales (
     restaurant_id,
@@ -220,10 +239,9 @@ BEGIN
     total_price,
     sale_date,
     sale_time,
-    type,
+    item_type,
     raw_data,
-    synced_at,
-    source
+    synced_at
   )
   SELECT
     tp.restaurant_id,
@@ -238,10 +256,10 @@ BEGIN
     NULL,
     'refund'::TEXT,
     tp.raw_json,
-    NOW(),
-    'toast_api'
+    NOW()
   FROM public.toast_payments tp
   WHERE tp.restaurant_id = p_restaurant_id
+    AND tp.amount IS NOT NULL
     AND (
       tp.payment_status = 'REFUNDED'
       OR tp.amount < 0
@@ -257,6 +275,9 @@ BEGIN
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at;
 
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
   RETURN v_synced_count;
 END;
 $$;
@@ -265,4 +286,4 @@ $$;
 GRANT EXECUTE ON FUNCTION sync_toast_to_unified_sales TO authenticated;
 
 COMMENT ON FUNCTION sync_toast_to_unified_sales IS 
-'Syncs Toast orders to unified_sales with separate entries for revenue, discounts, tax, tips, and refunds. Uses ON CONFLICT to preserve existing categorization when updating records.';
+'Syncs Toast orders to unified_sales with separate entries for revenue (item_type=sale), discounts (item_type=discount, adjustment_type=discount), tax (item_type=tax, adjustment_type=tax), tips (item_type=tip, adjustment_type=tip), and refunds (item_type=refund). Uses ON CONFLICT to preserve existing categorization when updating records.';

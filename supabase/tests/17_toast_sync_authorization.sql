@@ -2,7 +2,7 @@
 -- Tests for migration 20260106120001_toast_sync_financial_breakdown.sql
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(15);
 
 -- Setup: Disable RLS for test data creation
 SET LOCAL role TO postgres;
@@ -12,6 +12,7 @@ ALTER TABLE toast_orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE toast_order_items DISABLE ROW LEVEL SECURITY;
 ALTER TABLE toast_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE unified_sales DISABLE ROW LEVEL SECURITY;
+ALTER TABLE chart_of_accounts DISABLE ROW LEVEL SECURITY;
 
 -- Create test users
 INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
@@ -105,7 +106,12 @@ SELECT throws_ok(
 -- Test 6: Function preserves user-managed fields during upsert
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-100000000001"}';
 
--- Insert a pre-existing unified_sales row with custom_category (user-managed field)
+-- Insert a pre-existing unified_sales row with category_id (user-managed field)
+-- First create a test category
+INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, normal_balance, is_active) VALUES
+  ('00000000-0000-0000-0000-100000000031'::uuid, '00000000-0000-0000-0000-100000000011'::uuid, '4000', 'Food Sales', 'revenue', 'credit', true)
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO unified_sales (
   restaurant_id,
   pos_system,
@@ -118,7 +124,8 @@ INSERT INTO unified_sales (
   sale_date,
   sale_time,
   item_type,
-  custom_category,
+  category_id,
+  is_categorized,
   synced_at
 ) VALUES (
   '00000000-0000-0000-0000-100000000011',
@@ -132,11 +139,12 @@ INSERT INTO unified_sales (
   '2026-01-01',
   '11:00:00',
   'sale',
-  'User Custom Category',
+  '00000000-0000-0000-0000-100000000031'::uuid,
+  true,
   NOW() - INTERVAL '1 hour'
 ) ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id) 
   WHERE parent_sale_id IS NULL 
-  DO UPDATE SET custom_category = COALESCE(unified_sales.custom_category, EXCLUDED.custom_category);
+  DO UPDATE SET category_id = COALESCE(unified_sales.category_id, EXCLUDED.category_id);
 
 -- Run sync which should update POS fields but preserve custom_category
 SELECT sync_toast_to_unified_sales('00000000-0000-0000-0000-100000000011');
@@ -169,11 +177,12 @@ SELECT is(
 
 -- Assert user-managed field was preserved
 SELECT is(
-  (SELECT custom_category FROM unified_sales 
+  (SELECT category_id::text FROM unified_sales 
    WHERE restaurant_id = '00000000-0000-0000-0000-100000000011' 
-     AND external_item_id = 'toast-item-001'),
-  'User Custom Category',
-  'CRITICAL: Function should preserve user-managed custom_category field during upsert'
+     AND external_item_id = 'toast-item-001'
+     AND item_type = 'sale'),
+  '00000000-0000-0000-0000-100000000031',
+  'CRITICAL: Function should preserve user-managed category_id field during upsert'
 );
 
 -- Test 7: Function correctly syncs all entry types (sale, discount, tax, tip)

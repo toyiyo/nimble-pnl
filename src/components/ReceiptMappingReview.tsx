@@ -1,33 +1,120 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
-import { SearchableProductSelector } from '@/components/SearchableProductSelector';
-import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useReceiptImport';
 import { useProducts } from '@/hooks/useProducts';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon, Barcode, Link2, Sparkles, Copy } from 'lucide-react';
-import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
+import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
+import { ReceiptStatusBar, ReceiptItemRow, ReceiptBatchActions } from '@/components/receipt';
+import { 
+  Package, Image, FileText, Download, CalendarIcon, 
+  AlertCircle, CheckCircle, ChevronDown, ChevronUp
+} from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
-import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import Fuse from 'fuse.js';
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
   onImportComplete: () => void;
 }
 
-type FilterType = 'all' | 'mapped' | 'new_item' | 'pending';
+type ConfidenceTier = 'auto-approved' | 'quick-review' | 'needs-attention';
+
+// Determine tier based on confidence and mapping status
+const getItemTier = (item: ReceiptLineItem): ConfidenceTier => {
+  // Already resolved items (mapped or new_item with high confidence)
+  if (item.mapping_status === 'mapped' || item.mapping_status === 'skipped') {
+    return 'auto-approved';
+  }
+  if (item.mapping_status === 'new_item' && item.confidence_score && item.confidence_score >= 0.85) {
+    return 'auto-approved';
+  }
+  
+  // Items with moderate confidence or new_item status
+  if (item.confidence_score && item.confidence_score >= 0.6) {
+    return 'quick-review';
+  }
+  if (item.mapping_status === 'new_item') {
+    return 'quick-review';
+  }
+  
+  // Everything else needs attention
+  return 'needs-attention';
+};
+
+// Category-based quick-fill options
+const getCategoryQuickFills = (category: string | undefined) => {
+  const normalizedCategory = (category || '').toLowerCase();
+  
+  const quickFills: { label: string; sizeValue: number; sizeUnit: string; packageType?: string }[] = [];
+  
+  if (normalizedCategory.includes('beverage') || normalizedCategory.includes('drink') || normalizedCategory.includes('soda') || normalizedCategory.includes('juice')) {
+    quickFills.push(
+      { label: '12 fl oz can', sizeValue: 12, sizeUnit: 'fl oz', packageType: 'can' },
+      { label: '16 fl oz bottle', sizeValue: 16, sizeUnit: 'fl oz', packageType: 'bottle' },
+      { label: '20 fl oz bottle', sizeValue: 20, sizeUnit: 'fl oz', packageType: 'bottle' },
+      { label: '2 L bottle', sizeValue: 2, sizeUnit: 'L', packageType: 'bottle' },
+      { label: '1 gal jug', sizeValue: 1, sizeUnit: 'gal', packageType: 'jug' }
+    );
+  } else if (normalizedCategory.includes('dairy') || normalizedCategory.includes('yogurt') || normalizedCategory.includes('milk')) {
+    quickFills.push(
+      { label: '8 oz container', sizeValue: 8, sizeUnit: 'oz', packageType: 'container' },
+      { label: '16 oz container', sizeValue: 16, sizeUnit: 'oz', packageType: 'container' },
+      { label: '32 oz container', sizeValue: 32, sizeUnit: 'oz', packageType: 'container' },
+      { label: '1 gal jug', sizeValue: 1, sizeUnit: 'gal', packageType: 'jug' }
+    );
+  } else if (normalizedCategory.includes('meat') || normalizedCategory.includes('poultry') || normalizedCategory.includes('chicken') || normalizedCategory.includes('beef')) {
+    quickFills.push(
+      { label: '1 lb package', sizeValue: 1, sizeUnit: 'lb', packageType: 'package' },
+      { label: '2 lb package', sizeValue: 2, sizeUnit: 'lb', packageType: 'package' },
+      { label: '5 lb package', sizeValue: 5, sizeUnit: 'lb', packageType: 'package' }
+    );
+  } else if (normalizedCategory.includes('cereal') || normalizedCategory.includes('cracker')) {
+    quickFills.push(
+      { label: '10 oz box', sizeValue: 10, sizeUnit: 'oz', packageType: 'box' },
+      { label: '14 oz box', sizeValue: 14, sizeUnit: 'oz', packageType: 'box' },
+      { label: '18 oz box', sizeValue: 18, sizeUnit: 'oz', packageType: 'box' }
+    );
+  } else if (normalizedCategory.includes('snack') || normalizedCategory.includes('chip')) {
+    quickFills.push(
+      { label: '7 oz bag', sizeValue: 7, sizeUnit: 'oz', packageType: 'bag' },
+      { label: '10 oz bag', sizeValue: 10, sizeUnit: 'oz', packageType: 'bag' },
+      { label: '13 oz bag', sizeValue: 13, sizeUnit: 'oz', packageType: 'bag' }
+    );
+  } else if (normalizedCategory.includes('condiment') || normalizedCategory.includes('sauce') || normalizedCategory.includes('ketchup')) {
+    quickFills.push(
+      { label: '12 oz bottle', sizeValue: 12, sizeUnit: 'oz', packageType: 'bottle' },
+      { label: '20 oz bottle', sizeValue: 20, sizeUnit: 'oz', packageType: 'bottle' },
+      { label: '32 oz bottle', sizeValue: 32, sizeUnit: 'oz', packageType: 'bottle' }
+    );
+  } else if (normalizedCategory.includes('pantry') || normalizedCategory.includes('rice') || normalizedCategory.includes('flour')) {
+    quickFills.push(
+      { label: '1 lb bag', sizeValue: 1, sizeUnit: 'lb', packageType: 'bag' },
+      { label: '2 lb bag', sizeValue: 2, sizeUnit: 'lb', packageType: 'bag' },
+      { label: '5 lb bag', sizeValue: 5, sizeUnit: 'lb', packageType: 'bag' }
+    );
+  } else if (normalizedCategory.includes('produce')) {
+    quickFills.push(
+      { label: '1 lb', sizeValue: 1, sizeUnit: 'lb' },
+      { label: '2 lb bag', sizeValue: 2, sizeUnit: 'lb', packageType: 'bag' },
+      { label: 'bunch', sizeValue: 1, sizeUnit: 'each', packageType: 'bunch' }
+    );
+  } else if (normalizedCategory.includes('bakery') || normalizedCategory.includes('bread')) {
+    quickFills.push(
+      { label: '20 oz loaf', sizeValue: 20, sizeUnit: 'oz', packageType: 'loaf' },
+      { label: '24 oz loaf', sizeValue: 24, sizeUnit: 'oz', packageType: 'loaf' }
+    );
+  }
+  
+  return quickFills;
+};
 
 export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({ 
   receiptId, 
@@ -37,20 +124,22 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [receiptDetails, setReceiptDetails] = useState<ReceiptImport | null>(null);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [showAutoApproved, setShowAutoApproved] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [isNewSupplier, setIsNewSupplier] = useState(false);
+  
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { suppliers, createSupplier } = useSuppliers();
   const { toast } = useToast();
 
-  // Detect file type based on extension
   const isPDF = receiptDetails?.file_name?.toLowerCase().endsWith('.pdf') || false;
+  const isImported = receiptDetails?.status === 'imported';
 
+  // Load data
   useEffect(() => {
     loadData();
   }, [receiptId]);
@@ -58,7 +147,6 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const loadData = async () => {
     setLoading(true);
     
-    // Clean up previous blob URL if exists
     if (fileBlobUrl) {
       URL.revokeObjectURL(fileBlobUrl);
       setFileBlobUrl(null);
@@ -71,7 +159,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     setReceiptDetails(details);
     setLineItems(items);
     
-    // Fetch the receipt file with auth headers and create a blob URL
+    // Fetch receipt file with auth
     if (details?.raw_file_url) {
       try {
         const { supabase } = await import('@/integrations/supabase/client');
@@ -79,15 +167,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         
         if (session?.access_token) {
           const response = await fetch(details.raw_file_url, {
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-            },
+            headers: { 'Authorization': `Bearer ${session.access_token}` },
           });
           
           if (response.ok) {
             const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            setFileBlobUrl(blobUrl);
+            setFileBlobUrl(URL.createObjectURL(blob));
           }
         }
       } catch (error) {
@@ -98,16 +183,54 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     setLoading(false);
   };
 
-  // Clean up blob URL on unmount
+  // Cleanup blob URL
   useEffect(() => {
     return () => {
-      if (fileBlobUrl) {
-        URL.revokeObjectURL(fileBlobUrl);
-      }
+      if (fileBlobUrl) URL.revokeObjectURL(fileBlobUrl);
     };
   }, [fileBlobUrl]);
 
-  const handleItemUpdate = async (itemId: string, updates: any) => {
+  // Initialize supplier from receipt details
+  useEffect(() => {
+    if (receiptDetails?.supplier_id && !selectedSupplierId) {
+      setSelectedSupplierId(receiptDetails.supplier_id);
+      const existingSupplier = suppliers.find(s => s.id === receiptDetails.supplier_id);
+      setIsNewSupplier(!existingSupplier);
+    }
+  }, [receiptDetails?.supplier_id, suppliers, selectedSupplierId]);
+
+  // Computed values
+  const tieredItems = useMemo(() => {
+    const tiers: Record<ConfidenceTier, ReceiptLineItem[]> = {
+      'auto-approved': [],
+      'quick-review': [],
+      'needs-attention': [],
+    };
+    
+    lineItems.forEach(item => {
+      const tier = getItemTier(item);
+      tiers[tier].push(item);
+    });
+    
+    return tiers;
+  }, [lineItems]);
+
+  const mappedCount = lineItems.filter(item => item.mapping_status === 'mapped').length;
+  const newItemsCount = lineItems.filter(item => item.mapping_status === 'new_item').length;
+  const pendingCount = lineItems.filter(item => item.mapping_status === 'pending').length;
+  const skippedCount = lineItems.filter(item => item.mapping_status === 'skipped').length;
+  const readyCount = mappedCount + newItemsCount;
+
+  // Helper to get linked items count
+  const getLinkedItemsCount = useCallback((item: ReceiptLineItem) => {
+    if (!item.parsed_name) return 0;
+    return lineItems.filter(i => 
+      i.parsed_name?.toLowerCase().trim() === item.parsed_name?.toLowerCase().trim()
+    ).length;
+  }, [lineItems]);
+
+  // Handlers
+  const handleItemUpdate = async (itemId: string, updates: Record<string, any>) => {
     const success = await updateLineItemMapping(itemId, updates);
     if (success) {
       setLineItems(prev => prev.map(item => 
@@ -117,49 +240,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   };
 
   const handleMappingChange = (itemId: string, productId: string | null) => {
-    // Get the current item being changed
     const currentItem = lineItems.find(i => i.id === itemId);
-    if (!currentItem?.parsed_name) {
-      // Fallback to original behavior if no parsed_name
-      if (productId === 'new_item') {
-        handleItemUpdate(itemId, { 
-          matched_product_id: null, 
-          mapping_status: 'new_item' 
-        });
-      } else if (productId === 'skip') {
-        handleItemUpdate(itemId, { 
-          matched_product_id: null, 
-          mapping_status: 'skipped' 
-        });
-      } else {
-        const matchedProduct = products.find(p => p.id === productId);
-        handleItemUpdate(itemId, { 
-          matched_product_id: productId, 
-          mapping_status: 'mapped',
-          parsed_unit: matchedProduct?.uom_purchase || undefined
-        });
-      }
-      return;
-    }
-
-    // Find all other PENDING items with the same parsed_name (case-insensitive)
-    const matchingItems = lineItems.filter(item => 
-      item.id !== itemId &&
-      item.mapping_status === 'pending' &&
-      item.parsed_name?.toLowerCase().trim() === currentItem.parsed_name?.toLowerCase().trim()
-    );
-
-    // Update the current item
+    
     if (productId === 'new_item') {
-      handleItemUpdate(itemId, { 
-        matched_product_id: null, 
-        mapping_status: 'new_item' 
-      });
+      handleItemUpdate(itemId, { matched_product_id: null, mapping_status: 'new_item' });
     } else if (productId === 'skip') {
-      handleItemUpdate(itemId, { 
-        matched_product_id: null, 
-        mapping_status: 'skipped' 
-      });
+      handleItemUpdate(itemId, { matched_product_id: null, mapping_status: 'skipped' });
     } else {
       const matchedProduct = products.find(p => p.id === productId);
       handleItemUpdate(itemId, { 
@@ -169,34 +255,35 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       });
     }
 
-    // Also update matching items (if any)
-    if (matchingItems.length > 0) {
-      matchingItems.forEach(item => {
-        if (productId === 'new_item') {
-          handleItemUpdate(item.id, { 
-            matched_product_id: null, 
-            mapping_status: 'new_item' 
-          });
-        } else if (productId === 'skip') {
-          handleItemUpdate(item.id, { 
-            matched_product_id: null, 
-            mapping_status: 'skipped' 
-          });
-        } else {
-          const matchedProduct = products.find(p => p.id === productId);
-          handleItemUpdate(item.id, { 
-            matched_product_id: productId, 
-            mapping_status: 'mapped',
-            parsed_unit: matchedProduct?.uom_purchase || undefined
-          });
-        }
-      });
+    // Auto-apply to matching items
+    if (currentItem?.parsed_name) {
+      const matchingItems = lineItems.filter(item => 
+        item.id !== itemId &&
+        item.mapping_status === 'pending' &&
+        item.parsed_name?.toLowerCase().trim() === currentItem.parsed_name?.toLowerCase().trim()
+      );
 
-      // Toast to inform user
-      toast({
-        title: "Applied to matching items",
-        description: `Also updated ${matchingItems.length} other "${currentItem.parsed_name}" item(s)`,
-      });
+      if (matchingItems.length > 0) {
+        matchingItems.forEach(item => {
+          if (productId === 'new_item') {
+            handleItemUpdate(item.id, { matched_product_id: null, mapping_status: 'new_item' });
+          } else if (productId === 'skip') {
+            handleItemUpdate(item.id, { matched_product_id: null, mapping_status: 'skipped' });
+          } else {
+            const matchedProduct = products.find(p => p.id === productId);
+            handleItemUpdate(item.id, { 
+              matched_product_id: productId, 
+              mapping_status: 'mapped',
+              parsed_unit: matchedProduct?.uom_purchase || undefined
+            });
+          }
+        });
+
+        toast({
+          title: "Applied to matching items",
+          description: `Also updated ${matchingItems.length} other "${currentItem.parsed_name}" item(s)`,
+        });
+      }
     }
   };
 
@@ -224,15 +311,24 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     handleItemUpdate(itemId, { size_unit: sizeUnit });
   };
 
-  // Apply suggested values from matched product
+  const handleSkuChange = (itemId: string, sku: string) => {
+    handleItemUpdate(itemId, { parsed_sku: sku });
+    
+    if (sku && sku.length >= 3) {
+      const matchedProduct = products.find(p => p.sku?.toLowerCase() === sku.toLowerCase());
+      if (matchedProduct) {
+        handleMappingChange(itemId, matchedProduct.id);
+        toast({ title: "Product Matched", description: `Matched to "${matchedProduct.name}" by SKU` });
+      }
+    }
+  };
+
   const handleApplySuggestion = (item: ReceiptLineItem, field: 'size' | 'package' | 'all') => {
     const updates: Record<string, any> = {};
     
     if ((field === 'size' || field === 'all') && item.suggested_size_value) {
       updates.size_value = item.suggested_size_value;
-      if (item.suggested_size_unit) {
-        updates.size_unit = item.suggested_size_unit;
-      }
+      if (item.suggested_size_unit) updates.size_unit = item.suggested_size_unit;
     }
     if ((field === 'package' || field === 'all') && item.suggested_package_type) {
       updates.package_type = item.suggested_package_type;
@@ -240,82 +336,8 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
     if (Object.keys(updates).length > 0) {
       handleItemUpdate(item.id, updates);
-      // Update local state
-      setLineItems(prev => prev.map(i => 
-        i.id === item.id ? { ...i, ...updates } : i
-      ));
-      toast({
-        title: "Applied from catalog",
-        description: `Used size/package info from matched product`,
-      });
+      toast({ title: "Applied from catalog", description: "Used size/package info from matched product" });
     }
-  };
-
-  // Category-based quick-fill options
-  const getCategoryQuickFills = (category: string | undefined) => {
-    const normalizedCategory = (category || '').toLowerCase();
-    
-    const quickFills: { label: string; sizeValue: number; sizeUnit: string; packageType?: string }[] = [];
-    
-    if (normalizedCategory.includes('beverage') || normalizedCategory.includes('drink') || normalizedCategory.includes('soda') || normalizedCategory.includes('juice')) {
-      quickFills.push(
-        { label: '12 fl oz can', sizeValue: 12, sizeUnit: 'fl oz', packageType: 'can' },
-        { label: '16 fl oz bottle', sizeValue: 16, sizeUnit: 'fl oz', packageType: 'bottle' },
-        { label: '20 fl oz bottle', sizeValue: 20, sizeUnit: 'fl oz', packageType: 'bottle' },
-        { label: '2 L bottle', sizeValue: 2, sizeUnit: 'L', packageType: 'bottle' },
-        { label: '1 gal jug', sizeValue: 1, sizeUnit: 'gal', packageType: 'jug' }
-      );
-    } else if (normalizedCategory.includes('dairy') || normalizedCategory.includes('yogurt') || normalizedCategory.includes('milk')) {
-      quickFills.push(
-        { label: '8 oz container', sizeValue: 8, sizeUnit: 'oz', packageType: 'container' },
-        { label: '16 oz container', sizeValue: 16, sizeUnit: 'oz', packageType: 'container' },
-        { label: '32 oz container', sizeValue: 32, sizeUnit: 'oz', packageType: 'container' },
-        { label: '1 gal jug', sizeValue: 1, sizeUnit: 'gal', packageType: 'jug' }
-      );
-    } else if (normalizedCategory.includes('meat') || normalizedCategory.includes('poultry') || normalizedCategory.includes('chicken') || normalizedCategory.includes('beef')) {
-      quickFills.push(
-        { label: '1 lb package', sizeValue: 1, sizeUnit: 'lb', packageType: 'package' },
-        { label: '2 lb package', sizeValue: 2, sizeUnit: 'lb', packageType: 'package' },
-        { label: '5 lb package', sizeValue: 5, sizeUnit: 'lb', packageType: 'package' }
-      );
-    } else if (normalizedCategory.includes('cereal') || normalizedCategory.includes('cracker')) {
-      quickFills.push(
-        { label: '10 oz box', sizeValue: 10, sizeUnit: 'oz', packageType: 'box' },
-        { label: '14 oz box', sizeValue: 14, sizeUnit: 'oz', packageType: 'box' },
-        { label: '18 oz box', sizeValue: 18, sizeUnit: 'oz', packageType: 'box' }
-      );
-    } else if (normalizedCategory.includes('snack') || normalizedCategory.includes('chip')) {
-      quickFills.push(
-        { label: '7 oz bag', sizeValue: 7, sizeUnit: 'oz', packageType: 'bag' },
-        { label: '10 oz bag', sizeValue: 10, sizeUnit: 'oz', packageType: 'bag' },
-        { label: '13 oz bag', sizeValue: 13, sizeUnit: 'oz', packageType: 'bag' }
-      );
-    } else if (normalizedCategory.includes('condiment') || normalizedCategory.includes('sauce') || normalizedCategory.includes('ketchup')) {
-      quickFills.push(
-        { label: '12 oz bottle', sizeValue: 12, sizeUnit: 'oz', packageType: 'bottle' },
-        { label: '20 oz bottle', sizeValue: 20, sizeUnit: 'oz', packageType: 'bottle' },
-        { label: '32 oz bottle', sizeValue: 32, sizeUnit: 'oz', packageType: 'bottle' }
-      );
-    } else if (normalizedCategory.includes('pantry') || normalizedCategory.includes('rice') || normalizedCategory.includes('flour')) {
-      quickFills.push(
-        { label: '1 lb bag', sizeValue: 1, sizeUnit: 'lb', packageType: 'bag' },
-        { label: '2 lb bag', sizeValue: 2, sizeUnit: 'lb', packageType: 'bag' },
-        { label: '5 lb bag', sizeValue: 5, sizeUnit: 'lb', packageType: 'bag' }
-      );
-    } else if (normalizedCategory.includes('produce')) {
-      quickFills.push(
-        { label: '1 lb', sizeValue: 1, sizeUnit: 'lb' },
-        { label: '2 lb bag', sizeValue: 2, sizeUnit: 'lb', packageType: 'bag' },
-        { label: 'bunch', sizeValue: 1, sizeUnit: 'each', packageType: 'bunch' }
-      );
-    } else if (normalizedCategory.includes('bakery') || normalizedCategory.includes('bread')) {
-      quickFills.push(
-        { label: '20 oz loaf', sizeValue: 20, sizeUnit: 'oz', packageType: 'loaf' },
-        { label: '24 oz loaf', sizeValue: 24, sizeUnit: 'oz', packageType: 'loaf' }
-      );
-    }
-    
-    return quickFills;
   };
 
   const handleQuickFill = (itemId: string, quickFill: { sizeValue: number; sizeUnit: string; packageType?: string }) => {
@@ -323,31 +345,8 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       size_value: quickFill.sizeValue,
       size_unit: quickFill.sizeUnit,
     };
-    if (quickFill.packageType) {
-      updates.package_type = quickFill.packageType;
-    }
+    if (quickFill.packageType) updates.package_type = quickFill.packageType;
     handleItemUpdate(itemId, updates);
-    setLineItems(prev => prev.map(i => 
-      i.id === itemId ? { ...i, ...updates } : i
-    ));
-  };
-
-  const handleSkuChange = (itemId: string, sku: string) => {
-    handleItemUpdate(itemId, { parsed_sku: sku });
-    
-    // Try to auto-match by SKU when user enters/scans one
-    if (sku && sku.length >= 3) {
-      const matchedProduct = products.find(p => 
-        p.sku?.toLowerCase() === sku.toLowerCase()
-      );
-      if (matchedProduct) {
-        handleMappingChange(itemId, matchedProduct.id);
-        toast({
-          title: "Product Matched",
-          description: `Matched to "${matchedProduct.name}" by SKU`,
-        });
-      }
-    }
   };
 
   const handleSupplierChange = async (supplierIdOrName: string, isNew: boolean) => {
@@ -357,26 +356,14 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       let supplierName: string;
 
       if (isNew) {
-        // Create new supplier
-        const newSupplier = await createSupplier({
-          name: supplierIdOrName,
-          is_active: true
-        });
-        
-        if (!newSupplier) {
-          throw new Error('Failed to create supplier');
-        }
+        const newSupplier = await createSupplier({ name: supplierIdOrName, is_active: true });
+        if (!newSupplier) throw new Error('Failed to create supplier');
         
         supplierId = newSupplier.id;
         supplierName = newSupplier.name;
         setIsNewSupplier(true);
-        
-        toast({
-          title: "New Supplier Created",
-          description: `"${supplierName}" has been added to your suppliers`,
-        });
+        toast({ title: "New Supplier Created", description: `"${supplierName}" has been added` });
       } else {
-        // Use existing supplier
         const supplier = suppliers.find(s => s.id === supplierIdOrName);
         if (!supplier) throw new Error('Supplier not found');
         
@@ -385,31 +372,18 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         setIsNewSupplier(false);
       }
 
-      // Update receipt with supplier
       const { error } = await supabase
         .from('receipt_imports')
-        .update({ 
-          vendor_name: supplierName,
-          supplier_id: supplierId 
-        })
+        .update({ vendor_name: supplierName, supplier_id: supplierId })
         .eq('id', receiptId);
 
       if (error) throw error;
 
-      setReceiptDetails(prev => prev ? { 
-        ...prev, 
-        vendor_name: supplierName,
-        supplier_id: supplierId 
-      } : null);
+      setReceiptDetails(prev => prev ? { ...prev, vendor_name: supplierName, supplier_id: supplierId } : null);
       setSelectedSupplierId(supplierId);
-      
     } catch (error) {
       console.error('Error updating supplier:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update supplier",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to update supplier", variant: "destructive" });
     }
   };
 
@@ -427,34 +401,13 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
       if (error) throw error;
 
-      setReceiptDetails(prev => prev ? { 
-        ...prev, 
-        purchase_date: dateString 
-      } : null);
-      
-      toast({
-        title: "Purchase Date Updated",
-        description: `Set to ${format(date, 'PPP')}`,
-      });
+      setReceiptDetails(prev => prev ? { ...prev, purchase_date: dateString } : null);
+      toast({ title: "Purchase Date Updated", description: `Set to ${format(date, 'PPP')}` });
     } catch (error) {
       console.error('Error updating purchase date:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update purchase date",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to update purchase date", variant: "destructive" });
     }
   };
-
-  // Initialize supplier from receipt details (already set by edge function)
-  useEffect(() => {
-    if (receiptDetails?.supplier_id && !selectedSupplierId) {
-      // Edge function already set the supplier correctly, just use it
-      setSelectedSupplierId(receiptDetails.supplier_id);
-      const existingSupplier = suppliers.find(s => s.id === receiptDetails.supplier_id);
-      setIsNewSupplier(!existingSupplier);
-    }
-  }, [receiptDetails?.supplier_id, suppliers, selectedSupplierId]);
 
   const handleBulkImport = async () => {
     setImporting(true);
@@ -465,56 +418,34 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     setImporting(false);
   };
 
-  const getStatusBadge = (item: ReceiptLineItem) => {
-    switch (item.mapping_status) {
-      case 'mapped':
-        return <Badge variant="default" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Mapped</Badge>;
-      case 'new_item':
-        return <Badge variant="secondary"><Plus className="w-3 h-3 mr-1" />New Item</Badge>;
-      case 'skipped':
-        return <Badge variant="outline">Skipped</Badge>;
-      default:
-        return <Badge variant="destructive"><AlertCircle className="w-3 h-3 mr-1" />Needs Review</Badge>;
-    }
+  const handleBatchAcceptAll = (itemIds: string[]) => {
+    itemIds.forEach(id => {
+      const item = lineItems.find(i => i.id === id);
+      if (item && item.mapping_status === 'pending') {
+        handleItemUpdate(id, { mapping_status: 'new_item' });
+      }
+    });
   };
 
-  const getConfidenceColor = (confidence: number | null) => {
-    if (!confidence) return 'text-gray-400';
-    if (confidence >= 0.8) return 'text-green-600';
-    if (confidence >= 0.6) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  // Helper to get count of items with the same parsed_name
-  const getLinkedItemsCount = (item: ReceiptLineItem) => {
-    if (!item.parsed_name) return 0;
-    return lineItems.filter(i => 
-      i.parsed_name?.toLowerCase().trim() === item.parsed_name?.toLowerCase().trim()
-    ).length;
-  };
-
-  const mappedCount = lineItems.filter(item => item.mapping_status === 'mapped').length;
-  const newItemsCount = lineItems.filter(item => item.mapping_status === 'new_item').length;
-  const pendingCount = lineItems.filter(item => item.mapping_status === 'pending').length;
-  const isImported = receiptDetails?.status === 'imported';
-
-  const filteredItems = lineItems.filter(item => {
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'pending') return item.mapping_status === 'pending';
-    return item.mapping_status === activeFilter;
-  });
-
-  const getFilterButtonVariant = (filter: FilterType) => {
-    return activeFilter === filter ? 'default' : 'outline';
+  const handleBatchSetPackageType = (itemIds: string[], packageType: string) => {
+    itemIds.forEach(id => {
+      handleItemUpdate(id, { package_type: packageType });
+    });
   };
 
   if (loading) {
     return (
       <Card className="w-full max-w-6xl mx-auto">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2"></div>
-            Loading receipt items...
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-8 w-8 rounded" />
+            <Skeleton className="h-6 w-48" />
+          </div>
+          <Skeleton className="h-2 w-full" />
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <Skeleton key={i} className="h-16 w-full rounded-lg" />
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -523,561 +454,266 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Receipt Image/PDF */}
+      {/* Receipt Image/PDF Column */}
       {receiptDetails?.raw_file_url && (
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <Card className="lg:col-span-1 lg:sticky lg:top-4 lg:h-fit">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
               {isPDF ? <FileText className="h-4 w-4" /> : <Image className="h-4 w-4" />}
-              Original Receipt
+              Receipt
             </CardTitle>
-            {receiptDetails.file_name && (
-              <CardDescription className="text-xs">{receiptDetails.file_name}</CardDescription>
-            )}
           </CardHeader>
           <CardContent>
             {imageError ? (
-              <div className="border rounded-lg p-8 text-center space-y-4">
-                <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground" />
-                <div>
-                  <p className="font-medium">Unable to display receipt</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    The receipt file could not be loaded.
-                  </p>
-                </div>
-                {fileBlobUrl ? (
+              <div className="border rounded-lg p-6 text-center space-y-3">
+                <AlertCircle className="h-10 w-10 mx-auto text-muted-foreground" />
+                <p className="text-sm font-medium">Unable to display</p>
+                {fileBlobUrl && (
                   <a
                     href={fileBlobUrl}
                     download={receiptDetails.file_name || 'receipt'}
-                    className="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border rounded-md hover:bg-accent"
                   >
-                    <Download className="h-4 w-4" />
-                    Download Receipt
+                    <Download className="h-3.5 w-3.5" />
+                    Download
                   </a>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled
-                    className="flex items-center gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download Receipt
-                  </Button>
                 )}
               </div>
             ) : isPDF ? (
-              <div className="space-y-2">
-                <object
-                  data={fileBlobUrl || undefined}
-                  type="application/pdf"
-                  className="w-full h-[600px] rounded-lg border shadow-sm"
-                  onError={() => setImageError(true)}
-                >
-                  <div className="border rounded-lg p-8 text-center space-y-4">
-                    <FileText className="h-12 w-12 mx-auto text-muted-foreground" />
-                    <div>
-                      <p className="font-medium">PDF Preview Not Available</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Your browser doesn't support PDF preview.
-                      </p>
-                    </div>
-                    {fileBlobUrl && (
-                      <a
-                        href={fileBlobUrl}
-                        download={receiptDetails.file_name || 'receipt.pdf'}
-                        className="inline-flex items-center gap-2 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md text-sm font-medium"
-                      >
-                        <Download className="h-4 w-4" />
-                        Download PDF
-                      </a>
-                    )}
-                  </div>
-                </object>
-                {fileBlobUrl && (
-                  <div className="flex justify-center">
-                    <a
-                      href={fileBlobUrl}
-                      download={receiptDetails.file_name || 'receipt.pdf'}
-                      className="inline-flex items-center gap-2 px-4 py-2 hover:bg-accent hover:text-accent-foreground rounded-md text-sm"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download PDF
-                    </a>
-                  </div>
-                )}
-              </div>
+              <object
+                data={fileBlobUrl || undefined}
+                type="application/pdf"
+                className="w-full h-[500px] rounded-lg border"
+                onError={() => setImageError(true)}
+              >
+                <div className="border rounded-lg p-6 text-center">
+                  <FileText className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm">PDF preview not available</p>
+                </div>
+              </object>
             ) : (
               <img 
                 src={fileBlobUrl || undefined} 
                 alt="Receipt" 
-                className="w-full h-auto rounded-lg border shadow-sm"
+                className="w-full h-auto rounded-lg border"
                 onError={() => setImageError(true)}
               />
-            )}
-            {!imageError && (
-              <div className="mt-4 space-y-1">
-                {receiptDetails.vendor_name && (
-                  <p className="text-sm text-muted-foreground">
-                    Vendor: {receiptDetails.vendor_name}
-                  </p>
-                )}
-                {receiptDetails.total_amount && (
-                  <p className="text-sm text-muted-foreground">
-                    Total: ${receiptDetails.total_amount.toFixed(2)}
-                  </p>
-                )}
-              </div>
             )}
           </CardContent>
         </Card>
       )}
       
-      {/* Receipt Items */}
+      {/* Main Content Column */}
       <Card className={receiptDetails?.raw_file_url ? "lg:col-span-2" : "lg:col-span-3"}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            {isImported ? 'Receipt Details' : 'Review & Map Receipt Items'}
-          </CardTitle>
-          <CardDescription>
-            {isImported 
-              ? 'View the imported receipt items and details' 
-              : 'Review the extracted items and map them to your existing inventory or create new items'
-            }
-          </CardDescription>
-          
-          {isImported && (
-            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                <CheckCircle className="w-4 h-4" />
-                <span className="font-medium">Receipt imported successfully</span>
-              </div>
-              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                All items have been added to your inventory
-              </p>
-            </div>
-          )}
-          
-          {/* Vendor Information */}
-          {receiptDetails?.vendor_name && (
-            <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
+        {/* Status Bar */}
+        <ReceiptStatusBar
+          vendorName={receiptDetails?.vendor_name || null}
+          purchaseDate={receiptDetails?.purchase_date ? format(new Date(receiptDetails.purchase_date), 'MMM d, yyyy') : null}
+          totalAmount={receiptDetails?.total_amount || null}
+          readyCount={readyCount}
+          needsReviewCount={pendingCount}
+          skippedCount={skippedCount}
+          totalCount={lineItems.length}
+          isImporting={importing}
+          isImported={isImported}
+          onImport={handleBulkImport}
+          showAutoApproved={showAutoApproved}
+          onToggleAutoApproved={() => setShowAutoApproved(!showAutoApproved)}
+        />
+
+        <CardContent className="space-y-6 pt-6">
+          {/* Vendor & Date Section */}
+          {!isImported && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground">Vendor:</span>
-                </div>
-                {isImported ? (
-                  <div className="text-sm font-medium">{receiptDetails.vendor_name}</div>
-                ) : (
-                  <>
-                    <SearchableSupplierSelector
-                      value={selectedSupplierId || undefined}
-                      onValueChange={handleSupplierChange}
-                      suppliers={suppliers}
-                      placeholder="Select or create supplier..."
-                      showNewIndicator={isNewSupplier}
+                <label className="text-sm font-medium text-muted-foreground">Vendor</label>
+                <SearchableSupplierSelector
+                  value={selectedSupplierId || undefined}
+                  onValueChange={handleSupplierChange}
+                  suppliers={suppliers}
+                  placeholder="Select or create supplier..."
+                  showNewIndicator={isNewSupplier}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  Purchase Date
+                </label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !receiptDetails?.purchase_date && "text-muted-foreground"
+                      )}
+                    >
+                      {receiptDetails?.purchase_date 
+                        ? format(new Date(receiptDetails.purchase_date), 'PPP')
+                        : 'Pick a date'}
+                      {receiptDetails?.purchase_date && (
+                        <CheckCircle className="ml-auto h-4 w-4 text-green-600" />
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={receiptDetails?.purchase_date ? new Date(receiptDetails.purchase_date) : undefined}
+                      onSelect={handlePurchaseDateChange}
+                      disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
+                      initialFocus
                     />
-                    {isNewSupplier && receiptDetails.vendor_name && (
-                      <p className="text-xs text-muted-foreground">
-                        New supplier "{receiptDetails.vendor_name}" will be created when you import
-                      </p>
-                    )}
-                  </>
-                )}
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           )}
-          
-          {/* Purchase Date */}
-          <div className="mt-4 p-3 bg-muted/50 rounded-lg border">
-            <div className="space-y-2">
+
+          {/* Batch Actions */}
+          <ReceiptBatchActions
+            lineItems={lineItems}
+            onAcceptAll={handleBatchAcceptAll}
+            onSetPackageType={handleBatchSetPackageType}
+            isImported={isImported}
+          />
+
+          <Separator />
+
+          {/* Needs Attention Section */}
+          {tieredItems['needs-attention'].length > 0 && (
+            <section className="space-y-3">
               <div className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium text-muted-foreground">Purchase Date:</span>
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+                <h3 className="font-semibold">Needs Attention</h3>
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                  {tieredItems['needs-attention'].length}
+                </Badge>
               </div>
-              {isImported ? (
-                <div className="text-sm font-medium">
-                  {receiptDetails.purchase_date 
-                    ? format(new Date(receiptDetails.purchase_date), 'PPP')
-                    : 'Not specified'}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !receiptDetails.purchase_date && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {receiptDetails.purchase_date 
-                          ? format(new Date(receiptDetails.purchase_date), 'PPP')
-                          : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={receiptDetails.purchase_date ? new Date(receiptDetails.purchase_date) : undefined}
-                        onSelect={handlePurchaseDateChange}
-                        disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {!receiptDetails.purchase_date && (
-                    <p className="text-xs text-muted-foreground">
-                      Set the actual purchase date from the receipt
-                    </p>
-                  )}
-                  {receiptDetails.purchase_date && (
-                    <Badge variant="secondary" className="ml-2">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Set
-                    </Badge>
-                  )}
+              <div className="space-y-2">
+                {tieredItems['needs-attention'].map((item, index) => (
+                  <ReceiptItemRow
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    tier="needs-attention"
+                    linkedCount={getLinkedItemsCount(item)}
+                    products={products}
+                    isImported={isImported}
+                    onMappingChange={handleMappingChange}
+                    onQuantityChange={handleQuantityChange}
+                    onPriceChange={handlePriceChange}
+                    onNameChange={handleNameChange}
+                    onPackageTypeChange={handlePackageTypeChange}
+                    onSizeValueChange={handleSizeValueChange}
+                    onSizeUnitChange={handleSizeUnitChange}
+                    onSkuChange={handleSkuChange}
+                    onApplySuggestion={handleApplySuggestion}
+                    onQuickFill={handleQuickFill}
+                    categoryQuickFills={getCategoryQuickFills((item as any).parsed_category)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Quick Review Section */}
+          {tieredItems['quick-review'].length > 0 && (
+            <section className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-blue-500" />
+                <h3 className="font-semibold">Quick Review</h3>
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  {tieredItems['quick-review'].length}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {tieredItems['quick-review'].map((item, index) => (
+                  <ReceiptItemRow
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    tier="quick-review"
+                    linkedCount={getLinkedItemsCount(item)}
+                    products={products}
+                    isImported={isImported}
+                    onMappingChange={handleMappingChange}
+                    onQuantityChange={handleQuantityChange}
+                    onPriceChange={handlePriceChange}
+                    onNameChange={handleNameChange}
+                    onPackageTypeChange={handlePackageTypeChange}
+                    onSizeValueChange={handleSizeValueChange}
+                    onSizeUnitChange={handleSizeUnitChange}
+                    onSkuChange={handleSkuChange}
+                    onApplySuggestion={handleApplySuggestion}
+                    onQuickFill={handleQuickFill}
+                    categoryQuickFills={getCategoryQuickFills((item as any).parsed_category)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Auto-Approved Section (Collapsible) */}
+          {tieredItems['auto-approved'].length > 0 && (
+            <section className="space-y-3">
+              <button
+                onClick={() => setShowAutoApproved(!showAutoApproved)}
+                className="flex items-center gap-2 w-full text-left"
+                aria-expanded={showAutoApproved}
+              >
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <h3 className="font-semibold">Ready to Import</h3>
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  {tieredItems['auto-approved'].length}
+                </Badge>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {showAutoApproved ? 'Hide' : 'Show'}
+                </span>
+                {showAutoApproved ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
+              
+              {showAutoApproved && (
+                <div className="space-y-2">
+                  {tieredItems['auto-approved'].map((item, index) => (
+                    <ReceiptItemRow
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      tier="auto-approved"
+                      linkedCount={getLinkedItemsCount(item)}
+                      products={products}
+                      isImported={isImported}
+                      onMappingChange={handleMappingChange}
+                      onQuantityChange={handleQuantityChange}
+                      onPriceChange={handlePriceChange}
+                      onNameChange={handleNameChange}
+                      onPackageTypeChange={handlePackageTypeChange}
+                      onSizeValueChange={handleSizeValueChange}
+                      onSizeUnitChange={handleSizeUnitChange}
+                      onSkuChange={handleSkuChange}
+                      onApplySuggestion={handleApplySuggestion}
+                      onQuickFill={handleQuickFill}
+                      categoryQuickFills={getCategoryQuickFills((item as any).parsed_category)}
+                    />
+                  ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {/* Empty state */}
+          {lineItems.length === 0 && (
+            <div className="text-center py-12">
+              <Package className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+              <p className="text-muted-foreground">No items found in this receipt</p>
             </div>
-          </div>
-          
-          {/* Summary stats and filters */}
-          <div className="flex flex-col sm:flex-row gap-4 pt-2">
-            <div className="flex gap-4">
-              <div className="text-sm">
-                <span className="font-medium text-green-600">{mappedCount}</span> mapped
-              </div>
-              <div className="text-sm">
-                <span className="font-medium text-blue-600">{newItemsCount}</span> new items
-              </div>
-              <div className="text-sm">
-                <span className="font-medium text-red-600">{pendingCount}</span> need review
-              </div>
-            </div>
-            
-            {/* Filter buttons */}
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant={getFilterButtonVariant('all')}
-                size="sm"
-                onClick={() => setActiveFilter('all')}
-                className="flex items-center gap-1"
-              >
-                <Filter className="w-3 h-3" />
-                All ({lineItems.length})
-              </Button>
-              <Button
-                variant={getFilterButtonVariant('mapped')}
-                size="sm"
-                onClick={() => setActiveFilter('mapped')}
-                className="flex items-center gap-1"
-              >
-                <CheckCircle className="w-3 h-3" />
-                Mapped ({mappedCount})
-              </Button>
-              <Button
-                variant={getFilterButtonVariant('new_item')}
-                size="sm"
-                onClick={() => setActiveFilter('new_item')}
-                className="flex items-center gap-1"
-              >
-                <Plus className="w-3 h-3" />
-                New ({newItemsCount})
-              </Button>
-              <Button
-                variant={getFilterButtonVariant('pending')}
-                size="sm"
-                onClick={() => setActiveFilter('pending')}
-                className="flex items-center gap-1"
-              >
-                <AlertCircle className="w-3 h-3" />
-                Review ({pendingCount})
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-        {filteredItems.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No items match the current filter.
-          </div>
-        ) : (
-          filteredItems.map((item, index) => (
-          <div key={item.id} className="border rounded-lg p-4 space-y-4">
-            {/* Header with status and confidence */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Item {index + 1}</span>
-                {getStatusBadge(item)}
-                {/* Show link indicator when multiple items have same name */}
-                {getLinkedItemsCount(item) > 1 && (
-                  <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                    <Link2 className="w-3 h-3 mr-1" />
-                    {getLinkedItemsCount(item)} linked
-                  </Badge>
-                )}
-                {item.confidence_score && (
-                  <span className={`text-xs ${getConfidenceColor(item.confidence_score)}`}>
-                    {Math.round(item.confidence_score * 100)}% confidence
-                  </span>
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Raw: "{item.raw_text}"
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Left column: Item details */}
-              <div className="space-y-3">
-                {/* SKU field for barcode scanning */}
-                <div>
-                  <Label htmlFor={`sku-${item.id}`} className="flex items-center gap-1">
-                    <Barcode className="h-3 w-3" />
-                    SKU / Barcode
-                  </Label>
-                  <Input
-                    key={`sku-${item.id}`}
-                    id={`sku-${item.id}`}
-                    defaultValue={item.parsed_sku || ''}
-                    onChange={(e) => handleSkuChange(item.id, e.target.value)}
-                    placeholder="Scan or type SKU"
-                    disabled={isImported}
-                    autoComplete="off"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Use scanner gun or type manually
-                  </p>
-                </div>
-                
-                <div>
-                  <Label htmlFor={`name-${item.id}`}>Item Name</Label>
-                  <Input
-                    key={`name-${item.id}`}
-                    id={`name-${item.id}`}
-                    defaultValue={item.parsed_name || ''}
-                    onChange={(e) => handleNameChange(item.id, e.target.value)}
-                    placeholder="Enter item name"
-                    disabled={isImported}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label htmlFor={`quantity-${item.id}`}>Quantity</Label>
-                    <Input
-                      key={`quantity-${item.id}`}
-                      id={`quantity-${item.id}`}
-                      type="number"
-                      defaultValue={item.parsed_quantity ?? ''}
-                      onChange={(e) => handleQuantityChange(item.id, parseFloat(e.target.value) || 0)}
-                      placeholder="0"
-                      disabled={isImported}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor={`package-${item.id}`}>Package Type 📦</Label>
-                    <Select
-                      value={item.package_type || item.parsed_unit || ''}
-                      onValueChange={(value) => handlePackageTypeChange(item.id, value)}
-                      disabled={isImported}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select package type" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[400px]">
-                        {PACKAGE_TYPE_OPTIONS.map((group) => (
-                          <SelectGroup key={group.label}>
-                            <SelectLabel>{group.label}</SelectLabel>
-                            {group.options.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* Size & Packaging Details */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label htmlFor={`size-value-${item.id}`}>
-                      Amount per Package 📦
-                    </Label>
-                    <Input
-                      key={`size-value-${item.id}`}
-                      id={`size-value-${item.id}`}
-                      type="number"
-                      defaultValue={item.size_value ?? ''}
-                      onChange={(e) => handleSizeValueChange(item.id, Number.parseFloat(e.target.value) || 0)}
-                      placeholder="750"
-                      disabled={isImported}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor={`size-unit-${item.id}`}>Unit 📏</Label>
-                    <Select
-                      value={item.size_unit || ''}
-                      onValueChange={(value) => handleSizeUnitChange(item.id, value)}
-                      disabled={isImported}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[300px]">
-                        <SelectGroup>
-                          <SelectLabel>Weight Units</SelectLabel>
-                          {WEIGHT_UNITS.map((unit) => (
-                            <SelectItem key={unit} value={unit}>
-                              {unit}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Volume Units</SelectLabel>
-                          {VOLUME_UNITS.map((unit) => (
-                            <SelectItem key={unit} value={unit}>
-                              {unit}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-end">
-                    <div className="text-xs text-muted-foreground pb-2">
-                      {!!(item.size_value && item.size_unit && item.package_type) && (
-                        <span className="font-medium">
-                          {item.size_value} {item.size_unit} per {item.package_type}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor={`price-${item.id}`}>Total Price</Label>
-                  <Input
-                    key={`price-${item.id}`}
-                    id={`price-${item.id}`}
-                    type="number"
-                    step="0.01"
-                    defaultValue={item.parsed_price ?? ''}
-                    onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
-                    placeholder="0.00"
-                    disabled={isImported}
-                  />
-                  {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
-                    <div className="mt-2 space-y-1">
-                      <Badge variant="secondary">
-                        Unit: ${(item.unit_price || item.parsed_price / item.parsed_quantity).toFixed(2)}/{item.package_type || item.parsed_unit || 'unit'}
-                      </Badge>
-                      {item.parsed_quantity > 1 && (
-                        <Badge variant="outline" className="ml-2">
-                          Line Total: ${item.parsed_price.toFixed(2)}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-                  {/* Packaging info indicator for new items with size info */}
-                  {item.mapping_status === 'new_item' && 
-                   !!(item.size_value && item.size_unit) && (
-                    <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-300">
-                        <Package className="h-3 w-3" />
-                        <span>
-                          Will set package size: <strong>{item.size_value} {item.size_unit}</strong> per <strong>{item.package_type || 'unit'}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Right column: Mapping */}
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor={`mapping-${item.id}`}>
-                    {isImported ? 'Mapped To' : 'Map to Inventory'}
-                  </Label>
-                  {isImported ? (
-                    <div className="p-2 bg-muted rounded-md text-sm">
-                      {item.mapping_status === 'new_item' ? (
-                        <span className="text-blue-600 dark:text-blue-400">Created as new product</span>
-                      ) : item.mapping_status === 'mapped' && item.matched_product_id ? (
-                        <span>{products.find(p => p.id === item.matched_product_id)?.name || 'Mapped Product'}</span>
-                      ) : (
-                        <span className="text-muted-foreground">Skipped</span>
-                      )}
-                    </div>
-                  ) : (
-                    <SearchableProductSelector
-                      value={
-                        item.mapping_status === 'new_item' ? 'new_item' :
-                        item.mapping_status === 'skipped' ? 'skip' :
-                        item.matched_product_id
-                      }
-                      onValueChange={(value) => handleMappingChange(item.id, value)}
-                      products={products}
-                      searchTerm={item.parsed_name || item.raw_text}
-                      placeholder="Search existing products or create new..."
-                    />
-                  )}
-                </div>
-
-
-                {/* Show new item info */}
-                {item.mapping_status === 'new_item' && (
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
-                    <div className="text-sm">
-                      <div className="font-medium text-blue-700 dark:text-blue-300">
-                        Will create new product:
-                      </div>
-                      <div className="text-blue-600 dark:text-blue-400">
-                        {item.parsed_name || 'Unnamed item'}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            </div>
-          ))
-        )}
-
-        {/* Import button - only show if not already imported */}
-        {!isImported && (
-          <>
-            <div className="flex justify-end pt-4">
-              <Button
-                onClick={handleBulkImport}
-                disabled={importing || pendingCount > 0}
-                className="flex items-center gap-2"
-                size="lg"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                {importing ? 'Importing...' : `Import ${mappedCount + newItemsCount} Items`}
-              </Button>
-            </div>
-
-            {pendingCount > 0 && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded border border-yellow-200 dark:border-yellow-800">
-                <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
-                  <AlertCircle className="w-4 h-4" />
-                  <span className="font-medium">
-                    {pendingCount} items need review before importing
-                  </span>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+          )}
         </CardContent>
       </Card>
     </div>

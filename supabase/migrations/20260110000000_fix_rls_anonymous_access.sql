@@ -18,6 +18,9 @@ CREATE POLICY "Deny anonymous access to employees"
 -- ============================================================================
 -- Contains: email addresses, phone numbers, full names, role information
 -- Note: Profiles already has authenticated-only policies, adding explicit anon denial
+-- Drop existing policy if it exists (may have been created in earlier migration)
+DROP POLICY IF EXISTS "Deny anonymous access to profiles" ON public.profiles;
+
 CREATE POLICY "Deny anonymous access to profiles"
   ON public.profiles
   FOR ALL

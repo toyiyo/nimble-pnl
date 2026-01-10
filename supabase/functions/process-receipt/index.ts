@@ -16,6 +16,9 @@ interface ParsedLineItem {
   parsedName: string;
   parsedQuantity: number;
   parsedUnit: string;
+  packageType?: string;    // NEW: Type of container (bottle, bag, case)
+  sizeValue?: number;      // NEW: Amount per package (750 for 750ml)
+  sizeUnit?: string;       // NEW: Unit of measurement (ml, oz, lb)
   unitPrice?: number;      // NEW: Price per unit
   lineTotal?: number;      // NEW: Total for this line (qty × unit price)
   parsedPrice?: number;    // DEPRECATED: Keep for backward compatibility
@@ -89,7 +92,29 @@ EXTRACTION METHODOLOGY:
 2. **Extract ALL line items** - Every product purchase, no matter how many items there are
 3. **Identify key components**: Product name, quantity, unit of measure, UNIT PRICE, and LINE TOTAL
 4. **Expand abbreviations**: Common food service abbreviations (CHKN=Chicken, DNA=Banana, BROC=Broccoli, etc.)
-5. **Standardize units**: Convert to standard restaurant units (lb, oz, case, each, gal, etc.)
+5. **Standardize units**: Use ONLY the units from our standard lists below
+
+**STANDARD UNIT LISTS (use these exactly):**
+- **Weight units**: lb, kg, g, oz (note: oz is for WEIGHT only)
+- **Volume units**: fl oz (fluid ounces), cup, tbsp, tsp, ml, L, gal, qt
+- **Count/Container units**: each, piece, serving, unit, bottle, can, box, bag, case, container, package, dozen, jar
+
+**UNIT EXTRACTION RULES:**
+- **parsedQuantity**: The NUMBER of packages (e.g., "2" for "2 bottles", "6.86" for "6.86 lb")
+- **parsedUnit**: The PACKAGE TYPE or UNIT from the lists above
+- **packageType**: The TYPE OF CONTAINER (bottle, bag, case, box, can, jar, etc.) if visible
+- **sizeValue**: The AMOUNT in ONE package (e.g., "750" for "750ml bottle", "5" for "5lb bag")
+- **sizeUnit**: The MEASUREMENT UNIT for sizeValue (ml, oz, lb, kg, gal, etc.)
+
+**EXTRACTION EXAMPLES:**
+- For "2 bottles 750ML VODKA" → parsedQuantity=2, parsedUnit="bottle", packageType="bottle", sizeValue=750, sizeUnit="ml"
+- For "6.86 @ 4.64 CHEEK MEAT" → parsedQuantity=6.86, parsedUnit="lb", sizeValue=6.86, sizeUnit="lb"
+- For "1 case 12x355ML BEER" → parsedQuantity=1, parsedUnit="case", packageType="case", sizeValue=355, sizeUnit="ml"
+- For "5LB BAG RICE" → parsedQuantity=5, parsedUnit="lb", packageType="bag", sizeValue=5, sizeUnit="lb"
+- For "2 @ 10.98 CHORIZO" → parsedQuantity=2, parsedUnit="each", packageType="each"
+- ALWAYS extract package size info when visible (750ml, 5lb, 10oz, etc.)
+- ALWAYS extract the unit even if abbreviated (LB → lb, OZ → oz, ML → ml, etc.)
+- If no package type is visible, use "each" as default
 
 **CRITICAL PRICE EXTRACTION RULES:**
 - **unitPrice**: The price PER SINGLE ITEM/UNIT (e.g., "$1.00/ea", "$2.50/lb")
@@ -106,8 +131,8 @@ IMPORTANT FOR LARGE RECEIPTS (100+ items):
 - Prioritize completeness over detailed descriptions
 
 CONFIDENCE SCORING:
-- 0.90-0.95: Crystal clear, complete info with both prices visible
-- 0.80-0.89: Readable, one price visible (other calculated)
+- 0.90-0.95: Crystal clear, complete info with both prices and units visible
+- 0.80-0.89: Readable, one price visible (other calculated) or unit inferred
 - 0.65-0.79: Partially clear, some guessing required
 - 0.40-0.64: Poor quality, significant interpretation
 - 0.20-0.39: Very unclear, major uncertainty
@@ -127,7 +152,10 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
       "rawText": "exact text from receipt (max 50 chars)",
       "parsedName": "standardized product name",
       "parsedQuantity": numeric_quantity,
-      "parsedUnit": "standard_unit",
+      "parsedUnit": "standard_unit_from_lists_above",
+      "packageType": "container_type_if_visible",
+      "sizeValue": numeric_amount_per_package,
+      "sizeUnit": "measurement_unit_for_size",
       "unitPrice": numeric_price_per_unit,
       "lineTotal": numeric_total_for_this_line,
       "confidenceScore": realistic_score_0_to_1,
@@ -816,6 +844,9 @@ serve(async (req) => {
       parsed_name: item.parsedName,
       parsed_quantity: item.parsedQuantity,
       parsed_unit: item.parsedUnit,
+      package_type: item.packageType || null,
+      size_value: item.sizeValue || null,
+      size_unit: item.sizeUnit || null,
       parsed_price: item.lineTotal,   // Store lineTotal in parsed_price for backward compat
       unit_price: item.unitPrice,     // NEW: Store actual unit price
       confidence_score: item.confidenceScore,

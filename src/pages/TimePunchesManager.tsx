@@ -14,9 +14,9 @@ import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePu
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { 
-  Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
+  Trash2, Edit, Download, Search, Camera, MapPin, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock, RefreshCcw, Copy, UserCog, Loader2, PenLine
+  LayoutGrid, BarChart3, List, Code, KeyRound, PenLine, Settings2
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Switch } from '@/components/ui/switch';
 import { TimePunch } from '@/types/timeTracking';
 import { cn } from '@/lib/utils';
 import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
@@ -43,7 +44,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useKioskSession } from '@/hooks/useKioskSession';
 import { useEmployeePins, useUpsertEmployeePin, EmployeePinWithEmployee } from '@/hooks/useKioskPins';
 import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, isSimpleSequence } from '@/utils/kiosk';
-import { Switch } from '@/components/ui/switch';
 import { Employee } from '@/types/scheduling';
 import { useKioskServiceAccount } from '@/hooks/useKioskServiceAccount';
 import {
@@ -55,8 +55,9 @@ import {
   ManualTimelineEditor,
   MobileTimeEntry,
 } from '@/components/time-tracking';
+import { StatusSummary, KioskModeCard, EmployeePinsCard } from '@/components/time-clock';
 
-const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000; // Refresh URLs a few minutes before expiry
+const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000;
 
 type ViewMode = 'day' | 'week' | 'month';
 type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt' | 'manual';
@@ -84,6 +85,7 @@ const TimePunchesManager = () => {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const [photoThumbnails, setPhotoThumbnails] = useState<Record<string, string>>({});
   const [signedUrlCache, setSignedUrlCache] = useState<Record<string, { url: string; expiresAt: number }>>({});
   const [pinDialogEmployee, setPinDialogEmployee] = useState<Employee | null>(null);
@@ -217,10 +219,11 @@ const TimePunchesManager = () => {
         description: 'This device is locked to PIN-only timeclock.',
       });
       navigate('/kiosk');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Check your connection and try again.';
       toast({
         title: 'Could not launch kiosk',
-        description: error?.message || 'Check your connection and try again.',
+        description: message,
         variant: 'destructive',
       });
     }
@@ -270,7 +273,7 @@ const TimePunchesManager = () => {
   const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
   const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
-  // Filter punches by search term (memoized for performance)
+  // Filter punches by search term
   const filteredPunches = useMemo(() => {
     return punches.filter((punch) => {
       if (!searchTerm) return true;
@@ -279,24 +282,23 @@ const TimePunchesManager = () => {
     });
   }, [punches, searchTerm]);
 
-  // Process punches using the robust calculation logic
+  // Process punches
   const processedData = useMemo(() => {
     return processPunchesForPeriod(filteredPunches);
   }, [filteredPunches]);
 
-  // Incomplete sessions that are missing a clock_out
+  // Incomplete sessions
   const incompleteSessions = useMemo(() => processedData.sessions.filter(s => !s.is_complete), [processedData.sessions]);
 
-  // Filter sessions for current day (for day view visualizations)
+  // Filter sessions for current day
   const todaySessions = useMemo(() => {
     if (viewMode !== 'day') return processedData.sessions;
-    
     return processedData.sessions.filter(session => 
       isSameDay(session.clock_in, currentDate)
     );
   }, [processedData.sessions, viewMode, currentDate]);
 
-  // Load photo thumbnails for punches with photos
+  // Load photo thumbnails
   useEffect(() => {
     const loadThumbnails = async () => {
       const now = Date.now();
@@ -321,7 +323,7 @@ const TimePunchesManager = () => {
         }
 
         try {
-          const expiresInSeconds = 7200; // 2 hours
+          const expiresInSeconds = 7200;
           const { data, error } = await supabase.storage
             .from('time-clock-photos')
             .createSignedUrl(punch.photo_path, expiresInSeconds, {
@@ -347,7 +349,7 @@ const TimePunchesManager = () => {
     loadThumbnails();
   }, [punches]);
 
-  // Fetch photo URL when viewing a punch with photo_path
+  // Fetch photo URL when viewing
   useEffect(() => {
     const fetchPhotoUrl = async () => {
       if (viewingPunch?.photo_path) {
@@ -364,7 +366,7 @@ const TimePunchesManager = () => {
         }
 
         try {
-          const expiresInSeconds = 7200; // 2 hours
+          const expiresInSeconds = 7200;
           const { data, error } = await supabase.storage
             .from('time-clock-photos')
             .createSignedUrl(viewingPunch.photo_path, expiresInSeconds, {
@@ -434,13 +436,13 @@ const TimePunchesManager = () => {
   const getPunchTypeColor = (type: string) => {
     switch (type) {
       case 'clock_in':
-        return 'bg-green-500/10 text-green-700 border-green-500/20';
+        return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20';
       case 'clock_out':
-        return 'bg-red-500/10 text-red-700 border-red-500/20';
+        return 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20';
       case 'break_start':
-        return 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20';
+        return 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
       case 'break_end':
-        return 'bg-blue-500/10 text-blue-700 border-blue-500/20';
+        return 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20';
       default:
         return '';
     }
@@ -473,9 +475,9 @@ const TimePunchesManager = () => {
   const getDateRangeLabel = () => {
     switch (viewMode) {
       case 'day':
-        return format(currentDate, 'MMMM d, yyyy');
+        return format(currentDate, 'EEEE, MMMM d');
       case 'week':
-        return `${format(dateRange.start, 'MMM d')} - ${format(dateRange.end, 'MMM d, yyyy')}`;
+        return `${format(dateRange.start, 'MMM d')} – ${format(dateRange.end, 'MMM d, yyyy')}`;
       case 'month':
         return format(currentDate, 'MMMM yyyy');
     }
@@ -493,426 +495,21 @@ const TimePunchesManager = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10">
-              <Clock className="h-6 w-6 text-primary transition-transform duration-300" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Time Punches
-              </CardTitle>
-              <CardDescription>
-                {getDateRangeLabel()} • {totalWeekHours.toFixed(1)} total hours
-                {processedData.totalNoisePunches > 0 && (
-                  <span className="text-yellow-600 ml-2">
-                    • {processedData.totalNoisePunches} noise punch{processedData.totalNoisePunches !== 1 ? 'es' : ''} detected
-                  </span>
-                )}
-                {processedData.totalAnomalies > 0 && (
-                  <span className="text-yellow-600 ml-2">
-                    • {processedData.totalAnomalies} anomal{processedData.totalAnomalies !== 1 ? 'ies' : 'y'}
-                  </span>
-                )}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
+      {/* Section 1: Status Summary - Glanceable */}
+      <StatusSummary
+        kioskActive={kioskActiveForLocation}
+        totalHours={totalWeekHours}
+        employeesWithPins={pinLookup.size}
+        totalEmployees={employees.length}
+        date={getDateRangeLabel()}
+        anomalies={processedData.totalAnomalies}
+        incompleteSessions={incompleteSessions.length}
+      />
 
-      {isManager && (
-        <Card className="border-primary/20">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <TabletSmartphone className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-xl">Kiosk Mode (PIN clock)</CardTitle>
-                <CardDescription>Lock this device to PIN-only timeclock for {selectedRestaurant?.restaurant.name ?? 'this location'}.</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="p-4 rounded-lg border bg-muted/40 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Status</span>
-                  <Badge variant={kioskActiveForLocation ? 'default' : 'outline'}>
-                    {kioskActiveForLocation ? 'Active on this device' : 'Not active'}
-                  </Badge>
-                </div>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <div>
-                    Location locked:{' '}
-                    <span className="font-medium text-foreground">{selectedRestaurant?.restaurant.name}</span>
-                  </div>
-                  {kioskSession?.started_at && (
-                    <div>Started {format(new Date(kioskSession.started_at), 'MMM d, h:mm a')}</div>
-                  )}
-                  {kioskSession?.kiosk_instance_id && (
-                    <div className="text-xs text-muted-foreground">Instance: {kioskSession.kiosk_instance_id.slice(0, 8)}</div>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={handleLaunchKiosk}>
-                    <Shield className="h-4 w-4 mr-2" />
-                    Launch kiosk
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleExitKiosk}
-                    disabled={!kioskActiveForLocation}
-                  >
-                    <Unlock className="h-4 w-4 mr-2" />
-                    Exit kiosk
-                  </Button>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg border bg-card space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-sm">PIN rules</div>
-                    <p className="text-xs text-muted-foreground">Enforce clean 4–6 digit PINs for fewer corrections.</p>
-                  </div>
-                  <Badge variant="outline">{pinPolicy.minLength}-6 digits</Badge>
-                </div>
-                <div className="space-y-2">
-                  <Label>Minimum digits</Label>
-                  <Select
-                    value={String(pinPolicy.minLength)}
-                    onValueChange={(value) => persistPolicy({ minLength: Number(value) })}
-                  >
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="4">4</SelectItem>
-                      <SelectItem value="5">5</SelectItem>
-                      <SelectItem value="6">6</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
-                  <div>
-                    <div className="font-medium text-sm">Force update on next use</div>
-                    <p className="text-xs text-muted-foreground">Mark new PINs as temporary until the employee sets their own.</p>
-                  </div>
-                  <Switch
-                    checked={pinPolicy.forceResetOnNext}
-                    onCheckedChange={(checked) => persistPolicy({ forceResetOnNext: checked })}
-                    aria-label="Force employees to reset PIN"
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg border bg-muted/30 space-y-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <KeyRound className="h-4 w-4 text-primary" />
-                  <span>Daily P&amp;L stays clean when every punch maps to a PIN.</span>
-                </div>
-                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
-                  <li>Install as a PWA or use Guided Access/App Pinning on tablets.</li>
-                  <li>Offline punches queue locally and sync when back online.</li>
-                  <li>No navigation or shortcuts appear on the kiosk screen.</li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="p-4 rounded-lg border bg-muted/40 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-lg bg-primary/10">
-                      <UserCog className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-sm">Dedicated kiosk login</div>
-                      <p className="text-xs text-muted-foreground">
-                        Generates a service account that only works on /kiosk for this location.
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="outline">{kioskAccount ? 'Ready' : 'Not created'}</Badge>
-                </div>
-
-                {kioskAccount && (
-                  <div className="text-sm space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Email</span>
-                      <span className="font-mono text-xs">{kioskAccount.email}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Use this to sign in on the tablet. Rotate to issue a new password.
-                    </p>
-                  </div>
-                )}
-
-                {generatedKioskCreds && (
-                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
-                    <div className="font-medium text-emerald-900 text-sm">New kiosk credentials</div>
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span>Email:</span>
-                      <span>{generatedKioskCreds.email}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span>Password:</span>
-                      <span>{generatedKioskCreds.password}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            `Email: ${generatedKioskCreds.email}\nPassword: ${generatedKioskCreds.password}`
-                          );
-                        }}
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy both
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        className="flex-1"
-                        onClick={() => setGeneratedKioskCreds(null)}
-                      >
-                        Dismiss
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        const result = await createOrRotate.mutateAsync({ rotate: true });
-                        setGeneratedKioskCreds(result);
-                      } catch {
-                        // Errors are handled via onError toast in the hook
-                      }
-                    }}
-                    disabled={createOrRotate.isPending || kioskAccountLoading}
-                  >
-                    {createOrRotate.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <RefreshCcw className="h-4 w-4 mr-2" />
-                    )}
-                    {kioskAccount ? 'Rotate credentials' : 'Create kiosk login'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setGeneratedKioskCreds(null)}
-                    disabled={!generatedKioskCreds}
-                  >
-                    Clear shown password
-                  </Button>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg border bg-muted/20 space-y-2">
-                <div className="font-medium text-sm">How to deploy</div>
-                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
-                  <li>Sign out the manager on the tablet, then sign in with the kiosk email and one-time password.</li>
-                  <li>Use device pinning/Guided Access so the session stays on /kiosk.</li>
-                  <li>Rotate credentials after staff turnover or if the tablet is lost.</li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {isManager && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <KeyRound className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <CardTitle>Employee PINs</CardTitle>
-                  <CardDescription>Manage PIN assignments for quick kiosk clock-ins.</CardDescription>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Badge variant="outline">{pinLookup.size} with PIN</Badge>
-                <Badge variant="outline" className="hidden md:inline-flex">
-                  Min length {pinPolicy.minLength}
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm text-muted-foreground">
-                Avoid duplicate identities by keeping PINs unique per location.
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => persistPolicy({ allowSimpleSequences: !pinPolicy.allowSimpleSequences })}
-                >
-                  {pinPolicy.allowSimpleSequences ? 'Disable sequence PINs' : 'Allow sequence PINs'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAutoGeneratePins}
-                  disabled={pinsLoading || upsertPin.isPending}
-                >
-                  Auto-generate missing PINs
-                </Button>
-              </div>
-            </div>
-
-            {(() => {
-              if (pinsLoading) {
-                return (
-                  <div className="space-y-2">
-                    <Skeleton className="h-14 w-full" />
-                    <Skeleton className="h-14 w-full" />
-                  </div>
-                );
-              }
-              if (employees.length === 0) {
-                return <p className="text-muted-foreground text-sm">Add employees to start assigning PINs.</p>;
-              }
-              return (
-                <div className="space-y-2">
-                  {employees.map((emp) => {
-                    const pinRecord = pinLookup.get(emp.id);
-                    return (
-                      <div
-                        key={emp.id}
-                        className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <div className="font-medium">{emp.name}</div>
-                            <div className="text-xs text-muted-foreground">{emp.position}</div>
-                            {pinRecord?.last_used_at && (
-                              <div className="text-[11px] text-muted-foreground">
-                                Last used {format(new Date(pinRecord.last_used_at), 'MMM d, h:mm a')}
-                              </div>
-                            )}
-                          </div>
-                          {pinRecord ? (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                              PIN set
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/20">
-                              Not set
-                            </Badge>
-                          )}
-                          {pinRecord?.force_reset && (
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
-                              Force update
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openPinDialog(emp)}
-                            disabled={upsertPin.isPending}
-                          >
-                            {pinRecord ? 'Reset PIN' : 'Set PIN'}
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={!!pinDialogEmployee} onOpenChange={(open) => !open && closePinDialog()}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Set PIN for {pinDialogEmployee?.name}</DialogTitle>
-            <p className="text-sm text-muted-foreground">
-              4–6 digit PINs reduce identity ambiguity and speed up rush-hour clock-ins.
-            </p>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="pin_value">PIN</Label>
-              <Input
-                id="pin_value"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={pinValue}
-                onChange={(e) => {
-                  const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setPinValue(digitsOnly);
-                  setLastSavedPin(null);
-                }}
-                aria-label="Employee PIN"
-              />
-              <div className="text-xs text-muted-foreground">
-                Must be at least {pinPolicy.minLength} digits. {pinLooksSimple ? 'Avoid simple sequences (1234).' : ''}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div>
-                <div className="font-medium text-sm">Force update on first use</div>
-                <p className="text-xs text-muted-foreground">Treat this as a temporary PIN.</p>
-              </div>
-              <Switch checked={pinForceReset} onCheckedChange={setPinForceReset} />
-            </div>
-
-            {lastSavedPin && (
-              <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 text-sm">
-                <div className="flex items-center gap-2 font-semibold text-primary">
-                  <KeyRound className="h-4 w-4" />
-                  New PIN: {lastSavedPin}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Share privately; the PIN is stored hashed.</p>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setPinValue(generatePolicyPin())}>
-              Regenerate
-            </Button>
-            <Button variant="outline" onClick={closePinDialog}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSavePin}
-              disabled={pinTooShort || pinLooksSimple || upsertPin.isPending}
-            >
-              Save PIN
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Filters & Navigation */}
+      {/* Section 2: Primary Workspace - Daily manager work */}
       <Card>
         <CardContent className="pt-6 space-y-4">
+          {/* Filters Row */}
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -927,7 +524,7 @@ const TimePunchesManager = () => {
               </div>
             </div>
             <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger className="w-full md:w-64" aria-label="Filter by employee">
+              <SelectTrigger className="w-full md:w-56" aria-label="Filter by employee">
                 <SelectValue placeholder="All employees" />
               </SelectTrigger>
               <SelectContent>
@@ -939,28 +536,27 @@ const TimePunchesManager = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Export
+            <Button variant="outline" size="icon" className="hidden md:flex" aria-label="Export data">
+              <Download className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* Date navigation */}
+          {/* Date Navigation */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigateDate('prev')}>
+              <Button variant="outline" size="icon" onClick={() => navigateDate('prev')} aria-label="Previous">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="sm" onClick={() => navigateDate('today')}>
                 Today
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigateDate('next')}>
+              <Button variant="outline" size="icon" onClick={() => navigateDate('next')} aria-label="Next">
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
 
             <Select value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-28">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -973,43 +569,38 @@ const TimePunchesManager = () => {
         </CardContent>
       </Card>
 
-      {/* Visualization Tabs */}
+      {/* Visualization Tabs - Default to Timeline/Gantt */}
       <Tabs value={visualizationMode} onValueChange={(v) => setVisualizationMode(v as VisualizationMode)}>
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Visualizations</CardTitle>
-              <TabsList>
-                <TabsTrigger value="gantt" className="gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  <span className="hidden sm:inline">Gantt</span>
-                </TabsTrigger>
-                <TabsTrigger value="cards" className="gap-2">
-                  <LayoutGrid className="h-4 w-4" />
-                  <span className="hidden sm:inline">Cards</span>
-                </TabsTrigger>
-                <TabsTrigger value="barcode" className="gap-2">
-                  <List className="h-4 w-4" />
-                  <span className="hidden sm:inline">Barcode</span>
-                </TabsTrigger>
-                <TabsTrigger value="stream" className="gap-2">
-                  <Code className="h-4 w-4" />
-                  <span className="hidden sm:inline">Stream</span>
-                </TabsTrigger>
-                <TabsTrigger value="receipt" className="gap-2">
-                  <TableIcon className="h-4 w-4" />
-                  <span className="hidden sm:inline">Receipt</span>
-                </TabsTrigger>
-                <TabsTrigger value="manual" className="gap-2">
-                  <PenLine className="h-4 w-4" />
-                  <span className="hidden sm:inline">Manual</span>
-                </TabsTrigger>
-              </TabsList>
-            </div>
-          </CardHeader>
-        </Card>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList>
+            <TabsTrigger value="gantt" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              <span className="hidden sm:inline">Timeline</span>
+            </TabsTrigger>
+            <TabsTrigger value="cards" className="gap-2">
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline">Cards</span>
+            </TabsTrigger>
+            <TabsTrigger value="barcode" className="gap-2">
+              <List className="h-4 w-4" />
+              <span className="hidden sm:inline">Stripes</span>
+            </TabsTrigger>
+            <TabsTrigger value="stream" className="gap-2">
+              <Code className="h-4 w-4" />
+              <span className="hidden sm:inline">Stream</span>
+            </TabsTrigger>
+            <TabsTrigger value="receipt" className="gap-2">
+              <TableIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Receipt</span>
+            </TabsTrigger>
+            <TabsTrigger value="manual" className="gap-2">
+              <PenLine className="h-4 w-4" />
+              <span className="hidden sm:inline">Manual</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="gantt" className="mt-6">
+        <TabsContent value="gantt" className="mt-0">
           <TimelineGanttView
             sessions={todaySessions}
             loading={loading}
@@ -1017,7 +608,7 @@ const TimePunchesManager = () => {
           />
         </TabsContent>
 
-        <TabsContent value="cards" className="mt-6">
+        <TabsContent value="cards" className="mt-0">
           <EmployeeCardView
             sessions={todaySessions}
             loading={loading}
@@ -1025,7 +616,7 @@ const TimePunchesManager = () => {
           />
         </TabsContent>
 
-        <TabsContent value="barcode" className="mt-6">
+        <TabsContent value="barcode" className="mt-0">
           <BarcodeStripeView
             sessions={todaySessions}
             loading={loading}
@@ -1033,7 +624,7 @@ const TimePunchesManager = () => {
           />
         </TabsContent>
 
-        <TabsContent value="stream" className="mt-6">
+        <TabsContent value="stream" className="mt-0">
           <PunchStreamView
             processedPunches={processedData.processedPunches}
             loading={loading}
@@ -1041,7 +632,7 @@ const TimePunchesManager = () => {
           />
         </TabsContent>
 
-        <TabsContent value="receipt" className="mt-6">
+        <TabsContent value="receipt" className="mt-0">
           {selectedEmployee !== 'all' ? (
             <ReceiptStyleView
               sessions={todaySessions}
@@ -1053,17 +644,16 @@ const TimePunchesManager = () => {
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground">
-                  Please select a specific employee to view receipt-style timeline
+                  Select a specific employee to view receipt-style timeline
                 </p>
               </CardContent>
             </Card>
           )}
         </TabsContent>
 
-        <TabsContent value="manual" className="mt-6">
+        <TabsContent value="manual" className="mt-0">
           {viewMode === 'day' ? (
             <>
-              {/* Desktop view - hidden on mobile */}
               <div className="hidden md:block">
                 <ManualTimelineEditor
                   employees={employees}
@@ -1073,8 +663,6 @@ const TimePunchesManager = () => {
                   restaurantId={restaurantId || ''}
                 />
               </div>
-              
-              {/* Mobile view - hidden on desktop */}
               <div className="block md:hidden">
                 <MobileTimeEntry
                   employees={employees}
@@ -1087,7 +675,7 @@ const TimePunchesManager = () => {
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground">
-                  Manual time entry is only available in day view. Switch to day view to use this feature.
+                  Manual time entry is only available in day view.
                 </p>
               </CardContent>
             </Card>
@@ -1095,15 +683,15 @@ const TimePunchesManager = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Collapsible Table View */}
+      {/* Collapsible Punch List */}
       <Collapsible open={tableOpen} onOpenChange={setTableOpen}>
         <Card>
           <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-accent/50 transition-colors">
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TableIcon className="h-5 w-5" />
-                  <CardTitle>Detailed Punch List ({filteredPunches.length})</CardTitle>
+                  <TableIcon className="h-5 w-5 text-muted-foreground" />
+                  <CardTitle className="text-base">Punch List ({filteredPunches.length})</CardTitle>
                 </div>
                 {tableOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
               </div>
@@ -1124,84 +712,58 @@ const TimePunchesManager = () => {
                   {filteredPunches.map((punch) => (
                     <div
                       key={punch.id}
-                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/30 transition-colors"
                     >
-                      <div className="flex items-center gap-4 flex-1">
-                        {/* Photo thumbnail */}
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
                         {punch.photo_path && photoThumbnails[punch.id] && (
-                      <div 
-                        className="w-12 h-12 rounded-lg overflow-hidden border-2 border-primary/20 cursor-pointer hover:border-primary transition-colors"
-                        onClick={() => setViewingPunch(punch)}
-                      >
+                          <div 
+                            className="w-10 h-10 rounded-lg overflow-hidden border cursor-pointer hover:ring-2 ring-primary transition-all flex-shrink-0"
+                            onClick={() => setViewingPunch(punch)}
+                          >
                             <img 
                               src={photoThumbnails[punch.id]} 
-                              alt="Employee photo" 
-                              className="w-24 h-24 object-cover rounded-md border border-border"
+                              alt="Photo" 
+                              className="w-full h-full object-cover"
                               loading="lazy"
                               decoding="async"
                             />
-                      </div>
-                    )}
+                          </div>
+                        )}
 
-                        <Badge variant="outline" className={getPunchTypeColor(punch.punch_type)}>
+                        <Badge variant="outline" className={cn("flex-shrink-0", getPunchTypeColor(punch.punch_type))}>
                           {getPunchTypeLabel(punch.punch_type)}
                         </Badge>
-                        <div className="flex-1">
-                          <div className="font-medium">{punch.employee?.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {punch.employee?.position}
-                          </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{punch.employee?.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">{punch.employee?.position}</div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-medium">
-                            {format(new Date(punch.punch_time), 'MMM d, yyyy')}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {format(new Date(punch.punch_time), 'h:mm:ss a')}
-                          </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-medium">{format(new Date(punch.punch_time), 'MMM d')}</div>
+                          <div className="text-xs text-muted-foreground">{format(new Date(punch.punch_time), 'h:mm a')}</div>
                         </div>
-                        {/* Verification indicators */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 flex-shrink-0">
                           {punch.photo_path && (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                              <Camera className="h-3 w-3 mr-1" />
-                              Photo
+                            <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">
+                              <Camera className="h-3 w-3" />
                             </Badge>
                           )}
                           {punch.location && (
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
-                              <MapPin className="h-3 w-3 mr-1" />
-                              GPS
+                            <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
+                              <MapPin className="h-3 w-3" />
                             </Badge>
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2 ml-4">
+                      <div className="flex gap-1 ml-4 flex-shrink-0">
                         {(punch.photo_path || punch.location) && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setViewingPunch(punch)}
-                            aria-label="View verification details"
-                            title="View photo and location"
-                          >
+                          <Button size="icon" variant="ghost" onClick={() => setViewingPunch(punch)} aria-label="View details">
                             <Eye className="h-4 w-4" />
                           </Button>
                         )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => openEditDialog(punch)}
-                          aria-label="Edit punch"
-                        >
+                        <Button size="icon" variant="ghost" onClick={() => openEditDialog(punch)} aria-label="Edit punch">
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setPunchToDelete(punch)}
-                          aria-label="Delete punch"
-                        >
+                        <Button size="icon" variant="ghost" onClick={() => setPunchToDelete(punch)} aria-label="Delete punch">
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1214,31 +776,30 @@ const TimePunchesManager = () => {
         </Card>
       </Collapsible>
 
-      {/* Open / Incomplete Sessions (Managers only) */}
-      {selectedRestaurant?.role && ['owner', 'manager'].includes(selectedRestaurant.role) && incompleteSessions.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Open / Incomplete Sessions</CardTitle>
+      {/* Open Sessions Alert (Managers only) */}
+      {isManager && incompleteSessions.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Open Sessions
+            </CardTitle>
             <CardDescription>{incompleteSessions.length} session{incompleteSessions.length !== 1 ? 's' : ''} need attention</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {incompleteSessions.map((session) => (
                 <div key={session.sessionId} className="flex items-center justify-between p-3 rounded-lg border bg-card">
                   <div>
                     <div className="font-medium">{session.employee_name}</div>
-                    <div className="text-sm text-muted-foreground">Clocked in: {format(new Date(session.clock_in), 'MMM d, yyyy h:mm a')}</div>
-                    <div className="text-sm text-muted-foreground">Open for {Math.max(0, Math.floor(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m</div>
+                    <div className="text-xs text-muted-foreground">
+                      In: {format(new Date(session.clock_in), 'h:mm a')} • 
+                      Open for {Math.max(0, Math.floor(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setForceSessionToClose(session)}
-                    >
-                      Force Clock Out Now
-                    </Button>
-                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setForceSessionToClose(session)}>
+                    Force Out
+                  </Button>
                 </div>
               ))}
             </div>
@@ -1246,41 +807,145 @@ const TimePunchesManager = () => {
         </Card>
       )}
 
-      {/* Force Clock Out Confirmation */}
+      {/* Section 3: Configuration - Collapsed by default */}
+      {isManager && (
+        <Collapsible open={configOpen} onOpenChange={setConfigOpen}>
+          <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-2 w-full">
+            <Settings2 className="h-4 w-4" />
+            <span>Time Clock Settings</span>
+            <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${configOpen ? 'rotate-180' : ''}`} />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <KioskModeCard
+                kioskActive={kioskActiveForLocation}
+                locationName={selectedRestaurant?.restaurant.name ?? 'this location'}
+                session={kioskSession}
+                kioskAccount={kioskAccount}
+                kioskAccountLoading={kioskAccountLoading}
+                generatedCreds={generatedKioskCreds}
+                onLaunchKiosk={handleLaunchKiosk}
+                onExitKiosk={handleExitKiosk}
+                onCreateOrRotate={async () => {
+                  try {
+                    const result = await createOrRotate.mutateAsync({ rotate: true });
+                    setGeneratedKioskCreds(result);
+                  } catch {
+                    // Errors handled in hook
+                  }
+                }}
+                onClearCreds={() => setGeneratedKioskCreds(null)}
+                isCreating={createOrRotate.isPending}
+                pinPolicy={pinPolicy}
+                onPolicyChange={persistPolicy}
+              />
+
+              <EmployeePinsCard
+                employees={employees}
+                pinLookup={pinLookup}
+                pinsLoading={pinsLoading}
+                isPinSaving={upsertPin.isPending}
+                onSetPin={openPinDialog}
+                onAutoGenerate={handleAutoGeneratePins}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* PIN Dialog */}
+      <Dialog open={!!pinDialogEmployee} onOpenChange={(open) => !open && closePinDialog()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set PIN for {pinDialogEmployee?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="pin_value">PIN</Label>
+              <Input
+                id="pin_value"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={pinValue}
+                onChange={(e) => {
+                  const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
+                  setPinValue(digitsOnly);
+                  setLastSavedPin(null);
+                }}
+                aria-label="Employee PIN"
+                className="text-center text-2xl tracking-widest font-mono"
+              />
+              {(pinTooShort || pinLooksSimple) && (
+                <p className="text-xs text-amber-600">
+                  {pinTooShort ? `Must be at least ${pinPolicy.minLength} digits.` : 'Avoid simple sequences.'}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div>
+                <div className="text-sm font-medium">Force update on first use</div>
+                <p className="text-xs text-muted-foreground">Treat this as a temporary PIN.</p>
+              </div>
+              <Switch checked={pinForceReset} onCheckedChange={setPinForceReset} />
+            </div>
+
+            {lastSavedPin && (
+              <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
+                <div className="flex items-center gap-2 font-semibold text-primary">
+                  <KeyRound className="h-4 w-4" />
+                  Saved: {lastSavedPin}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Share privately. PIN is stored hashed.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setPinValue(generatePolicyPin())}>
+              Regenerate
+            </Button>
+            <Button variant="outline" onClick={closePinDialog}>
+              Cancel
+            </Button>
+            <Button onClick={handleSavePin} disabled={pinTooShort || pinLooksSimple || upsertPin.isPending}>
+              Save PIN
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Force Clock Out Dialog */}
       <AlertDialog open={!!forceSessionToClose} onOpenChange={() => setForceSessionToClose(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Force Clock Out</AlertDialogTitle>
-                  <AlertDialogDescription>
-              Specify the date & time to record as the clock-out for <strong>{forceSessionToClose?.employee_name}</strong>. Default is the current time. This will close the open session and will be visible in payroll immediately.
+            <AlertDialogDescription>
+              Set the clock-out time for <strong>{forceSessionToClose?.employee_name}</strong>.
             </AlertDialogDescription>
-            <div className="py-3">
-              <Label htmlFor="force_out_time">Clock-out time</Label>
-              <Input
-                id="force_out_time"
-                type="datetime-local"
-                value={forceOutTime}
-                onChange={(e) => setForceOutTime(e.target.value)}
-                aria-label="Force clock out time"
-                className="mt-2"
-              />
-
-              {forceSessionToClose?.clock_in && forceOutTime && (
-                <div className="text-sm mt-2 text-muted-foreground">
-                  {new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() ? (
-                    <span className="text-destructive">Selected time is before the session's clock-in — please pick a time after {format(new Date(forceSessionToClose.clock_in), 'MMM d, yyyy h:mm a')}.</span>
-                  ) : null}
-                </div>
-              )}
-            </div>
           </AlertDialogHeader>
+          <div className="py-3">
+            <Label htmlFor="force_out_time">Clock-out time</Label>
+            <Input
+              id="force_out_time"
+              type="datetime-local"
+              value={forceOutTime}
+              onChange={(e) => setForceOutTime(e.target.value)}
+              className="mt-2"
+            />
+            {forceSessionToClose?.clock_in && forceOutTime && 
+              new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() && (
+              <p className="text-xs text-destructive mt-2">
+                Time must be after {format(new Date(forceSessionToClose.clock_in), 'h:mm a')}.
+              </p>
+            )}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
+            <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (!forceSessionToClose || !restaurantId || !forceOutTime) return;
-                // Prevent creating a clock_out earlier than the session's clock_in
                 const chosen = new Date(forceOutTime).toISOString();
                 if (forceSessionToClose.clock_in && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime()) return;
 
@@ -1292,7 +957,6 @@ const TimePunchesManager = () => {
                   notes: 'Force clock out by manager',
                 });
                 setForceSessionToClose(null);
-                // reset default time
                 setForceOutTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
               }}
               disabled={!!(forceSessionToClose?.clock_in && forceOutTime && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime())}
@@ -1334,29 +998,23 @@ const TimePunchesManager = () => {
                 <div>
                   <div className="text-sm font-medium mb-2 flex items-center gap-2">
                     <Camera className="h-4 w-4" />
-                    Verification Photo
+                    Photo
                   </div>
-                  <div className="rounded-lg border bg-muted/50 max-h-[70vh] overflow-auto flex items-center justify-center">
+                  <div className="rounded-lg border bg-muted/50 max-h-[50vh] overflow-auto flex items-center justify-center p-4">
                     {loadingPhoto ? (
-                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
-                        <p>Loading photo...</p>
-                      </div>
+                      <p className="text-muted-foreground">Loading photo...</p>
                     ) : photoUrl ? (
                       <img 
                         src={photoUrl} 
-                        alt="Employee verification photo" 
-                        className="w-40 h-auto max-h-[70vh] object-contain"
-                        loading="lazy"
-                        decoding="async"
+                        alt="Verification" 
+                        className="max-w-full max-h-[45vh] object-contain rounded"
                         onError={() => {
                           setPhotoError('Photo unavailable');
                           setPhotoUrl(null);
                         }}
                       />
                     ) : (
-                      <div className="w-full h-72 flex items-center justify-center text-muted-foreground">
-                        <p>{photoError || 'Photo unavailable'}</p>
-                      </div>
+                      <p className="text-muted-foreground">{photoError || 'Photo unavailable'}</p>
                     )}
                   </div>
                 </div>
@@ -1369,13 +1027,8 @@ const TimePunchesManager = () => {
                     Location
                   </div>
                   <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
-                    <div className="text-sm">
-                      <span className="text-muted-foreground">Latitude:</span>{' '}
-                      <span className="font-mono">{viewingPunch.location.latitude.toFixed(6)}</span>
-                    </div>
-                    <div className="text-sm">
-                      <span className="text-muted-foreground">Longitude:</span>{' '}
-                      <span className="font-mono">{viewingPunch.location.longitude.toFixed(6)}</span>
+                    <div className="text-sm font-mono">
+                      {viewingPunch.location.latitude.toFixed(6)}, {viewingPunch.location.longitude.toFixed(6)}
                     </div>
                     <a
                       href={`https://www.google.com/maps?q=${viewingPunch.location.latitude},${viewingPunch.location.longitude}`}
@@ -1392,7 +1045,7 @@ const TimePunchesManager = () => {
 
               {viewingPunch.device_info && (
                 <div>
-                  <div className="text-sm font-medium mb-2">Device Information</div>
+                  <div className="text-sm font-medium mb-2">Device</div>
                   <div className="p-3 rounded-lg border bg-muted/50 text-xs font-mono break-all">
                     {viewingPunch.device_info}
                   </div>
@@ -1417,7 +1070,6 @@ const TimePunchesManager = () => {
                 type="datetime-local"
                 value={editFormData.punch_time}
                 onChange={(e) => setEditFormData({ ...editFormData, punch_time: e.target.value })}
-                aria-label="Punch time"
               />
             </div>
             <div className="space-y-2">
@@ -1427,18 +1079,13 @@ const TimePunchesManager = () => {
                 placeholder="Add notes about this punch..."
                 value={editFormData.notes}
                 onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
-                aria-label="Notes"
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeEditDialog}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditSubmit}>
-              Save Changes
-            </Button>
+            <Button variant="outline" onClick={closeEditDialog}>Cancel</Button>
+            <Button onClick={handleEditSubmit}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1449,7 +1096,7 @@ const TimePunchesManager = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Time Punch</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this time punch? This action cannot be undone.
+              This action cannot be undone. Are you sure?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

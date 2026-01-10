@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
-import { Plus, Check, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Check, AlertCircle, ChevronDown, ChevronUp, Clock, Coffee, MessageSquare } from 'lucide-react';
 import { format, startOfDay, addHours, differenceInMinutes, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { parseTimeRange, snapToInterval, formatDuration } from '@/lib/timeUtils';
@@ -18,6 +18,8 @@ interface TimeBlock {
   id: string; // Unique ID for UI, maps to punch pair
   startTime: Date;
   endTime: Date;
+  breakMinutes?: number; // Optional break duration
+  notes?: string; // Optional notes
   clockInPunchId?: string;
   clockOutPunchId?: string;
   isNew?: boolean; // Track if this is unsaved
@@ -236,7 +238,7 @@ export const ManualTimelineEditor = ({
       
       employeeDay.blocks[blockIndex] = block;
       employeeDay.totalHours = employeeDay.blocks.reduce((sum, b) => 
-        sum + differenceInMinutes(b.endTime, b.startTime) / 60, 0
+        sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
       );
       employeeDay.hasWarning = employeeDay.totalHours > 12;
       
@@ -466,7 +468,7 @@ export const ManualTimelineEditor = ({
         if (day) {
           day.blocks = day.blocks.filter(b => b.id !== blockId);
           day.totalHours = day.blocks.reduce((sum, b) => 
-            sum + differenceInMinutes(b.endTime, b.startTime) / 60, 0
+            sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
           );
           day.hasWarning = day.totalHours > 12;
           updated.set(employeeId, { ...day });
@@ -549,17 +551,27 @@ export const ManualTimelineEditor = ({
           <div key={employeeDay.employee.id} className="border rounded-lg overflow-hidden">
             {/* Timeline row */}
             <div className="flex items-center hover:bg-accent/50 transition-colors">
-              {/* Employee name */}
+              {/* Employee name with avatar */}
               <button
                 onClick={() => toggleExpanded(employeeDay.employee.id)}
-                className="w-48 flex-shrink-0 p-3 text-left flex items-center gap-2 hover:bg-accent"
+                className="w-48 flex-shrink-0 p-3 text-left hover:bg-accent"
               >
-                <span className="font-medium">{employeeDay.employee.name}</span>
-                {employeeDay.expanded ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
+                <div className="flex items-center gap-3">
+                  <span className="relative flex shrink-0 overflow-hidden rounded-full h-8 w-8 border-2 border-background shadow-sm">
+                    <span className="flex h-full w-full items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-xs">
+                      {employeeDay.employee.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm text-foreground truncate">{employeeDay.employee.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{employeeDay.employee.position || 'Staff'}</p>
+                  </div>
+                  {employeeDay.expanded ? (
+                    <ChevronUp className="h-4 w-4 flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 flex-shrink-0" />
+                  )}
+                </div>
               </button>
               
               {/* Timeline */}
@@ -647,68 +659,189 @@ export const ManualTimelineEditor = ({
             
             {/* Expanded inline editor */}
             {employeeDay.expanded && (
-              <div className="p-4 bg-muted/30 border-t space-y-3">
-                <div>
-                  <Label className="text-sm">Add time block</Label>
-                  <div className="flex gap-2 mt-1">
+              <div className="px-4 pb-4 pt-0 border-t border-border/50">
+                <div className="pt-4 grid grid-cols-4 gap-4">
+                  {/* Start Time */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" />
+                      Start Time
+                    </Label>
                     <Input
-                      placeholder="e.g., 9-530, 9a-5:30p"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleInlineTimeInput(employeeDay.employee.id, e.currentTarget.value);
-                          e.currentTarget.value = '';
-                        }
-                      }}
-                      className="flex-1"
+                      id={`start-time-${employeeDay.employee.id}`}
+                      type="time"
+                      className="h-9 text-sm"
                     />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                        handleInlineTimeInput(employeeDay.employee.id, input.value);
-                        input.value = '';
-                      }}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Formats: 9-530, 9a-5:30p, 09:00-17:30
-                  </p>
+                  
+                  {/* End Time */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" />
+                      End Time
+                    </Label>
+                    <Input
+                      id={`end-time-${employeeDay.employee.id}`}
+                      type="time"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  
+                  {/* Break */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Coffee className="h-3 w-3" />
+                      Break (mins)
+                    </Label>
+                    <Input
+                      id={`break-${employeeDay.employee.id}`}
+                      type="number"
+                      min="0"
+                      max="120"
+                      defaultValue="30"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  
+                  {/* Notes */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <MessageSquare className="h-3 w-3" />
+                      Notes
+                    </Label>
+                    <Input
+                      id={`notes-${employeeDay.employee.id}`}
+                      type="text"
+                      placeholder="Optional note..."
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+                
+                {/* Add Button */}
+                <div className="mt-4">
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      const startInput = document.getElementById(`start-time-${employeeDay.employee.id}`) as HTMLInputElement;
+                      const endInput = document.getElementById(`end-time-${employeeDay.employee.id}`) as HTMLInputElement;
+                      const breakInput = document.getElementById(`break-${employeeDay.employee.id}`) as HTMLInputElement;
+                      const notesInput = document.getElementById(`notes-${employeeDay.employee.id}`) as HTMLInputElement;
+                      
+                      if (!startInput.value || !endInput.value) {
+                        toast({
+                          title: 'Missing times',
+                          description: 'Please enter both start and end times',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      
+                      // Parse time inputs (format: "HH:MM")
+                      const [startHour, startMin] = startInput.value.split(':').map(Number);
+                      const [endHour, endMin] = endInput.value.split(':').map(Number);
+                      
+                      const startDate = new Date(date);
+                      startDate.setHours(startHour, startMin, 0, 0);
+                      const startTime = snapToInterval(startDate);
+                      
+                      const endDate = new Date(date);
+                      endDate.setHours(endHour, endMin, 0, 0);
+                      const endTime = snapToInterval(endDate);
+                      
+                      if (startTime >= endTime) {
+                        toast({
+                          title: 'Invalid range',
+                          description: 'End time must be after start time',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      
+                      const newBlockId = `new-${Date.now()}`;
+                      setEmployeeDays(prev => {
+                        const updated = new Map(prev);
+                        const day = updated.get(employeeDay.employee.id);
+                        if (day) {
+                          day.blocks.push({
+                            id: newBlockId,
+                            startTime,
+                            endTime,
+                            breakMinutes: parseInt(breakInput.value) || 0,
+                            notes: notesInput.value || undefined,
+                            isNew: true,
+                          });
+                          day.totalHours = day.blocks.reduce((sum, b) => 
+                            sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
+                          );
+                          day.hasWarning = day.totalHours > 12;
+                          updated.set(employeeDay.employee.id, { ...day });
+                        }
+                        return updated;
+                      });
+                      
+                      triggerAutoSave(employeeDay.employee.id, newBlockId);
+                      
+                      // Clear inputs
+                      startInput.value = '';
+                      endInput.value = '';
+                      breakInput.value = '30';
+                      notesInput.value = '';
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Time Block
+                  </Button>
                 </div>
                 
                 {/* Block list */}
                 {employeeDay.blocks.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-2 mt-4">
                     <Label className="text-sm">Time blocks</Label>
-                    {employeeDay.blocks.map((block) => (
-                      <div
-                        key={block.id}
-                        className="flex items-center justify-between p-2 rounded-md border bg-background"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-medium">
-                            {format(block.startTime, 'h:mm a')}
-                          </span>
-                          <span className="text-muted-foreground">→</span>
-                          <span className="text-sm font-medium">
-                            {format(block.endTime, 'h:mm a')}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            ({formatDuration(differenceInMinutes(block.endTime, block.startTime))})
-                          </span>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteBlock(employeeDay.employee.id, block.id)}
+                    {employeeDay.blocks.map((block) => {
+                      const workMinutes = differenceInMinutes(block.endTime, block.startTime) - (block.breakMinutes || 0);
+                      return (
+                        <div
+                          key={block.id}
+                          className="flex items-start justify-between p-3 rounded-md border bg-background"
                         >
-                          Delete
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="space-y-1 flex-1">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium">
+                                {format(block.startTime, 'h:mm a')}
+                              </span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="text-sm font-medium">
+                                {format(block.endTime, 'h:mm a')}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                ({formatDuration(workMinutes)})
+                              </span>
+                            </div>
+                            {(block.breakMinutes && block.breakMinutes > 0) && (
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Coffee className="h-3 w-3" />
+                                Break: {block.breakMinutes} mins
+                              </div>
+                            )}
+                            {block.notes && (
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <MessageSquare className="h-3 w-3" />
+                                {block.notes}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteBlock(employeeDay.employee.id, block.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

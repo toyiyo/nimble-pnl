@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
 import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
@@ -464,22 +464,6 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Calculate labor costs using the same centralized logic as Payroll
-      // This calculates hourly wages, salary allocations, and contractor payments
-      const { dailyCosts: laborDailyCosts } = calculateActualLaborCost(
-        typedEmployees,
-        typedPunches,
-        dateFrom,
-        dateTo
-      );
-
-      // Build a map of per-job payments by date
-      const perJobPaymentsByDate = new Map<string, number>();
-      (manualPaymentsData || []).forEach((payment: { date: string; allocated_cost: number }) => {
-        const current = perJobPaymentsByDate.get(payment.date) || 0;
-        perJobPaymentsByDate.set(payment.date, current + (payment.allocated_cost / 100)); // Convert cents to dollars
-      });
-
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
         const transactionDate = transaction.transaction_date
@@ -515,15 +499,58 @@ export function useMonthlyMetrics(
         month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
       });
 
-      // Aggregate labor costs by month (calculated from time punches - same as Payroll)
-      // This replaces the old daily_labor_costs aggregation with real-time calculation
-      laborDailyCosts.forEach((day) => {
-        const laborDate = normalizeToLocalDate(day.date, 'laborDailyCosts.date');
-        if (!laborDate) {
-          return;
-        }
-        const monthKey = format(laborDate, 'yyyy-MM');
+      // Calculate labor costs PER MONTH separately to match Payroll period-based calculations
+      // This ensures salary/contractor employees get their proper monthly allocation
+      // (not the entire range divided across all months)
+      const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
+      
+      for (const monthStart of monthsInRange) {
+        const monthEnd = endOfMonth(monthStart);
+        const monthKey = format(monthStart, 'yyyy-MM');
         
+        // Filter time punches for this specific month
+        const monthPunches = typedPunches.filter(punch => {
+          const punchDate = new Date(punch.punch_time);
+          return punchDate >= monthStart && punchDate <= monthEnd;
+        });
+        
+        // Calculate labor for just this month (same logic as Payroll)
+        const { dailyCosts: monthLaborCosts } = calculateActualLaborCost(
+          typedEmployees,
+          monthPunches,
+          monthStart,
+          monthEnd
+        );
+        
+        // Build per-job payments map for this month only
+        const monthPerJobPayments = new Map<string, number>();
+        (manualPaymentsData || []).forEach((payment: { date: string; allocated_cost: number }) => {
+          const paymentDate = new Date(payment.date);
+          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+            const current = monthPerJobPayments.get(payment.date) || 0;
+            monthPerJobPayments.set(payment.date, current + (payment.allocated_cost / 100));
+          }
+        });
+        
+        // Aggregate labor for this month
+        let monthPendingLabor = 0;
+        
+        monthLaborCosts.forEach((day) => {
+          monthPendingLabor += day.total_cost;
+          // Add per-job payments for this date (if any)
+          const perJobAmount = monthPerJobPayments.get(day.date) || 0;
+          monthPendingLabor += perJobAmount;
+        });
+        
+        // Also add per-job payments for dates not in laborDailyCosts
+        monthPerJobPayments.forEach((amount, dateStr) => {
+          const alreadyProcessed = monthLaborCosts.some(d => d.date === dateStr);
+          if (!alreadyProcessed) {
+            monthPendingLabor += amount;
+          }
+        });
+        
+        // Ensure month exists in map
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
             period: monthKey,
@@ -542,55 +569,12 @@ export function useMonthlyMetrics(
             has_data: true,
           });
         }
-
+        
         const month = monthlyMap.get(monthKey)!;
-        // Labor calculated from time punches includes hourly wages, salary allocations, and contractor payments
-        // total_cost is in dollars, convert to cents for internal consistency
-        const pendingCost = Math.round(day.total_cost * 100);
-        
-        // Add per-job payments for this date (if any)
-        const perJobAmount = perJobPaymentsByDate.get(day.date) || 0;
-        const perJobCents = Math.round(perJobAmount * 100);
-        
-        month.pending_labor_cost += pendingCost + perJobCents;
-        month.labor_cost += pendingCost + perJobCents;
-      });
-
-      // Also add per-job payments for dates not in laborDailyCosts
-      perJobPaymentsByDate.forEach((amount, dateStr) => {
-        // Check if this date was already processed
-        const alreadyProcessed = laborDailyCosts.some(d => d.date === dateStr);
-        if (alreadyProcessed) return;
-
-        const paymentDate = normalizeToLocalDate(dateStr, 'perJobPayments.date');
-        if (!paymentDate) return;
-        
-        const monthKey = format(paymentDate, 'yyyy-MM');
-        
-        if (!monthlyMap.has(monthKey)) {
-          monthlyMap.set(monthKey, {
-            period: monthKey,
-            gross_revenue: 0,
-            total_collected_at_pos: 0,
-            net_revenue: 0,
-            discounts: 0,
-            refunds: 0,
-            sales_tax: 0,
-            tips: 0,
-            other_liabilities: 0,
-            food_cost: 0,
-            labor_cost: 0,
-            pending_labor_cost: 0,
-            actual_labor_cost: 0,
-            has_data: true,
-          });
-        }
-
-        const month = monthlyMap.get(monthKey)!;
-        const perJobCents = Math.round(amount * 100);
-        month.pending_labor_cost += perJobCents;
-        month.labor_cost += perJobCents;
-      });
+        const pendingCents = Math.round(monthPendingLabor * 100);
+        month.pending_labor_cost += pendingCents;
+        month.labor_cost += pendingCents;
+      }
 
       // Aggregate actual labor costs from bank transactions
       bankLabor?.forEach((txn: any) => {

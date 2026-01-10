@@ -21,7 +21,7 @@ RETURNS boolean AS $$
     FROM pg_policies 
     WHERE schemaname = 'public' 
     AND tablename = table_name
-    AND roles @> ARRAY['anon']
+    AND roles::text[] @> ARRAY['anon']::text[]
     AND cmd = 'ALL'
     AND qual = 'false'
   );
@@ -267,7 +267,7 @@ SELECT is(
    FROM pg_policies
    WHERE schemaname = 'public'
    AND qual = 'true'
-   AND roles @> ARRAY['authenticated']
+   AND roles::text[] @> ARRAY['authenticated']::text[]
    AND tablename IN (
      'employees', 'customers', 'bank_transactions', 'time_punches',
      'employee_compensation_history', 'purchase_orders', 'square_connections',

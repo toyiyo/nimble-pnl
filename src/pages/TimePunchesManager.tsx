@@ -53,6 +53,7 @@ import {
   PunchStreamView,
   ReceiptStyleView,
   ManualTimelineEditor,
+  MobileTimeEntry,
 } from '@/components/time-tracking';
 
 const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000; // Refresh URLs a few minutes before expiry
@@ -1061,13 +1062,27 @@ const TimePunchesManager = () => {
 
         <TabsContent value="manual" className="mt-6">
           {viewMode === 'day' ? (
-            <ManualTimelineEditor
-              employees={employees}
-              date={currentDate}
-              existingPunches={filteredPunches}
-              loading={loading}
-              restaurantId={restaurantId || ''}
-            />
+            <>
+              {/* Desktop view - hidden on mobile */}
+              <div className="hidden md:block">
+                <ManualTimelineEditor
+                  employees={employees}
+                  date={currentDate}
+                  existingPunches={filteredPunches}
+                  loading={loading}
+                  restaurantId={restaurantId || ''}
+                />
+              </div>
+              
+              {/* Mobile view - hidden on desktop */}
+              <div className="block md:hidden">
+                <MobileTimeEntry
+                  employees={employees}
+                  date={currentDate}
+                  restaurantId={restaurantId || ''}
+                />
+              </div>
+            </>
           ) : (
             <Card>
               <CardContent className="py-12 text-center">

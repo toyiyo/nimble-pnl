@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
 import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
+import { calculateActualLaborCost } from '@/services/laborCalculations';
+import type { TimePunch } from '@/types/timeTracking';
 
 // Re-export types/functions from shared module for backwards compatibility
 export { 
@@ -386,17 +388,97 @@ export function useMonthlyMetrics(
         console.warn('Failed to fetch pending labor costs:', pendingLaborError);
       }
 
-      // Fetch labor costs from daily_labor_costs (pending - from time punches)
-      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-      const { data: laborCostsData, error: laborCostsError } = await supabase
-        .from('daily_labor_costs')
-        .select('date, total_labor_cost')
+      // Fetch time punches and employees to calculate labor costs using the same logic as Payroll
+      // This ensures Dashboard and Payroll show consistent labor numbers (DRY principle)
+      const { data: timePunchesData, error: timePunchesError } = await supabase
+        .from('time_punches')
+        .select('*')
         .eq('restaurant_id', restaurantId)
-        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(dateTo, 'yyyy-MM-dd'))
-        .limit(10000); // Override Supabase's default 1000 row limit
+        .gte('punch_time', dateFrom.toISOString())
+        .lte('punch_time', dateTo.toISOString())
+        .order('punch_time', { ascending: true });
 
-      if (laborCostsError) throw laborCostsError;
+      if (timePunchesError) {
+        console.warn('Failed to fetch time punches for labor calculation:', timePunchesError);
+      }
+
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('restaurant_id', restaurantId);
+
+      if (employeesError) {
+        console.warn('Failed to fetch employees for labor calculation:', employeesError);
+      }
+
+      // Fetch per-job contractor payments (manual payments stored as source='per-job')
+      const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
+        .from('daily_labor_allocations')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('source', 'per-job')
+        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
+        .lte('date', format(dateTo, 'yyyy-MM-dd'));
+
+      if (manualPaymentsError) {
+        console.warn('Failed to fetch manual payments:', manualPaymentsError);
+      }
+
+      // Convert time punches to the expected format
+      interface DBTimePunch {
+        id: string;
+        employee_id: string;
+        restaurant_id: string;
+        punch_time: string;
+        punch_type: string;
+        created_at: string;
+        updated_at: string;
+        shift_id: string | null;
+        notes: string | null;
+        photo_path: string | null;
+        device_info: string | null;
+        location: unknown;
+        created_by: string | null;
+        modified_by: string | null;
+      }
+
+      const typedPunches: TimePunch[] = (timePunchesData || []).map((punch: DBTimePunch) => ({
+        ...punch,
+        punch_type: punch.punch_type as TimePunch['punch_type'],
+        location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
+          ? punch.location as { latitude: number; longitude: number }
+          : undefined,
+      }));
+
+      // Cast employees to the correct type - the DB returns strings but we need union types
+      type EmployeeStatus = 'active' | 'inactive' | 'terminated';
+      type CompensationType = 'hourly' | 'salary' | 'contractor';
+      type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
+      type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
+      
+      const typedEmployees = (employeesData || []).map(emp => ({
+        ...emp,
+        status: emp.status as EmployeeStatus,
+        compensation_type: emp.compensation_type as CompensationType,
+        pay_period_type: emp.pay_period_type as PayPeriodType | undefined,
+        contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
+      }));
+
+      // Calculate labor costs using the same centralized logic as Payroll
+      // This calculates hourly wages, salary allocations, and contractor payments
+      const { dailyCosts: laborDailyCosts } = calculateActualLaborCost(
+        typedEmployees,
+        typedPunches,
+        dateFrom,
+        dateTo
+      );
+
+      // Build a map of per-job payments by date
+      const perJobPaymentsByDate = new Map<string, number>();
+      (manualPaymentsData || []).forEach((payment: { date: string; allocated_cost: number }) => {
+        const current = perJobPaymentsByDate.get(payment.date) || 0;
+        perJobPaymentsByDate.set(payment.date, current + (payment.allocated_cost / 100)); // Convert cents to dollars
+      });
 
       // Aggregate COGS (Cost of Goods Used) by month
       foodCostsData?.forEach((transaction) => {
@@ -433,9 +515,10 @@ export function useMonthlyMetrics(
         month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
       });
 
-      // Aggregate labor costs by month (pending - from time punches)
-      laborCostsData?.forEach((day) => {
-        const laborDate = normalizeToLocalDate(day.date, 'daily_labor_costs.date');
+      // Aggregate labor costs by month (calculated from time punches - same as Payroll)
+      // This replaces the old daily_labor_costs aggregation with real-time calculation
+      laborDailyCosts.forEach((day) => {
+        const laborDate = normalizeToLocalDate(day.date, 'laborDailyCosts.date');
         if (!laborDate) {
           return;
         }
@@ -461,11 +544,52 @@ export function useMonthlyMetrics(
         }
 
         const month = monthlyMap.get(monthKey)!;
-        // Use cents to avoid floating-point precision errors
-        // Use Math.abs() because costs may be stored as negative (accounting convention)
-        const pendingCost = Math.round(Math.abs(day.total_labor_cost || 0) * 100);
-        month.pending_labor_cost += pendingCost;
-        month.labor_cost += pendingCost;
+        // Labor calculated from time punches includes hourly wages, salary allocations, and contractor payments
+        // total_cost is in dollars, convert to cents for internal consistency
+        const pendingCost = Math.round(day.total_cost * 100);
+        
+        // Add per-job payments for this date (if any)
+        const perJobAmount = perJobPaymentsByDate.get(day.date) || 0;
+        const perJobCents = Math.round(perJobAmount * 100);
+        
+        month.pending_labor_cost += pendingCost + perJobCents;
+        month.labor_cost += pendingCost + perJobCents;
+      });
+
+      // Also add per-job payments for dates not in laborDailyCosts
+      perJobPaymentsByDate.forEach((amount, dateStr) => {
+        // Check if this date was already processed
+        const alreadyProcessed = laborDailyCosts.some(d => d.date === dateStr);
+        if (alreadyProcessed) return;
+
+        const paymentDate = normalizeToLocalDate(dateStr, 'perJobPayments.date');
+        if (!paymentDate) return;
+        
+        const monthKey = format(paymentDate, 'yyyy-MM');
+        
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            period: monthKey,
+            gross_revenue: 0,
+            total_collected_at_pos: 0,
+            net_revenue: 0,
+            discounts: 0,
+            refunds: 0,
+            sales_tax: 0,
+            tips: 0,
+            other_liabilities: 0,
+            food_cost: 0,
+            labor_cost: 0,
+            pending_labor_cost: 0,
+            actual_labor_cost: 0,
+            has_data: true,
+          });
+        }
+
+        const month = monthlyMap.get(monthKey)!;
+        const perJobCents = Math.round(amount * 100);
+        month.pending_labor_cost += perJobCents;
+        month.labor_cost += perJobCents;
       });
 
       // Aggregate actual labor costs from bank transactions

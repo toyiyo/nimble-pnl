@@ -93,7 +93,9 @@ const Index = () => {
     label: 'Today',
   });
 
-  const monthlyRangeEnd = endOfMonth(selectedPeriod.to);
+  // Monthly table should be month-to-date for the current month (up to the selected period end)
+  // so it matches Payroll + Performance Overview when the month is in progress.
+  const monthlyRangeEnd = selectedPeriod.to;
   const monthlyRangeStart = startOfMonth(subMonths(monthlyRangeEnd, 11));
 
   // Use new unified metrics hook for revenue + costs

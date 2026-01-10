@@ -2,7 +2,7 @@
 -- Verifies that all sensitive tables have explicit policies denying anonymous access
 -- Also verifies no risky USING (true) policies exist
 BEGIN;
-SELECT plan(41);
+SELECT plan(43);
 
 -- Helper function to check if a table has RLS enabled
 CREATE OR REPLACE FUNCTION has_rls_enabled(schema_name text, table_name text)
@@ -245,6 +245,16 @@ SELECT ok(
 SELECT ok(
   has_anon_denial_policy('square_shifts'),
   'square_shifts should have anonymous access denial policy'
+);
+
+SELECT ok(
+  has_anon_denial_policy('unified_sales'),
+  'unified_sales should have anonymous access denial policy'
+);
+
+SELECT ok(
+  has_anon_denial_policy('unified_sales_splits'),
+  'unified_sales_splits should have anonymous access denial policy'
 );
 
 -- ============================================================================

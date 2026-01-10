@@ -18,7 +18,7 @@ CREATE POLICY "Deny anonymous access to employees"
 -- ============================================================================
 -- Contains: email addresses, phone numbers, full names, role information
 -- Note: Profiles already has authenticated-only policies, adding explicit anon denial
-CREATE POLICY "Deny all anonymous access to profiles"
+CREATE POLICY "Deny anonymous access to profiles"
   ON public.profiles
   FOR ALL
   TO anon
@@ -92,7 +92,7 @@ CREATE POLICY "Deny anonymous access to purchase_order_lines"
 -- ============================================================================
 -- Contains: access tokens, refresh tokens, merchant IDs, API scopes
 -- Note: Square connections already has authenticated-only policy, adding explicit anon denial
-CREATE POLICY "Deny all anonymous access to square_connections"
+CREATE POLICY "Deny anonymous access to square_connections"
   ON public.square_connections
   FOR ALL
   TO anon
@@ -271,6 +271,21 @@ CREATE POLICY "Deny anonymous access to square_team_members"
 
 CREATE POLICY "Deny anonymous access to square_shifts"
   ON public.square_shifts
+  FOR ALL
+  TO anon
+  USING (false)
+  WITH CHECK (false);
+
+-- Unified sales table
+CREATE POLICY "Deny anonymous access to unified_sales"
+  ON public.unified_sales
+  FOR ALL
+  TO anon
+  USING (false)
+  WITH CHECK (false);
+
+CREATE POLICY "Deny anonymous access to unified_sales_splits"
+  ON public.unified_sales_splits
   FOR ALL
   TO anon
   USING (false)

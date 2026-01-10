@@ -1,7 +1,8 @@
 -- Tests for RLS anonymous access denial policies
 -- Verifies that all sensitive tables have explicit policies denying anonymous access
+-- Also verifies no risky USING (true) policies exist
 BEGIN;
-SELECT plan(40);
+SELECT plan(41);
 
 -- Helper function to check if a table has RLS enabled
 CREATE OR REPLACE FUNCTION has_rls_enabled(schema_name text, table_name text)
@@ -244,6 +245,29 @@ SELECT ok(
 SELECT ok(
   has_anon_denial_policy('square_shifts'),
   'square_shifts should have anonymous access denial policy'
+);
+
+-- ============================================================================
+-- TEST CATEGORY 4: Verify No Risky USING (true) Policies
+-- ============================================================================
+
+-- Check that critical tables don't have USING (true) policies for authenticated users
+SELECT is(
+  (SELECT COUNT(*)::int
+   FROM pg_policies
+   WHERE schemaname = 'public'
+   AND qual = 'true'
+   AND roles @> ARRAY['authenticated']
+   AND tablename IN (
+     'employees', 'customers', 'bank_transactions', 'time_punches',
+     'employee_compensation_history', 'purchase_orders', 'square_connections',
+     'unified_sales', 'invoices', 'profiles'
+   )
+   AND policyname NOT LIKE '%service_role%'
+   AND policyname NOT LIKE '%Service role%'
+  ),
+  0,
+  'Critical tables should not have USING (true) policies for authenticated users'
 );
 
 -- Cleanup helper functions

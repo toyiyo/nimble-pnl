@@ -143,7 +143,6 @@ test.describe('Complete Payroll Journey', () => {
     await dialog.getByLabel(/hourly rate/i).fill(hourlyEmployee.hourlyRate);
     await dialog.getByRole('button', { name: /add employee|save/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
 
     // 1.2: Create salaried employee
     await page.getByRole('button', { name: /add employee/i }).first().click();
@@ -183,7 +182,6 @@ test.describe('Complete Payroll Journey', () => {
     
     await dialog.getByRole('button', { name: /add employee|save/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
 
     // 1.3: Create contractor
     await page.getByRole('button', { name: /add employee/i }).first().click();
@@ -223,14 +221,13 @@ test.describe('Complete Payroll Journey', () => {
     
     await dialog.getByRole('button', { name: /add employee|save/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
 
     // Scheduling view may hide employees without shifts; verify on payroll page
     await page.goto('/payroll', { waitUntil: 'networkidle' });
-    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(hourlyEmployee.name).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(salaryEmployee.name).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(contractor.name).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(hourlyEmployee.name).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(salaryEmployee.name).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(contractor.name).first()).toBeVisible({ timeout: 5000 });
 
     // ============================================================================
     // Step 2: View in Dashboard
@@ -418,7 +415,6 @@ test.describe('Complete Payroll Journey', () => {
     
     await dialog.getByRole('button', { name: /add employee|save/i }).click();
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
 
     // Create a shift so the employee appears in the schedule table for editing
     await page.getByRole('button', { name: /create shift/i }).first().click();
@@ -441,7 +437,6 @@ test.describe('Complete Payroll Journey', () => {
     await shiftDialog.getByLabel(/end.*time/i).fill(endTimeString);
     await shiftDialog.getByRole('button', { name: /save|create/i }).click();
     await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
 
     // ============================================================================
     // Edit employee to set termination date
@@ -478,16 +473,15 @@ test.describe('Complete Payroll Journey', () => {
     // Save changes
     await dialog.getByRole('button', { name: /update|save/i }).click();
     
-    // Wait for save operation to complete
-    await page.waitForTimeout(2000);
+    // Wait for dialog to close or check for success message
+    await expect(dialog).not.toBeVisible({ timeout: 8000 }).catch(() => {});
     
-    // Dialog may stay open if there are validation errors, but we'll continue anyway
-    // The termination should still be saved    // ============================================================================
+    // ============================================================================
     // Verify: Navigate to payroll and check terminated employee
     // ============================================================================
     
   await page.goto('/payroll');
-  await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });    // Check if terminated employees are visible (they may be filtered or shown with status badge)
+  await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 8000 });    // Check if terminated employees are visible (they may be filtered or shown with status badge)
     // Try to find the employee name anywhere on the page first
     const employeeText = page.getByText(employeeName);
     if (await employeeText.isVisible().catch(() => false)) {

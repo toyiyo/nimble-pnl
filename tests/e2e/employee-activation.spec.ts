@@ -289,7 +289,11 @@ test.describe('Employee Activation/Deactivation', () => {
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
     if (await inactiveTab.isVisible().catch(() => false)) {
       await inactiveTab.click();
-      await page.waitForTimeout(1000); // Wait for tab content to load
+      // Wait for tab content by checking for employee name
+      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
+    } else {
+      // If no tab, just check employee is visible
+      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
     }
 
     // === TEST: Find inactive employee card ===
@@ -354,7 +358,11 @@ test.describe('Employee Activation/Deactivation', () => {
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
     if (await inactiveTab.isVisible().catch(() => false)) {
       await inactiveTab.click();
-      await page.waitForTimeout(1000); // Wait for tab content to load
+      // Wait for tab content by checking for employee name
+      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
+    } else {
+      // If no tab, just check employee is visible
+      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
     }
 
   // === TEST: Open inactive employee profile ===

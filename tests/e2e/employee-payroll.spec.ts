@@ -89,7 +89,6 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
     }
     await dialogExisting.getByRole('button', { name: /create|add|save/i }).click();
     await expect(dialogExisting).not.toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(500);
     return;
   }
 
@@ -108,7 +107,7 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   }
 
   // Ensure signup fields are visible
-  await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
+  await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 8000 });
 
   // Fill signup form
   await page.getByLabel(/email/i).first().fill(testUser.email);
@@ -119,11 +118,11 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   await page.getByRole('button', { name: /sign up|create account/i }).click();
 
   // Wait for redirect (local Supabase auto-confirms email)
-  await page.waitForURL('/', { timeout: 15000 });
+  await page.waitForURL('/', { timeout: 10000 });
 
   // For a new user, should see "Add Restaurant" button
   const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
+  await expect(addRestaurantButton).toBeVisible({ timeout: 8000 });
   await addRestaurantButton.click();
 
   // Fill restaurant creation form
@@ -317,8 +316,7 @@ test.describe('Employee Payroll - Happy Paths', () => {
       // Verify employee was created
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-      // Wait for toast and verify employee appears
-      await page.waitForTimeout(500);
+      // Verify employee appears
       await expect(page.getByText(employee.name).first()).toBeVisible({ timeout: 5000 });
     });
 
@@ -401,8 +399,7 @@ test.describe('Employee Payroll - Happy Paths', () => {
       // Verify employee was created
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-      // Wait for toast and verify employee appears
-      await page.waitForTimeout(500);
+      // Verify employee appears
       await expect(page.getByText(employee.name).first()).toBeVisible({ timeout: 5000 });
     });
 
@@ -411,7 +408,7 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // Create contractor
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 8000 });
 
       await page.getByRole('button', { name: /add employee/i }).first().click();
       const dialog = page.getByRole('dialog');
@@ -539,7 +536,7 @@ test.describe('Payroll Page Functionality', () => {
     await signUpAndCreateRestaurant(page, testUser);
 
     await page.goto('/payroll');
-    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 8000 });
 
     // The date badge shows format like "Dec 1 - Dec 7, 2024" and has outline variant
     // Find the badge with date format (contains month abbreviation and hyphen)
@@ -549,10 +546,8 @@ test.describe('Payroll Page Functionality', () => {
     // Click previous period
     await page.getByRole('button', { name: /previous/i }).click();
     
-    // Wait for page to update
-    await page.waitForTimeout(500);
-    
-    // Date should have changed
+    // Wait for date to update by checking it changed
+    await expect(dateBadge).not.toHaveText(initialText || '', { timeout: 3000 });
     const newText = await dateBadge.textContent();
     expect(newText).not.toBe(initialText);
   });
@@ -584,7 +579,7 @@ test.describe('Per-Job Contractor Manual Payments', () => {
   test('can create per-job contractor and add manual payment', async ({ page }) => {
     // Step 1: Create a per-job contractor on scheduling page
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 8000 });
 
     await page.getByRole('button', { name: /add employee/i }).first().click();
     const employeeDialog = page.getByRole('dialog');
@@ -764,10 +759,7 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       await page.goto('/employees');
       
       // Wait for page to load - check for the employee list card instead of hidden heading
-      await expect(page.getByText(/manage your restaurant staff/i)).toBeVisible({ timeout: 10000 });
-
-      // Wait for employee list to load
-      await page.waitForTimeout(1000);
+      await expect(page.getByText(/manage your restaurant staff/i)).toBeVisible({ timeout: 8000 });
 
       // Find employee card and click "Deactivate" button (dedicated action for status change)
       // The UI has separate Edit and Deactivate buttons to handle status changes properly
@@ -791,14 +783,11 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       await deactivateDialog.getByRole('button', { name: /deactivate|confirm|save/i }).click();
       
       // Wait for dialog to close
-      await expect(deactivateDialog).not.toBeVisible({ timeout: 10000 });
-
-      // Wait for update to propagate
-      await page.waitForTimeout(1500);
+      await expect(deactivateDialog).not.toBeVisible({ timeout: 8000 });
 
       // Step 4: Go back to payroll to verify inactive employee still appears
       await page.goto('/payroll');
-      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 8000 });
 
       // CRITICAL TEST - Verify employee STILL appears in payroll after deactivation
       // The deactivated employee should STILL appear in payroll with their data
@@ -859,9 +848,6 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       await shiftDialog.getByRole('button', { name: /save|create/i }).click();
       await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
-
-      // Verify shift appears
-      await page.waitForTimeout(1000);
 
       // Note the labor cost before deactivation
       const laborCostCard = page.getByText(/labor cost/i).first();

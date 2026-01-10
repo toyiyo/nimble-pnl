@@ -9,11 +9,11 @@ export default defineConfig({
   fullyParallel: true, // Enable parallel execution - tests use unique timestamps for isolation
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Allow overriding worker count via PLAYWRIGHT_WORKERS; default to 10 locally and 2 in CI for safety
+  // Allow overriding worker count via PLAYWRIGHT_WORKERS; increase to 4 in CI for faster execution
   workers: process.env.PLAYWRIGHT_WORKERS
     ? Number(process.env.PLAYWRIGHT_WORKERS)
     : process.env.CI
-      ? 2
+      ? 4
       : 2,
   reporter: 'html',
   
@@ -34,7 +34,7 @@ export default defineConfig({
       name: 'e2e',
       testMatch: ['**/e2e/**/*.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
-      timeout: 300000, // 5 minutes for complex e2e tests
+      timeout: 90000, // 90 seconds for e2e tests (optimized)
     },
   ],
 
@@ -42,6 +42,6 @@ export default defineConfig({
     command: 'npm run dev -- --host 127.0.0.1 --port 4173',
     url: 'http://localhost:4173',
     reuseExistingServer: !process.env.CI,
-    timeout: 180000, // Increased to 3 minutes for CI
+    timeout: 90000, // 90 seconds for server startup
   },
 });

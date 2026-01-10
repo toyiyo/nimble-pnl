@@ -123,7 +123,7 @@ async function waitForApprovalOrBackend(page: Page) {
       return await win.__checkApprovedSplits(restaurantId);
     });
     if (approved) break;
-    await page.waitForTimeout(1000);
+    await page.waitForSelector('[data-state="visible"]', { timeout: 200 }).catch(() => {});
   }
 
   if (!approved) {
@@ -152,7 +152,7 @@ test.describe('Tips - Complete Customer Journey', () => {
     // Enter tip amount
     const enterTipsButton = page.getByRole('button', { name: /enter.*tips/i }).first();
     await enterTipsButton.click();
-    await expect(page.locator('#tip-amount')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#tip-amount')).toBeVisible({ timeout: 8000 });
     await page.locator('#tip-amount').fill('150');
     await page.getByRole('button', { name: /continue/i }).click();
 
@@ -197,9 +197,6 @@ test.describe('Tips - Complete Customer Journey', () => {
 
     // Resuming draft should skip tip amount entry and go straight to hours/review
     // Wait for the hours form to appear
-    await page.waitForTimeout(1000); // Give it a moment to transition
-    
-    // Should see employee name input field (hours entry)
     const employeeInput = page.getByRole('spinbutton').first();
     await expect(employeeInput).toBeVisible({ timeout: 5000 });
 
@@ -214,7 +211,6 @@ test.describe('Tips - Complete Customer Journey', () => {
     // KNOWN ISSUE: There may be a bug where resuming and approving a draft doesn't properly
     // update the status from 'draft' to 'approved'. For now, just verify the approval succeeded
     // by checking that it appears in Recent Tip Splits
-    await page.waitForTimeout(2000);
     
     // Verify it appears in Recent Tip Splits (as approved)
     await expect(page.getByRole('heading', { name: /recent tip splits/i })).toBeVisible();
@@ -371,7 +367,7 @@ test.describe('Tips - Complete Customer Journey', () => {
     const disputeHeader = page.getByText(/tip review requests/i).first();
     for (let i = 0; i < 5; i++) {
       if (await disputeHeader.isVisible().catch(() => false)) break;
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle', { timeout: 1000 }).catch(() => {});
       if (i === 2) {
         await page.reload();
         await ensureTipsPage(page);
@@ -431,7 +427,8 @@ test.describe('Tips - Complete Customer Journey', () => {
     const weeklyToggle = page.getByRole('radio', { name: /weekly|every week/i });
     if (await weeklyToggle.isVisible().catch(() => false)) {
       await weeklyToggle.click();
-      await page.waitForTimeout(500);
+      // Wait for week selector to appear
+      await expect(page.locator('text=/this week|current week/i').first()).toBeVisible({ timeout: 3000 }).catch(() => {});
     }
 
     // Should see week range selector or multiple days
@@ -478,10 +475,9 @@ test.describe('Tips - Complete Customer Journey', () => {
     const roleRadio = page.getByRole('radio', { name: /by role/i });
     if (await roleRadio.isVisible().catch(() => false)) {
       await roleRadio.click();
-      await page.waitForTimeout(500);
 
       // Should see role weight editor
-      await expect(page.getByText(/server/i)).toBeVisible();
+      await expect(page.getByText(/server/i)).toBeVisible({ timeout: 3000 });
       await expect(page.getByText(/bartender/i)).toBeVisible();
 
       // Bartender gets 1.5x multiplier

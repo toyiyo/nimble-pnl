@@ -297,14 +297,20 @@ const Payroll = () => {
                 <input
                   type="date"
                   value={format(customStartDate, 'yyyy-MM-dd')}
-                  onChange={(e) => setCustomStartDate(new Date(e.target.value))}
+                  onChange={(e) => {
+                    const [year, month, day] = e.target.value.split('-').map(Number);
+                    setCustomStartDate(new Date(year, month - 1, day));
+                  }}
                   className="px-3 py-2 border rounded-md"
                 />
                 <span>to</span>
                 <input
                   type="date"
                   value={format(customEndDate, 'yyyy-MM-dd')}
-                  onChange={(e) => setCustomEndDate(new Date(e.target.value))}
+                  onChange={(e) => {
+                    const [year, month, day] = e.target.value.split('-').map(Number);
+                    setCustomEndDate(new Date(year, month - 1, day));
+                  }}
                   className="px-3 py-2 border rounded-md"
                 />
               </>

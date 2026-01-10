@@ -482,6 +482,51 @@ const TimePunchesManager = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    if (filteredPunches.length === 0) {
+      toast({
+        title: 'Nothing to export',
+        description: 'No time punches found for the selected period.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location'];
+    const rows = filteredPunches.map((punch) => {
+      const punchDate = new Date(punch.punch_time);
+      return [
+        punch.employee?.name || 'Unknown',
+        punch.employee?.position || '',
+        punch.punch_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        format(punchDate, 'yyyy-MM-dd'),
+        format(punchDate, 'HH:mm:ss'),
+        punch.notes?.replace(/"/g, '""') || '',
+        punch.location ? `${punch.location.latitude},${punch.location.longitude}` : '',
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `time-punches-${format(dateRange.start, 'yyyy-MM-dd')}-to-${format(dateRange.end, 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'Export complete',
+      description: `Exported ${filteredPunches.length} time punch${filteredPunches.length === 1 ? '' : 'es'}.`,
+    });
+  };
+
   const totalWeekHours = todaySessions.reduce((sum, session) => sum + session.worked_minutes / 60, 0);
 
   if (!restaurantId) {
@@ -535,7 +580,7 @@ const TimePunchesManager = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" className="hidden md:flex" aria-label="Export data">
+            <Button variant="outline" size="icon" className="hidden md:flex" aria-label="Export data" onClick={handleExportCSV}>
               <Download className="h-4 w-4" />
             </Button>
           </div>

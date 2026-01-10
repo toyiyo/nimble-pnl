@@ -478,6 +478,11 @@ export function calculateActualLaborCost(
   });
 
   // Calculate costs for each date
+  // For hourly employees: only count days they have time punches
+  // For salary/contractor employees: they get paid for the period regardless of time punches
+  //   (same logic as payrollCalculations.ts calculatePayrollPeriod)
+  
+  // First, handle hourly employees based on their time punches
   dateStrings.forEach(dateStr => {
     const dayData = dateMap.get(dateStr);
     if (!dayData) {
@@ -497,34 +502,64 @@ export function calculateActualLaborCost(
       const employeeHours = hoursPerEmployeePerDay.get(empId);
       const hoursWorked = employeeHours?.get(dateStr) || 0;
 
-      switch (effectiveEmployee.compensation_type) {
-        case 'hourly': {
-          if (hoursWorked > 0) {
-            const hourlyCost = calculateEmployeeDailyCostForDate(employee, dateStr, hoursWorked) / 100; // Convert to dollars
-            dayData.hourly_cost += hourlyCost;
-            dayData.hours_worked += hoursWorked;
-            dayData.total_cost += hourlyCost;
-          }
-          break;
-        }
-
-        case 'salary': {
-          const salaryCost = calculateEmployeeDailyCostForDate(employee, dateStr) / 100; // Convert to dollars
-          dayData.salary_cost += salaryCost;
-          dayData.total_cost += salaryCost;
-          break;
-        }
-
-        case 'contractor': {
-          if (effectiveEmployee.contractor_payment_interval !== 'per-job') {
-            const contractorCost = calculateEmployeeDailyCostForDate(employee, dateStr) / 100; // Convert to dollars
-            dayData.contractor_cost += contractorCost;
-            dayData.total_cost += contractorCost;
-          }
-          break;
-        }
+      // Only handle hourly employees here - salary/contractor handled below for full period
+      if (effectiveEmployee.compensation_type === 'hourly' && hoursWorked > 0) {
+        const hourlyCost = calculateEmployeeDailyCostForDate(employee, dateStr, hoursWorked) / 100; // Convert to dollars
+        dayData.hourly_cost += hourlyCost;
+        dayData.hours_worked += hoursWorked;
+        dayData.total_cost += hourlyCost;
       }
     });
+  });
+
+  // Handle salary employees: they get paid for the entire period regardless of time punches
+  // Use the same logic as payrollCalculations.ts - call calculateSalaryForPeriod once per employee
+  const salaryEmployees = employees.filter(e => 
+    e.compensation_type === 'salary' && e.status === 'active'
+  );
+  
+  salaryEmployees.forEach(employee => {
+    // Calculate total salary for the period (same as payroll)
+    const periodCost = calculateSalaryForPeriod(employee, startDate, endDate) / 100; // Convert to dollars
+    
+    if (periodCost > 0 && dateStrings.length > 0) {
+      // Distribute the period cost evenly across all days in the range for reporting
+      const dailyAllocation = periodCost / dateStrings.length;
+      
+      dateStrings.forEach(dateStr => {
+        const dayData = dateMap.get(dateStr);
+        if (dayData) {
+          dayData.salary_cost += dailyAllocation;
+          dayData.total_cost += dailyAllocation;
+        }
+      });
+    }
+  });
+
+  // Handle contractor employees: they get paid for the entire period regardless of time punches
+  // (except per-job contractors which are handled via manual payments)
+  const contractorEmployees = employees.filter(e => 
+    e.compensation_type === 'contractor' && 
+    e.status === 'active' &&
+    e.contractor_payment_interval !== 'per-job'
+  );
+  
+  contractorEmployees.forEach(employee => {
+    // Calculate total contractor pay for the period (same as payroll)
+    const periodCost = calculateContractorPayForPeriod(employee, startDate, endDate) / 100; // Convert to dollars
+    
+    if (periodCost > 0 && dateStrings.length > 0) {
+      // Distribute the period cost evenly across all days in the range for reporting
+      const dailyAllocation = periodCost / dateStrings.length;
+      
+      dateStrings.forEach(dateStr => {
+        const dayData = dateMap.get(dateStr);
+        if (dayData) {
+          dayData.contractor_cost += dailyAllocation;
+          dayData.total_cost += dailyAllocation;
+        }
+      });
+    }
   });
 
   const dailyCosts = Array.from(dateMap.values()).sort((a, b) => 

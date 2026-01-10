@@ -377,7 +377,7 @@ export const useReceiptImport = () => {
 
     if (matchedProductIds.length === 0) return lineItems;
 
-    // Fetch matched products with size info (using existing columns)
+    // Fetch matched products with size info (uom_purchase = package type)
     const { data: matchedProducts, error } = await supabase
       .from('products')
       .select('id, size_value, size_unit, uom_purchase')
@@ -407,6 +407,7 @@ export const useReceiptImport = () => {
       if (!item.size_unit && matchedProduct.size_unit) {
         enrichedItem.suggested_size_unit = matchedProduct.size_unit;
       }
+      // uom_purchase in products table serves as the package type
       if (!item.package_type && matchedProduct.uom_purchase) {
         enrichedItem.suggested_package_type = matchedProduct.uom_purchase;
       }

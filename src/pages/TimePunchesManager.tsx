@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Trash2, Edit, Download, Search, Camera, MapPin, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, BarChart3, List, Code, KeyRound, PenLine, Settings2
+  LayoutGrid, List, Code, KeyRound, PenLine, Settings2
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -47,7 +47,6 @@ import { KIOSK_POLICY_KEY, generateNumericPin, loadFromStorage, saveToStorage, i
 import { Employee } from '@/types/scheduling';
 import { useKioskServiceAccount } from '@/hooks/useKioskServiceAccount';
 import {
-  TimelineGanttView,
   EmployeeCardView,
   BarcodeStripeView,
   PunchStreamView,
@@ -60,7 +59,7 @@ import { StatusSummary, KioskModeCard, EmployeePinsCard } from '@/components/tim
 const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000;
 
 type ViewMode = 'day' | 'week' | 'month';
-type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt' | 'manual';
+type VisualizationMode = 'manual' | 'cards' | 'barcode' | 'stream' | 'receipt';
 
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -73,7 +72,7 @@ const TimePunchesManager = () => {
   const upsertPin = useUpsertEmployeePin();
 
   const [viewMode, setViewMode] = useState<ViewMode>('day');
-  const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('gantt');
+  const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('manual');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -569,13 +568,13 @@ const TimePunchesManager = () => {
         </CardContent>
       </Card>
 
-      {/* Visualization Tabs - Default to Timeline/Gantt */}
+      {/* Visualization Tabs - Default to Manual */}
       <Tabs value={visualizationMode} onValueChange={(v) => setVisualizationMode(v as VisualizationMode)}>
         <div className="flex items-center justify-between mb-4">
           <TabsList>
-            <TabsTrigger value="gantt" className="gap-2">
-              <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Timeline</span>
+            <TabsTrigger value="manual" className="gap-2">
+              <PenLine className="h-4 w-4" />
+              <span className="hidden sm:inline">Manual</span>
             </TabsTrigger>
             <TabsTrigger value="cards" className="gap-2">
               <LayoutGrid className="h-4 w-4" />
@@ -593,19 +592,38 @@ const TimePunchesManager = () => {
               <TableIcon className="h-4 w-4" />
               <span className="hidden sm:inline">Receipt</span>
             </TabsTrigger>
-            <TabsTrigger value="manual" className="gap-2">
-              <PenLine className="h-4 w-4" />
-              <span className="hidden sm:inline">Manual</span>
-            </TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="gantt" className="mt-0">
-          <TimelineGanttView
-            sessions={todaySessions}
-            loading={loading}
-            date={currentDate}
-          />
+        <TabsContent value="manual" className="mt-0">
+          {viewMode === 'day' ? (
+            <>
+              <div className="hidden md:block">
+                <ManualTimelineEditor
+                  employees={employees}
+                  date={currentDate}
+                  existingPunches={filteredPunches}
+                  loading={loading}
+                  restaurantId={restaurantId || ''}
+                />
+              </div>
+              <div className="block md:hidden">
+                <MobileTimeEntry
+                  employees={employees}
+                  date={currentDate}
+                  restaurantId={restaurantId || ''}
+                />
+              </div>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">
+                  Manual time entry is only available in day view.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="cards" className="mt-0">
@@ -651,36 +669,6 @@ const TimePunchesManager = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="manual" className="mt-0">
-          {viewMode === 'day' ? (
-            <>
-              <div className="hidden md:block">
-                <ManualTimelineEditor
-                  employees={employees}
-                  date={currentDate}
-                  existingPunches={filteredPunches}
-                  loading={loading}
-                  restaurantId={restaurantId || ''}
-                />
-              </div>
-              <div className="block md:hidden">
-                <MobileTimeEntry
-                  employees={employees}
-                  date={currentDate}
-                  restaurantId={restaurantId || ''}
-                />
-              </div>
-            </>
-          ) : (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">
-                  Manual time entry is only available in day view.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
       </Tabs>
 
       {/* Collapsible Punch List */}

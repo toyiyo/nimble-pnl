@@ -91,8 +91,7 @@ test.describe.skip('Tip Split Reopen Feature', () => {
       await expect(page.locator('text=/Split reopened/i')).toBeVisible({ timeout: 5000 });
       
       // Verify split status changed to Draft (should show "Draft" badge)
-      await page.waitForTimeout(1000); // Wait for UI update
-      await expect(page.locator('text=/Draft/i').first()).toBeVisible();
+      await expect(page.locator('text=/Draft/i').first()).toBeVisible({ timeout: 3000 });
     }
   });
 
@@ -128,7 +127,8 @@ test.describe.skip('Tip Split Reopen Feature', () => {
       const viewButton = approvedSplit.locator('button:has-text("View Details")');
       if (await viewButton.count() > 0) {
         await viewButton.click();
-        await page.waitForTimeout(500);
+        // Wait for dialog to open
+        await expect(page.locator('div:has-text("created"), div:has-text("approved")').first()).toBeVisible({ timeout: 3000 }).catch(() => {});
         
         // Check for audit entries (created, approved actions)
         const auditEntries = page.locator('div:has-text("created"), div:has-text("approved")');
@@ -208,7 +208,6 @@ test.describe.skip('Tip Split Reopen Feature', () => {
     const reopenButton = approvedSplit.locator('button:has-text("Reopen")');
     await reopenButton.click();
     await expect(page.locator('text=/Split reopened/i')).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(1000);
 
     const auditAfter = await page.evaluate(async (tipSplitId: string) => {
       const { supabase } = await import('@/integrations/supabase/client');
@@ -248,7 +247,8 @@ test.describe.skip('Tip Split Reopen Feature', () => {
       const viewButton = split.locator('button:has-text("View Details")');
       if (await viewButton.count() > 0) {
         await viewButton.click();
-        await page.waitForTimeout(500);
+        // Wait for email pattern to be visible
+        await expect(page.locator('text=/@/').first()).toBeVisible({ timeout: 3000 }).catch(() => {});
         
         // Check for email pattern (user@domain.com)
         const emailPattern = page.locator('text=/@/');
@@ -270,10 +270,9 @@ test.describe.skip('Tip Split Reopen Feature', () => {
       const viewButton = split.locator('button:has-text("View Details")');
       if (await viewButton.count() > 0) {
         await viewButton.click();
-        await page.waitForTimeout(300);
         
         // Verify dialog is open
-        await expect(page.locator('text=/Audit Trail/i')).toBeVisible();
+        await expect(page.locator('text=/Audit Trail/i')).toBeVisible({ timeout: 3000 });
         
         // Press Escape
         await page.keyboard.press('Escape');
@@ -296,8 +295,8 @@ test.describe.skip('Tip Split Reopen Feature', () => {
       const reopenButton = approvedSplit.locator('button:has-text("Reopen")');
       await reopenButton.click();
       
-      // Wait for reopen
-      await page.waitForTimeout(1500);
+      // Wait for reopen to complete and draft badge to appear
+      await expect(page.locator('text=/Draft/i').first()).toBeVisible({ timeout: 5000 });
       
       // Verify draft count increased
       const draftCount = await page.locator('text=/Draft/i').count();
@@ -313,7 +312,8 @@ test.describe.skip('Tip Split Reopen Feature', () => {
     
     if (await approvedSplit.count() > 0) {
       await approvedSplit.locator('button:has-text("Reopen")').click();
-      await page.waitForTimeout(1500);
+      // Wait for draft badge to appear
+      await expect(page.locator('text=/Draft/i').first()).toBeVisible({ timeout: 5000 });
       
       // Find the draft (now showing as Draft)
       const draftSplit = page.locator('div:has-text("Draft")').first();

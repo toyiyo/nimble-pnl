@@ -58,7 +58,7 @@ async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
   await page.getByRole('button', { name: /sign up|create account/i }).click();
 
   const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 40000 });
+  await expect(addRestaurantButton).toBeVisible({ timeout: 15000 });
   await addRestaurantButton.click();
 
   const dialog = page.getByRole('dialog');
@@ -242,8 +242,8 @@ test.describe('Bank Transaction Filtering', () => {
     // Apply filters
     await filterSheet.getByRole('button', { name: /apply filters/i }).click();
 
-    // Wait for filter to apply and transactions to reload
-    await page.waitForTimeout(1000);
+    // Wait for sheet to close and filter to apply
+    await expect(filterSheet).not.toBeVisible({ timeout: 3000 });
 
     // Verify only 2 checking transactions are visible
     const filteredRows = page.locator('[data-testid="bank-transaction-row"]');
@@ -272,8 +272,8 @@ test.describe('Bank Transaction Filtering', () => {
     await savingsOption.click();
     await filterSheet.getByRole('button', { name: /apply filters/i }).click();
 
-    // Wait for filter to apply
-    await page.waitForTimeout(1000);
+    // Wait for sheet to close
+    await expect(filterSheet).not.toBeVisible({ timeout: 3000 });
 
     // Verify only 2 savings transactions are visible
     await expect(filteredRows).toHaveCount(2, { timeout: 5000 });
@@ -296,8 +296,9 @@ test.describe('Bank Transaction Filtering', () => {
     await expect(filterSheet).toBeVisible();
     await filterSheet.getByRole('button', { name: /clear all filters/i }).click();
 
-    // Wait for filter to clear
-    await page.waitForTimeout(1000);
+    // Close the filter sheet by clicking outside or pressing Escape
+    await page.keyboard.press('Escape');
+    await expect(filterSheet).not.toBeVisible({ timeout: 3000 });
 
     // Verify all 4 transactions are visible again
     await expect(allRows).toHaveCount(4, { timeout: 5000 });
@@ -407,8 +408,8 @@ test.describe('Bank Transaction Filtering', () => {
     await accountOption.click();
     await filterSheet.getByRole('button', { name: /apply filters/i }).click();
 
-    // Wait for query to execute
-    await page.waitForTimeout(2000);
+    // Wait for sheet to close
+    await expect(filterSheet).not.toBeVisible({ timeout: 3000 });
 
     // Verify no "query.order is not a function" errors occurred
     const orderErrors = consoleErrors.filter(err => err.includes('.order is not a function'));
@@ -482,7 +483,8 @@ test.describe('Bank Transaction Filtering', () => {
     await emptyOption.click();
     await filterSheet.getByRole('button', { name: /apply filters/i }).click();
 
-    await page.waitForTimeout(1000);
+    // Wait for sheet to close
+    await expect(filterSheet).not.toBeVisible({ timeout: 3000 });
 
     // Verify empty state is displayed
     await expect(page.getByText(/no transactions match your filters/i)).toBeVisible({ timeout: 5000 });

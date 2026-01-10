@@ -32,37 +32,40 @@ import type { TimePunch } from '@/types/timeTracking';
 // ============================================================================
 
 /**
- * Format a date as YYYY-MM-DD using UTC components to avoid timezone issues
+ * Format a date as YYYY-MM-DD in the user's local timezone.
+ *
+ * IMPORTANT: This must match Payroll's day-bucketing (payrollCalculations.ts)
+ * so period totals and monthly aggregation stay consistent.
  */
 function formatDateUTC(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
 /**
  * Generate an array of date strings in YYYY-MM-DD format for the inclusive range.
- * Works entirely in UTC to avoid timezone issues.
+ * Uses local day boundaries (matches Payroll + Dashboard UI expectations).
  */
 function generateDateRange(startDate: Date, endDate: Date): string[] {
   const dates: string[] = [];
-  const current = new Date(Date.UTC(
-    startDate.getUTCFullYear(),
-    startDate.getUTCMonth(),
-    startDate.getUTCDate()
-  ));
-  const end = new Date(Date.UTC(
-    endDate.getUTCFullYear(),
-    endDate.getUTCMonth(),
-    endDate.getUTCDate()
-  ));
-  
+  const current = new Date(
+    startDate.getFullYear(),
+    startDate.getMonth(),
+    startDate.getDate()
+  );
+  const end = new Date(
+    endDate.getFullYear(),
+    endDate.getMonth(),
+    endDate.getDate()
+  );
+
   while (current <= end) {
     dates.push(formatDateUTC(current));
-    current.setUTCDate(current.getUTCDate() + 1);
+    current.setDate(current.getDate() + 1);
   }
-  
+
   return dates;
 }
 
@@ -452,19 +455,20 @@ export function calculateActualLaborCost(
       // This handles overnight shifts where work spans multiple days
       const startTimestamp = new Date(period.startTime);
       const endTimestamp = new Date(period.endTime);
-      const periodStart = new Date(Date.UTC(
-        startTimestamp.getUTCFullYear(),
-        startTimestamp.getUTCMonth(),
-        startTimestamp.getUTCDate()
-      ));
-      const periodEnd = new Date(Date.UTC(
-        endTimestamp.getUTCFullYear(),
-        endTimestamp.getUTCMonth(),
-        endTimestamp.getUTCDate()
-      ));
-      
-      // Add employee to active set for each day the period touches
-      for (let d = new Date(periodStart); d <= periodEnd; d.setUTCDate(d.getUTCDate() + 1)) {
+
+      const periodStart = new Date(
+        startTimestamp.getFullYear(),
+        startTimestamp.getMonth(),
+        startTimestamp.getDate()
+      );
+      const periodEnd = new Date(
+        endTimestamp.getFullYear(),
+        endTimestamp.getMonth(),
+        endTimestamp.getDate()
+      );
+
+      // Add employee to active set for each LOCAL day the period touches
+      for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
         const dateStr = formatDateUTC(d);
         if (!employeesActivePerDay.has(dateStr)) {
           employeesActivePerDay.set(dateStr, new Set());

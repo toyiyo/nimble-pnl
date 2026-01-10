@@ -61,6 +61,27 @@ export async function exposeSupabaseHelpers(page: Page) {
       return data;
     };
 
+    (window as any).__insertTimePunches = async (punches: any[], restaurantId: string) => {
+      const payload = punches.map(punch => ({
+        id: crypto.randomUUID(),
+        created_at: punch.created_at || punch.punch_time || new Date().toISOString(),
+        updated_at: punch.updated_at || punch.punch_time || new Date().toISOString(),
+        ...punch,
+        restaurant_id: restaurantId,
+      }));
+
+      const { data, error } = await supabase
+        .from('time_punches')
+        .insert(payload)
+        .select();
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      return data;
+    };
+
     (window as any).__checkApprovedSplits = async (restaurantId: string): Promise<boolean> => {
       const { count, error } = await supabase
         .from('tip_splits')

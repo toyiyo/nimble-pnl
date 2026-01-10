@@ -178,6 +178,145 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
     });
   });
 
+  describe('Salary and contractor inclusion without time punches', () => {
+    const baseDates = {
+      start: new Date(2026, 0, 4),
+      end: new Date(2026, 0, 10, 23, 59, 59),
+    };
+
+    const salaryEmployee: Employee = {
+      id: 'emp-salary-1',
+      restaurant_id: 'rest-1',
+      name: 'Salary No Punches',
+      position: 'Manager',
+      status: 'active',
+      is_active: true,
+      compensation_type: 'salary',
+      hourly_rate: 0,
+      salary_amount: 70000, // $700/week ⇒ $100/day
+      pay_period_type: 'weekly',
+      contractor_payment_amount: undefined,
+      contractor_payment_interval: undefined,
+      hire_date: '2026-01-01',
+      termination_date: undefined,
+      tip_eligible: false,
+      requires_time_punch: false,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+
+    const contractorEmployee: Employee = {
+      id: 'emp-contractor-1',
+      restaurant_id: 'rest-1',
+      name: 'Contractor No Punches',
+      position: 'Consultant',
+      status: 'active',
+      is_active: true,
+      compensation_type: 'contractor',
+      hourly_rate: 0,
+      contractor_payment_amount: 35000, // $350/week ⇒ $50/day
+      contractor_payment_interval: 'weekly',
+      salary_amount: undefined,
+      pay_period_type: undefined,
+      hire_date: '2026-01-01',
+      termination_date: undefined,
+      tip_eligible: false,
+      requires_time_punch: false,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+
+    it('includes salaried employees even when they have no time punches', () => {
+      const dashboardResult = calculateActualLaborCost(
+        [salaryEmployee],
+        [],
+        baseDates.start,
+        baseDates.end
+      );
+
+      const payrollResult = calculateEmployeePay(
+        salaryEmployee,
+        [],
+        0,
+        baseDates.start,
+        baseDates.end
+      );
+
+      expect(dashboardResult.breakdown.salary.cost).toBeCloseTo(700, 2);
+      expect(dashboardResult.breakdown.total).toBeCloseTo(700, 2);
+      expect(payrollResult.salaryPay / 100).toBeCloseTo(700, 2);
+
+      // Salary should be distributed evenly across the selected days (7 days)
+      dashboardResult.dailyCosts.forEach((day) => {
+        if (day.date >= '2026-01-04' && day.date <= '2026-01-10') {
+          expect(day.salary_cost).toBeCloseTo(100, 2);
+        }
+      });
+    });
+
+    it('includes contractors (non per-job) even without time punches', () => {
+      const dashboardResult = calculateActualLaborCost(
+        [contractorEmployee],
+        [],
+        baseDates.start,
+        baseDates.end
+      );
+
+      const payrollResult = calculateEmployeePay(
+        contractorEmployee,
+        [],
+        0,
+        baseDates.start,
+        baseDates.end
+      );
+
+      expect(dashboardResult.breakdown.contractor.cost).toBeCloseTo(350, 2);
+      expect(dashboardResult.breakdown.total).toBeCloseTo(350, 2);
+      expect(payrollResult.contractorPay / 100).toBeCloseTo(350, 2);
+
+      const expectedDaily = 350 / 7;
+      dashboardResult.dailyCosts.forEach((day) => {
+        if (day.date >= '2026-01-04' && day.date <= '2026-01-10') {
+          expect(day.contractor_cost).toBeCloseTo(expectedDaily, 2);
+        }
+      });
+    });
+
+    it('respects termination dates when allocating salary across the period', () => {
+      const terminatedSalary: Employee = {
+        ...salaryEmployee,
+        id: 'emp-salary-terminated',
+        termination_date: '2026-01-06',
+      };
+
+      const dashboardResult = calculateActualLaborCost(
+        [terminatedSalary],
+        [],
+        baseDates.start,
+        baseDates.end
+      );
+
+      const payrollResult = calculateEmployeePay(
+        terminatedSalary,
+        [],
+        0,
+        baseDates.start,
+        baseDates.end
+      );
+
+      // Termination on Jan 6 → pay through Jan 6 only (3 days in range)
+      expect(dashboardResult.breakdown.salary.cost).toBeCloseTo(300, 2);
+      expect(payrollResult.salaryPay / 100).toBeCloseTo(300, 2);
+
+      const perDay = 300 / dashboardResult.dailyCosts.length;
+      dashboardResult.dailyCosts.forEach((day) => {
+        if (day.date >= '2026-01-04' && day.date <= '2026-01-10') {
+          expect(day.salary_cost).toBeCloseTo(perDay, 2);
+        }
+      });
+    });
+  });
+
   describe('Multiple shifts in one week', () => {
     it('should sum all shifts correctly', () => {
       // Given: Multiple shifts across the week

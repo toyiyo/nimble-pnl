@@ -212,10 +212,6 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     handleItemUpdate(itemId, { parsed_name: name });
   };
 
-  const handleUnitChange = (itemId: string, unit: string) => {
-    handleItemUpdate(itemId, { parsed_unit: unit });
-  };
-
   const handlePackageTypeChange = (itemId: string, packageType: string) => {
     handleItemUpdate(itemId, { package_type: packageType });
   };
@@ -811,7 +807,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       id={`size-value-${item.id}`}
                       type="number"
                       defaultValue={item.size_value ?? ''}
-                      onChange={(e) => handleSizeValueChange(item.id, parseFloat(e.target.value) || 0)}
+                      onChange={(e) => handleSizeValueChange(item.id, Number.parseFloat(e.target.value) || 0)}
                       placeholder="750"
                       disabled={isImported}
                     />
@@ -848,7 +844,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   </div>
                   <div className="flex items-end">
                     <div className="text-xs text-muted-foreground pb-2">
-                      {item.size_value && item.size_unit && item.package_type && (
+                      {!!(item.size_value && item.size_unit && item.package_type) && (
                         <span className="font-medium">
                           {item.size_value} {item.size_unit} per {item.package_type}
                         </span>
@@ -883,7 +879,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   )}
                   {/* Packaging info indicator for new items with size info */}
                   {item.mapping_status === 'new_item' && 
-                   item.size_value && item.size_unit && (
+                   !!(item.size_value && item.size_unit) && (
                     <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800">
                       <div className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-300">
                         <Package className="h-3 w-3" />

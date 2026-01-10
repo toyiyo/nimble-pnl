@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Check, AlertCircle, Plus, Trash2 } from 'lucide-react';
-import { format, startOfDay, setHours, setMinutes, differenceInMinutes } from 'date-fns';
+import { format, startOfDay, setHours, setMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { formatHourToTime } from '@/lib/timeUtils';
 import { useCreateTimePunch, useUpdateTimePunch, useDeleteTimePunch } from '@/hooks/useTimePunches';

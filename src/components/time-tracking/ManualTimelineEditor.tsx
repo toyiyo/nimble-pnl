@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,7 +96,7 @@ export const ManualTimelineEditor = ({
         const punch = sortedPunches[i];
         if (punch.punch_type === 'clock_in') {
           const nextPunch = sortedPunches[i + 1];
-          if (nextPunch && nextPunch.punch_type === 'clock_out') {
+          if (nextPunch?.punch_type === 'clock_out') {
             blocks.push({
               id: `${punch.id}-${nextPunch.id}`,
               startTime: new Date(punch.punch_time),
@@ -104,7 +104,7 @@ export const ManualTimelineEditor = ({
               clockInPunchId: punch.id,
               clockOutPunchId: nextPunch.id,
             });
-            i++; // Skip the clock_out
+            i++; // Skip the clock_out - required for loop control
           }
         }
       }
@@ -388,44 +388,6 @@ export const ManualTimelineEditor = ({
     });
   }, []);
 
-  // Handle inline time input
-  const handleInlineTimeInput = useCallback((employeeId: string, input: string) => {
-    const employeeDay = employeeDays.get(employeeId);
-    if (!employeeDay) return;
-    
-    const parsed = parseTimeRange(input, date);
-    if (!parsed) {
-      toast({
-        title: 'Invalid format',
-        description: 'Try: 9-530, 9a-5:30p, or 09:00-17:30',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
-    const newBlockId = `new-${Date.now()}`;
-    setEmployeeDays(prev => {
-      const updated = new Map(prev);
-      const day = updated.get(employeeId);
-      if (day) {
-        day.blocks.push({
-          id: newBlockId,
-          startTime: parsed.start,
-          endTime: parsed.end,
-          isNew: true,
-        });
-        day.totalHours = day.blocks.reduce((sum, b) => 
-          sum + differenceInMinutes(b.endTime, b.startTime) / 60, 0
-        );
-        day.hasWarning = day.totalHours > 12;
-        updated.set(employeeId, { ...day });
-      }
-      return updated;
-    });
-    
-    triggerAutoSave(employeeId, newBlockId);
-  }, [employeeDays, date, toast, triggerAutoSave]);
-
   // Delete block
   const handleDeleteBlock = useCallback(async (employeeId: string, blockId: string) => {
     const employeeDay = employeeDays.get(employeeId);
@@ -523,7 +485,7 @@ export const ManualTimelineEditor = ({
           id: newBlockId,
           startTime,
           endTime,
-          breakMinutes: parseInt(breakInput.value) || 0,
+          breakMinutes: Number.parseInt(breakInput.value) || 0,
           notes: notesInput.value || undefined,
           isNew: true,
         });
@@ -552,8 +514,8 @@ export const ManualTimelineEditor = ({
           <CardTitle>Manual Time Entry</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
+          {Array.from({ length: 5 }, (_, i) => (
+            <Skeleton key={`skeleton-${i}`} className="h-16 w-full" />
           ))}
         </CardContent>
       </Card>
@@ -595,7 +557,17 @@ export const ManualTimelineEditor = ({
           <div className="flex-1 flex justify-between text-xs text-muted-foreground px-2">
             {Array.from({ length: 13 }, (_, i) => {
               const hour = i * 2; // 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24
-              const displayHour = hour === 0 ? '12a' : hour === 12 ? '12p' : hour > 12 ? `${hour - 12}p` : `${hour}a`;
+              // Format hour for display
+              let displayHour: string;
+              if (hour === 0) {
+                displayHour = '12a';
+              } else if (hour === 12) {
+                displayHour = '12p';
+              } else if (hour > 12) {
+                displayHour = `${hour - 12}p`;
+              } else {
+                displayHour = `${hour}a`;
+              }
               return (
                 <span key={hour}>
                   {displayHour}
@@ -656,7 +628,6 @@ export const ManualTimelineEditor = ({
                   const startPos = getPositionFromTime(block.startTime);
                   const endPos = getPositionFromTime(block.endTime);
                   const width = endPos - startPos;
-                  const durationMinutes = differenceInMinutes(block.endTime, block.startTime);
                   
                   return (
                     <div
@@ -814,7 +785,7 @@ export const ManualTimelineEditor = ({
                                 ({formatDuration(workMinutes)})
                               </span>
                             </div>
-                            {(block.breakMinutes && block.breakMinutes > 0) && (
+                            {Boolean(block.breakMinutes && block.breakMinutes > 0) && (
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                 <Coffee className="h-3 w-3" />
                                 Break: {block.breakMinutes} mins

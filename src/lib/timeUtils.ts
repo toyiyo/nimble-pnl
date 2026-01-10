@@ -41,23 +41,24 @@ const convertTo24Hour = (hour: number, period?: string): number => {
  */
 export const parseTimeRange = (input: string, date: Date): { start: Date; end: Date } | null => {
   // Remove whitespace
-  const cleanInput = input.trim().replace(/\s+/g, '');
+  const cleanInput = input.trim().replaceAll(/\s+/g, '');
   
   // Pattern: 9-5, 9:00-17:30, 9a-5p, 9am-5:30pm
-  const rangeMatch = cleanInput.match(/^(\d{1,2}):?(\d{2})?([ap]m?)?[-–](\d{1,2}):?(\d{2})?([ap]m?)?$/i);
+  const rangePattern = /^(\d{1,2}):?(\d{2})?([ap]m?)?[-–](\d{1,2}):?(\d{2})?([ap]m?)?$/i;
+  const rangeMatch = rangePattern.exec(cleanInput);
   
   if (!rangeMatch) return null;
   
   const [, startHour, startMin = '00', startPeriod, endHour, endMin = '00', endPeriod] = rangeMatch;
   
   // Convert to 24-hour format
-  const startH = convertTo24Hour(parseInt(startHour), startPeriod);
-  const endH = convertTo24Hour(parseInt(endHour), endPeriod);
+  const startH = convertTo24Hour(Number.parseInt(startHour), startPeriod);
+  const endH = convertTo24Hour(Number.parseInt(endHour), endPeriod);
   
   // Create Date objects
   const dayStart = startOfDay(date);
-  const start = setMinutes(setHours(dayStart, startH), parseInt(startMin));
-  const end = setMinutes(setHours(dayStart, endH), parseInt(endMin));
+  const start = setMinutes(setHours(dayStart, startH), Number.parseInt(startMin));
+  const end = setMinutes(setHours(dayStart, endH), Number.parseInt(endMin));
   
   // Validate range
   if (start >= end) return null;
@@ -74,7 +75,15 @@ export const formatHourToTime = (hour: number): string => {
   const h = Math.floor(hour);
   const m = Math.round((hour - h) * 60);
   const period = h >= 12 ? 'PM' : 'AM';
-  const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  // Format display hour
+  let displayHour: number;
+  if (h === 0) {
+    displayHour = 12;
+  } else if (h > 12) {
+    displayHour = h - 12;
+  } else {
+    displayHour = h;
+  }
   return `${displayHour}:${m.toString().padStart(2, '0')} ${period}`;
 };
 

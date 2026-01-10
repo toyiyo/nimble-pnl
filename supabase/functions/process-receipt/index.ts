@@ -160,7 +160,28 @@ Example 8: "ROMA TOMATOES 0.62 Lbs @ 0.82"
 - ALWAYS use parsedUnit="each" for countable discrete items
 - ONLY use parsedUnit=lb/kg/oz/g for weight-based pricing (produce, meat by weight)
 - ALWAYS extract sizeValue and sizeUnit when size is visible in the text
-- Use null for packageType when selling bulk/loose items or no container mentioned
+- Use null for packageType ONLY when selling bulk/loose items by weight (produce, meat by the pound)
+
+**PACKAGE TYPE INFERENCE BY CATEGORY (when no explicit container mentioned):**
+When no explicit container type is visible in the text, INFER packageType based on product category:
+- Cereal, crackers, cookies → "box"
+- Bread, tortillas, buns → "bag" or "loaf"
+- Rice, flour, sugar, chips, snacks → "bag"
+- Soda, juice, water, milk → "bottle" or "jug" (large) or "can" (small)
+- Yogurt, sour cream, cottage cheese → "container"
+- Ketchup, mustard, mayo, sauces → "bottle"
+- Canned goods (beans, tomatoes, soup) → "can"
+- Spices, seasonings → "jar" or "container"
+- Cleaning supplies, detergent → "bottle" or "container"
+- Eggs → "carton"
+- Produce sold by count (avocados, limes, cucumbers) → "each"
+- Meat in packaging (chicken breast, steaks) → "package"
+- Honey, jam, peanut butter → "jar"
+
+**FALLBACK RULE:**
+- If product category is ambiguous but it's clearly a packaged item (not bulk/weight), use "package" as safe default
+- ONLY use null for packageType when the item is truly sold loose by weight (like "ROMA TOMATOES 0.62 Lbs")
+- When inferring packageType, set confidenceScore slightly lower (0.70-0.79 range)
 
 **CRITICAL PRICE EXTRACTION RULES:**
 - **unitPrice**: The price PER SINGLE ITEM/UNIT (e.g., "$1.00/ea", "$2.50/lb")

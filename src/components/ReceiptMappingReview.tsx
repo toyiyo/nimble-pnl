@@ -14,7 +14,7 @@ import { useReceiptImport, ReceiptLineItem, ReceiptImport } from '@/hooks/useRec
 import { useProducts } from '@/hooks/useProducts';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon, Barcode, Link2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, Package, Plus, ShoppingCart, Filter, Image, FileText, Download, Pencil, Calendar as CalendarIcon, Barcode, Link2, Sparkles, Copy } from 'lucide-react';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { useToast } from '@/components/ui/use-toast';
 import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
@@ -222,6 +222,114 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handleSizeUnitChange = (itemId: string, sizeUnit: string) => {
     handleItemUpdate(itemId, { size_unit: sizeUnit });
+  };
+
+  // Apply suggested values from matched product
+  const handleApplySuggestion = (item: ReceiptLineItem, field: 'size' | 'package' | 'all') => {
+    const updates: Record<string, any> = {};
+    
+    if ((field === 'size' || field === 'all') && item.suggested_size_value) {
+      updates.size_value = item.suggested_size_value;
+      if (item.suggested_size_unit) {
+        updates.size_unit = item.suggested_size_unit;
+      }
+    }
+    if ((field === 'package' || field === 'all') && item.suggested_package_type) {
+      updates.package_type = item.suggested_package_type;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      handleItemUpdate(item.id, updates);
+      // Update local state
+      setLineItems(prev => prev.map(i => 
+        i.id === item.id ? { ...i, ...updates } : i
+      ));
+      toast({
+        title: "Applied from catalog",
+        description: `Used size/package info from matched product`,
+      });
+    }
+  };
+
+  // Category-based quick-fill options
+  const getCategoryQuickFills = (category: string | undefined) => {
+    const normalizedCategory = (category || '').toLowerCase();
+    
+    const quickFills: { label: string; sizeValue: number; sizeUnit: string; packageType?: string }[] = [];
+    
+    if (normalizedCategory.includes('beverage') || normalizedCategory.includes('drink') || normalizedCategory.includes('soda') || normalizedCategory.includes('juice')) {
+      quickFills.push(
+        { label: '12 fl oz can', sizeValue: 12, sizeUnit: 'fl oz', packageType: 'can' },
+        { label: '16 fl oz bottle', sizeValue: 16, sizeUnit: 'fl oz', packageType: 'bottle' },
+        { label: '20 fl oz bottle', sizeValue: 20, sizeUnit: 'fl oz', packageType: 'bottle' },
+        { label: '2 L bottle', sizeValue: 2, sizeUnit: 'L', packageType: 'bottle' },
+        { label: '1 gal jug', sizeValue: 1, sizeUnit: 'gal', packageType: 'jug' }
+      );
+    } else if (normalizedCategory.includes('dairy') || normalizedCategory.includes('yogurt') || normalizedCategory.includes('milk')) {
+      quickFills.push(
+        { label: '8 oz container', sizeValue: 8, sizeUnit: 'oz', packageType: 'container' },
+        { label: '16 oz container', sizeValue: 16, sizeUnit: 'oz', packageType: 'container' },
+        { label: '32 oz container', sizeValue: 32, sizeUnit: 'oz', packageType: 'container' },
+        { label: '1 gal jug', sizeValue: 1, sizeUnit: 'gal', packageType: 'jug' }
+      );
+    } else if (normalizedCategory.includes('meat') || normalizedCategory.includes('poultry') || normalizedCategory.includes('chicken') || normalizedCategory.includes('beef')) {
+      quickFills.push(
+        { label: '1 lb package', sizeValue: 1, sizeUnit: 'lb', packageType: 'package' },
+        { label: '2 lb package', sizeValue: 2, sizeUnit: 'lb', packageType: 'package' },
+        { label: '5 lb package', sizeValue: 5, sizeUnit: 'lb', packageType: 'package' }
+      );
+    } else if (normalizedCategory.includes('cereal') || normalizedCategory.includes('cracker')) {
+      quickFills.push(
+        { label: '10 oz box', sizeValue: 10, sizeUnit: 'oz', packageType: 'box' },
+        { label: '14 oz box', sizeValue: 14, sizeUnit: 'oz', packageType: 'box' },
+        { label: '18 oz box', sizeValue: 18, sizeUnit: 'oz', packageType: 'box' }
+      );
+    } else if (normalizedCategory.includes('snack') || normalizedCategory.includes('chip')) {
+      quickFills.push(
+        { label: '7 oz bag', sizeValue: 7, sizeUnit: 'oz', packageType: 'bag' },
+        { label: '10 oz bag', sizeValue: 10, sizeUnit: 'oz', packageType: 'bag' },
+        { label: '13 oz bag', sizeValue: 13, sizeUnit: 'oz', packageType: 'bag' }
+      );
+    } else if (normalizedCategory.includes('condiment') || normalizedCategory.includes('sauce') || normalizedCategory.includes('ketchup')) {
+      quickFills.push(
+        { label: '12 oz bottle', sizeValue: 12, sizeUnit: 'oz', packageType: 'bottle' },
+        { label: '20 oz bottle', sizeValue: 20, sizeUnit: 'oz', packageType: 'bottle' },
+        { label: '32 oz bottle', sizeValue: 32, sizeUnit: 'oz', packageType: 'bottle' }
+      );
+    } else if (normalizedCategory.includes('pantry') || normalizedCategory.includes('rice') || normalizedCategory.includes('flour')) {
+      quickFills.push(
+        { label: '1 lb bag', sizeValue: 1, sizeUnit: 'lb', packageType: 'bag' },
+        { label: '2 lb bag', sizeValue: 2, sizeUnit: 'lb', packageType: 'bag' },
+        { label: '5 lb bag', sizeValue: 5, sizeUnit: 'lb', packageType: 'bag' }
+      );
+    } else if (normalizedCategory.includes('produce')) {
+      quickFills.push(
+        { label: '1 lb', sizeValue: 1, sizeUnit: 'lb' },
+        { label: '2 lb bag', sizeValue: 2, sizeUnit: 'lb', packageType: 'bag' },
+        { label: 'bunch', sizeValue: 1, sizeUnit: 'each', packageType: 'bunch' }
+      );
+    } else if (normalizedCategory.includes('bakery') || normalizedCategory.includes('bread')) {
+      quickFills.push(
+        { label: '20 oz loaf', sizeValue: 20, sizeUnit: 'oz', packageType: 'loaf' },
+        { label: '24 oz loaf', sizeValue: 24, sizeUnit: 'oz', packageType: 'loaf' }
+      );
+    }
+    
+    return quickFills;
+  };
+
+  const handleQuickFill = (itemId: string, quickFill: { sizeValue: number; sizeUnit: string; packageType?: string }) => {
+    const updates: Record<string, any> = {
+      size_value: quickFill.sizeValue,
+      size_unit: quickFill.sizeUnit,
+    };
+    if (quickFill.packageType) {
+      updates.package_type = quickFill.packageType;
+    }
+    handleItemUpdate(itemId, updates);
+    setLineItems(prev => prev.map(i => 
+      i.id === itemId ? { ...i, ...updates } : i
+    ));
   };
 
   const handleSkuChange = (itemId: string, sku: string) => {

@@ -74,6 +74,10 @@ export interface ReceiptLineItem {
   mapping_status: string;
   created_at: string;
   updated_at: string;
+  // Suggested values from matched products (for UI hints)
+  suggested_size_value?: number | null;
+  suggested_size_unit?: string | null;
+  suggested_package_type?: string | null;
 }
 
 // Combined set of measurement units (weight + volume) for quick lookup
@@ -355,7 +359,60 @@ export const useReceiptImport = () => {
       return lineItems; // Return original data if re-fetch fails
     }
 
-    return updatedData as ReceiptLineItem[];
+    // Enrich line items with product catalog data for suggestions
+    const enrichedItems = await enrichLineItemsWithProductData(updatedData as ReceiptLineItem[]);
+
+    return enrichedItems;
+  };
+
+  // Enrich line items with suggested size/package data from matched products
+  const enrichLineItemsWithProductData = async (lineItems: ReceiptLineItem[]): Promise<ReceiptLineItem[]> => {
+    if (!selectedRestaurant?.restaurant_id) return lineItems;
+
+    // Get all unique matched product IDs
+    const matchedProductIds = lineItems
+      .filter(item => item.matched_product_id)
+      .map(item => item.matched_product_id!)
+      .filter((id, index, arr) => arr.indexOf(id) === index);
+
+    if (matchedProductIds.length === 0) return lineItems;
+
+    // Fetch matched products with size info (using existing columns)
+    const { data: matchedProducts, error } = await supabase
+      .from('products')
+      .select('id, size_value, size_unit, uom_purchase')
+      .in('id', matchedProductIds);
+
+    if (error) {
+      console.error('Error fetching matched products for enrichment:', error);
+      return lineItems;
+    }
+
+    // Create a map for quick lookup
+    const productMap = new Map(matchedProducts?.map(p => [p.id, p]) || []);
+
+    // Enrich each line item
+    return lineItems.map(item => {
+      if (!item.matched_product_id) return item;
+
+      const matchedProduct = productMap.get(item.matched_product_id);
+      if (!matchedProduct) return item;
+
+      // Add suggestions if line item is missing size info but product has it
+      const enrichedItem = { ...item };
+      
+      if (!item.size_value && matchedProduct.size_value) {
+        enrichedItem.suggested_size_value = matchedProduct.size_value;
+      }
+      if (!item.size_unit && matchedProduct.size_unit) {
+        enrichedItem.suggested_size_unit = matchedProduct.size_unit;
+      }
+      if (!item.package_type && matchedProduct.uom_purchase) {
+        enrichedItem.suggested_package_type = matchedProduct.uom_purchase;
+      }
+
+      return enrichedItem;
+    });
   };
 
   const autoMatchLineItems = async (lineItems: ReceiptLineItem[]) => {

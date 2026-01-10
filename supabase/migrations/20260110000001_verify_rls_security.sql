@@ -101,8 +101,8 @@ BEGIN
     WHERE schemaname = 'public'
     AND qual = 'true'
     AND (
-      roles @> ARRAY['public'] 
-      OR roles @> ARRAY['authenticated']
+      roles::text[] @> ARRAY['public']::text[]
+      OR roles::text[] @> ARRAY['authenticated']::text[]
     )
     AND tablename IN (
       'employees', 'customers', 'bank_transactions', 'time_punches',

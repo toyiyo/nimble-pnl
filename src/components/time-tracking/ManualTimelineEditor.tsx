@@ -64,6 +64,13 @@ export const ManualTimelineEditor = ({
     blockId: string;
     mode: 'create' | 'adjust-start' | 'adjust-end' | null;
     startX: number;
+    timelineRect: DOMRect;
+  } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragLabel, setDragLabel] = useState<{
+    text: string;
+    x: number;
+    y: number;
   } | null>(null);
   const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -136,16 +143,21 @@ export const ManualTimelineEditor = ({
     return snapToInterval(result);
   };
 
-  // Handle drag to create or adjust
-  const handleMouseDown = useCallback((
-    e: React.MouseEvent<HTMLDivElement>, 
+  // Handle drag to create or adjust (Pointer Events API for snappy feel)
+  const handlePointerDown = useCallback((
+    e: React.PointerEvent<HTMLDivElement>, 
     employeeId: string, 
     blockId?: string,
     edge?: 'start' | 'end'
   ) => {
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId); // Capture pointer for smooth tracking
+    
+    const rect = target.getBoundingClientRect();
     const x = e.clientX - rect.left;
+    
+    setIsDragging(true);
     
     if (blockId && edge) {
       setDragState({
@@ -153,6 +165,7 @@ export const ManualTimelineEditor = ({
         blockId,
         mode: edge === 'start' ? 'adjust-start' : 'adjust-end',
         startX: x,
+        timelineRect: rect,
       });
     } else {
       // Create new block
@@ -179,18 +192,27 @@ export const ManualTimelineEditor = ({
         blockId: newBlockId,
         mode: 'create',
         startX: x,
+        timelineRect: rect,
       });
     }
   }, [date]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragState) return;
     
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = dragState.timelineRect; // Use cached rect for performance
     const x = e.clientX - rect.left;
-    const positionPercent = (x / rect.width) * 100;
+    const positionPercent = Math.max(0, Math.min(100, (x / rect.width) * 100));
     const time = getTimeFromPosition(positionPercent);
     
+    // Update drag label with snap feedback
+    setDragLabel({
+      text: format(time, 'h:mm a'),
+      x: e.clientX,
+      y: e.clientY - 40,
+    });
+    
+    // Direct state update for instant feedback (no debouncing during drag)
     setEmployeeDays(prev => {
       const updated = new Map(prev);
       const employeeDay = updated.get(dragState.employeeId);
@@ -223,12 +245,16 @@ export const ManualTimelineEditor = ({
     });
   }, [dragState, date]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragState) return;
+    
+    e.currentTarget.releasePointerCapture(e.pointerId);
     
     // Trigger auto-save after drag complete
     triggerAutoSave(dragState.employeeId, dragState.blockId);
     setDragState(null);
+    setIsDragging(false);
+    setDragLabel(null);
   }, [dragState]);
 
   // Auto-save with debounce
@@ -538,11 +564,11 @@ export const ManualTimelineEditor = ({
               
               {/* Timeline */}
               <div 
-                className="flex-1 relative h-12 bg-muted/30 cursor-crosshair"
-                onMouseDown={(e) => handleMouseDown(e, employeeDay.employee.id)}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                className="flex-1 relative h-12 bg-muted/30 cursor-crosshair touch-none select-none"
+                onPointerDown={(e) => handlePointerDown(e, employeeDay.employee.id)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
               >
                 {/* Hour grid lines */}
                 {Array.from({ length: TOTAL_HOURS }, (_, i) => (
@@ -564,7 +590,8 @@ export const ManualTimelineEditor = ({
                     <div
                       key={block.id}
                       className={cn(
-                        "absolute top-1 bottom-1 rounded-md transition-all flex items-center justify-center px-2 text-xs font-medium text-primary-foreground",
+                        "absolute top-1 bottom-1 rounded-md flex items-center justify-center px-2 text-xs font-medium text-primary-foreground touch-none select-none",
+                        !isDragging && "transition-all duration-150", // Only transition when NOT dragging
                         block.isSaving 
                           ? "bg-primary/50 animate-pulse" 
                           : "bg-primary hover:bg-primary/90"
@@ -576,24 +603,24 @@ export const ManualTimelineEditor = ({
                     >
                       {/* Time label inside block */}
                       {width > 8 && (
-                        <span className="truncate">
+                        <span className="truncate pointer-events-none">
                           {format(block.startTime, 'HH:mm')} - {format(block.endTime, 'HH:mm')}
                         </span>
                       )}
                       
                       {/* Drag handles */}
                       <div
-                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20"
-                        onMouseDown={(e) => {
+                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20 z-10"
+                        onPointerDown={(e) => {
                           e.stopPropagation();
-                          handleMouseDown(e, employeeDay.employee.id, block.id, 'start');
+                          handlePointerDown(e, employeeDay.employee.id, block.id, 'start');
                         }}
                       />
                       <div
-                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20"
-                        onMouseDown={(e) => {
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20 z-10"
+                        onPointerDown={(e) => {
                           e.stopPropagation();
-                          handleMouseDown(e, employeeDay.employee.id, block.id, 'end');
+                          handlePointerDown(e, employeeDay.employee.id, block.id, 'end');
                         }}
                       />
                     </div>
@@ -706,6 +733,22 @@ export const ManualTimelineEditor = ({
           </div>
         </div>
       </CardContent>
+      
+      {/* Floating drag label for snap feedback */}
+      {dragLabel && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            left: `${dragLabel.x}px`,
+            top: `${dragLabel.y}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <div className="bg-primary text-primary-foreground px-3 py-1.5 rounded-md shadow-lg text-sm font-medium border-2 border-primary-foreground/20">
+            {dragLabel.text}
+          </div>
+        </div>
+      )}
     </Card>
   );
 };

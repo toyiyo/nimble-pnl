@@ -1,18 +1,17 @@
 import { setHours, setMinutes, startOfDay } from 'date-fns';
 
 /**
- * Snaps a time to the nearest interval
+ * Snaps a time to the nearest interval (optimized for 15-min quarters)
  * @param date The date to snap
  * @param snapMinutes The interval in minutes (default: 15)
  * @returns The snapped date
  */
 export const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {
-  const minutes = date.getMinutes();
-  const remainder = minutes % snapMinutes;
-  const snappedMinutes = remainder < snapMinutes / 2 
-    ? minutes - remainder 
-    : minutes + (snapMinutes - remainder);
-  return setMinutes(date, snappedMinutes);
+  const hour = date.getHours() + date.getMinutes() / 60;
+  const snappedHour = Math.round(hour * 4) / 4; // Snap to quarters (15 min)
+  const finalHour = Math.floor(snappedHour);
+  const finalMinutes = Math.round((snappedHour - finalHour) * 60);
+  return setMinutes(setHours(startOfDay(date), finalHour), finalMinutes);
 };
 
 /**

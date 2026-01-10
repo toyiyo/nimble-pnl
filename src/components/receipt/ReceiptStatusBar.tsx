@@ -18,6 +18,7 @@ interface ReceiptStatusBarProps {
   onImport: () => void;
   showAutoApproved: boolean;
   onToggleAutoApproved: () => void;
+  onReviewItems?: () => void;
 }
 
 export const ReceiptStatusBar: React.FC<ReceiptStatusBarProps> = ({
@@ -33,6 +34,7 @@ export const ReceiptStatusBar: React.FC<ReceiptStatusBarProps> = ({
   onImport,
   showAutoApproved,
   onToggleAutoApproved,
+  onReviewItems,
 }) => {
   const progressValue = totalCount > 0 ? ((readyCount + skippedCount) / totalCount) * 100 : 0;
   const canImport = needsReviewCount === 0 && readyCount > 0;
@@ -133,13 +135,25 @@ export const ReceiptStatusBar: React.FC<ReceiptStatusBarProps> = ({
         </div>
       </div>
 
-      {/* Warning banner */}
+      {/* Action banner for items needing review */}
       {needsReviewCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800">
-          <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-          <span className="text-sm text-amber-700 dark:text-amber-300">
-            Review {needsReviewCount} item{needsReviewCount > 1 ? 's' : ''} before importing
-          </span>
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+            <span className="text-sm text-amber-700 dark:text-amber-300">
+              {needsReviewCount} item{needsReviewCount > 1 ? 's' : ''} need{needsReviewCount === 1 ? 's' : ''} your attention
+            </span>
+          </div>
+          {onReviewItems && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onReviewItems}
+              className="bg-amber-100 hover:bg-amber-200 border-amber-300 text-amber-800"
+            >
+              Review {needsReviewCount} Item{needsReviewCount > 1 ? 's' : ''}
+            </Button>
+          )}
         </div>
       )}
     </div>

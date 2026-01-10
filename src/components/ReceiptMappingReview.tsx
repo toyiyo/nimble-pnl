@@ -129,6 +129,8 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | null>(null);
   const [isNewSupplier, setIsNewSupplier] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const needsAttentionRef = React.useRef<HTMLDivElement>(null);
   
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
@@ -433,6 +435,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     });
   };
 
+  // Auto-scroll to needs attention section
+  const handleReviewItems = useCallback(() => {
+    needsAttentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Select the first needs-attention item
+    const firstNeedsAttention = tieredItems['needs-attention'][0];
+    if (firstNeedsAttention) {
+      setSelectedItemId(firstNeedsAttention.id);
+    }
+  }, [tieredItems]);
+
   if (loading) {
     return (
       <Card className="w-full max-w-6xl mx-auto">
@@ -519,6 +531,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
           onImport={handleBulkImport}
           showAutoApproved={showAutoApproved}
           onToggleAutoApproved={() => setShowAutoApproved(!showAutoApproved)}
+          onReviewItems={handleReviewItems}
         />
 
         <CardContent className="space-y-6 pt-6">
@@ -583,7 +596,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
           {/* Needs Attention Section */}
           {tieredItems['needs-attention'].length > 0 && (
-            <section className="space-y-3">
+            <section ref={needsAttentionRef} className="space-y-3 scroll-mt-24">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-500" />
                 <h3 className="font-semibold">Needs Attention</h3>

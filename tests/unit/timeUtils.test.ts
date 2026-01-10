@@ -72,6 +72,48 @@ describe('timeUtils', () => {
       expect(result.getMonth()).toBe(2); // March (0-indexed)
       expect(result.getDate()).toBe(15);
     });
+
+    it('should respect custom snapMinutes parameter - 30 minutes', () => {
+      const input = new Date('2026-01-09T09:20:00');
+      const result = snapToInterval(input, 30);
+      expect(result.getHours()).toBe(9);
+      expect(result.getMinutes()).toBe(30);
+    });
+
+    it('should respect custom snapMinutes parameter - 10 minutes', () => {
+      const input = new Date('2026-01-09T09:07:00');
+      const result = snapToInterval(input, 10);
+      expect(result.getHours()).toBe(9);
+      expect(result.getMinutes()).toBe(10);
+    });
+
+    it('should respect custom snapMinutes parameter - 5 minutes', () => {
+      const input = new Date('2026-01-09T09:07:00');
+      const result = snapToInterval(input, 5);
+      expect(result.getHours()).toBe(9);
+      expect(result.getMinutes()).toBe(5);
+    });
+
+    it('should handle 1 minute intervals', () => {
+      const input = new Date('2026-01-09T09:07:30');
+      const result = snapToInterval(input, 1);
+      expect(result.getHours()).toBe(9);
+      expect(result.getMinutes()).toBe(7); // Rounds down from 7:30
+    });
+
+    it('should throw error for snapMinutes <= 0', () => {
+      const input = new Date('2026-01-09T09:00:00');
+      expect(() => snapToInterval(input, 0)).toThrow('snapMinutes must be greater than 0');
+      expect(() => snapToInterval(input, -5)).toThrow('snapMinutes must be greater than 0');
+    });
+
+    it('should handle wrapping to next day with custom interval', () => {
+      const input = new Date('2026-01-09T23:50:00');
+      const result = snapToInterval(input, 30);
+      expect(result.getHours()).toBe(0);
+      expect(result.getMinutes()).toBe(0);
+      expect(result.getDate()).toBe(10); // Next day
+    });
   });
 
   describe('parseTimeRange', () => {

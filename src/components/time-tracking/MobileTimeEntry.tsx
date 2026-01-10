@@ -174,7 +174,9 @@ export const MobileTimeEntry = ({ employees, date, restaurantId, onSave }: Mobil
       
       onSave?.();
     } catch (error) {
-      console.error('Failed to save:', error);
+      if (import.meta.env.DEV) {
+        console.error('Failed to save:', error);
+      }
       toast({
         title: 'Failed to save',
         description: 'Could not save time entry',
@@ -211,7 +213,9 @@ export const MobileTimeEntry = ({ employees, date, restaurantId, onSave }: Mobil
         return updated;
       });
     } catch (error) {
-      console.error('Failed to delete:', error);
+      if (import.meta.env.DEV) {
+        console.error('Failed to delete:', error);
+      }
       toast({
         title: 'Failed to delete',
         description: 'Could not delete time entry',
@@ -291,6 +295,7 @@ export const MobileTimeEntry = ({ employees, date, restaurantId, onSave }: Mobil
                           variant="ghost"
                           onClick={() => deleteBlock(employee.id, block.id)}
                           disabled={block.isSaving}
+                          aria-label="Delete time block"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

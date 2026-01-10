@@ -259,6 +259,100 @@ export const ManualTimelineEditor = ({
     setDragLabel(null);
   }, [dragState]);
 
+  // Helper: Update block saving state
+  const updateBlockSavingState = useCallback((employeeId: string, blockId: string, isSaving: boolean) => {
+    setEmployeeDays(prev => {
+      const updated = new Map(prev);
+      const day = updated.get(employeeId);
+      if (!day) return prev;
+      
+      const blockIndex = day.blocks.findIndex(b => b.id === blockId);
+      if (blockIndex === -1) return prev;
+      
+      day.blocks[blockIndex] = { ...day.blocks[blockIndex], isSaving };
+      updated.set(employeeId, { ...day });
+      return updated;
+    });
+  }, []);
+
+  // Helper: Update block after successful save
+  const updateBlockAfterSave = useCallback((employeeId: string, blockId: string, clockInId: string, clockOutId: string) => {
+    setEmployeeDays(prev => {
+      const updated = new Map(prev);
+      const day = updated.get(employeeId);
+      if (!day) return prev;
+      
+      const blockIndex = day.blocks.findIndex(b => b.id === blockId);
+      if (blockIndex === -1) return prev;
+      
+      day.blocks[blockIndex] = {
+        ...day.blocks[blockIndex],
+        clockInPunchId: clockInId,
+        clockOutPunchId: clockOutId,
+        isNew: false,
+        isSaving: false,
+      };
+      updated.set(employeeId, { ...day });
+      return updated;
+    });
+  }, []);
+
+  // Helper: Perform save operation
+  const performSave = useCallback(async (employeeId: string, blockId: string, block: TimeBlock) => {
+    try {
+      if (block.isNew || !block.clockInPunchId) {
+        // Create new punch pair
+        const clockInResult = await createPunch.mutateAsync({
+          restaurant_id: restaurantId,
+          employee_id: employeeId,
+          punch_type: 'clock_in',
+          punch_time: block.startTime.toISOString(),
+          notes: 'Manual entry by manager',
+        });
+        
+        const clockOutResult = await createPunch.mutateAsync({
+          restaurant_id: restaurantId,
+          employee_id: employeeId,
+          punch_type: 'clock_out',
+          punch_time: block.endTime.toISOString(),
+          notes: 'Manual entry by manager',
+        });
+        
+        updateBlockAfterSave(employeeId, blockId, clockInResult.id, clockOutResult.id);
+      } else {
+        // Update existing punches
+        const promises = [];
+        if (block.clockInPunchId) {
+          promises.push(updatePunch.mutateAsync({
+            id: block.clockInPunchId,
+            punch_time: block.startTime.toISOString(),
+          }));
+        }
+        if (block.clockOutPunchId) {
+          promises.push(updatePunch.mutateAsync({
+            id: block.clockOutPunchId,
+            punch_time: block.endTime.toISOString(),
+          }));
+        }
+        await Promise.all(promises);
+        updateBlockSavingState(employeeId, blockId, false);
+      }
+      
+      setLastSaved(new Date());
+      setTimeout(() => setLastSaved(null), 2000);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to save time block:', error);
+      }
+      toast({
+        title: 'Failed to save',
+        description: 'Could not save time entry. Please try again.',
+        variant: 'destructive',
+      });
+      updateBlockSavingState(employeeId, blockId, false);
+    }
+  }, [createPunch, updatePunch, restaurantId, toast, updateBlockSavingState, updateBlockAfterSave]);
+
   // Auto-save with debounce
   const triggerAutoSave = useCallback((employeeId: string, blockId: string) => {
     if (saveTimeout) {
@@ -266,125 +360,21 @@ export const ManualTimelineEditor = ({
     }
     
     const timeout = setTimeout(async () => {
-      // Get current state fresh inside the timeout
-      setEmployeeDays(prev => {
-        const employeeDay = prev.get(employeeId);
-        if (!employeeDay) return prev;
-        
-        const block = employeeDay.blocks.find(b => b.id === blockId);
-        if (!block) return prev;
-        
-        // Mark as saving immediately
-        const updated = new Map(prev);
-        const day = { ...employeeDay };
-        const blockIndex = day.blocks.findIndex(b => b.id === blockId);
-        if (blockIndex !== -1) {
-          day.blocks[blockIndex] = { ...day.blocks[blockIndex], isSaving: true };
-          updated.set(employeeId, day);
-        }
-        
-        // Perform the async save operation
-        (async () => {
-          try {
-            if (block.isNew || !block.clockInPunchId) {
-              // Create new punch pair
-              const clockInResult = await createPunch.mutateAsync({
-                restaurant_id: restaurantId,
-                employee_id: employeeId,
-                punch_type: 'clock_in',
-                punch_time: block.startTime.toISOString(),
-                notes: 'Manual entry by manager',
-              });
-              
-              const clockOutResult = await createPunch.mutateAsync({
-                restaurant_id: restaurantId,
-                employee_id: employeeId,
-                punch_type: 'clock_out',
-                punch_time: block.endTime.toISOString(),
-                notes: 'Manual entry by manager',
-              });
-              
-              // Update block with IDs
-              setEmployeeDays(prev2 => {
-                const updated2 = new Map(prev2);
-                const day2 = updated2.get(employeeId);
-                if (day2) {
-                  const blockIndex2 = day2.blocks.findIndex(b => b.id === blockId);
-                  if (blockIndex2 !== -1) {
-                    day2.blocks[blockIndex2] = {
-                      ...day2.blocks[blockIndex2],
-                      clockInPunchId: clockInResult.id,
-                      clockOutPunchId: clockOutResult.id,
-                      isNew: false,
-                      isSaving: false,
-                    };
-                    updated2.set(employeeId, { ...day2 });
-                  }
-                }
-                return updated2;
-              });
-            } else {
-              // Update existing punches
-              if (block.clockInPunchId) {
-                await updatePunch.mutateAsync({
-                  id: block.clockInPunchId,
-                  punch_time: block.startTime.toISOString(),
-                });
-              }
-              if (block.clockOutPunchId) {
-                await updatePunch.mutateAsync({
-                  id: block.clockOutPunchId,
-                  punch_time: block.endTime.toISOString(),
-                });
-              }
-              
-              // Remove saving state
-              setEmployeeDays(prev2 => {
-                const updated2 = new Map(prev2);
-                const day2 = updated2.get(employeeId);
-                if (day2) {
-                  const blockIndex2 = day2.blocks.findIndex(b => b.id === blockId);
-                  if (blockIndex2 !== -1) {
-                    day2.blocks[blockIndex2] = { ...day2.blocks[blockIndex2], isSaving: false };
-                    updated2.set(employeeId, { ...day2 });
-                  }
-                }
-                return updated2;
-              });
-            }
-            
-            setLastSaved(new Date());
-            setTimeout(() => setLastSaved(null), 2000);
-          } catch (error) {
-            console.error('Failed to save time block:', error);
-            toast({
-              title: 'Failed to save',
-              description: 'Could not save time entry. Please try again.',
-              variant: 'destructive',
-            });
-            
-            // Remove saving state on error
-            setEmployeeDays(prev2 => {
-              const updated2 = new Map(prev2);
-              const day2 = updated2.get(employeeId);
-              if (day2) {
-                const blockIndex2 = day2.blocks.findIndex(b => b.id === blockId);
-                if (blockIndex2 !== -1) {
-                  day2.blocks[blockIndex2] = { ...day2.blocks[blockIndex2], isSaving: false };
-                  updated2.set(employeeId, { ...day2 });
-                }
-              }
-              return updated2;
-            });
-          }
-        })();
-        
-        return updated;
-      });
+      const employeeDay = employeeDays.get(employeeId);
+      if (!employeeDay) return;
+      
+      const block = employeeDay.blocks.find(b => b.id === blockId);
+      if (!block) return;
+      
+      // Mark as saving
+      updateBlockSavingState(employeeId, blockId, true);
+      
+      // Perform async save
+      await performSave(employeeId, blockId, block);
     }, 500);
     
     setSaveTimeout(timeout);
-  }, [createPunch, updatePunch, restaurantId, toast, saveTimeout]);
+  }, [saveTimeout, employeeDays, updateBlockSavingState, performSave]);
 
   // Toggle employee expansion
   const toggleExpanded = useCallback((employeeId: string) => {
@@ -476,7 +466,9 @@ export const ManualTimelineEditor = ({
         return updated;
       });
     } catch (error) {
-      console.error('Failed to delete block:', error);
+      if (import.meta.env.DEV) {
+        console.error('Failed to delete block:', error);
+      }
       toast({
         title: 'Failed to delete',
         description: 'Could not delete time entry.',
@@ -484,6 +476,74 @@ export const ManualTimelineEditor = ({
       });
     }
   }, [employeeDays, deletePunch, restaurantId, toast]);
+
+  // Add time block from form inputs
+  const handleAddTimeBlock = useCallback((employeeId: string) => {
+    const startInput = document.getElementById(`start-time-${employeeId}`) as HTMLInputElement;
+    const endInput = document.getElementById(`end-time-${employeeId}`) as HTMLInputElement;
+    const breakInput = document.getElementById(`break-${employeeId}`) as HTMLInputElement;
+    const notesInput = document.getElementById(`notes-${employeeId}`) as HTMLInputElement;
+    
+    if (!startInput.value || !endInput.value) {
+      toast({
+        title: 'Missing times',
+        description: 'Please enter both start and end times',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    // Parse time inputs (format: "HH:MM")
+    const [startHour, startMin] = startInput.value.split(':').map(Number);
+    const [endHour, endMin] = endInput.value.split(':').map(Number);
+    
+    const startDate = new Date(date);
+    startDate.setHours(startHour, startMin, 0, 0);
+    const startTime = snapToInterval(startDate);
+    
+    const endDate = new Date(date);
+    endDate.setHours(endHour, endMin, 0, 0);
+    const endTime = snapToInterval(endDate);
+    
+    if (startTime >= endTime) {
+      toast({
+        title: 'Invalid range',
+        description: 'End time must be after start time',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    const newBlockId = `new-${Date.now()}`;
+    setEmployeeDays(prev => {
+      const updated = new Map(prev);
+      const day = updated.get(employeeId);
+      if (day) {
+        day.blocks.push({
+          id: newBlockId,
+          startTime,
+          endTime,
+          breakMinutes: parseInt(breakInput.value) || 0,
+          notes: notesInput.value || undefined,
+          isNew: true,
+        });
+        day.totalHours = day.blocks.reduce((sum, b) => 
+          sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
+        );
+        day.hasWarning = day.totalHours > 12;
+        updated.set(employeeId, { ...day });
+      }
+      return updated;
+    });
+    
+    triggerAutoSave(employeeId, newBlockId);
+    
+    // Clear inputs
+    startInput.value = '';
+    endInput.value = '';
+    breakInput.value = '30';
+    notesInput.value = '';
+  }, [date, toast, triggerAutoSave]);
 
   if (loading) {
     return (
@@ -723,72 +783,7 @@ export const ManualTimelineEditor = ({
                   <Button
                     size="sm"
                     className="w-full"
-                    onClick={() => {
-                      const startInput = document.getElementById(`start-time-${employeeDay.employee.id}`) as HTMLInputElement;
-                      const endInput = document.getElementById(`end-time-${employeeDay.employee.id}`) as HTMLInputElement;
-                      const breakInput = document.getElementById(`break-${employeeDay.employee.id}`) as HTMLInputElement;
-                      const notesInput = document.getElementById(`notes-${employeeDay.employee.id}`) as HTMLInputElement;
-                      
-                      if (!startInput.value || !endInput.value) {
-                        toast({
-                          title: 'Missing times',
-                          description: 'Please enter both start and end times',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-                      
-                      // Parse time inputs (format: "HH:MM")
-                      const [startHour, startMin] = startInput.value.split(':').map(Number);
-                      const [endHour, endMin] = endInput.value.split(':').map(Number);
-                      
-                      const startDate = new Date(date);
-                      startDate.setHours(startHour, startMin, 0, 0);
-                      const startTime = snapToInterval(startDate);
-                      
-                      const endDate = new Date(date);
-                      endDate.setHours(endHour, endMin, 0, 0);
-                      const endTime = snapToInterval(endDate);
-                      
-                      if (startTime >= endTime) {
-                        toast({
-                          title: 'Invalid range',
-                          description: 'End time must be after start time',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-                      
-                      const newBlockId = `new-${Date.now()}`;
-                      setEmployeeDays(prev => {
-                        const updated = new Map(prev);
-                        const day = updated.get(employeeDay.employee.id);
-                        if (day) {
-                          day.blocks.push({
-                            id: newBlockId,
-                            startTime,
-                            endTime,
-                            breakMinutes: parseInt(breakInput.value) || 0,
-                            notes: notesInput.value || undefined,
-                            isNew: true,
-                          });
-                          day.totalHours = day.blocks.reduce((sum, b) => 
-                            sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
-                          );
-                          day.hasWarning = day.totalHours > 12;
-                          updated.set(employeeDay.employee.id, { ...day });
-                        }
-                        return updated;
-                      });
-                      
-                      triggerAutoSave(employeeDay.employee.id, newBlockId);
-                      
-                      // Clear inputs
-                      startInput.value = '';
-                      endInput.value = '';
-                      breakInput.value = '30';
-                      notesInput.value = '';
-                    }}
+                    onClick={() => handleAddTimeBlock(employeeDay.employee.id)}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Add Time Block

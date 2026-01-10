@@ -1,17 +1,35 @@
 import { setHours, setMinutes, startOfDay } from 'date-fns';
 
 /**
- * Snaps a time to the nearest interval (optimized for 15-min quarters)
+ * Snaps a time to the nearest interval
  * @param date The date to snap
  * @param snapMinutes The interval in minutes (default: 15)
  * @returns The snapped date
  */
 export const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {
-  const hour = date.getHours() + date.getMinutes() / 60;
-  const snappedHour = Math.round(hour * 4) / 4; // Snap to quarters (15 min)
-  const finalHour = Math.floor(snappedHour);
-  const finalMinutes = Math.round((snappedHour - finalHour) * 60);
+  if (snapMinutes <= 0) {
+    throw new Error('snapMinutes must be greater than 0');
+  }
+  
+  const totalMinutes = date.getHours() * 60 + date.getMinutes();
+  const snappedMinutes = Math.round(totalMinutes / snapMinutes) * snapMinutes;
+  const finalHour = Math.floor(snappedMinutes / 60);
+  const finalMinutes = snappedMinutes % 60;
   return setMinutes(setHours(startOfDay(date), finalHour), finalMinutes);
+};
+
+/**
+ * Converts 12-hour time with AM/PM to 24-hour format
+ */
+const convertTo24Hour = (hour: number, period?: string): number => {
+  if (!period) return hour;
+  
+  const isAM = period.toLowerCase().startsWith('a');
+  const isPM = period.toLowerCase().startsWith('p');
+  
+  if (isPM && hour < 12) return hour + 12;
+  if (isAM && hour === 12) return 0;
+  return hour;
 };
 
 /**
@@ -23,32 +41,26 @@ export const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {
  */
 export const parseTimeRange = (input: string, date: Date): { start: Date; end: Date } | null => {
   // Remove whitespace
-  input = input.trim().replace(/\s+/g, '');
+  const cleanInput = input.trim().replace(/\s+/g, '');
   
   // Pattern: 9-5, 9:00-17:30, 9a-5p, 9am-5:30pm
-  const rangeMatch = input.match(/^(\d{1,2}):?(\d{2})?([ap]m?)?[-–](\d{1,2}):?(\d{2})?([ap]m?)?$/i);
+  const rangeMatch = cleanInput.match(/^(\d{1,2}):?(\d{2})?([ap]m?)?[-–](\d{1,2}):?(\d{2})?([ap]m?)?$/i);
   
   if (!rangeMatch) return null;
   
   const [, startHour, startMin = '00', startPeriod, endHour, endMin = '00', endPeriod] = rangeMatch;
   
-  let startH = parseInt(startHour);
-  let endH = parseInt(endHour);
+  // Convert to 24-hour format
+  const startH = convertTo24Hour(parseInt(startHour), startPeriod);
+  const endH = convertTo24Hour(parseInt(endHour), endPeriod);
   
-  // Handle AM/PM
-  if (startPeriod) {
-    if (startPeriod.toLowerCase().startsWith('p') && startH < 12) startH += 12;
-    if (startPeriod.toLowerCase().startsWith('a') && startH === 12) startH = 0;
-  }
-  if (endPeriod) {
-    if (endPeriod.toLowerCase().startsWith('p') && endH < 12) endH += 12;
-    if (endPeriod.toLowerCase().startsWith('a') && endH === 12) endH = 0;
-  }
+  // Create Date objects
+  const dayStart = startOfDay(date);
+  const start = setMinutes(setHours(dayStart, startH), parseInt(startMin));
+  const end = setMinutes(setHours(dayStart, endH), parseInt(endMin));
   
-  const start = setMinutes(setHours(startOfDay(date), startH), parseInt(startMin));
-  const end = setMinutes(setHours(startOfDay(date), endH), parseInt(endMin));
-  
-  if (start >= end) return null; // Invalid range
+  // Validate range
+  if (start >= end) return null;
   
   return { start: snapToInterval(start), end: snapToInterval(end) };
 };

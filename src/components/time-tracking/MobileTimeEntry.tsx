@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Check, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import { format, startOfDay, setHours, setMinutes, differenceInMinutes } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatHourToTime } from '@/lib/timeUtils';
 import { useCreateTimePunch, useUpdateTimePunch, useDeleteTimePunch } from '@/hooks/useTimePunches';
 import { useToast } from '@/hooks/use-toast';
 import { Employee } from '@/types/scheduling';
@@ -37,14 +38,6 @@ export const MobileTimeEntry = ({ employees, date, restaurantId, onSave }: Mobil
   
   const [employeeBlocks, setEmployeeBlocks] = useState<Map<string, TimeBlock[]>>(new Map());
   const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
-
-  const formatHourToTime = (hour: number): string => {
-    const h = Math.floor(hour);
-    const m = Math.round((hour - h) * 60);
-    const period = h >= 12 ? 'PM' : 'AM';
-    const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `${displayHour}:${m.toString().padStart(2, '0')} ${period}`;
-  };
 
   const calculateTotalHours = (blocks: TimeBlock[]): number => {
     return blocks.reduce((sum, block) => sum + (block.endHour - block.startHour), 0);

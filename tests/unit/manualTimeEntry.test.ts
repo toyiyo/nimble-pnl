@@ -1,38 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { setHours, setMinutes, startOfDay, format } from 'date-fns';
-
-// Helper to parse flexible time input (9-530, 9a-5:30p, 09:00-17:30)
-const parseTimeRange = (input: string, date: Date): { start: Date; end: Date } | null => {
-  // Remove whitespace
-  input = input.trim().replace(/\s+/g, '');
-  
-  // Pattern: 9-530, 9-5, 9:00-17:30, 9a-5p, 9am-5:30pm
-  const rangeMatch = input.match(/^(\d{1,2}):?(\d{2})?([ap]m?)?[-–](\d{1,2}):?(\d{2})?([ap]m?)?$/i);
-  
-  if (!rangeMatch) return null;
-  
-  const [, startHour, startMin = '00', startPeriod, endHour, endMin = '00', endPeriod] = rangeMatch;
-  
-  let startH = parseInt(startHour);
-  let endH = parseInt(endHour);
-  
-  // Handle AM/PM
-  if (startPeriod) {
-    if (startPeriod.toLowerCase().startsWith('p') && startH < 12) startH += 12;
-    if (startPeriod.toLowerCase().startsWith('a') && startH === 12) startH = 0;
-  }
-  if (endPeriod) {
-    if (endPeriod.toLowerCase().startsWith('p') && endH < 12) endH += 12;
-    if (endPeriod.toLowerCase().startsWith('a') && endH === 12) endH = 0;
-  }
-  
-  const start = setMinutes(setHours(startOfDay(date), startH), parseInt(startMin));
-  const end = setMinutes(setHours(startOfDay(date), endH), parseInt(endMin));
-  
-  if (start >= end) return null; // Invalid range
-  
-  return { start, end };
-};
+import { parseTimeRange, formatHourToTime } from '@/lib/timeUtils';
 
 describe('ManualTimelineEditor - Time Parsing', () => {
   const testDate = new Date('2024-01-15T00:00:00.000Z');
@@ -209,5 +177,30 @@ describe('ManualTimelineEditor - Time Block Calculations', () => {
     const totalHours = blocks.reduce((sum, block) => sum + (block.endHour - block.startHour), 0);
     
     expect(totalHours).toBe(8);
+  });
+});
+
+describe('Time Formatting', () => {
+  describe('formatHourToTime', () => {
+    it('should format morning hours correctly', () => {
+      expect(formatHourToTime(9)).toBe('9:00 AM');
+      expect(formatHourToTime(9.5)).toBe('9:30 AM');
+      expect(formatHourToTime(11.75)).toBe('11:45 AM');
+    });
+
+    it('should handle midnight correctly', () => {
+      expect(formatHourToTime(0)).toBe('12:00 AM');
+    });
+
+    it('should handle noon correctly', () => {
+      expect(formatHourToTime(12)).toBe('12:00 PM');
+      expect(formatHourToTime(12.5)).toBe('12:30 PM');
+    });
+
+    it('should format afternoon hours correctly', () => {
+      expect(formatHourToTime(13)).toBe('1:00 PM');
+      expect(formatHourToTime(17.5)).toBe('5:30 PM');
+      expect(formatHourToTime(23.75)).toBe('11:45 PM');
+    });
   });
 });

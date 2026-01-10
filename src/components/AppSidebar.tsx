@@ -60,7 +60,6 @@ const navigationGroups = [
     label: 'Operations',
     items: [
       { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
-      { path: '/employee/clock', label: 'Time Clock', icon: Clock },
       { path: '/time-punches', label: 'Time Punches', icon: ClipboardList },
       { path: '/tips', label: 'Tip Pooling', icon: Coins },
       { path: '/payroll', label: 'Payroll', icon: Wallet },

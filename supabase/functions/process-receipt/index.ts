@@ -97,24 +97,70 @@ EXTRACTION METHODOLOGY:
 **STANDARD UNIT LISTS (use these exactly):**
 - **Weight units**: lb, kg, g, oz (note: oz is for WEIGHT only)
 - **Volume units**: fl oz (fluid ounces), cup, tbsp, tsp, ml, L, gal, qt
-- **Count/Container units**: each, piece, serving, unit, bottle, can, box, bag, case, container, package, dozen, jar
+- **Container types**: bottle, can, box, bag, case, jar, container, package
 
-**UNIT EXTRACTION RULES:**
-- **parsedQuantity**: The NUMBER of packages (e.g., "2" for "2 bottles", "6.86" for "6.86 lb")
-- **parsedUnit**: The PACKAGE TYPE or UNIT from the lists above
-- **packageType**: The TYPE OF CONTAINER (bottle, bag, case, box, can, jar, etc.) if visible
-- **sizeValue**: The AMOUNT in ONE package (e.g., "750" for "750ml bottle", "5" for "5lb bag")
-- **sizeUnit**: The MEASUREMENT UNIT for sizeValue (ml, oz, lb, kg, gal, etc.)
+**THREE-FIELD EXTRACTION SYSTEM:**
 
-**EXTRACTION EXAMPLES:**
-- For "2 bottles 750ML VODKA" → parsedQuantity=2, parsedUnit="bottle", packageType="bottle", sizeValue=750, sizeUnit="ml"
-- For "6.86 @ 4.64 CHEEK MEAT" → parsedQuantity=6.86, parsedUnit="lb", sizeValue=6.86, sizeUnit="lb"
-- For "1 case 12x355ML BEER" → parsedQuantity=1, parsedUnit="case", packageType="case", sizeValue=355, sizeUnit="ml"
-- For "5LB BAG RICE" → parsedQuantity=5, parsedUnit="lb", packageType="bag", sizeValue=5, sizeUnit="lb"
-- For "2 @ 10.98 CHORIZO" → parsedQuantity=2, parsedUnit="each", packageType="each"
-- ALWAYS extract package size info when visible (750ml, 5lb, 10oz, etc.)
-- ALWAYS extract the unit even if abbreviated (LB → lb, OZ → oz, ML → ml, etc.)
-- If no package type is visible, use "each" as default
+We use THREE separate fields to capture package information:
+1. **packageType** = The CONTAINER/PACKAGE TYPE (bottle, bag, box, case, can, jar, etc.)
+2. **sizeValue** = The NUMERIC amount per package (750, 5, 16, etc.)
+3. **sizeUnit** = The MEASUREMENT UNIT for sizeValue (ml, oz, lb, fl oz, etc.)
+
+**EXTRACTION RULES:**
+- **parsedQuantity**: How MANY packages you're buying (e.g., "2" for "2 bottles")
+- **parsedUnit**: ALWAYS use "each" for discrete countable items, OR lb/kg/oz/g for weight-based items
+- **packageType**: The TYPE OF CONTAINER - extract ONLY if explicitly visible
+  → bottle, bag, box, case, can, jar, container, package
+  → Use null for bulk/loose items (produce by weight)
+  → Use null if no container type is mentioned
+- **sizeValue**: The AMOUNT per package (numeric only)
+- **sizeUnit**: The MEASUREMENT UNIT from the lists above
+
+**CRITICAL DISTINCTION:**
+- parsedUnit = "each" means "how many items am I buying" (quantity unit)
+- packageType = "bottle" means "what container is it in" (container type)
+- sizeValue + sizeUnit = "how big is each container" (package size)
+
+**CORRECT EXTRACTION EXAMPLES:**
+
+Example 1: "2 bottles 750ML VODKA"
+→ parsedQuantity=2, parsedUnit="each", packageType="bottle", sizeValue=750, sizeUnit="ml"
+(Buying 2 discrete items, each is a bottle containing 750ml)
+
+Example 2: "6.86 @ 4.64 CHEEK MEAT"
+→ parsedQuantity=6.86, parsedUnit="lb", packageType=null, sizeValue=6.86, sizeUnit="lb"
+(Buying 6.86 pounds of meat, sold by weight, no container)
+
+Example 3: "1 case 12x355ML BEER"
+→ parsedQuantity=1, parsedUnit="each", packageType="case", sizeValue=355, sizeUnit="ml"
+(Buying 1 case, which contains 12 cans of 355ml each - extract the per-can size)
+
+Example 4: "5LB BAG RICE"
+→ parsedQuantity=1, parsedUnit="each", packageType="bag", sizeValue=5, sizeUnit="lb"
+(Buying 1 bag that weighs 5 pounds)
+
+Example 5: "HEB 1LB KEY LIMES BAG"
+→ parsedQuantity=1, parsedUnit="each", packageType="bag", sizeValue=1, sizeUnit="lb"
+(Buying 1 bag containing 1 pound of limes)
+
+Example 6: "LIONI FRSH MZRLA BALL 16Z"
+→ parsedQuantity=1, parsedUnit="each", packageType="package", sizeValue=16, sizeUnit="oz"
+(Buying 1 package weighing 16 ounces)
+
+Example 7: "2 @ 10.98 CHORIZO"
+→ parsedQuantity=2, parsedUnit="each", packageType=null, sizeValue=null, sizeUnit=null
+(Buying 2 items, no container or size info visible)
+
+Example 8: "ROMA TOMATOES 0.62 Lbs @ 0.82"
+→ parsedQuantity=0.62, parsedUnit="lb", packageType=null, sizeValue=0.62, sizeUnit="lb"
+(Buying 0.62 pounds of tomatoes, sold by weight)
+
+**KEY RULES:**
+- ALWAYS extract packageType when container is explicitly mentioned (bottle, bag, box, case, can, jar)
+- ALWAYS use parsedUnit="each" for countable discrete items
+- ONLY use parsedUnit=lb/kg/oz/g for weight-based pricing (produce, meat by weight)
+- ALWAYS extract sizeValue and sizeUnit when size is visible in the text
+- Use null for packageType when selling bulk/loose items or no container mentioned
 
 **CRITICAL PRICE EXTRACTION RULES:**
 - **unitPrice**: The price PER SINGLE ITEM/UNIT (e.g., "$1.00/ea", "$2.50/lb")

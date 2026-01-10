@@ -41,7 +41,7 @@ const convertTo24Hour = (hour: number, period?: string): number => {
  */
 export const parseTimeRange = (input: string, date: Date): { start: Date; end: Date } | null => {
   // Remove whitespace
-  const cleanInput = input.trim().replaceAll(/\s+/g, '');
+  const cleanInput = input.trim().replace(/\s+/g, '');
   
   // Pattern: 9-5, 9:00-17:30, 9a-5p, 9am-5:30pm
   const rangePattern = /^(\d{1,2}):?(\d{2})?([ap]m?)?[-–](\d{1,2}):?(\d{2})?([ap]m?)?$/i;

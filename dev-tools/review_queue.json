@@ -23486,6 +23486,778 @@
       "status": "open",
       "created_at": "2026-01-10T02:07:35.161Z",
       "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "308",
+        "comment_id": 3733498186
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=308) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [C Reliability Rating on New Code](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=308) (required ≥ A)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=308)\n\n##   \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/light_bulb-16px.png '') Catch issues before they fail your Quality Gate with our IDE extension ![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/sonarlint-16px.png '') [SonarQube for IDE](https://www.sonarsource.com/products/sonarlint/features/connected-mode/?referrer=pull-request)\n\n",
+      "severity": "info",
+      "id": "b251f4f962ef6d5cec41fd1853abfdb38c9f3c72",
+      "status": "fixed",
+      "created_at": "2026-01-10T20:47:34.204Z",
+      "updated_at": "2026-01-10T20:54:29.011Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": [
+        "tests pass - awaiting specific SonarQube issues"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZupoE5dIN3sGqEIPms2",
+        "pr": "308",
+        "file": "src/components/ReceiptMappingReview.tsx",
+        "line": 814
+      },
+      "title": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "body": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "486c4698fef7de117d64c37034427deba4ecd352",
+      "status": "fixed",
+      "created_at": "2026-01-10T20:47:34.205Z",
+      "updated_at": "2026-01-10T20:59:40.806Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZupoE5dIN3sGqEIPms3",
+        "pr": "308",
+        "file": "src/components/ReceiptMappingReview.tsx",
+        "line": 851
+      },
+      "title": "Convert the conditional to a boolean to avoid leaked value",
+      "body": "Convert the conditional to a boolean to avoid leaked value",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "45a3d3f8901c010ebfeaf74febda6ede2e4a2143",
+      "status": "fixed",
+      "created_at": "2026-01-10T20:47:34.205Z",
+      "updated_at": "2026-01-10T21:00:03.194Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZupoE5dIN3sGqEIPms4",
+        "pr": "308",
+        "file": "src/components/ReceiptMappingReview.tsx",
+        "line": 886
+      },
+      "title": "Convert the conditional to a boolean to avoid leaked value",
+      "body": "Convert the conditional to a boolean to avoid leaked value",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "f71ac8c19f25750a621d3fa89a809a9c4296abc2",
+      "status": "fixed",
+      "created_at": "2026-01-10T20:47:34.205Z",
+      "updated_at": "2026-01-10T21:00:04.240Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZupoE5dIN3sGqEIPms1",
+        "pr": "308",
+        "file": "src/components/ReceiptMappingReview.tsx",
+        "line": 215
+      },
+      "title": "Remove this useless assignment to variable \"handleUnitChange\".",
+      "body": "Remove this useless assignment to variable \"handleUnitChange\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "9d0c732e3d55b3b729620c81398eaeca524e9954",
+      "status": "fixed",
+      "created_at": "2026-01-10T20:47:34.205Z",
+      "updated_at": "2026-01-10T21:00:04.809Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 11
+      },
+      "title": "react-refresh/only-export-components in useMonthlyMetrics.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "c01e4afd6ff92f8aaf752d339396ccd33f1c6659",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 12
+      },
+      "title": "react-refresh/only-export-components in useMonthlyMetrics.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "c371f97137de95767fd44b621d17fbdf6e927738",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 56
+      },
+      "title": "react-refresh/only-export-components in useMonthlyMetrics.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "775b578cce8eb7f4602a3bb9b5d4114c40401731",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 212
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "6854995511c5fcf8f4e13e69acc227ace78a9781",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 213
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "63f072626ed3826549e9445733696502631477c1",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 216
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "5b5aec9c5879507faba61255c0412476ce0582e3",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 219
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "0b89ab8160e1279b02fac9d95deff70d2628ce58",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 329
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "809483d8d92cd2bbddcfeb8de81a5e8d16d35e37",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.219Z",
+      "updated_at": "2026-01-10T20:47:34.219Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 586
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "38536bc1232b82692965151c4cfa23dc7df1d32e",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx",
+        "line": 621
+      },
+      "title": "@typescript-eslint/no-explicit-any in useMonthlyMetrics.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useMonthlyMetrics.tsx"
+      ],
+      "id": "02705023c32bd8d3071a623315ef2b0c05c8c144",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 235
+      },
+      "title": "@typescript-eslint/ban-ts-comment in useReceiptImport.tsx",
+      "body": "Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "ee74ba54e2a5272154b16479bc6d34d5a5cbd83d",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 254
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "9249753a79b31f860e3454c6d6d1e9db36254fed",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 664
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "7e777d00a23dbb7239b7f1b19419a186b4c64b83",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 685
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "337f64116593047d6efe8bf47fbb1244384e1172",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 139
+      },
+      "title": "@typescript-eslint/no-explicit-any in Index.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "b64e23cb96b1a8116d0e033e2f14fcf451febfee",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 311
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'dailyAvgSpending'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "6e1a52391b98495009945659dcd743ec118245e4",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 314
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "The 'monthlyData' logical expression could make the dependencies of useEffect Hook (at line 400) change on every render. To fix this, wrap the initialization of 'monthlyData' in its own useMemo() Hook.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "95861089e8b1030095800709cc82a1ec406c4f09",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.220Z",
+      "updated_at": "2026-01-10T20:47:34.220Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx",
+        "line": 272
+      },
+      "title": "@typescript-eslint/no-explicit-any in TimePunchesManager.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "38596d7b99da419c756aa15e9fe72770afa0e3ad",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.221Z",
+      "updated_at": "2026-01-10T20:47:34.221Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx",
+        "line": 349
+      },
+      "title": "react-hooks/exhaustive-deps in TimePunchesManager.tsx",
+      "body": "React Hook useEffect has missing dependencies: 'photoThumbnails' and 'signedUrlCache'. Either include them or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "1b3ffb247221a7d03ed7e253c4c18aa0d18588a2",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.221Z",
+      "updated_at": "2026-01-10T20:47:34.221Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 61
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\/.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "b48d2971a3b0183c50349d0569e1eb671080ac13",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.223Z",
+      "updated_at": "2026-01-10T20:47:34.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 72
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\/.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "0bacf844a053c07de32486e0fcf3e068cc3c66f3",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.223Z",
+      "updated_at": "2026-01-10T20:47:34.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 211
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "9f17cdf534841cf1d4622dcbc6aa8628968bbaf7",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.223Z",
+      "updated_at": "2026-01-10T20:47:34.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 219
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "cc0a512c8f721485f11dc6e46e15b94827f01c9c",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.223Z",
+      "updated_at": "2026-01-10T20:47:34.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 693
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "bbda912e75a6099fdb0c77410b5654c0f5975973",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.223Z",
+      "updated_at": "2026-01-10T20:47:34.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 705
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "935eb26488ebe542a7f469b3d92c4e96aed45e3e",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.223Z",
+      "updated_at": "2026-01-10T20:47:34.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 72
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "9ed18292a2291b76acc4193d55bf2d2e75148c32",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 112
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "4e40c14d3041c13c9d94324dc32bdeddb6746c6d",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 113
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "302fededb142a2ba09a9b71ff86a998e2dde72b4",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 227
+      },
+      "title": "no-useless-escape in labor-cost-alignment.spec.ts",
+      "body": "Unnecessary escape character: \\\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "2a731a1b34c49b0f50130f1c8dccde0cf5b16d18",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 85
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "03f9439b3f91b4d5276b56b1da66172055e109be",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 100
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "d3dac727a414240feca006b773a580d9e07d52b6",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 107
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "c1ca96e61578c30474df9be7e4580de610f114b8",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 122
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "901cfff59ce900fbd9f214bd77986e37d98b9aea",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 165
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "d98aa4eb33ce8ff7e490c95975b282380b88cf54",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 224
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "13fc961258899957dbf6f9a5b0a11680159d2927",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 390
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "330ce72a3413df39b2d1d7e7d1384d6ed65012eb",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 426
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "df1f4ab3fd34034afda0c8ce997979476d5fdd94",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.224Z",
+      "updated_at": "2026-01-10T20:47:34.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 439
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "feb70c0ba709f37db5774c6811affc1c10350f30",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.225Z",
+      "updated_at": "2026-01-10T20:47:34.225Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 510
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "5964ddb794494e1acf2ef85912415da3c6dee6c1",
+      "status": "open",
+      "created_at": "2026-01-10T20:47:34.225Z",
+      "updated_at": "2026-01-10T20:47:34.225Z"
     }
   ]
 }

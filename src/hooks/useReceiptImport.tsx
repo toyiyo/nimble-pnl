@@ -62,10 +62,13 @@ export interface ReceiptLineItem {
   raw_text: string;
   parsed_name: string | null;
   parsed_quantity: number | null;
-  parsed_unit: string | null;
+  parsed_unit: string | null;  // DEPRECATED: Use package_type + size_unit instead
   parsed_price: number | null;
   parsed_sku: string | null;  // SKU for barcode scanning
   unit_price?: number | null;  // Price per unit
+  package_type: string | null;  // Type of container (bottle, bag, case, etc.)
+  size_value: number | null;    // Amount per package (750 for 750ml bottle)
+  size_unit: string | null;     // Unit of measurement (ml, oz, lb, etc.)
   matched_product_id: string | null;
   confidence_score: number | null;
   mapping_status: string;
@@ -652,28 +655,29 @@ export const useReceiptImport = () => {
           }
 
           // Product doesn't exist yet - create it (first occurrence)
-          // Normalize the unit for storage
-          const normalizedUnit = normalizeUnit(item.parsed_unit);
+          // Determine package type and size info
+          const packageType = item.package_type || item.parsed_unit || 'unit';
+          const sizeValue = item.size_value || item.parsed_quantity || 0;
+          const sizeUnit = item.size_unit || null;
           
-          // Build product data with optional size/packaging info
+          // Build product data with size/packaging info
           const productData: Record<string, any> = {
             restaurant_id: selectedRestaurant.restaurant_id,
             name: item.parsed_name || item.raw_text,
             sku: item.parsed_sku || `RCP_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             current_stock: item.parsed_quantity || 0,
             cost_per_unit: unitPrice,
-            uom_purchase: normalizedUnit,
+            uom_purchase: packageType,  // Use package_type if available
             receipt_item_names: [receiptItemName],
             supplier_id: supplierId,
             supplier_name: vendorName
           };
 
-          // For measurement units (lb, oz, gal, etc.), set size info from quantity
-          // This represents "X lbs per package" where X is the quantity purchased
-          if (isMeasurementUnit(item.parsed_unit) && item.parsed_quantity && item.parsed_quantity > 0) {
-            productData.size_unit = normalizedUnit;
-            productData.size_value = item.parsed_quantity;
-            console.log(`📦 Setting package size for ${item.parsed_name}: ${item.parsed_quantity} ${normalizedUnit}`);
+          // Set size info if we have it (for both measurement units AND containers with size)
+          if (sizeUnit && sizeValue > 0) {
+            productData.size_unit = sizeUnit;
+            productData.size_value = sizeValue;
+            console.log(`📦 Setting package size for ${item.parsed_name}: ${sizeValue} ${sizeUnit} per ${packageType}`);
           }
 
           const { data: newProduct, error: productError } = await supabase

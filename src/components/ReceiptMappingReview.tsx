@@ -212,8 +212,16 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     handleItemUpdate(itemId, { parsed_name: name });
   };
 
-  const handleUnitChange = (itemId: string, unit: string) => {
-    handleItemUpdate(itemId, { parsed_unit: unit });
+  const handlePackageTypeChange = (itemId: string, packageType: string) => {
+    handleItemUpdate(itemId, { package_type: packageType });
+  };
+
+  const handleSizeValueChange = (itemId: string, sizeValue: number) => {
+    handleItemUpdate(itemId, { size_value: sizeValue });
+  };
+
+  const handleSizeUnitChange = (itemId: string, sizeUnit: string) => {
+    handleItemUpdate(itemId, { size_unit: sizeUnit });
   };
 
   const handleSkuChange = (itemId: string, sku: string) => {
@@ -756,19 +764,19 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       key={`quantity-${item.id}`}
                       id={`quantity-${item.id}`}
                       type="number"
-                      defaultValue={item.parsed_quantity || ''}
+                      defaultValue={item.parsed_quantity ?? ''}
                       onChange={(e) => handleQuantityChange(item.id, parseFloat(e.target.value) || 0)}
                       placeholder="0"
                       disabled={isImported}
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`unit-${item.id}`}>Package Type 📦</Label>
-                  <Select
-                    value={item.parsed_unit || ''}
-                    onValueChange={(value) => handleUnitChange(item.id, value)}
-                    disabled={isImported}
-                  >
+                    <Label htmlFor={`package-${item.id}`}>Package Type 📦</Label>
+                    <Select
+                      value={item.package_type || item.parsed_unit || ''}
+                      onValueChange={(value) => handlePackageTypeChange(item.id, value)}
+                      disabled={isImported}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select package type" />
                       </SelectTrigger>
@@ -788,6 +796,63 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   </div>
                 </div>
 
+                {/* Size & Packaging Details */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label htmlFor={`size-value-${item.id}`}>
+                      Amount per Package 📦
+                    </Label>
+                    <Input
+                      key={`size-value-${item.id}`}
+                      id={`size-value-${item.id}`}
+                      type="number"
+                      defaultValue={item.size_value ?? ''}
+                      onChange={(e) => handleSizeValueChange(item.id, Number.parseFloat(e.target.value) || 0)}
+                      placeholder="750"
+                      disabled={isImported}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`size-unit-${item.id}`}>Unit 📏</Label>
+                    <Select
+                      value={item.size_unit || ''}
+                      onValueChange={(value) => handleSizeUnitChange(item.id, value)}
+                      disabled={isImported}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        <SelectGroup>
+                          <SelectLabel>Weight Units</SelectLabel>
+                          {WEIGHT_UNITS.map((unit) => (
+                            <SelectItem key={unit} value={unit}>
+                              {unit}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Volume Units</SelectLabel>
+                          {VOLUME_UNITS.map((unit) => (
+                            <SelectItem key={unit} value={unit}>
+                              {unit}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-end">
+                    <div className="text-xs text-muted-foreground pb-2">
+                      {!!(item.size_value && item.size_unit && item.package_type) && (
+                        <span className="font-medium">
+                          {item.size_value} {item.size_unit} per {item.package_type}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <Label htmlFor={`price-${item.id}`}>Total Price</Label>
                   <Input
@@ -795,7 +860,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                     id={`price-${item.id}`}
                     type="number"
                     step="0.01"
-                    defaultValue={item.parsed_price || ''}
+                    defaultValue={item.parsed_price ?? ''}
                     onChange={(e) => handlePriceChange(item.id, parseFloat(e.target.value) || 0)}
                     placeholder="0.00"
                     disabled={isImported}
@@ -803,7 +868,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   {item.parsed_quantity && item.parsed_quantity > 0 && item.parsed_price && (
                     <div className="mt-2 space-y-1">
                       <Badge variant="secondary">
-                        Unit: ${(item.unit_price || item.parsed_price / item.parsed_quantity).toFixed(2)}/{item.parsed_unit || 'unit'}
+                        Unit: ${(item.unit_price || item.parsed_price / item.parsed_quantity).toFixed(2)}/{item.package_type || item.parsed_unit || 'unit'}
                       </Badge>
                       {item.parsed_quantity > 1 && (
                         <Badge variant="outline" className="ml-2">
@@ -812,16 +877,14 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       )}
                     </div>
                   )}
-                  {/* Packaging info indicator for new items with measurement units */}
+                  {/* Packaging info indicator for new items with size info */}
                   {item.mapping_status === 'new_item' && 
-                   item.parsed_unit && 
-                   [...WEIGHT_UNITS, ...VOLUME_UNITS].map(u => u.toLowerCase()).includes(item.parsed_unit.toLowerCase().trim()) &&
-                   item.parsed_quantity && item.parsed_quantity > 0 && (
+                   !!(item.size_value && item.size_unit) && (
                     <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-md border border-blue-200 dark:border-blue-800">
                       <div className="flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-300">
                         <Package className="h-3 w-3" />
                         <span>
-                          Will set package size: <strong>{item.parsed_quantity} {item.parsed_unit}</strong>
+                          Will set package size: <strong>{item.size_value} {item.size_unit}</strong> per <strong>{item.package_type || 'unit'}</strong>
                         </span>
                       </div>
                     </div>

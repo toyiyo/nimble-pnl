@@ -3,10 +3,10 @@ import { setHours, setMinutes, startOfDay } from 'date-fns';
 /**
  * Snaps a time to the nearest interval
  * @param date The date to snap
- * @param snapMinutes The interval in minutes (default: 5)
+ * @param snapMinutes The interval in minutes (default: 15)
  * @returns The snapped date
  */
-export const snapToInterval = (date: Date, snapMinutes: number = 5): Date => {
+export const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {
   const minutes = date.getMinutes();
   const remainder = minutes % snapMinutes;
   const snappedMinutes = remainder < snapMinutes / 2 
@@ -65,4 +65,19 @@ export const formatHourToTime = (hour: number): string => {
   const period = h >= 12 ? 'PM' : 'AM';
   const displayHour = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${displayHour}:${m.toString().padStart(2, '0')} ${period}`;
+};
+
+/**
+ * Formats duration in minutes to hours and minutes string
+ * @param totalMinutes The total minutes
+ * @returns Formatted string (e.g., "4h 15m" or "8h")
+ */
+export const formatDuration = (totalMinutes: number): string => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h ${minutes}m`;
 };

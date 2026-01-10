@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Plus, Check, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, startOfDay, addHours, differenceInMinutes, isSameDay } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { parseTimeRange, snapToInterval } from '@/lib/timeUtils';
+import { parseTimeRange, snapToInterval, formatDuration } from '@/lib/timeUtils';
 import { useCreateTimePunch, useUpdateTimePunch, useDeleteTimePunch } from '@/hooks/useTimePunches';
 import { useToast } from '@/hooks/use-toast';
 import { TimePunch } from '@/types/timeTracking';
@@ -42,8 +42,8 @@ interface ManualTimelineEditorProps {
   restaurantId: string;
 }
 
-const HOURS_START = 6; // 6am
-const HOURS_END = 24; // 12am (midnight)
+const HOURS_START = 0; // Midnight (12am)
+const HOURS_END = 24; // Midnight (12am next day)
 const TOTAL_HOURS = HOURS_END - HOURS_START;
 
 export const ManualTimelineEditor = ({ 
@@ -505,16 +505,17 @@ export const ManualTimelineEditor = ({
         <div className="flex items-center mb-2">
           <div className="w-48 flex-shrink-0"></div>
           <div className="flex-1 flex justify-between text-xs text-muted-foreground px-2">
-            {Array.from({ length: TOTAL_HOURS / 2 }, (_, i) => {
-              const hour = HOURS_START + i * 2;
+            {Array.from({ length: 13 }, (_, i) => {
+              const hour = i * 2; // 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24
+              const displayHour = hour === 0 ? '12a' : hour === 12 ? '12p' : hour > 12 ? `${hour - 12}p` : `${hour}a`;
               return (
                 <span key={hour}>
-                  {hour === 12 ? '12p' : hour > 12 ? `${hour - 12}p` : `${hour}a`}
+                  {displayHour}
                 </span>
               );
             })}
           </div>
-          <div className="w-24 flex-shrink-0"></div>
+          <div className="w-32 flex-shrink-0"></div>
         </div>
 
         {/* Employee rows */}
@@ -557,12 +558,13 @@ export const ManualTimelineEditor = ({
                   const startPos = getPositionFromTime(block.startTime);
                   const endPos = getPositionFromTime(block.endTime);
                   const width = endPos - startPos;
+                  const durationMinutes = differenceInMinutes(block.endTime, block.startTime);
                   
                   return (
                     <div
                       key={block.id}
                       className={cn(
-                        "absolute top-1 bottom-1 rounded-md transition-all",
+                        "absolute top-1 bottom-1 rounded-md transition-all flex items-center justify-center px-2 text-xs font-medium text-primary-foreground",
                         block.isSaving 
                           ? "bg-primary/50 animate-pulse" 
                           : "bg-primary hover:bg-primary/90"
@@ -572,6 +574,13 @@ export const ManualTimelineEditor = ({
                         width: `${width}%`,
                       }}
                     >
+                      {/* Time label inside block */}
+                      {width > 8 && (
+                        <span className="truncate">
+                          {format(block.startTime, 'HH:mm')} - {format(block.endTime, 'HH:mm')}
+                        </span>
+                      )}
+                      
                       {/* Drag handles */}
                       <div
                         className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20"
@@ -593,9 +602,9 @@ export const ManualTimelineEditor = ({
               </div>
               
               {/* Hours total and status */}
-              <div className="w-24 flex-shrink-0 p-3 text-right">
+              <div className="w-32 flex-shrink-0 p-3 text-right">
                 <div className="font-medium">
-                  {employeeDay.totalHours.toFixed(1)}h
+                  {formatDuration(Math.round(employeeDay.totalHours * 60))}
                 </div>
                 {employeeDay.hasWarning && (
                   <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20 text-xs">
@@ -661,7 +670,7 @@ export const ManualTimelineEditor = ({
                             {format(block.endTime, 'h:mm a')}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            ({(differenceInMinutes(block.endTime, block.startTime) / 60).toFixed(1)}h)
+                            ({formatDuration(differenceInMinutes(block.endTime, block.startTime))})
                           </span>
                         </div>
                         <Button
@@ -687,9 +696,12 @@ export const ManualTimelineEditor = ({
               Total hours for {format(date, 'MMM d, yyyy')}
             </div>
             <div className="text-xl font-bold">
-              {Array.from(employeeDays.values())
-                .reduce((sum, day) => sum + day.totalHours, 0)
-                .toFixed(1)}h
+              {formatDuration(
+                Math.round(
+                  Array.from(employeeDays.values())
+                    .reduce((sum, day) => sum + day.totalHours, 0) * 60
+                )
+              )}
             </div>
           </div>
         </div>

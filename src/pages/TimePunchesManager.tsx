@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { 
   Clock, Trash2, Edit, Download, Search, Camera, MapPin, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock, RefreshCcw, Copy, UserCog, Loader2
+  LayoutGrid, BarChart3, List, Code, Shield, KeyRound, TabletSmartphone, Unlock, RefreshCcw, Copy, UserCog, Loader2, PenLine
 } from 'lucide-react';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
@@ -52,12 +52,14 @@ import {
   BarcodeStripeView,
   PunchStreamView,
   ReceiptStyleView,
+  ManualTimelineEditor,
+  MobileTimeEntry,
 } from '@/components/time-tracking';
 
 const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000; // Refresh URLs a few minutes before expiry
 
 type ViewMode = 'day' | 'week' | 'month';
-type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt';
+type VisualizationMode = 'gantt' | 'cards' | 'barcode' | 'stream' | 'receipt' | 'manual';
 
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -998,6 +1000,10 @@ const TimePunchesManager = () => {
                   <TableIcon className="h-4 w-4" />
                   <span className="hidden sm:inline">Receipt</span>
                 </TabsTrigger>
+                <TabsTrigger value="manual" className="gap-2">
+                  <PenLine className="h-4 w-4" />
+                  <span className="hidden sm:inline">Manual</span>
+                </TabsTrigger>
               </TabsList>
             </div>
           </CardHeader>
@@ -1048,6 +1054,40 @@ const TimePunchesManager = () => {
               <CardContent className="py-12 text-center">
                 <p className="text-muted-foreground">
                   Please select a specific employee to view receipt-style timeline
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="manual" className="mt-6">
+          {viewMode === 'day' ? (
+            <>
+              {/* Desktop view - hidden on mobile */}
+              <div className="hidden md:block">
+                <ManualTimelineEditor
+                  employees={employees}
+                  date={currentDate}
+                  existingPunches={filteredPunches}
+                  loading={loading}
+                  restaurantId={restaurantId || ''}
+                />
+              </div>
+              
+              {/* Mobile view - hidden on desktop */}
+              <div className="block md:hidden">
+                <MobileTimeEntry
+                  employees={employees}
+                  date={currentDate}
+                  restaurantId={restaurantId || ''}
+                />
+              </div>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">
+                  Manual time entry is only available in day view. Switch to day view to use this feature.
                 </p>
               </CardContent>
             </Card>

@@ -22228,6 +22228,1264 @@
       "status": "open",
       "created_at": "2026-01-09T02:03:41.244Z",
       "updated_at": "2026-01-09T02:03:41.244Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092887,
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 383
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Async operation inside `setState` callback is an antipattern.**\n\nThe async IIFE `(async () => { ... })()` inside `setEmployeeDays` runs after the state update returns, leading to potential race conditions and making the code harder to reason about. State setters should be pure and synchronous.\n\n\n\n<details>\n<summary>♻️ Move async logic outside setState</summary>\n\nRestructure to extract the block data first, then perform async operations:\n\n```typescript\nconst triggerAutoSave = useCallback((employeeId: string, blockId: string) => {\n  if (saveTimeout) {\n    clearTimeout(saveTimeout);\n  }\n  \n  const timeout = setTimeout(async () => {\n    const employeeDay = employeeDays.get(employeeId);\n    if (!employeeDay) return;\n    \n    const block = employeeDay.blocks.find(b => b.id === blockId);\n    if (!block) return;\n    \n    // Mark as saving\n    setEmployeeDays(prev => {\n      const updated = new Map(prev);\n      const day = updated.get(employeeId);\n      if (day) {\n        const blockIndex = day.blocks.findIndex(b => b.id === blockId);\n        if (blockIndex !== -1) {\n          day.blocks[blockIndex] = { ...day.blocks[blockIndex], isSaving: true };\n          updated.set(employeeId, { ...day });\n        }\n      }\n      return updated;\n    });\n    \n    try {\n      // Perform async operations here...\n      if (block.isNew || !block.clockInPunchId) {\n        const clockInResult = await createPunch.mutateAsync({ /* ... */ });\n        // ...\n      }\n      // Update state after success\n    } catch (error) {\n      // Handle error\n    }\n  }, 500);\n  \n  setSaveTimeout(timeout);\n}, [employeeDays, createPunch, updatePunch, restaurantId, toast, saveTimeout]);\n```\n\nNote: This requires adding `employeeDays` to the dependency array.\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/time-tracking/ManualTimelineEditor.tsx around lines 285 -\n381, The async IIFE inside the setEmployeeDays updater (in\nManualTimelineEditor.tsx) is an antipattern and can cause race conditions; move\nall async work out of the setState callback: synchronously read the block from\nemployeeDays (use employeeDays.get(employeeId) and find the block by blockId),\ncall setEmployeeDays only to mark isSaving: true, then perform async calls to\ncreatePunch.mutateAsync / updatePunch.mutateAsync and finally update state with\nthe returned IDs or clear isSaving; ensure setSaveTimeout/saveTimeout logic\nremains intact and add employeeDays, createPunch, updatePunch, restaurantId and\ntoast to the triggerAutoSave useCallback dependencies so the async flow runs\noutside the state updater and state setters stay pure.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "6b8549a42a05870de6fceb021ac1262b40a7fa46",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.137Z",
+      "updated_at": "2026-01-10T02:13:25.044Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Refactored async logic outside setState, tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092891,
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 359
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove `console.error` from production code.**\n\nPer coding guidelines, remove console statements from production code.\n\n\n\n<details>\n<summary>🔧 Suggested fix</summary>\n\n```diff\n           } catch (error) {\n-            console.error('Failed to save time block:', error);\n+            if (import.meta.env.DEV) {\n+              console.error('Failed to save time block:', error);\n+            }\n             toast({\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/time-tracking/ManualTimelineEditor.tsx at line 357, Remove\nthe console.error call in ManualTimelineEditor (the line logging \"Failed to save\ntime block:\") and replace it with the app's structured error handling: call the\nproject logger (e.g., logger.error or processLogger.error) with the same message\nand error object, or invoke an onError callback / set component error state to\nsurface a user-friendly message; locate the save handler inside\nManualTimelineEditor.tsx where console.error('Failed to save time block:',\nerror) appears and swap that call for the appropriate logger or\nerror-state/onError invocation.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "a04b4dd374a653e5478896ade711e96e584837fd",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.138Z",
+      "updated_at": "2026-01-10T02:13:28.965Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Wrapped console.error in DEV check, tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092895,
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 479
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove `console.error` from production code.**\n\nSame issue - wrap in development mode check.\n\n\n\n<details>\n<summary>🔧 Suggested fix</summary>\n\n```diff\n     } catch (error) {\n-      console.error('Failed to delete block:', error);\n+      if (import.meta.env.DEV) {\n+        console.error('Failed to delete block:', error);\n+      }\n       toast({\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n     } catch (error) {\n       if (import.meta.env.DEV) {\n         console.error('Failed to delete block:', error);\n       }\n       toast({\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/time-tracking/ManualTimelineEditor.tsx at line 477, Replace\nthe direct console.error call in ManualTimelineEditor (the delete block error\npath) with a development-only log: only call console.error when\nprocess.env.NODE_ENV === 'development' (or use a centralized logger for\nproduction like processLogger.error or logger.error) so the error message isn’t\nprinted in production; locate the error handling around the delete block logic\n(e.g., the deleteBlock/handleDeleteBlock callback) and wrap or swap the\nconsole.error accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "5c89e741bbde62451fd37516ae65379d4fe3b582",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.138Z",
+      "updated_at": "2026-01-10T02:13:29.587Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Wrapped console.error in DEV check, tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092905,
+        "file": "src/components/time-tracking/MobileTimeEntry.tsx",
+        "line": 177
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove `console.error` from production code.**\n\nPer coding guidelines, remove all console.log statements from production code and use conditional logging only in development mode.\n\n\n\n<details>\n<summary>🔧 Suggested fix</summary>\n\n```diff\n     } catch (error) {\n-      console.error('Failed to save:', error);\n+      if (import.meta.env.DEV) {\n+        console.error('Failed to save:', error);\n+      }\n       toast({\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n     } catch (error) {\n       if (import.meta.env.DEV) {\n         console.error('Failed to save:', error);\n       }\n       toast({\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/time-tracking/MobileTimeEntry.tsx at line 177, In\nMobileTimeEntry.tsx remove the direct console.error call and replace it with a\ndevelopment-only log or the app's logging utility: e.g., inside the save handler\n(the function that currently calls console.error('Failed to save:', error))\neither call a centralized logger (logger.error(...)) or wrap the console call\nwith a NODE_ENV check (if (process.env.NODE_ENV !== 'production')\nconsole.error(...)); ensure no plain console.* calls remain in production paths\nand use the component's save handler name to locate and update the statement.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7d5c760025102d525fda66a102876cadd8484a4a",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.138Z",
+      "updated_at": "2026-01-10T02:13:30.216Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Wrapped console.error in DEV check, tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092910,
+        "file": "src/components/time-tracking/MobileTimeEntry.tsx",
+        "line": 214
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove `console.error` from production code.**\n\nSame issue here - wrap in development mode check or remove.\n\n\n\n<details>\n<summary>🔧 Suggested fix</summary>\n\n```diff\n     } catch (error) {\n-      console.error('Failed to delete:', error);\n+      if (import.meta.env.DEV) {\n+        console.error('Failed to delete:', error);\n+      }\n       toast({\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n    } catch (error) {\n      if (import.meta.env.DEV) {\n        console.error('Failed to delete:', error);\n      }\n      toast({\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/time-tracking/MobileTimeEntry.tsx around lines 213 - 214, The\ncatch block in MobileTimeEntry's delete handler currently calls console.error\n(remove console.* from production); replace it by either logging via the app's\nlogger (e.g., logger.error) or wrap the console.error call in a dev-only guard\n(e.g., check __DEV__ or process.env.NODE_ENV !== 'production') and ensure\nuser-facing errors use the existing UI/error-handling flow instead of console\noutput; update the catch in the delete method in the MobileTimeEntry component\naccordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7cb6bd18acbe0e713f2a413d715bb194f19b37d3",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.138Z",
+      "updated_at": "2026-01-10T02:13:31.074Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Wrapped console.error in DEV check, tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092912,
+        "file": "src/components/time-tracking/MobileTimeEntry.tsx",
+        "line": 296
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add `aria-label` for icon-only delete button.**\n\nPer coding guidelines, buttons without text need `aria-label` for accessibility.\n\n\n\n<details>\n<summary>♿ Add aria-label</summary>\n\n```diff\n                         <Button\n                           size=\"sm\"\n                           variant=\"ghost\"\n                           onClick={() => deleteBlock(employee.id, block.id)}\n                           disabled={block.isSaving}\n+                          aria-label=\"Delete time block\"\n                         >\n                           <Trash2 className=\"h-4 w-4\" />\n                         </Button>\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/time-tracking/MobileTimeEntry.tsx around lines 289 - 296, The\ndelete Button inside MobileTimeEntry (the Button wrapping the Trash2 icon that\ncalls deleteBlock(employee.id, block.id) and is disabled by block.isSaving) is\nicon-only and needs an aria-label for accessibility; add an aria-label prop (for\nexample \"Delete time entry\" or a contextual label like `Delete block\n${block.id}` or `Delete time entry for ${employee.id}`) to the Button so screen\nreaders can announce its purpose while keeping existing props and behavior\nunchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "acbb70e089e58a105e232a9e2dd879ae761dc69d",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.138Z",
+      "updated_at": "2026-01-10T02:13:31.567Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added aria-label to delete button, tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 2678092913,
+        "file": "src/lib/timeUtils.ts",
+        "line": 15
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**`snapMinutes` parameter is ignored - function always snaps to 15 minutes.**\n\nThe implementation uses hardcoded `* 4` and `/ 4` which only works for 15-minute intervals, ignoring the `snapMinutes` parameter entirely. This is misleading API design.\n\n\n\n<details>\n<summary>🐛 Either use the parameter or remove it</summary>\n\nOption 1 - Implement the parameter correctly:\n```diff\n export const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {\n   const hour = date.getHours() + date.getMinutes() / 60;\n-  const snappedHour = Math.round(hour * 4) / 4; // Snap to quarters (15 min)\n+  const intervalsPerHour = 60 / snapMinutes;\n+  const snappedHour = Math.round(hour * intervalsPerHour) / intervalsPerHour;\n   const finalHour = Math.floor(snappedHour);\n   const finalMinutes = Math.round((snappedHour - finalHour) * 60);\n   return setMinutes(setHours(startOfDay(date), finalHour), finalMinutes);\n };\n```\n\nOption 2 - Remove the unused parameter and document the fixed behavior:\n```diff\n-export const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {\n+export const snapToInterval = (date: Date): Date => {\n   const hour = date.getHours() + date.getMinutes() / 60;\n   const snappedHour = Math.round(hour * 4) / 4; // Snap to 15-min quarters\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nexport const snapToInterval = (date: Date, snapMinutes: number = 15): Date => {\n  const hour = date.getHours() + date.getMinutes() / 60;\n  const intervalsPerHour = 60 / snapMinutes;\n  const snappedHour = Math.round(hour * intervalsPerHour) / intervalsPerHour;\n  const finalHour = Math.floor(snappedHour);\n  const finalMinutes = Math.round((snappedHour - finalHour) * 60);\n  return setMinutes(setHours(startOfDay(date), finalHour), finalMinutes);\n};\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/lib/timeUtils.ts around lines 9 - 15, The snapToInterval function\ncurrently ignores the snapMinutes parameter and always snaps to 15 minutes;\nupdate snapToInterval to use snapMinutes (or remove the parameter). Implement by\ncomputing total minutes since startOfDay(date), divide by snapMinutes, round to\nnearest integer, multiply back to get snappedMinutes, then set hours/minutes on\nstartOfDay(date) (refer to snapToInterval, startOfDay, setHours, setMinutes).\nEnsure snapMinutes defaults sensibly and validate >0 to avoid division by zero.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "9c4e53e4c8e49c56df658c8482c67e480f85ad4a",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.138Z",
+      "updated_at": "2026-01-10T02:13:32.369Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Implemented snapMinutes parameter correctly, added tests, all tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 3731265702
+      },
+      "title": "@coderabbitai review",
+      "body": "@coderabbitai review",
+      "severity": "info",
+      "id": "23cc8bc5a9e75e0df2e579dc08cd08ae425a3469",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.140Z",
+      "updated_at": "2026-01-10T02:13:33.043Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "All code review issues addressed"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 3731266248
+      },
+      "title": "<!-- This is an auto-generated reply by CodeRabbit -->",
+      "body": "<!-- This is an auto-generated reply by CodeRabbit -->\n<details>\n<summary>✅ Actions performed</summary>\n\nReview triggered.\n\n> Note: CodeRabbit is an incremental review system and does not re-review already reviewed commits. This command is applicable only when automatic reviews are paused.\n\n</details>",
+      "severity": "info",
+      "id": "48fa55d24bc4e05b33d042b7eeff1e5010e1dd30",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.140Z",
+      "updated_at": "2026-01-10T02:13:33.589Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Review triggered action completed"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "303",
+        "comment_id": 3731479487
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=303) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [C Reliability Rating on New Code](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=303) (required ≥ A)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=303)\n\n##   \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/light_bulb-16px.png '') Catch issues before they fail your Quality Gate with our IDE extension ![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/sonarlint-16px.png '') [SonarQube for IDE](https://www.sonarsource.com/products/sonarlint/features/connected-mode/?referrer=pull-request)\n\n",
+      "severity": "info",
+      "id": "b7838a07ef63256ab0ec4d93bd3190a3881becfa",
+      "status": "fixed",
+      "created_at": "2026-01-10T02:07:35.140Z",
+      "updated_at": "2026-01-10T02:13:34.179Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Code quality improvements implemented"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulo6MMhjQ8Li1ptCEb",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 402
+      },
+      "title": "Remove this useless assignment to variable \"handleInlineTimeInput\".",
+      "body": "Remove this useless assignment to variable \"handleInlineTimeInput\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "d43b72498423f41dfbcc71661882008ba3416df6",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulo6MMhjQ8Li1ptCEc",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 771
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "8a1c017107b809233e5acc4f187a85a15dd2aa3b",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulo6MMhjQ8Li1ptCEd",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 775
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "43a3e6564228ba875da043d54b9c45c6b7e0f455",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulo6MMhjQ8Li1ptCEe",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 822
+      },
+      "title": "Convert the conditional to a boolean to avoid leaked value",
+      "body": "Convert the conditional to a boolean to avoid leaked value",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "62cbea67b135974a3d8aad8f733a57d691399fcc",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvU",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 538
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "3cc4127e6d43ccf144561eb5789421cb84f93632",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvW",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 599
+      },
+      "title": "Remove this useless assignment to variable \"durationMinutes\".",
+      "body": "Remove this useless assignment to variable \"durationMinutes\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "65b09135348f91cdd2465507bfb695ce89950630",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvP",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 274
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "26c2b68655b2c6101760d3a7110723e732abd7de",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvQ",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 280
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "1f0a736222508c390d4d1be608795f4bebb58cd7",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvR",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 287
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "74dedc8f8e15cac2b8ba01231e404e94ede2bc52",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplvZ",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 24
+      },
+      "title": "Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.",
+      "body": "Refactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "7e57c09fe7ee30e5bdaf775378f9983bbe09bf3d",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplva",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 26
+      },
+      "title": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "body": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "a4e8c7410a935b477598936af4d335f88f9e7c1e",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplvb",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 29
+      },
+      "title": "Use the \"RegExp.exec()\" method instead.",
+      "body": "Use the \"RegExp.exec()\" method instead.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "f64157a9d19ccff7ceee4da3f32a4e22087292b6",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplvc",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 35
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "b9bbafcf4fdc8d34aa4899e4a4b07fee37099acb",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplvd",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 36
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "5530132cad8ce1f18da2ebd3d6e6731058447c02",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplve",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 48
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "26e6034775a39e40d44ccc3e68bdbc8ffb4726ef",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplvf",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 49
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "320c104d27bbf928a6c5d595afd15aeb106102c6",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp8zci1cqzMplvg",
+        "pr": "303",
+        "file": "src/lib/timeUtils.ts",
+        "line": 65
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "2e7e98905ad42360ea5d8b04aaf99b4372b341c5",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp0zci1cqzMplvX",
+        "pr": "303",
+        "file": "src/components/time-tracking/MobileTimeEntry.tsx",
+        "line": 8
+      },
+      "title": "Remove this unused import of 'differenceInMinutes'.",
+      "body": "Remove this unused import of 'differenceInMinutes'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "9bab038fbe565f577a25c5d4a52475661d50b56f",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJp0zci1cqzMplvY",
+        "pr": "303",
+        "file": "src/components/time-tracking/MobileTimeEntry.tsx",
+        "line": 106
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "7bc4b52eff8f2ebc6bbd5b220540aefe69a68242",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvM",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 1
+      },
+      "title": "Remove this unused import of 'useMemo'.",
+      "body": "Remove this unused import of 'useMemo'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "5011eab993309cdb15c0eef6444c2b06f87021b6",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvN",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 99
+      },
+      "title": "Prefer using an optional chain expression instead, as it's more concise and easier to read.",
+      "body": "Prefer using an optional chain expression instead, as it's more concise and easier to read.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "f46c4be9db8ef263518cb629a1030eee014b34b5",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvO",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 107
+      },
+      "title": "Remove this assignment of \"i\".",
+      "body": "Remove this assignment of \"i\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "efebd036c9361efc9be2c0ac88836871d7b45325",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvS",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 495
+      },
+      "title": "Use `new Array()` instead of `Array()`.",
+      "body": "Use `new Array()` instead of `Array()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "c20ec548ab5fa9c429332526eb3094750cdab739",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZulfJlozci1cqzMplvT",
+        "pr": "303",
+        "file": "src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 496
+      },
+      "title": "Do not use Array index in keys",
+      "body": "Do not use Array index in keys",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "5ac831ff48cadc381b3878dcae563c50189e41a6",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.141Z",
+      "updated_at": "2026-01-10T02:07:35.141Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 200
+      },
+      "title": "react-hooks/exhaustive-deps in ManualTimelineEditor.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'getTimeFromPosition'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/time-tracking/ManualTimelineEditor.tsx"
+      ],
+      "id": "19ea92dfaee41abd64842e4be90a4251d5ae2982",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.155Z",
+      "updated_at": "2026-01-10T02:07:35.155Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 248
+      },
+      "title": "react-hooks/exhaustive-deps in ManualTimelineEditor.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'getTimeFromPosition'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/time-tracking/ManualTimelineEditor.tsx"
+      ],
+      "id": "b0da2567a45072ef849165bc358fa0b4fc5cce50",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.155Z",
+      "updated_at": "2026-01-10T02:07:35.155Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/time-tracking/ManualTimelineEditor.tsx",
+        "line": 260
+      },
+      "title": "react-hooks/exhaustive-deps in ManualTimelineEditor.tsx",
+      "body": "React Hook useCallback has a missing dependency: 'triggerAutoSave'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/time-tracking/ManualTimelineEditor.tsx"
+      ],
+      "id": "a8ade819ddea41b2bfd12335bb878da4d9214895",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.155Z",
+      "updated_at": "2026-01-10T02:07:35.155Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx",
+        "line": 182
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useToastConnection.tsx"
+      ],
+      "id": "f278cef2e4472d8cfe81ef4e4b4c89fdb38f0595",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.156Z",
+      "updated_at": "2026-01-10T02:07:35.156Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx",
+        "line": 220
+      },
+      "title": "@typescript-eslint/no-explicit-any in TimePunchesManager.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "e65fbc1130faad82ce5e3f77a964292eba21b18e",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.157Z",
+      "updated_at": "2026-01-10T02:07:35.157Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx",
+        "line": 270
+      },
+      "title": "@typescript-eslint/no-explicit-any in TimePunchesManager.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "6f04c5b48df618150ec3df83442fc8a7b12d55dc",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.157Z",
+      "updated_at": "2026-01-10T02:07:35.157Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx",
+        "line": 348
+      },
+      "title": "react-hooks/exhaustive-deps in TimePunchesManager.tsx",
+      "body": "React Hook useEffect has missing dependencies: 'photoThumbnails' and 'signedUrlCache'. Either include them or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/TimePunchesManager.tsx"
+      ],
+      "id": "568380ebc16942197945fcf75077b50690ee451f",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.157Z",
+      "updated_at": "2026-01-10T02:07:35.157Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts",
+        "line": 43
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts"
+      ],
+      "id": "f360c3af79c44d1d4a420920b56c8fd19eb6beb4",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.158Z",
+      "updated_at": "2026-01-10T02:07:35.158Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts",
+        "line": 78
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts"
+      ],
+      "id": "1f019e56ca93a654632776195726059544558b67",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.158Z",
+      "updated_at": "2026-01-10T02:07:35.158Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts",
+        "line": 79
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts"
+      ],
+      "id": "45e216066891e47811b5a5ed7e0eaea285a47467",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.158Z",
+      "updated_at": "2026-01-10T02:07:35.158Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts",
+        "line": 80
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts"
+      ],
+      "id": "fa5139bd889e4b57fe59296b788e6624b7334164",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.158Z",
+      "updated_at": "2026-01-10T02:07:35.158Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts",
+        "line": 251
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts"
+      ],
+      "id": "22d9be0cdaa6d99f4cb909dfc02f8a2f7495e7b4",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.158Z",
+      "updated_at": "2026-01-10T02:07:35.158Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts",
+        "line": 321
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-suggest-categorization-rules/index.ts"
+      ],
+      "id": "1d7c327c37555a3a8272591ddaf54c1bfbbd5670",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.158Z",
+      "updated_at": "2026-01-10T02:07:35.158Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts",
+        "line": 195
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts"
+      ],
+      "id": "d1e6d877418da150a1ad0c872628ea161d6fedc9",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.160Z",
+      "updated_at": "2026-01-10T02:07:35.160Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts",
+        "line": 246
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts"
+      ],
+      "id": "d23738591089a29d83f965a9a8f7130818e9b4f3",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.160Z",
+      "updated_at": "2026-01-10T02:07:35.160Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts",
+        "line": 305
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-sync-data/index.ts"
+      ],
+      "id": "ef1defe27730afd578fecde9f5efa0faec5c1aa7",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.160Z",
+      "updated_at": "2026-01-10T02:07:35.160Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 192
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "b96cc1e76203a3069b81535b3b6cd2fec5f5befc",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.160Z",
+      "updated_at": "2026-01-10T02:07:35.160Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 232
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "ab170901dc74a3a7a583d96159a2dca40a4d81f4",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.160Z",
+      "updated_at": "2026-01-10T02:07:35.160Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts",
+        "line": 243
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/toast-webhook/index.ts"
+      ],
+      "id": "63dedc570970bc539d0e0d655cd1344b7fa4e97c",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.160Z",
+      "updated_at": "2026-01-10T02:07:35.160Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 84
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "3572d6edb02a4569ee4fec3183d6ca7e6574e69a",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 116
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "25c613748d1bb855178939a03faf6c7194d16f30",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 144
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "0b1f990b8ebc1a9920a5c286746647033ea2754a",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 164
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "ea53f686c1bda0a7802f252782ddbbd8f3dc3045",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 179
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "50e3dc94988014eeb6fba6808d0894213d0a75ac",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 208
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "66518e21bf28560e2787e7a123107e392203e371",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 227
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "ec9044363f10b933edabddaf3a92f5d7919780a8",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 248
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "5359a29b55e747d54bfcb95f4aa67b733ae8361d",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 265
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "847c6467b5549f70c9e07d7839aa914269e75838",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 280
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "efc326dff2784604d8cd18e8ba71f5b3d9d7d5ab",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 306
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "0e1b7204afb8ac83303a9e9238f8b71f89390517",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 331
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "a5f332a27fae2266ca3e4e3deb43058b0e0a5a19",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 348
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "1c1b0fb6b4824e28f7bc8e5645904960bbff4dba",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 363
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "26398fb3a2dc276c0b4e223ad95e225850936621",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx",
+        "line": 384
+      },
+      "title": "@typescript-eslint/no-explicit-any in useToastConnection.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useToastConnection.test.tsx"
+      ],
+      "id": "90b7cedf7783b0410a806bee655aa2a6eefe55a3",
+      "status": "open",
+      "created_at": "2026-01-10T02:07:35.161Z",
+      "updated_at": "2026-01-10T02:07:35.161Z"
     }
   ]
 }

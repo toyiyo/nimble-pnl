@@ -500,56 +500,62 @@ export function useMonthlyMetrics(
       });
 
       // Calculate labor costs PER MONTH separately to match Payroll period-based calculations
-      // This ensures salary/contractor employees get their proper monthly allocation
-      // (not the entire range divided across all months)
+      // For the *current* month, we clamp the month end to the query's dateTo (month-to-date)
+      // so Monthly Performance matches Payroll/Performance Overview for in-progress months.
       const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
-      
-      for (const monthStart of monthsInRange) {
-        const monthEnd = endOfMonth(monthStart);
+
+      for (const rawMonthStart of monthsInRange) {
+        const monthStart = startOfMonth(rawMonthStart);
+        const monthEndFull = endOfMonth(monthStart);
         const monthKey = format(monthStart, 'yyyy-MM');
-        
-        // Filter time punches for this specific month
-        const monthPunches = typedPunches.filter(punch => {
+
+        // Clamp edges of the overall query window (first/last month can be partial)
+        const clampedStart = monthStart < dateFrom ? dateFrom : monthStart;
+        const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
+        if (clampedStart > clampedEnd) continue;
+
+        // Filter time punches for this specific month window
+        const monthPunches = typedPunches.filter((punch) => {
           const punchDate = new Date(punch.punch_time);
-          return punchDate >= monthStart && punchDate <= monthEnd;
+          return punchDate >= clampedStart && punchDate <= clampedEnd;
         });
-        
-        // Calculate labor for just this month (same logic as Payroll)
+
+        // Calculate labor for just this month window (same underlying compensation logic as Payroll)
         const { dailyCosts: monthLaborCosts } = calculateActualLaborCost(
           typedEmployees,
           monthPunches,
-          monthStart,
-          monthEnd
+          clampedStart,
+          clampedEnd
         );
-        
-        // Build per-job payments map for this month only
+
+        // Build per-job payments map for this month window only
         const monthPerJobPayments = new Map<string, number>();
         (manualPaymentsData || []).forEach((payment: { date: string; allocated_cost: number }) => {
           const paymentDate = new Date(payment.date);
-          if (paymentDate >= monthStart && paymentDate <= monthEnd) {
+          if (paymentDate >= clampedStart && paymentDate <= clampedEnd) {
             const current = monthPerJobPayments.get(payment.date) || 0;
             monthPerJobPayments.set(payment.date, current + (payment.allocated_cost / 100));
           }
         });
-        
-        // Aggregate labor for this month
+
+        // Aggregate labor for this month window
         let monthPendingLabor = 0;
-        
+
         monthLaborCosts.forEach((day) => {
           monthPendingLabor += day.total_cost;
           // Add per-job payments for this date (if any)
           const perJobAmount = monthPerJobPayments.get(day.date) || 0;
           monthPendingLabor += perJobAmount;
         });
-        
+
         // Also add per-job payments for dates not in laborDailyCosts
         monthPerJobPayments.forEach((amount, dateStr) => {
-          const alreadyProcessed = monthLaborCosts.some(d => d.date === dateStr);
+          const alreadyProcessed = monthLaborCosts.some((d) => d.date === dateStr);
           if (!alreadyProcessed) {
             monthPendingLabor += amount;
           }
         });
-        
+
         // Ensure month exists in map
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
@@ -569,7 +575,7 @@ export function useMonthlyMetrics(
             has_data: true,
           });
         }
-        
+
         const month = monthlyMap.get(monthKey)!;
         const pendingCents = Math.round(monthPendingLabor * 100);
         month.pending_labor_cost += pendingCents;

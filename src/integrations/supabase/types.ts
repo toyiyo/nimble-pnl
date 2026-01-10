@@ -3632,6 +3632,7 @@ export type Database = {
           line_sequence: number | null
           mapping_status: string
           matched_product_id: string | null
+          package_type: string | null
           parsed_name: string | null
           parsed_price: number | null
           parsed_quantity: number | null
@@ -3639,6 +3640,8 @@ export type Database = {
           parsed_unit: string | null
           raw_text: string
           receipt_id: string
+          size_unit: string | null
+          size_value: number | null
           unit_price: number | null
           updated_at: string
         }
@@ -3649,6 +3652,7 @@ export type Database = {
           line_sequence?: number | null
           mapping_status?: string
           matched_product_id?: string | null
+          package_type?: string | null
           parsed_name?: string | null
           parsed_price?: number | null
           parsed_quantity?: number | null
@@ -3656,6 +3660,8 @@ export type Database = {
           parsed_unit?: string | null
           raw_text: string
           receipt_id: string
+          size_unit?: string | null
+          size_value?: number | null
           unit_price?: number | null
           updated_at?: string
         }
@@ -3666,6 +3672,7 @@ export type Database = {
           line_sequence?: number | null
           mapping_status?: string
           matched_product_id?: string | null
+          package_type?: string | null
           parsed_name?: string | null
           parsed_price?: number | null
           parsed_quantity?: number | null
@@ -3673,6 +3680,8 @@ export type Database = {
           parsed_unit?: string | null
           raw_text?: string
           receipt_id?: string
+          size_unit?: string | null
+          size_value?: number | null
           unit_price?: number | null
           updated_at?: string
         }

@@ -32,6 +32,7 @@ export const AppHeader = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const navigate = useNavigate();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     address: '',
@@ -42,25 +43,30 @@ export const AppHeader = () => {
 
   const handleCreateRestaurant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    if (!formData.name.trim() || creating) return;
 
-    const newRestaurant = await createRestaurant({
-      name: formData.name,
-      address: formData.address || undefined,
-      phone: formData.phone || undefined,
-      cuisine_type: formData.cuisine_type || undefined,
-      timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    });
-
-    if (newRestaurant) {
-      setFormData({ 
-        name: '', 
-        address: '', 
-        phone: '', 
-        cuisine_type: '', 
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone 
+    setCreating(true);
+    try {
+      const newRestaurant = await createRestaurant({
+        name: formData.name,
+        address: formData.address || undefined,
+        phone: formData.phone || undefined,
+        cuisine_type: formData.cuisine_type || undefined,
+        timezone: formData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
-      setShowCreateDialog(false);
+
+      if (newRestaurant) {
+        setFormData({ 
+          name: '', 
+          address: '', 
+          phone: '', 
+          cuisine_type: '', 
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone 
+        });
+        setShowCreateDialog(false);
+      }
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -211,8 +217,8 @@ export const AppHeader = () => {
               <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!formData.name.trim()}>
-                Create Restaurant
+              <Button type="submit" disabled={!formData.name.trim() || creating}>
+                {creating ? 'Creating...' : 'Create Restaurant'}
               </Button>
             </DialogFooter>
           </form>

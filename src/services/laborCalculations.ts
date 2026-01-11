@@ -214,6 +214,96 @@ export function calculateEmployeePeriodCost(
 }
 
 // ============================================================================
+// Shared Logic
+// ============================================================================
+
+/**
+ * Distribute fixed period costs (salary/contractor) evenly across days
+ */
+function distributeFixedCosts(
+  employees: Employee[],
+  startDate: Date,
+  endDate: Date,
+  dateStrings: string[],
+  dateMap: Map<string, DailyLaborCost>,
+  costType: 'salary' | 'contractor'
+) {
+  employees.forEach(employee => {
+    // Calculate total cost for this employee across the entire date range
+    let periodCost = 0;
+    
+    if (costType === 'salary') {
+      periodCost = calculateSalaryForPeriod(employee, startDate, endDate) / 100;
+    } else {
+      periodCost = calculateContractorPayForPeriod(employee, startDate, endDate) / 100;
+    }
+    
+    if (periodCost > 0 && dateStrings.length > 0) {
+      // Distribute the period cost evenly across all days in the range
+      const dailyAllocation = periodCost / dateStrings.length;
+      
+      dateStrings.forEach(dateStr => {
+        const dayData = dateMap.get(dateStr);
+        if (dayData) {
+          if (costType === 'salary') {
+            dayData.salary_cost += dailyAllocation;
+          } else {
+            dayData.contractor_cost += dailyAllocation;
+          }
+          dayData.total_cost += dailyAllocation;
+        }
+      });
+    }
+  });
+}
+
+/**
+ * Generate standard labor cost breakdown from daily data
+ */
+function generateLaborBreakdown(
+  dailyCosts: DailyLaborCost[],
+  salaryEmployeesCount: number,
+  contractorEmployeesCount: number,
+  employeesScheduledPerDay?: Map<string, Set<string>>,
+  salaryEmployeeIds?: string[],
+  contractorEmployeeIds?: string[]
+): LaborCostBreakdown {
+  
+  // Calculate days scheduled helper
+  const getDaysScheduled = (employeeIds?: string[]) => {
+    if (!employeesScheduledPerDay || !employeeIds) {
+      // Fallback for actual costs where we count days with cost > 0
+      return 0; // Will be overridden by caller logic if needed, but here we can't easily do it without the correct logic
+    }
+    return Array.from(employeesScheduledPerDay.values()).filter(
+      emps => employeeIds.some(id => emps.has(id))
+    ).length;
+  };
+
+  return {
+    hourly: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.hourly_cost, 0),
+      hours: dailyCosts.reduce((sum, day) => sum + day.hours_worked, 0),
+    },
+    salary: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.salary_cost, 0),
+      employees: salaryEmployeesCount,
+      daysScheduled: employeesScheduledPerDay && salaryEmployeeIds 
+        ? getDaysScheduled(salaryEmployeeIds)
+        : dailyCosts.filter(d => d.salary_cost > 0).length,
+    },
+    contractor: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.contractor_cost, 0),
+      employees: contractorEmployeesCount,
+      daysScheduled: employeesScheduledPerDay && contractorEmployeeIds
+        ? getDaysScheduled(contractorEmployeeIds)
+        : dailyCosts.filter(d => d.contractor_cost > 0).length,
+    },
+    total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),
+  };
+}
+
+// ============================================================================
 // Scheduled Labor Calculations (Forward-Looking)
 // ============================================================================
 
@@ -291,82 +381,32 @@ export function calculateScheduledLaborCost(
   });
 
   // Add salary costs - salary employees get paid per pay period regardless of scheduled hours
-  // We need to calculate what portion of their pay period overlaps with our date range
   const salaryEmployees = employees.filter(e => 
     e.compensation_type === 'salary' && e.status === 'active'
   );
-  
-  salaryEmployees.forEach(employee => {
-    // Calculate total cost for this employee across the entire date range
-    const periodCost = calculateEmployeePeriodCost(employee, startDate, endDate) / 100; // Convert to dollars
-    
-    if (periodCost > 0 && dateStrings.length > 0) {
-      // For scheduled view, distribute the period cost evenly across all days in the range
-      // This is just for display purposes - the employee gets paid once per pay period
-      const dailyAllocation = periodCost / dateStrings.length;
-      
-      dateStrings.forEach(dateStr => {
-        const dayData = dateMap.get(dateStr);
-        if (dayData) {
-          dayData.salary_cost += dailyAllocation;
-          dayData.total_cost += dailyAllocation;
-        }
-      });
-    }
-  });
+  distributeFixedCosts(salaryEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
 
-  // Add contractor costs - non-per-job contractors get paid per payment interval regardless of scheduled hours
+  // Add contractor costs
   const contractorEmployees = employees.filter(e => 
     e.compensation_type === 'contractor' && 
     e.status === 'active' &&
     e.contractor_payment_interval !== 'per-job'
   );
-  
-  contractorEmployees.forEach(employee => {
-    // Calculate total cost for this employee across the entire date range
-    const periodCost = calculateEmployeePeriodCost(employee, startDate, endDate) / 100; // Convert to dollars
-    
-    if (periodCost > 0 && dateStrings.length > 0) {
-      // For scheduled view, distribute the period cost evenly across all days in the range
-      // This is just for display purposes - the contractor gets paid per their payment interval
-      const dailyAllocation = periodCost / dateStrings.length;
-      
-      dateStrings.forEach(dateStr => {
-        const dayData = dateMap.get(dateStr);
-        if (dayData) {
-          dayData.contractor_cost += dailyAllocation;
-          dayData.total_cost += dailyAllocation;
-        }
-      });
-    }
-  });
+  distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
 
   // Calculate breakdown
   const dailyCosts = Array.from(dateMap.values()).sort((a, b) => 
     a.date.localeCompare(b.date)
   );
 
-  const breakdown: LaborCostBreakdown = {
-    hourly: {
-      cost: dailyCosts.reduce((sum, day) => sum + day.hourly_cost, 0),
-      hours: dailyCosts.reduce((sum, day) => sum + day.hours_worked, 0),
-    },
-    salary: {
-      cost: dailyCosts.reduce((sum, day) => sum + day.salary_cost, 0),
-      employees: salaryEmployees.length,
-      daysScheduled: Array.from(employeesScheduledPerDay.values()).filter(
-        emps => salaryEmployees.some(se => emps.has(se.id))
-      ).length,
-    },
-    contractor: {
-      cost: dailyCosts.reduce((sum, day) => sum + day.contractor_cost, 0),
-      employees: contractorEmployees.length,
-      daysScheduled: Array.from(employeesScheduledPerDay.values()).filter(
-        emps => contractorEmployees.some(ce => emps.has(ce.id))
-      ).length,
-    },
-    total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),
-  };
+  const breakdown = generateLaborBreakdown(
+    dailyCosts,
+    salaryEmployees.length,
+    contractorEmployees.length,
+    employeesScheduledPerDay,
+    salaryEmployees.map(e => e.id),
+    contractorEmployees.map(e => e.id)
+  );
 
   return { breakdown, dailyCosts };
 }
@@ -427,7 +467,7 @@ export function calculateActualLaborCost(
   // Parse work periods for each employee and calculate daily hours
   punchesByEmployee.forEach((punches, employeeId) => {
     const employee = employeeMap.get(employeeId);
-    if (!employee || employee.status !== 'active') {
+    if (!employee) {
       return;
     }
 
@@ -516,77 +556,32 @@ export function calculateActualLaborCost(
     });
   });
 
-  // Handle salary employees: they get paid for the entire period regardless of time punches
-  // Use the same logic as payrollCalculations.ts - call calculateSalaryForPeriod once per employee
+  // Handle salary employees
   const salaryEmployees = employees.filter(e => 
-    e.compensation_type === 'salary' && e.status === 'active'
+    e.compensation_type === 'salary'
   );
-  
-  salaryEmployees.forEach(employee => {
-    // Calculate total salary for the period (same as payroll)
-    const periodCost = calculateSalaryForPeriod(employee, startDate, endDate) / 100; // Convert to dollars
-    
-    if (periodCost > 0 && dateStrings.length > 0) {
-      // Distribute the period cost evenly across all days in the range for reporting
-      const dailyAllocation = periodCost / dateStrings.length;
-      
-      dateStrings.forEach(dateStr => {
-        const dayData = dateMap.get(dateStr);
-        if (dayData) {
-          dayData.salary_cost += dailyAllocation;
-          dayData.total_cost += dailyAllocation;
-        }
-      });
-    }
-  });
+  distributeFixedCosts(salaryEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
 
-  // Handle contractor employees: they get paid for the entire period regardless of time punches
-  // (except per-job contractors which are handled via manual payments)
+  // Handle contractor employees
   const contractorEmployees = employees.filter(e => 
     e.compensation_type === 'contractor' && 
-    e.status === 'active' &&
     e.contractor_payment_interval !== 'per-job'
   );
-  
-  contractorEmployees.forEach(employee => {
-    // Calculate total contractor pay for the period (same as payroll)
-    const periodCost = calculateContractorPayForPeriod(employee, startDate, endDate) / 100; // Convert to dollars
-    
-    if (periodCost > 0 && dateStrings.length > 0) {
-      // Distribute the period cost evenly across all days in the range for reporting
-      const dailyAllocation = periodCost / dateStrings.length;
-      
-      dateStrings.forEach(dateStr => {
-        const dayData = dateMap.get(dateStr);
-        if (dayData) {
-          dayData.contractor_cost += dailyAllocation;
-          dayData.total_cost += dailyAllocation;
-        }
-      });
-    }
-  });
+  distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
 
   const dailyCosts = Array.from(dateMap.values()).sort((a, b) => 
     a.date.localeCompare(b.date)
   );
 
-  const breakdown: LaborCostBreakdown = {
-    hourly: {
-      cost: dailyCosts.reduce((sum, day) => sum + day.hourly_cost, 0),
-      hours: dailyCosts.reduce((sum, day) => sum + day.hours_worked, 0),
-    },
-    salary: {
-      cost: dailyCosts.reduce((sum, day) => sum + day.salary_cost, 0),
-      employees: employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length,
-      daysScheduled: dailyCosts.filter(d => d.salary_cost > 0).length,
-    },
-    contractor: {
-      cost: dailyCosts.reduce((sum, day) => sum + day.contractor_cost, 0),
-      employees: employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length,
-      daysScheduled: dailyCosts.filter(d => d.contractor_cost > 0).length,
-    },
-    total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),
-  };
+  // Use active count for summary display consistent with previous behavior
+  const activeSalaryCount = employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length;
+  const activeContractorCount = employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length;
+
+  const breakdown = generateLaborBreakdown(
+    dailyCosts,
+    activeSalaryCount,
+    activeContractorCount
+  );
 
   return { breakdown, dailyCosts };
 }

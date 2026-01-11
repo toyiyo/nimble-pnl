@@ -19,6 +19,7 @@ export default defineConfig({
       include: [
         'src/utils/**/*.ts',
         'src/lib/utils.ts',
+        'src/services/**/*.ts',
         'src/lib/timeUtils.ts',
         'src/hooks/utils/**/*.ts',
         'src/hooks/useRevenueBreakdown.tsx',

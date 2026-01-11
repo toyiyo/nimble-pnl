@@ -3,10 +3,12 @@ import {
   calculateEmployeeDailyCost,
   calculateEmployeePeriodCost,
   calculateScheduledLaborCost,
+  calculateActualLaborCost,
   isEmployeeCompensationValid,
   getEmployeeDailyRateDescription,
 } from '../../src/services/laborCalculations';
 import type { Employee, Shift } from '../../src/types/scheduling';
+import type { TimePunch } from '../../src/types/timeTracking';
 
 /**
  * Comprehensive tests for centralized labor cost calculations
@@ -357,6 +359,212 @@ describe('LaborCalculationService', () => {
       expect(breakdown.salary.cost).toBeCloseTo(1149.68, 0); // Allow $1 variance for rounding
       expect(breakdown.contractor.cost).toBeCloseTo(689.85, 0); // Allow $1 variance for rounding
       expect(breakdown.total).toBeCloseTo(1959.53, 0); // Allow $1 variance for rounding
+    });
+  });
+
+  // ============================================================================
+  // Actual Labor Cost Tests (Time Punches)
+  // ============================================================================
+
+  describe('calculateActualLaborCost', () => {
+    const weekStart = new Date('2025-12-07');
+    const weekEnd = new Date('2025-12-13');
+
+    const basePunch = {
+      id: 'punch-1',
+      restaurant_id: 'rest-1',
+      created_at: '2025-12-01T00:00:00',
+      updated_at: '2025-12-01T00:00:00',
+      punch_type: 'clock_in',
+    };
+
+    it('calculates costs for hourly employees based on time punches', () => {
+      const punches: TimePunch[] = [
+        // Shift 1: 8 hours
+        {
+          ...basePunch,
+          id: 'p1',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_in',
+          punch_time: '2025-12-09T09:00:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p2',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_out',
+          punch_time: '2025-12-09T17:00:00Z',
+        } as TimePunch,
+        // Shift 2: 8 hours
+        {
+          ...basePunch,
+          id: 'p3',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_in',
+          punch_time: '2025-12-10T09:00:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p4',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_out',
+          punch_time: '2025-12-10T17:00:00Z',
+        } as TimePunch,
+      ];
+
+      const { breakdown, dailyCosts } = calculateActualLaborCost(
+        [hourlyEmployee],
+        punches,
+        weekStart,
+        weekEnd
+      );
+
+      // 16 hours × $15/hr = $240
+      expect(breakdown.hourly.cost).toBe(240);
+      expect(breakdown.hourly.hours).toBe(16);
+      expect(breakdown.total).toBe(240);
+      
+      // Verify daily distribution
+      const day1 = dailyCosts.find(d => d.date === '2025-12-09');
+      const day2 = dailyCosts.find(d => d.date === '2025-12-10');
+      
+      expect(day1?.hourly_cost).toBe(120);
+      expect(day2?.hourly_cost).toBe(120);
+    });
+
+    it('calculates full period cost for salary employees regardless of punches', () => {
+      // Even with no punches, salary employee should get paid full period amount
+      const { breakdown } = calculateActualLaborCost(
+        [salaryEmployeeMonthly],
+        [], // No punches
+        weekStart,
+        weekEnd
+      );
+
+      // 7 days × $164.24/day = $1149.68 (approx)
+      expect(breakdown.salary.cost).toBeCloseTo(1149.68, 0);
+      expect(breakdown.salary.employees).toBe(1);
+    });
+
+    it('handles overnight shifts that span two days', () => {
+      const punches: TimePunch[] = [
+        {
+          ...basePunch,
+          id: 'p1',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_in',
+          punch_time: '2025-12-09T22:00:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p2',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_out',
+          punch_time: '2025-12-10T06:00:00Z',
+        } as TimePunch,
+      ];
+
+      // Test period covering both days
+      const { breakdown, dailyCosts } = calculateActualLaborCost(
+        [hourlyEmployee],
+        punches,
+        new Date('2025-12-09'),
+        new Date('2025-12-10')
+      );
+
+      // 8 hours × $15/hr = $120
+      expect(breakdown.hourly.cost).toBe(120);
+      expect(breakdown.hourly.hours).toBe(8);
+
+      // Cost attribution uses the punch logic - typically attributed to start day or split
+      // The current implementation attributes hours to the start date of the period
+      const day1 = dailyCosts.find(d => d.date === '2025-12-09');
+      expect(day1?.hours_worked).toBe(8);
+      expect(day1?.hourly_cost).toBe(120);
+
+      // Ensure employee marked active on second day if that logic is present?
+      // The breakdown doesn't expose strict "active per day" flags but we can infer from total cost/hours
+    });
+
+    it('combines all compensation types correctly from punches and settings', () => {
+      const punches: TimePunch[] = [
+        // Hourly employee worked
+        {
+          ...basePunch,
+          id: 'p1',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_in',
+          punch_time: '2025-12-09T09:00:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p2',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_out',
+          punch_time: '2025-12-09T17:00:00Z',
+        } as TimePunch,
+      ];
+
+      const { breakdown } = calculateActualLaborCost(
+        [hourlyEmployee, salaryEmployeeMonthly, contractorMonthly],
+        punches,
+        weekStart,
+        weekEnd
+      );
+
+      // Hourly: 8hrs × $15 = $120
+      // Salary: ~ $1149.68
+      // Contractor: ~ $689.85
+      // Total: ~ $1959.53
+      
+      expect(breakdown.hourly.cost).toBe(120);
+      expect(breakdown.salary.cost).toBeGreaterThan(1100);
+      expect(breakdown.contractor.cost).toBeGreaterThan(600);
+      expect(breakdown.total).toBeCloseTo(1959.53, 0);
+    });
+
+    it('ignores breaks in cost calculation', () => {
+         const punches: TimePunch[] = [
+        {
+          ...basePunch,
+          id: 'p1',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_in',
+          punch_time: '2025-12-09T09:00:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p2',
+          employee_id: 'hourly-1',
+          punch_type: 'break_start',
+          punch_time: '2025-12-09T12:00:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p3',
+          employee_id: 'hourly-1',
+          punch_type: 'break_end',
+          punch_time: '2025-12-09T12:30:00Z',
+        } as TimePunch,
+        {
+          ...basePunch,
+          id: 'p4',
+          employee_id: 'hourly-1',
+          punch_type: 'clock_out',
+          punch_time: '2025-12-09T17:30:00Z',
+        } as TimePunch,
+      ];
+      
+      const { breakdown } = calculateActualLaborCost(
+        [hourlyEmployee],
+        punches,
+        weekStart,
+        weekEnd
+      );
+
+      // 8.5 hours elapsed - 0.5 hour break = 8.0 hours worked
+      expect(breakdown.hourly.hours).toBe(8);
+      expect(breakdown.hourly.cost).toBe(120);
     });
   });
 

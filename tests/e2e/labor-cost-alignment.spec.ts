@@ -63,6 +63,13 @@ const parseCurrency = (value: string) => Number(value.replace(/[^0-9.-]/g, ''));
 
 test.describe('Labor cost alignment across Payroll and Dashboard', () => {
   test('Dashboard labor matches Payroll for month-to-date with mixed compensation types', async ({ page }) => {
+    // Capture browser console logs  
+    page.on('console', msg => {
+      if (msg.text().includes('[usePayroll]')) {
+        console.log('BROWSER:', msg.text());
+      }
+    });
+    
     const user = generateUser();
 
     await signUpAndCreateRestaurant(page, user);
@@ -121,8 +128,8 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
               position: 'Server',
               compensation_type: 'hourly',
               hourly_rate: hourlyRateCents,
-              status: 'active',
-              is_active: true,
+              status: 'inactive',
+              is_active: false,
               tip_eligible: false,
               requires_time_punch: true,
               hire_date: monthStartStr,
@@ -136,8 +143,8 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
               hourly_rate: 0,
               salary_amount: salaryAmountCents,
               pay_period_type: 'weekly',
-              status: 'active',
-              is_active: true,
+              status: 'inactive',
+              is_active: false,
               hire_date: monthStartStr,
               termination_date: todayStr,
             },
@@ -149,8 +156,8 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
               hourly_rate: 0,
               contractor_payment_amount: contractorAmountCents,
               contractor_payment_interval: 'weekly',
-              status: 'active',
-              is_active: true,
+              status: 'inactive',
+              is_active: false,
               hire_date: monthStartStr,
               termination_date: todayStr,
             },

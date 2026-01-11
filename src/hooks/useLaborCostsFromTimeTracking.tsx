@@ -70,7 +70,8 @@ export function useLaborCostsFromTimeTracking(
   dateFrom: Date,
   dateTo: Date
 ): LaborCostsFromTimeTrackingResult {
-  const { employees } = useEmployees(restaurantId);
+  // Fetch ALL employees (including inactive) for historical labor cost accuracy
+  const { employees } = useEmployees(restaurantId, { status: 'all' });
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd')],

@@ -427,7 +427,7 @@ export function calculateActualLaborCost(
   // Parse work periods for each employee and calculate daily hours
   punchesByEmployee.forEach((punches, employeeId) => {
     const employee = employeeMap.get(employeeId);
-    if (!employee || employee.status !== 'active') {
+    if (!employee) {
       return;
     }
 
@@ -519,7 +519,7 @@ export function calculateActualLaborCost(
   // Handle salary employees: they get paid for the entire period regardless of time punches
   // Use the same logic as payrollCalculations.ts - call calculateSalaryForPeriod once per employee
   const salaryEmployees = employees.filter(e => 
-    e.compensation_type === 'salary' && e.status === 'active'
+    e.compensation_type === 'salary'
   );
   
   salaryEmployees.forEach(employee => {
@@ -544,7 +544,6 @@ export function calculateActualLaborCost(
   // (except per-job contractors which are handled via manual payments)
   const contractorEmployees = employees.filter(e => 
     e.compensation_type === 'contractor' && 
-    e.status === 'active' &&
     e.contractor_payment_interval !== 'per-job'
   );
   
@@ -577,12 +576,12 @@ export function calculateActualLaborCost(
     },
     salary: {
       cost: dailyCosts.reduce((sum, day) => sum + day.salary_cost, 0),
-      employees: employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length,
+      employees: salaryEmployees.length,
       daysScheduled: dailyCosts.filter(d => d.salary_cost > 0).length,
     },
     contractor: {
       cost: dailyCosts.reduce((sum, day) => sum + day.contractor_cost, 0),
-      employees: employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length,
+      employees: contractorEmployees.length,
       daysScheduled: dailyCosts.filter(d => d.contractor_cost > 0).length,
     },
     total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),

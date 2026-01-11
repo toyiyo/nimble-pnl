@@ -34,7 +34,7 @@ import {
   Briefcase,
   Banknote,
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, subWeeks, addWeeks } from 'date-fns';
+import { format, startOfWeek, endOfWeek, subWeeks, addWeeks, endOfDay } from 'date-fns';
 import {
   Table,
   TableBody,
@@ -309,7 +309,7 @@ const Payroll = () => {
                   value={format(customEndDate, 'yyyy-MM-dd')}
                   onChange={(e) => {
                     const [year, month, day] = e.target.value.split('-').map(Number);
-                    setCustomEndDate(new Date(year, month - 1, day));
+                    setCustomEndDate(endOfDay(new Date(year, month - 1, day)));
                   }}
                   className="px-3 py-2 border rounded-md"
                 />

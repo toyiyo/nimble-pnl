@@ -61,7 +61,9 @@ import InvoiceDetail from "./pages/InvoiceDetail";
 import StripeAccountManagement from "./pages/StripeAccountManagement";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
 
-const queryClient = new QueryClient();
+import { queryClientConfig } from "@/lib/react-query-config";
+
+const queryClient = new QueryClient(queryClientConfig);
 const enableSpeedInsights = import.meta.env.VITE_ENABLE_SPEED_INSIGHTS === "true";
 
 // Protected Route Component with staff restrictions

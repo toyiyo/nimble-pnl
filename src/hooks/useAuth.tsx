@@ -21,6 +21,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
+  // Proactive refresh on visibility change - Layer 2 of JWT fix
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      // PROACTIVE REFRESH: When tab becomes visible, check session immediately
+      // This handles cases where the device was asleep or tab was backgrounded,
+      // pausing the auto-refresh timer.
+      if (document.visibilityState === 'visible') {
+        const { data, error } = await supabase.auth.getSession();
+        if (!error && data.session) {
+          // Verify if we have a new token and update state if necessary
+          if (data.session.access_token !== session?.access_token) {
+            console.log('[Auth] Tab visible: Session refreshed via proactive check');
+            setSession(data.session);
+            setUser(data.session.user);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [session]);
+
   // Memoized auth state handler to prevent recreation on each render
   const handleAuthStateChange = useCallback((event: string, session: Session | null) => {
     try {

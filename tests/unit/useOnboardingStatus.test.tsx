@@ -34,8 +34,8 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-// Mock Restaurant Context
-const mockSelectedRestaurant = {
+// Mock Restaurant Context - make it mutable so we can change it in tests
+let mockSelectedRestaurant: any = {
   id: 'test-restaurant-id',
   restaurant_id: 'test-restaurant-id', // Assuming mapping
   user_id: 'user-id',
@@ -69,6 +69,13 @@ describe('useOnboardingStatus', () => {
       receipts: 0,
       inventory_counts: 0,
       bank_connections: 0
+    };
+    // Reset mock restaurant
+    mockSelectedRestaurant = {
+      id: 'test-restaurant-id',
+      restaurant_id: 'test-restaurant-id',
+      user_id: 'user-id',
+      role: 'owner',
     };
   });
 
@@ -165,5 +172,66 @@ describe('useOnboardingStatus', () => {
     
     // Should be incomplete (count 0)
     expect(result.current.completedCount).toBe(0);
+  });
+
+  it('should refetch data when restaurant changes', async () => {
+    // Start with restaurant A with no data
+    mockSelectedRestaurant = {
+      id: 'restaurant-A',
+      restaurant_id: 'restaurant-A',
+      user_id: 'user-id',
+      role: 'owner',
+    };
+    
+    mockDbState = {
+      integrations: 0,
+      user_restaurants: 1,
+      employees: 0,
+      recipes: 0,
+      receipts: 0,
+      inventory_counts: 0,
+      bank_connections: 0
+    };
+
+    const { result, rerender } = renderHook(() => useOnboardingStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    
+    // Initially, nothing completed
+    expect(result.current.completedCount).toBe(0);
+
+    // Switch to restaurant B with different data
+    mockSelectedRestaurant = {
+      id: 'restaurant-B',
+      restaurant_id: 'restaurant-B',
+      user_id: 'user-id',
+      role: 'owner',
+    };
+    
+    // Restaurant B has POS and Bank connected
+    mockDbState = {
+      integrations: 1, // POS connected
+      user_restaurants: 1,
+      employees: 0,
+      recipes: 0,
+      receipts: 0,
+      inventory_counts: 0,
+      bank_connections: 1 // Bank connected
+    };
+
+    // Force rerender to pick up the new restaurant
+    rerender();
+
+    // Wait for the new query to complete
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    
+    // Should now show 2 completed (POS + Bank)
+    expect(result.current.completedCount).toBe(2);
+    
+    const posStep = result.current.steps.find(s => s.id === 'pos');
+    expect(posStep?.isCompleted).toBe(true);
+    
+    const bankStep = result.current.steps.find(s => s.id === 'bank');
+    expect(bankStep?.isCompleted).toBe(true);
   });
 });

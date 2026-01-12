@@ -48,7 +48,9 @@ test.describe('Kiosk - Basic UI', () => {
     await expect(addRestaurantButton).toBeVisible({ timeout: 8000 });
     await addRestaurantButton.click();
 
-    const dialog = page.getByRole('dialog');
+    // Use specific filter to distinguish from other potential dialogs (like OnboardingDrawer)
+    // Filter by text that appears in the Add Restaurant dialog (title) but not in OnboardingDrawer ("Getting Started")
+    const dialog = page.getByRole('dialog').filter({ hasText: 'Add New Restaurant' });
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await dialog.getByLabel(/restaurant name/i).fill(testUser.restaurantName);
     await dialog.getByLabel(/address/i).fill('123 Test St');

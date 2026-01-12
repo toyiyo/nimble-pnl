@@ -61,19 +61,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
       const restaurantId = selectedRestaurant.restaurant_id;
 
-      // Debug: Check if this restaurant actually exists and has an owner
-      const { data: debugRestaurant, error: debugError } = await supabase
-        .from('user_restaurants')
-        .select('*')
-        .eq('restaurant_id', restaurantId);
-      
-      console.log('useOnboardingStatus: Debug user_restaurants query', {
-        restaurantId,
-        found: debugRestaurant?.length || 0,
-        data: debugRestaurant,
-        error: debugError
-      });
-
       try {
         // Run all checks in parallel
         const [

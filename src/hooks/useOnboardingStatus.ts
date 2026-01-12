@@ -67,8 +67,11 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           employeeResult,
           recipeResult,
           receiptResult,
+          receiptLineItemsResult,
           inventoryResult,
+          inventoryTransactionsResult,
           bankResult,
+          bankTransactionsResult,
           squareResult,
           toastResult,
           cloverResult,
@@ -88,11 +91,20 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           // 4. Receipt Imports (uploaded receipts)
           checkTableCount(restaurantId, 'receipt_imports'),
 
+          // 4b. Alternative: Receipt Line Items (if receipts were processed)
+          checkTableCount(restaurantId, 'receipt_line_items'),
+
           // 5. Inventory Reconciliations (inventory scans)
           checkTableCount(restaurantId, 'inventory_reconciliations'),
           
-          // 6. Bank Account (connected banks)
+          // 5b. Alternative: Inventory Transactions (if inventory was tracked)
+          checkTableCount(restaurantId, 'inventory_transactions'),
+          
+          // 6. Bank Account (connected banks via Stripe)
           checkTableCount(restaurantId, 'connected_banks'),
+          
+          // 6b. Alternative: Bank Transactions (if statements were uploaded)
+          checkTableCount(restaurantId, 'bank_transactions'),
             
           // 7. Specific POS Connections
           checkTableCount(restaurantId, 'square_connections'),
@@ -113,8 +125,11 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           { name: 'employees', ...employeeResult },
           { name: 'recipes', ...recipeResult },
           { name: 'receipt_imports', ...receiptResult },
+          { name: 'receipt_line_items', ...receiptLineItemsResult },
           { name: 'inventory_reconciliations', ...inventoryResult },
+          { name: 'inventory_transactions', ...inventoryTransactionsResult },
           { name: 'connected_banks', ...bankResult },
+          { name: 'bank_transactions', ...bankTransactionsResult },
           { name: 'square', ...squareResult },
           { name: 'toast', ...toastResult },
           { name: 'clover', ...cloverResult },
@@ -148,9 +163,12 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           hasCollaborators: (getCount(collaboratorResult) > 1) || (getCount(invitationResult) > 0),
           hasEmployees: getCount(employeeResult) > 0,
           hasRecipes: getCount(recipeResult) > 0,
-          hasReceipts: getCount(receiptResult) > 0,
-          hasInventory: getCount(inventoryResult) > 0 || getCount(productResult) > 0,
-          hasBank: getCount(bankResult) > 0
+          // Check both receipt_imports and receipt_line_items (fallback)
+          hasReceipts: getCount(receiptResult) > 0 || getCount(receiptLineItemsResult) > 0,
+          // Check both inventory_reconciliations and inventory_transactions (fallback)
+          hasInventory: getCount(inventoryResult) > 0 || getCount(inventoryTransactionsResult) > 0 || getCount(productResult) > 0,
+          // Check both connected_banks and bank_transactions (fallback)
+          hasBank: getCount(bankResult) > 0 || getCount(bankTransactionsResult) > 0
         };
 
         console.log('useOnboardingStatus: Calculated Status', finalStatus);

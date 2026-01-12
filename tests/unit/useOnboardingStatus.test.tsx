@@ -67,8 +67,11 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
+      receipt_line_items: 0,
       inventory_reconciliations: 0,
+      inventory_transactions: 0,
       connected_banks: 0,
+      bank_transactions: 0,
       square_connections: 0,
       toast_connections: 0,
       clover_connections: 0,
@@ -107,8 +110,11 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
+      receipt_line_items: 0,
       inventory_reconciliations: 0,
+      inventory_transactions: 0,
       connected_banks: 1, // Bank connected
+      bank_transactions: 0,
       square_connections: 1, // POS connected
       toast_connections: 0,
       clover_connections: 0,
@@ -164,8 +170,11 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
+      receipt_line_items: 0,
       inventory_reconciliations: 0,
+      inventory_transactions: 0,
       connected_banks: 0,
+      bank_transactions: 0,
       square_connections: 1, // Square POS connected
       toast_connections: 0,
       clover_connections: 0,
@@ -188,8 +197,11 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
+      receipt_line_items: 0,
       inventory_reconciliations: 0,
+      inventory_transactions: 0,
       connected_banks: 0,
+      bank_transactions: 0,
       square_connections: 0,
       toast_connections: 0,
       clover_connections: 0,
@@ -222,8 +234,11 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
+      receipt_line_items: 0,
       inventory_reconciliations: 0,
+      inventory_transactions: 0,
       connected_banks: 0,
+      bank_transactions: 0,
       square_connections: 0,
       toast_connections: 0,
       clover_connections: 0,
@@ -253,8 +268,11 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
+      receipt_line_items: 0,
       inventory_reconciliations: 0,
+      inventory_transactions: 0,
       connected_banks: 1, // Bank connected
+      bank_transactions: 0,
       square_connections: 1, // POS connected
       toast_connections: 0,
       clover_connections: 0,
@@ -277,5 +295,42 @@ describe('useOnboardingStatus', () => {
     
     const bankStep = result.current.steps.find(s => s.id === 'bank');
     expect(bankStep?.isCompleted).toBe(true);
+  });
+
+  it('should detect completion using fallback tables (bank_transactions, receipt_line_items, inventory_transactions)', async () => {
+    // Setup state: Using fallback tables instead of primary ones
+    mockDbState = {
+      user_restaurants: 1,
+      employees: 0,
+      recipes: 0,
+      receipt_imports: 0,
+      receipt_line_items: 5, // Has receipt data via line items (not imports)
+      inventory_reconciliations: 0,
+      inventory_transactions: 3, // Has inventory data via transactions
+      connected_banks: 0,
+      bank_transactions: 10, // Has bank data via transactions (not connected banks)
+      square_connections: 0,
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
+    };
+
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Should mark receipts, inventory, and bank as completed (using fallback tables)
+    const receiptStep = result.current.steps.find(s => s.id === 'receipt');
+    expect(receiptStep?.isCompleted).toBe(true);
+
+    const inventoryStep = result.current.steps.find(s => s.id === 'inventory');
+    expect(inventoryStep?.isCompleted).toBe(true);
+
+    const bankStep = result.current.steps.find(s => s.id === 'bank');
+    expect(bankStep?.isCompleted).toBe(true);
+
+    // Should have 3 completed steps
+    expect(result.current.completedCount).toBe(3);
   });
 });

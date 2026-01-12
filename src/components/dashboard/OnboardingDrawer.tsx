@@ -11,11 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   CheckCircle2, 
   Circle, 
   ChevronRight, 
-  CreditCard,
   Users,
   UtensilsCrossed,
   Building2,
@@ -24,7 +24,7 @@ import {
 import { useOnboardingStatus, OnboardingStep } from '@/hooks/useOnboardingStatus';
 
 export const OnboardingDrawer = () => {
-  const { steps, completedCount, totalCount, percentage, isLoading } = useOnboardingStatus();
+  const { steps, completedCount, totalCount, percentage, isLoading, error, refetch } = useOnboardingStatus();
   const [isOpen, setIsOpen] = useState(true);
   const navigate = useNavigate();
 
@@ -47,10 +47,35 @@ export const OnboardingDrawer = () => {
     // setIsOpen(false); 
   };
 
-  // If loading or all done (and not explicitly opened for review), we might hide it
-  // But requirement says "reopened from header".
-  // For now, if completed 100%, we turn it into "Insights" mode (future) or just hide/collapse.
-  if (isLoading) return null;
+  if (isLoading) {
+    return (
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="flex items-center gap-3 rounded-full bg-background/90 border shadow-lg px-4 py-3">
+          <Skeleton className="h-10 w-10 rounded-full" aria-label="Loading onboarding status" />
+          <div className="space-y-1">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="rounded-lg border bg-destructive/10 text-destructive shadow-lg px-4 py-3" role="alert">
+          <p className="text-sm font-medium">Unable to load onboarding steps.</p>
+          <p className="text-xs text-destructive/80">Please retry or check your connection.</p>
+          <div className="pt-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isOpen) {
     // Return a floating trigger button or handle this in the main layout
@@ -63,6 +88,7 @@ export const OnboardingDrawer = () => {
             size="icon"
             className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105"
             title="Resume Setup"
+            aria-label="Resume Setup"
            >
              <ListTodo className="h-6 w-6" />
            </Button>
@@ -119,47 +145,23 @@ export const OnboardingDrawer = () => {
           {/* Steps List */}
           <ScrollArea className="flex-1 px-6 py-6">
             <div className="space-y-6">
-              {/* Group by Categories or just flat list? Requirement says "grouped by outcomes" */}
-              
-              {/* Daily P&L Group */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-foreground/80 flex items-center gap-2">
-                  <Badge variant="outline" className="h-5 px-1.5"><Users className="h-3 w-3 mr-1"/>Operations</Badge>
-                  Get to Daily P&L
-                </h3>
-                <div className="grid gap-3">
-                  {steps.filter(s => s.category === 'operations').map(step => (
-                    <StepCard key={step.id} step={step} onClick={() => handleStepClick(step)} />
-                  ))}
+              {[
+                { key: 'operations' as const, label: 'Operations', title: 'Get to Daily P&L', Icon: Users },
+                { key: 'inventory' as const, label: 'Inventory', title: 'Track Inventory & COGS', Icon: UtensilsCrossed },
+                { key: 'finance' as const, label: 'Finance', title: 'Get Paid & Track Cash', Icon: Building2 },
+              ].map(({ key, label, title, Icon }) => (
+                <div className="space-y-3" key={key}>
+                  <h3 className="text-sm font-medium text-foreground/80 flex items-center gap-2">
+                    <Badge variant="outline" className="h-5 px-1.5"><Icon className="h-3 w-3 mr-1"/>{label}</Badge>
+                    {title}
+                  </h3>
+                  <div className="grid gap-3">
+                    {steps.filter(s => s.category === key).map(step => (
+                      <StepCard key={step.id} step={step} onClick={() => handleStepClick(step)} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              {/* Inventory Group */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-foreground/80 flex items-center gap-2">
-                  <Badge variant="outline" className="h-5 px-1.5"><UtensilsCrossed className="h-3 w-3 mr-1"/>Inventory</Badge>
-                   Track Inventory & COGS
-                </h3>
-                <div className="grid gap-3">
-                  {steps.filter(s => s.category === 'inventory').map(step => (
-                     <StepCard key={step.id} step={step} onClick={() => handleStepClick(step)} />
-                  ))}
-                </div>
-              </div>
-
-              {/* Finance Group */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-foreground/80 flex items-center gap-2">
-                  <Badge variant="outline" className="h-5 px-1.5"><Building2 className="h-3 w-3 mr-1"/>Finance</Badge>
-                  Get Paid & Track Cash
-                </h3>
-                <div className="grid gap-3">
-                   {steps.filter(s => s.category === 'finance').map(step => (
-                     <StepCard key={step.id} step={step} onClick={() => handleStepClick(step)} />
-                  ))}
-                </div>
-              </div>
-
+              ))}
             </div>
           </ScrollArea>
         </div>
@@ -170,18 +172,11 @@ export const OnboardingDrawer = () => {
 
 const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {
   return (
-    <div 
-      role="button"
-      tabIndex={0}
+    <button 
+      type="button"
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      }}
       className={`
-        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer
+        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full
         ${step.isCompleted 
           ? 'bg-muted/30 border-transparent hover:bg-muted/50' 
           : 'bg-card hover:border-primary/50 hover:shadow-sm'
@@ -208,6 +203,6 @@ const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void
           </div>
         )}
       </div>
-    </div>
+    </button>
   );
 };

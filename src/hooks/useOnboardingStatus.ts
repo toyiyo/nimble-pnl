@@ -19,12 +19,32 @@ export interface OnboardingStatus {
   totalCount: number;
   percentage: number;
   isLoading: boolean;
+  error: unknown | null;
+  refetch: () => Promise<unknown>;
 }
+
+const checkTableCount = (
+  restaurantId: string, 
+  table: string, 
+  filters?: Record<string, string>
+) => {
+  let query = supabase.from(table as any)
+    .select('*', { count: 'exact', head: true })
+    .eq('restaurant_id', restaurantId);
+
+  if (filters) {
+    Object.entries(filters).forEach(([key, value]) => {
+      query = query.eq(key, value);
+    });
+  }
+
+  return query;
+};
 
 export const useOnboardingStatus = (): OnboardingStatus => {
   const { selectedRestaurant } = useRestaurantContext();
 
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, error, refetch } = useQuery({
     queryKey: ['onboarding-status', selectedRestaurant?.id],
     queryFn: async () => {
       if (!selectedRestaurant?.id) return null;
@@ -48,69 +68,37 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         productResult
       ] = await Promise.all([
         // 1. POS Connected (Generic)
-        supabase.from('integrations')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId)
-          .eq('status', 'connected'),
+        checkTableCount(restaurantId, 'integrations', { status: 'connected' }),
         
         // 2. Collaborators (more than just the owner)
-        // We check if there's more than 1 user_restaurant record
-        supabase.from('user_restaurants')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        checkTableCount(restaurantId, 'user_restaurants'),
 
         // 3. Employees
-        supabase.from('employees')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        checkTableCount(restaurantId, 'employees'),
 
         // 4. Recipes
-        supabase.from('recipes')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        checkTableCount(restaurantId, 'recipes'),
 
-        // 5. Receipts (checking receipts table)
-        supabase.from('receipts')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        // 5. Receipts
+        checkTableCount(restaurantId, 'receipts'),
 
-        // 6. Inventory Scans (checking inventory_counts)
-        supabase.from('inventory_counts')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        // 6. Inventory Scans
+        checkTableCount(restaurantId, 'inventory_counts'),
         
         // 7. Bank Account
-        supabase.from('bank_connections')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        checkTableCount(restaurantId, 'bank_connections'),
           
         // 8. Specific POS Connections (Legacy/Direct)
-        supabase.from('square_connections')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
-          
-        supabase.from('toast_connections' as any)
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
-          
-        supabase.from('clover_connections')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
-          
-        supabase.from('shift4_connections' as any)
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId),
+        checkTableCount(restaurantId, 'square_connections'),
+        checkTableCount(restaurantId, 'toast_connections'),
+        checkTableCount(restaurantId, 'clover_connections'),
+        checkTableCount(restaurantId, 'shift4_connections'),
 
         // 9. Invitations (Pending Collaborators)
-        supabase.from('invitations')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId)
-          .eq('status', 'pending'),
+        checkTableCount(restaurantId, 'invitations', { status: 'pending' }),
 
         // 10. Products (Inventory Items)
-        supabase.from('products')
-          .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId)
+        checkTableCount(restaurantId, 'products')
       ]);
 
       // Check for errors
@@ -130,9 +118,11 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         { name: 'products', ...productResult }
       ];
 
-      const errors = results.filter(r => r.error);
+      const errors = results.filter(r => r?.error);
       if (errors.length > 0) {
-        console.error('Onboarding status query errors:', errors);
+        const aggregatedError = new Error('Onboarding status query failed');
+        (aggregatedError as Error & { details?: unknown[] }).details = errors;
+        throw aggregatedError;
       }
 
       const squareCount = squareResult.count;
@@ -234,6 +224,8 @@ export const useOnboardingStatus = (): OnboardingStatus => {
     completedCount,
     totalCount,
     percentage,
-    isLoading
+    isLoading,
+    error: error ?? null,
+    refetch
   };
 };

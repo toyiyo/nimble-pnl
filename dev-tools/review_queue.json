@@ -24258,6 +24258,1030 @@
       "status": "open",
       "created_at": "2026-01-10T20:47:34.225Z",
       "updated_at": "2026-01-10T20:47:34.225Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608745,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 213
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**StepCard lacks keyboard accessibility.**\n\nThe clickable `div` has no keyboard support. Users navigating with keyboard cannot activate these cards. Consider using a `<button>` element or adding `role=\"button\"`, `tabIndex={0}`, and an `onKeyDown` handler.\n\n<details>\n<summary>🔧 Proposed fix using button semantics</summary>\n\n```diff\n const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {\n   return (\n-    <div \n+    <button \n+      type=\"button\"\n       onClick={onClick}\n       className={`\n-        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer\n+        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full\n         ${step.isCompleted \n           ? 'bg-muted/30 border-transparent hover:bg-muted/50' \n           : 'bg-card hover:border-primary/50 hover:shadow-sm'\n         }\n       `}\n     >\n       {/* ... content unchanged ... */}\n-    </div>\n+    </button>\n   );\n };\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nconst StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {\n  return (\n    <button\n      type=\"button\"\n      onClick={onClick}\n      className={`\n        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full\n        ${step.isCompleted \n          ? 'bg-muted/30 border-transparent hover:bg-muted/50' \n          : 'bg-card hover:border-primary/50 hover:shadow-sm'\n        }\n      `}\n    >\n      <div className={`mt-0.5 rounded-full p-0.5 ${step.isCompleted ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>\n        {step.isCompleted ? <CheckCircle2 className=\"h-5 w-5\" /> : <Circle className=\"h-5 w-5\" />}\n      </div>\n      \n      <div className=\"flex-1 space-y-1\">\n        <p className={`text-sm font-medium leading-none ${step.isCompleted ? 'text-muted-foreground line-through decoration-transparent' : 'text-foreground'}`}>\n          {step.label}\n        </p>\n        <p className=\"text-xs text-muted-foreground line-clamp-2\">\n          {step.description}\n        </p>\n        \n        {!step.isCompleted && (\n          <div className=\"pt-2\">\n            <span className=\"text-xs font-semibold text-primary group-hover:underline inline-flex items-center\">\n              {step.ctaText} <ChevronRight className=\"h-3 w-3 ml-0.5\" />\n            </span>\n          </div>\n        )}\n      </div>\n    </button>\n  );\n};\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 189 - 223,\nStepCard's clickable container is a plain div and lacks keyboard accessibility;\nupdate the clickable container (the top-level element in the StepCard functional\ncomponent) to be keyboard-activatable by either converting it to a <button>\nelement or by adding role=\"button\", tabIndex={0}, and an onKeyDown handler that\ncalls the same onClick for Enter and Space keys; ensure ARIA/visual styles\nremain the same and preserve the existing onClick prop behavior so keyboard\nusers can activate the card.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 4b9e4fd",
+      "severity": "info",
+      "id": "738efcb9169ff7fc89b9ca312ff767e73e4bc2fe",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.719Z",
+      "updated_at": "2026-01-12T02:10:08.025Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608748,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 156
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Missing error handling for Supabase queries.**\n\nThe `Promise.all` results are destructured assuming success, but Supabase queries can fail. If any query returns an error, `count` will be `null` and errors will be silently ignored. Consider checking errors or using the query's error state.\n\n<details>\n<summary>🔧 Suggested approach</summary>\n\n```diff\n       const [\n-        { count: posCount },\n-        { count: collaboratorCount },\n+        posResult,\n+        collaboratorResult,\n         // ... other results\n       ] = await Promise.all([...]);\n\n+      // Check for errors\n+      const errors = [posResult, collaboratorResult, ...].filter(r => r.error);\n+      if (errors.length > 0) {\n+        console.error('Onboarding status query errors:', errors);\n+        // Optionally throw to trigger React Query error state\n+      }\n\n       return {\n-        hasPos: (posCount || 0) > 0,\n+        hasPos: (posResult.count || 0) > 0,\n         // ...\n       };\n```\n\nAlternatively, expose the `error` state from `useQuery` in the return object so the UI can handle it.\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 56d470e",
+      "severity": "info",
+      "id": "47e84b6bf4a8316b89252b66ffe572c2ed0d8715",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:13.275Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608749,
+        "file": "tests/unit/useOnboardingStatus.test.tsx",
+        "line": 45
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Avoid adding `then` property to mock objects.**\n\nBiome flags this pattern because objects with a `then` property can be mistakenly treated as Promises by `async/await`, leading to unexpected behavior. Consider using `mockResolvedValue` or restructuring the mock.\n\n<details>\n<summary>🔧 Proposed fix using Promise resolution</summary>\n\n```diff\n vi.mock('@/integrations/supabase/client', () => ({\n   supabase: {\n     from: vi.fn((table) => {\n-        const count = mockDbState[table] ?? 0;\n-        return {\n-            select: vi.fn().mockReturnThis(),\n-            eq: vi.fn().mockReturnThis(),\n-            then: (resolve: any) => resolve({ count, error: null })\n-        };\n+      const count = mockDbState[table] ?? 0;\n+      const chain = {\n+        select: vi.fn().mockReturnThis(),\n+        eq: vi.fn().mockReturnThis(),\n+      };\n+      // Return a thenable that resolves properly\n+      return Object.assign(Promise.resolve({ count, error: null }), chain);\n     }),\n   },\n }));\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nvi.mock('@/integrations/supabase/client', () => ({\n  supabase: {\n    from: vi.fn((table) => {\n      const count = mockDbState[table] ?? 0;\n      const chain = {\n        select: vi.fn().mockReturnThis(),\n        eq: vi.fn().mockReturnThis(),\n      };\n      // Return a thenable that resolves properly\n      return Object.assign(Promise.resolve({ count, error: null }), chain);\n    }),\n  },\n}));\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 Biome (2.1.2)</summary>\n\n[error] 41-41: Do not add then to an object.\n\n\n\n(lint/suspicious/noThenProperty)\n\n</details>\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @tests/unit/useOnboardingStatus.test.tsx around lines 34 - 45, The mock\nexposes a then property which makes the returned object behave like a Promise;\nremove the manual then and instead have the final call return a real resolved\nPromise—update the supabase.from mock so that from(table) builds an object where\nselect is vi.fn().mockReturnThis() and eq is vi.fn().mockResolvedValue({ count:\nmockDbState[table] ?? 0, error: null }) (or use mockResolvedValueOnce) so tests\nawait the Promise correctly; refer to the supabase.from, select, eq and\nmockDbState identifiers when applying this change.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "ad102feaa697e2d08a4136ce79cb795dd21dae24",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:16.740Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680654758,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 53
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Handle error state from the hook.**\n\nThe component destructures `isLoading` but does not handle a potential error state from `useOnboardingStatus`. If the hook supports error handling, consider displaying an error UI or gracefully degrading.\n\nAdditionally, per coding guidelines, prefer skeleton screens over returning `null` for loading states.\n\n\n\n<details>\n<summary>Suggested pattern</summary>\n\n```diff\n-  const { steps, completedCount, totalCount, percentage, isLoading } = useOnboardingStatus();\n+  const { steps, completedCount, totalCount, percentage, isLoading, error } = useOnboardingStatus();\n\n   // ...\n\n-  if (isLoading) return null;\n+  if (isLoading) {\n+    return (\n+      <div className=\"fixed bottom-6 right-6 z-50\">\n+        <div className=\"h-12 w-12 rounded-full bg-muted animate-pulse\" />\n+      </div>\n+    );\n+  }\n+\n+  if (error) return null; // or show error state\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 24 - 51, The\ncomponent currently ignores a potential error from useOnboardingStatus and\nreturns null for loading; update the destructuring to include the hook's error\n(e.g., const { steps, completedCount, totalCount, percentage, isLoading, error }\n= useOnboardingStatus()), replace the early return for isLoading with rendering\na small skeleton component or loading placeholder instead of null, and add a\nconcise error state UI (a banner or inline message) when error is truthy so the\nuser sees a failure to load steps; keep existing dismissed/open logic and\nhandlers (handleOpen, handleStepClick) intact while ensuring the error UI lets\nusers retry or navigate elsewhere.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "6568842547696f3d8fcfd0d0b43bee1dc4fe92c8",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:20.623Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680654761,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 70
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add `aria-label` to the icon-only button.**\n\nThe floating button contains only an icon (`ListTodo`) with no visible text. Per accessibility guidelines, add an `aria-label` to ensure screen reader users understand the button's purpose.\n\n\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n            <Button \n             onClick={handleOpen} \n             size=\"icon\"\n             className=\"h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105\"\n-            title=\"Resume Setup\"\n+            title=\"Resume Setup\"\n+            aria-label=\"Resume Setup\"\n            >\n              <ListTodo className=\"h-6 w-6\" />\n            </Button>\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 57 - 68, The\nicon-only floating button in OnboardingDrawer (the Button wrapping ListTodo and\nusing handleOpen) lacks an accessible name; add an aria-label prop to that\nButton (e.g., aria-label=\"Resume Setup\") so screen readers can announce its\npurpose, keeping the existing title prop if desired for tooltip behavior.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "e8ff92f8cab52280465b8b55796cdd0af6aac2ed",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:24.045Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3736637603
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=312) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [5.4% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=312&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=312)\n\n",
+      "severity": "info",
+      "id": "886d94fa4dfc49d91465ca4518d76aea0ccc3662",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.721Z",
+      "updated_at": "2026-01-12T02:10:27.370Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuv3bOsD4_uMWluefiL",
+        "pr": "312",
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 18
+      },
+      "title": "Remove this unused import of 'CreditCard'.",
+      "body": "Remove this unused import of 'CreditCard'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "0d5558101507702ea3b65baf35ccc69e0ab45155",
+      "status": "in_progress",
+      "created_at": "2026-01-12T01:57:57.722Z",
+      "updated_at": "2026-01-12T01:59:36.787Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuv3bOsD4_uMWluefiM",
+        "pr": "312",
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 173
+      },
+      "title": "Use <input type=\"button\">, <input type=\"image\">, <input type=\"reset\">, <input type=\"submit\">, or <button> instead of the \"button\" role to ensure accessibility a",
+      "body": "Use <input type=\"button\">, <input type=\"image\">, <input type=\"reset\">, <input type=\"submit\">, or <button> instead of the \"button\" role to ensure accessibility across all devices.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "095cd46e460773ba58830ca1d2086a6299a7b5fa",
+      "status": "in_progress",
+      "created_at": "2026-01-12T01:57:57.722Z",
+      "updated_at": "2026-01-12T01:59:36.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 147
+      },
+      "title": "react-hooks/exhaustive-deps in ReceiptMappingReview.tsx",
+      "body": "React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "d3882d3489eafa69a1783fbd1bb51f6a86ab7851",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 235
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "a42550e6cc3428a403a135ed466228d9e5c56628",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 329
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "ca5d2498e64eac1c113e502a95d5403554e64286",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 346
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "07f73d6a87a20f592b03fbad4f934d2d57d85af0",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 627
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "e04cf8fda7eeb1a9c412164906c37bcc784ecb41",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 664
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "d21b94712e6994401fa22ec6990f9e1fd60cf253",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 715
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "de5f4e71a0f40ffffa32bcb3474da22683ed2740",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptBatchActions.tsx",
+        "line": 87
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptBatchActions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptBatchActions.tsx"
+      ],
+      "id": "1c84e4219efde7dbdbc9a29076d825a760ca6ff4",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptItemRow.tsx",
+        "line": 25
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptItemRow.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptItemRow.tsx"
+      ],
+      "id": "1cc72492df802c6fdcaf0554cf87ab933bef0801",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx",
+        "line": 62
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx"
+      ],
+      "id": "5749371f68c0623914e576570a8290c86bd18a69",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx",
+        "line": 204
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx"
+      ],
+      "id": "2376bd69fe33589ce6bc8a141c9648a53c2fb2a3",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx",
+        "line": 266
+      },
+      "title": "react-refresh/only-export-components in useAuth.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx"
+      ],
+      "id": "a2cc3077185ff82261dcfe192b281ef2283b45e8",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts",
+        "line": 29
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts"
+      ],
+      "id": "55a9594b0ba483398279930fa506a9340cb30571",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 239
+      },
+      "title": "@typescript-eslint/ban-ts-comment in useReceiptImport.tsx",
+      "body": "Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "d096b95dad26a5a785f2fed46228c814c472ffa4",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 258
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "edcf8ea5dfda0597e62a3064e9df5ae09721586a",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 722
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "1909f6e947bf40e4b8eb92d26a22e1cf32af8552",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 743
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "9b571c4bb06f414507e91d18d09d157b499d243f",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx",
+        "line": 47
+      },
+      "title": "@typescript-eslint/no-explicit-any in useRestaurants.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx"
+      ],
+      "id": "1afbc57282812a547be22e213c5bf91969bf8bfc",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx",
+        "line": 98
+      },
+      "title": "@typescript-eslint/no-explicit-any in useRestaurants.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx"
+      ],
+      "id": "6e8cc68c2e73b1fefce6ba56ad1cd5cfc0f79f3f",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx",
+        "line": 123
+      },
+      "title": "@typescript-eslint/no-explicit-any in useRestaurants.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx"
+      ],
+      "id": "c062075fe22f1541f37c1cdd69acfca692ab914a",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts",
+        "line": 138
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts"
+      ],
+      "id": "ab86257b4970b01fa79b9809aa3a5796458696f9",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts",
+        "line": 168
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts"
+      ],
+      "id": "f23b278df7d55392d3730ea283792616fa8f7090",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts",
+        "line": 6
+      },
+      "title": "@typescript-eslint/no-explicit-any in react-query-config.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts"
+      ],
+      "id": "c045228544aaa4b3bf635908df32168ae0be00be",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts",
+        "line": 23
+      },
+      "title": "@typescript-eslint/no-explicit-any in react-query-config.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts"
+      ],
+      "id": "770ab1bb10b9de0e0e71de1a76dddcc6e956b37c",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 140
+      },
+      "title": "@typescript-eslint/no-explicit-any in Index.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "0e56a0cf5704ceb798c9978be48f652fd50f7de5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 312
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'dailyAvgSpending'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "1ee95f1b803e8b729a956bf63a0b529e8667b381",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 315
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "The 'monthlyData' logical expression could make the dependencies of useEffect Hook (at line 401) change on every render. To fix this, wrap the initialization of 'monthlyData' in its own useMemo() Hook.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "547d2ddf1c90dd3d07d7692a4bd0c3d0a50d045d",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 125
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "5f941fe3c9fb1b28c245072c0b083d31ab642925",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 415
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "52905b0ef9ccc6ecc7738acbaefd0d23288b33d2",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 416
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "56ef3fbe41c8f2db264498dc4526047bc595206a",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.738Z",
+      "updated_at": "2026-01-12T01:57:57.738Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 418
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "15d141d65569622f298ee21c2dbebba764f24119",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.738Z",
+      "updated_at": "2026-01-12T01:57:57.738Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 419
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "65093e955874dd45247d5aac9c81ff2378ec4c69",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.738Z",
+      "updated_at": "2026-01-12T01:57:57.738Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 278
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "83a0e7588579b848390d07f59b329bbba03bb5ba",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 286
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "2d163849b24e62d854a57dbe8156bd279ef8a958",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 760
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "f2dda17ffa6e60448737a149926bc270ebcb05d1",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 772
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "a1eb5512a45eb86e05ead4e571f1a338550e58d5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 79
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "6b4d95aa2948d82f893c914de36ab8905b4d29e8",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 119
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "ecf2163a70e5bf58ac2e11e41e4e6fc62e4cd217",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 120
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "82bd618dceb6b8df92cbe472cee8515762e6cea9",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 234
+      },
+      "title": "no-useless-escape in labor-cost-alignment.spec.ts",
+      "body": "Unnecessary escape character: \\\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "74e4a4f6af4dac8ef6b1d90c1410bb4577b0dfa9",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts",
+        "line": 14
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts"
+      ],
+      "id": "79cc4a26f8fafef48d99b69c50da623d98ac2f7c",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts",
+        "line": 18
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts"
+      ],
+      "id": "fdc396a22f3e326ae2354fe79369c9ed83ba010e",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts",
+        "line": 7
+      },
+      "title": "@typescript-eslint/no-explicit-any in reactQueryConfig.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts"
+      ],
+      "id": "47f65a0e9e9c4bd09857c343dfcf497861f63c60",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts",
+        "line": 8
+      },
+      "title": "@typescript-eslint/no-explicit-any in reactQueryConfig.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts"
+      ],
+      "id": "fd8df0dbaa78f6d5248655ad0f284d5e8acea74d",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/receiptMappingReviewFixes.test.ts",
+        "line": 217
+      },
+      "title": "@typescript-eslint/no-explicit-any in receiptMappingReviewFixes.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/receiptMappingReviewFixes.test.ts"
+      ],
+      "id": "01385b89cfc90c05b699f061401a119291959da5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx",
+        "line": 14
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "4bfa2ea450838bd0bcf337dc204127b1ad70c515",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx",
+        "line": 15
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "872e91cdc95064a727c026851eb13b75085e30c5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx",
+        "line": 16
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "8ef20ee88a13be12713f1b3cf86ef15a06d6cd76",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx",
+        "line": 16
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx"
+      ],
+      "id": "30c44c2b86993ab0b8bbb60a93951d944c24b9ec",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx",
+        "line": 41
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx"
+      ],
+      "id": "63abacf3e78eb2705bf255a9a1cc640e1f6a49de",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
     }
   ]
 }

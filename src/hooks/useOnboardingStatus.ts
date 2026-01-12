@@ -33,15 +33,21 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
       // Run all checks in parallel
       const [
-        { count: posCount },
-        { count: collaboratorCount },
-        { count: employeeCount },
-        { count: recipeCount },
-        { count: receiptCount },
-        { count: inventoryCount },
-        { count: bankCount }
+        posResult,
+        collaboratorResult,
+        employeeResult,
+        recipeResult,
+        receiptResult,
+        inventoryResult,
+        bankResult,
+        squareResult,
+        toastResult,
+        cloverResult,
+        shift4Result,
+        invitationResult,
+        productResult
       ] = await Promise.all([
-        // 1. POS Connected
+        // 1. POS Connected (Generic)
         supabase.from('integrations')
           .select('*', { count: 'exact', head: true })
           .eq('restaurant_id', restaurantId)
@@ -56,8 +62,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         // 3. Employees
         supabase.from('employees')
           .select('*', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurantId)
-          .eq('status', 'active'),
+          .eq('restaurant_id', restaurantId),
 
         // 4. Recipes
         supabase.from('recipes')
@@ -77,18 +82,77 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         // 7. Bank Account
         supabase.from('bank_connections')
           .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId),
+          
+        // 8. Specific POS Connections (Legacy/Direct)
+        supabase.from('square_connections')
+          .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId),
+          
+        supabase.from('toast_connections' as any)
+          .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId),
+          
+        supabase.from('clover_connections')
+          .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId),
+          
+        supabase.from('shift4_connections' as any)
+          .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId),
+
+        // 9. Invitations (Pending Collaborators)
+        supabase.from('invitations')
+          .select('*', { count: 'exact', head: true })
           .eq('restaurant_id', restaurantId)
-          .eq('status', 'active')
+          .eq('status', 'pending'),
+
+        // 10. Products (Inventory Items)
+        supabase.from('products')
+          .select('*', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId)
       ]);
 
+      // Check for errors
+      const results = [
+        { name: 'pos', ...posResult },
+        { name: 'collaborators', ...collaboratorResult },
+        { name: 'employees', ...employeeResult },
+        { name: 'recipes', ...recipeResult },
+        { name: 'receipts', ...receiptResult },
+        { name: 'inventory', ...inventoryResult },
+        { name: 'bank', ...bankResult },
+        { name: 'square', ...squareResult },
+        { name: 'toast', ...toastResult },
+        { name: 'clover', ...cloverResult },
+        { name: 'shift4', ...shift4Result },
+        { name: 'invitations', ...invitationResult },
+        { name: 'products', ...productResult }
+      ];
+
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Onboarding status query errors:', errors);
+      }
+
+      const squareCount = squareResult.count;
+      const toastCount = toastResult.count;
+      const cloverCount = cloverResult.count;
+      const shift4Count = shift4Result.count;
+
+      const hasDirectPos = (squareCount || 0) > 0 || 
+                          (toastCount || 0) > 0 || 
+                          (cloverCount || 0) > 0 || 
+                          (shift4Count || 0) > 0;
+
       return {
-        hasPos: (posCount || 0) > 0,
-        hasCollaborators: (collaboratorCount || 0) > 1,
-        hasEmployees: (employeeCount || 0) > 0,
-        hasRecipes: (recipeCount || 0) > 0,
-        hasReceipts: (receiptCount || 0) > 0,
-        hasInventory: (inventoryCount || 0) > 0,
-        hasBank: (bankCount || 0) > 0
+        hasPos: (posResult.count || 0) > 0 || hasDirectPos,
+        hasCollaborators: ((collaboratorResult.count || 0) > 1) || ((invitationResult.count || 0) > 0),
+        hasEmployees: (employeeResult.count || 0) > 0,
+        hasRecipes: (recipeResult.count || 0) > 0,
+        hasReceipts: (receiptResult.count || 0) > 0,
+        hasInventory: (inventoryResult.count || 0) > 0 || (productResult.count || 0) > 0,
+        hasBank: (bankResult.count || 0) > 0
       };
     },
     enabled: !!selectedRestaurant?.id,

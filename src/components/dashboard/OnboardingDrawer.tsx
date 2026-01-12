@@ -3,7 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Sheet, 
-  SheetContent, 
+  SheetContent,
+  SheetTitle,
+  SheetDescription,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -98,13 +100,13 @@ export const OnboardingDrawer = () => {
           {/* Header */}
           <div className="p-6 border-b bg-muted/20">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold tracking-tight">Getting Started</h2>
+              <SheetTitle className="text-lg font-semibold tracking-tight">Getting Started</SheetTitle>
               {/* Close button provided by SheetContent */}
             </div>
             
             <div className="space-y-2">
               <div className="flex justify-between text-sm font-medium text-muted-foreground">
-                <span>Your workspace is ready</span>
+                <SheetDescription>Your workspace is ready</SheetDescription>
                 <span>{completedCount} / {totalCount} completed</span>
               </div>
               <Progress value={percentage} className="h-2" />

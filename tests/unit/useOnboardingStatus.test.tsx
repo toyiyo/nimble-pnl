@@ -147,4 +147,19 @@ describe('useOnboardingStatus', () => {
      const collabStep = result.current.steps.find(s => s.id === 'collaborators');
      expect(collabStep?.isCompleted).toBe(false);
   });
+
+  it('should detect legacy POS connections (Square/Toast/Clover/Shift4)', async () => {
+    // Setup state: No generic integration, but specific Square connection
+    mockDbState = {
+        integrations: 0,
+        square_connections: 1,
+        // others default to 0
+    };
+
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const posStep = result.current.steps.find(s => s.id === 'pos');
+    expect(posStep?.isCompleted).toBe(true);
+  });
 });

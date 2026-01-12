@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 /**
  * Helper function to refresh Clover access token
- */ async function refreshCloverToken(connection, supabase) {
+*/ async function refreshCloverToken(connection: any, supabase: any) {
   console.log("Attempting to refresh Clover token...");
   if (!connection.refresh_token) {
     throw new Error("No refresh token available. Please reconnect your Clover account.");
@@ -17,13 +17,13 @@ const corsHeaders = {
   const CLOVER_APP_ID = Deno.env.get("CLOVER_APP_ID");
   const CLOVER_APP_SECRET = Deno.env.get("CLOVER_APP_SECRET");
   // Use production API domains
-  const regionAPIDomains = {
+  const regionAPIDomains: Record<string, string> = {
     na: "api.clover.com",
     eu: "api.eu.clover.com",
     latam: "api.la.clover.com",
     apac: "api.clover.com",
   };
-  const CLOVER_API_DOMAIN = regionAPIDomains[connection.region] || "api.clover.com";
+  const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as string] || "api.clover.com";
   const tokenRefreshUrl = `https://${CLOVER_API_DOMAIN}/oauth/v2/refresh`;
   const refreshResponse = await fetch(tokenRefreshUrl, {
     method: "POST",
@@ -117,13 +117,13 @@ Deno.serve(async (req) => {
         const CLOVER_APP_ID = Deno.env.get("CLOVER_APP_ID");
         const CLOVER_APP_SECRET = Deno.env.get("CLOVER_APP_SECRET");
         // Use production API domains
-        const regionAPIDomains = {
+        const regionAPIDomains: Record<string, string> = {
           na: "api.clover.com",
           eu: "api.eu.clover.com",
           latam: "api.la.clover.com",
           apac: "api.clover.com",
         };
-        const CLOVER_API_DOMAIN = regionAPIDomains[connection.region] || regionAPIDomains.na;
+        const CLOVER_API_DOMAIN = regionAPIDomains[connection.region as string] || regionAPIDomains.na;
         const tokenRefreshUrl = `https://${CLOVER_API_DOMAIN}/oauth/v2/refresh`;
         const refreshResponse = await fetch(tokenRefreshUrl, {
           method: "POST",

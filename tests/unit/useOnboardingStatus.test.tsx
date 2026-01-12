@@ -18,18 +18,28 @@ vi.mock('@/integrations/supabase/client', () => ({
       const error = typeof state === 'object' && state !== null && 'error' in state 
         ? (state as { error?: unknown }).error ?? null 
         : null;
-      const chain = {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockReturnThis(),
-      };
-      // The promise resolves to data when awaited
-      // In the hook we await the chain directly or checkCount calls await query.
-      // Actually checkTableCount returns `query` which is a promise-like.
-      // So checking `await checkTableCount(...)` waits on this object.
-      // We need to attach the properties to a Promise.
+      
+      // Create the promise that will be resolved when awaited
       const promise = Promise.resolve({ count, error, data: [] });
-      return Object.assign(promise, chain);
+      
+      // Create chain methods that return the promise itself (not 'this')
+      // This allows .select().eq().limit() to keep returning the promise
+      interface ChainableMock {
+        select: ReturnType<typeof vi.fn>;
+        eq: ReturnType<typeof vi.fn>;
+        limit: ReturnType<typeof vi.fn>;
+        then: typeof promise.then;
+        catch: typeof promise.catch;
+        finally: typeof promise.finally;
+      }
+      
+      const chainable = Object.assign(promise, {
+        select: vi.fn(() => chainable),
+        eq: vi.fn(() => chainable),
+        limit: vi.fn(() => chainable),
+      }) as ChainableMock;
+      
+      return chainable;
     }),
   },
 }));
@@ -60,15 +70,23 @@ describe('useOnboardingStatus', () => {
         },
       },
     });
-    // Reset DB state
+    // Reset DB state - use correct table names from hook
     mockDbState = {
-      integrations: 0,
       user_restaurants: 0,
       employees: 0,
       recipes: 0,
-      receipts: 0,
-      inventory_counts: 0,
-      bank_connections: 0
+      receipt_imports: 0,
+      receipt_line_items: 0,
+      inventory_reconciliations: 0,
+      inventory_transactions: 0,
+      connected_banks: 0,
+      bank_transactions: 0,
+      square_connections: 0,
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
     };
     // Reset mock restaurant
     mockSelectedRestaurant = {
@@ -95,15 +113,23 @@ describe('useOnboardingStatus', () => {
   });
 
   it('should calculate progress correctly when some steps are done', async () => {
-    // Setup state: POS connected, Bank connected
+    // Setup state: POS connected (square), Bank connected
     mockDbState = {
-      integrations: 1, // POS
-      user_restaurants: 1, // Collaborators: need >1 to be true. Let's set 2 next time.
+      user_restaurants: 1,
       employees: 0,
       recipes: 0,
-      receipts: 0,
-      inventory_counts: 0,
-      bank_connections: 1, // Bank
+      receipt_imports: 0,
+      receipt_line_items: 0,
+      inventory_reconciliations: 0,
+      inventory_transactions: 0,
+      connected_banks: 1, // Bank connected
+      bank_transactions: 0,
+      square_connections: 1, // POS connected
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
     };
 
     const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
@@ -147,11 +173,23 @@ describe('useOnboardingStatus', () => {
   });
 
   it('should detect legacy POS connections (Square/Toast/Clover/Shift4)', async () => {
-    // Setup state: No generic integration, but specific Square connection
+    // Setup state: Square connection exists
     mockDbState = {
-      integrations: 0,
-      square_connections: 1,
-      // others default to 0
+      user_restaurants: 1,
+      employees: 0,
+      recipes: 0,
+      receipt_imports: 0,
+      receipt_line_items: 0,
+      inventory_reconciliations: 0,
+      inventory_transactions: 0,
+      connected_banks: 0,
+      bank_transactions: 0,
+      square_connections: 1, // Square POS connected
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
     };
 
     const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
@@ -162,7 +200,24 @@ describe('useOnboardingStatus', () => {
   });
 
   it('handles errors gracefully by defaulting to incomplete', async () => {
-    mockDbState.integrations = { error: new Error('network failure') };
+    // Simulate an error in one of the queries
+    mockDbState = {
+      user_restaurants: { error: new Error('network failure') },
+      employees: 0,
+      recipes: 0,
+      receipt_imports: 0,
+      receipt_line_items: 0,
+      inventory_reconciliations: 0,
+      inventory_transactions: 0,
+      connected_banks: 0,
+      bank_transactions: 0,
+      square_connections: 0,
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
+    };
 
     const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
 
@@ -184,13 +239,21 @@ describe('useOnboardingStatus', () => {
     };
     
     mockDbState = {
-      integrations: 0,
       user_restaurants: 1,
       employees: 0,
       recipes: 0,
-      receipts: 0,
-      inventory_counts: 0,
-      bank_connections: 0
+      receipt_imports: 0,
+      receipt_line_items: 0,
+      inventory_reconciliations: 0,
+      inventory_transactions: 0,
+      connected_banks: 0,
+      bank_transactions: 0,
+      square_connections: 0,
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
     };
 
     const { result, rerender } = renderHook(() => useOnboardingStatus(), { wrapper });
@@ -210,13 +273,21 @@ describe('useOnboardingStatus', () => {
     
     // Restaurant B has POS and Bank connected
     mockDbState = {
-      integrations: 1, // POS connected
       user_restaurants: 1,
       employees: 0,
       recipes: 0,
-      receipts: 0,
-      inventory_counts: 0,
-      bank_connections: 1 // Bank connected
+      receipt_imports: 0,
+      receipt_line_items: 0,
+      inventory_reconciliations: 0,
+      inventory_transactions: 0,
+      connected_banks: 1, // Bank connected
+      bank_transactions: 0,
+      square_connections: 1, // POS connected
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
     };
 
     // Force rerender to pick up the new restaurant
@@ -233,5 +304,42 @@ describe('useOnboardingStatus', () => {
     
     const bankStep = result.current.steps.find(s => s.id === 'bank');
     expect(bankStep?.isCompleted).toBe(true);
+  });
+
+  it('should detect completion using fallback tables (bank_transactions, receipt_line_items, inventory_transactions)', async () => {
+    // Setup state: Using fallback tables instead of primary ones
+    mockDbState = {
+      user_restaurants: 1,
+      employees: 0,
+      recipes: 0,
+      receipt_imports: 0,
+      receipt_line_items: 5, // Has receipt data via line items (not imports)
+      inventory_reconciliations: 0,
+      inventory_transactions: 3, // Has inventory data via transactions
+      connected_banks: 0,
+      bank_transactions: 10, // Has bank data via transactions (not connected banks)
+      square_connections: 0,
+      toast_connections: 0,
+      clover_connections: 0,
+      shift4_connections: 0,
+      invitations: 0,
+      products: 0
+    };
+
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Should mark receipts, inventory, and bank as completed (using fallback tables)
+    const receiptStep = result.current.steps.find(s => s.id === 'receipt');
+    expect(receiptStep?.isCompleted).toBe(true);
+
+    const inventoryStep = result.current.steps.find(s => s.id === 'inventory');
+    expect(inventoryStep?.isCompleted).toBe(true);
+
+    const bankStep = result.current.steps.find(s => s.id === 'bank');
+    expect(bankStep?.isCompleted).toBe(true);
+
+    // Should have 3 completed steps
+    expect(result.current.completedCount).toBe(3);
   });
 });

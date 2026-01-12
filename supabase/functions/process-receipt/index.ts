@@ -96,8 +96,12 @@ EXTRACTION METHODOLOGY:
 
 **STANDARD UNIT LISTS (use these exactly):**
 - **Weight units**: lb, kg, g, oz (note: oz is for WEIGHT only)
-- **Volume units**: fl oz (fluid ounces), cup, tbsp, tsp, ml, L, gal, qt
-- **Container types**: bottle, can, box, bag, case, jar, container, package
+- **Volume units**: fl oz (fluid ounces), cup, tbsp, tsp, ml, L, gal, qt, pint
+- **Container types** (CHOOSE FROM THIS LIST): 
+  Primary: bag, box, bottle, can, jar, tube, sachet, packet, pouch, tray, cup, bowl, wrapper, carton, roll, stick, bar, piece, slice, loaf, portion, pair, pod, capsule, vial
+  Secondary: case, crate, pack, multipack, sleeve, bundle, set, strip, pallet, display_box
+  Bulk: drum, barrel, bucket, bin, sack, tote, tank, tub, jug
+  Other: container, unit, serving
 
 **THREE-FIELD EXTRACTION SYSTEM:**
 

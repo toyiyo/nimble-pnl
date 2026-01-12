@@ -496,6 +496,10 @@ export const useReceiptImport = () => {
       parsed_unit?: string;
       parsed_price?: number;
       parsed_sku?: string;
+      package_type?: string | null;
+      size_value?: number | null;
+      size_unit?: string | null;
+      unit_price?: number | null;
     }
   ) => {
     const { error } = await supabase

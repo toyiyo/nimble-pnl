@@ -24,11 +24,20 @@ vi.mock('@/integrations/supabase/client', () => ({
       
       // Create chain methods that return the promise itself (not 'this')
       // This allows .select().eq().limit() to keep returning the promise
-      const chainable: any = Object.assign(promise, {
+      interface ChainableMock {
+        select: ReturnType<typeof vi.fn>;
+        eq: ReturnType<typeof vi.fn>;
+        limit: ReturnType<typeof vi.fn>;
+        then: typeof promise.then;
+        catch: typeof promise.catch;
+        finally: typeof promise.finally;
+      }
+      
+      const chainable = Object.assign(promise, {
         select: vi.fn(() => chainable),
         eq: vi.fn(() => chainable),
         limit: vi.fn(() => chainable),
-      });
+      }) as ChainableMock;
       
       return chainable;
     }),

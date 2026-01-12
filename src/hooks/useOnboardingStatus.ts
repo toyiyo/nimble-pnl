@@ -158,17 +158,26 @@ export const useOnboardingStatus = (): OnboardingStatus => {
                             cloverCount > 0 || 
                             shift4Count > 0;
 
+        // Helper functions for data detection with fallbacks
+        const hasReceiptData = () => 
+          getCount(receiptResult) > 0 || getCount(receiptLineItemsResult) > 0;
+        
+        const hasInventoryData = () =>
+          getCount(inventoryResult) > 0 || 
+          getCount(inventoryTransactionsResult) > 0 || 
+          getCount(productResult) > 0;
+        
+        const hasBankData = () =>
+          getCount(bankResult) > 0 || getCount(bankTransactionsResult) > 0;
+
         const finalStatus = {
           hasPos: hasDirectPos,
           hasCollaborators: (getCount(collaboratorResult) > 1) || (getCount(invitationResult) > 0),
           hasEmployees: getCount(employeeResult) > 0,
           hasRecipes: getCount(recipeResult) > 0,
-          // Check both receipt_imports and receipt_line_items (fallback)
-          hasReceipts: getCount(receiptResult) > 0 || getCount(receiptLineItemsResult) > 0,
-          // Check both inventory_reconciliations and inventory_transactions (fallback)
-          hasInventory: getCount(inventoryResult) > 0 || getCount(inventoryTransactionsResult) > 0 || getCount(productResult) > 0,
-          // Check both connected_banks and bank_transactions (fallback)
-          hasBank: getCount(bankResult) > 0 || getCount(bankTransactionsResult) > 0
+          hasReceipts: hasReceiptData(),
+          hasInventory: hasInventoryData(),
+          hasBank: hasBankData()
         };
 
         console.log('useOnboardingStatus: Calculated Status', finalStatus);

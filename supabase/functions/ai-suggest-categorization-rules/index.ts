@@ -308,7 +308,7 @@ Please categorize some ${source === 'bank' ? 'transactions' : 'sales'} first or 
     console.log('[AI-SUGGEST-RULES] AI result received:', JSON.stringify(result.data).substring(0, 500));
 
     // Parse and validate the response
-    const suggestions = result.data as { rules?: any[] };
+    const suggestions = result.data;
     
     if (!suggestions || !suggestions.rules || !Array.isArray(suggestions.rules)) {
       console.error('[AI-SUGGEST-RULES] Invalid response structure:', suggestions);

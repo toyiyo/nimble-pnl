@@ -311,7 +311,7 @@ function createSSEStream(
             type: 'error', 
             error: { 
               code: 'STREAM_ERROR', 
-              message: error instanceof Error ? error.message : 'Unknown stream error'
+              message: error.message 
             } 
           })}\n\n`)
         );

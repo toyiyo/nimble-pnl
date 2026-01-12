@@ -114,9 +114,9 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
+        success: true,
         message: `Recalculated P&L for ${results.success} records`,
-        ...results,
-        success: true
+        ...results
       }),
       { 
         status: 200,
@@ -124,12 +124,12 @@ Deno.serve(async (req) => {
       }
     )
 
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('Bulk recalculation error:', error)
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error.message 
       }),
       { 
         status: 500,

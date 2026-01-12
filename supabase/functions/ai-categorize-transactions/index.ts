@@ -292,21 +292,15 @@ serve(async (req) => {
     }
 
     // Format examples for the prompt
-    const examples = (exampleTransactions || []).map((ex: any) => {
-      // chart_of_accounts comes as array from !inner join, take first element
-      const account = Array.isArray(ex.chart_of_accounts) 
-        ? ex.chart_of_accounts[0] 
-        : ex.chart_of_accounts;
-      return {
-        description: ex.description,
-        merchant_name: ex.merchant_name,
-        normalized_payee: ex.normalized_payee,
-        amount: ex.amount,
-        account_code: account?.account_code,
-        account_name: account?.account_name,
-        account_type: account?.account_type
-      };
-    }).filter((ex: any) => ex.account_code); // Only include examples with valid account info
+    const examples = (exampleTransactions || []).map(ex => ({
+      description: ex.description,
+      merchant_name: ex.merchant_name,
+      normalized_payee: ex.normalized_payee,
+      amount: ex.amount,
+      account_code: ex.chart_of_accounts?.account_code,
+      account_name: ex.chart_of_accounts?.account_name,
+      account_type: ex.chart_of_accounts?.account_type
+    })).filter(ex => ex.account_code); // Only include examples with valid account info
 
     console.log(`📚 Using ${examples.length} example categorizations to improve AI accuracy`);
 
@@ -401,10 +395,10 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      JSON.stringify({ error: error.message }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

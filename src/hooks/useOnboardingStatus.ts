@@ -63,7 +63,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       try {
         // Run all checks in parallel
         const [
-          posResult,
           collaboratorResult,
           employeeResult,
           recipeResult,
@@ -77,49 +76,45 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           invitationResult,
           productResult
         ] = await Promise.all([
-          // 1. POS Connected (Generic)
-          checkTableCount(restaurantId, 'integrations', { status: 'connected' }),
-          
-          // 2. Collaborators (more than just the owner)
+          // 1. Collaborators (more than just the owner)
           checkTableCount(restaurantId, 'user_restaurants'),
 
-          // 3. Employees
+          // 2. Employees
           checkTableCount(restaurantId, 'employees'),
 
-          // 4. Recipes
+          // 3. Recipes
           checkTableCount(restaurantId, 'recipes'),
 
-          // 5. Receipts
-          checkTableCount(restaurantId, 'receipts'),
+          // 4. Receipt Imports (uploaded receipts)
+          checkTableCount(restaurantId, 'receipt_imports'),
 
-          // 6. Inventory Scans
-          checkTableCount(restaurantId, 'inventory_counts'),
+          // 5. Inventory Reconciliations (inventory scans)
+          checkTableCount(restaurantId, 'inventory_reconciliations'),
           
-          // 7. Bank Account
-          checkTableCount(restaurantId, 'bank_connections'),
+          // 6. Bank Account (connected banks)
+          checkTableCount(restaurantId, 'connected_banks'),
             
-          // 8. Specific POS Connections (Legacy/Direct)
+          // 7. Specific POS Connections
           checkTableCount(restaurantId, 'square_connections'),
           checkTableCount(restaurantId, 'toast_connections'),
           checkTableCount(restaurantId, 'clover_connections'),
           checkTableCount(restaurantId, 'shift4_connections'),
 
-          // 9. Invitations (Pending Collaborators)
+          // 8. Invitations (Pending Collaborators)
           checkTableCount(restaurantId, 'invitations', { status: 'pending' }),
 
-          // 10. Products (Inventory Items)
+          // 9. Products (Inventory Items)
           checkTableCount(restaurantId, 'products')
         ]);
 
         // Check for errors
         const results = [
-          { name: 'pos', ...posResult },
           { name: 'collaborators', ...collaboratorResult },
           { name: 'employees', ...employeeResult },
           { name: 'recipes', ...recipeResult },
-          { name: 'receipts', ...receiptResult },
-          { name: 'inventory', ...inventoryResult },
-          { name: 'bank', ...bankResult },
+          { name: 'receipt_imports', ...receiptResult },
+          { name: 'inventory_reconciliations', ...inventoryResult },
+          { name: 'connected_banks', ...bankResult },
           { name: 'square', ...squareResult },
           { name: 'toast', ...toastResult },
           { name: 'clover', ...cloverResult },
@@ -149,7 +144,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
                             shift4Count > 0;
 
         const finalStatus = {
-          hasPos: getCount(posResult) > 0 || hasDirectPos,
+          hasPos: hasDirectPos,
           hasCollaborators: (getCount(collaboratorResult) > 1) || (getCount(invitationResult) > 0),
           hasEmployees: getCount(employeeResult) > 0,
           hasRecipes: getCount(recipeResult) > 0,

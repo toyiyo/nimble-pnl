@@ -4,9 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Sheet, 
   SheetContent, 
-  SheetHeader, 
-  SheetTitle, 
-  SheetDescription 
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -16,12 +13,9 @@ import {
   CheckCircle2, 
   Circle, 
   ChevronRight, 
-  X,
   CreditCard,
   Users,
   UtensilsCrossed,
-  Receipt,
-  ScanLine, 
   Building2,
   ListTodo
 } from 'lucide-react';
@@ -40,11 +34,6 @@ export const OnboardingDrawer = () => {
     }
   }, [percentage]);
 
-  const handleDismiss = () => {
-    setIsOpen(false);
-    localStorage.setItem('onboarding_drawer_dismissed', 'true');
-  };
-
   const handleOpen = () => {
     setIsOpen(true);
     localStorage.setItem('onboarding_drawer_dismissed', 'false');
@@ -54,15 +43,6 @@ export const OnboardingDrawer = () => {
     navigate(step.path);
     // On mobile, we might want to close the drawer, but for persistent desktop we keep it open
     // setIsOpen(false); 
-  };
-
-  const getStepIcon = (category: string) => {
-    switch (category) {
-      case 'operations': return <Users className="h-4 w-4" />;
-      case 'inventory': return <UtensilsCrossed className="h-4 w-4" />;
-      case 'finance': return <CreditCard className="h-4 w-4" />;
-      default: return <Circle className="h-4 w-4" />;
-    }
   };
 
   // If loading or all done (and not explicitly opened for review), we might hide it
@@ -189,7 +169,15 @@ export const OnboardingDrawer = () => {
 const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {
   return (
     <div 
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={`
         group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer
         ${step.isCompleted 

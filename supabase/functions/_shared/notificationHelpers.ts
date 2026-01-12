@@ -149,7 +149,7 @@ export const shouldSendNotification = async (
     return true;
   }
 
-  return settings?.[settingKey] !== false;
+  return (settings as Record<string, boolean>)?.[settingKey] !== false;
 };
 
 /**

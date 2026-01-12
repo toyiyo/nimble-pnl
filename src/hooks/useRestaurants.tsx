@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
+import { createDefaultChartOfAccounts } from '@/lib/chartOfAccountsUtils';
 
 export interface Restaurant {
   id: string;
@@ -73,6 +74,18 @@ export function useRestaurants() {
       });
 
       if (error) throw error;
+
+      // Automatically create default chart of accounts
+      try {
+        await createDefaultChartOfAccounts(supabase, data);
+      } catch (coaError) {
+        console.error('Failed to create default chart of accounts:', coaError);
+        // Don't block flow, user can try manually later
+        toast({
+          title: "Setup Note",
+          description: "Restaurant created, but default accounts could not be generated automatically. You can add them from the Chart of Accounts page.",
+        });
+      }
 
       toast({
         title: "Restaurant created!",

@@ -30,6 +30,7 @@ import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
 import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
+import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { PredictableExpensesCard } from '@/components/dashboard/PredictableExpensesCard';
@@ -1072,6 +1073,7 @@ const Index = () => {
           )}
         </div>
       )}
+      <OnboardingDrawer />
     </>
   );
 };

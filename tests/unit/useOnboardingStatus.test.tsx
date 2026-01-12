@@ -21,8 +21,15 @@ vi.mock('@/integrations/supabase/client', () => ({
       const chain = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
       };
-      return Object.assign(Promise.resolve({ count, error }), chain);
+      // The promise resolves to data when awaited
+      // In the hook we await the chain directly or checkCount calls await query.
+      // Actually checkTableCount returns `query` which is a promise-like.
+      // So checking `await checkTableCount(...)` waits on this object.
+      // We need to attach the properties to a Promise.
+      const promise = Promise.resolve({ count, error, data: [] });
+      return Object.assign(promise, chain);
     }),
   },
 }));
@@ -147,13 +154,16 @@ describe('useOnboardingStatus', () => {
     expect(posStep?.isCompleted).toBe(true);
   });
 
-  it('surfaces errors when Supabase queries fail', async () => {
+  it('handles errors gracefully by defaulting to incomplete', async () => {
     mockDbState.integrations = { error: new Error('network failure') };
 
     const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
 
-    await waitFor(() => expect(result.current.error).toBeTruthy());
+    // Should NOT have an error
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBe(null);
+    
+    // Should be incomplete (count 0)
     expect(result.current.completedCount).toBe(0);
-    expect(result.current.percentage).toBe(0);
   });
 });

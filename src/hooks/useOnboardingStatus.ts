@@ -28,9 +28,12 @@ const checkTableCount = (
   table: string, 
   filters?: Record<string, string>
 ) => {
+  // Use head: false with limit(0) to force a GET request instead of HEAD
+  // This avoids potential 404/network issues with HEAD requests on some clients
   let query = supabase.from(table as any)
-    .select('*', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurantId);
+    .select('*', { count: 'exact', head: false })
+    .eq('restaurant_id', restaurantId)
+    .limit(0);
 
   if (filters) {
     Object.entries(filters).forEach(([key, value]) => {
@@ -47,106 +50,126 @@ export const useOnboardingStatus = (): OnboardingStatus => {
   const { data: status, isLoading, error, refetch } = useQuery({
     queryKey: ['onboarding-status', selectedRestaurant?.id],
     queryFn: async () => {
-      if (!selectedRestaurant?.id) return null;
+      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });
+
+      if (!selectedRestaurant?.id) {
+        console.log('useOnboardingStatus: No restaurant ID');
+        return null;
+      }
 
       const restaurantId = selectedRestaurant.id;
 
-      // Run all checks in parallel
-      const [
-        posResult,
-        collaboratorResult,
-        employeeResult,
-        recipeResult,
-        receiptResult,
-        inventoryResult,
-        bankResult,
-        squareResult,
-        toastResult,
-        cloverResult,
-        shift4Result,
-        invitationResult,
-        productResult
-      ] = await Promise.all([
-        // 1. POS Connected (Generic)
-        checkTableCount(restaurantId, 'integrations', { status: 'connected' }),
-        
-        // 2. Collaborators (more than just the owner)
-        checkTableCount(restaurantId, 'user_restaurants'),
-
-        // 3. Employees
-        checkTableCount(restaurantId, 'employees'),
-
-        // 4. Recipes
-        checkTableCount(restaurantId, 'recipes'),
-
-        // 5. Receipts
-        checkTableCount(restaurantId, 'receipts'),
-
-        // 6. Inventory Scans
-        checkTableCount(restaurantId, 'inventory_counts'),
-        
-        // 7. Bank Account
-        checkTableCount(restaurantId, 'bank_connections'),
+      try {
+        // Run all checks in parallel
+        const [
+          posResult,
+          collaboratorResult,
+          employeeResult,
+          recipeResult,
+          receiptResult,
+          inventoryResult,
+          bankResult,
+          squareResult,
+          toastResult,
+          cloverResult,
+          shift4Result,
+          invitationResult,
+          productResult
+        ] = await Promise.all([
+          // 1. POS Connected (Generic)
+          checkTableCount(restaurantId, 'integrations', { status: 'connected' }),
           
-        // 8. Specific POS Connections (Legacy/Direct)
-        checkTableCount(restaurantId, 'square_connections'),
-        checkTableCount(restaurantId, 'toast_connections'),
-        checkTableCount(restaurantId, 'clover_connections'),
-        checkTableCount(restaurantId, 'shift4_connections'),
+          // 2. Collaborators (more than just the owner)
+          checkTableCount(restaurantId, 'user_restaurants'),
 
-        // 9. Invitations (Pending Collaborators)
-        checkTableCount(restaurantId, 'invitations', { status: 'pending' }),
+          // 3. Employees
+          checkTableCount(restaurantId, 'employees'),
 
-        // 10. Products (Inventory Items)
-        checkTableCount(restaurantId, 'products')
-      ]);
+          // 4. Recipes
+          checkTableCount(restaurantId, 'recipes'),
 
-      // Check for errors
-      const results = [
-        { name: 'pos', ...posResult },
-        { name: 'collaborators', ...collaboratorResult },
-        { name: 'employees', ...employeeResult },
-        { name: 'recipes', ...recipeResult },
-        { name: 'receipts', ...receiptResult },
-        { name: 'inventory', ...inventoryResult },
-        { name: 'bank', ...bankResult },
-        { name: 'square', ...squareResult },
-        { name: 'toast', ...toastResult },
-        { name: 'clover', ...cloverResult },
-        { name: 'shift4', ...shift4Result },
-        { name: 'invitations', ...invitationResult },
-        { name: 'products', ...productResult }
-      ];
+          // 5. Receipts
+          checkTableCount(restaurantId, 'receipts'),
 
-      const errors = results.filter(r => r?.error);
-      if (errors.length > 0) {
-        const aggregatedError = new Error('Onboarding status query failed');
-        (aggregatedError as Error & { details?: unknown[] }).details = errors;
-        throw aggregatedError;
+          // 6. Inventory Scans
+          checkTableCount(restaurantId, 'inventory_counts'),
+          
+          // 7. Bank Account
+          checkTableCount(restaurantId, 'bank_connections'),
+            
+          // 8. Specific POS Connections (Legacy/Direct)
+          checkTableCount(restaurantId, 'square_connections'),
+          checkTableCount(restaurantId, 'toast_connections'),
+          checkTableCount(restaurantId, 'clover_connections'),
+          checkTableCount(restaurantId, 'shift4_connections'),
+
+          // 9. Invitations (Pending Collaborators)
+          checkTableCount(restaurantId, 'invitations', { status: 'pending' }),
+
+          // 10. Products (Inventory Items)
+          checkTableCount(restaurantId, 'products')
+        ]);
+
+        // Check for errors
+        const results = [
+          { name: 'pos', ...posResult },
+          { name: 'collaborators', ...collaboratorResult },
+          { name: 'employees', ...employeeResult },
+          { name: 'recipes', ...recipeResult },
+          { name: 'receipts', ...receiptResult },
+          { name: 'inventory', ...inventoryResult },
+          { name: 'bank', ...bankResult },
+          { name: 'square', ...squareResult },
+          { name: 'toast', ...toastResult },
+          { name: 'clover', ...cloverResult },
+          { name: 'shift4', ...shift4Result },
+          { name: 'invitations', ...invitationResult },
+          { name: 'products', ...productResult }
+        ];
+
+        const errors = results.filter(r => r?.error);
+        if (errors.length > 0) {
+          // Log errors but treat them as 0 counts to prevent blocking the UI
+          console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors);
+          // We DO NOT throw here anymore.
+        }
+
+        // Helper to safely get count
+        const getCount = (res: any) => res?.error ? 0 : (res?.count || 0);
+
+        const squareCount = getCount(squareResult);
+        const toastCount = getCount(toastResult);
+        const cloverCount = getCount(cloverResult);
+        const shift4Count = getCount(shift4Result);
+
+        const hasDirectPos = squareCount > 0 || 
+                            toastCount > 0 || 
+                            cloverCount > 0 || 
+                            shift4Count > 0;
+
+        const finalStatus = {
+          hasPos: getCount(posResult) > 0 || hasDirectPos,
+          hasCollaborators: (getCount(collaboratorResult) > 1) || (getCount(invitationResult) > 0),
+          hasEmployees: getCount(employeeResult) > 0,
+          hasRecipes: getCount(recipeResult) > 0,
+          hasReceipts: getCount(receiptResult) > 0,
+          hasInventory: getCount(inventoryResult) > 0 || getCount(productResult) > 0,
+          hasBank: getCount(bankResult) > 0
+        };
+
+        console.log('useOnboardingStatus: Calculated Status', finalStatus);
+        return finalStatus;
+      } catch (err) {
+         console.error('useOnboardingStatus: Exception in queryFn', err);
+         // Even if exception, return defaults to avoid UI crash
+         return {
+            hasPos: false, hasCollaborators: false, hasEmployees: false,
+            hasRecipes: false, hasReceipts: false, hasInventory: false, hasBank: false
+         };
       }
-
-      const squareCount = squareResult.count;
-      const toastCount = toastResult.count;
-      const cloverCount = cloverResult.count;
-      const shift4Count = shift4Result.count;
-
-      const hasDirectPos = (squareCount || 0) > 0 || 
-                          (toastCount || 0) > 0 || 
-                          (cloverCount || 0) > 0 || 
-                          (shift4Count || 0) > 0;
-
-      return {
-        hasPos: (posResult.count || 0) > 0 || hasDirectPos,
-        hasCollaborators: ((collaboratorResult.count || 0) > 1) || ((invitationResult.count || 0) > 0),
-        hasEmployees: (employeeResult.count || 0) > 0,
-        hasRecipes: (recipeResult.count || 0) > 0,
-        hasReceipts: (receiptResult.count || 0) > 0,
-        hasInventory: (inventoryResult.count || 0) > 0 || (productResult.count || 0) > 0,
-        hasBank: (bankResult.count || 0) > 0
-      };
     },
     enabled: !!selectedRestaurant?.id,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000, 
   });
 
   const steps: OnboardingStep[] = [

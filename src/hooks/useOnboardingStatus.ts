@@ -29,12 +29,13 @@ const checkTableCount = (
   table: string, 
   filters?: Record<string, string>
 ) => {
-  // Use head: false with limit(0) to force a GET request instead of HEAD
-  // This avoids potential 404/network issues with HEAD requests on some clients
+  // Select only 'id' for minimal data transfer, with count: 'exact' to get the count
+  // Use head: false to force a GET request instead of HEAD (avoids 404/network issues)
+  // limit(1) is sufficient since we only need the count, not the data
   let query = supabase.from(table as any)
-    .select('*', { count: 'exact', head: false })
+    .select('id', { count: 'exact', head: false })
     .eq('restaurant_id', restaurantId)
-    .limit(0);
+    .limit(1);
 
   if (filters) {
     Object.entries(filters).forEach(([key, value]) => {
@@ -138,10 +139,20 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           { name: 'products', ...productResult }
         ];
 
+        console.log('useOnboardingStatus: Raw query results', results.map(r => ({
+          name: r.name,
+          count: r.count,
+          hasError: !!r.error,
+          errorCode: r.error?.code
+        })));
+
         const errors = results.filter(r => r?.error);
         if (errors.length > 0) {
           // Log errors but treat them as 0 counts to prevent blocking the UI
-          console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors);
+          console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({
+            name: e.name,
+            error: e.error?.message || e.error
+          })));
           // We DO NOT throw here anymore.
         }
 
@@ -152,6 +163,13 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         const toastCount = getCount(toastResult);
         const cloverCount = getCount(cloverResult);
         const shift4Count = getCount(shift4Result);
+
+        console.log('useOnboardingStatus: POS Counts', { 
+          square: squareCount, 
+          toast: toastCount, 
+          clover: cloverCount, 
+          shift4: shift4Count 
+        });
 
         const hasDirectPos = squareCount > 0 || 
                             toastCount > 0 || 
@@ -169,6 +187,20 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         
         const hasBankData = () =>
           getCount(bankResult) > 0 || getCount(bankTransactionsResult) > 0;
+
+        console.log('useOnboardingStatus: Detailed Counts', {
+          collaborators: getCount(collaboratorResult),
+          employees: getCount(employeeResult),
+          recipes: getCount(recipeResult),
+          receiptImports: getCount(receiptResult),
+          receiptLineItems: getCount(receiptLineItemsResult),
+          inventoryReconciliations: getCount(inventoryResult),
+          inventoryTransactions: getCount(inventoryTransactionsResult),
+          products: getCount(productResult),
+          connectedBanks: getCount(bankResult),
+          bankTransactions: getCount(bankTransactionsResult),
+          invitations: getCount(invitationResult)
+        });
 
         const finalStatus = {
           hasPos: hasDirectPos,
@@ -246,7 +278,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       id: 'receipt',
       label: 'Upload a Receipt',
       description: 'Digitize expenses and update prices.',
-      path: '/receipts',
+      path: '/receipt-import',
       category: 'inventory',
       ctaText: 'Upload Receipt',
       isCompleted: status?.hasReceipts ?? false

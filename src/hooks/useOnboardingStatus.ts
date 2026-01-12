@@ -50,16 +50,29 @@ export const useOnboardingStatus = (): OnboardingStatus => {
   const { selectedRestaurant } = useRestaurantContext();
 
   const { data: status, isLoading, error, refetch } = useQuery({
-    queryKey: ['onboarding-status', selectedRestaurant?.id],
+    queryKey: ['onboarding-status', selectedRestaurant?.restaurant_id],
     queryFn: async () => {
-      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });
+      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.restaurant_id });
 
-      if (!selectedRestaurant?.id) {
+      if (!selectedRestaurant?.restaurant_id) {
         console.log('useOnboardingStatus: No restaurant ID');
         return null;
       }
 
-      const restaurantId = selectedRestaurant.id;
+      const restaurantId = selectedRestaurant.restaurant_id;
+
+      // Debug: Check if this restaurant actually exists and has an owner
+      const { data: debugRestaurant, error: debugError } = await supabase
+        .from('user_restaurants')
+        .select('*')
+        .eq('restaurant_id', restaurantId);
+      
+      console.log('useOnboardingStatus: Debug user_restaurants query', {
+        restaurantId,
+        found: debugRestaurant?.length || 0,
+        data: debugRestaurant,
+        error: debugError
+      });
 
       try {
         // Run all checks in parallel
@@ -68,7 +81,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           employeeResult,
           recipeResult,
           receiptResult,
-          receiptLineItemsResult,
           inventoryResult,
           inventoryTransactionsResult,
           bankResult,
@@ -91,16 +103,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
           // 4. Receipt Imports (uploaded receipts)
           checkTableCount(restaurantId, 'receipt_imports'),
-
-          // 4b. Alternative: Receipt Line Items (if receipts were processed)
-          checkTableCount(restaurantId, 'receipt_line_items'),
-
-          // 5. Inventory Reconciliations (inventory scans)
-          checkTableCount(restaurantId, 'inventory_reconciliations'),
-          
-          // 5b. Alternative: Inventory Transactions (if inventory was tracked)
-          checkTableCount(restaurantId, 'inventory_transactions'),
-          
           // 6. Bank Account (connected banks via Stripe)
           checkTableCount(restaurantId, 'connected_banks'),
           
@@ -126,7 +128,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           { name: 'employees', ...employeeResult },
           { name: 'recipes', ...recipeResult },
           { name: 'receipt_imports', ...receiptResult },
-          { name: 'receipt_line_items', ...receiptLineItemsResult },
           { name: 'inventory_reconciliations', ...inventoryResult },
           { name: 'inventory_transactions', ...inventoryTransactionsResult },
           { name: 'connected_banks', ...bankResult },
@@ -157,7 +158,11 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         }
 
         // Helper to safely get count
-        const getCount = (res: any) => res?.error ? 0 : (res?.count || 0);
+        const getCount = (res: any) => {
+          if (res?.error) return 0;
+          // Handle both null and undefined, default to 0
+          return res?.count ?? 0;
+        };
 
         const squareCount = getCount(squareResult);
         const toastCount = getCount(toastResult);
@@ -177,9 +182,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
                             shift4Count > 0;
 
         // Helper functions for data detection with fallbacks
-        const hasReceiptData = () => 
-          getCount(receiptResult) > 0 || getCount(receiptLineItemsResult) > 0;
-        
         const hasInventoryData = () =>
           getCount(inventoryResult) > 0 || 
           getCount(inventoryTransactionsResult) > 0 || 
@@ -193,7 +195,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           employees: getCount(employeeResult),
           recipes: getCount(recipeResult),
           receiptImports: getCount(receiptResult),
-          receiptLineItems: getCount(receiptLineItemsResult),
           inventoryReconciliations: getCount(inventoryResult),
           inventoryTransactions: getCount(inventoryTransactionsResult),
           products: getCount(productResult),
@@ -207,7 +208,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           hasCollaborators: (getCount(collaboratorResult) > 1) || (getCount(invitationResult) > 0),
           hasEmployees: getCount(employeeResult) > 0,
           hasRecipes: getCount(recipeResult) > 0,
-          hasReceipts: hasReceiptData(),
+          hasReceipts: getCount(receiptResult) > 0,
           hasInventory: hasInventoryData(),
           hasBank: hasBankData()
         };
@@ -223,7 +224,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
          };
       }
     },
-    enabled: !!selectedRestaurant?.id,
+    enabled: !!selectedRestaurant?.restaurant_id,
     staleTime: 10000, // Reduced to 10s to ensure fresh data when switching restaurants
     refetchOnMount: true, // Always refetch when component mounts
     refetchOnWindowFocus: true, // Refetch when window regains focus
@@ -231,11 +232,11 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
   // Explicitly refetch when restaurant changes to ensure fresh data
   useEffect(() => {
-    if (selectedRestaurant?.id) {
-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });
+    if (selectedRestaurant?.restaurant_id) {
+      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.restaurant_id });
       refetch();
     }
-  }, [selectedRestaurant?.id, refetch]);
+  }, [selectedRestaurant?.restaurant_id, refetch]);
 
   const steps: OnboardingStep[] = [
     {

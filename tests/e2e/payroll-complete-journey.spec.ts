@@ -81,7 +81,7 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
   await addRestaurantButton.click();
 
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
   await expect(dialog).toBeVisible();
 
   await dialog.getByLabel(/restaurant name/i).fill(testUser.restaurantName);
@@ -96,6 +96,23 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
 
   await dialog.getByRole('button', { name: /create|add|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+  // Close onboarding drawer if it appears (it defaults to open for new restaurants)
+  // This prevents it from obscuring elements in tests
+  try {
+    const onboardingDrawer = page.locator('[role="dialog"]').filter({ hasText: /getting started/i });
+    if (await onboardingDrawer.isVisible({ timeout: 4000 })) {
+      const closeButton = onboardingDrawer.getByRole('button', { name: /close/i });
+      if (await closeButton.isVisible()) {
+        await closeButton.click();
+        await expect(onboardingDrawer).not.toBeVisible();
+      } else {
+        await page.keyboard.press('Escape');
+      }
+    }
+  } catch (e) {
+    console.log('Onboarding drawer handling skipped or failed', e);
+  }
 }
 
 test.describe('Complete Payroll Journey', () => {
@@ -424,7 +441,12 @@ test.describe('Complete Payroll Journey', () => {
     await employeeSelect.click();
     await page.getByRole('option', { name: employeeName }).click();
     const now = new Date();
-    const dateString = now.toISOString().slice(0, 10);
+    // Use local date to ensure shift appears in current view regardless of timezone
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const dateString = `${year}-${month}-${day}`;
+    
     const startTime = new Date(now);
     startTime.setHours(9, 0, 0, 0);
     const endTime = new Date(now);
@@ -437,6 +459,7 @@ test.describe('Complete Payroll Journey', () => {
     await shiftDialog.getByLabel(/end.*time/i).fill(endTimeString);
     await shiftDialog.getByRole('button', { name: /save|create/i }).click();
     await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
+    await page.waitForLoadState('networkidle');
 
     // ============================================================================
     // Edit employee to set termination date
@@ -444,6 +467,7 @@ test.describe('Complete Payroll Journey', () => {
     
     // Find and click edit button for this employee
     const employeeRow = page.locator('tr', { has: page.getByText(employeeName) });
+    await expect(employeeRow).toBeVisible({ timeout: 10000 });
     const editButton = employeeRow.getByRole('button', { name: new RegExp(`^edit ${employeeName}$`, 'i') });
     
     // Button may be hidden until hover

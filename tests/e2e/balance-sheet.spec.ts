@@ -42,7 +42,7 @@ async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
   await expect(addRestaurantButton).toBeVisible({ timeout: 40000 });
   await addRestaurantButton.click();
 
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
   await dialog.getByLabel(/address/i).fill('123 Balance St');
@@ -78,18 +78,18 @@ test('Balance Sheet shows accrual balances across cash, inventory, liabilities, 
   // Assets
   const bsCard = page.getByRole('heading', { name: /balance sheet/i }).locator('xpath=ancestor::div[contains(@class,"card")]');
 
-  await expect(bsCard.getByText('Cash')).toBeVisible();
+  await expect(bsCard.getByText('Cash', { exact: true })).toBeVisible();
   await expect(bsCard.getByText('$7,800.00')).toBeVisible();
-  await expect(bsCard.getByText('Inventory')).toBeVisible();
+  await expect(bsCard.getByText('Inventory', { exact: true })).toBeVisible();
   await expect(bsCard.getByText('$800.00')).toBeVisible();
   const totalAssetsRow = bsCard.getByText('Total Assets').locator('xpath=ancestor::div[1]');
   await expect(totalAssetsRow).toBeVisible();
   await expect(totalAssetsRow.getByText('$8,600.00')).toBeVisible();
 
   // Liabilities
-  await expect(bsCard.getByText('Sales Tax Payable')).toBeVisible();
-  await expect(bsCard.getByText('Tips Payable')).toBeVisible();
-  await expect(bsCard.getByText('Payroll Liabilities')).toBeVisible();
+  await expect(bsCard.getByText('Sales Tax Payable').first()).toBeVisible();
+  await expect(bsCard.getByText('Tips Payable').first()).toBeVisible();
+  await expect(bsCard.getByText('Payroll Liabilities').first()).toBeVisible();
   await expect(bsCard.getByText('$200.00')).toBeVisible();
   await expect(bsCard.getByText('$300.00')).toBeVisible();
   await expect(bsCard.getByText('$400.00')).toBeVisible();

@@ -290,11 +290,19 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   };
 
   const handleQuantityChange = (itemId: string, quantity: number) => {
-    handleItemUpdate(itemId, { parsed_quantity: quantity });
+    // Force recalculation of unit price during import by clearing stored unit_price
+    handleItemUpdate(itemId, { 
+      parsed_quantity: quantity,
+      unit_price: null 
+    });
   };
 
   const handlePriceChange = (itemId: string, price: number) => {
-    handleItemUpdate(itemId, { parsed_price: price });
+    // Force recalculation of unit price during import by clearing stored unit_price
+    handleItemUpdate(itemId, { 
+      parsed_price: price,
+      unit_price: null 
+    });
   };
 
   const handleNameChange = (itemId: string, name: string) => {

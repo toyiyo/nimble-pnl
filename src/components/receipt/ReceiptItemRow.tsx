@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { ReceiptLineItem } from '@/hooks/useReceiptImport';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
+import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 
 type ConfidenceTier = 'auto-approved' | 'quick-review' | 'needs-attention';
 
@@ -330,29 +331,12 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     <Label htmlFor={`unit-${item.id}`} className="text-xs text-muted-foreground">
                       Unit
                     </Label>
-                    <Select
-                      value={item.size_unit || ''}
+                    <GroupedUnitSelector
+                      value={item.size_unit || undefined}
                       onValueChange={(value) => onSizeUnitChange(item.id, value)}
-                      disabled={isImported}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Unit" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[200px]">
-                        <SelectGroup>
-                          <SelectLabel>Weight</SelectLabel>
-                          {WEIGHT_UNITS.slice(0, 6).map((unit) => (
-                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Volume</SelectLabel>
-                          {VOLUME_UNITS.slice(0, 6).map((unit) => (
-                            <SelectItem key={unit} value={unit}>{unit}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                      placeholder="Unit"
+                      className="h-9"
+                    />
                   </div>
                   <div>
                     <Label htmlFor={`pkg-${item.id}`} className="text-xs text-muted-foreground">
@@ -367,10 +351,10 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                         <SelectValue placeholder="Type" />
                       </SelectTrigger>
                       <SelectContent className="max-h-[200px]">
-                        {PACKAGE_TYPE_OPTIONS.slice(0, 3).map((group) => (
+                        {PACKAGE_TYPE_OPTIONS.map((group) => (
                           <SelectGroup key={group.label}>
                             <SelectLabel>{group.label}</SelectLabel>
-                            {group.options.slice(0, 5).map((option) => (
+                            {group.options.map((option) => (
                               <SelectItem key={option.value} value={option.value}>
                                 {option.label}
                               </SelectItem>

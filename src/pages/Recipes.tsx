@@ -62,7 +62,15 @@ export default function Recipes() {
       // Clear the state after using it
       window.history.replaceState({}, document.title);
     }
-  }, [location.state]);
+
+    // Check query params for create action (e.g., from onboarding)
+    if (searchParams.get('action') === 'new') {
+      setIsCreateDialogOpen(true);
+      // Clear the query param
+      searchParams.delete('action');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [location.state, searchParams, setSearchParams]);
   
   // Check if we navigated here with a recipe ID to view
   useEffect(() => {

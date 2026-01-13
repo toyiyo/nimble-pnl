@@ -1,6 +1,5 @@
 
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from '@/integrations/supabase/types';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -200,17 +199,10 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       }
     },
     enabled: !!restaurantId,
-    staleTime: 10000, // Reduced to 10s to ensure fresh data when switching restaurants
+    staleTime: 30000, // 30s per guidelines for critical data
     refetchOnMount: true, // Always refetch when component mounts
     refetchOnWindowFocus: true, // Refetch when window regains focus
   });
-
-  // Explicitly refetch when restaurant changes to ensure fresh data
-  useEffect(() => {
-    if (restaurantId) {
-      refetch();
-    }
-  }, [restaurantId, refetch]);
 
   const steps: OnboardingStep[] = [
     {

@@ -1,5 +1,5 @@
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useOnboardingStatus } from '@/hooks/useOnboardingStatus';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,9 +7,15 @@ import { supabase } from '@/integrations/supabase/client';
 import React from 'react';
 
 type MockTableState = number | { count?: number; error?: unknown };
+type ChainableMock = Promise<{ count?: number; error?: unknown; data: [] }> & {
+  select: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+};
 
 // We need a more dynamic mock to handle different return values per test
 let mockDbState: Record<string, MockTableState> = {};
+let mockQueries: Array<{ table: string; chainable: ChainableMock }> = [];
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
@@ -29,20 +35,13 @@ vi.mock('@/integrations/supabase/client', () => ({
       
       // Create chain methods that return the promise itself (not 'this')
       // This allows .select().eq().limit() to keep returning the promise
-      interface ChainableMock {
-        select: ReturnType<typeof vi.fn>;
-        eq: ReturnType<typeof vi.fn>;
-        limit: ReturnType<typeof vi.fn>;
-        then: typeof promise.then;
-        catch: typeof promise.catch;
-        finally: typeof promise.finally;
-      }
-      
       const chainable = Object.assign(promise, {
         select: vi.fn(() => chainable),
         eq: vi.fn(() => chainable),
         limit: vi.fn(() => chainable),
       }) as ChainableMock;
+
+      mockQueries.push({ table, chainable });
       
       return chainable;
     }),
@@ -76,6 +75,7 @@ describe('useOnboardingStatus', () => {
       },
     });
     // Reset DB state - use correct table names from hook
+    mockQueries = [];
     mockDbState = {
       user_restaurants: 0,
       employees: 0,
@@ -125,6 +125,20 @@ describe('useOnboardingStatus', () => {
 
     expect(supabase.from).not.toHaveBeenCalled();
     expect(result.current.completedCount).toBe(0);
+  });
+
+  it('returns null when refetch is called without a restaurant id', async () => {
+    mockSelectedRestaurant = null;
+
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 
   it('should calculate progress correctly when some steps are done', async () => {
@@ -241,6 +255,20 @@ describe('useOnboardingStatus', () => {
     expect(result.current.completedCount).toBe(0);
   });
 
+  it('defaults to incomplete when the query throws', async () => {
+    const fromMock = vi.mocked(supabase.from);
+    fromMock.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.completedCount).toBe(0);
+    expect(result.current.error).toBe(null);
+  });
+
   it('should refetch data when restaurant changes', async () => {
     // Start with restaurant A with no data
     mockSelectedRestaurant = {
@@ -308,6 +336,13 @@ describe('useOnboardingStatus', () => {
     
     // Should now show 2 completed (POS + Bank)
     expect(result.current.completedCount).toBe(2);
+
+    const hasRestaurantBQuery = mockQueries.some(({ chainable }) =>
+      chainable.eq.mock.calls.some(
+        ([column, value]) => column === 'restaurant_id' && value === 'restaurant-B'
+      )
+    );
+    expect(hasRestaurantBQuery).toBe(true);
     
     const posStep = result.current.steps.find(s => s.id === 'pos');
     expect(posStep?.isCompleted).toBe(true);

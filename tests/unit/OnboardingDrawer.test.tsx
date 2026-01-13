@@ -48,6 +48,7 @@ const mockedUseOnboardingStatus = vi.mocked(useOnboardingStatus);
 
 describe('OnboardingDrawer', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
     mockedUseOnboardingStatus.mockReturnValue({
       steps: baseSteps,

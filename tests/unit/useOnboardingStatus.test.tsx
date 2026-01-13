@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useOnboardingStatus } from '@/hooks/useOnboardingStatus';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import React from 'react';
 
 type MockTableState = number | { count?: number; error?: unknown };
@@ -113,6 +114,17 @@ describe('useOnboardingStatus', () => {
     expect(result.current.completedCount).toBe(0);
     expect(result.current.steps[0].isCompleted).toBe(false);
     expect(result.current.error).toBeNull();
+  });
+
+  it('does not run queries when no restaurant is selected', async () => {
+    mockSelectedRestaurant = null;
+
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(supabase.from).not.toHaveBeenCalled();
+    expect(result.current.completedCount).toBe(0);
   });
 
   it('should calculate progress correctly when some steps are done', async () => {

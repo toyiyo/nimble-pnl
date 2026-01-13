@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from '@/integrations/supabase/types';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
 export interface OnboardingStep {
@@ -24,15 +25,17 @@ export interface OnboardingStatus {
   refetch: () => Promise<unknown>;
 }
 
+type TableName = keyof Database['public']['Tables'];
+
 const checkTableCount = (
   restaurantId: string, 
-  table: string, 
+  table: TableName, 
   filters?: Record<string, string>
 ) => {
   // Select only 'id' for minimal data transfer, with count: 'exact' to get the count
   // Use head: false to force a GET request instead of HEAD (avoids 404/network issues)
   // limit(1) is sufficient since we only need the count, not the data
-  let query = supabase.from(table as any)
+  let query = supabase.from(table)
     .select('id', { count: 'exact', head: false })
     .eq('restaurant_id', restaurantId)
     .limit(1);
@@ -48,15 +51,20 @@ const checkTableCount = (
 
 export const useOnboardingStatus = (): OnboardingStatus => {
   const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id
+    ?? selectedRestaurant?.restaurant?.id
+    ?? selectedRestaurant?.id
+    ?? null;
 
   const { data: status, isLoading, error, refetch } = useQuery({
-    queryKey: ['onboarding-status', selectedRestaurant?.restaurant_id],
+    queryKey: ['onboarding-status', restaurantId],
     queryFn: async () => {
-      if (!selectedRestaurant?.restaurant_id) {
+      if (!restaurantId) {
+        if (import.meta.env.DEV) {
+          console.warn('useOnboardingStatus: Missing restaurant ID', { selectedRestaurant });
+        }
         return null;
       }
-
-      const restaurantId = selectedRestaurant.restaurant_id;
 
       try {
         // Run all checks in parallel
@@ -134,10 +142,12 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         const errors = results.filter(r => r?.error);
         if (errors.length > 0) {
           // Log errors but treat them as 0 counts to prevent blocking the UI
-          console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({
-            name: e.name,
-            error: e.error?.message || e.error
-          })));
+          if (import.meta.env.DEV) {
+            console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({
+              name: e.name,
+              error: e.error?.message || e.error
+            })));
+          }
           // We DO NOT throw here anymore.
         }
 
@@ -179,7 +189,9 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
         return finalStatus;
       } catch (err) {
-         console.error('useOnboardingStatus: Exception in queryFn', err);
+         if (import.meta.env.DEV) {
+           console.error('useOnboardingStatus: Exception in queryFn', err);
+         }
          // Even if exception, return defaults to avoid UI crash
          return {
             hasPos: false, hasCollaborators: false, hasEmployees: false,
@@ -187,7 +199,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
          };
       }
     },
-    enabled: !!selectedRestaurant?.restaurant_id,
+    enabled: !!restaurantId,
     staleTime: 10000, // Reduced to 10s to ensure fresh data when switching restaurants
     refetchOnMount: true, // Always refetch when component mounts
     refetchOnWindowFocus: true, // Refetch when window regains focus
@@ -195,10 +207,10 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
   // Explicitly refetch when restaurant changes to ensure fresh data
   useEffect(() => {
-    if (selectedRestaurant?.restaurant_id) {
+    if (restaurantId) {
       refetch();
     }
-  }, [selectedRestaurant?.restaurant_id, refetch]);
+  }, [restaurantId, refetch]);
 
   const steps: OnboardingStep[] = [
     {

@@ -52,10 +52,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
   const { data: status, isLoading, error, refetch } = useQuery({
     queryKey: ['onboarding-status', selectedRestaurant?.restaurant_id],
     queryFn: async () => {
-      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.restaurant_id });
-
       if (!selectedRestaurant?.restaurant_id) {
-        console.log('useOnboardingStatus: No restaurant ID');
         return null;
       }
 
@@ -90,6 +87,13 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
           // 4. Receipt Imports (uploaded receipts)
           checkTableCount(restaurantId, 'receipt_imports'),
+
+          // 5. Inventory Reconciliations
+          checkTableCount(restaurantId, 'inventory_reconciliations'),
+          
+          // 5b. Alternative: Inventory Transactions
+          checkTableCount(restaurantId, 'inventory_transactions'),
+          
           // 6. Bank Account (connected banks via Stripe)
           checkTableCount(restaurantId, 'connected_banks'),
           
@@ -127,13 +131,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           { name: 'products', ...productResult }
         ];
 
-        console.log('useOnboardingStatus: Raw query results', results.map(r => ({
-          name: r.name,
-          count: r.count,
-          hasError: !!r.error,
-          errorCode: r.error?.code
-        })));
-
         const errors = results.filter(r => r?.error);
         if (errors.length > 0) {
           // Log errors but treat them as 0 counts to prevent blocking the UI
@@ -156,13 +153,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         const cloverCount = getCount(cloverResult);
         const shift4Count = getCount(shift4Result);
 
-        console.log('useOnboardingStatus: POS Counts', { 
-          square: squareCount, 
-          toast: toastCount, 
-          clover: cloverCount, 
-          shift4: shift4Count 
-        });
-
         const hasDirectPos = squareCount > 0 || 
                             toastCount > 0 || 
                             cloverCount > 0 || 
@@ -177,19 +167,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
         const hasBankData = () =>
           getCount(bankResult) > 0 || getCount(bankTransactionsResult) > 0;
 
-        console.log('useOnboardingStatus: Detailed Counts', {
-          collaborators: getCount(collaboratorResult),
-          employees: getCount(employeeResult),
-          recipes: getCount(recipeResult),
-          receiptImports: getCount(receiptResult),
-          inventoryReconciliations: getCount(inventoryResult),
-          inventoryTransactions: getCount(inventoryTransactionsResult),
-          products: getCount(productResult),
-          connectedBanks: getCount(bankResult),
-          bankTransactions: getCount(bankTransactionsResult),
-          invitations: getCount(invitationResult)
-        });
-
         const finalStatus = {
           hasPos: hasDirectPos,
           hasCollaborators: (getCount(collaboratorResult) > 1) || (getCount(invitationResult) > 0),
@@ -200,7 +177,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           hasBank: hasBankData()
         };
 
-        console.log('useOnboardingStatus: Calculated Status', finalStatus);
         return finalStatus;
       } catch (err) {
          console.error('useOnboardingStatus: Exception in queryFn', err);
@@ -220,7 +196,6 @@ export const useOnboardingStatus = (): OnboardingStatus => {
   // Explicitly refetch when restaurant changes to ensure fresh data
   useEffect(() => {
     if (selectedRestaurant?.restaurant_id) {
-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.restaurant_id });
       refetch();
     }
   }, [selectedRestaurant?.restaurant_id, refetch]);

@@ -13,14 +13,18 @@ let mockDbState: Record<string, MockTableState> = {};
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn((table) => {
-      const state = mockDbState[table];
-      const count = typeof state === 'number' ? state : state?.count ?? 0;
-      const error = typeof state === 'object' && state !== null && 'error' in state 
-        ? (state as { error?: unknown }).error ?? null 
-        : null;
-      
-      // Create the promise that will be resolved when awaited
-      const promise = Promise.resolve({ count, error, data: [] });
+      // Create the promise that will read state when resolved (not when created)
+      const promise = new Promise((resolve) => {
+        // Use setImmediate/setTimeout to defer reading the state
+        setTimeout(() => {
+          const state = mockDbState[table];
+          const count = typeof state === 'number' ? state : state?.count ?? undefined;
+          const error = typeof state === 'object' && state !== null && 'error' in state 
+            ? (state as { error?: unknown }).error ?? null 
+            : null;
+          resolve({ count, error, data: [] });
+        }, 0);
+      });
       
       // Create chain methods that return the promise itself (not 'this')
       // This allows .select().eq().limit() to keep returning the promise
@@ -76,7 +80,6 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
-      receipt_line_items: 0,
       inventory_reconciliations: 0,
       inventory_transactions: 0,
       connected_banks: 0,
@@ -119,7 +122,6 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
-      receipt_line_items: 0,
       inventory_reconciliations: 0,
       inventory_transactions: 0,
       connected_banks: 1, // Bank connected
@@ -179,7 +181,6 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
-      receipt_line_items: 0,
       inventory_reconciliations: 0,
       inventory_transactions: 0,
       connected_banks: 0,
@@ -206,7 +207,6 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
-      receipt_line_items: 0,
       inventory_reconciliations: 0,
       inventory_transactions: 0,
       connected_banks: 0,
@@ -243,7 +243,6 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
-      receipt_line_items: 0,
       inventory_reconciliations: 0,
       inventory_transactions: 0,
       connected_banks: 0,
@@ -277,7 +276,6 @@ describe('useOnboardingStatus', () => {
       employees: 0,
       recipes: 0,
       receipt_imports: 0,
-      receipt_line_items: 0,
       inventory_reconciliations: 0,
       inventory_transactions: 0,
       connected_banks: 1, // Bank connected
@@ -306,14 +304,13 @@ describe('useOnboardingStatus', () => {
     expect(bankStep?.isCompleted).toBe(true);
   });
 
-  it('should detect completion using fallback tables (bank_transactions, receipt_line_items, inventory_transactions)', async () => {
+  it('should detect completion using fallback tables (bank_transactions, inventory_transactions, products)', async () => {
     // Setup state: Using fallback tables instead of primary ones
     mockDbState = {
       user_restaurants: 1,
       employees: 0,
       recipes: 0,
-      receipt_imports: 0,
-      receipt_line_items: 5, // Has receipt data via line items (not imports)
+      receipt_imports: 0, // No receipts
       inventory_reconciliations: 0,
       inventory_transactions: 3, // Has inventory data via transactions
       connected_banks: 0,
@@ -323,15 +320,16 @@ describe('useOnboardingStatus', () => {
       clover_connections: 0,
       shift4_connections: 0,
       invitations: 0,
-      products: 0
+      products: 5 // Has inventory via products
     };
 
     const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // Should mark receipts, inventory, and bank as completed (using fallback tables)
+    // Should mark inventory and bank as completed (using fallback tables)
+    // Receipts should NOT be completed (no receipt_imports)
     const receiptStep = result.current.steps.find(s => s.id === 'receipt');
-    expect(receiptStep?.isCompleted).toBe(true);
+    expect(receiptStep?.isCompleted).toBe(false);
 
     const inventoryStep = result.current.steps.find(s => s.id === 'inventory');
     expect(inventoryStep?.isCompleted).toBe(true);
@@ -339,7 +337,7 @@ describe('useOnboardingStatus', () => {
     const bankStep = result.current.steps.find(s => s.id === 'bank');
     expect(bankStep?.isCompleted).toBe(true);
 
-    // Should have 3 completed steps
-    expect(result.current.completedCount).toBe(3);
+    // Should have 2 completed steps (inventory + bank)
+    expect(result.current.completedCount).toBe(2);
   });
 });

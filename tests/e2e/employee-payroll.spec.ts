@@ -126,7 +126,7 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   await addRestaurantButton.click();
 
   // Fill restaurant creation form
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
   await expect(dialog).toBeVisible();
 
   await dialog.getByLabel(/restaurant name/i).fill(testUser.restaurantName);
@@ -143,6 +143,28 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   // Submit restaurant creation
   await dialog.getByRole('button', { name: /create|add|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+  // Close onboarding drawer if it appears (it defaults to open for new restaurants)
+  // This prevents it from obscuring elements in tests
+  try {
+    const onboardingDrawer = page.locator('[role="dialog"]').filter({ hasText: /getting started/i });
+    if (await onboardingDrawer.isVisible({ timeout: 4000 })) {
+      // Look for the close/minimize button. It might be an 'X' icon or similar.
+      // Since it's a sheet, click outside or finding the specific close button is needed.
+      // Usually Shadcn sheets have a close X.
+      const closeButton = onboardingDrawer.getByRole('button', { name: /close/i });
+      if (await closeButton.isVisible()) {
+        await closeButton.click();
+        await expect(onboardingDrawer).not.toBeVisible();
+      } else {
+        // Fallback: Click the floating button if it's minimized, or press Escape
+        await page.keyboard.press('Escape');
+      }
+    }
+  } catch (e) {
+    // Ignore errors here, strictly best-effort to clear UI
+    console.log('Onboarding drawer handling skipped or failed', e);
+  }
 }
 
 test.describe('Employee Payroll - Happy Paths', () => {
@@ -832,7 +854,12 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       // Fill shift times (using today)
       const today = new Date();
-      const dateString = today.toISOString().slice(0, 10);
+      // Use local date to ensure shift appears in current view regardless of timezone
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
       const startTime = new Date(today);
       startTime.setHours(9, 0, 0, 0);
       const endTime = new Date(today);
@@ -848,6 +875,7 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       await shiftDialog.getByRole('button', { name: /save|create/i }).click();
       await expect(shiftDialog).not.toBeVisible({ timeout: 5000 });
+      await page.waitForLoadState('networkidle'); // wait for shift to persist and table to reload
 
       // Note the labor cost before deactivation
       const laborCostCard = page.getByText(/labor cost/i).first();
@@ -857,6 +885,7 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       // Step 2: Deactivate employee
       const scheduleRow = page.locator('tr', { has: page.getByText(employee.name) });
+      await expect(scheduleRow).toBeVisible({ timeout: 10000 });
       await scheduleRow.getByRole('button', { name: /edit/i }).first().click();
 
       const editDialog = page.getByRole('dialog');

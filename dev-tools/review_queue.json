@@ -24258,6 +24258,1969 @@
       "status": "open",
       "created_at": "2026-01-10T20:47:34.225Z",
       "updated_at": "2026-01-10T20:47:34.225Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608745,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 213
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**StepCard lacks keyboard accessibility.**\n\nThe clickable `div` has no keyboard support. Users navigating with keyboard cannot activate these cards. Consider using a `<button>` element or adding `role=\"button\"`, `tabIndex={0}`, and an `onKeyDown` handler.\n\n<details>\n<summary>🔧 Proposed fix using button semantics</summary>\n\n```diff\n const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {\n   return (\n-    <div \n+    <button \n+      type=\"button\"\n       onClick={onClick}\n       className={`\n-        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer\n+        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full\n         ${step.isCompleted \n           ? 'bg-muted/30 border-transparent hover:bg-muted/50' \n           : 'bg-card hover:border-primary/50 hover:shadow-sm'\n         }\n       `}\n     >\n       {/* ... content unchanged ... */}\n-    </div>\n+    </button>\n   );\n };\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nconst StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {\n  return (\n    <button\n      type=\"button\"\n      onClick={onClick}\n      className={`\n        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full\n        ${step.isCompleted \n          ? 'bg-muted/30 border-transparent hover:bg-muted/50' \n          : 'bg-card hover:border-primary/50 hover:shadow-sm'\n        }\n      `}\n    >\n      <div className={`mt-0.5 rounded-full p-0.5 ${step.isCompleted ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>\n        {step.isCompleted ? <CheckCircle2 className=\"h-5 w-5\" /> : <Circle className=\"h-5 w-5\" />}\n      </div>\n      \n      <div className=\"flex-1 space-y-1\">\n        <p className={`text-sm font-medium leading-none ${step.isCompleted ? 'text-muted-foreground line-through decoration-transparent' : 'text-foreground'}`}>\n          {step.label}\n        </p>\n        <p className=\"text-xs text-muted-foreground line-clamp-2\">\n          {step.description}\n        </p>\n        \n        {!step.isCompleted && (\n          <div className=\"pt-2\">\n            <span className=\"text-xs font-semibold text-primary group-hover:underline inline-flex items-center\">\n              {step.ctaText} <ChevronRight className=\"h-3 w-3 ml-0.5\" />\n            </span>\n          </div>\n        )}\n      </div>\n    </button>\n  );\n};\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 189 - 223,\nStepCard's clickable container is a plain div and lacks keyboard accessibility;\nupdate the clickable container (the top-level element in the StepCard functional\ncomponent) to be keyboard-activatable by either converting it to a <button>\nelement or by adding role=\"button\", tabIndex={0}, and an onKeyDown handler that\ncalls the same onClick for Enter and Space keys; ensure ARIA/visual styles\nremain the same and preserve the existing onClick prop behavior so keyboard\nusers can activate the card.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 4b9e4fd",
+      "severity": "info",
+      "id": "738efcb9169ff7fc89b9ca312ff767e73e4bc2fe",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.719Z",
+      "updated_at": "2026-01-12T02:10:08.025Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608748,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 156
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Missing error handling for Supabase queries.**\n\nThe `Promise.all` results are destructured assuming success, but Supabase queries can fail. If any query returns an error, `count` will be `null` and errors will be silently ignored. Consider checking errors or using the query's error state.\n\n<details>\n<summary>🔧 Suggested approach</summary>\n\n```diff\n       const [\n-        { count: posCount },\n-        { count: collaboratorCount },\n+        posResult,\n+        collaboratorResult,\n         // ... other results\n       ] = await Promise.all([...]);\n\n+      // Check for errors\n+      const errors = [posResult, collaboratorResult, ...].filter(r => r.error);\n+      if (errors.length > 0) {\n+        console.error('Onboarding status query errors:', errors);\n+        // Optionally throw to trigger React Query error state\n+      }\n\n       return {\n-        hasPos: (posCount || 0) > 0,\n+        hasPos: (posResult.count || 0) > 0,\n         // ...\n       };\n```\n\nAlternatively, expose the `error` state from `useQuery` in the return object so the UI can handle it.\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 56d470e",
+      "severity": "info",
+      "id": "47e84b6bf4a8316b89252b66ffe572c2ed0d8715",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:13.275Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608749,
+        "file": "tests/unit/useOnboardingStatus.test.tsx",
+        "line": 45
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Avoid adding `then` property to mock objects.**\n\nBiome flags this pattern because objects with a `then` property can be mistakenly treated as Promises by `async/await`, leading to unexpected behavior. Consider using `mockResolvedValue` or restructuring the mock.\n\n<details>\n<summary>🔧 Proposed fix using Promise resolution</summary>\n\n```diff\n vi.mock('@/integrations/supabase/client', () => ({\n   supabase: {\n     from: vi.fn((table) => {\n-        const count = mockDbState[table] ?? 0;\n-        return {\n-            select: vi.fn().mockReturnThis(),\n-            eq: vi.fn().mockReturnThis(),\n-            then: (resolve: any) => resolve({ count, error: null })\n-        };\n+      const count = mockDbState[table] ?? 0;\n+      const chain = {\n+        select: vi.fn().mockReturnThis(),\n+        eq: vi.fn().mockReturnThis(),\n+      };\n+      // Return a thenable that resolves properly\n+      return Object.assign(Promise.resolve({ count, error: null }), chain);\n     }),\n   },\n }));\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nvi.mock('@/integrations/supabase/client', () => ({\n  supabase: {\n    from: vi.fn((table) => {\n      const count = mockDbState[table] ?? 0;\n      const chain = {\n        select: vi.fn().mockReturnThis(),\n        eq: vi.fn().mockReturnThis(),\n      };\n      // Return a thenable that resolves properly\n      return Object.assign(Promise.resolve({ count, error: null }), chain);\n    }),\n  },\n}));\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 Biome (2.1.2)</summary>\n\n[error] 41-41: Do not add then to an object.\n\n\n\n(lint/suspicious/noThenProperty)\n\n</details>\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @tests/unit/useOnboardingStatus.test.tsx around lines 34 - 45, The mock\nexposes a then property which makes the returned object behave like a Promise;\nremove the manual then and instead have the final call return a real resolved\nPromise—update the supabase.from mock so that from(table) builds an object where\nselect is vi.fn().mockReturnThis() and eq is vi.fn().mockResolvedValue({ count:\nmockDbState[table] ?? 0, error: null }) (or use mockResolvedValueOnce) so tests\nawait the Promise correctly; refer to the supabase.from, select, eq and\nmockDbState identifiers when applying this change.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "ad102feaa697e2d08a4136ce79cb795dd21dae24",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:16.740Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680654758,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 53
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Handle error state from the hook.**\n\nThe component destructures `isLoading` but does not handle a potential error state from `useOnboardingStatus`. If the hook supports error handling, consider displaying an error UI or gracefully degrading.\n\nAdditionally, per coding guidelines, prefer skeleton screens over returning `null` for loading states.\n\n\n\n<details>\n<summary>Suggested pattern</summary>\n\n```diff\n-  const { steps, completedCount, totalCount, percentage, isLoading } = useOnboardingStatus();\n+  const { steps, completedCount, totalCount, percentage, isLoading, error } = useOnboardingStatus();\n\n   // ...\n\n-  if (isLoading) return null;\n+  if (isLoading) {\n+    return (\n+      <div className=\"fixed bottom-6 right-6 z-50\">\n+        <div className=\"h-12 w-12 rounded-full bg-muted animate-pulse\" />\n+      </div>\n+    );\n+  }\n+\n+  if (error) return null; // or show error state\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 24 - 51, The\ncomponent currently ignores a potential error from useOnboardingStatus and\nreturns null for loading; update the destructuring to include the hook's error\n(e.g., const { steps, completedCount, totalCount, percentage, isLoading, error }\n= useOnboardingStatus()), replace the early return for isLoading with rendering\na small skeleton component or loading placeholder instead of null, and add a\nconcise error state UI (a banner or inline message) when error is truthy so the\nuser sees a failure to load steps; keep existing dismissed/open logic and\nhandlers (handleOpen, handleStepClick) intact while ensuring the error UI lets\nusers retry or navigate elsewhere.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "6568842547696f3d8fcfd0d0b43bee1dc4fe92c8",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:20.623Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680654761,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 70
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add `aria-label` to the icon-only button.**\n\nThe floating button contains only an icon (`ListTodo`) with no visible text. Per accessibility guidelines, add an `aria-label` to ensure screen reader users understand the button's purpose.\n\n\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n            <Button \n             onClick={handleOpen} \n             size=\"icon\"\n             className=\"h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105\"\n-            title=\"Resume Setup\"\n+            title=\"Resume Setup\"\n+            aria-label=\"Resume Setup\"\n            >\n              <ListTodo className=\"h-6 w-6\" />\n            </Button>\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 57 - 68, The\nicon-only floating button in OnboardingDrawer (the Button wrapping ListTodo and\nusing handleOpen) lacks an accessible name; add an aria-label prop to that\nButton (e.g., aria-label=\"Resume Setup\") so screen readers can announce its\npurpose, keeping the existing title prop if desired for tooltip behavior.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "e8ff92f8cab52280465b8b55796cdd0af6aac2ed",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.720Z",
+      "updated_at": "2026-01-12T02:10:24.045Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3736637603
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=312) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [5.4% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=312&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=312)\n\n",
+      "severity": "info",
+      "id": "886d94fa4dfc49d91465ca4518d76aea0ccc3662",
+      "status": "fixed",
+      "created_at": "2026-01-12T01:57:57.721Z",
+      "updated_at": "2026-01-12T02:10:27.370Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "targeted onboarding tests pass; repo lint currently fails from pre-existing issues"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuv3bOsD4_uMWluefiL",
+        "pr": "312",
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 18
+      },
+      "title": "Remove this unused import of 'CreditCard'.",
+      "body": "Remove this unused import of 'CreditCard'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "0d5558101507702ea3b65baf35ccc69e0ab45155",
+      "status": "in_progress",
+      "created_at": "2026-01-12T01:57:57.722Z",
+      "updated_at": "2026-01-12T01:59:36.787Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuv3bOsD4_uMWluefiM",
+        "pr": "312",
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 173
+      },
+      "title": "Use <input type=\"button\">, <input type=\"image\">, <input type=\"reset\">, <input type=\"submit\">, or <button> instead of the \"button\" role to ensure accessibility a",
+      "body": "Use <input type=\"button\">, <input type=\"image\">, <input type=\"reset\">, <input type=\"submit\">, or <button> instead of the \"button\" role to ensure accessibility across all devices.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "095cd46e460773ba58830ca1d2086a6299a7b5fa",
+      "status": "in_progress",
+      "created_at": "2026-01-12T01:57:57.722Z",
+      "updated_at": "2026-01-12T01:59:36.787Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 147
+      },
+      "title": "react-hooks/exhaustive-deps in ReceiptMappingReview.tsx",
+      "body": "React Hook useEffect has a missing dependency: 'loadData'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "d3882d3489eafa69a1783fbd1bb51f6a86ab7851",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 235
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "a42550e6cc3428a403a135ed466228d9e5c56628",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 329
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "ca5d2498e64eac1c113e502a95d5403554e64286",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 346
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "07f73d6a87a20f592b03fbad4f934d2d57d85af0",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 627
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "e04cf8fda7eeb1a9c412164906c37bcc784ecb41",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 664
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "d21b94712e6994401fa22ec6990f9e1fd60cf253",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 715
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "de5f4e71a0f40ffffa32bcb3474da22683ed2740",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptBatchActions.tsx",
+        "line": 87
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptBatchActions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptBatchActions.tsx"
+      ],
+      "id": "1c84e4219efde7dbdbc9a29076d825a760ca6ff4",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptItemRow.tsx",
+        "line": 25
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptItemRow.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptItemRow.tsx"
+      ],
+      "id": "1cc72492df802c6fdcaf0554cf87ab933bef0801",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.735Z",
+      "updated_at": "2026-01-12T01:57:57.735Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx",
+        "line": 62
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx"
+      ],
+      "id": "5749371f68c0623914e576570a8290c86bd18a69",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx",
+        "line": 204
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx"
+      ],
+      "id": "2376bd69fe33589ce6bc8a141c9648a53c2fb2a3",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx",
+        "line": 266
+      },
+      "title": "react-refresh/only-export-components in useAuth.tsx",
+      "body": "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useAuth.tsx"
+      ],
+      "id": "a2cc3077185ff82261dcfe192b281ef2283b45e8",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts",
+        "line": 29
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts"
+      ],
+      "id": "55a9594b0ba483398279930fa506a9340cb30571",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 239
+      },
+      "title": "@typescript-eslint/ban-ts-comment in useReceiptImport.tsx",
+      "body": "Use \"@ts-expect-error\" instead of \"@ts-ignore\", as \"@ts-ignore\" will do nothing if the following line is error-free.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "d096b95dad26a5a785f2fed46228c814c472ffa4",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 258
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "edcf8ea5dfda0597e62a3064e9df5ae09721586a",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 722
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "1909f6e947bf40e4b8eb92d26a22e1cf32af8552",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 743
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "9b571c4bb06f414507e91d18d09d157b499d243f",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.736Z",
+      "updated_at": "2026-01-12T01:57:57.736Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx",
+        "line": 47
+      },
+      "title": "@typescript-eslint/no-explicit-any in useRestaurants.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx"
+      ],
+      "id": "1afbc57282812a547be22e213c5bf91969bf8bfc",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx",
+        "line": 98
+      },
+      "title": "@typescript-eslint/no-explicit-any in useRestaurants.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx"
+      ],
+      "id": "6e8cc68c2e73b1fefce6ba56ad1cd5cfc0f79f3f",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx",
+        "line": 123
+      },
+      "title": "@typescript-eslint/no-explicit-any in useRestaurants.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useRestaurants.tsx"
+      ],
+      "id": "c062075fe22f1541f37c1cdd69acfca692ab914a",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts",
+        "line": 138
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts"
+      ],
+      "id": "ab86257b4970b01fa79b9809aa3a5796458696f9",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts",
+        "line": 168
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/chartOfAccountsUtils.ts"
+      ],
+      "id": "f23b278df7d55392d3730ea283792616fa8f7090",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts",
+        "line": 6
+      },
+      "title": "@typescript-eslint/no-explicit-any in react-query-config.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts"
+      ],
+      "id": "c045228544aaa4b3bf635908df32168ae0be00be",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts",
+        "line": 23
+      },
+      "title": "@typescript-eslint/no-explicit-any in react-query-config.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/lib/react-query-config.ts"
+      ],
+      "id": "770ab1bb10b9de0e0e71de1a76dddcc6e956b37c",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 140
+      },
+      "title": "@typescript-eslint/no-explicit-any in Index.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "0e56a0cf5704ceb798c9978be48f652fd50f7de5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 312
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'dailyAvgSpending'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "1ee95f1b803e8b729a956bf63a0b529e8667b381",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 315
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "The 'monthlyData' logical expression could make the dependencies of useEffect Hook (at line 401) change on every render. To fix this, wrap the initialization of 'monthlyData' in its own useMemo() Hook.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "547d2ddf1c90dd3d07d7692a4bd0c3d0a50d045d",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 125
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "5f941fe3c9fb1b28c245072c0b083d31ab642925",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 415
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "52905b0ef9ccc6ecc7738acbaefd0d23288b33d2",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.737Z",
+      "updated_at": "2026-01-12T01:57:57.737Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 416
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "56ef3fbe41c8f2db264498dc4526047bc595206a",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.738Z",
+      "updated_at": "2026-01-12T01:57:57.738Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 418
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "15d141d65569622f298ee21c2dbebba764f24119",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.738Z",
+      "updated_at": "2026-01-12T01:57:57.738Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx",
+        "line": 419
+      },
+      "title": "@typescript-eslint/no-explicit-any in Recipes.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Recipes.tsx"
+      ],
+      "id": "65093e955874dd45247d5aac9c81ff2378ec4c69",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.738Z",
+      "updated_at": "2026-01-12T01:57:57.738Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 278
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "83a0e7588579b848390d07f59b329bbba03bb5ba",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 286
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "2d163849b24e62d854a57dbe8156bd279ef8a958",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 760
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "f2dda17ffa6e60448737a149926bc270ebcb05d1",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 772
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "a1eb5512a45eb86e05ead4e571f1a338550e58d5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.740Z",
+      "updated_at": "2026-01-12T01:57:57.740Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 79
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "6b4d95aa2948d82f893c914de36ab8905b4d29e8",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 119
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "ecf2163a70e5bf58ac2e11e41e4e6fc62e4cd217",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 120
+      },
+      "title": "@typescript-eslint/no-explicit-any in labor-cost-alignment.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "82bd618dceb6b8df92cbe472cee8515762e6cea9",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts",
+        "line": 234
+      },
+      "title": "no-useless-escape in labor-cost-alignment.spec.ts",
+      "body": "Unnecessary escape character: \\\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/labor-cost-alignment.spec.ts"
+      ],
+      "id": "74e4a4f6af4dac8ef6b1d90c1410bb4577b0dfa9",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts",
+        "line": 14
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts"
+      ],
+      "id": "79cc4a26f8fafef48d99b69c50da623d98ac2f7c",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts",
+        "line": 18
+      },
+      "title": "@typescript-eslint/no-explicit-any in chartOfAccountsUtils.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/chartOfAccountsUtils.test.ts"
+      ],
+      "id": "fdc396a22f3e326ae2354fe79369c9ed83ba010e",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts",
+        "line": 7
+      },
+      "title": "@typescript-eslint/no-explicit-any in reactQueryConfig.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts"
+      ],
+      "id": "47f65a0e9e9c4bd09857c343dfcf497861f63c60",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts",
+        "line": 8
+      },
+      "title": "@typescript-eslint/no-explicit-any in reactQueryConfig.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/reactQueryConfig.test.ts"
+      ],
+      "id": "fd8df0dbaa78f6d5248655ad0f284d5e8acea74d",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/receiptMappingReviewFixes.test.ts",
+        "line": 217
+      },
+      "title": "@typescript-eslint/no-explicit-any in receiptMappingReviewFixes.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/receiptMappingReviewFixes.test.ts"
+      ],
+      "id": "01385b89cfc90c05b699f061401a119291959da5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.741Z",
+      "updated_at": "2026-01-12T01:57:57.741Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx",
+        "line": 14
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "4bfa2ea450838bd0bcf337dc204127b1ad70c515",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx",
+        "line": 15
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "872e91cdc95064a727c026851eb13b75085e30c5",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx",
+        "line": 16
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAuth.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAuth.test.tsx"
+      ],
+      "id": "8ef20ee88a13be12713f1b3cf86ef15a06d6cd76",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx",
+        "line": 16
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx"
+      ],
+      "id": "30c44c2b86993ab0b8bbb60a93951d944c24b9ec",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx",
+        "line": 41
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx"
+      ],
+      "id": "63abacf3e78eb2705bf255a9a1cc640e1f6a49de",
+      "status": "open",
+      "created_at": "2026-01-12T01:57:57.742Z",
+      "updated_at": "2026-01-12T01:57:57.742Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608745,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 208
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**StepCard lacks keyboard accessibility.**\n\nThe clickable `div` has no keyboard support. Users navigating with keyboard cannot activate these cards. Consider using a `<button>` element or adding `role=\"button\"`, `tabIndex={0}`, and an `onKeyDown` handler.\n\n<details>\n<summary>🔧 Proposed fix using button semantics</summary>\n\n```diff\n const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {\n   return (\n-    <div \n+    <button \n+      type=\"button\"\n       onClick={onClick}\n       className={`\n-        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer\n+        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full\n         ${step.isCompleted \n           ? 'bg-muted/30 border-transparent hover:bg-muted/50' \n           : 'bg-card hover:border-primary/50 hover:shadow-sm'\n         }\n       `}\n     >\n       {/* ... content unchanged ... */}\n-    </div>\n+    </button>\n   );\n };\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\nconst StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {\n  return (\n    <button\n      type=\"button\"\n      onClick={onClick}\n      className={`\n        group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full\n        ${step.isCompleted \n          ? 'bg-muted/30 border-transparent hover:bg-muted/50' \n          : 'bg-card hover:border-primary/50 hover:shadow-sm'\n        }\n      `}\n    >\n      <div className={`mt-0.5 rounded-full p-0.5 ${step.isCompleted ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>\n        {step.isCompleted ? <CheckCircle2 className=\"h-5 w-5\" /> : <Circle className=\"h-5 w-5\" />}\n      </div>\n      \n      <div className=\"flex-1 space-y-1\">\n        <p className={`text-sm font-medium leading-none ${step.isCompleted ? 'text-muted-foreground line-through decoration-transparent' : 'text-foreground'}`}>\n          {step.label}\n        </p>\n        <p className=\"text-xs text-muted-foreground line-clamp-2\">\n          {step.description}\n        </p>\n        \n        {!step.isCompleted && (\n          <div className=\"pt-2\">\n            <span className=\"text-xs font-semibold text-primary group-hover:underline inline-flex items-center\">\n              {step.ctaText} <ChevronRight className=\"h-3 w-3 ml-0.5\" />\n            </span>\n          </div>\n        )}\n      </div>\n    </button>\n  );\n};\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 189 - 223,\nStepCard's clickable container is a plain div and lacks keyboard accessibility;\nupdate the clickable container (the top-level element in the StepCard functional\ncomponent) to be keyboard-activatable by either converting it to a <button>\nelement or by adding role=\"button\", tabIndex={0}, and an onKeyDown handler that\ncalls the same onClick for Enter and Space keys; ensure ARIA/visual styles\nremain the same and preserve the existing onClick prop behavior so keyboard\nusers can activate the card.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 4b9e4fd",
+      "severity": "info",
+      "id": "5ac8f40db952c2ccaab3e3412158999cfd2b747c",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.397Z",
+      "updated_at": "2026-01-13T15:25:45.310Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680608748,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 92
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Missing error handling for Supabase queries.**\n\nThe `Promise.all` results are destructured assuming success, but Supabase queries can fail. If any query returns an error, `count` will be `null` and errors will be silently ignored. Consider checking errors or using the query's error state.\n\n<details>\n<summary>🔧 Suggested approach</summary>\n\n```diff\n       const [\n-        { count: posCount },\n-        { count: collaboratorCount },\n+        posResult,\n+        collaboratorResult,\n         // ... other results\n       ] = await Promise.all([...]);\n\n+      // Check for errors\n+      const errors = [posResult, collaboratorResult, ...].filter(r => r.error);\n+      if (errors.length > 0) {\n+        console.error('Onboarding status query errors:', errors);\n+        // Optionally throw to trigger React Query error state\n+      }\n\n       return {\n-        hasPos: (posCount || 0) > 0,\n+        hasPos: (posResult.count || 0) > 0,\n         // ...\n       };\n```\n\nAlternatively, expose the `error` state from `useQuery` in the return object so the UI can handle it.\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 56d470e",
+      "severity": "info",
+      "id": "8e6d097733c3e20b3acbbdb5d373dbce788c6618",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.397Z",
+      "updated_at": "2026-01-13T15:25:45.355Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680654758,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 51
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Handle error state from the hook.**\n\nThe component destructures `isLoading` but does not handle a potential error state from `useOnboardingStatus`. If the hook supports error handling, consider displaying an error UI or gracefully degrading.\n\nAdditionally, per coding guidelines, prefer skeleton screens over returning `null` for loading states.\n\n\n\n<details>\n<summary>Suggested pattern</summary>\n\n```diff\n-  const { steps, completedCount, totalCount, percentage, isLoading } = useOnboardingStatus();\n+  const { steps, completedCount, totalCount, percentage, isLoading, error } = useOnboardingStatus();\n\n   // ...\n\n-  if (isLoading) return null;\n+  if (isLoading) {\n+    return (\n+      <div className=\"fixed bottom-6 right-6 z-50\">\n+        <div className=\"h-12 w-12 rounded-full bg-muted animate-pulse\" />\n+      </div>\n+    );\n+  }\n+\n+  if (error) return null; // or show error state\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 24 - 51, The\ncomponent currently ignores a potential error from useOnboardingStatus and\nreturns null for loading; update the destructuring to include the hook's error\n(e.g., const { steps, completedCount, totalCount, percentage, isLoading, error }\n= useOnboardingStatus()), replace the early return for isLoading with rendering\na small skeleton component or loading placeholder instead of null, and add a\nconcise error state UI (a banner or inline message) when error is truthy so the\nuser sees a failure to load steps; keep existing dismissed/open logic and\nhandlers (handleOpen, handleStepClick) intact while ensuring the error UI lets\nusers retry or navigate elsewhere.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit fb0e6f0",
+      "severity": "info",
+      "id": "7948f91c3e22cab8f31df03511185a91e0c62355",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.397Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680654761,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 96
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Add `aria-label` to the icon-only button.**\n\nThe floating button contains only an icon (`ListTodo`) with no visible text. Per accessibility guidelines, add an `aria-label` to ensure screen reader users understand the button's purpose.\n\n\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n            <Button \n             onClick={handleOpen} \n             size=\"icon\"\n             className=\"h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105\"\n-            title=\"Resume Setup\"\n+            title=\"Resume Setup\"\n+            aria-label=\"Resume Setup\"\n            >\n              <ListTodo className=\"h-6 w-6\" />\n            </Button>\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 57 - 68, The\nicon-only floating button in OnboardingDrawer (the Button wrapping ListTodo and\nusing handleOpen) lacks an accessible name; add an aria-label prop to that\nButton (e.g., aria-label=\"Resume Setup\") so screen readers can announce its\npurpose, keeping the existing title prop if desired for tooltip behavior.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit fb0e6f0",
+      "severity": "info",
+      "id": "dacea61b88adfda4e441c298a23dc61975b43b2f",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.443Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680668322,
+        "file": "src/components/dashboard/OnboardingDrawer.tsx",
+        "line": 94
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Add `aria-label` to the floating button for accessibility.**\n\nThe button uses an icon without visible text and only has a `title` attribute. Per accessibility guidelines, buttons without text must have an `aria-label`.\n\n\n\n<details>\n<summary>♿ Proposed fix</summary>\n\n```diff\n            <Button \n             onClick={handleOpen} \n             size=\"icon\"\n             className=\"h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105\"\n             title=\"Resume Setup\"\n+            aria-label=\"Resume Setup\"\n            >\n              <ListTodo className=\"h-6 w-6\" />\n            </Button>\n```\n</details>\n\nBased on learnings, accessibility attributes are required for buttons without text.\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n           <Button \n            onClick={handleOpen} \n            size=\"icon\"\n            className=\"h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 transition-all hover:scale-105\"\n            title=\"Resume Setup\"\n            aria-label=\"Resume Setup\"\n           >\n             <ListTodo className=\"h-6 w-6\" />\n           </Button>\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/components/dashboard/OnboardingDrawer.tsx around lines 61 - 68, The\nfloating icon-only Button in OnboardingDrawer (the Button around <ListTodo />\nthat calls handleOpen) lacks an aria-label; add a descriptive aria-label (e.g.,\naria-label=\"Resume Setup\") to that Button element so screen readers can announce\nits purpose, keeping the existing title prop for hover text and ensuring the\nlabel matches the button action.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit fb0e6f0",
+      "severity": "info",
+      "id": "3fa5009fe7981333a518d7dfe6345dee37ff1cfe",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.494Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680668326,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 102
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, locate and examine the useOnboardingStatus.ts file\nfd \"useOnboardingStatus.ts\" --type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 93\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the Supabase types file\nfd \"types.ts\" src/integrations --type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for references to these connection tables\nrg \"toast_connections|shift4_connections\" --type ts --type tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check for clover_connections as well since it appears in the same section\nrg \"clover_connections\" --type ts --type tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Fix: use correct file type for rg\nrg \"toast_connections|shift4_connections\" --type ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3193\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the useOnboardingStatus.ts file around lines 92-102\nsed -n '80,115p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1389\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the Supabase types file to see if these tables are defined\nhead -100 src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2867\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check useToastConnection.tsx to see how it uses toast_connections without `as any`\nsed -n '1,50p' src/hooks/useToastConnection.tsx | grep -A 5 \"toast_connections\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 215\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for more context around toast_connections usage in useToastConnection.tsx\nrg -B 3 -A 3 \"from\\('toast_connections'\\)\" src/hooks/useToastConnection.tsx --type ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 672\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full Database type definitions for these specific tables\nrg -A 50 \"toast_connections:\" src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1901\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check shift4_connections definition\nrg -A 50 \"shift4_connections:\" src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1681\n\n---\n\n\n\n</details>\n\n**Remove unnecessary `as any` type casts—these tables are already properly typed.**\n\nThe `toast_connections` and `shift4_connections` tables are fully defined in your Supabase types (`src/integrations/supabase/types.ts`). The `as any` casts are unnecessary and suppress TypeScript's type safety. Other files in the codebase, such as `useToastConnection.tsx`, successfully query these same tables without casts, confirming the types are available and properly configured.\n\nRemove the `as any` casts from lines 92 and 100 to improve type safety and consistency across the codebase.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 92 - 102, Remove the\nunnecessary \"as any\" type assertions on the Supabase queries in\nuseOnboardingStatus — specifically change the two calls that use\nsupabase.from('toast_connections' as any) and supabase.from('shift4_connections'\nas any) to call supabase.from('toast_connections') and\nsupabase.from('shift4_connections') respectively so TypeScript uses the existing\ngenerated table types; keep the surrounding .select(...).eq('restaurant_id',\nrestaurantId) logic unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "3571e283ea69fed0b7f852eadcbe1da5f5722e70",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.540Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680693554,
+        "file": "tests/unit/OnboardingDrawer.test.tsx",
+        "line": 16
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Clear mocks in `beforeEach` for better test isolation**  \nYou clear `localStorage`, but mocks/spies can still leak call history/implementations across tests. Based on learnings, tests should clear mocks in `beforeEach`.  \n\n\n<details>\n<summary>Proposed diff</summary>\n\n```diff\n describe('OnboardingDrawer', () => {\n   beforeEach(() => {\n+    vi.clearAllMocks();\n     localStorage.clear();\n     mockedUseOnboardingStatus.mockReturnValue({\n       steps: baseSteps,\n       completedCount: 0,\n       totalCount: baseSteps.length,\n       percentage: 0,\n       isLoading: false,\n       error: null,\n       refetch: vi.fn(),\n     });\n   });\n```\n</details>\n\n\nAlso applies to: 50-61\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @tests/unit/OnboardingDrawer.test.tsx around lines 7 - 16, Tests clear\nlocalStorage but not mocked functions, causing mock call history/implementations\nto leak; update the test setup in OnboardingDrawer.test.tsx to call\nvi.clearAllMocks() (or vi.resetAllMocks() if you need to reset implementations)\ninside the existing beforeEach so mocks like the\nvi.mock('@/hooks/useOnboardingStatus') and the mocked useNavigate from\nreact-router-dom are cleared between tests; apply the same change to the other\nbeforeEach block referenced (lines ~50-61) to ensure full test isolation.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "dcc2a88ef9acdea2997006b03f2e23e648118e68",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.610Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2680693557,
+        "file": "tests/unit/useOnboardingStatus.test.tsx",
+        "line": 49
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, locate the checkTableCount function\nfd -t f \"\\.ts$|\\.tsx$\" src | xargs rg -l \"checkTableCount\" | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 93\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for checkTableCount definition\nrg -n \"function checkTableCount|const checkTableCount|export.*checkTableCount\" -A 15 --type=ts --type=tsx src\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for useOnboardingStatus hook\nrg -n \"useOnboardingStatus|function useOnboardingStatus\" -A 20 --type=ts --type=tsx src\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check what Supabase methods are actually used in the codebase\nrg -n \"\\.select\\(|\\.eq\\(|\\.match\\(|\\.in\\(|\\.limit\\(|\\.gte\\(|\\.lte\\(|\\.order\\(|\\.single\\(\" --type=ts --type=tsx src | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find all TypeScript files and search for checkTableCount\nrg -n \"function checkTableCount|const checkTableCount|export.*checkTableCount\" -A 15 src\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1017\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the test file directly\ncat -n tests/unit/useOnboardingStatus.test.tsx | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3829\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the hook implementation\ncat -n src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 8676\n\n---\n\n\n\n</details>\n\n**Add test for disabled query when `selectedRestaurant` is null/undefined, and initialize all queried tables in `mockDbState`**\n\nThe mock correctly supports `.select()` and `.eq()` which are the only methods `checkTableCount` uses. However, two issues need addressing:\n\n1. **Missing mockDbState entries**: The hook queries `square_connections`, `toast_connections`, `clover_connections`, `shift4_connections`, `invitations`, and `products` (lines 92–101 of useOnboardingStatus.ts), but these aren't initialized in mockDbState. They silently default to 0 instead of being explicit.\n\n2. **Missing edge case test**: Per the Vitest guidelines, add a test for when `selectedRestaurant` is null/undefined to verify the query is disabled (as per the `enabled: !!selectedRestaurant?.id` condition on line 148).\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @tests/unit/useOnboardingStatus.test.tsx around lines 13 - 28, Initialize\nexplicit entries in the test's mockDbState for all tables queried by the hook\n(square_connections, toast_connections, clover_connections, shift4_connections,\ninvitations, products) so they don't silently default to 0, and update the\nvi.mock for '@/integrations/supabase/client' to rely on those entries when\nbuilding the resolved { count, error } returned by checkTableCount; then add a\nunit test in tests/unit/useOnboardingStatus.test.tsx that sets\nselectedRestaurant to null/undefined and asserts the query is disabled (i.e.,\nthe query's enabled flag is false or the supabase .from mock is not invoked for\nthose tables) to cover the enabled: !!selectedRestaurant?.id edge case in\nuseOnboardingStatus.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4a628154fa47d7e3e7e2c571c532af2f80128bb3",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.654Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2682507484,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 163
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove or conditionally guard remaining console statements.**\n\nThe console.log and console.error statements should be gated behind development mode checks.\n\n<details>\n<summary>🧹 Suggested fix</summary>\n\n```diff\n-        console.log('useOnboardingStatus: Calculated Status', finalStatus);\n         return finalStatus;\n       } catch (err) {\n-         console.error('useOnboardingStatus: Exception in queryFn', err);\n+         if (import.meta.env.DEV) {\n+           console.error('useOnboardingStatus: Exception in queryFn', err);\n+         }\n          // Even if exception, return defaults to avoid UI crash\n          return {\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        return finalStatus;\n      } catch (err) {\n         if (import.meta.env.DEV) {\n           console.error('useOnboardingStatus: Exception in queryFn', err);\n         }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 160 - 163, The remaining\nconsole.log and console.error in useOnboardingStatus (the lines referencing\nfinalStatus and err inside the queryFn) should be removed or wrapped in a\ndevelopment-only guard; update the code to either remove these calls or\nconditionally call them only when in dev mode (e.g., check process.env.NODE_ENV\n!== 'production' or use the project’s isDev helper) so that logging of\nfinalStatus and err does not occur in production.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "dc0c5bb01cea203378b8a4c582a153acb02d81e4",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.709Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2682708367,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 62
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Critical: verify `selectedRestaurant.id` is actually the value stored in `restaurant_id` columns (otherwise every count will be 0).**  \nThe hook filters all checks by `.eq('restaurant_id', restaurantId)` where `restaurantId = selectedRestaurant.id`. If the context’s “selected restaurant” object is a `user_restaurants` row (or otherwise uses `restaurant_id` as the FK), this would exactly produce the reported symptom (“all tasks still need onboarding”).  \n\n\n\n<details>\n<summary>Proposed fix (robust restaurantId derivation)</summary>\n\n```diff\n export const useOnboardingStatus = (): OnboardingStatus => {\n   const { selectedRestaurant } = useRestaurantContext();\n+  const restaurantId = selectedRestaurant?.restaurant_id ?? selectedRestaurant?.id;\n\n   const { data: status, isLoading, error, refetch } = useQuery({\n-    queryKey: ['onboarding-status', selectedRestaurant?.id],\n+    queryKey: ['onboarding-status', restaurantId],\n     queryFn: async () => {\n-      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n-\n-      if (!selectedRestaurant?.id) {\n-        console.log('useOnboardingStatus: No restaurant ID');\n+      if (!restaurantId) {\n         return null;\n       }\n-\n-      const restaurantId = selectedRestaurant.id;\n```\n</details>\n\n```shell\n#!/bin/bash\n# Verify the runtime shape of selectedRestaurant and whether `.id` or `.restaurant_id` is used app-wide.\nrg -n --type=ts --type=tsx -C3 \"selectedRestaurant\\.(id|restaurant_id)\" .\nrg -n --type=ts --type=tsx -C3 \"restaurant_id'\\s*,\" src/contexts src/hooks src/pages\n``` \n\n\nAlso applies to: 172-176\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 48 - 62, The hook\nuseOnboardingStatus currently assumes selectedRestaurant.id maps to the DB\nrestaurant_id; change it to derive restaurantId robustly by checking\nselectedRestaurant.id, selectedRestaurant.restaurant_id, and any nested\nselectedRestaurant.restaurant?.id (use the first non-null value), update the\nlocal variable restaurantId and the queryKey to use that derived value, log a\nwarning if none found and return null early, and ensure all .eq('restaurant_id',\nrestaurantId) filters use this derived restaurantId so counts aren’t zero when\nthe context row uses restaurant_id instead of id.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 3724a2e",
+      "severity": "info",
+      "id": "3352a61b43a4d8c4c348c0712da1f27fcb3f2677",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T15:25:45.767Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests failed: lint errors; test:db requires supabase start"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2682708371,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 114
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Likely redundant refetching (can double-fetch *13 queries* on restaurant switch / mount / focus).**  \nGiven the queryKey includes the restaurant id, a restaurant switch should naturally create a new cache entry and fetch. With `refetchOnMount: true` + `refetchOnWindowFocus: true` + the `useEffect(refetch)`, you can easily end up with unnecessary extra traffic.  \n\n\n<details>\n<summary>Proposed change (simplest): drop the explicit useEffect refetch</summary>\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.id) {\n-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.id, refetch]);\n+  // queryKey change already triggers a fetch when restaurant changes\n```\n</details>\n\n\nAlso applies to: 172-185\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 51 - 112, The hook\nuseOnboardingStatus is causing redundant network calls because useQuery already\nuses the restaurant id in its queryKey but the code combines\nrefetchOnMount/refetchOnWindowFocus with an explicit useEffect that calls\nrefetch (the refetch variable returned from useQuery), which can trigger\ndouble-fetches of the 13 parallel checks on mount/focus/restaurant switch;\nremove the explicit useEffect(refetch) (and similar explicit refetch uses around\nlines 172-185) so rely on the queryKey behavior or alternatively set\nrefetchOnMount/refetchOnWindowFocus to false if you need manual control—locate\nthe useQuery invocation and the useEffect that calls refetch and delete the\nuseEffect (or flip the refetchOnMount/refetchOnWindowFocus flags) to eliminate\nredundant refetches.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "48ff1d19b410ce8f315b79a6dca894ebef3e38df",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:02:43.195Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2682708375,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 58
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Remove or dev-gate `console.*` (violates TS/TSX guidelines + can leak noisy details).**  \n\n\n<details>\n<summary>Proposed change (Vite)</summary>\n\n```diff\n     queryFn: async () => {\n-      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n+      const debug = import.meta.env.DEV;\n+      if (debug) console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n\n       if (!selectedRestaurant?.id) {\n-        console.log('useOnboardingStatus: No restaurant ID');\n+        if (debug) console.log('useOnboardingStatus: No restaurant ID');\n         return null;\n       }\n...\n-        console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors);\n+        if (debug) console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors);\n...\n-        console.log('useOnboardingStatus: Calculated Status', finalStatus);\n+        if (debug) console.log('useOnboardingStatus: Calculated Status', finalStatus);\n...\n-         console.error('useOnboardingStatus: Exception in queryFn', err);\n+         if (debug) console.error('useOnboardingStatus: Exception in queryFn', err);\n...\n   useEffect(() => {\n     if (selectedRestaurant?.id) {\n-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n+      const debug = import.meta.env.DEV;\n+      if (debug) console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n       refetch();\n     }\n   }, [selectedRestaurant?.id, refetch]);\n```\n</details>\n\n\nAlso applies to: 161-169, 179-183\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 54 - 58, In\nuseOnboardingStatus, remove the raw console.log/console.* calls (seen at the\nstart of the hook and around the other ranges you flagged) or gate them behind a\nVite dev-only check; specifically, replace direct console.* usage in the\nuseOnboardingStatus function with a dev-only guard such as import.meta.env.DEV\n(or a shared isDev helper) so logs run only in development, and ensure no\nconsole.* calls remain in production paths.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "588ac216c47df51080d9b3857fdd8c24de80e6b6",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:02:46.851Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2682824131,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 59
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Remove or wrap console statements for production.**\n\nMultiple `console.log`, `console.warn`, and `console.error` statements will execute in production. As per coding guidelines, these should be removed or wrapped in development-only checks.\n\n\n<details>\n<summary>♻️ Suggested pattern</summary>\n\n```typescript\nconst isDev = process.env.NODE_ENV === 'development';\n\n// Then wrap each log:\nif (isDev) {\n  console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n}\n```\n\nAlternatively, remove all console statements and rely on React Query DevTools for debugging during development.\n</details>\n\n\nAlso applies to: 129-131, 156-157, 159-160, 176-177\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 54 - 59, The hook\nuseOnboardingStatus contains multiple console.log/warn/error calls (e.g., around\nthe selectedRestaurant check and other locations) that will run in production;\nreplace these with a development-only guard or a proper logger: detect\ndevelopment via process.env.NODE_ENV === 'development' (or use the existing app\nlogger) and wrap each console.* call (or remove them) so they only execute when\nin dev, ensuring calls near selectedRestaurant?.id, the query start, and the\nother occurrences are updated accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "469856a4f253882f7790705b647fe53d8182e0e2",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:02:51.482Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683404978,
+        "file": "tests/unit/useOnboardingStatus.test.tsx",
+        "line": 305
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\ncat tests/unit/useOnboardingStatus.test.tsx | wc -l\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 64\n\n---\n\n🏁 Script executed:\n\n```shell\n# First, let's look at the test setup to understand how mocking is configured\nhead -100 tests/unit/useOnboardingStatus.test.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3119\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for mock setup and useRestaurantContext usage\nrg -n \"useRestaurantContext\\|mockSelectedRestaurant\\|from\\(\" tests/unit/useOnboardingStatus.test.tsx | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for the specific test and any assertions about the mock's eq() calls\nrg -n -A 30 \"should refetch data when restaurant changes\" tests/unit/useOnboardingStatus.test.tsx | head -80\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1037\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for any existing mock validation on Supabase calls\nrg -n \"\\.toHaveBeenCalledWith\\|\\.eq\\(\" tests/unit/useOnboardingStatus.test.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\nfind . -name \"useOnboardingStatus.ts\" -o -name \"useOnboardingStatus.tsx\" | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for the hook implementation\nrg -l \"useOnboardingStatus\" src/ --type ts --type tsx | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get content of the hook\ncat src/hooks/useOnboardingStatus.ts 2>/dev/null || cat src/hooks/useOnboardingStatus.tsx 2>/dev/null\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 9784\n\n---\n\n🏁 Script executed:\n\n```shell\n# If previous didn't work, search more broadly\nrg -A 50 \"export.*useOnboardingStatus\" src/ | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3472\n\n---\n\n\n\n</details>\n\n**Add explicit mock assertions to verify the correct restaurant_id is passed to Supabase queries.**\n\nThe test validates the refetch indirectly by checking state changes, which works. However, the test relies on implicit validation: if the Supabase query targeted the wrong restaurant, the mock's `mockDbState` would still be different, masking the actual query parameter. Add explicit assertions on the mock's `eq()` call to directly verify the restaurant_id parameter:\n\n```javascript\n// After the second rerender, verify the mock was called correctly\nexpect(chainable.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-B');\n```\n\nThis makes the test intent explicit and more robust against future changes to the hook's query logic.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @tests/unit/useOnboardingStatus.test.tsx around lines 232 - 307, The test\nshould explicitly assert that the Supabase query was called with the correct\nrestaurant_id to ensure the hook queries the right restaurant after rerender;\nafter you set mockSelectedRestaurant to restaurant-B and call rerender() and\nawait the query completion (the existing waitFor checking isLoading), add an\nassertion that the mock chainable.eq was called with ('restaurant_id',\n'restaurant-B') (i.e.,\nexpect(chainable.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-B'));\nplace this assertion after the second waitFor so it verifies the eq call for the\nsecond restaurant and reuse the existing chainable/mock objects used by the test\nharness that provide eq().\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "acd83db177cda1ce59ad8dc04e724f0fddd61ef6",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:02:54.864Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683639799,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 47
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's understand the repository structure\ngit ls-files | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 844\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the useOnboardingStatus.ts file and read it\nfind . -name \"useOnboardingStatus.ts\" -type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if Supabase types exist\nfind . -path \"*/supabase/types*\" -type f | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 97\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the full useOnboardingStatus.ts file\ncat -n src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 13295\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the Supabase types to see available tables\nhead -100 src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2867\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for usages of checkTableCount to see which tables are passed\nrg \"checkTableCount\" src/hooks/useOnboardingStatus.ts -A 3 -B 1\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1842\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if all referenced tables exist in the Supabase types\ngrep -o '\"[a-z_]*\": {' src/integrations/supabase/types.ts | sed 's/\"//g' | sed 's/: {//' | sort\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify specific tables referenced in useOnboardingStatus exist in types\ntables=(\n  \"user_restaurants\"\n  \"employees\"\n  \"recipes\"\n  \"receipt_imports\"\n  \"receipt_line_items\"\n  \"inventory_reconciliations\"\n  \"inventory_transactions\"\n  \"connected_banks\"\n  \"bank_transactions\"\n  \"square_connections\"\n  \"toast_connections\"\n  \"clover_connections\"\n  \"shift4_connections\"\n  \"invitations\"\n  \"products\"\n)\n\necho \"=== Checking if tables exist in Supabase types ===\"\nfor table in \"${tables[@]}\"; do\n  if grep -q \"\\\"$table\\\":\" src/integrations/supabase/types.ts; then\n    echo \"✓ $table\"\n  else\n    echo \"✗ $table NOT FOUND\"\n  fi\ndone\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 540\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the Database type structure to understand how tables are typed\ngrep -A 5 \"Tables: {\" src/integrations/supabase/types.ts | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 215\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the complete list of tables defined in the Supabase types\nrg \"^      [a-z_]+: \\{\" src/integrations/supabase/types.ts | sed 's/.*: {//' | cut -d':' -f1 | sort\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 334\n\n---\n\n🏁 Script executed:\n\n```shell\n# Try a different approach - look for all table names\nrg \"^\\s+[a-z_]+: \\{\" src/integrations/supabase/types.ts -o | awk '{print $1}' | sort | uniq\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4383\n\n---\n\n🏁 Script executed:\n\n```shell\n# Count the file size and structure\nwc -l src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 100\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look at the structure around Tables definition\nsed -n '2,100p' src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2848\n\n---\n\n🏁 Script executed:\n\n```shell\n# Double-check if shift4_connections exists in the types\nrg \"shift4_connections\" src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 156\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check how the Database type is structured - look for proper typing pattern\nrg \"supabase\\.from\" src/hooks/useOnboardingStatus.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 351\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there are other files using supabase.from with proper typing\nrg \"supabase\\.from\" src/ -l | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 214\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look at how another file properly types the table parameter\nrg \"from\\(\" src/hooks/ -A 5 | head -40\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2402\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check what typing approach is used by looking at Supabase client setup\ncat -n src/integrations/supabase/client.ts | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1524\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for how other properly-typed hooks handle table queries\nrg \"from\\(\" src/hooks/usePnLAnalytics.tsx -B 2 -A 8 | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 879\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there's a way to properly type the table parameter\ngrep -n \"type.*Table\" src/integrations/supabase/types.ts | head -10\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 147\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify React Query usage - check staleTime values in other hooks\nrg \"staleTime:\" src/hooks/ | head -10\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 744\n\n---\n\n\n\n</details>\n\n**Remove `as any` cast and refactor to use typed table names; increase staleTime to 30-60s per React Query guidelines.**\n\nThe `table as any` cast removes type safety and makes it difficult to catch issues with column names or filters at compile time. While the referenced tables do exist in the Supabase schema, this pattern prevents TypeScript from validating query parameters against each table's actual structure. \n\nAdditionally, `staleTime: 10000` is below the 30-60s guideline for critical data like onboarding status that users rely on for navigation decisions.\n\nRefactor `checkTableCount` to use a union type of valid table names:\n\n```typescript\ntype OnboardingTable = \n  | 'user_restaurants' | 'employees' | 'recipes' | 'receipt_imports'\n  | 'receipt_line_items' | 'inventory_reconciliations' | 'inventory_transactions'\n  | 'connected_banks' | 'bank_transactions' | 'square_connections'\n  | 'toast_connections' | 'clover_connections' | 'shift4_connections'\n  | 'invitations' | 'products';\n\nconst checkTableCount = (\n  restaurantId: string, \n  table: OnboardingTable,\n  filters?: Record<string, string>\n) => {\n  let query = supabase.from(table)  // No 'as any' needed\n    .select('id', { count: 'exact', head: false })\n    .eq('restaurant_id', restaurantId)\n    .limit(1);\n  // ...\n}\n```\n\nIncrease `staleTime` to `staleTime: 45000` (45 seconds) to match critical data caching guidelines.\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "f909b3a043f32dd4ed6abb8b2cf556fb7b0268a3",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:02:59.339Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683639812,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 58
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console statements from production code.**\n\nMultiple `console.log`, `console.warn`, and `console.error` statements are present throughout this hook (lines 55, 58, 142-147, 152-155, 167-172, 191-203, 215, 218, 235). As per coding guidelines, these should be removed or wrapped in a development-only conditional.\n\n<details>\n<summary>🛠️ Suggested approach</summary>\n\nEither remove the console statements entirely, or wrap them conditionally:\n\n```typescript\nconst isDev = process.env.NODE_ENV === 'development';\n\n// Then use:\nif (isDev) console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n```\n\nAlternatively, create a debug utility that only logs in development mode.\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 55 - 58, In the\nuseOnboardingStatus hook remove all direct console.* calls\n(console.log/warn/error) or guard them behind a development-only check; search\nfor console statements in useOnboardingStatus (occurrences around the start\nlogs, and the blocks spanning lines ~142–147, 152–155, 167–172, 191–203, 215,\n218, 235) and either delete them or replace them with a call to a debug utility\nor conditional check such as isDev (process.env.NODE_ENV === 'development') so\nthat logging only runs in development; ensure the exported\nfunction/useOnboardingStatus contains no remaining raw console calls.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "0d83245b0cf40ec4cf23c0158375b106291cec7d",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:03:03.880Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683639816,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 238
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Redundant refetch causes duplicate queries.**\n\nThis `useEffect` manually calls `refetch()` when `selectedRestaurant?.id` changes, but React Query already triggers a refetch automatically when the `queryKey` changes (line 53 includes `selectedRestaurant?.id`). This causes duplicate network requests and likely explains the \"repeated queries and refetches when the selected restaurant changes\" mentioned in the PR comments.\n\n<details>\n<summary>🐛 Proposed fix</summary>\n\nRemove the redundant useEffect entirely:\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.id) {\n-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.id, refetch]);\n```\n\nReact Query's `queryKey` mechanism handles this automatically. The query options already ensure fresh data:\n- `refetchOnMount: true`\n- `refetchOnWindowFocus: true`\n- `staleTime: 10000`\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 232 - 238, The useEffect that\ncalls refetch() on selectedRestaurant?.id change is redundant and causes\nduplicate network calls because the React Query hook already includes\nselectedRestaurant?.id in its queryKey and will refetch automatically; remove\nthe entire useEffect block that references useEffect, selectedRestaurant?.id,\nconsole.log, and refetch, and rely on the existing query options\n(refetchOnMount, refetchOnWindowFocus, staleTime) and the queryKey to trigger\nupdates.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit feb95c0",
+      "severity": "info",
+      "id": "4b7fe97ce280a6aaac37890da7e66a49ab580475",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:03:08.891Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683774831,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 58
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.log statements from production code.**\n\nPer coding guidelines, remove all `console.log` statements or wrap them in a development-only conditional. The file has 8+ logging statements that will appear in production.\n\n<details>\n<summary>💡 Suggested approach: Wrap in development check</summary>\n\n```typescript\nconst isDev = process.env.NODE_ENV === 'development';\n\n// Then use conditionally:\nif (isDev) {\n  console.log('useOnboardingStatus: Starting query', { ... });\n}\n```\n</details>\n\nBased on coding guidelines: \"Remove all console.log statements from production code, use conditional logging only in development mode.\"\n\n\nAlso applies to: 130-143, 159-164, 180-191, 203-206\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 55 - 58, The hook\nuseOnboardingStatus currently contains multiple console.log calls that must not\nrun in production; remove these console.log statements or guard them with a\ndevelopment-only check (e.g., check process.env.NODE_ENV === 'development')\nbefore logging. Update every console.log in useOnboardingStatus (including the\nones around \"Starting query\", the \"No restaurant ID\" branch, and the other\noccurrences noted) to either be removed or wrapped in the dev-only conditional\nso no console output occurs in production, and keep the rest of the function\nlogic unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit feb95c0",
+      "severity": "info",
+      "id": "fb30668a818fafd88065f88d05c407822bf2fe46",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:03:13.158Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683774836,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 114
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's find and examine the useOnboardingStatus.ts file\nfd -n \"useOnboardingStatus.ts\" -type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 291\n\n---\n\n🏁 Script executed:\n\n```shell\n# Then search for inventory-related table references\nrg -n \"inventory\" --type=ts src/ -A 2 -B 2 | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3326\n\n---\n\n🏁 Script executed:\n\n```shell\n# Also check for the specific table names mentioned in queries\nrg -n \"(inventory_items|inventory_transactions|products)\" --type=ts src/ | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2780\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the useOnboardingStatus.ts file without -n flag\nfd useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 93\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the useOnboardingStatus.ts file around lines 64-110\ncat src/hooks/useOnboardingStatus.ts | head -120 | tail -70\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2695\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check what inventory tables actually exist in the codebase\nrg \"from\\('inventory\" --type=ts -o | sort -u\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1277\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full checkTableCount mapping section to see what tables the variables actually map to\nsed -n '110,150p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1713\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search specifically for inventory_reconciliations and inventory_transactions in the codebase\nrg \"inventory_reconciliations|inventory_transactions\" --type=ts -B 2 -A 2 | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4010\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the complete context of how inventory checks are used\nrg \"inventory_reconciliations\" --type=ts -l\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 319\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify what the code actually expects to be checking for inventory\nsed -n '1,60p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1884\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full Promise.all section to count all queries precisely\nsed -n '64,110p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1735\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify the actual tables being used in reconciliation operations\nrg \"from\\('inventory_reconciliations\" --type=ts -B 3 -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4787\n\n---\n\n🏁 Script executed:\n\n```shell\n# Let me verify the exact inventory table names expected by checking the Supabase types\nrg \"inventory_reconciliations|inventory_transactions\" src/integrations/supabase/types.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1156\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify the table structure definitions\ngrep -A 3 \"inventory_reconciliations\\|inventory_transactions\" src/integrations/supabase/types.ts | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 595\n\n---\n\n\n\n</details>\n\n**Critical: Mismatch between destructured variables and Promise.all queries.**\n\nThere are **14 destructured variables** but only **12 queries** in Promise.all. This causes all results to be misaligned:\n\n| Variable | Expected Query | Actually Gets |\n|----------|---------------|---------------|\n| `inventoryResult` | inventory_reconciliations | `connected_banks` |\n| `inventoryTransactionsResult` | inventory_transactions | `bank_transactions` |\n| `bankResult` | connected_banks | `square_connections` |\n| `bankTransactionsResult` | bank_transactions | `toast_connections` |\n| `squareResult` | square_connections | `clover_connections` |\n| `toastResult` | toast_connections | `shift4_connections` |\n| `cloverResult` | clover_connections | `invitations` |\n| `shift4Result` | shift4_connections | `products` |\n| `invitationResult` | invitations | `undefined` |\n| `productResult` | products | `undefined` |\n\nThis directly explains why all onboarding status flags return `false` as reported in the PR comments.\n\n<details>\n<summary>🐛 Proposed fix: Add missing inventory queries</summary>\n\n```diff\n         const [\n           collaboratorResult,\n           employeeResult,\n           recipeResult,\n           receiptResult,\n+          inventoryResult,\n+          inventoryTransactionsResult,\n           bankResult,\n           bankTransactionsResult,\n-          inventoryResult,\n-          inventoryTransactionsResult,\n           squareResult,\n           toastResult,\n           cloverResult,\n           shift4Result,\n           invitationResult,\n           productResult\n         ] = await Promise.all([\n           // 1. Collaborators (more than just the owner)\n           checkTableCount(restaurantId, 'user_restaurants'),\n\n           // 2. Employees\n           checkTableCount(restaurantId, 'employees'),\n\n           // 3. Recipes\n           checkTableCount(restaurantId, 'recipes'),\n\n           // 4. Receipt Imports (uploaded receipts)\n           checkTableCount(restaurantId, 'receipt_imports'),\n+\n+          // 5. Inventory Reconciliations\n+          checkTableCount(restaurantId, 'inventory_reconciliations'),\n+\n+          // 5b. Inventory Transactions\n+          checkTableCount(restaurantId, 'inventory_transactions'),\n+\n           // 6. Bank Account (connected banks via Stripe)\n           checkTableCount(restaurantId, 'connected_banks'),\n           \n           // 6b. Alternative: Bank Transactions (if statements were uploaded)\n           checkTableCount(restaurantId, 'bank_transactions'),\n             \n           // 7. Specific POS Connections\n           checkTableCount(restaurantId, 'square_connections'),\n           checkTableCount(restaurantId, 'toast_connections'),\n           checkTableCount(restaurantId, 'clover_connections'),\n           checkTableCount(restaurantId, 'shift4_connections'),\n\n           // 8. Invitations (Pending Collaborators)\n           checkTableCount(restaurantId, 'invitations', { status: 'pending' }),\n\n           // 9. Products (Inventory Items)\n           checkTableCount(restaurantId, 'products')\n         ]);\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 64 - 110, Destructured results\nin the try block (collaboratorResult, employeeResult, recipeResult,\nreceiptResult, inventoryResult, inventoryTransactionsResult, bankResult,\nbankTransactionsResult, squareResult, toastResult, cloverResult, shift4Result,\ninvitationResult, productResult) do not match the Promise.all calls—two\ninventory queries are missing which shifts all subsequent results; fix by adding\ncheckTableCount(restaurantId, 'inventory_reconciliations') and\ncheckTableCount(restaurantId, 'inventory_transactions') into the Promise.all\narray in the exact positions corresponding to inventoryResult and\ninventoryTransactionsResult (i.e., after receipt_imports and before\nconnected_banks), so the Promise.all returns 14 entries that align with the 14\ndestructured variables.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit feb95c0",
+      "severity": "info",
+      "id": "0a3627c17b31650db005451a242f38ba9f688120",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:03:16.549Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2683774841,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 193
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Increase staleTime to meet guidelines (30-60s).**\n\nThe current `staleTime: 10000` (10 seconds) is below the 30-60 second range specified in the coding guidelines for critical data. While a shorter staleTime ensures fresher data, it also causes more frequent refetches.\n\n```diff\n-    staleTime: 10000, // Reduced to 10s to ensure fresh data when switching restaurants\n+    staleTime: 30000, // 30s per coding guidelines for critical data\n```\n\nNote: The queryKey already includes `selectedRestaurant?.restaurant_id`, so React Query will automatically refetch when the restaurant changes—no need to rely on a short staleTime for this. Based on coding guidelines: \"set staleTime 30-60s for critical data.\"\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 215 - 217, The staleTime for\nthe onboarding status query is set to 10000 (10s), which is below the project's\n30–60s guideline; update the query options by increasing staleTime to a value in\nthat range (e.g., 30000 or 60000) while keeping refetchOnMount and\nrefetchOnWindowFocus unchanged, and rely on the existing queryKey (which\nincludes selectedRestaurant?.restaurant_id) to trigger refetches when the\nrestaurant changes.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "d976aa80914584e8bf8f2d10e0171c53598fa2b0",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:03:19.847Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2686608833,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 142
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console statements from production code.**\n\nPer coding guidelines, console statements should be removed from production code. Use conditional logging only in development mode if needed.\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n        const errors = results.filter(r => r?.error);\n        if (errors.length > 0) {\n-         // Log errors but treat them as 0 counts to prevent blocking the UI\n-         console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n-           name: e.name,\n-           error: e.error?.message || e.error\n-         })));\n+         // Errors are treated as 0 counts to prevent blocking the UI\n+         if (import.meta.env.DEV) {\n+           console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n+             name: e.name,\n+             error: e.error?.message || e.error\n+           })));\n+         }\n          // We DO NOT throw here anymore.\n        }\n```\n</details>\n\nBased on coding guidelines, console.log statements should be removed from production code.\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        const errors = results.filter(r => r?.error);\n        if (errors.length > 0) {\n          // Errors are treated as 0 counts to prevent blocking the UI\n          if (import.meta.env.DEV) {\n            console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n              name: e.name,\n              error: e.error?.message || e.error\n            })));\n          }\n          // We DO NOT throw here anymore.\n        }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 134 - 142, The console.warn in\nuseOnboardingStatus should be removed from production: replace the direct\nconsole call inside the results/errors handling with either a proper logger\n(e.g., logger.warn) or wrap the existing message in a development-only guard\n(e.g., if (process.env.NODE_ENV !== 'production') { /* existing warning body */\n}), keeping the same message structure (name and error) and preserving the\ncomment that we do not throw; update the reference to errors/results in the same\nfunction (useOnboardingStatus) and ensure no console.* calls remain in\nproduction builds.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "04ee5971b5a0aa000fffc930028dfd738d43a582",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:19:46.268Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2686608842,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 188
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.error from production code.**\n\nSame issue as above—wrap in development check or remove entirely.\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n      } catch (err) {\n-        console.error('useOnboardingStatus: Exception in queryFn', err);\n+        if (import.meta.env.DEV) {\n+          console.error('useOnboardingStatus: Exception in queryFn', err);\n+        }\n         // Even if exception, return defaults to avoid UI crash\n         return {\n            hasPos: false, hasCollaborators: false, hasEmployees: false,\n            hasRecipes: false, hasReceipts: false, hasInventory: false, hasBank: false\n         };\n      }\n```\n</details>\n\nBased on coding guidelines, console statements should be conditional on development mode.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 181 - 188, The catch block in\nuseOnboardingStatus's queryFn currently calls console.error; remove that\nconsole.error or guard it behind a development-mode check (e.g., if\n(process.env.NODE_ENV !== 'production') or an existing isDev flag) so production\nbuilds emit no console statements, and optionally replace it with a call to the\napp logger if one exists (keep returning the same default object from the\ncatch).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "1014bbc70a92547c27642cb4ded9f04768082fbc",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:19:49.642Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 2686608851,
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 201
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Remove redundant useEffect—this causes double-fetching.**\n\nThis `useEffect` is the likely root cause of the \"repeated queries and refetches when the selected restaurant changes\" issue reported in PR comments.\n\nReact Query already handles `queryKey` changes automatically—when `selectedRestaurant?.restaurant_id` changes, the query is invalidated and refetched because it's part of the `queryKey` (line 53). The manual `refetch()` call here triggers a second, redundant fetch.\n\n<details>\n<summary>Suggested fix: Remove the useEffect</summary>\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.restaurant_id) {\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.restaurant_id, refetch]);\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 196 - 201, Remove the\nredundant useEffect that watches selectedRestaurant?.restaurant_id and calls\nrefetch(): locate the useEffect block that references\nselectedRestaurant?.restaurant_id and calls refetch(), and delete it so React\nQuery can handle refetching via the existing queryKey (which already includes\nselectedRestaurant?.restaurant_id). Ensure no other code expects this manual\nrefetch and rely on the query hook’s automatic behavior instead.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "d3ed7957a79ed52ebebc6c45f320f93a042e7b6b",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:19:53.010Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3738977410
+      },
+      "title": "@copilot the counts are still not showing correctly so the side panel with the onboarding tasks still shows as needing to onboard on everything.  Please take a ",
+      "body": "@copilot the counts are still not showing correctly so the side panel with the onboarding tasks still shows as needing to onboard on everything.  Please take a look.  It might have to do with the need to pass the restaurant id, do we trigger the counts again when the user selects a new restaurant? ",
+      "severity": "info",
+      "id": "51d7a4ec32e37b08bdcd380706c9d1273a5db6d8",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:19:56.506Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3738979079
+      },
+      "title": "@jdelgado2002 I've opened a new pull request, #313, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "body": "@jdelgado2002 I've opened a new pull request, #313, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "severity": "info",
+      "id": "5610837a81f20044a49b2fab7828d2e9bb69c88d",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:20:01.000Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3739048999
+      },
+      "title": "@copilot we are not display the information correctly, take a look at the logs, it seems we are querying the wrong set of tables: useOnboardingStatus: Starting ",
+      "body": "@copilot we are not display the information correctly, take a look at the logs, it seems we are querying the wrong set of tables: useOnboardingStatus: Starting query ObjectselectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nrrweb-plugin-console-record.js:160 useOnboardingStatus: Restaurant changed, refetching... ObjectrestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) Array(4)\r\nconsole.<computed> @ index-DYNt-qrY.js:1960Understand this warning\r\nrrweb-plugin-console-record.js:160 useOnboardingStatus: Calculated Status ObjecthasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Object\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Starting query {selectedRestaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}selectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Objectconstructor: ƒ Object()hasOwnProperty: ƒ hasOwnProperty()isPrototypeOf: ƒ isPrototypeOf()propertyIsEnumerable: ƒ propertyIsEnumerable()toLocaleString: ƒ toLocaleString()toString: ƒ toString()valueOf: ƒ valueOf()__defineGetter__: ƒ __defineGetter__()__defineSetter__: ƒ __defineSetter__()__lookupGetter__: ƒ __lookupGetter__()__lookupSetter__: ƒ __lookupSetter__()__proto__: (...)get __proto__: ƒ __proto__()set __proto__: ƒ __proto__()\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Restaurant changed, refetching... {restaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Starting query {selectedRestaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}selectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) (4) [{…}, {…}, {…}, {…}]0: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.invitations'\", message: \"Could not find the table 'public.integrations' in the schema cache\"}name: \"pos\"status: 404statusText: \"\"[[Prototype]]: Object1: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.recipes'\", message: \"Could not find the table 'public.receipts' in the schema cache\"}name: \"receipts\"status: 404statusText: \"\"[[Prototype]]: Object2: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.inventory_locations'\", message: \"Could not find the table 'public.inventory_counts' in the schema cache\"}name: \"inventory\"status: 404statusText: \"\"[[Prototype]]: Object3: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.toast_connections'\", message: \"Could not find the table 'public.bank_connections' in the schema cache\"}name: \"bank\"status: 404statusText: \"\"[[Prototype]]: Objectlength: 4[[Prototype]]: Array(0)\r\nconsole.<computed> @ index-DYNt-qrY.js:1960\r\n(anonymous) @ rrweb-plugin-console-record.js:160\r\nqueryFn @ index-DYNt-qrY.js:965\r\nawait in queryFn\r\ni @ index-DYNt-qrY.js:783\r\ng @ index-DYNt-qrY.js:783\r\nstart @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nyb @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nrefetch @ index-DYNt-qrY.js:783\r\n(anonymous) @ index-DYNt-qrY.js:965\r\ngl @ react-vendor-BGBakQ4e.js:32\r\nen @ react-vendor-BGBakQ4e.js:32\r\nXd @ react-vendor-BGBakQ4e.js:32\r\nCt @ react-vendor-BGBakQ4e.js:32\r\nra @ react-vendor-BGBakQ4e.js:32\r\ngt @ react-vendor-BGBakQ4e.js:30\r\n(anonymous) @ react-vendor-BGBakQ4e.js:32Understand this warning\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Calculated Status {hasPos: false, hasCollaborators: false, hasEmployees: false, hasRecipes: false, hasReceipts: false, …}hasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) (4) [{…}, {…}, {…}, {…}]\r\nconsole.<computed> @ index-DYNt-qrY.js:1960\r\n(anonymous) @ rrweb-plugin-console-record.js:160\r\nqueryFn @ index-DYNt-qrY.js:965\r\nawait in queryFn\r\ni @ index-DYNt-qrY.js:783\r\ng @ index-DYNt-qrY.js:783\r\nstart @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nyb @ index-DYNt-qrY.js:783\r\nonSubscribe @ index-DYNt-qrY.js:783\r\nsubscribe @ index-DYNt-qrY.js:783\r\n(anonymous) @ index-DYNt-qrY.js:783\r\nDs @ react-vendor-BGBakQ4e.js:30\r\ngl @ react-vendor-BGBakQ4e.js:32\r\nen @ react-vendor-BGBakQ4e.js:32\r\nXd @ react-vendor-BGBakQ4e.js:32\r\nCt @ react-vendor-BGBakQ4e.js:32\r\nra @ react-vendor-BGBakQ4e.js:32\r\ngt @ react-vendor-BGBakQ4e.js:30\r\n(anonymous) @ react-vendor-BGBakQ4e.js:32Understand this warning\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Calculated Status {hasPos: false, hasCollaborators: false, hasEmployees: false, hasRecipes: false, hasReceipts: false, …}hasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Objectconstructor: ƒ Object()hasOwnProperty: ƒ hasOwnProperty()isPrototypeOf: ƒ isPrototypeOf()propertyIsEnumerable: ƒ propertyIsEnumerable()toLocaleString: ƒ toLocaleString()toString: ƒ toString()valueOf: ƒ valueOf()__defineGetter__: ƒ __defineGetter__()__defineSetter__: ƒ __defineSetter__()__lookupGetter__: ƒ __lookupGetter__()__lookupSetter__: ƒ __lookupSetter__()__proto__: (...)get __proto__: ƒ __proto__()set __proto__: ƒ __proto__()",
+      "severity": "info",
+      "id": "1c05ad4ae6857b8e872cb9a891f7d3bfafd2837c",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:20:04.347Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3739050044
+      },
+      "title": "@jdelgado2002 I've opened a new pull request, #315, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "body": "@jdelgado2002 I've opened a new pull request, #315, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "severity": "info",
+      "id": "71874c4bd53cfeea723b3a78ad13be983e7d35a9",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:20:09.305Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3739189488
+      },
+      "title": "@copilot the unit tests are failing and we are also not finding anything anything with the search however, I am using a restaurant that has everything setup alr",
+      "body": "@copilot the unit tests are failing and we are also not finding anything anything with the search however, I am using a restaurant that has everything setup already, so all the onboarding steps should be checked.",
+      "severity": "info",
+      "id": "6c17916f81604cbe7c05ad32b72d033908aea9e5",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:20:12.451Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "312",
+        "comment_id": 3739190292
+      },
+      "title": "@jdelgado2002 I've opened a new pull request, #316, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "body": "@jdelgado2002 I've opened a new pull request, #316, to work on those changes. Once the pull request is ready, I'll request review from you.",
+      "severity": "info",
+      "id": "7454df0888c5fee0f655ca2b4bcdc607bbbc9e62",
+      "status": "fixed",
+      "created_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:20:17.807Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZuwADcpa4dcY-TIe4Qg",
+        "pr": "312",
+        "file": "src/hooks/useOnboardingStatus.ts",
+        "line": 23
+      },
+      "title": "'unknown' overrides all other types in this union type.",
+      "body": "'unknown' overrides all other types in this union type.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "224e7e76e8cddc36bc8c39aec18092bbfa298a87",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.400Z",
+      "updated_at": "2026-01-13T15:16:53.400Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 337
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "33961705174a69bda3ea69a2d5ecc7f0230c093b",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.413Z",
+      "updated_at": "2026-01-13T15:16:53.413Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 354
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "f9e4554ce45272b373767f1626ac53ec7db3be15",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.413Z",
+      "updated_at": "2026-01-13T15:16:53.413Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 635
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "bc61e4cc89f971b4304682730599920b2c6661ae",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.413Z",
+      "updated_at": "2026-01-13T15:16:53.413Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 672
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "83da48266c85be601da07c81b30af518e472f6d6",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.413Z",
+      "updated_at": "2026-01-13T15:16:53.413Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx",
+        "line": 723
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptMappingReview.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/ReceiptMappingReview.tsx"
+      ],
+      "id": "3c0912c753c36ca887561d7857529be8f65f87d6",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.413Z",
+      "updated_at": "2026-01-13T15:16:53.413Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptItemRow.tsx",
+        "line": 26
+      },
+      "title": "@typescript-eslint/no-explicit-any in ReceiptItemRow.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/receipt/ReceiptItemRow.tsx"
+      ],
+      "id": "cddb3aaf371ee5f376ccb67be593943959acb243",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.414Z",
+      "updated_at": "2026-01-13T15:16:53.414Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts",
+        "line": 35
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts"
+      ],
+      "id": "b60a696b206135946439716741dcea046f2466bb",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.414Z",
+      "updated_at": "2026-01-13T15:16:53.414Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts",
+        "line": 145
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts"
+      ],
+      "id": "ce2c18702ac20120581ae7b7acd2ae7e6aaa9238",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.414Z",
+      "updated_at": "2026-01-13T15:16:53.414Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 726
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "fa8242de95a51b1c9f7d18f1cd8f9eecd1e495b5",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.414Z",
+      "updated_at": "2026-01-13T15:16:53.414Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx",
+        "line": 747
+      },
+      "title": "@typescript-eslint/no-explicit-any in useReceiptImport.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useReceiptImport.tsx"
+      ],
+      "id": "5a82fc46160d32ca9cfd7b4b4377630fee31c799",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.414Z",
+      "updated_at": "2026-01-13T15:16:53.414Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 282
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "64b902f922825afca745501e0154866056cbb679",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.418Z",
+      "updated_at": "2026-01-13T15:16:53.418Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 290
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "0cd4e7683759fe6f1135de30308d5ffeeed9b970",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.418Z",
+      "updated_at": "2026-01-13T15:16:53.418Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 764
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "65bc8682bc5db1d701b75a64c3341dfc45030710",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.418Z",
+      "updated_at": "2026-01-13T15:16:53.418Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts",
+        "line": 776
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-receipt/index.ts"
+      ],
+      "id": "8c8c9159578ef411ea6d88450fc6a254c3b66301",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.418Z",
+      "updated_at": "2026-01-13T15:16:53.418Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx",
+        "line": 52
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.test.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useOnboardingStatus.test.tsx"
+      ],
+      "id": "268087c495d1ab2129b1b8946eeff724171df0a0",
+      "status": "open",
+      "created_at": "2026-01-13T15:16:53.420Z",
+      "updated_at": "2026-01-13T15:16:53.420Z"
     }
   ]
 }

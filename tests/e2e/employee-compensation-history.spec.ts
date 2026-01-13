@@ -61,7 +61,7 @@ async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof
   await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
   await addRestaurantButton.click();
 
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
   await expect(dialog).toBeVisible();
 
   await dialog.getByLabel(/restaurant name/i).fill(testUser.restaurantName);

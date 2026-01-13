@@ -67,7 +67,7 @@ async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
   await expect(addRestaurantButton).toBeVisible();
   await addRestaurantButton.click();
 
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
   await dialog.getByLabel(/address/i).fill('123 Inventory Street');

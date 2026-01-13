@@ -25765,12 +25765,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console statements from production code.**\n\nPer coding guidelines, console statements should be removed from production code. Use conditional logging only in development mode if needed.\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n        const errors = results.filter(r => r?.error);\n        if (errors.length > 0) {\n-         // Log errors but treat them as 0 counts to prevent blocking the UI\n-         console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n-           name: e.name,\n-           error: e.error?.message || e.error\n-         })));\n+         // Errors are treated as 0 counts to prevent blocking the UI\n+         if (import.meta.env.DEV) {\n+           console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n+             name: e.name,\n+             error: e.error?.message || e.error\n+           })));\n+         }\n          // We DO NOT throw here anymore.\n        }\n```\n</details>\n\nBased on coding guidelines, console.log statements should be removed from production code.\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        const errors = results.filter(r => r?.error);\n        if (errors.length > 0) {\n          // Errors are treated as 0 counts to prevent blocking the UI\n          if (import.meta.env.DEV) {\n            console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n              name: e.name,\n              error: e.error?.message || e.error\n            })));\n          }\n          // We DO NOT throw here anymore.\n        }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 134 - 142, The console.warn in\nuseOnboardingStatus should be removed from production: replace the direct\nconsole call inside the results/errors handling with either a proper logger\n(e.g., logger.warn) or wrap the existing message in a development-only guard\n(e.g., if (process.env.NODE_ENV !== 'production') { /* existing warning body */\n}), keeping the same message structure (name and error) and preserving the\ncomment that we do not throw; update the reference to errors/results in the same\nfunction (useOnboardingStatus) and ensure no console.* calls remain in\nproduction builds.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "04ee5971b5a0aa000fffc930028dfd738d43a582",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:19:46.268Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25785,12 +25788,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.error from production code.**\n\nSame issue as above—wrap in development check or remove entirely.\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n      } catch (err) {\n-        console.error('useOnboardingStatus: Exception in queryFn', err);\n+        if (import.meta.env.DEV) {\n+          console.error('useOnboardingStatus: Exception in queryFn', err);\n+        }\n         // Even if exception, return defaults to avoid UI crash\n         return {\n            hasPos: false, hasCollaborators: false, hasEmployees: false,\n            hasRecipes: false, hasReceipts: false, hasInventory: false, hasBank: false\n         };\n      }\n```\n</details>\n\nBased on coding guidelines, console statements should be conditional on development mode.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 181 - 188, The catch block in\nuseOnboardingStatus's queryFn currently calls console.error; remove that\nconsole.error or guard it behind a development-mode check (e.g., if\n(process.env.NODE_ENV !== 'production') or an existing isDev flag) so production\nbuilds emit no console statements, and optionally replace it with a call to the\napp logger if one exists (keep returning the same default object from the\ncatch).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "1014bbc70a92547c27642cb4ded9f04768082fbc",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:19:49.642Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25805,12 +25811,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Remove redundant useEffect—this causes double-fetching.**\n\nThis `useEffect` is the likely root cause of the \"repeated queries and refetches when the selected restaurant changes\" issue reported in PR comments.\n\nReact Query already handles `queryKey` changes automatically—when `selectedRestaurant?.restaurant_id` changes, the query is invalidated and refetched because it's part of the `queryKey` (line 53). The manual `refetch()` call here triggers a second, redundant fetch.\n\n<details>\n<summary>Suggested fix: Remove the useEffect</summary>\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.restaurant_id) {\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.restaurant_id, refetch]);\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 196 - 201, Remove the\nredundant useEffect that watches selectedRestaurant?.restaurant_id and calls\nrefetch(): locate the useEffect block that references\nselectedRestaurant?.restaurant_id and calls refetch(), and delete it so React\nQuery can handle refetching via the existing queryKey (which already includes\nselectedRestaurant?.restaurant_id). Ensure no other code expects this manual\nrefetch and rely on the query hook’s automatic behavior instead.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "d3ed7957a79ed52ebebc6c45f320f93a042e7b6b",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:19:53.010Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25823,12 +25832,15 @@
       "body": "@copilot the counts are still not showing correctly so the side panel with the onboarding tasks still shows as needing to onboard on everything.  Please take a look.  It might have to do with the need to pass the restaurant id, do we trigger the counts again when the user selects a new restaurant? ",
       "severity": "info",
       "id": "51d7a4ec32e37b08bdcd380706c9d1273a5db6d8",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:19:56.506Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25841,12 +25853,15 @@
       "body": "@jdelgado2002 I've opened a new pull request, #313, to work on those changes. Once the pull request is ready, I'll request review from you.",
       "severity": "info",
       "id": "5610837a81f20044a49b2fab7828d2e9bb69c88d",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:20:01.000Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25859,12 +25874,15 @@
       "body": "@copilot we are not display the information correctly, take a look at the logs, it seems we are querying the wrong set of tables: useOnboardingStatus: Starting query ObjectselectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nrrweb-plugin-console-record.js:160 useOnboardingStatus: Restaurant changed, refetching... ObjectrestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) Array(4)\r\nconsole.<computed> @ index-DYNt-qrY.js:1960Understand this warning\r\nrrweb-plugin-console-record.js:160 useOnboardingStatus: Calculated Status ObjecthasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Object\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Starting query {selectedRestaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}selectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Objectconstructor: ƒ Object()hasOwnProperty: ƒ hasOwnProperty()isPrototypeOf: ƒ isPrototypeOf()propertyIsEnumerable: ƒ propertyIsEnumerable()toLocaleString: ƒ toLocaleString()toString: ƒ toString()valueOf: ƒ valueOf()__defineGetter__: ƒ __defineGetter__()__defineSetter__: ƒ __defineSetter__()__lookupGetter__: ƒ __lookupGetter__()__lookupSetter__: ƒ __lookupSetter__()__proto__: (...)get __proto__: ƒ __proto__()set __proto__: ƒ __proto__()\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Restaurant changed, refetching... {restaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Starting query {selectedRestaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}selectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) (4) [{…}, {…}, {…}, {…}]0: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.invitations'\", message: \"Could not find the table 'public.integrations' in the schema cache\"}name: \"pos\"status: 404statusText: \"\"[[Prototype]]: Object1: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.recipes'\", message: \"Could not find the table 'public.receipts' in the schema cache\"}name: \"receipts\"status: 404statusText: \"\"[[Prototype]]: Object2: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.inventory_locations'\", message: \"Could not find the table 'public.inventory_counts' in the schema cache\"}name: \"inventory\"status: 404statusText: \"\"[[Prototype]]: Object3: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.toast_connections'\", message: \"Could not find the table 'public.bank_connections' in the schema cache\"}name: \"bank\"status: 404statusText: \"\"[[Prototype]]: Objectlength: 4[[Prototype]]: Array(0)\r\nconsole.<computed> @ index-DYNt-qrY.js:1960\r\n(anonymous) @ rrweb-plugin-console-record.js:160\r\nqueryFn @ index-DYNt-qrY.js:965\r\nawait in queryFn\r\ni @ index-DYNt-qrY.js:783\r\ng @ index-DYNt-qrY.js:783\r\nstart @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nyb @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nrefetch @ index-DYNt-qrY.js:783\r\n(anonymous) @ index-DYNt-qrY.js:965\r\ngl @ react-vendor-BGBakQ4e.js:32\r\nen @ react-vendor-BGBakQ4e.js:32\r\nXd @ react-vendor-BGBakQ4e.js:32\r\nCt @ react-vendor-BGBakQ4e.js:32\r\nra @ react-vendor-BGBakQ4e.js:32\r\ngt @ react-vendor-BGBakQ4e.js:30\r\n(anonymous) @ react-vendor-BGBakQ4e.js:32Understand this warning\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Calculated Status {hasPos: false, hasCollaborators: false, hasEmployees: false, hasRecipes: false, hasReceipts: false, …}hasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) (4) [{…}, {…}, {…}, {…}]\r\nconsole.<computed> @ index-DYNt-qrY.js:1960\r\n(anonymous) @ rrweb-plugin-console-record.js:160\r\nqueryFn @ index-DYNt-qrY.js:965\r\nawait in queryFn\r\ni @ index-DYNt-qrY.js:783\r\ng @ index-DYNt-qrY.js:783\r\nstart @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nyb @ index-DYNt-qrY.js:783\r\nonSubscribe @ index-DYNt-qrY.js:783\r\nsubscribe @ index-DYNt-qrY.js:783\r\n(anonymous) @ index-DYNt-qrY.js:783\r\nDs @ react-vendor-BGBakQ4e.js:30\r\ngl @ react-vendor-BGBakQ4e.js:32\r\nen @ react-vendor-BGBakQ4e.js:32\r\nXd @ react-vendor-BGBakQ4e.js:32\r\nCt @ react-vendor-BGBakQ4e.js:32\r\nra @ react-vendor-BGBakQ4e.js:32\r\ngt @ react-vendor-BGBakQ4e.js:30\r\n(anonymous) @ react-vendor-BGBakQ4e.js:32Understand this warning\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Calculated Status {hasPos: false, hasCollaborators: false, hasEmployees: false, hasRecipes: false, hasReceipts: false, …}hasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Objectconstructor: ƒ Object()hasOwnProperty: ƒ hasOwnProperty()isPrototypeOf: ƒ isPrototypeOf()propertyIsEnumerable: ƒ propertyIsEnumerable()toLocaleString: ƒ toLocaleString()toString: ƒ toString()valueOf: ƒ valueOf()__defineGetter__: ƒ __defineGetter__()__defineSetter__: ƒ __defineSetter__()__lookupGetter__: ƒ __lookupGetter__()__lookupSetter__: ƒ __lookupSetter__()__proto__: (...)get __proto__: ƒ __proto__()set __proto__: ƒ __proto__()",
       "severity": "info",
       "id": "1c05ad4ae6857b8e872cb9a891f7d3bfafd2837c",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:20:04.347Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25877,12 +25895,15 @@
       "body": "@jdelgado2002 I've opened a new pull request, #315, to work on those changes. Once the pull request is ready, I'll request review from you.",
       "severity": "info",
       "id": "71874c4bd53cfeea723b3a78ad13be983e7d35a9",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:20:09.305Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25895,12 +25916,15 @@
       "body": "@copilot the unit tests are failing and we are also not finding anything anything with the search however, I am using a restaurant that has everything setup already, so all the onboarding steps should be checked.",
       "severity": "info",
       "id": "6c17916f81604cbe7c05ad32b72d033908aea9e5",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:20:12.451Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {
@@ -25913,12 +25937,15 @@
       "body": "@jdelgado2002 I've opened a new pull request, #316, to work on those changes. Once the pull request is ready, I'll request review from you.",
       "severity": "info",
       "id": "7454df0888c5fee0f655ca2b4bcdc607bbbc9e62",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T18:06:38.573Z",
+      "updated_at": "2026-01-13T18:20:17.807Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests: lint failed (pre-existing issues), test:all failed (test:db cannot connect to localhost:54322)"
       ]
     },
     {

@@ -31,9 +31,15 @@ export const OnboardingDrawer = () => {
   // Load dismissed state from local storage on mount
   useEffect(() => {
     const dismissed = localStorage.getItem('onboarding_drawer_dismissed');
-    if (dismissed === 'true' && percentage < 100) {
+    if (percentage >= 100) {
       setIsOpen(false);
+      return;
     }
+    if (dismissed === 'true') {
+      setIsOpen(false);
+      return;
+    }
+    setIsOpen(true);
   }, [percentage]);
 
   const handleOpen = () => {

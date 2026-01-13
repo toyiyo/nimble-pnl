@@ -387,4 +387,48 @@ describe('useOnboardingStatus', () => {
     // Should have 2 completed steps (inventory + bank)
     expect(result.current.completedCount).toBe(2);
   });
+
+  it('queries the expected onboarding tables', async () => {
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const queriedTables = new Set(mockQueries.map(({ table }) => table));
+    const expectedTables = [
+      'user_restaurants',
+      'employees',
+      'recipes',
+      'receipt_imports',
+      'inventory_reconciliations',
+      'inventory_transactions',
+      'connected_banks',
+      'bank_transactions',
+      'square_connections',
+      'toast_connections',
+      'clover_connections',
+      'shift4_connections',
+      'invitations',
+      'products'
+    ];
+    expectedTables.forEach((table) => {
+      expect(queriedTables.has(table)).toBe(true);
+    });
+
+    const legacyTables = ['integrations', 'receipts', 'inventory_counts', 'bank_connections'];
+    legacyTables.forEach((table) => {
+      expect(queriedTables.has(table)).toBe(false);
+    });
+  });
+
+  it('filters each onboarding query by restaurant_id', async () => {
+    const { result } = renderHook(() => useOnboardingStatus(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const missingRestaurantFilter = mockQueries.filter(({ chainable }) =>
+      !chainable.eq.mock.calls.some(([column]) => column === 'restaurant_id')
+    );
+
+    expect(missingRestaurantFilter).toHaveLength(0);
+  });
 });

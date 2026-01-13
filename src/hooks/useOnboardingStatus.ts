@@ -26,6 +26,23 @@ export interface OnboardingStatus {
 
 type TableName = keyof Database['public']['Tables'];
 
+const onboardingTables = {
+  collaborators: 'user_restaurants',
+  employees: 'employees',
+  recipes: 'recipes',
+  receiptImports: 'receipt_imports',
+  inventoryReconciliations: 'inventory_reconciliations',
+  inventoryTransactions: 'inventory_transactions',
+  connectedBanks: 'connected_banks',
+  bankTransactions: 'bank_transactions',
+  squareConnections: 'square_connections',
+  toastConnections: 'toast_connections',
+  cloverConnections: 'clover_connections',
+  shift4Connections: 'shift4_connections',
+  invitations: 'invitations',
+  products: 'products'
+} as const;
+
 const checkTableCount = (
   restaurantId: string, 
   table: TableName, 
@@ -54,12 +71,13 @@ export const useOnboardingStatus = (): OnboardingStatus => {
     ?? selectedRestaurant?.restaurant?.id
     ?? selectedRestaurant?.id
     ?? null;
+  const isDev = import.meta.env.DEV;
 
   const { data: status, isLoading, error, refetch } = useQuery({
     queryKey: ['onboarding-status', restaurantId],
     queryFn: async () => {
       if (!restaurantId) {
-        if (import.meta.env.DEV) {
+        if (isDev) {
           console.warn('useOnboardingStatus: Missing restaurant ID', { selectedRestaurant });
         }
         return null;
@@ -84,40 +102,40 @@ export const useOnboardingStatus = (): OnboardingStatus => {
           productResult
         ] = await Promise.all([
           // 1. Collaborators (more than just the owner)
-          checkTableCount(restaurantId, 'user_restaurants'),
+          checkTableCount(restaurantId, onboardingTables.collaborators),
 
           // 2. Employees
-          checkTableCount(restaurantId, 'employees'),
+          checkTableCount(restaurantId, onboardingTables.employees),
 
           // 3. Recipes
-          checkTableCount(restaurantId, 'recipes'),
+          checkTableCount(restaurantId, onboardingTables.recipes),
 
           // 4. Receipt Imports (uploaded receipts)
-          checkTableCount(restaurantId, 'receipt_imports'),
+          checkTableCount(restaurantId, onboardingTables.receiptImports),
 
           // 5. Inventory Reconciliations
-          checkTableCount(restaurantId, 'inventory_reconciliations'),
+          checkTableCount(restaurantId, onboardingTables.inventoryReconciliations),
           
           // 5b. Alternative: Inventory Transactions
-          checkTableCount(restaurantId, 'inventory_transactions'),
+          checkTableCount(restaurantId, onboardingTables.inventoryTransactions),
           
           // 6. Bank Account (connected banks via Stripe)
-          checkTableCount(restaurantId, 'connected_banks'),
+          checkTableCount(restaurantId, onboardingTables.connectedBanks),
           
           // 6b. Alternative: Bank Transactions (if statements were uploaded)
-          checkTableCount(restaurantId, 'bank_transactions'),
+          checkTableCount(restaurantId, onboardingTables.bankTransactions),
             
           // 7. Specific POS Connections
-          checkTableCount(restaurantId, 'square_connections'),
-          checkTableCount(restaurantId, 'toast_connections'),
-          checkTableCount(restaurantId, 'clover_connections'),
-          checkTableCount(restaurantId, 'shift4_connections'),
+          checkTableCount(restaurantId, onboardingTables.squareConnections),
+          checkTableCount(restaurantId, onboardingTables.toastConnections),
+          checkTableCount(restaurantId, onboardingTables.cloverConnections),
+          checkTableCount(restaurantId, onboardingTables.shift4Connections),
 
           // 8. Invitations (Pending Collaborators)
-          checkTableCount(restaurantId, 'invitations', { status: 'pending' }),
+          checkTableCount(restaurantId, onboardingTables.invitations, { status: 'pending' }),
 
           // 9. Products (Inventory Items)
-          checkTableCount(restaurantId, 'products')
+          checkTableCount(restaurantId, onboardingTables.products)
         ]);
 
         // Check for errors
@@ -140,8 +158,8 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
         const errors = results.filter(r => r?.error);
         if (errors.length > 0) {
-          // Log errors but treat them as 0 counts to prevent blocking the UI
-          if (import.meta.env.DEV) {
+          // Errors are treated as 0 counts to prevent blocking the UI
+          if (isDev) {
             console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({
               name: e.name,
               error: e.error?.message || e.error
@@ -188,7 +206,7 @@ export const useOnboardingStatus = (): OnboardingStatus => {
 
         return finalStatus;
       } catch (err) {
-         if (import.meta.env.DEV) {
+         if (isDev) {
            console.error('useOnboardingStatus: Exception in queryFn', err);
          }
          // Even if exception, return defaults to avoid UI crash

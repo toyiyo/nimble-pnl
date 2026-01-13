@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { useOnboardingStatus, OnboardingStep } from '@/hooks/useOnboardingStatus';
@@ -99,5 +99,23 @@ describe('OnboardingDrawer', () => {
     render(<OnboardingDrawer />);
 
     expect(screen.getByRole('button', { name: /connect a pos/i })).toBeInTheDocument();
+  });
+
+  it('hides the drawer when onboarding is complete', async () => {
+    mockedUseOnboardingStatus.mockReturnValue({
+      steps: baseSteps.map((step) => ({ ...step, isCompleted: true })),
+      completedCount: baseSteps.length,
+      totalCount: baseSteps.length,
+      percentage: 100,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<OnboardingDrawer />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/getting started/i)).not.toBeInTheDocument();
+    });
   });
 });

@@ -51,8 +51,9 @@ test.describe('Prep Production E2E Flow', () => {
 
     // Select the restaurant on the main page
 
-    await page.getByText('Inventory', { exact: true }).click();
-    await page.getByRole('button', { name: 'Inventory', exact: true }).click();
+    const sidebar = page.locator('[data-sidebar="sidebar"]');
+    await sidebar.locator('[data-sidebar="group-label"]', { hasText: /^Inventory$/ }).click();
+    await sidebar.locator('[data-sidebar="menu-button"]', { hasText: /^Inventory$/ }).click();
     await page.getByRole('button', { name: 'Add Your First Product' }).click();
     await page.getByRole('spinbutton', { name: 'Quantity to Add (in pieces)' }).click();
     await page.getByRole('spinbutton', { name: 'Quantity to Add (in pieces)' }).fill('10');

@@ -30,9 +30,8 @@ async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof gen
   await page.waitForURL(/\/auth/);
 
   const signupTab = page.getByRole('tab', { name: /sign up/i });
-  if (await signupTab.isVisible().catch(() => false)) {
-    await signupTab.click();
-  }
+  await expect(signupTab).toBeVisible({ timeout: 10000 });
+  await signupTab.click();
 
   await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
   await page.getByLabel(/email/i).first().fill(user.email);
@@ -101,4 +100,3 @@ test.describe('Tip Double-Counting Prevention', () => {
     // The unit tests already verify the double-counting prevention logic
   });
 });
-

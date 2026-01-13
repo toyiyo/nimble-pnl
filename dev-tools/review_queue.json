@@ -25525,12 +25525,16 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Likely redundant refetching (can double-fetch *13 queries* on restaurant switch / mount / focus).**  \nGiven the queryKey includes the restaurant id, a restaurant switch should naturally create a new cache entry and fetch. With `refetchOnMount: true` + `refetchOnWindowFocus: true` + the `useEffect(refetch)`, you can easily end up with unnecessary extra traffic.  \n\n\n<details>\n<summary>Proposed change (simplest): drop the explicit useEffect refetch</summary>\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.id) {\n-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.id, refetch]);\n+  // queryKey change already triggers a fetch when restaurant changes\n```\n</details>\n\n\nAlso applies to: 172-185\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 51 - 112, The hook\nuseOnboardingStatus is causing redundant network calls because useQuery already\nuses the restaurant id in its queryKey but the code combines\nrefetchOnMount/refetchOnWindowFocus with an explicit useEffect that calls\nrefetch (the refetch variable returned from useQuery), which can trigger\ndouble-fetches of the 13 parallel checks on mount/focus/restaurant switch;\nremove the explicit useEffect(refetch) (and similar explicit refetch uses around\nlines 172-185) so rely on the queryKey behavior or alternatively set\nrefetchOnMount/refetchOnWindowFocus to false if you need manual control—locate\nthe useQuery invocation and the useEffect that calls refetch and delete the\nuseEffect (or flip the refetchOnMount/refetchOnWindowFocus flags) to eliminate\nredundant refetches.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "48ff1d19b410ce8f315b79a6dca894ebef3e38df",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:02:43.195Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25545,12 +25549,16 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Remove or dev-gate `console.*` (violates TS/TSX guidelines + can leak noisy details).**  \n\n\n<details>\n<summary>Proposed change (Vite)</summary>\n\n```diff\n     queryFn: async () => {\n-      console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n+      const debug = import.meta.env.DEV;\n+      if (debug) console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n\n       if (!selectedRestaurant?.id) {\n-        console.log('useOnboardingStatus: No restaurant ID');\n+        if (debug) console.log('useOnboardingStatus: No restaurant ID');\n         return null;\n       }\n...\n-        console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors);\n+        if (debug) console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors);\n...\n-        console.log('useOnboardingStatus: Calculated Status', finalStatus);\n+        if (debug) console.log('useOnboardingStatus: Calculated Status', finalStatus);\n...\n-         console.error('useOnboardingStatus: Exception in queryFn', err);\n+         if (debug) console.error('useOnboardingStatus: Exception in queryFn', err);\n...\n   useEffect(() => {\n     if (selectedRestaurant?.id) {\n-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n+      const debug = import.meta.env.DEV;\n+      if (debug) console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n       refetch();\n     }\n   }, [selectedRestaurant?.id, refetch]);\n```\n</details>\n\n\nAlso applies to: 161-169, 179-183\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 54 - 58, In\nuseOnboardingStatus, remove the raw console.log/console.* calls (seen at the\nstart of the hook and around the other ranges you flagged) or gate them behind a\nVite dev-only check; specifically, replace direct console.* usage in the\nuseOnboardingStatus function with a dev-only guard such as import.meta.env.DEV\n(or a shared isDev helper) so logs run only in development, and ensure no\nconsole.* calls remain in production paths.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "588ac216c47df51080d9b3857fdd8c24de80e6b6",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:02:46.851Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25565,12 +25573,16 @@
       "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n**Remove or wrap console statements for production.**\n\nMultiple `console.log`, `console.warn`, and `console.error` statements will execute in production. As per coding guidelines, these should be removed or wrapped in development-only checks.\n\n\n<details>\n<summary>♻️ Suggested pattern</summary>\n\n```typescript\nconst isDev = process.env.NODE_ENV === 'development';\n\n// Then wrap each log:\nif (isDev) {\n  console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n}\n```\n\nAlternatively, remove all console statements and rely on React Query DevTools for debugging during development.\n</details>\n\n\nAlso applies to: 129-131, 156-157, 159-160, 176-177\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 54 - 59, The hook\nuseOnboardingStatus contains multiple console.log/warn/error calls (e.g., around\nthe selectedRestaurant check and other locations) that will run in production;\nreplace these with a development-only guard or a proper logger: detect\ndevelopment via process.env.NODE_ENV === 'development' (or use the existing app\nlogger) and wrap each console.* call (or remove them) so they only execute when\nin dev, ensuring calls near selectedRestaurant?.id, the query start, and the\nother occurrences are updated accordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "469856a4f253882f7790705b647fe53d8182e0e2",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:02:51.482Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25585,12 +25597,16 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\ncat tests/unit/useOnboardingStatus.test.tsx | wc -l\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 64\n\n---\n\n🏁 Script executed:\n\n```shell\n# First, let's look at the test setup to understand how mocking is configured\nhead -100 tests/unit/useOnboardingStatus.test.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3119\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for mock setup and useRestaurantContext usage\nrg -n \"useRestaurantContext\\|mockSelectedRestaurant\\|from\\(\" tests/unit/useOnboardingStatus.test.tsx | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for the specific test and any assertions about the mock's eq() calls\nrg -n -A 30 \"should refetch data when restaurant changes\" tests/unit/useOnboardingStatus.test.tsx | head -80\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1037\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for any existing mock validation on Supabase calls\nrg -n \"\\.toHaveBeenCalledWith\\|\\.eq\\(\" tests/unit/useOnboardingStatus.test.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\nfind . -name \"useOnboardingStatus.ts\" -o -name \"useOnboardingStatus.tsx\" | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for the hook implementation\nrg -l \"useOnboardingStatus\" src/ --type ts --type tsx | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get content of the hook\ncat src/hooks/useOnboardingStatus.ts 2>/dev/null || cat src/hooks/useOnboardingStatus.tsx 2>/dev/null\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 9784\n\n---\n\n🏁 Script executed:\n\n```shell\n# If previous didn't work, search more broadly\nrg -A 50 \"export.*useOnboardingStatus\" src/ | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3472\n\n---\n\n\n\n</details>\n\n**Add explicit mock assertions to verify the correct restaurant_id is passed to Supabase queries.**\n\nThe test validates the refetch indirectly by checking state changes, which works. However, the test relies on implicit validation: if the Supabase query targeted the wrong restaurant, the mock's `mockDbState` would still be different, masking the actual query parameter. Add explicit assertions on the mock's `eq()` call to directly verify the restaurant_id parameter:\n\n```javascript\n// After the second rerender, verify the mock was called correctly\nexpect(chainable.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-B');\n```\n\nThis makes the test intent explicit and more robust against future changes to the hook's query logic.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @tests/unit/useOnboardingStatus.test.tsx around lines 232 - 307, The test\nshould explicitly assert that the Supabase query was called with the correct\nrestaurant_id to ensure the hook queries the right restaurant after rerender;\nafter you set mockSelectedRestaurant to restaurant-B and call rerender() and\nawait the query completion (the existing waitFor checking isLoading), add an\nassertion that the mock chainable.eq was called with ('restaurant_id',\n'restaurant-B') (i.e.,\nexpect(chainable.eq).toHaveBeenCalledWith('restaurant_id', 'restaurant-B'));\nplace this assertion after the second waitFor so it verifies the eq call for the\nsecond restaurant and reuse the existing chainable/mock objects used by the test\nharness that provide eq().\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "acd83db177cda1ce59ad8dc04e724f0fddd61ef6",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:02:54.864Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25605,12 +25621,16 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's understand the repository structure\ngit ls-files | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 844\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the useOnboardingStatus.ts file and read it\nfind . -name \"useOnboardingStatus.ts\" -type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if Supabase types exist\nfind . -path \"*/supabase/types*\" -type f | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 97\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the full useOnboardingStatus.ts file\ncat -n src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 13295\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the Supabase types to see available tables\nhead -100 src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2867\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for usages of checkTableCount to see which tables are passed\nrg \"checkTableCount\" src/hooks/useOnboardingStatus.ts -A 3 -B 1\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1842\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if all referenced tables exist in the Supabase types\ngrep -o '\"[a-z_]*\": {' src/integrations/supabase/types.ts | sed 's/\"//g' | sed 's/: {//' | sort\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify specific tables referenced in useOnboardingStatus exist in types\ntables=(\n  \"user_restaurants\"\n  \"employees\"\n  \"recipes\"\n  \"receipt_imports\"\n  \"receipt_line_items\"\n  \"inventory_reconciliations\"\n  \"inventory_transactions\"\n  \"connected_banks\"\n  \"bank_transactions\"\n  \"square_connections\"\n  \"toast_connections\"\n  \"clover_connections\"\n  \"shift4_connections\"\n  \"invitations\"\n  \"products\"\n)\n\necho \"=== Checking if tables exist in Supabase types ===\"\nfor table in \"${tables[@]}\"; do\n  if grep -q \"\\\"$table\\\":\" src/integrations/supabase/types.ts; then\n    echo \"✓ $table\"\n  else\n    echo \"✗ $table NOT FOUND\"\n  fi\ndone\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 540\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the Database type structure to understand how tables are typed\ngrep -A 5 \"Tables: {\" src/integrations/supabase/types.ts | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 215\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the complete list of tables defined in the Supabase types\nrg \"^      [a-z_]+: \\{\" src/integrations/supabase/types.ts | sed 's/.*: {//' | cut -d':' -f1 | sort\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 334\n\n---\n\n🏁 Script executed:\n\n```shell\n# Try a different approach - look for all table names\nrg \"^\\s+[a-z_]+: \\{\" src/integrations/supabase/types.ts -o | awk '{print $1}' | sort | uniq\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4383\n\n---\n\n🏁 Script executed:\n\n```shell\n# Count the file size and structure\nwc -l src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 100\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look at the structure around Tables definition\nsed -n '2,100p' src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2848\n\n---\n\n🏁 Script executed:\n\n```shell\n# Double-check if shift4_connections exists in the types\nrg \"shift4_connections\" src/integrations/supabase/types.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 156\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check how the Database type is structured - look for proper typing pattern\nrg \"supabase\\.from\" src/hooks/useOnboardingStatus.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 351\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there are other files using supabase.from with proper typing\nrg \"supabase\\.from\" src/ -l | head -5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 214\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look at how another file properly types the table parameter\nrg \"from\\(\" src/hooks/ -A 5 | head -40\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2402\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check what typing approach is used by looking at Supabase client setup\ncat -n src/integrations/supabase/client.ts | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1524\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for how other properly-typed hooks handle table queries\nrg \"from\\(\" src/hooks/usePnLAnalytics.tsx -B 2 -A 8 | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 879\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there's a way to properly type the table parameter\ngrep -n \"type.*Table\" src/integrations/supabase/types.ts | head -10\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 147\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify React Query usage - check staleTime values in other hooks\nrg \"staleTime:\" src/hooks/ | head -10\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 744\n\n---\n\n\n\n</details>\n\n**Remove `as any` cast and refactor to use typed table names; increase staleTime to 30-60s per React Query guidelines.**\n\nThe `table as any` cast removes type safety and makes it difficult to catch issues with column names or filters at compile time. While the referenced tables do exist in the Supabase schema, this pattern prevents TypeScript from validating query parameters against each table's actual structure. \n\nAdditionally, `staleTime: 10000` is below the 30-60s guideline for critical data like onboarding status that users rely on for navigation decisions.\n\nRefactor `checkTableCount` to use a union type of valid table names:\n\n```typescript\ntype OnboardingTable = \n  | 'user_restaurants' | 'employees' | 'recipes' | 'receipt_imports'\n  | 'receipt_line_items' | 'inventory_reconciliations' | 'inventory_transactions'\n  | 'connected_banks' | 'bank_transactions' | 'square_connections'\n  | 'toast_connections' | 'clover_connections' | 'shift4_connections'\n  | 'invitations' | 'products';\n\nconst checkTableCount = (\n  restaurantId: string, \n  table: OnboardingTable,\n  filters?: Record<string, string>\n) => {\n  let query = supabase.from(table)  // No 'as any' needed\n    .select('id', { count: 'exact', head: false })\n    .eq('restaurant_id', restaurantId)\n    .limit(1);\n  // ...\n}\n```\n\nIncrease `staleTime` to `staleTime: 45000` (45 seconds) to match critical data caching guidelines.\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "f909b3a043f32dd4ed6abb8b2cf556fb7b0268a3",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:02:59.339Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25625,12 +25645,16 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console statements from production code.**\n\nMultiple `console.log`, `console.warn`, and `console.error` statements are present throughout this hook (lines 55, 58, 142-147, 152-155, 167-172, 191-203, 215, 218, 235). As per coding guidelines, these should be removed or wrapped in a development-only conditional.\n\n<details>\n<summary>🛠️ Suggested approach</summary>\n\nEither remove the console statements entirely, or wrap them conditionally:\n\n```typescript\nconst isDev = process.env.NODE_ENV === 'development';\n\n// Then use:\nif (isDev) console.log('useOnboardingStatus: Starting query', { selectedRestaurantId: selectedRestaurant?.id });\n```\n\nAlternatively, create a debug utility that only logs in development mode.\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 55 - 58, In the\nuseOnboardingStatus hook remove all direct console.* calls\n(console.log/warn/error) or guard them behind a development-only check; search\nfor console statements in useOnboardingStatus (occurrences around the start\nlogs, and the blocks spanning lines ~142–147, 152–155, 167–172, 191–203, 215,\n218, 235) and either delete them or replace them with a call to a debug utility\nor conditional check such as isDev (process.env.NODE_ENV === 'development') so\nthat logging only runs in development; ensure the exported\nfunction/useOnboardingStatus contains no remaining raw console calls.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "0d83245b0cf40ec4cf23c0158375b106291cec7d",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:03:03.880Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25645,12 +25669,16 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Redundant refetch causes duplicate queries.**\n\nThis `useEffect` manually calls `refetch()` when `selectedRestaurant?.id` changes, but React Query already triggers a refetch automatically when the `queryKey` changes (line 53 includes `selectedRestaurant?.id`). This causes duplicate network requests and likely explains the \"repeated queries and refetches when the selected restaurant changes\" mentioned in the PR comments.\n\n<details>\n<summary>🐛 Proposed fix</summary>\n\nRemove the redundant useEffect entirely:\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.id) {\n-      console.log('useOnboardingStatus: Restaurant changed, refetching...', { restaurantId: selectedRestaurant.id });\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.id, refetch]);\n```\n\nReact Query's `queryKey` mechanism handles this automatically. The query options already ensure fresh data:\n- `refetchOnMount: true`\n- `refetchOnWindowFocus: true`\n- `staleTime: 10000`\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 232 - 238, The useEffect that\ncalls refetch() on selectedRestaurant?.id change is redundant and causes\nduplicate network calls because the React Query hook already includes\nselectedRestaurant?.id in its queryKey and will refetch automatically; remove\nthe entire useEffect block that references useEffect, selectedRestaurant?.id,\nconsole.log, and refetch, and rely on the existing query options\n(refetchOnMount, refetchOnWindowFocus, staleTime) and the queryKey to trigger\nupdates.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit feb95c0",
       "severity": "info",
       "id": "4b7fe97ce280a6aaac37890da7e66a49ab580475",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:03:08.891Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25665,12 +25693,16 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.log statements from production code.**\n\nPer coding guidelines, remove all `console.log` statements or wrap them in a development-only conditional. The file has 8+ logging statements that will appear in production.\n\n<details>\n<summary>💡 Suggested approach: Wrap in development check</summary>\n\n```typescript\nconst isDev = process.env.NODE_ENV === 'development';\n\n// Then use conditionally:\nif (isDev) {\n  console.log('useOnboardingStatus: Starting query', { ... });\n}\n```\n</details>\n\nBased on coding guidelines: \"Remove all console.log statements from production code, use conditional logging only in development mode.\"\n\n\nAlso applies to: 130-143, 159-164, 180-191, 203-206\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 55 - 58, The hook\nuseOnboardingStatus currently contains multiple console.log calls that must not\nrun in production; remove these console.log statements or guard them with a\ndevelopment-only check (e.g., check process.env.NODE_ENV === 'development')\nbefore logging. Update every console.log in useOnboardingStatus (including the\nones around \"Starting query\", the \"No restaurant ID\" branch, and the other\noccurrences noted) to either be removed or wrapped in the dev-only conditional\nso no console output occurs in production, and keep the rest of the function\nlogic unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit feb95c0",
       "severity": "info",
       "id": "fb30668a818fafd88065f88d05c407822bf2fe46",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:03:13.158Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25685,12 +25717,16 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's find and examine the useOnboardingStatus.ts file\nfd -n \"useOnboardingStatus.ts\" -type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 291\n\n---\n\n🏁 Script executed:\n\n```shell\n# Then search for inventory-related table references\nrg -n \"inventory\" --type=ts src/ -A 2 -B 2 | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3326\n\n---\n\n🏁 Script executed:\n\n```shell\n# Also check for the specific table names mentioned in queries\nrg -n \"(inventory_items|inventory_transactions|products)\" --type=ts src/ | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2780\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the useOnboardingStatus.ts file without -n flag\nfd useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 93\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the useOnboardingStatus.ts file around lines 64-110\ncat src/hooks/useOnboardingStatus.ts | head -120 | tail -70\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2695\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check what inventory tables actually exist in the codebase\nrg \"from\\('inventory\" --type=ts -o | sort -u\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1277\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full checkTableCount mapping section to see what tables the variables actually map to\nsed -n '110,150p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1713\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search specifically for inventory_reconciliations and inventory_transactions in the codebase\nrg \"inventory_reconciliations|inventory_transactions\" --type=ts -B 2 -A 2 | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4010\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find the complete context of how inventory checks are used\nrg \"inventory_reconciliations\" --type=ts -l\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 319\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify what the code actually expects to be checking for inventory\nsed -n '1,60p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1884\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full Promise.all section to count all queries precisely\nsed -n '64,110p' src/hooks/useOnboardingStatus.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1735\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify the actual tables being used in reconciliation operations\nrg \"from\\('inventory_reconciliations\" --type=ts -B 3 -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4787\n\n---\n\n🏁 Script executed:\n\n```shell\n# Let me verify the exact inventory table names expected by checking the Supabase types\nrg \"inventory_reconciliations|inventory_transactions\" src/integrations/supabase/types.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1156\n\n---\n\n🏁 Script executed:\n\n```shell\n# Verify the table structure definitions\ngrep -A 3 \"inventory_reconciliations\\|inventory_transactions\" src/integrations/supabase/types.ts | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 595\n\n---\n\n\n\n</details>\n\n**Critical: Mismatch between destructured variables and Promise.all queries.**\n\nThere are **14 destructured variables** but only **12 queries** in Promise.all. This causes all results to be misaligned:\n\n| Variable | Expected Query | Actually Gets |\n|----------|---------------|---------------|\n| `inventoryResult` | inventory_reconciliations | `connected_banks` |\n| `inventoryTransactionsResult` | inventory_transactions | `bank_transactions` |\n| `bankResult` | connected_banks | `square_connections` |\n| `bankTransactionsResult` | bank_transactions | `toast_connections` |\n| `squareResult` | square_connections | `clover_connections` |\n| `toastResult` | toast_connections | `shift4_connections` |\n| `cloverResult` | clover_connections | `invitations` |\n| `shift4Result` | shift4_connections | `products` |\n| `invitationResult` | invitations | `undefined` |\n| `productResult` | products | `undefined` |\n\nThis directly explains why all onboarding status flags return `false` as reported in the PR comments.\n\n<details>\n<summary>🐛 Proposed fix: Add missing inventory queries</summary>\n\n```diff\n         const [\n           collaboratorResult,\n           employeeResult,\n           recipeResult,\n           receiptResult,\n+          inventoryResult,\n+          inventoryTransactionsResult,\n           bankResult,\n           bankTransactionsResult,\n-          inventoryResult,\n-          inventoryTransactionsResult,\n           squareResult,\n           toastResult,\n           cloverResult,\n           shift4Result,\n           invitationResult,\n           productResult\n         ] = await Promise.all([\n           // 1. Collaborators (more than just the owner)\n           checkTableCount(restaurantId, 'user_restaurants'),\n\n           // 2. Employees\n           checkTableCount(restaurantId, 'employees'),\n\n           // 3. Recipes\n           checkTableCount(restaurantId, 'recipes'),\n\n           // 4. Receipt Imports (uploaded receipts)\n           checkTableCount(restaurantId, 'receipt_imports'),\n+\n+          // 5. Inventory Reconciliations\n+          checkTableCount(restaurantId, 'inventory_reconciliations'),\n+\n+          // 5b. Inventory Transactions\n+          checkTableCount(restaurantId, 'inventory_transactions'),\n+\n           // 6. Bank Account (connected banks via Stripe)\n           checkTableCount(restaurantId, 'connected_banks'),\n           \n           // 6b. Alternative: Bank Transactions (if statements were uploaded)\n           checkTableCount(restaurantId, 'bank_transactions'),\n             \n           // 7. Specific POS Connections\n           checkTableCount(restaurantId, 'square_connections'),\n           checkTableCount(restaurantId, 'toast_connections'),\n           checkTableCount(restaurantId, 'clover_connections'),\n           checkTableCount(restaurantId, 'shift4_connections'),\n\n           // 8. Invitations (Pending Collaborators)\n           checkTableCount(restaurantId, 'invitations', { status: 'pending' }),\n\n           // 9. Products (Inventory Items)\n           checkTableCount(restaurantId, 'products')\n         ]);\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 64 - 110, Destructured results\nin the try block (collaboratorResult, employeeResult, recipeResult,\nreceiptResult, inventoryResult, inventoryTransactionsResult, bankResult,\nbankTransactionsResult, squareResult, toastResult, cloverResult, shift4Result,\ninvitationResult, productResult) do not match the Promise.all calls—two\ninventory queries are missing which shifts all subsequent results; fix by adding\ncheckTableCount(restaurantId, 'inventory_reconciliations') and\ncheckTableCount(restaurantId, 'inventory_transactions') into the Promise.all\narray in the exact positions corresponding to inventoryResult and\ninventoryTransactionsResult (i.e., after receipt_imports and before\nconnected_banks), so the Promise.all returns 14 entries that align with the 14\ndestructured variables.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit feb95c0",
       "severity": "info",
       "id": "0a3627c17b31650db005451a242f38ba9f688120",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:03:16.549Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25705,12 +25741,16 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Increase staleTime to meet guidelines (30-60s).**\n\nThe current `staleTime: 10000` (10 seconds) is below the 30-60 second range specified in the coding guidelines for critical data. While a shorter staleTime ensures fresher data, it also causes more frequent refetches.\n\n```diff\n-    staleTime: 10000, // Reduced to 10s to ensure fresh data when switching restaurants\n+    staleTime: 30000, // 30s per coding guidelines for critical data\n```\n\nNote: The queryKey already includes `selectedRestaurant?.restaurant_id`, so React Query will automatically refetch when the restaurant changes—no need to rely on a short staleTime for this. Based on coding guidelines: \"set staleTime 30-60s for critical data.\"\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 215 - 217, The staleTime for\nthe onboarding status query is set to 10000 (10s), which is below the project's\n30–60s guideline; update the query options by increasing staleTime to a value in\nthat range (e.g., 30000 or 60000) while keeping refetchOnMount and\nrefetchOnWindowFocus unchanged, and rely on the existing queryKey (which\nincludes selectedRestaurant?.restaurant_id) to trigger refetches when the\nrestaurant changes.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "d976aa80914584e8bf8f2d10e0171c53598fa2b0",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:31:27.391Z",
+      "updated_at": "2026-01-13T18:03:19.847Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "tests pass",
+        "tests pass"
       ]
     },
     {
@@ -25725,9 +25765,9 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console statements from production code.**\n\nPer coding guidelines, console statements should be removed from production code. Use conditional logging only in development mode if needed.\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n        const errors = results.filter(r => r?.error);\n        if (errors.length > 0) {\n-         // Log errors but treat them as 0 counts to prevent blocking the UI\n-         console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n-           name: e.name,\n-           error: e.error?.message || e.error\n-         })));\n+         // Errors are treated as 0 counts to prevent blocking the UI\n+         if (import.meta.env.DEV) {\n+           console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n+             name: e.name,\n+             error: e.error?.message || e.error\n+           })));\n+         }\n          // We DO NOT throw here anymore.\n        }\n```\n</details>\n\nBased on coding guidelines, console.log statements should be removed from production code.\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        const errors = results.filter(r => r?.error);\n        if (errors.length > 0) {\n          // Errors are treated as 0 counts to prevent blocking the UI\n          if (import.meta.env.DEV) {\n            console.warn('useOnboardingStatus: Some checks failed (defaulting to 0)', errors.map(e => ({\n              name: e.name,\n              error: e.error?.message || e.error\n            })));\n          }\n          // We DO NOT throw here anymore.\n        }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 134 - 142, The console.warn in\nuseOnboardingStatus should be removed from production: replace the direct\nconsole call inside the results/errors handling with either a proper logger\n(e.g., logger.warn) or wrap the existing message in a development-only guard\n(e.g., if (process.env.NODE_ENV !== 'production') { /* existing warning body */\n}), keeping the same message structure (name and error) and preserving the\ncomment that we do not throw; update the reference to errors/results in the same\nfunction (useOnboardingStatus) and ensure no console.* calls remain in\nproduction builds.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "04ee5971b5a0aa000fffc930028dfd738d43a582",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25745,9 +25785,9 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Remove console.error from production code.**\n\nSame issue as above—wrap in development check or remove entirely.\n\n<details>\n<summary>Suggested fix</summary>\n\n```diff\n      } catch (err) {\n-        console.error('useOnboardingStatus: Exception in queryFn', err);\n+        if (import.meta.env.DEV) {\n+          console.error('useOnboardingStatus: Exception in queryFn', err);\n+        }\n         // Even if exception, return defaults to avoid UI crash\n         return {\n            hasPos: false, hasCollaborators: false, hasEmployees: false,\n            hasRecipes: false, hasReceipts: false, hasInventory: false, hasBank: false\n         };\n      }\n```\n</details>\n\nBased on coding guidelines, console statements should be conditional on development mode.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 181 - 188, The catch block in\nuseOnboardingStatus's queryFn currently calls console.error; remove that\nconsole.error or guard it behind a development-mode check (e.g., if\n(process.env.NODE_ENV !== 'production') or an existing isDev flag) so production\nbuilds emit no console statements, and optionally replace it with a call to the\napp logger if one exists (keep returning the same default object from the\ncatch).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "1014bbc70a92547c27642cb4ded9f04768082fbc",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25765,9 +25805,9 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Remove redundant useEffect—this causes double-fetching.**\n\nThis `useEffect` is the likely root cause of the \"repeated queries and refetches when the selected restaurant changes\" issue reported in PR comments.\n\nReact Query already handles `queryKey` changes automatically—when `selectedRestaurant?.restaurant_id` changes, the query is invalidated and refetched because it's part of the `queryKey` (line 53). The manual `refetch()` call here triggers a second, redundant fetch.\n\n<details>\n<summary>Suggested fix: Remove the useEffect</summary>\n\n```diff\n-  // Explicitly refetch when restaurant changes to ensure fresh data\n-  useEffect(() => {\n-    if (selectedRestaurant?.restaurant_id) {\n-      refetch();\n-    }\n-  }, [selectedRestaurant?.restaurant_id, refetch]);\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn @src/hooks/useOnboardingStatus.ts around lines 196 - 201, Remove the\nredundant useEffect that watches selectedRestaurant?.restaurant_id and calls\nrefetch(): locate the useEffect block that references\nselectedRestaurant?.restaurant_id and calls refetch(), and delete it so React\nQuery can handle refetching via the existing queryKey (which already includes\nselectedRestaurant?.restaurant_id). Ensure no other code expects this manual\nrefetch and rely on the query hook’s automatic behavior instead.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "d3ed7957a79ed52ebebc6c45f320f93a042e7b6b",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.398Z",
-      "updated_at": "2026-01-13T15:16:53.398Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25783,9 +25823,9 @@
       "body": "@copilot the counts are still not showing correctly so the side panel with the onboarding tasks still shows as needing to onboard on everything.  Please take a look.  It might have to do with the need to pass the restaurant id, do we trigger the counts again when the user selects a new restaurant? ",
       "severity": "info",
       "id": "51d7a4ec32e37b08bdcd380706c9d1273a5db6d8",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25801,9 +25841,9 @@
       "body": "@jdelgado2002 I've opened a new pull request, #313, to work on those changes. Once the pull request is ready, I'll request review from you.",
       "severity": "info",
       "id": "5610837a81f20044a49b2fab7828d2e9bb69c88d",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25819,9 +25859,9 @@
       "body": "@copilot we are not display the information correctly, take a look at the logs, it seems we are querying the wrong set of tables: useOnboardingStatus: Starting query ObjectselectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nrrweb-plugin-console-record.js:160 useOnboardingStatus: Restaurant changed, refetching... ObjectrestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) Array(4)\r\nconsole.<computed> @ index-DYNt-qrY.js:1960Understand this warning\r\nrrweb-plugin-console-record.js:160 useOnboardingStatus: Calculated Status ObjecthasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Object\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Starting query {selectedRestaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}selectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Objectconstructor: ƒ Object()hasOwnProperty: ƒ hasOwnProperty()isPrototypeOf: ƒ isPrototypeOf()propertyIsEnumerable: ƒ propertyIsEnumerable()toLocaleString: ƒ toLocaleString()toString: ƒ toString()valueOf: ƒ valueOf()__defineGetter__: ƒ __defineGetter__()__defineSetter__: ƒ __defineSetter__()__lookupGetter__: ƒ __lookupGetter__()__lookupSetter__: ƒ __lookupSetter__()__proto__: (...)get __proto__: ƒ __proto__()set __proto__: ƒ __proto__()\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Restaurant changed, refetching... {restaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Starting query {selectedRestaurantId: '2101ad4a-8474-4b60-b117-8e5befd9231e'}selectedRestaurantId: \"2101ad4a-8474-4b60-b117-8e5befd9231e\"[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) (4) [{…}, {…}, {…}, {…}]0: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.invitations'\", message: \"Could not find the table 'public.integrations' in the schema cache\"}name: \"pos\"status: 404statusText: \"\"[[Prototype]]: Object1: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.recipes'\", message: \"Could not find the table 'public.receipts' in the schema cache\"}name: \"receipts\"status: 404statusText: \"\"[[Prototype]]: Object2: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.inventory_locations'\", message: \"Could not find the table 'public.inventory_counts' in the schema cache\"}name: \"inventory\"status: 404statusText: \"\"[[Prototype]]: Object3: count: nulldata: nullerror: {code: 'PGRST205', details: null, hint: \"Perhaps you meant the table 'public.toast_connections'\", message: \"Could not find the table 'public.bank_connections' in the schema cache\"}name: \"bank\"status: 404statusText: \"\"[[Prototype]]: Objectlength: 4[[Prototype]]: Array(0)\r\nconsole.<computed> @ index-DYNt-qrY.js:1960\r\n(anonymous) @ rrweb-plugin-console-record.js:160\r\nqueryFn @ index-DYNt-qrY.js:965\r\nawait in queryFn\r\ni @ index-DYNt-qrY.js:783\r\ng @ index-DYNt-qrY.js:783\r\nstart @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nyb @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nrefetch @ index-DYNt-qrY.js:783\r\n(anonymous) @ index-DYNt-qrY.js:965\r\ngl @ react-vendor-BGBakQ4e.js:32\r\nen @ react-vendor-BGBakQ4e.js:32\r\nXd @ react-vendor-BGBakQ4e.js:32\r\nCt @ react-vendor-BGBakQ4e.js:32\r\nra @ react-vendor-BGBakQ4e.js:32\r\ngt @ react-vendor-BGBakQ4e.js:30\r\n(anonymous) @ react-vendor-BGBakQ4e.js:32Understand this warning\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Calculated Status {hasPos: false, hasCollaborators: false, hasEmployees: false, hasRecipes: false, hasReceipts: false, …}hasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Object\r\nindex-DYNt-qrY.js:1960 useOnboardingStatus: Some checks failed (defaulting to 0) (4) [{…}, {…}, {…}, {…}]\r\nconsole.<computed> @ index-DYNt-qrY.js:1960\r\n(anonymous) @ rrweb-plugin-console-record.js:160\r\nqueryFn @ index-DYNt-qrY.js:965\r\nawait in queryFn\r\ni @ index-DYNt-qrY.js:783\r\ng @ index-DYNt-qrY.js:783\r\nstart @ index-DYNt-qrY.js:783\r\nfetch @ index-DYNt-qrY.js:783\r\nyb @ index-DYNt-qrY.js:783\r\nonSubscribe @ index-DYNt-qrY.js:783\r\nsubscribe @ index-DYNt-qrY.js:783\r\n(anonymous) @ index-DYNt-qrY.js:783\r\nDs @ react-vendor-BGBakQ4e.js:30\r\ngl @ react-vendor-BGBakQ4e.js:32\r\nen @ react-vendor-BGBakQ4e.js:32\r\nXd @ react-vendor-BGBakQ4e.js:32\r\nCt @ react-vendor-BGBakQ4e.js:32\r\nra @ react-vendor-BGBakQ4e.js:32\r\ngt @ react-vendor-BGBakQ4e.js:30\r\n(anonymous) @ react-vendor-BGBakQ4e.js:32Understand this warning\r\nindex-DYNt-qrY.js:965 useOnboardingStatus: Calculated Status {hasPos: false, hasCollaborators: false, hasEmployees: false, hasRecipes: false, hasReceipts: false, …}hasBank: falsehasCollaborators: falsehasEmployees: falsehasInventory: falsehasPos: falsehasReceipts: falsehasRecipes: false[[Prototype]]: Objectconstructor: ƒ Object()hasOwnProperty: ƒ hasOwnProperty()isPrototypeOf: ƒ isPrototypeOf()propertyIsEnumerable: ƒ propertyIsEnumerable()toLocaleString: ƒ toLocaleString()toString: ƒ toString()valueOf: ƒ valueOf()__defineGetter__: ƒ __defineGetter__()__defineSetter__: ƒ __defineSetter__()__lookupGetter__: ƒ __lookupGetter__()__lookupSetter__: ƒ __lookupSetter__()__proto__: (...)get __proto__: ƒ __proto__()set __proto__: ƒ __proto__()",
       "severity": "info",
       "id": "1c05ad4ae6857b8e872cb9a891f7d3bfafd2837c",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25837,9 +25877,9 @@
       "body": "@jdelgado2002 I've opened a new pull request, #315, to work on those changes. Once the pull request is ready, I'll request review from you.",
       "severity": "info",
       "id": "71874c4bd53cfeea723b3a78ad13be983e7d35a9",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25855,9 +25895,9 @@
       "body": "@copilot the unit tests are failing and we are also not finding anything anything with the search however, I am using a restaurant that has everything setup already, so all the onboarding steps should be checked.",
       "severity": "info",
       "id": "6c17916f81604cbe7c05ad32b72d033908aea9e5",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
@@ -25873,9 +25913,9 @@
       "body": "@jdelgado2002 I've opened a new pull request, #316, to work on those changes. Once the pull request is ready, I'll request review from you.",
       "severity": "info",
       "id": "7454df0888c5fee0f655ca2b4bcdc607bbbc9e62",
-      "status": "open",
+      "status": "in_progress",
       "created_at": "2026-01-13T15:16:53.399Z",
-      "updated_at": "2026-01-13T15:16:53.399Z",
+      "updated_at": "2026-01-13T18:06:38.573Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat, Tags, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,12 @@ import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
 import { useNavigate } from "react-router-dom";
 import { createRecipeByItemNameMap, hasRecipeMapping, getRecipeForItem } from "@/utils/recipeMapping";
+import { useBulkSelection } from "@/hooks/useBulkSelection";
+import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
+import { BulkCategorizePosSalesPanel } from "@/components/pos-sales/BulkCategorizePosSalesPanel";
+import { useBulkCategorizePosSales, useBulkMapRecipe } from "@/hooks/useBulkPosSaleActions";
+import { isMultiSelectKey } from "@/utils/bulkEditUtils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function POSSales() {
   const {
@@ -97,6 +103,13 @@ export default function POSSales() {
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [saleForRuleSuggestion, setSaleForRuleSuggestion] = useState<UnifiedSaleItem | null>(null);
   const [aiCategorizationError, setAiCategorizationError] = useState<string | null>(null);
+  const [showBulkCategorizePanel, setShowBulkCategorizePanel] = useState(false);
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+
+  // Bulk selection hooks
+  const bulkSelection = useBulkSelection();
+  const bulkCategorize = useBulkCategorizePosSales();
+  const bulkMapRecipe = useBulkMapRecipe();
 
   const {
     sales,
@@ -135,6 +148,46 @@ export default function POSSales() {
       await syncAllSystems();
     }
   };
+
+  // Bulk selection handlers
+  const handleSelectionToggle = (id: string, event: React.MouseEvent) => {
+    const modifiers = isMultiSelectKey(event);
+    
+    if (modifiers.isRange && lastSelectedId) {
+      bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
+    } else if (modifiers.isToggle) {
+      bulkSelection.toggleItem(id);
+    } else {
+      bulkSelection.toggleItem(id);
+    }
+    
+    setLastSelectedId(id);
+  };
+
+  const handleSelectAll = () => {
+    bulkSelection.selectAll(dateFilteredSales);
+  };
+
+  const handleBulkCategorize = (categoryId: string, overrideExisting: boolean) => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+    
+    bulkCategorize.mutate({
+      saleIds: Array.from(bulkSelection.selectedIds),
+      categoryId,
+      restaurantId: selectedRestaurant.restaurant_id,
+    }, {
+      onSuccess: () => {
+        setShowBulkCategorizePanel(false);
+        bulkSelection.exitSelectionMode();
+      },
+    });
+  };
+
+  // Exit selection mode when changing tabs
+  useEffect(() => {
+    bulkSelection.exitSelectionMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   interface ParsedSale {
     itemName: string;
@@ -978,7 +1031,18 @@ export default function POSSales() {
           ) : selectedView === "sales" ? (
             <Card className="border-none shadow-md">
               <CardHeader>
-                <CardTitle>Sales Transactions</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Sales Transactions</CardTitle>
+                  {dateFilteredSales.length > 0 && (
+                    <Button
+                      variant={bulkSelection.isSelectionMode ? "default" : "outline"}
+                      size="sm"
+                      onClick={bulkSelection.toggleSelectionMode}
+                    >
+                      {bulkSelection.isSelectionMode ? 'Done' : 'Select'}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {!hasAnyConnectedSystem() ? (
@@ -1034,17 +1098,34 @@ export default function POSSales() {
                       // Map 'lighthouse' to 'shift4-pos' for icon
                       let integrationId = sale.posSystem.toLowerCase().replace("_", "-") + "-pos";
                       if (integrationId === "lighthouse-pos") integrationId = "shift4-pos";
+                      
+                      const isSelected = bulkSelection.selectedIds.has(sale.id);
+                      
                       return (
                         <div
                           key={sale.id}
                           className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border-l-4 ${
                             posSystemColors[sale.posSystem] || "border-l-gray-500"
-                          } rounded-lg bg-gradient-to-r from-background to-muted/30 hover:shadow-md hover:scale-[1.01] transition-all duration-300 gap-3 animate-fade-in`}
+                          } rounded-lg bg-gradient-to-r from-background to-muted/30 hover:shadow-md hover:scale-[1.01] transition-all duration-300 gap-3 animate-fade-in ${
+                            isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
+                          }`}
                           style={{ 
                             animationDelay: `${index * 50}ms`,
                             backgroundColor: index % 2 === 0 ? undefined : 'hsl(var(--muted) / 0.3)'
                           }}
                         >
+                          {/* Checkbox for selection mode */}
+                          {bulkSelection.isSelectionMode && (
+                            <div className="flex items-start sm:items-center">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => handleSelectionToggle(sale.id, { metaKey: false, ctrlKey: false, shiftKey: false } as React.MouseEvent)}
+                                onClick={(e) => handleSelectionToggle(sale.id, e)}
+                                aria-label={`Select ${sale.itemName}`}
+                              />
+                            </div>
+                          )}
+                          
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-2">
                               <IntegrationLogo
@@ -1505,6 +1586,30 @@ export default function POSSales() {
         }}
         defaultTab="pos"
         prefilledRule={getPrefilledPOSRuleData()}
+      />
+
+      {/* Bulk action bar (appears when items are selected) */}
+      {bulkSelection.hasSelection && (
+        <BulkActionBar
+          selectedCount={bulkSelection.selectedCount}
+          onClose={bulkSelection.exitSelectionMode}
+          actions={[
+            {
+              label: 'Categorize',
+              icon: <Tags className="h-4 w-4" />,
+              onClick: () => setShowBulkCategorizePanel(true),
+            },
+          ]}
+        />
+      )}
+
+      {/* Bulk categorize panel */}
+      <BulkCategorizePosSalesPanel
+        isOpen={showBulkCategorizePanel}
+        onClose={() => setShowBulkCategorizePanel(false)}
+        selectedCount={bulkSelection.selectedCount}
+        onApply={handleBulkCategorize}
+        isApplying={bulkCategorize.isPending}
       />
     </div>
   );

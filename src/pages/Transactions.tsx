@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown } from 'lucide-react';
+import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown, Tags, XCircle, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,11 @@ import { useChartOfAccounts } from '@/hooks/useChartOfAccounts';
 import { useBankTransactions } from '@/hooks/useBankTransactions';
 import { useDateFormat } from '@/hooks/useDateFormat';
 import type { BankTransactionSort } from '@/types/transactions';
+import { useBulkSelection } from '@/hooks/useBulkSelection';
+import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
+import { BulkCategorizeTransactionsPanel } from '@/components/banking/BulkCategorizeTransactionsPanel';
+import { useBulkCategorizeTransactions, useBulkExcludeTransactions, useBulkMarkAsTransfer } from '@/hooks/useBulkTransactionActions';
+import { isMultiSelectKey } from '@/utils/bulkEditUtils';
 
 const Transactions = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
@@ -38,6 +43,14 @@ const Transactions = () => {
   const { formatTransactionDate } = useDateFormat();
   const [sortBy, setSortBy] = useState<BankTransactionSort>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [showBulkCategorizePanel, setShowBulkCategorizePanel] = useState(false);
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  
+  // Bulk selection hooks
+  const bulkSelection = useBulkSelection();
+  const bulkCategorize = useBulkCategorizeTransactions();
+  const bulkExclude = useBulkExcludeTransactions();
+  const bulkMarkTransfer = useBulkMarkAsTransfer();
 
   // Fetch transactions with server-side pagination & filters
   const {
@@ -102,6 +115,71 @@ const Transactions = () => {
         variant: "destructive",
       });
     }
+  };
+
+  // Bulk selection handlers
+  const handleSelectionToggle = (id: string, event: React.MouseEvent) => {
+    const modifiers = isMultiSelectKey(event);
+    
+    if (modifiers.isRange && lastSelectedId) {
+      bulkSelection.selectRange(transactions, lastSelectedId, id);
+    } else if (modifiers.isToggle) {
+      bulkSelection.toggleItem(id);
+    } else {
+      bulkSelection.toggleItem(id);
+    }
+    
+    setLastSelectedId(id);
+  };
+
+  const handleSelectAll = () => {
+    bulkSelection.selectAll(transactions);
+  };
+
+  const handleBulkCategorize = (categoryId: string, overrideExisting: boolean) => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+    
+    bulkCategorize.mutate({
+      transactionIds: Array.from(bulkSelection.selectedIds),
+      categoryId,
+      restaurantId: selectedRestaurant.restaurant_id,
+    }, {
+      onSuccess: () => {
+        setShowBulkCategorizePanel(false);
+        bulkSelection.exitSelectionMode();
+        refetch();
+      },
+    });
+  };
+
+  const handleBulkExclude = () => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+    
+    bulkExclude.mutate({
+      transactionIds: Array.from(bulkSelection.selectedIds),
+      reason: 'Bulk excluded by user',
+      restaurantId: selectedRestaurant.restaurant_id,
+    }, {
+      onSuccess: () => {
+        bulkSelection.exitSelectionMode();
+        refetch();
+      },
+    });
+  };
+
+  const handleBulkMarkTransfer = () => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+    
+    bulkMarkTransfer.mutate({
+      transactionIds: Array.from(bulkSelection.selectedIds),
+      isTransfer: true,
+      restaurantId: selectedRestaurant.restaurant_id,
+    }, {
+      onSuccess: () => {
+        bulkSelection.exitSelectionMode();
+        refetch();
+      },
+    });
   };
 
   const listStatus: 'for_review' | 'categorized' | 'excluded' = useMemo(() => {
@@ -244,6 +322,15 @@ const Transactions = () => {
             
             {/* Action Buttons */}
             <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap">
+              {!isMobile && transactions.length > 0 && (
+                <Button
+                  variant={bulkSelection.isSelectionMode ? "default" : "outline"}
+                  onClick={bulkSelection.toggleSelectionMode}
+                  className="w-full md:w-auto h-11"
+                >
+                  {bulkSelection.isSelectionMode ? 'Done' : 'Select'}
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 onClick={() => categorizeTransactions.mutate(selectedRestaurant.restaurant_id)}
@@ -395,6 +482,11 @@ const Transactions = () => {
               transactions={transactions as any} 
               status={listStatus} 
               accounts={accounts}
+              isSelectionMode={bulkSelection.isSelectionMode}
+              selectedIds={bulkSelection.selectedIds}
+              onSelectionToggle={handleSelectionToggle}
+              onSelectAll={handleSelectAll}
+              onClearSelection={bulkSelection.clearSelection}
             />
           </CardContent>
         </Card>
@@ -412,6 +504,43 @@ const Transactions = () => {
         isOpen={showReconciliationDialog}
         onClose={() => setShowReconciliationDialog(false)}
       />
+
+      {/* Bulk action bar (appears when items are selected) */}
+      {selectedRestaurant && bulkSelection.hasSelection && (
+        <>
+          <BulkActionBar
+            selectedCount={bulkSelection.selectedCount}
+            onClose={bulkSelection.exitSelectionMode}
+            actions={[
+              {
+                label: 'Categorize',
+                icon: <Tags className="h-4 w-4" />,
+                onClick: () => setShowBulkCategorizePanel(true),
+              },
+              {
+                label: 'Mark as Transfer',
+                icon: <ArrowLeftRight className="h-4 w-4" />,
+                onClick: handleBulkMarkTransfer,
+              },
+              {
+                label: 'Exclude',
+                icon: <XCircle className="h-4 w-4" />,
+                onClick: handleBulkExclude,
+                variant: 'destructive',
+              },
+            ]}
+          />
+
+          {/* Bulk categorize panel */}
+          <BulkCategorizeTransactionsPanel
+            isOpen={showBulkCategorizePanel}
+            onClose={() => setShowBulkCategorizePanel(false)}
+            selectedCount={bulkSelection.selectedCount}
+            onApply={handleBulkCategorize}
+            isApplying={bulkCategorize.isPending}
+          />
+        </>
+      )}
     </div>
   );
 };

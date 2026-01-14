@@ -1,7 +1,7 @@
 -- Comprehensive tests for inventory deduction conversions
 -- Note: This test suite validates conversion logic in process_unified_inventory_deduction
 BEGIN;
-SELECT plan(56);
+SELECT plan(66);
 
 -- Setup authenticated user context for tests
 SET LOCAL role TO postgres;
@@ -857,6 +857,178 @@ SELECT is(
   ))::jsonb->'ingredients_deducted')),
   3,
   'Multi-ingredient recipe should return 3 ingredients in result'
+);
+
+-- ============================================================
+-- TEST CATEGORY 11: COUNT-TO-CONTAINER CONVERSIONS (NEW)
+-- ============================================================
+
+-- Test 31: Tortillas (1 each from 50-per-bag)
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-000000000018', '22222222-2222-2222-2222-222222222222', 'Flour Tortillas', 'TORTILLA-001', 'bag', 10.0, 10.00, 50, 'each')
+ON CONFLICT (id) DO UPDATE SET current_stock = 10.0, cost_per_unit = 10.00;
+
+INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
+  ('b0000000-0000-0000-0000-000000000018', '22222222-2222-2222-2222-222222222222', 'Burrito', 'Burrito', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
+  ('b0000000-0000-0000-0000-000000000018', 'a0000000-0000-0000-0000-000000000018', 1, 'each');
+
+SELECT lives_ok(
+  $$SELECT process_unified_inventory_deduction(
+    '22222222-2222-2222-2222-222222222222',
+    'Burrito',
+    1,
+    '2025-01-15',
+    'order-tortilla-001'
+  )$$,
+  'Count-to-container: 1 each tortilla should succeed'
+);
+
+-- 1 tortilla / 50 per bag = 0.02 bags
+-- 10 - 0.02 = 9.98 bags
+SELECT is(
+  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-000000000018'),
+  9.98::numeric,
+  'Count-to-container: 1 tortilla deducts 0.02 bags (10 - 0.02 = 9.98)'
+);
+
+-- Test 32: Burger buns (1 each from 8-per-bag)
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-000000000019', '22222222-2222-2222-2222-222222222222', 'Burger Buns', 'BUNS-001', 'bag', 20.0, 3.00, 8, 'each')
+ON CONFLICT (id) DO UPDATE SET current_stock = 20.0, cost_per_unit = 3.00;
+
+INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
+  ('b0000000-0000-0000-0000-000000000019', '22222222-2222-2222-2222-222222222222', 'Cheeseburger', 'Cheeseburger', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
+  ('b0000000-0000-0000-0000-000000000019', 'a0000000-0000-0000-0000-000000000019', 1, 'each');
+
+SELECT lives_ok(
+  $$SELECT process_unified_inventory_deduction(
+    '22222222-2222-2222-2222-222222222222',
+    'Cheeseburger',
+    8,
+    '2025-01-15',
+    'order-buns-001'
+  )$$,
+  'Count-to-container: 1 bun × 8 sales should succeed'
+);
+
+-- 8 buns / 8 per bag = 1 bag
+-- 20 - 1 = 19 bags
+SELECT is(
+  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-000000000019'),
+  19.0::numeric,
+  'Count-to-container: 8 buns deducts 1 bag (20 - 1 = 19)'
+);
+
+-- Test 33: Eggs (2 each from 360-per-case)
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-00000000001a', '22222222-2222-2222-2222-222222222222', 'Large Eggs', 'EGGS-001', 'case', 5.0, 50.00, 360, 'each')
+ON CONFLICT (id) DO UPDATE SET current_stock = 5.0, cost_per_unit = 50.00;
+
+INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
+  ('b0000000-0000-0000-0000-00000000001a', '22222222-2222-2222-2222-222222222222', 'Omelette', 'Omelette', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
+  ('b0000000-0000-0000-0000-00000000001a', 'a0000000-0000-0000-0000-00000000001a', 2, 'each');
+
+SELECT lives_ok(
+  $$SELECT process_unified_inventory_deduction(
+    '22222222-2222-2222-2222-222222222222',
+    'Omelette',
+    90,
+    '2025-01-15',
+    'order-eggs-001'
+  )$$,
+  'Count-to-container: 2 eggs × 90 sales should succeed'
+);
+
+-- 180 eggs / 360 per case = 0.5 cases
+-- 5 - 0.5 = 4.5 cases
+SELECT is(
+  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-00000000001a'),
+  4.5::numeric,
+  'Count-to-container: 180 eggs deducts 0.5 cases (5 - 0.5 = 4.5)'
+);
+
+-- Test 34: Napkins with "piece" unit (3 piece from 500-per-box)
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-00000000001b', '22222222-2222-2222-2222-222222222222', 'Paper Napkins', 'NAPKIN-001', 'box', 100.0, 8.00, 500, 'piece')
+ON CONFLICT (id) DO UPDATE SET current_stock = 100.0, cost_per_unit = 8.00;
+
+INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
+  ('b0000000-0000-0000-0000-00000000001b', '22222222-2222-2222-2222-222222222222', 'Takeout Order', 'Takeout', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
+  ('b0000000-0000-0000-0000-00000000001b', 'a0000000-0000-0000-0000-00000000001b', 3, 'piece');
+
+SELECT lives_ok(
+  $$SELECT process_unified_inventory_deduction(
+    '22222222-2222-2222-2222-222222222222',
+    'Takeout',
+    100,
+    '2025-01-15',
+    'order-napkins-001'
+  )$$,
+  'Count-to-container: 3 napkins × 100 orders should succeed'
+);
+
+-- 300 napkins / 500 per box = 0.6 boxes
+-- 100 - 0.6 = 99.4 boxes
+SELECT is(
+  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-00000000001b'),
+  99.4::numeric,
+  'Count-to-container: 300 napkins deducts 0.6 boxes (100 - 0.6 = 99.4)'
+);
+
+-- Test 35: Hot dog buns with "unit" (1 unit from 12-per-package)
+INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock, cost_per_unit, size_value, size_unit) VALUES
+  ('a0000000-0000-0000-0000-00000000001c', '22222222-2222-2222-2222-222222222222', 'Hot Dog Buns', 'HOTDOG-001', 'package', 15.0, 4.00, 12, 'unit')
+ON CONFLICT (id) DO UPDATE SET current_stock = 15.0, cost_per_unit = 4.00;
+
+INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
+  ('b0000000-0000-0000-0000-00000000001c', '22222222-2222-2222-2222-222222222222', 'Hot Dog', 'Hot Dog', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
+  ('b0000000-0000-0000-0000-00000000001c', 'a0000000-0000-0000-0000-00000000001c', 1, 'unit');
+
+SELECT lives_ok(
+  $$SELECT process_unified_inventory_deduction(
+    '22222222-2222-2222-2222-222222222222',
+    'Hot Dog',
+    24,
+    '2025-01-15',
+    'order-hotdog-001'
+  )$$,
+  'Count-to-container: 1 bun (unit) × 24 sales should succeed'
+);
+
+-- 24 buns / 12 per package = 2 packages
+-- 15 - 2 = 13 packages
+SELECT is(
+  (SELECT current_stock FROM products WHERE id = 'a0000000-0000-0000-0000-00000000001c'),
+  13.0::numeric,
+  'Count-to-container: 24 buns deducts 2 packages (15 - 2 = 13)'
+);
+
+-- Test 36: Verify conversion method in result
+SELECT is(
+  (SELECT (process_unified_inventory_deduction(
+    '22222222-2222-2222-2222-222222222222',
+    'Burrito',
+    1,
+    '2025-01-15',
+    'order-tortilla-verify-001'
+  ))::jsonb->'ingredients_deducted'->0->>'conversion_method'),
+  'count_to_container'::text,
+  'Count-to-container conversion should be marked as count_to_container method'
 );
 
 -- Re-enable RLS

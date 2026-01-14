@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Sankey, Tooltip, ResponsiveContainer, Layer, Rectangle } from 'recharts';
+import { useMemo, useState } from 'react';
+import { Sankey, ResponsiveContainer, Layer, Rectangle } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useMonthlyExpenses, MonthlyExpenseCategory } from '@/hooks/useMonthlyExpenses';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
@@ -104,20 +104,20 @@ const CustomNode = (props: any) => {
   );
 };
 
-// Custom link component with gradient coloring
-const CustomLink = (props: any) => {
-  const { 
-    sourceX, 
-    sourceY, 
-    sourceControlX, 
-    targetX, 
-    targetY, 
-    targetControlX, 
-    linkWidth = 0,
-    payload, 
-    index 
-  } = props;
-  
+// Custom link component with gradient coloring and hover tooltip
+const CustomLink = ({ 
+  sourceX, 
+  sourceY, 
+  sourceControlX, 
+  targetX, 
+  targetY, 
+  targetControlX, 
+  linkWidth = 0,
+  payload, 
+  index,
+  onMouseEnter,
+  onMouseLeave,
+}: any) => {
   // Guard against invalid values
   if (!sourceX || !targetX || !linkWidth || linkWidth <= 0) {
     return null;
@@ -129,6 +129,12 @@ const CustomLink = (props: any) => {
   
   // Calculate the half-width offset for centering the path
   const halfWidth = linkWidth / 2;
+  
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    if (onMouseEnter && payload) {
+      onMouseEnter(e, payload);
+    }
+  };
   
   return (
     <Layer key={`link-${index}`}>
@@ -148,48 +154,42 @@ const CustomLink = (props: any) => {
         `}
         fill={`url(#${gradientId})`}
         stroke="none"
-        className="transition-opacity hover:opacity-80"
+        className="transition-opacity hover:opacity-80 cursor-pointer"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={onMouseLeave}
       />
     </Layer>
   );
 };
 
-// Custom tooltip
-const CustomTooltip = ({ active, payload }: any) => {
-  if (!active || !payload || payload.length === 0) return null;
-  
-  const data = payload[0]?.payload;
+// Tooltip data interface
+interface TooltipData {
+  x: number;
+  y: number;
+  sourceName: string;
+  targetName: string;
+  value: number;
+  percentage?: number;
+}
+
+// Tooltip component rendered outside the chart
+const ChartTooltip = ({ data }: { data: TooltipData | null }) => {
   if (!data) return null;
   
-  // Check if it's a link (has source and target as numbers)
-  const isLink = typeof data.source === 'number' && typeof data.target === 'number';
-  const value = data.value;
-  
-  // Guard against NaN or undefined values
-  if (value === undefined || value === null || isNaN(value)) return null;
-  
-  if (isLink) {
-    const sourceName = data.sourceName || 'Source';
-    const targetName = data.targetName || 'Target';
-    const percentage = data.percentage;
-    
-    return (
-      <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
-        <p className="font-medium text-sm">{sourceName} → {targetName}</p>
-        <p className="text-lg font-bold text-primary">{formatCurrency(value)}</p>
-        {percentage !== undefined && !isNaN(percentage) && (
-          <p className="text-xs text-muted-foreground">{percentage.toFixed(1)}% of income</p>
-        )}
-      </div>
-    );
-  }
-  
-  // It's a node
-  const name = data.name || 'Unknown';
   return (
-    <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
-      <p className="font-medium text-sm">{name}</p>
-      <p className="text-lg font-bold text-primary">{formatCurrency(value)}</p>
+    <div 
+      className="absolute pointer-events-none z-50 bg-popover border border-border rounded-lg shadow-lg p-3"
+      style={{ 
+        left: data.x + 10, 
+        top: data.y,
+        transform: 'translateY(-50%)'
+      }}
+    >
+      <p className="font-medium text-sm">{data.sourceName} → {data.targetName}</p>
+      <p className="text-lg font-bold text-primary">{formatCurrency(data.value)}</p>
+      {data.percentage !== undefined && !isNaN(data.percentage) && (
+        <p className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}% of income</p>
+      )}
     </div>
   );
 };
@@ -197,6 +197,25 @@ const CustomTooltip = ({ active, payload }: any) => {
 export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
+
+  const handleLinkMouseEnter = (e: React.MouseEvent, payload: any) => {
+    const rect = (e.currentTarget as SVGElement).closest('.recharts-wrapper')?.getBoundingClientRect();
+    if (rect) {
+      setTooltipData({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        sourceName: payload.sourceName || 'Source',
+        targetName: payload.targetName || 'Target',
+        value: payload.value || 0,
+        percentage: payload.percentage,
+      });
+    }
+  };
+
+  const handleLinkMouseLeave = () => {
+    setTooltipData(null);
+  };
 
   // Get period metrics for income data
   const { data: periodMetrics, isLoading: metricsLoading } = usePeriodMetrics(
@@ -421,17 +440,17 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[350px]">
+        <div className="h-[350px] relative">
+          <ChartTooltip data={tooltipData} />
           <ResponsiveContainer width="100%" height="100%">
             <Sankey
               data={sankeyData}
               nodeWidth={10}
               nodePadding={24}
               margin={{ top: 20, right: 160, bottom: 20, left: 160 }}
-              link={<CustomLink />}
+              link={<CustomLink onMouseEnter={handleLinkMouseEnter} onMouseLeave={handleLinkMouseLeave} />}
               node={<CustomNode />}
             >
-              <Tooltip content={<CustomTooltip />} />
             </Sankey>
           </ResponsiveContainer>
         </div>

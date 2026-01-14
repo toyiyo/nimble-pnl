@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat, Tags, Layers } from "lucide-react";
+import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +39,7 @@ import { createRecipeByItemNameMap, hasRecipeMapping, getRecipeForItem } from "@
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizePosSalesPanel } from "@/components/pos-sales/BulkCategorizePosSalesPanel";
-import { useBulkCategorizePosSales, useBulkMapRecipe } from "@/hooks/useBulkPosSaleActions";
+import { useBulkCategorizePosSales } from "@/hooks/useBulkPosSaleActions";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -109,7 +109,6 @@ export default function POSSales() {
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizePosSales();
-  const bulkMapRecipe = useBulkMapRecipe();
 
   const {
     sales,
@@ -174,10 +173,6 @@ export default function POSSales() {
     if (bulkSelection.isSelectionMode) {
       handleSelectionToggle(id, event);
     }
-  };
-
-  const handleSelectAll = () => {
-    bulkSelection.selectAll(dateFilteredSales);
   };
 
   const handleBulkCategorize = (categoryId: string, overrideExisting: boolean) => {
@@ -1126,10 +1121,23 @@ export default function POSSales() {
                             backgroundColor: index % 2 === 0 ? undefined : 'hsl(var(--muted) / 0.3)'
                           }}
                           onClick={(e) => handleCardClick(sale.id, e)}
+                          onKeyDown={(e) => {
+                            if (bulkSelection.isSelectionMode && (e.key === 'Enter' || e.key === ' ')) {
+                              e.preventDefault();
+                              handleCardClick(sale.id, e as unknown as React.MouseEvent);
+                            }
+                          }}
+                          role={bulkSelection.isSelectionMode ? "button" : undefined}
+                          tabIndex={bulkSelection.isSelectionMode ? 0 : undefined}
+                          aria-pressed={bulkSelection.isSelectionMode ? isSelected : undefined}
                         >
                           {/* Checkbox for selection mode */}
                           {bulkSelection.isSelectionMode && (
-                            <div className="flex items-start sm:items-center" onClick={(e) => e.stopPropagation()}>
+                            <div 
+                              className="flex items-start sm:items-center" 
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            >
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={() => handleCheckboxChange(sale.id)}

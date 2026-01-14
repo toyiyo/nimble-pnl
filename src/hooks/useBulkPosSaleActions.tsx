@@ -42,6 +42,9 @@ export function useBulkCategorizePosSales() {
           label: 'Undo',
           onClick: () => {
             // TODO: Implement undo functionality
+            // Store previous category_id values before mutation in onMutate
+            // Restore original values by updating the same saleIds
+            // Example: supabase.from('unified_sales').update({ category_id: previousValues[id] }).in('id', saleIds)
             toast.info('Undo feature coming soon');
           },
         },
@@ -94,6 +97,9 @@ export function useBulkMapRecipe() {
         action: {
           label: 'Undo',
           onClick: () => {
+            // TODO: Implement undo functionality
+            // Delete the created mapping: supabase.from('pos_item_mappings').delete().eq('pos_item_name', itemName)
+            // Or store the previous mapping and restore it if one existed
             toast.info('Undo feature coming soon');
           },
         },

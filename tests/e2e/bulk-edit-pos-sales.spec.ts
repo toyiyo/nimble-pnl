@@ -110,8 +110,8 @@ test.describe('POS Sales Bulk Edit', () => {
     await page.reload();
     await expect(page.getByRole('heading', { name: /pos.*sales|sales/i })).toBeVisible();
 
-    // Wait for sales to load
-    await page.waitForTimeout(2000);
+    // Wait for sales to load - look for the first sale item
+    await expect(page.getByText('Test Burger')).toBeVisible({ timeout: 10000 });
 
     // Click "Select" button to enter selection mode
     const selectButton = page.getByRole('button', { name: /^select$/i });
@@ -211,7 +211,9 @@ test.describe('POS Sales Bulk Edit', () => {
     });
 
     await page.reload();
-    await page.waitForTimeout(2000);
+    
+    // Wait for sales to load by checking for a sale item
+    await expect(page.getByText('Test Item 1')).toBeVisible({ timeout: 10000 });
 
     // Enter selection mode and select both sales
     await page.getByRole('button', { name: /^select$/i }).click();

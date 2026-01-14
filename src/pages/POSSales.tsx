@@ -155,12 +155,18 @@ export default function POSSales() {
     
     if (modifiers.isRange && lastSelectedId) {
       bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
+      // Don't update lastSelectedId during range selection
     } else if (modifiers.isToggle) {
       bulkSelection.toggleItem(id);
+      setLastSelectedId(id);
     } else {
       bulkSelection.toggleItem(id);
+      setLastSelectedId(id);
     }
-    
+  };
+
+  const handleCheckboxChange = (id: string) => {
+    bulkSelection.toggleItem(id);
     setLastSelectedId(id);
   };
 
@@ -1119,8 +1125,7 @@ export default function POSSales() {
                             <div className="flex items-start sm:items-center">
                               <Checkbox
                                 checked={isSelected}
-                                onCheckedChange={() => handleSelectionToggle(sale.id, { metaKey: false, ctrlKey: false, shiftKey: false } as React.MouseEvent)}
-                                onClick={(e) => handleSelectionToggle(sale.id, e)}
+                                onCheckedChange={() => handleCheckboxChange(sale.id)}
                                 aria-label={`Select ${sale.itemName}`}
                               />
                             </div>

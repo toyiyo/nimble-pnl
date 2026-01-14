@@ -106,11 +106,29 @@ const CustomNode = (props: any) => {
 
 // Custom link component with gradient coloring
 const CustomLink = (props: any) => {
-  const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, payload, index } = props;
+  const { 
+    sourceX, 
+    sourceY, 
+    sourceControlX, 
+    targetX, 
+    targetY, 
+    targetControlX, 
+    linkWidth = 0,
+    payload, 
+    index 
+  } = props;
+  
+  // Guard against invalid values
+  if (!sourceX || !targetX || !linkWidth || linkWidth <= 0) {
+    return null;
+  }
   
   const gradientId = `gradient-${index}`;
-  const sourceColor = payload.color || 'hsl(var(--chart-2))';
-  const targetColor = payload.targetColor || sourceColor;
+  const sourceColor = payload?.color || 'hsl(var(--chart-2))';
+  const targetColor = payload?.targetColor || sourceColor;
+  
+  // Calculate the half-width offset for centering the path
+  const halfWidth = linkWidth / 2;
   
   return (
     <Layer key={`link-${index}`}>
@@ -122,10 +140,10 @@ const CustomLink = (props: any) => {
       </defs>
       <path
         d={`
-          M${sourceX},${sourceY}
-          C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}
-          L${targetX},${targetY + linkWidth}
-          C${targetControlX},${targetY + linkWidth} ${sourceControlX},${sourceY + linkWidth} ${sourceX},${sourceY + linkWidth}
+          M${sourceX},${sourceY - halfWidth}
+          C${sourceControlX},${sourceY - halfWidth} ${targetControlX},${targetY - halfWidth} ${targetX},${targetY - halfWidth}
+          L${targetX},${targetY + halfWidth}
+          C${targetControlX},${targetY + halfWidth} ${sourceControlX},${sourceY + halfWidth} ${sourceX},${sourceY + halfWidth}
           Z
         `}
         fill={`url(#${gradientId})`}

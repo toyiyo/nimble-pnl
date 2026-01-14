@@ -316,7 +316,7 @@ serve(async (req) => {
     }
 
     // Format examples for the prompt
-    const examples = (exampleSales || []).map(ex => ({
+    const examples = (exampleSales || []).map((ex: any) => ({
       item_name: ex.item_name,
       pos_category: ex.pos_category,
       total_price: ex.total_price,
@@ -324,7 +324,7 @@ serve(async (req) => {
       account_code: ex.chart_of_accounts?.account_code,
       account_name: ex.chart_of_accounts?.account_name,
       account_type: ex.chart_of_accounts?.account_type
-    })).filter(ex => ex.account_code); // Only include examples with valid account info
+    })).filter((ex: any) => ex.account_code); // Only include examples with valid account info
 
     console.log(`📚 Using ${examples.length} example categorizations to improve AI accuracy`);
 

@@ -1750,6 +1750,9 @@ export type Database = {
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
           created_at: string | null
+          daily_rate_amount: number | null
+          daily_rate_reference_days: number | null
+          daily_rate_reference_weekly: number | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
@@ -1781,6 +1784,9 @@ export type Database = {
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
           created_at?: string | null
+          daily_rate_amount?: number | null
+          daily_rate_reference_days?: number | null
+          daily_rate_reference_weekly?: number | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
@@ -1812,6 +1818,9 @@ export type Database = {
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
           created_at?: string | null
+          daily_rate_amount?: number | null
+          daily_rate_reference_days?: number | null
+          daily_rate_reference_weekly?: number | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
@@ -7251,6 +7260,9 @@ export type Database = {
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
           created_at: string | null
+          daily_rate_amount: number | null
+          daily_rate_reference_days: number | null
+          daily_rate_reference_weekly: number | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
@@ -7515,6 +7527,9 @@ export type Database = {
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
           created_at: string | null
+          daily_rate_amount: number | null
+          daily_rate_reference_days: number | null
+          daily_rate_reference_weekly: number | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null

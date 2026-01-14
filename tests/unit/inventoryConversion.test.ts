@@ -276,6 +276,138 @@ describe('calculateDeduction', () => {
     });
   });
 
+  describe('Count-to-Container Conversion', () => {
+    it('converts 1 each tortilla to fractional bag (50 per bag)', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 1,
+        recipeUnit: 'each',
+        productName: 'Flour Tortillas',
+        purchaseUnit: 'bag',
+        sizeValue: 50,
+        sizeUnit: 'each',
+        costPerUnit: 10.00,
+      };
+
+      const result = calculateDeduction(ingredient, 1);
+
+      // 1 tortilla / 50 per bag = 0.02 bags
+      expect(result.conversionMethod).toBe('count_to_container');
+      expect(result.success).toBe(true);
+      expect(result.purchaseUnitDeduction).toBeCloseTo(0.02, 4);
+      expect(result.costPerRecipeUnit).toBeCloseTo(0.20, 2);
+    });
+
+    it('converts burger buns (8 per bag)', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 1,
+        recipeUnit: 'each',
+        productName: 'Burger Buns',
+        purchaseUnit: 'bag',
+        sizeValue: 8,
+        sizeUnit: 'each',
+        costPerUnit: 3.00,
+      };
+
+      const result = calculateDeduction(ingredient, 8);
+
+      // 8 buns / 8 per bag = 1 bag
+      expect(result.conversionMethod).toBe('count_to_container');
+      expect(result.purchaseUnitDeduction).toBe(1);
+      expect(result.costPerRecipeUnit).toBeCloseTo(0.375, 3);
+    });
+
+    it('converts eggs (360 per case)', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 2,
+        recipeUnit: 'each',
+        productName: 'Large Eggs',
+        purchaseUnit: 'case',
+        sizeValue: 360,
+        sizeUnit: 'each',
+        costPerUnit: 50.00,
+      };
+
+      const result = calculateDeduction(ingredient, 90);
+
+      // 180 eggs / 360 per case = 0.5 cases
+      expect(result.conversionMethod).toBe('count_to_container');
+      expect(result.purchaseUnitDeduction).toBeCloseTo(0.5, 2);
+      expect(result.costPerRecipeUnit).toBeCloseTo(0.1389, 4);
+    });
+
+    it('works with "piece" as individual unit', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 3,
+        recipeUnit: 'piece',
+        productName: 'Paper Napkins',
+        purchaseUnit: 'box',
+        sizeValue: 500,
+        sizeUnit: 'piece',
+        costPerUnit: 8.00,
+      };
+
+      const result = calculateDeduction(ingredient, 100);
+
+      // 300 napkins / 500 per box = 0.6 boxes
+      expect(result.conversionMethod).toBe('count_to_container');
+      expect(result.purchaseUnitDeduction).toBeCloseTo(0.6, 2);
+      expect(result.costPerRecipeUnit).toBeCloseTo(0.016, 3);
+    });
+
+    it('works with "unit" as individual unit', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 1,
+        recipeUnit: 'unit',
+        productName: 'Hot Dog Buns',
+        purchaseUnit: 'package',
+        sizeValue: 12,
+        sizeUnit: 'unit',
+        costPerUnit: 4.00,
+      };
+
+      const result = calculateDeduction(ingredient, 24);
+
+      // 24 buns / 12 per package = 2 packages
+      expect(result.conversionMethod).toBe('count_to_container');
+      expect(result.purchaseUnitDeduction).toBe(2);
+      expect(result.costPerRecipeUnit).toBeCloseTo(0.3333, 4);
+    });
+
+    it('does not apply when size_unit is not an individual unit', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 1,
+        recipeUnit: 'each',
+        productName: 'Vodka',
+        purchaseUnit: 'bottle',
+        sizeValue: 750,
+        sizeUnit: 'ml', // Not an individual unit
+        costPerUnit: 25.00,
+      };
+
+      const result = calculateDeduction(ingredient, 1);
+
+      // Should fall back, not use count-to-container
+      expect(result.conversionMethod).not.toBe('count_to_container');
+    });
+
+    it('does not apply when purchase unit is not a container', () => {
+      const ingredient: IngredientInfo = {
+        recipeQuantity: 1,
+        recipeUnit: 'each',
+        productName: 'Product',
+        purchaseUnit: 'kg', // Weight unit, not container
+        sizeValue: 50,
+        sizeUnit: 'each',
+        costPerUnit: 10.00,
+      };
+
+      const result = calculateDeduction(ingredient, 1);
+
+      // Should fall back, not use count-to-container
+      expect(result.conversionMethod).not.toBe('count_to_container');
+    });
+  });
+
   describe('Volume-to-Volume Conversion', () => {
     it('converts fl oz recipe to ml package', () => {
       const ingredient: IngredientInfo = {

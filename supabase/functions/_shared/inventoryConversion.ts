@@ -52,12 +52,29 @@ export const DENSITY_CUP_TO_GRAMS: Record<string, number> = {
   'butter': 227,
 };
 
+/**
+ * Container units (bag, box, case, package, etc.)
+ * Used for count-to-container conversions
+ */
+export const CONTAINER_UNITS: string[] = [
+  'bag', 'box', 'case', 'package', 'container'
+];
+
+/**
+ * Individual count units (each, piece, unit)
+ * Used for count-to-container conversions
+ */
+export const INDIVIDUAL_UNITS: string[] = [
+  'each', 'piece', 'unit'
+];
+
 // ===== TYPE DEFINITIONS =====
 
 export type UnitDomain = 'volume' | 'weight' | 'each' | 'unknown';
 
 export type ConversionMethod = 
   | '1:1'
+  | 'count_to_container'
   | 'volume_to_volume'
   | 'weight_to_weight'
   | 'density_to_weight'
@@ -194,6 +211,26 @@ export function calculateDeduction(
       purchaseUnitDeduction: deductionAmount,
       costPerRecipeUnit: ingredient.costPerUnit,
       conversionMethod: '1:1',
+      success: true,
+    };
+  }
+  
+  // CASE 0.5: Count-to-Container Conversion (NEW)
+  // Handles products stored in packages with countable items (e.g., tortillas, buns)
+  if (INDIVIDUAL_UNITS.includes(recipeUnit) && 
+      CONTAINER_UNITS.includes(purchaseUnit) &&
+      ingredient.sizeValue && ingredient.sizeValue > 0 &&
+      sizeUnit && INDIVIDUAL_UNITS.includes(sizeUnit)) {
+    
+    // Recipe uses individual items, product stored in containers
+    // sizeValue tells us how many items per container
+    const purchaseUnitDeduction = deductionAmount / ingredient.sizeValue;
+    const costPerRecipeUnit = ingredient.costPerUnit / ingredient.sizeValue;
+    
+    return {
+      purchaseUnitDeduction,
+      costPerRecipeUnit,
+      conversionMethod: 'count_to_container',
       success: true,
     };
   }

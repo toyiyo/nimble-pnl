@@ -16,7 +16,7 @@ ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
 -- ============================================================================
 
 INSERT INTO restaurants (id, name) VALUES
-  ('test-daily-rate-rest', 'Test Daily Rate Restaurant')
+  ('00000000-0000-0000-0000-00000000D001', 'Test Daily Rate Restaurant')
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
@@ -31,8 +31,8 @@ SELECT lives_ok(
       daily_rate_reference_weekly, daily_rate_reference_days,
       status, is_active, hourly_rate
     ) VALUES (
-      'test-daily-rate-emp-1',
-      'test-daily-rate-rest',
+      '00000000-0000-0000-0000-00000000D101',
+      '00000000-0000-0000-0000-00000000D001',
       'Test Daily Rate Manager',
       'Manager',
       'daily_rate',
@@ -52,7 +52,7 @@ SELECT lives_ok(
 -- ============================================================================
 
 SELECT is(
-  (SELECT compensation_type FROM employees WHERE id = 'test-daily-rate-emp-1'),
+  (SELECT compensation_type FROM employees WHERE id = '00000000-0000-0000-0000-00000000D101'),
   'daily_rate',
   'Employee has daily_rate compensation type'
 );
@@ -62,7 +62,7 @@ SELECT is(
 -- ============================================================================
 
 SELECT is(
-  (SELECT daily_rate_amount FROM employees WHERE id = 'test-daily-rate-emp-1'),
+  (SELECT daily_rate_amount FROM employees WHERE id = '00000000-0000-0000-0000-00000000D101'),
   16667,
   'Daily rate amount is $166.67 in cents'
 );
@@ -72,7 +72,7 @@ SELECT is(
 -- ============================================================================
 
 SELECT is(
-  (SELECT daily_rate_reference_weekly FROM employees WHERE id = 'test-daily-rate-emp-1'),
+  (SELECT daily_rate_reference_weekly FROM employees WHERE id = '00000000-0000-0000-0000-00000000D101'),
   100000,
   'Weekly reference amount is $1000 in cents'
 );
@@ -82,7 +82,7 @@ SELECT is(
 -- ============================================================================
 
 SELECT is(
-  (SELECT daily_rate_reference_days FROM employees WHERE id = 'test-daily-rate-emp-1'),
+  (SELECT daily_rate_reference_days FROM employees WHERE id = '00000000-0000-0000-0000-00000000D101'),
   6,
   'Standard work days is 6'
 );
@@ -97,8 +97,8 @@ SELECT throws_ok(
       id, restaurant_id, name, position,
       compensation_type, status, is_active, hourly_rate
     ) VALUES (
-      'test-daily-rate-emp-invalid',
-      'test-daily-rate-rest',
+      '00000000-0000-0000-0000-00000000D102',
+      '00000000-0000-0000-0000-00000000D001',
       'Invalid Daily Rate',
       'Server',
       'daily_rate',
@@ -124,8 +124,8 @@ SELECT lives_ok(
       daily_rate_reference_weekly, daily_rate_reference_days,
       status, is_active, hourly_rate
     ) VALUES (
-      'test-daily-rate-emp-5day',
-      'test-daily-rate-rest',
+      '00000000-0000-0000-0000-00000000D103',
+      '00000000-0000-0000-0000-00000000D001',
       'Five Day Manager',
       'Manager',
       'daily_rate',
@@ -151,8 +151,8 @@ SELECT lives_ok(
       compensation_type, hourly_rate,
       status, is_active
     ) VALUES (
-      'test-hourly-emp',
-      'test-daily-rate-rest',
+      '00000000-0000-0000-0000-00000000D104',
+      '00000000-0000-0000-0000-00000000D001',
       'Hourly Employee',
       'Server',
       'hourly',

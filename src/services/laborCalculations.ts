@@ -358,6 +358,7 @@ export function calculateScheduledLaborCost(
       hourly_cost: 0,
       salary_cost: 0,
       contractor_cost: 0,
+      daily_rate_cost: 0,
       total_cost: 0,
       hours_worked: 0,
     });

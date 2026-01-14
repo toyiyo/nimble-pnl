@@ -26221,6 +26221,557 @@
       "status": "open",
       "created_at": "2026-01-13T15:16:53.420Z",
       "updated_at": "2026-01-13T15:16:53.420Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "318",
+        "comment_id": 2688686249,
+        "file": "docs/DAILY_RATE_TEST_FIXES.md",
+        "line": 7
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Documentation claims \"Fixed\" status, but pipeline shows tests are still failing.**\n\nThe static analysis indicates 5 test failures in `laborCalculations-dailyRate.test.ts` with NaN values, yet this document is marked as `Status: ✅ Fixed`. This inconsistency suggests either:\n1. The documented fix in `src/services/laborCalculations.ts` was not actually applied\n2. The documentation was written before the fix was verified\n\nPlease ensure the fix described in lines 51-69 (using `Map<string, Set<string>>` for tracking) is actually committed to the codebase.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@docs/DAILY_RATE_TEST_FIXES.md` around lines 1 - 7, The docs show \"Status: ✅\nFixed\" but the actual fix using a Map<string, Set<string>> was not committed,\ncausing NaNs in laborCalculations-dailyRate.test.ts; open the laborCalculations\nfunction in src/services/laborCalculations.ts, replace the previous\nduplicate-tracking structure with a Map<string, Set<string>> as described\n(ensuring keys are unique identifiers and values are Sets of processed sub-ids),\nupdate the logic that checks/marks processed entries to use\nmap.get(key).has(subId) and map.get(key).add(subId) (creating the Set when\nabsent), run the test suite to verify the five failing tests are resolved, and\ncommit the change with a clear message confirming the fix.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "6f74492fdadc00e1e12e903493d69d3074bb3d26",
+      "status": "in_progress",
+      "created_at": "2026-01-14T02:19:49.466Z",
+      "updated_at": "2026-01-14T02:20:41.279Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "318",
+        "comment_id": 2688686250,
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts",
+        "line": 115
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, locate the test file and production code\nfind . -name \"laborCalculations*.test.ts\" -o -name \"laborCalculations.ts\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 234\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the test file to see the actual code at lines 95-115\ncat -n tests/unit/laborCalculations-dailyRate.test.ts | sed -n '85,125p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1739\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for LaborCostBreakdown interface and daily_rate property\nrg -n \"LaborCostBreakdown|daily_rate\" --type ts -A 3 src/services/laborCalculations.ts | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3724\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if generateLaborBreakdown function initializes daily_rate\nrg -n \"generateLaborBreakdown\" -A 20 src/services/laborCalculations.ts | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1860\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for daily_rate handling in calculateScheduledLaborCost\nrg -n \"calculateScheduledLaborCost\" -A 30 src/services/laborCalculations.ts | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1279\n\n---\n\n\n\n</details>\n\n**Production code missing `daily_rate_cost: 0` initialization in `DailyLaborCost` objects.**\n\nIn `calculateScheduledLaborCost` (around line 356) and `calculateActualLaborCost` (around line 495), when creating `DailyLaborCost` objects in the dateMap, the `daily_rate_cost` field is not initialized. This causes undefined values that become NaN when the breakdown calculation tries to sum them.\n\nFix: Initialize `daily_rate_cost: 0` in both locations where `DailyLaborCost` objects are created.\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 GitHub Check: Unit Tests</summary>\n\n[failure] 103-103: tests/unit/laborCalculations-dailyRate.test.ts > Labor Calculations - Daily Rate > calculateScheduledLaborCost > calculates cost for daily_rate employee with scheduled shifts\nAssertionError: expected NaN to be close to 500.01, received difference is NaN, but expected 0.005\n ❯ tests/unit/laborCalculations-dailyRate.test.ts:103:41\n\n\n\n</details>\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@tests/unit/laborCalculations-dailyRate.test.ts` around lines 95 - 115, The\nDailyLaborCost objects created in calculateScheduledLaborCost and\ncalculateActualLaborCost (when populating the dateMap) lack initialization for\ndaily_rate_cost, causing undefined→NaN during breakdown sums; update the object\nliteral used when inserting into the dateMap in both functions to include\ndaily_rate_cost: 0 so each DailyLaborCost starts with a numeric zero before any\nincrements.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b36de8fc7ad897875eb5b93c554314ee29957fe9",
+      "status": "in_progress",
+      "created_at": "2026-01-14T02:19:49.467Z",
+      "updated_at": "2026-01-14T02:20:41.279Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "318",
+        "comment_id": 2688686252,
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts",
+        "line": 210
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Test correctly expects zero cost for inactive employees, but fails due to same NaN issue.**\n\nThe test logic is correct: inactive daily_rate employees should yield zero cost. The `status: 'inactive' as const` cast is appropriate for TypeScript type narrowing.\n\nThe failure at line 208 (`expected NaN to be +0`) confirms the underlying `daily_rate` breakdown object is not properly initialized in the production code.\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 GitHub Check: Unit Tests</summary>\n\n[failure] 208-208: tests/unit/laborCalculations-dailyRate.test.ts > Labor Calculations - Daily Rate > calculateScheduledLaborCost > returns zero cost for inactive daily_rate employee\nAssertionError: expected NaN to be +0 // Object.is equality\n\n- Expected\n+ Received\n\n- 0\n+ NaN\n\n ❯ tests/unit/laborCalculations-dailyRate.test.ts:208:41\n\n\n\n</details>\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@tests/unit/laborCalculations-dailyRate.test.ts` around lines 187 - 210, The\ntest failure shows calculateScheduledLaborCost produces NaN for the daily_rate\nbreakdown for inactive employees; update calculateScheduledLaborCost to\ninitialize the daily_rate breakdown object with numeric defaults (e.g., cost =\n0, daysScheduled = 0) and ensure all accumulators used in daily_rate\ncalculations start at 0 and are only modified when employee.status === 'active'\n(or when a valid daily rate exists); also guard any divisions or rate\ncomputations to avoid division-by-zero or undefined operands so inactive\nemployees immediately yield daily_rate.cost = 0 and daily_rate.daysScheduled =\n0.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "225922df109b39210b8ee7648973075251f89f27",
+      "status": "in_progress",
+      "created_at": "2026-01-14T02:19:49.467Z",
+      "updated_at": "2026-01-14T02:20:41.279Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "318",
+        "comment_id": 2688686255,
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts",
+        "line": 536
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Mixed compensation test correctly validates aggregation, but blocked by same NaN issue.**\n\nThe test logic correctly validates:\n- Daily rate: 2 days × $166.67 = $333.34\n- Hourly: 7.5 hours × $15 = $112.50 (8 hours - 30 min break)\n- Total: $445.84\n\nThis test will pass once the underlying `daily_rate` breakdown initialization is fixed.\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 GitHub Check: Unit Tests</summary>\n\n[failure] 528-528: tests/unit/laborCalculations-dailyRate.test.ts > Labor Calculations - Daily Rate > Mixed Compensation Types > calculates costs correctly with hourly and daily_rate employees\nAssertionError: expected NaN to be close to 333.34, received difference is NaN, but expected 0.005\n ❯ tests/unit/laborCalculations-dailyRate.test.ts:528:41\n\n\n\n</details>\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@tests/unit/laborCalculations-dailyRate.test.ts` around lines 473 - 536, The\nNaN stems from uninitialized numeric fields for the daily_rate bucket in\ncalculateScheduledLaborCost; initialize breakdown.daily_rate (e.g., cost, days,\ncount) to 0 when you construct the breakdown object and ensure all arithmetic\nuses Number(...) or || 0 to coerce undefined to 0 before adding (also guard any\ndivision like daily_rate_rate = total/day_count). Update the initialize/default\nlogic in calculateScheduledLaborCost so breakdown.daily_rate.cost = 0 and any\nrelated counters start at 0, and ensure accumulation uses those safe numeric\nvalues to prevent NaN.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "259550d7faebec305aba723421ba9ae1c44beaed",
+      "status": "in_progress",
+      "created_at": "2026-01-14T02:19:49.467Z",
+      "updated_at": "2026-01-14T02:20:41.279Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/EmployeeDialog.tsx",
+        "line": 247
+      },
+      "title": "@typescript-eslint/no-explicit-any in EmployeeDialog.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/EmployeeDialog.tsx"
+      ],
+      "id": "f49a46d6b00c49da87a0252fe67462e5ae43fb37",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.481Z",
+      "updated_at": "2026-01-14T02:19:49.481Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/EmployeeDialog.tsx",
+        "line": 417
+      },
+      "title": "@typescript-eslint/no-explicit-any in EmployeeDialog.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/EmployeeDialog.tsx"
+      ],
+      "id": "c7c4e13219cbef40396b37e9fa5853c583b35064",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.481Z",
+      "updated_at": "2026-01-14T02:19:49.481Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/banking/SearchableAccountSelector.tsx",
+        "line": 153
+      },
+      "title": "@typescript-eslint/no-explicit-any in SearchableAccountSelector.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/banking/SearchableAccountSelector.tsx"
+      ],
+      "id": "d41125e2695989d493e78f6a1cdad04cbd77562a",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.482Z",
+      "updated_at": "2026-01-14T02:19:49.482Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/banking/SearchableAccountSelector.tsx",
+        "line": 178
+      },
+      "title": "@typescript-eslint/no-explicit-any in SearchableAccountSelector.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/banking/SearchableAccountSelector.tsx"
+      ],
+      "id": "3cc4504ac0f5a70e9a64a59a86bab4e76a4517c8",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.482Z",
+      "updated_at": "2026-01-14T02:19:49.482Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts",
+        "line": 53
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts"
+      ],
+      "id": "53d78c8bd800b1efb5e159aa73aaab913aebe9be",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.483Z",
+      "updated_at": "2026-01-14T02:19:49.483Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts",
+        "line": 173
+      },
+      "title": "@typescript-eslint/no-explicit-any in useOnboardingStatus.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useOnboardingStatus.ts"
+      ],
+      "id": "69262bd0a557211514dc94930b9848f468d7b1a1",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.483Z",
+      "updated_at": "2026-01-14T02:19:49.483Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx",
+        "line": 77
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "d1c5abc4170366ae7ed385ea893a53e0f27366d0",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.484Z",
+      "updated_at": "2026-01-14T02:19:49.484Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx",
+        "line": 111
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "b17ac99bebc66da9ce9a9fe3d8d9fa9cd794db30",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.484Z",
+      "updated_at": "2026-01-14T02:19:49.484Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx",
+        "line": 482
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "afc42b5851d86e71a06762394251c2feed69872d",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.484Z",
+      "updated_at": "2026-01-14T02:19:49.484Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/types/scheduling.ts",
+        "line": 209
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/types/scheduling.ts"
+      ],
+      "id": "f03278bede037df7e58b8586a6a67f4e61a52280",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.484Z",
+      "updated_at": "2026-01-14T02:19:49.484Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/types/scheduling.ts",
+        "line": 210
+      },
+      "title": "@typescript-eslint/no-explicit-any in scheduling.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/types/scheduling.ts"
+      ],
+      "id": "8d3d0e05e5102b6a4dd058d5c8ba9849b7cac7bc",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.484Z",
+      "updated_at": "2026-01-14T02:19:49.484Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 64
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "3d4e289fc28675fb98921a5bc48ab1c7bc2b1519",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 67
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "68c807eb9e1ed85cf92ca766318d46d1f62c90f5",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 71
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "88a29b3475fcfef6c6b9334faf35100c234f428c",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 114
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "856d97a102313e0f635168e411ccb4df6a25fe5a",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 188
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "1335238ce3ed7521f1f7ae940f590bdabf573fa7",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 189
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "cdc61d2978e518475071f7cde87bee36de673d42",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 191
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "39574a554c3267473f490a6ae1c4934a5c6ad93d",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 210
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "0cf563be8896dfbdadf752c3d77cc39faab25f4a",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts",
+        "line": 60
+      },
+      "title": "@typescript-eslint/no-explicit-any in tip-double-counting-prevention.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts"
+      ],
+      "id": "ff1fbaa6665665496c51e24aa0e487408a1eb8df",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts",
+        "line": 63
+      },
+      "title": "@typescript-eslint/no-explicit-any in tip-double-counting-prevention.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts"
+      ],
+      "id": "5f43e5663a791841eccdc1f626656157cd975035",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts",
+        "line": 66
+      },
+      "title": "@typescript-eslint/no-explicit-any in tip-double-counting-prevention.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts"
+      ],
+      "id": "245559a82afec2d6826521f057d051f89488d140",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts",
+        "line": 77
+      },
+      "title": "@typescript-eslint/no-explicit-any in tip-double-counting-prevention.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tip-double-counting-prevention.spec.ts"
+      ],
+      "id": "0c0f51efa23daf672d12100df287c66f9a7e7f6a",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.488Z",
+      "updated_at": "2026-01-14T02:19:49.488Z"
+    },
+    {
+      "source": "tests",
+      "origin_ref": {
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts"
+      },
+      "title": "Test failure: Labor Calculations - Daily Rate calculateScheduledLaborCost calculates cost for daily_rate employee with scheduled shifts",
+      "body": "AssertionError: expected NaN to be close to 500.01, received difference is NaN, but expected 0.005\n    at /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/laborCalculations-dailyRate.test.ts:103:41\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:145:11\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:915:26\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1240:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1206:10)\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:37\n    at Traces.$ (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/traces.U4xDYhzZ.js:115:27)\n    at trace (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/test.BT8LKgU9.js:239:21)\n    at runTest (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:12)",
+      "severity": "major",
+      "tests_to_run": [
+        "npm test -- \"tests/unit/laborCalculations-dailyRate.test.ts\""
+      ],
+      "id": "35172741a7b08d120d3468b20d5ff28c27c348f0",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.492Z",
+      "updated_at": "2026-01-14T02:19:49.492Z"
+    },
+    {
+      "source": "tests",
+      "origin_ref": {
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts"
+      },
+      "title": "Test failure: Labor Calculations - Daily Rate calculateScheduledLaborCost counts each day only once even with multiple shifts",
+      "body": "AssertionError: expected NaN to be close to 166.67, received difference is NaN, but expected 0.005\n    at /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/laborCalculations-dailyRate.test.ts:147:41\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:145:11\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:915:26\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1240:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1206:10)\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:37\n    at Traces.$ (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/traces.U4xDYhzZ.js:115:27)\n    at trace (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/test.BT8LKgU9.js:239:21)\n    at runTest (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:12)",
+      "severity": "major",
+      "tests_to_run": [
+        "npm test -- \"tests/unit/laborCalculations-dailyRate.test.ts\""
+      ],
+      "id": "27cf7b5ce6475ebdd9cb6ebee4c7224c21366337",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.492Z",
+      "updated_at": "2026-01-14T02:19:49.492Z"
+    },
+    {
+      "source": "tests",
+      "origin_ref": {
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts"
+      },
+      "title": "Test failure: Labor Calculations - Daily Rate calculateScheduledLaborCost handles short and long shifts with same rate",
+      "body": "AssertionError: expected NaN to be close to 333.34, received difference is NaN, but expected 0.005\n    at /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/laborCalculations-dailyRate.test.ts:183:41\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:145:11\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:915:26\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1240:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1206:10)\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:37\n    at Traces.$ (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/traces.U4xDYhzZ.js:115:27)\n    at trace (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/test.BT8LKgU9.js:239:21)\n    at runTest (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:12)",
+      "severity": "major",
+      "tests_to_run": [
+        "npm test -- \"tests/unit/laborCalculations-dailyRate.test.ts\""
+      ],
+      "id": "82294b025624414d848e705ccbd5d4c27348cbb2",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.492Z",
+      "updated_at": "2026-01-14T02:19:49.492Z"
+    },
+    {
+      "source": "tests",
+      "origin_ref": {
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts"
+      },
+      "title": "Test failure: Labor Calculations - Daily Rate calculateScheduledLaborCost returns zero cost for inactive daily_rate employee",
+      "body": "AssertionError: expected NaN to be +0 // Object.is equality\n    at /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/laborCalculations-dailyRate.test.ts:208:41\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:145:11\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:915:26\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1240:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1206:10)\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:37\n    at Traces.$ (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/traces.U4xDYhzZ.js:115:27)\n    at trace (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/test.BT8LKgU9.js:239:21)\n    at runTest (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:12)",
+      "severity": "major",
+      "tests_to_run": [
+        "npm test -- \"tests/unit/laborCalculations-dailyRate.test.ts\""
+      ],
+      "id": "db0b02871fe4a31398b096afa1bee69390be2a1d",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.492Z",
+      "updated_at": "2026-01-14T02:19:49.492Z"
+    },
+    {
+      "source": "tests",
+      "origin_ref": {
+        "file": "tests/unit/laborCalculations-dailyRate.test.ts"
+      },
+      "title": "Test failure: Labor Calculations - Daily Rate Mixed Compensation Types calculates costs correctly with hourly and daily_rate employees",
+      "body": "AssertionError: expected NaN to be close to 333.34, received difference is NaN, but expected 0.005\n    at /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/laborCalculations-dailyRate.test.ts:528:41\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:145:11\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:915:26\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1240:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1206:10)\n    at file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:37\n    at Traces.$ (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/traces.U4xDYhzZ.js:115:27)\n    at trace (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/vitest/dist/chunks/test.BT8LKgU9.js:239:21)\n    at runTest (file:///Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/@vitest/runner/dist/index.js:1650:12)",
+      "severity": "major",
+      "tests_to_run": [
+        "npm test -- \"tests/unit/laborCalculations-dailyRate.test.ts\""
+      ],
+      "id": "8ddcaaf6eadb5de6d8a65b076d3f25be809ed263",
+      "status": "open",
+      "created_at": "2026-01-14T02:19:49.492Z",
+      "updated_at": "2026-01-14T02:19:49.492Z"
     }
   ]
 }

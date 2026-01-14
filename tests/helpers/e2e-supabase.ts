@@ -15,6 +15,7 @@ export async function exposeSupabaseHelpers(page: Page) {
     if ((window as any).__supabaseHelpersReady) return;
 
     const { supabase } = await import('/src/integrations/supabase/client');
+    (window as any).__supabase = supabase;
 
     const waitForUser = async (): Promise<{ id: string } | null> => {
       for (let i = 0; i < 10; i++) {

@@ -366,13 +366,19 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                   </div>
                 </div>
 
-                {/* Package summary chip */}
-                {item.size_value && item.size_unit && (
-                  <div className="flex items-center gap-2">
-                    <Package className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {item.size_value} {item.size_unit} per {item.package_type || 'unit'}
-                    </span>
+                {/* Package Definition - matches inventory details format */}
+                {item.size_value && item.size_unit && (item.package_type || item.parsed_unit) && (
+                  <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-md">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-5 h-5 bg-green-600 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">✓</span>
+                      </div>
+                      <span className="text-sm font-semibold text-green-800 dark:text-green-200">Your Package Definition:</span>
+                    </div>
+                    <div className="text-base font-medium text-green-800 dark:text-green-200 pl-7">
+                      1 {item.package_type || item.parsed_unit || 'unit'} containing{' '}
+                      <span className="bg-green-200 dark:bg-green-800 px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                    </div>
                   </div>
                 )}
               </div>

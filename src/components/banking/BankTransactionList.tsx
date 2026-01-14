@@ -67,12 +67,7 @@ export function BankTransactionList({
             {isSelectionMode && (
               <TableHead className="w-[50px]">
                 <Checkbox
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el) {
-                      el.indeterminate = someSelected;
-                    }
-                  }}
+                  checked={someSelected ? "indeterminate" : allSelected}
                   onCheckedChange={handleSelectAll}
                   aria-label="Select all transactions"
                 />

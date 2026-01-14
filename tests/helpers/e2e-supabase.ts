@@ -18,10 +18,10 @@ export async function exposeSupabaseHelpers(page: Page) {
     (window as any).__supabase = supabase;
 
     const waitForUser = async (): Promise<{ id: string } | null> => {
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 25; i++) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) return user;
-        await new Promise(res => setTimeout(res, 200));
+        await new Promise(res => setTimeout(res, 300));
       }
       return null;
     };
@@ -32,19 +32,27 @@ export async function exposeSupabaseHelpers(page: Page) {
       const user = userId ? { id: userId } : await waitForUser();
       if (!user?.id) return null;
 
-      const { data, error } = await supabase
-        .from('user_restaurants')
-        .select('restaurant_id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
+      for (let i = 0; i < 25; i++) {
+        const { data, error } = await supabase
+          .from('user_restaurants')
+          .select('restaurant_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
 
-      if (error) {
-        console.error('Failed to load restaurant for user', error);
-        return null;
+        if (data?.restaurant_id) {
+          return data.restaurant_id;
+        }
+
+        if (error && !error.message?.includes('No rows')) {
+          console.error('Failed to load restaurant for user', error);
+          return null;
+        }
+
+        await new Promise(res => setTimeout(res, 300));
       }
 
-      return data?.restaurant_id || null;
+      return null;
     };
 
     (window as any).__insertEmployees = async (employees: any[], restaurantId: string) => {

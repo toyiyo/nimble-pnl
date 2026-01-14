@@ -68,12 +68,14 @@ test.describe('Bank Transactions Bulk Edit', () => {
       if (!restaurantId) throw new Error('No restaurant');
 
       // Create a connected bank first
+      const stripeAccountId = `test-bank-${crypto.randomUUID()}`;
       const { data: bank, error: bankError } = await (window as any).__supabase
         .from('connected_banks')
         .insert({
           restaurant_id: restaurantId,
+          stripe_financial_account_id: stripeAccountId,
           institution_name: 'Test Bank',
-          status: 'active',
+          status: 'connected',
         })
         .select()
         .single();
@@ -85,29 +87,29 @@ test.describe('Bank Transactions Bulk Edit', () => {
         {
           restaurant_id: restaurantId,
           connected_bank_id: bank.id,
+          stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
           description: 'Test Transaction 1',
           amount: -100.00,
           transaction_date: new Date().toISOString().split('T')[0],
           is_categorized: false,
-          is_excluded: false,
         },
         {
           restaurant_id: restaurantId,
           connected_bank_id: bank.id,
+          stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
           description: 'Test Transaction 2',
           amount: -50.00,
           transaction_date: new Date().toISOString().split('T')[0],
           is_categorized: false,
-          is_excluded: false,
         },
         {
           restaurant_id: restaurantId,
           connected_bank_id: bank.id,
+          stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
           description: 'Test Transaction 3',
           amount: -75.00,
           transaction_date: new Date().toISOString().split('T')[0],
           is_categorized: false,
-          is_excluded: false,
         },
       ];
 
@@ -188,28 +190,33 @@ test.describe('Bank Transactions Bulk Edit', () => {
       const user = await (window as any).__getAuthUser();
       const restaurantId = await (window as any).__getRestaurantId(user.id);
 
-      const { data: bank } = await (window as any).__supabase
+      const stripeAccountId = `test-bank-${crypto.randomUUID()}`;
+      const { data: bank, error: bankError } = await (window as any).__supabase
         .from('connected_banks')
         .insert({
           restaurant_id: restaurantId,
+          stripe_financial_account_id: stripeAccountId,
           institution_name: 'Test Bank',
-          status: 'active',
+          status: 'connected',
         })
         .select()
         .single();
+      if (bankError) throw bankError;
 
       const txns = Array.from({ length: 5 }, (_, i) => ({
         restaurant_id: restaurantId,
         connected_bank_id: bank.id,
+        stripe_transaction_id: `test-txn-${crypto.randomUUID()}`,
         description: `Transaction ${i + 1}`,
         amount: -100.00,
         transaction_date: new Date().toISOString().split('T')[0],
         is_categorized: false,
       }));
 
-      await (window as any).__supabase
+      const { error } = await (window as any).__supabase
         .from('bank_transactions')
         .insert(txns);
+      if (error) throw error;
     });
 
     await page.reload();

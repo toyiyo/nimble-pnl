@@ -22,6 +22,9 @@ interface SankeyLinkData {
   target: number;
   value: number;
   color?: string;
+  sourceName?: string;
+  targetName?: string;
+  percentage?: number;
 }
 
 interface SankeyData {
@@ -135,32 +138,42 @@ const CustomLink = (props: any) => {
 
 // Custom tooltip
 const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
+  if (!active || !payload || payload.length === 0) return null;
+  
+  const data = payload[0]?.payload;
+  if (!data) return null;
+  
+  // Check if it's a link (has source and target as numbers)
+  const isLink = typeof data.source === 'number' && typeof data.target === 'number';
+  const value = data.value;
+  
+  // Guard against NaN or undefined values
+  if (value === undefined || value === null || isNaN(value)) return null;
+  
+  if (isLink) {
+    const sourceName = data.sourceName || 'Source';
+    const targetName = data.targetName || 'Target';
+    const percentage = data.percentage;
     
-    if (data.source !== undefined && data.target !== undefined) {
-      // It's a link
-      return (
-        <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
-          <p className="font-medium text-sm">{data.sourceName} → {data.targetName}</p>
-          <p className="text-lg font-bold text-primary">{formatCurrency(data.value)}</p>
-          {data.percentage && (
-            <p className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}% of total</p>
-          )}
-        </div>
-      );
-    }
-    
-    // It's a node
     return (
       <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
-        <p className="font-medium text-sm">{data.name}</p>
-        <p className="text-lg font-bold text-primary">{formatCurrency(data.value)}</p>
+        <p className="font-medium text-sm">{sourceName} → {targetName}</p>
+        <p className="text-lg font-bold text-primary">{formatCurrency(value)}</p>
+        {percentage !== undefined && !isNaN(percentage) && (
+          <p className="text-xs text-muted-foreground">{percentage.toFixed(1)}% of income</p>
+        )}
       </div>
     );
   }
   
-  return null;
+  // It's a node
+  const name = data.name || 'Unknown';
+  return (
+    <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
+      <p className="font-medium text-sm">{name}</p>
+      <p className="text-lg font-bold text-primary">{formatCurrency(value)}</p>
+    </div>
+  );
 };
 
 export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps) => {
@@ -271,16 +284,23 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
         target: cashFlowIndex,
         value: netRevenue,
         color: INCOME_COLORS[0],
+        sourceName: 'Sales Revenue',
+        targetName: 'Cash Flow',
+        percentage: 100,
       });
     }
 
     // Create links from cash flow to expenses
     expenseCategories.forEach((cat, index) => {
+      const percentage = totalIncome > 0 ? (cat.amount / totalIncome) * 100 : 0;
       links.push({
         source: cashFlowIndex,
         target: expenseStartIndex + index,
         value: cat.amount,
         color: EXPENSE_COLORS[cat.category] || 'hsl(0, 0%, 60%)',
+        sourceName: 'Cash Flow',
+        targetName: cat.category,
+        percentage,
       });
     });
 

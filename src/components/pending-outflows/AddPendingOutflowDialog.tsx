@@ -177,8 +177,8 @@ export function AddPendingOutflowDialog({ open, onOpenChange }: AddPendingOutflo
             <SearchableAccountSelector
               value={formData.category_id || undefined}
               onValueChange={(value) => setFormData({ ...formData, category_id: value || null })}
-              filterByTypes={['expense', 'asset']}
-              placeholder="Select expense or asset account..."
+              filterByTypes={['expense', 'asset', 'cogs']}
+              placeholder="Select category (expense, COGS, or asset)..."
             />
           </div>
 

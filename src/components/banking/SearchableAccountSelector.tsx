@@ -131,17 +131,15 @@ export function SearchableAccountSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0 bg-background z-50" align="start">
-        <Command>
+      <PopoverContent 
+        className="w-[350px] p-0 bg-background z-50" 
+        align="start"
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
+        <Command shouldFilter={true}>
           <CommandInput placeholder="Search accounts..." />
-          <CommandList 
-            className="max-h-80"
-            style={{ 
-              overflowY: 'scroll',
-              overscrollBehavior: 'contain',
-              WebkitOverflowScrolling: 'touch',
-            } as React.CSSProperties}
-          >
+          <CommandList className="max-h-[300px] overflow-y-auto">
             {isEmpty ? (
               <div className="py-6 px-4 text-center text-sm text-muted-foreground">
                 <p className="font-medium mb-1">No accounts found</p>

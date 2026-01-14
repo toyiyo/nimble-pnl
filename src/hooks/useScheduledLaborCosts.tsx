@@ -9,6 +9,7 @@ export interface ScheduledLaborCostData {
   hourly_wages: number;
   salary_wages: number;
   contractor_payments: number;
+  daily_rate_wages: number;
   total_hours: number;
 }
 
@@ -22,6 +23,10 @@ export interface ScheduledLaborCostBreakdown {
     estimatedDays: number;
   };
   contractor: {
+    cost: number;
+    estimatedDays: number;
+  };
+  daily_rate: {
     cost: number;
     estimatedDays: number;
   };
@@ -67,6 +72,7 @@ export function useScheduledLaborCosts(
           hourly: { cost: 0, hours: 0 },
           salary: { cost: 0, estimatedDays: 0 },
           contractor: { cost: 0, estimatedDays: 0 },
+          daily_rate: { cost: 0, estimatedDays: 0 },
           total: 0,
         },
       };
@@ -83,6 +89,7 @@ export function useScheduledLaborCosts(
       hourly_wages: day.hourly_cost,
       salary_wages: day.salary_cost,
       contractor_payments: day.contractor_cost,
+      daily_rate_wages: day.daily_rate_cost,
       total_hours: day.hours_worked,
     }));
 
@@ -98,6 +105,10 @@ export function useScheduledLaborCosts(
       contractor: {
         cost: serviceBreakdown.contractor.cost,
         estimatedDays: serviceBreakdown.contractor.daysScheduled,
+      },
+      daily_rate: {
+        cost: serviceBreakdown.daily_rate.cost,
+        estimatedDays: serviceBreakdown.daily_rate.daysScheduled,
       },
       total: serviceBreakdown.total,
     };

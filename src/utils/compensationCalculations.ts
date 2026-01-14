@@ -313,6 +313,51 @@ export function calculateDailyContractorAllocation(
 }
 
 // ============================================================================
+// Daily Rate Calculations
+// ============================================================================
+
+/**
+ * Calculate daily rate from weekly reference amount and days
+ * 
+ * @param weeklyAmountCents - Weekly reference amount in cents
+ * @param standardDays - Standard work days per week
+ * @returns Daily rate in cents (rounded to nearest cent)
+ * 
+ * @example
+ * calculateDailyRateFromWeekly(100000, 6) // $1000 / 6 = 16667 cents ($166.67)
+ */
+export function calculateDailyRateFromWeekly(
+  weeklyAmountCents: number,
+  standardDays: number
+): number {
+  if (standardDays <= 0) {
+    throw new Error('Standard days must be greater than 0');
+  }
+  return Math.round(weeklyAmountCents / standardDays);
+}
+
+/**
+ * Calculate pay for a daily rate employee for a given period
+ * 
+ * @param employee - The daily rate employee
+ * @param workedDays - Number of days actually worked
+ * @returns Total pay in cents
+ * 
+ * @example
+ * // Employee with $166.67/day rate, worked 4 days
+ * calculateDailyRatePay(employee, 4) // Returns 66668 cents ($666.68)
+ */
+export function calculateDailyRatePay(
+  employee: Employee,
+  workedDays: number
+): number {
+  if (!employee.daily_rate_amount) {
+    throw new Error('Daily rate amount required');
+  }
+  return Math.round(employee.daily_rate_amount * workedDays);
+}
+
+// ============================================================================
 // Unified Calculations
 // ============================================================================
 
@@ -361,6 +406,13 @@ export function calculateDailyLaborCost(
         employee.contractor_payment_amount,
         employee.contractor_payment_interval
       );
+
+    case 'daily_rate':
+      if (!employee.daily_rate_amount) {
+        throw new Error('Daily rate amount required for daily rate employees');
+      }
+      // Simple: return the rate. Hours don't matter.
+      return employee.daily_rate_amount;
 
     default:
       return 0;
@@ -535,6 +587,18 @@ export function validateCompensationFields(
         errors.push('Payment interval is required for contractors');
       }
       break;
+
+    case 'daily_rate':
+      if (!employee.daily_rate_amount || employee.daily_rate_amount <= 0) {
+        errors.push('Daily rate amount must be greater than 0');
+      }
+      if (!employee.daily_rate_reference_weekly || employee.daily_rate_reference_weekly <= 0) {
+        errors.push('Weekly reference amount must be greater than 0');
+      }
+      if (!employee.daily_rate_reference_days || employee.daily_rate_reference_days <= 0) {
+        errors.push('Standard work days must be greater than 0');
+      }
+      break;
   }
 
   return errors;
@@ -548,8 +612,8 @@ export function requiresTimePunches(employee: Employee): boolean {
   if (employee.requires_time_punch !== undefined) {
     return employee.requires_time_punch;
   }
-  // Default: hourly employees must punch, others don't
-  return employee.compensation_type === 'hourly';
+  // Default: hourly and daily_rate employees must punch (to track days worked)
+  return employee.compensation_type === 'hourly' || employee.compensation_type === 'daily_rate';
 }
 
 /**
@@ -560,6 +624,7 @@ export function formatCompensationType(type: CompensationType): string {
     hourly: 'Hourly',
     salary: 'Salaried',
     contractor: 'Contractor',
+    daily_rate: 'Per Day Worked',
   };
   return labels[type];
 }

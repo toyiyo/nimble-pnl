@@ -784,6 +784,14 @@ describe('LaborCalculationService', () => {
       expect(desc).toContain('500.00');
       expect(desc).toContain('job');
     });
+
+    it('describes contractor daily allocation', () => {
+      const dailyCost = calculateEmployeeDailyCost(contractorMonthly);
+      const dailyRate = (dailyCost / 100).toFixed(2);
+
+      const desc = getEmployeeDailyRateDescription(contractorMonthly);
+      expect(desc).toBe(`~$${dailyRate}/day (${contractorMonthly.contractor_payment_interval})`);
+    });
   });
 
   // ============================================================================

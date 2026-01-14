@@ -622,7 +622,14 @@ const Index = () => {
                     value={inventoryPurchases ? `$${inventoryPurchases.totalPurchases.toFixed(0)}` : '--'}
                     icon={Package}
                     variant="default"
-                    subtitle={inventoryPurchases ? `${inventoryPurchases.purchaseCount} purchase${inventoryPurchases.purchaseCount !== 1 ? 's' : ''}` : undefined}
+                    subtitle={(() => {
+                      if (!inventoryPurchases) return undefined;
+                      const netRevenue = periodData?.net_revenue || 0;
+                      const purchasePercent = netRevenue > 0 
+                        ? ((inventoryPurchases.totalPurchases / netRevenue) * 100).toFixed(1)
+                        : '0.0';
+                      return `${purchasePercent}% of revenue | ${inventoryPurchases.purchaseCount} purchase${inventoryPurchases.purchaseCount !== 1 ? 's' : ''}`;
+                    })()}
                     sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />

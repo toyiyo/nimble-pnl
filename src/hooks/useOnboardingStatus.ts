@@ -43,26 +43,27 @@ const onboardingTables = {
   products: 'products'
 } as const;
 
-const checkTableCount = (
+const checkTableCount = async (
   restaurantId: string, 
   table: TableName, 
   filters?: Record<string, string>
-) => {
+): Promise<{ count: number | null; error: Error | null }> => {
   // Select only 'id' for minimal data transfer, with count: 'exact' to get the count
-  // Use head: false to force a GET request instead of HEAD (avoids 404/network issues)
-  // limit(1) is sufficient since we only need the count, not the data
-  let query = supabase.from(table)
-    .select('id', { count: 'exact', head: false })
-    .eq('restaurant_id', restaurantId)
-    .limit(1);
+  // Use type assertion to avoid deep type instantiation issues with Supabase generics
+  const query = supabase.from(table).select('id', { count: 'exact', head: false }) as any;
+  
+  let result = await query.eq('restaurant_id', restaurantId).limit(1);
 
-  if (filters) {
-    Object.entries(filters).forEach(([key, value]) => {
-      query = query.eq(key, value);
-    });
+  // Apply additional filters if provided
+  if (filters && Object.keys(filters).length > 0) {
+    const [[key, value]] = Object.entries(filters);
+    result = await query
+      .eq('restaurant_id', restaurantId)
+      .eq(key, value)
+      .limit(1);
   }
 
-  return query;
+  return { count: result.count ?? null, error: result.error as Error | null };
 };
 
 export const useOnboardingStatus = (): OnboardingStatus => {

@@ -182,6 +182,7 @@ export default function POSSales() {
       saleIds: Array.from(bulkSelection.selectedIds),
       categoryId,
       restaurantId: selectedRestaurant.restaurant_id,
+      overrideExisting,
     }, {
       onSuccess: () => {
         setShowBulkCategorizePanel(false);

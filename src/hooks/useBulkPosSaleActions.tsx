@@ -6,6 +6,7 @@ interface BulkCategorizePosSalesParams {
   saleIds: string[];
   categoryId: string;
   restaurantId: string;
+  overrideExisting: boolean;
 }
 
 /**
@@ -16,7 +17,29 @@ export function useBulkCategorizePosSales() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ saleIds, categoryId, restaurantId }: BulkCategorizePosSalesParams) => {
+    mutationFn: async ({ saleIds, categoryId, restaurantId, overrideExisting }: BulkCategorizePosSalesParams) => {
+      // If not overriding, filter to only uncategorized sales
+      let targetSaleIds = saleIds;
+      
+      if (!overrideExisting) {
+        // First, get the uncategorized sales from the provided IDs
+        const { data: uncategorizedSales, error: fetchError } = await supabase
+          .from('unified_sales')
+          .select('id')
+          .in('id', saleIds)
+          .eq('restaurant_id', restaurantId)
+          .eq('is_categorized', false);
+
+        if (fetchError) throw fetchError;
+        
+        targetSaleIds = uncategorizedSales?.map(sale => sale.id) || [];
+        
+        // If no uncategorized sales found, return early
+        if (targetSaleIds.length === 0) {
+          return [];
+        }
+      }
+
       const { data, error } = await supabase
         .from('unified_sales')
         .update({
@@ -24,19 +47,27 @@ export function useBulkCategorizePosSales() {
           is_categorized: true,
           suggested_category_id: null, // Clear AI suggestions
         })
-        .in('id', saleIds)
+        .in('id', targetSaleIds)
         .eq('restaurant_id', restaurantId)
         .select();
 
       if (error) throw error;
       return data;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (data, variables) => {
       // Invalidate unified sales queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
       
-      toast.success(`${variables.saleIds.length} sales categorized`, {
-        description: 'Changes have been applied successfully',
+      const actualCount = data?.length || 0;
+      const skippedCount = variables.saleIds.length - actualCount;
+      
+      let description = 'Changes have been applied successfully';
+      if (skippedCount > 0 && !variables.overrideExisting) {
+        description = `${skippedCount} already categorized ${skippedCount === 1 ? 'sale' : 'sales'} skipped`;
+      }
+      
+      toast.success(`${actualCount} ${actualCount === 1 ? 'sale' : 'sales'} categorized`, {
+        description,
         duration: 10000,
         action: {
           label: 'Undo',

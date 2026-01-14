@@ -232,7 +232,9 @@ Cards: Show new category
 ```css
 /* Selection Mode Active */
 .select-button-active {
-  variant: "default" /* Primary color */
+  /* Uses shadcn/ui Button variant="default" which applies primary color scheme */
+  background-color: var(--primary);
+  color: var(--primary-foreground);
 }
 
 /* Selected Card */

@@ -173,7 +173,7 @@ test.describe('POS Sales Bulk Edit', () => {
       const restaurantId = await (window as any).__getRestaurantId(user.id);
 
       // Create a revenue account
-      const { data: account } = await (window as any).__supabase
+      const { data: account, error: accountError } = await (window as any).__supabase
         .from('chart_of_accounts')
         .insert({
           restaurant_id: restaurantId,
@@ -184,8 +184,10 @@ test.describe('POS Sales Bulk Edit', () => {
         .select()
         .single();
 
+      if (accountError) throw new Error(`Failed to create account: ${accountError.message}`);
+
       // Create test sales
-      const { data: salesData } = await (window as any).__supabase
+      const { data: salesData, error: salesError } = await (window as any).__supabase
         .from('unified_sales')
         .insert([
           {
@@ -206,6 +208,8 @@ test.describe('POS Sales Bulk Edit', () => {
           },
         ])
         .select();
+
+      if (salesError) throw new Error(`Failed to create sales: ${salesError.message}`);
 
       return { account, sales: salesData };
     });

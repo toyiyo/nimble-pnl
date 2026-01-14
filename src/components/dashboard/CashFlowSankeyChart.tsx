@@ -3,6 +3,7 @@ import { Sankey, ResponsiveContainer, Layer, Rectangle } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useMonthlyExpenses, MonthlyExpenseCategory } from '@/hooks/useMonthlyExpenses';
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
+import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { Period } from '@/components/PeriodSelector';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -32,13 +33,18 @@ interface SankeyData {
   links: SankeyLinkData[];
 }
 
-// Color palette for income sources (green-based)
-const INCOME_COLORS = [
-  'hsl(var(--chart-2))', // primary green
-  'hsl(142, 71%, 45%)',
-  'hsl(152, 60%, 50%)',
-  'hsl(162, 55%, 45%)',
-];
+// Color palette for income sources (green-based) - more variety for multiple categories
+const INCOME_COLORS: Record<string, string> = {
+  'Sales - Food': 'hsl(142, 71%, 45%)',           // Green
+  'Sales - Beverages': 'hsl(172, 66%, 50%)',      // Teal
+  'Sales - Alcohol': 'hsl(262, 52%, 56%)',        // Purple
+  'Sales - Merchandise': 'hsl(38, 92%, 50%)',     // Amber
+  'Sales - Catering': 'hsl(199, 89%, 48%)',       // Sky blue
+  'Sales - Delivery': 'hsl(326, 78%, 60%)',       // Pink
+  'Other Revenue': 'hsl(152, 60%, 50%)',          // Light green
+  'Uncategorized Revenue': 'hsl(0, 0%, 55%)',     // Gray
+  'default': 'hsl(var(--chart-2))',               // Primary green
+};
 
 // Color palette for expense categories (varied)
 const EXPENSE_COLORS: Record<string, string> = {
@@ -224,6 +230,13 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
     selectedPeriod.to
   );
 
+  // Get revenue breakdown for detailed income categories
+  const { data: revenueBreakdown, isLoading: revenueLoading } = useRevenueBreakdown(
+    restaurantId,
+    selectedPeriod.from,
+    selectedPeriod.to
+  );
+
   // Get expense categories for outflow data
   const { data: expenseData, isLoading: expenseLoading } = useMonthlyExpenses(
     restaurantId,
@@ -231,7 +244,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
     selectedPeriod.to
   );
 
-  const isLoading = metricsLoading || expenseLoading;
+  const isLoading = metricsLoading || expenseLoading || revenueLoading;
 
   // Build Sankey data from period metrics and expenses
   const sankeyData = useMemo((): SankeyData | null => {
@@ -240,22 +253,61 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
     const nodes: SankeyNodeData[] = [];
     const links: SankeyLinkData[] = [];
 
-    // Income sources (left side)
-    // For restaurant income, we have net revenue as the main source
+    // Income sources (left side) - from revenue breakdown categories
     const netRevenue = periodMetrics.netRevenue || 0;
     
-    // We'll show different income sources based on what we have
-    // For now, categorize as "Sales Revenue" as primary income
-    if (netRevenue > 0) {
-      nodes.push({ name: 'Sales Revenue', color: INCOME_COLORS[0] });
+    // Build revenue categories from the breakdown
+    interface RevenueSource {
+      name: string;
+      amount: number;
+      color: string;
     }
-
-    // Add other potential income (could be from bank transactions showing deposits)
-    // For simplicity, we'll use net revenue as the main income source
+    
+    const revenueSources: RevenueSource[] = [];
+    
+    if (revenueBreakdown?.revenue_categories && revenueBreakdown.revenue_categories.length > 0) {
+      // Use revenue categories from breakdown
+      revenueBreakdown.revenue_categories
+        .filter(cat => cat.total_amount > 0)
+        .sort((a, b) => b.total_amount - a.total_amount)
+        .forEach(cat => {
+          // Map account names to friendly display names
+          const displayName = cat.account_name;
+          const color = INCOME_COLORS[displayName] || INCOME_COLORS['default'];
+          revenueSources.push({
+            name: displayName,
+            amount: cat.total_amount,
+            color,
+          });
+        });
+    }
+    
+    // Add uncategorized revenue if present
+    if (revenueBreakdown?.uncategorized_revenue && revenueBreakdown.uncategorized_revenue > 0) {
+      revenueSources.push({
+        name: 'Uncategorized Revenue',
+        amount: revenueBreakdown.uncategorized_revenue,
+        color: INCOME_COLORS['Uncategorized Revenue'],
+      });
+    }
+    
+    // Fallback if no revenue categories found
+    if (revenueSources.length === 0 && netRevenue > 0) {
+      revenueSources.push({
+        name: 'Sales Revenue',
+        amount: netRevenue,
+        color: INCOME_COLORS['default'],
+      });
+    }
+    
+    // Add revenue source nodes
+    revenueSources.forEach(source => {
+      nodes.push({ name: source.name, color: source.color });
+    });
     
     // Cash Flow node (center)
     const cashFlowIndex = nodes.length;
-    const totalIncome = netRevenue;
+    const totalIncome = revenueSources.reduce((sum, s) => sum + s.amount, 0);
     nodes.push({ name: 'Cash Flow', color: 'hsl(var(--primary))' });
 
     // Expense categories (right side) from monthly expenses data
@@ -314,18 +366,19 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
       });
     });
 
-    // Create links from income to cash flow
-    if (netRevenue > 0) {
+    // Create links from each income source to cash flow
+    revenueSources.forEach((source, index) => {
+      const percentage = totalIncome > 0 ? (source.amount / totalIncome) * 100 : 0;
       links.push({
-        source: 0, // Sales Revenue
+        source: index,
         target: cashFlowIndex,
-        value: netRevenue,
-        color: INCOME_COLORS[0],
-        sourceName: 'Sales Revenue',
+        value: source.amount,
+        color: source.color,
+        sourceName: source.name,
         targetName: 'Cash Flow',
-        percentage: 100,
+        percentage,
       });
-    }
+    });
 
     // Create links from cash flow to expenses
     expenseCategories.forEach((cat, index) => {
@@ -345,7 +398,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
     if (links.length === 0) return null;
 
     return { nodes, links };
-  }, [periodMetrics, expenseData]);
+  }, [periodMetrics, expenseData, revenueBreakdown]);
 
   // Calculate summary metrics
   const totalIncome = periodMetrics?.netRevenue || 0;
@@ -458,8 +511,12 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
         {/* Legend */}
         <div className="mt-4 pt-4 border-t flex flex-wrap gap-4 justify-center">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: INCOME_COLORS[0] }} />
-            <span className="text-xs text-muted-foreground">Income</span>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: INCOME_COLORS['Sales - Food'] }} />
+            <span className="text-xs text-muted-foreground">Food Sales</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: INCOME_COLORS['Sales - Beverages'] }} />
+            <span className="text-xs text-muted-foreground">Beverage Sales</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-primary" />
@@ -475,7 +532,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: EXPENSE_COLORS['Other/Uncategorized'] }} />
-            <span className="text-xs text-muted-foreground">Other Expenses</span>
+            <span className="text-xs text-muted-foreground">Other</span>
           </div>
         </div>
       </CardContent>

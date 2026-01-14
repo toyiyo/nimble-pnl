@@ -354,7 +354,36 @@ export function calculateInventoryImpact(
   conversionDetails: ConversionResult | null;
 } {
   
-  // Step 1: Handle container unit conversions (bottle, can, etc.)
+  // Step 1: Handle count-to-container conversions (e.g., 1 each → 1/50 bag)
+  // This handles products stored in packages with countable items (tortillas, buns, etc.)
+  const containerUnits = ['bag', 'box', 'case', 'package', 'container'];
+  const individualUnits = ['each', 'piece', 'unit'];
+  
+  if (individualUnits.includes(recipeUnit.toLowerCase()) && 
+      containerUnits.includes(purchaseUnit.toLowerCase()) &&
+      productSizeValue && productSizeValue > 0 &&
+      individualUnits.includes((productSizeUnit || '').toLowerCase())) {
+    
+    // Recipe uses individual items, product is stored in containers
+    // size_value tells us how many items per container
+    const containersNeeded = recipeQuantity / productSizeValue;
+    
+    return {
+      inventoryDeduction: containersNeeded,
+      inventoryDeductionUnit: purchaseUnit,
+      costImpact: containersNeeded * costPerPackage,
+      percentageOfPackage: containersNeeded * 100,
+      conversionDetails: {
+        value: containersNeeded,
+        fromUnit: recipeUnit,
+        toUnit: purchaseUnit,
+        productSpecific: true,
+        conversionPath: [`${recipeQuantity} ${recipeUnit}`, `÷ ${productSizeValue} per ${purchaseUnit}`, purchaseUnit]
+      }
+    };
+  }
+  
+  // Step 2: Handle container unit conversions (bottle, can, etc.)
   if (COUNT_UNITS.includes(purchaseUnit.toLowerCase()) && 
       (VOLUME_UNITS.includes(recipeUnit.toLowerCase()) || WEIGHT_UNITS.includes(recipeUnit.toLowerCase()))) {
     // Recipe is in volume/weight (e.g., oz, cup, lb), purchase is in containers (e.g., each, bottle)
@@ -435,7 +464,7 @@ export function calculateInventoryImpact(
     };
   }
   
-  // Step 2: Handle bottle unit conversion (legacy support)
+  // Step 3: Handle bottle unit conversion (legacy support)
   if (recipeUnit === 'bottle' && purchaseUnit === 'ml') {
     // If recipe calls for bottles and purchase unit is ml, convert directly
     const inventoryDeduction = recipeQuantity * purchaseQuantity; // e.g., 1 bottle = 750ml
@@ -454,7 +483,7 @@ export function calculateInventoryImpact(
     };
   }
 
-  // Step 2: Convert recipe quantity to purchase units for direct comparison
+  // Step 4: Convert recipe quantity to purchase units for direct comparison
   const recipeConversion = convertUnits(recipeQuantity, recipeUnit, purchaseUnit, productName);
   
   if (!recipeConversion) {
@@ -517,13 +546,13 @@ export function calculateInventoryImpact(
     throw new Error(`Cannot convert ${recipeUnit} to ${purchaseUnit} for ${productName}. Please ensure units are compatible or use the same measurement type.`);
   }
   
-  // Step 2: Calculate inventory deduction (how much of the purchase unit we use)
+  // Step 5: Calculate inventory deduction (how much of the purchase unit we use)
   const inventoryDeduction = recipeConversion.value;
   
-  // Step 3: Calculate percentage of total package used
+  // Step 6: Calculate percentage of total package used
   const percentageOfPackage = (inventoryDeduction / purchaseQuantity) * 100;
   
-  // Step 4: Calculate cost impact
+  // Step 7: Calculate cost impact
   // costPerPackage is per package (e.g., $10 per bottle), so calculate based on percentage used
   const costImpact = (inventoryDeduction / purchaseQuantity) * costPerPackage;
   

@@ -85,7 +85,7 @@ export async function calculateRecipeProfitability(
     .split('T')[0];
 
   // Batch fetch sales data for all recipes in a single query
-  const itemNames = recipes.map(r => r.pos_item_name || r.name);
+  const itemNames = recipes.map((r: { pos_item_name?: string; name: string }) => r.pos_item_name || r.name);
   
   const { data: allSalesData, error: salesError } = await supabase
     .from('unified_sales')
@@ -101,7 +101,7 @@ export async function calculateRecipeProfitability(
 
   // Create lookup map: item_name -> sales records
   const salesByItem = new Map<string, any[]>();
-  (allSalesData || []).forEach(sale => {
+  (allSalesData || []).forEach((sale: { item_name: string }) => {
     const existing = salesByItem.get(sale.item_name) || [];
     existing.push(sale);
     salesByItem.set(sale.item_name, existing);

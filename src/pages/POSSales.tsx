@@ -155,19 +155,25 @@ export default function POSSales() {
     
     if (modifiers.isRange && lastSelectedId) {
       bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
-      // Don't update lastSelectedId during range selection
     } else if (modifiers.isToggle) {
       bulkSelection.toggleItem(id);
-      setLastSelectedId(id);
     } else {
       bulkSelection.toggleItem(id);
-      setLastSelectedId(id);
     }
+    
+    // Always update lastSelectedId to support subsequent range selections
+    setLastSelectedId(id);
   };
 
   const handleCheckboxChange = (id: string) => {
     bulkSelection.toggleItem(id);
     setLastSelectedId(id);
+  };
+
+  const handleCardClick = (id: string, event: React.MouseEvent) => {
+    if (bulkSelection.isSelectionMode) {
+      handleSelectionToggle(id, event);
+    }
   };
 
   const handleSelectAll = () => {
@@ -1114,15 +1120,16 @@ export default function POSSales() {
                             posSystemColors[sale.posSystem] || "border-l-gray-500"
                           } rounded-lg bg-gradient-to-r from-background to-muted/30 hover:shadow-md hover:scale-[1.01] transition-all duration-300 gap-3 animate-fade-in ${
                             isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
-                          }`}
+                          } ${bulkSelection.isSelectionMode ? 'cursor-pointer' : ''}`}
                           style={{ 
                             animationDelay: `${index * 50}ms`,
                             backgroundColor: index % 2 === 0 ? undefined : 'hsl(var(--muted) / 0.3)'
                           }}
+                          onClick={(e) => handleCardClick(sale.id, e)}
                         >
                           {/* Checkbox for selection mode */}
                           {bulkSelection.isSelectionMode && (
-                            <div className="flex items-start sm:items-center">
+                            <div className="flex items-start sm:items-center" onClick={(e) => e.stopPropagation()}>
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={() => handleCheckboxChange(sale.id)}

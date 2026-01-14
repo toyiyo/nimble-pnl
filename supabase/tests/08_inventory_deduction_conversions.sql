@@ -1,7 +1,7 @@
 -- Comprehensive tests for inventory deduction conversions
 -- Note: This test suite validates conversion logic in process_unified_inventory_deduction
 BEGIN;
-SELECT plan(66);
+SELECT plan(67);
 
 -- Setup authenticated user context for tests
 SET LOCAL role TO postgres;
@@ -900,7 +900,7 @@ INSERT INTO products (id, restaurant_id, name, sku, uom_purchase, current_stock,
 ON CONFLICT (id) DO UPDATE SET current_stock = 20.0, cost_per_unit = 3.00;
 
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
-  ('b0000000-0000-0000-0000-000000000019', '22222222-2222-2222-2222-222222222222', 'Cheeseburger', 'Cheeseburger', true)
+  ('b0000000-0000-0000-0000-000000000019', '22222222-2222-2222-2222-222222222222', 'Burger with Buns', 'Burger with Buns', true)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
@@ -909,7 +909,7 @@ INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit) VALUES
 SELECT lives_ok(
   $$SELECT process_unified_inventory_deduction(
     '22222222-2222-2222-2222-222222222222',
-    'Cheeseburger',
+    'Burger with Buns',
     8,
     '2025-01-15',
     'order-buns-001'

@@ -1,5 +1,5 @@
 // Compensation types for employees
-export type CompensationType = 'hourly' | 'salary' | 'contractor';
+export type CompensationType = 'hourly' | 'salary' | 'contractor' | 'daily_rate';
 export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
 export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
 export type DeactivationReason = 'seasonal' | 'left_company' | 'on_leave' | 'other';
@@ -53,6 +53,11 @@ export interface Employee {
   // Contractors
   contractor_payment_amount?: number; // In cents (per-interval payment)
   contractor_payment_interval?: ContractorPaymentInterval;
+  
+  // Daily rate employees
+  daily_rate_amount?: number; // In cents (derived daily rate - source of truth)
+  daily_rate_reference_weekly?: number; // In cents (weekly reference for display)
+  daily_rate_reference_days?: number; // Standard work days (e.g., 6)
   
   // Time tracking & tips
   requires_time_punch?: boolean; // Must clock in/out (true for hourly, optional for others)

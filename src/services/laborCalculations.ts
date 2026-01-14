@@ -88,6 +88,11 @@ export interface LaborCostBreakdown {
     employees: number;
     daysScheduled: number;
   };
+  daily_rate: {
+    cost: number;
+    employees: number;
+    daysScheduled: number;
+  };
   total: number;
 }
 
@@ -96,6 +101,7 @@ export interface DailyLaborCost {
   hourly_cost: number;
   salary_cost: number;
   contractor_cost: number;
+  daily_rate_cost: number;
   total_cost: number;
   hours_worked: number;
 }
@@ -157,6 +163,14 @@ export function calculateEmployeeDailyCost(
         employee.contractor_payment_amount,
         employee.contractor_payment_interval
       );
+
+    case 'daily_rate':
+      // Daily rate employees earn their daily rate if scheduled/worked
+      if (!employee.daily_rate_amount) {
+        return 0;
+      }
+      // Returns cents (daily_rate_amount is already in cents)
+      return employee.daily_rate_amount;
 
     default:
       return 0;
@@ -264,9 +278,11 @@ function generateLaborBreakdown(
   dailyCosts: DailyLaborCost[],
   salaryEmployeesCount: number,
   contractorEmployeesCount: number,
+  dailyRateEmployeesCount: number,
   employeesScheduledPerDay?: Map<string, Set<string>>,
   salaryEmployeeIds?: string[],
-  contractorEmployeeIds?: string[]
+  contractorEmployeeIds?: string[],
+  dailyRateEmployeeIds?: string[]
 ): LaborCostBreakdown {
   
   // Calculate days scheduled helper
@@ -298,6 +314,13 @@ function generateLaborBreakdown(
       daysScheduled: employeesScheduledPerDay && contractorEmployeeIds
         ? getDaysScheduled(contractorEmployeeIds)
         : dailyCosts.filter(d => d.contractor_cost > 0).length,
+    },
+    daily_rate: {
+      cost: dailyCosts.reduce((sum, day) => sum + day.daily_rate_cost, 0),
+      employees: dailyRateEmployeesCount,
+      daysScheduled: employeesScheduledPerDay && dailyRateEmployeeIds
+        ? getDaysScheduled(dailyRateEmployeeIds)
+        : dailyCosts.filter(d => d.daily_rate_cost > 0).length,
     },
     total: dailyCosts.reduce((sum, day) => sum + day.total_cost, 0),
   };
@@ -335,6 +358,7 @@ export function calculateScheduledLaborCost(
       hourly_cost: 0,
       salary_cost: 0,
       contractor_cost: 0,
+      daily_rate_cost: 0,
       total_cost: 0,
       hours_worked: 0,
     });
@@ -342,6 +366,9 @@ export function calculateScheduledLaborCost(
 
   // Track which employees are scheduled each day (for salary/contractor)
   const employeesScheduledPerDay = new Map<string, Set<string>>();
+  
+  // Track which daily_rate employees we've already added costs for each day
+  const dailyRateEmployeesCountedPerDay = new Map<string, Set<string>>();
   
   // Helper to calculate shift hours
   const calculateShiftHours = (shift: Shift): number => {
@@ -377,6 +404,22 @@ export function calculateScheduledLaborCost(
       dayData.hourly_cost += cost;
       dayData.hours_worked += hours;
       dayData.total_cost += cost;
+    } else if (effectiveEmployee.compensation_type === 'daily_rate') {
+      // Daily rate employees earn their daily rate for each day scheduled
+      // But only count each employee ONCE per day (even if multiple shifts)
+      if (!dailyRateEmployeesCountedPerDay.has(shiftDate)) {
+        dailyRateEmployeesCountedPerDay.set(shiftDate, new Set());
+      }
+      
+      const countedEmployees = dailyRateEmployeesCountedPerDay.get(shiftDate);
+      if (countedEmployees && !countedEmployees.has(employee.id)) {
+        const cost = calculateEmployeeDailyCost(effectiveEmployee) / 100; // Convert to dollars
+        
+        dayData.daily_rate_cost += cost;
+        dayData.total_cost += cost;
+        
+        countedEmployees.add(employee.id);
+      }
     }
   });
 
@@ -394,6 +437,11 @@ export function calculateScheduledLaborCost(
   );
   distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
 
+  // Daily rate employees - track separately (they're already handled in shift processing)
+  const dailyRateEmployees = employees.filter(e => 
+    e.compensation_type === 'daily_rate' && e.status === 'active'
+  );
+
   // Calculate breakdown
   const dailyCosts = Array.from(dateMap.values()).sort((a, b) => 
     a.date.localeCompare(b.date)
@@ -403,9 +451,11 @@ export function calculateScheduledLaborCost(
     dailyCosts,
     salaryEmployees.length,
     contractorEmployees.length,
+    dailyRateEmployees.length,
     employeesScheduledPerDay,
     salaryEmployees.map(e => e.id),
-    contractorEmployees.map(e => e.id)
+    contractorEmployees.map(e => e.id),
+    dailyRateEmployees.map(e => e.id)
   );
 
   return { breakdown, dailyCosts };
@@ -443,6 +493,7 @@ export function calculateActualLaborCost(
       hourly_cost: 0,
       salary_cost: 0,
       contractor_cost: 0,
+      daily_rate_cost: 0,
       total_cost: 0,
       hours_worked: 0,
     });
@@ -546,12 +597,17 @@ export function calculateActualLaborCost(
       const employeeHours = hoursPerEmployeePerDay.get(empId);
       const hoursWorked = employeeHours?.get(dateStr) || 0;
 
-      // Only handle hourly employees here - salary/contractor handled below for full period
+      // Only handle hourly and daily_rate employees here - salary/contractor handled below for full period
       if (effectiveEmployee.compensation_type === 'hourly' && hoursWorked > 0) {
         const hourlyCost = calculateEmployeeDailyCostForDate(employee, dateStr, hoursWorked) / 100; // Convert to dollars
         dayData.hourly_cost += hourlyCost;
         dayData.hours_worked += hoursWorked;
         dayData.total_cost += hourlyCost;
+      } else if (effectiveEmployee.compensation_type === 'daily_rate') {
+        // Daily rate employees earn their daily rate for each day they have punches (worked)
+        const dailyRateCost = calculateEmployeeDailyCost(effectiveEmployee) / 100; // Convert to dollars
+        dayData.daily_rate_cost += dailyRateCost;
+        dayData.total_cost += dailyRateCost;
       }
     });
   });
@@ -576,11 +632,13 @@ export function calculateActualLaborCost(
   // Use active count for summary display consistent with previous behavior
   const activeSalaryCount = employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length;
   const activeContractorCount = employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length;
+  const activeDailyRateCount = employees.filter(e => e.compensation_type === 'daily_rate' && e.status === 'active').length;
 
   const breakdown = generateLaborBreakdown(
     dailyCosts,
     activeSalaryCount,
-    activeContractorCount
+    activeContractorCount,
+    activeDailyRateCount
   );
 
   return { breakdown, dailyCosts };
@@ -605,6 +663,9 @@ export function isEmployeeCompensationValid(employee: Employee): boolean {
       return !!employee.contractor_payment_amount && 
              employee.contractor_payment_amount > 0 && 
              !!employee.contractor_payment_interval;
+    case 'daily_rate':
+      return !!employee.daily_rate_amount && 
+             employee.daily_rate_amount > 0;
     default:
       return false;
   }
@@ -631,6 +692,8 @@ export function getEmployeeDailyRateDescription(employee: Employee): string {
         return `$${(employee.contractor_payment_amount / 100).toFixed(2)}/job`;
       }
       return `~$${dailyRate}/day (${employee.contractor_payment_interval})`;
+    case 'daily_rate':
+      return `$${dailyRate}/day`;
     default:
       return 'Unknown';
   }

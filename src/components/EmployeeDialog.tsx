@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +50,17 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // Contractor fields
   const [contractorPaymentAmount, setContractorPaymentAmount] = useState('');
   const [contractorPaymentInterval, setContractorPaymentInterval] = useState<ContractorPaymentInterval>('monthly');
+
+  // Daily rate fields
+  const [dailyRateWeekly, setDailyRateWeekly] = useState('');
+  const [dailyRateStandardDays, setDailyRateStandardDays] = useState('6');
+
+  // Calculate derived daily rate (preview)
+  const derivedDailyRate = useMemo(() => {
+    const weekly = parseFloat(dailyRateWeekly) || 0;
+    const days = parseInt(dailyRateStandardDays) || 1;
+    return weekly / days;
+  }, [dailyRateWeekly, dailyRateStandardDays]);
 
   const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -104,6 +115,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       setAllocateDaily(employee.allocate_daily ?? true);
       setContractorPaymentAmount(employee.contractor_payment_amount ? (employee.contractor_payment_amount / 100).toFixed(2) : '');
       setContractorPaymentInterval(employee.contractor_payment_interval || 'monthly');
+      setDailyRateWeekly(employee.daily_rate_reference_weekly ? (employee.daily_rate_reference_weekly / 100).toFixed(2) : '');
+      setDailyRateStandardDays(employee.daily_rate_reference_days?.toString() || '6');
     } else {
       resetForm();
     }
@@ -127,6 +140,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setAllocateDaily(true);
     setContractorPaymentAmount('');
     setContractorPaymentInterval('monthly');
+    setDailyRateWeekly('');
+    setDailyRateStandardDays('6');
   };
 
   const hasCompensationChanged = (
@@ -301,6 +316,19 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       ? Math.round(Number.parseFloat(contractorPaymentAmount) * 100)
       : undefined;
 
+    // Daily rate calculations
+    const dailyRateWeeklyInCents = compensationType === 'daily_rate' && dailyRateWeekly
+      ? Math.round(Number.parseFloat(dailyRateWeekly) * 100)
+      : undefined;
+    
+    const dailyRateDays = compensationType === 'daily_rate' && dailyRateStandardDays
+      ? parseInt(dailyRateStandardDays)
+      : undefined;
+    
+    const dailyRateAmountInCents = dailyRateWeeklyInCents && dailyRateDays
+      ? Math.round(dailyRateWeeklyInCents / dailyRateDays)
+      : undefined;
+
     const employeeData = {
       restaurant_id: restaurantId,
       name,
@@ -323,6 +351,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       allocate_daily: compensationType === 'salary' ? allocateDaily : undefined,
       contractor_payment_amount: contractorAmountInCents,
       contractor_payment_interval: compensationType === 'contractor' ? contractorPaymentInterval : undefined,
+      daily_rate_amount: dailyRateAmountInCents,
+      daily_rate_reference_weekly: dailyRateWeeklyInCents,
+      daily_rate_reference_days: dailyRateDays,
     };
 
     const historyPayload = buildHistoryPayload(
@@ -445,6 +476,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   <SelectContent>
                     <SelectItem value="hourly">Hourly</SelectItem>
                     <SelectItem value="salary">Salary</SelectItem>
+                    <SelectItem value="daily_rate">Per Day Worked</SelectItem>
                     <SelectItem value="contractor">Contractor</SelectItem>
                   </SelectContent>
                 </Select>
@@ -625,6 +657,110 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     </Select>
                   </div>
                 </>
+              )}
+
+              {/* Daily Rate Fields - shown for per-day workers */}
+              {compensationType === 'daily_rate' && (
+                <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-muted-foreground">
+                      Employees are paid only for the days they work. Hours don't affect pay.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="dailyRateWeekly" className="flex items-center gap-1.5">
+                      Weekly Reference Amount ($) <span className="text-destructive">*</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-xs">
+                            <p className="text-xs font-semibold mb-1">What is this?</p>
+                            <p className="text-xs">The "anchor" amount you think of (e.g., "$1000 per week"). This is for reference only - actual pay is based on days worked.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        id="dailyRateWeekly"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={dailyRateWeekly}
+                        onChange={(e) => setDailyRateWeekly(e.target.value)}
+                        placeholder="1000.00"
+                        required
+                        aria-label="Weekly reference amount"
+                      />
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">per week</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="dailyRateStandardDays">
+                      Standard Work Days <span className="text-destructive">*</span>
+                    </Label>
+                    <Select 
+                      value={dailyRateStandardDays} 
+                      onValueChange={setDailyRateStandardDays}
+                    >
+                      <SelectTrigger id="dailyRateStandardDays" aria-label="Standard work days per week">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 days (2 days off)</SelectItem>
+                        <SelectItem value="6">6 days (1 day off)</SelectItem>
+                        <SelectItem value="7">7 days (no days off)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* CRITICAL: Show the derived rate */}
+                  {dailyRateWeekly && parseFloat(dailyRateWeekly) > 0 && (
+                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-md">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Daily Rate</span>
+                        <span className="text-lg font-bold text-primary">
+                          ${derivedDailyRate.toFixed(2)} / day
+                        </span>
+                      </div>
+                      
+                      {/* Examples */}
+                      <div className="mt-3 space-y-1 text-xs text-muted-foreground border-t pt-2">
+                        <div className="flex justify-between">
+                          <span>3 days worked:</span>
+                          <span className="font-medium">${(derivedDailyRate * 3).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>{dailyRateStandardDays} days worked:</span>
+                          <span className="font-medium">${dailyRateWeekly}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>7 days worked:</span>
+                          <span className={`font-medium ${parseInt(dailyRateStandardDays) < 7 ? 'text-orange-600' : ''}`}>
+                            ${(derivedDailyRate * 7).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Warn about 7-day scenario */}
+                  {parseInt(dailyRateStandardDays) < 7 && (
+                    <div className="flex items-start gap-2 p-2 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded text-xs">
+                      <Info className="h-3.5 w-3.5 text-orange-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-orange-800 dark:text-orange-300">
+                        If this employee works 7 days, they'll earn <strong>${(derivedDailyRate * 7).toFixed(2)}</strong>,
+                        which is more than the weekly reference amount.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
 
               <div className="grid grid-cols-2 gap-4">

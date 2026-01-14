@@ -5,6 +5,7 @@ import {
   calculateSalaryForPeriod, 
   calculateContractorPayForPeriod,
   calculateEmployeeDailyCostForDate,
+  calculateDailyRatePay,
 } from '@/utils/compensationCalculations';
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
@@ -47,6 +48,8 @@ export interface EmployeePayroll {
   overtimePay: number; // In cents
   salaryPay: number; // In cents (for salaried employees)
   contractorPay: number; // In cents (for contractors)
+  dailyRatePay: number; // In cents (for daily_rate employees)
+  daysWorked?: number; // Number of days worked (for daily_rate)
   manualPayments: ManualPayment[]; // Manual payments for per-job contractors
   manualPaymentsTotal: number; // Sum of manual payments in cents
   grossPay: number; // In cents
@@ -375,9 +378,10 @@ export function calculateRegularAndOvertimeHours(totalHours: number): {
 
 /**
  * Calculate pay for an employee
- * Handles all compensation types: hourly, salary, and contractor
+ * Handles all compensation types: hourly, salary, contractor, and daily_rate
  * For hourly: partitions punches by calendar week and computes overtime
  * For salary/contractor: calculates prorated pay for the period
+ * For daily_rate: counts unique days worked and multiplies by daily rate
  */
 export function calculateEmployeePay(
   employee: Employee,
@@ -395,6 +399,8 @@ export function calculateEmployeePay(
   let overtimePay = 0;
   let salaryPay = 0;
   let contractorPay = 0;
+  let dailyRatePay = 0;
+  let daysWorked = 0;
   const allIncompleteShifts: IncompleteShift[] = [];
   
   // Calculate based on compensation type
@@ -437,12 +443,29 @@ export function calculateEmployeePay(
   } else if (compensationType === 'contractor' && periodStartDate && periodEndDate) {
     // Contractors: calculate prorated payment for the period
     contractorPay = calculateContractorPayForPeriod(employee, periodStartDate, periodEndDate);
+    
+  } else if (compensationType === 'daily_rate' && periodStartDate && periodEndDate) {
+    // Daily rate: count unique days with punches
+    const uniqueDays = new Set<string>();
+    
+    punches.forEach(punch => {
+      const dateKey = format(new Date(punch.punch_time), 'yyyy-MM-dd');
+      const punchDate = new Date(dateKey);
+      
+      // Only count days within the pay period
+      if (punchDate >= periodStartDate && punchDate <= periodEndDate) {
+        uniqueDays.add(dateKey);
+      }
+    });
+    
+    daysWorked = uniqueDays.size;
+    dailyRatePay = calculateDailyRatePay(employee, daysWorked);
   }
 
   // Calculate manual payments total
   const manualPaymentsTotal = manualPayments.reduce((sum, p) => sum + p.amount, 0);
 
-  const grossPay = regularPay + overtimePay + salaryPay + contractorPay + manualPaymentsTotal;
+  const grossPay = regularPay + overtimePay + salaryPay + contractorPay + dailyRatePay + manualPaymentsTotal;
   const totalPay = grossPay + tips;
 
   return {
@@ -457,6 +480,8 @@ export function calculateEmployeePay(
     overtimePay,
     salaryPay,
     contractorPay,
+    dailyRatePay,
+    daysWorked: (compensationType === 'daily_rate' || daysWorked > 0) ? daysWorked : undefined,
     manualPayments,
     manualPaymentsTotal,
     grossPay,

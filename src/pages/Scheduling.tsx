@@ -449,6 +449,17 @@ const Scheduling = () => {
                       </span>
                     </div>
                   )}
+                  {laborCostBreakdown.daily_rate.cost > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Daily Rate:</span>
+                      <span className="font-medium">
+                        ${laborCostBreakdown.daily_rate.cost.toFixed(2)}
+                        <span className="text-muted-foreground ml-1">
+                          ({laborCostBreakdown.daily_rate.estimatedDays}d)
+                        </span>
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             )}

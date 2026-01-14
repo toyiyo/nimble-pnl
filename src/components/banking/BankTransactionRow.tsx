@@ -3,6 +3,7 @@ import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Check, Edit, XCircle, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
@@ -20,14 +21,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 
 interface BankTransactionRowProps {
   transaction: BankTransaction;
   status: 'for_review' | 'categorized' | 'excluded';
   accounts: ChartAccount[];
+  // Bulk selection props (optional)
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectionToggle?: (id: string, event: React.MouseEvent) => void;
 }
 
-export function BankTransactionRow({ transaction, status, accounts }: BankTransactionRowProps) {
+export function BankTransactionRow({ 
+  transaction, 
+  status, 
+  accounts,
+  isSelectionMode = false,
+  isSelected = false,
+  onSelectionToggle,
+}: BankTransactionRowProps) {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isSplitOpen, setIsSplitOpen] = useState(false);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
@@ -115,12 +128,34 @@ export function BankTransactionRow({ transaction, status, accounts }: BankTransa
     };
   };
 
+  const handleRowClick = (event: React.MouseEvent) => {
+    if (isSelectionMode && onSelectionToggle) {
+      onSelectionToggle(transaction.id, event);
+    }
+  };
+
   return (
     <>
       <TableRow 
         data-testid="bank-transaction-row"
-        className={`${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}`}
+        className={`
+          ${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}
+          ${isSelected ? 'bg-primary/10 border-l-4 border-l-primary' : ''}
+          ${isSelectionMode ? 'cursor-pointer' : ''}
+        `}
+        onClick={handleRowClick}
       >
+        {/* Checkbox column (only in selection mode) */}
+        {isSelectionMode && (
+          <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onSelectionToggle?.(transaction.id, {} as React.MouseEvent)}
+              aria-label={`Select transaction ${transaction.description}`}
+            />
+          </TableCell>
+        )}
+
         <TableCell className="font-medium">
           {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
         </TableCell>

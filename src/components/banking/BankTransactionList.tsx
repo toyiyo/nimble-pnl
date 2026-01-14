@@ -2,6 +2,7 @@ import { BankTransaction } from "@/hooks/useBankTransactions";
 import { BankTransactionRow } from "./BankTransactionRow";
 import { BankTransactionCard } from "./BankTransactionCard";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -9,10 +10,36 @@ interface BankTransactionListProps {
   transactions: BankTransaction[];
   status: 'for_review' | 'categorized' | 'excluded';
   accounts: ChartAccount[];
+  // Bulk selection props (optional)
+  isSelectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionToggle?: (id: string, event: React.MouseEvent) => void;
+  onSelectAll?: () => void;
+  onClearSelection?: () => void;
 }
 
-export function BankTransactionList({ transactions, status, accounts }: BankTransactionListProps) {
+export function BankTransactionList({ 
+  transactions, 
+  status, 
+  accounts,
+  isSelectionMode = false,
+  selectedIds = new Set(),
+  onSelectionToggle,
+  onSelectAll,
+  onClearSelection,
+}: BankTransactionListProps) {
   const isMobile = useIsMobile();
+  
+  const allSelected = transactions.length > 0 && transactions.every(t => selectedIds.has(t.id));
+  const someSelected = transactions.some(t => selectedIds.has(t.id)) && !allSelected;
+
+  const handleSelectAll = () => {
+    if (allSelected && onClearSelection) {
+      onClearSelection();
+    } else if (onSelectAll) {
+      onSelectAll();
+    }
+  };
 
   // Mobile card view
   if (isMobile) {
@@ -36,6 +63,21 @@ export function BankTransactionList({ transactions, status, accounts }: BankTran
       <Table className="min-w-[700px] max-w-full">
         <TableHeader>
           <TableRow>
+            {/* Checkbox column header (only in selection mode) */}
+            {isSelectionMode && (
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) {
+                      el.indeterminate = someSelected;
+                    }
+                  }}
+                  onCheckedChange={handleSelectAll}
+                  aria-label="Select all transactions"
+                />
+              </TableHead>
+            )}
             <TableHead className="w-[110px] whitespace-nowrap">Date</TableHead>
             <TableHead className="min-w-[180px]">Description</TableHead>
             <TableHead className="w-[120px] whitespace-nowrap hidden md:table-cell">Payee</TableHead>
@@ -54,6 +96,9 @@ export function BankTransactionList({ transactions, status, accounts }: BankTran
               transaction={transaction}
               status={status}
               accounts={accounts}
+              isSelectionMode={isSelectionMode}
+              isSelected={selectedIds.has(transaction.id)}
+              onSelectionToggle={onSelectionToggle}
             />
           ))}
         </TableBody>

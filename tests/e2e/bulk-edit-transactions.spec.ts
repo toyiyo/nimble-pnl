@@ -139,19 +139,19 @@ test.describe('Bank Transactions Bulk Edit', () => {
     // Verify selection mode is active (button changes to "Done")
     await expect(page.getByRole('button', { name: /^done$/i })).toBeVisible();
 
-    // Verify checkboxes appear
-    const checkboxes = page.getByRole('checkbox').filter({ hasText: '' });
-    const checkboxCount = await checkboxes.count();
+    // Verify row checkboxes appear
+    const rowCheckboxes = page.locator('[data-testid="bank-transaction-row"]').getByRole('checkbox');
+    const checkboxCount = await rowCheckboxes.count();
     expect(checkboxCount).toBeGreaterThan(0);
 
     // Select first transaction by clicking checkbox
-    await checkboxes.first().click();
+    await rowCheckboxes.first().click();
 
     // Verify bulk action bar appears
     await expect(page.getByText(/1 selected/i)).toBeVisible({ timeout: 5000 });
 
     // Select second transaction
-    await checkboxes.nth(1).click();
+    await rowCheckboxes.nth(1).click();
 
     // Verify count updates
     await expect(page.getByText(/2 selected/i)).toBeVisible();
@@ -162,7 +162,7 @@ test.describe('Bank Transactions Bulk Edit', () => {
 
     // Verify side panel opens
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/categorize.*transaction/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /categorize.*transaction/i })).toBeVisible();
 
     // Close panel
     const closeButton = page.getByRole('button', { name: /cancel|close/i }).last();

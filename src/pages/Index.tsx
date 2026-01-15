@@ -36,6 +36,7 @@ import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { PredictableExpensesCard } from '@/components/dashboard/PredictableExpensesCard';
 import { ExpenseHealthChips } from '@/components/dashboard/ExpenseHealthChips';
 import { ExpenseAlertsWidget } from '@/components/dashboard/ExpenseAlertsWidget';
+import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import {
   DollarSign, 
@@ -82,6 +83,7 @@ const Index = () => {
   const [metricsOpen, setMetricsOpen] = useState(true);
   const [revenueOpen, setRevenueOpen] = useState(true);
   const [moneyOutOpen, setMoneyOutOpen] = useState(true);
+  const [cashflowOpen, setCashflowOpen] = useState(true);
   const [monthlyOpen, setMonthlyOpen] = useState(true);
   const [bankingOpen, setBankingOpen] = useState(true);
   const [operationsOpen, setOperationsOpen] = useState(true);
@@ -729,6 +731,27 @@ const Index = () => {
                     </div>
                   </div>
                 )}
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+
+              {/* Cashflow Visualization - Collapsible */}
+              <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-8 bg-gradient-to-r from-teal-500 to-teal-600 rounded-full" />
+                      <h2 className="text-2xl font-bold tracking-tight">💸 Cashflow</h2>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        {cashflowOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        {cashflowOpen ? "Collapse" : "Expand"}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    <CashFlowSankeyChart selectedPeriod={selectedPeriod} />
                   </CollapsibleContent>
                 </div>
               </Collapsible>

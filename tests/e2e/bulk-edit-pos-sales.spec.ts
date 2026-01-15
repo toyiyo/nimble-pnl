@@ -24,9 +24,8 @@ async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof gen
   await page.waitForURL(/\/auth/);
 
   const signupTab = page.getByRole('tab', { name: /sign up/i });
-  if (await signupTab.isVisible().catch(() => false)) {
-    await signupTab.click();
-  }
+  await expect(signupTab).toBeVisible({ timeout: 10000 });
+  await signupTab.click();
 
   await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
   await page.getByLabel(/email/i).first().fill(user.email);
@@ -71,6 +70,7 @@ test.describe('POS Sales Bulk Edit', () => {
       const salesToCreate = [
         {
           restaurant_id: restaurantId,
+          external_order_id: `bulk-pos-${crypto.randomUUID()}`,
           item_name: 'Test Burger',
           quantity: 2,
           total_price: 20.00,
@@ -79,6 +79,7 @@ test.describe('POS Sales Bulk Edit', () => {
         },
         {
           restaurant_id: restaurantId,
+          external_order_id: `bulk-pos-${crypto.randomUUID()}`,
           item_name: 'Test Fries',
           quantity: 1,
           total_price: 5.00,
@@ -87,6 +88,7 @@ test.describe('POS Sales Bulk Edit', () => {
         },
         {
           restaurant_id: restaurantId,
+          external_order_id: `bulk-pos-${crypto.randomUUID()}`,
           item_name: 'Test Drink',
           quantity: 3,
           total_price: 9.00,
@@ -100,7 +102,7 @@ test.describe('POS Sales Bulk Edit', () => {
         .insert(salesToCreate)
         .select();
 
-      if (error) throw error;
+      if (error) throw new Error(error.message);
       return data;
     });
 
@@ -175,12 +177,14 @@ test.describe('POS Sales Bulk Edit', () => {
       // Create a revenue account
       const { data: account, error: accountError } = await (window as any).__supabase
         .from('chart_of_accounts')
-        .insert({
+        .upsert({
           restaurant_id: restaurantId,
           account_code: '4000',
           account_name: 'Test Revenue',
           account_type: 'revenue',
-        })
+          account_subtype: 'food_sales',
+          normal_balance: 'credit',
+        }, { onConflict: 'restaurant_id,account_code' })
         .select()
         .single();
 
@@ -192,6 +196,7 @@ test.describe('POS Sales Bulk Edit', () => {
         .insert([
           {
             restaurant_id: restaurantId,
+            external_order_id: `bulk-pos-${crypto.randomUUID()}`,
             item_name: 'Test Item 1',
             quantity: 1,
             total_price: 10.00,
@@ -200,6 +205,7 @@ test.describe('POS Sales Bulk Edit', () => {
           },
           {
             restaurant_id: restaurantId,
+            external_order_id: `bulk-pos-${crypto.randomUUID()}`,
             item_name: 'Test Item 2',
             quantity: 1,
             total_price: 15.00,

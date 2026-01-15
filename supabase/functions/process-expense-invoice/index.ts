@@ -1,8 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
+import { normalizeDate, normalizePdfInput } from "../_shared/expenseInvoiceUtils.ts";
 
 interface ExpenseInvoiceProcessRequest {
   invoiceUploadId: string;
@@ -140,21 +141,6 @@ function cleanJsonContent(content: string): string {
   jsonContent = jsonContent.replace(/,(\s*[}\]])/g, "$1");
   jsonContent = jsonContent.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
   return jsonContent;
-}
-
-function normalizeDate(dateString: string | undefined): string | null {
-  if (!dateString) return null;
-  try {
-    const date = new Date(dateString);
-    const now = new Date();
-    const minDate = new Date("2000-01-01");
-    if (isNaN(date.getTime()) || date > now || date < minDate) {
-      return null;
-    }
-    return date.toISOString().split("T")[0];
-  } catch {
-    return null;
-  }
 }
 
 function extractDateFromFilename(filename: string | null): string | null {
@@ -327,45 +313,49 @@ serve(async (req) => {
     const isProcessingPDF = isPDF || false;
     let pdfBase64Data = imageData;
 
-    if (isProcessingPDF && !imageData.startsWith("data:application/pdf;base64,")) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+    if (isProcessingPDF) {
+      const normalizedPdfInput = normalizePdfInput(imageData);
+      pdfBase64Data = normalizedPdfInput.value;
 
-      try {
-        const pdfResponse = await fetch(imageData, { signal: controller.signal });
-        clearTimeout(timeoutId);
+      if (normalizedPdfInput.isRemote) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-        if (!pdfResponse.ok) {
-          throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
+        try {
+          const pdfResponse = await fetch(normalizedPdfInput.value, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (!pdfResponse.ok) {
+            throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
+          }
+
+          const pdfBlob = await pdfResponse.arrayBuffer();
+          const uint8Array = new Uint8Array(pdfBlob);
+          const chunkSize = 32768;
+          let binaryString = "";
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+            binaryString += String.fromCharCode(...chunk);
+          }
+          const base64 = btoa(binaryString);
+          pdfBase64Data = `data:application/pdf;base64,${base64}`;
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          await supabase
+            .from("expense_invoice_uploads")
+            .update({
+              status: "error",
+              error_message: fetchError instanceof Error ? fetchError.message : String(fetchError),
+            })
+            .eq("id", invoiceUploadId);
+
+          return new Response(
+            JSON.stringify({
+              error: "Failed to fetch PDF for processing",
+            }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
-
-        const pdfBlob = await pdfResponse.arrayBuffer();
-        const uint8Array = new Uint8Array(pdfBlob);
-        const chunkSize = 32768;
-        let binaryString = "";
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-          binaryString += String.fromCharCode(...chunk);
-        }
-        const base64 = btoa(binaryString);
-        pdfBase64Data = `data:application/pdf;base64,${base64}`;
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        await supabase
-          .from("expense_invoice_uploads")
-          .update({
-            status: "error",
-            error_message: fetchError instanceof Error ? fetchError.message : String(fetchError),
-          })
-          .eq("id", invoiceUploadId);
-
-        return new Response(
-          JSON.stringify({
-            error: "Failed to fetch PDF for processing",
-            details: fetchError instanceof Error ? fetchError.message : String(fetchError),
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
       }
     }
 
@@ -405,7 +395,6 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: "Failed to parse invoice data.",
-          details: parseError instanceof Error ? parseError.message : String(parseError),
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 422 },
       );
@@ -420,7 +409,7 @@ serve(async (req) => {
         ? parsedData.invoiceNumber.trim()
         : null;
     let invoiceDate = normalizeDate(parsedData.invoiceDate);
-    const dueDate = normalizeDate(parsedData.dueDate);
+    const dueDate = normalizeDate(parsedData.dueDate, true);
 
     if (!invoiceDate) {
       invoiceDate = extractDateFromFilename(uploadInfo.file_name);
@@ -483,7 +472,6 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         error: "An unexpected error occurred while processing the invoice",
-        details: error instanceof Error ? error.message : String(error),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
     );

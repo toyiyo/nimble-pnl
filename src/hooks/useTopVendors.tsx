@@ -58,6 +58,7 @@ export function useTopVendors(startDate: Date, endDate: Date, bankAccountId: str
           .select('issue_date, amount, vendor_name')
           .eq('restaurant_id', selectedRestaurant.restaurant_id)
           .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+          .is('linked_bank_transaction_id', null)
           .gte('issue_date', format(previousPeriodStart, 'yyyy-MM-dd'))
           .lte('issue_date', format(endDate, 'yyyy-MM-dd'));
 

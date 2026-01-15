@@ -26772,6 +26772,1145 @@
       "status": "open",
       "created_at": "2026-01-14T02:19:49.492Z",
       "updated_at": "2026-01-14T02:19:49.492Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694817842,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 366
+      },
+      "title": "## Information exposure through a stack trace",
+      "body": "## Information exposure through a stack trace\n\nThis information exposed to the user depends on [stack trace information](1).\n\n[Show more details](https://github.com/toyiyo/nimble-pnl/security/code-scanning/63)",
+      "severity": "info",
+      "id": "0bdbde82000117eb9f94976681cab6315e707c75",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.205Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694817853,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 409
+      },
+      "title": "## Information exposure through a stack trace",
+      "body": "## Information exposure through a stack trace\n\nThis information exposed to the user depends on [stack trace information](1).\n\n[Show more details](https://github.com/toyiyo/nimble-pnl/security/code-scanning/64)",
+      "severity": "info",
+      "id": "c214e20f20bb5129fde71556dd5591f82e211051",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694817863,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 487
+      },
+      "title": "## Information exposure through a stack trace",
+      "body": "## Information exposure through a stack trace\n\nThis information exposed to the user depends on [stack trace information](1).\n\n[Show more details](https://github.com/toyiyo/nimble-pnl/security/code-scanning/65)",
+      "severity": "info",
+      "id": "134bd248521c3b98c62f965e9707922e48da3780",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856456,
+        "file": "src/components/pending-outflows/AddExpenseSheet.tsx",
+        "line": 119
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Missing user notification when supplier creation fails.**\n\nWhen `createSupplier` throws an error, the user isn't notified via toast. The function silently catches the error and returns, leaving the user unaware of the failure.\n\n<details>\n<summary>🐛 Proposed fix</summary>\n\n```diff\n       } catch (error) {\n-        console.error('Error creating supplier:', error);\n+        if (process.env.NODE_ENV === 'development') {\n+          console.error('Error creating supplier:', error);\n+        }\n+        toast({\n+          title: 'Error',\n+          description: 'Failed to create supplier',\n+          variant: 'destructive',\n+        });\n       }\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n      } catch (error) {\n        if (process.env.NODE_ENV === 'development') {\n          console.error('Error creating supplier:', error);\n        }\n        toast({\n          title: 'Error',\n          description: 'Failed to create supplier',\n          variant: 'destructive',\n        });\n      }\n      return;\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/components/pending-outflows/AddExpenseSheet.tsx` around lines 116 - 119,\nThe catch block inside AddExpenseSheet around the createSupplier call currently\nonly logs the error and returns, leaving users uninformed; update that catch to\ncall the app's toast/error notification (e.g., toast.error or showToast) with a\nclear user-facing message like \"Failed to create supplier\" and include the error\nmessage for context, while retaining the console.error for debugging, then\nreturn as before; target the catch that handles createSupplier in the\nAddExpenseSheet component to make this change.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4424e3e31a6888a69fadfcf6f8ab45e0c6cb977b",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856467,
+        "file": "src/components/pending-outflows/AddExpenseSheet.tsx",
+        "line": 220
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Missing user notification when expense creation fails.**\n\nWhen `createPendingOutflow.mutateAsync` or `updateInvoiceUpload` fails, the error is caught but the user isn't shown a toast notification. The sheet remains open without feedback.\n\n<details>\n<summary>🐛 Proposed fix</summary>\n\n```diff\n     } catch (error) {\n-      console.error('Error creating expense:', error);\n+      if (process.env.NODE_ENV === 'development') {\n+        console.error('Error creating expense:', error);\n+      }\n+      toast({\n+        title: 'Error',\n+        description: 'Failed to create expense',\n+        variant: 'destructive',\n+      });\n     }\n```\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "71edd2c4782899e054f11e28a4369559cf32367b",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856476,
+        "file": "src/hooks/useExpenseInvoiceUpload.tsx",
+        "line": 147
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**FileReader lacks error handling.**\n\nThe Promise-based FileReader wrapper doesn't handle the `onerror` event. If the file read fails, the Promise will never resolve or reject, potentially causing the function to hang.\n\n<details>\n<summary>🐛 Proposed fix</summary>\n\n```diff\n       dataToSend = await new Promise<string>((resolve) => {\n         const reader = new FileReader();\n         reader.onloadend = () => resolve(reader.result as string);\n+        reader.onerror = () => {\n+          throw new Error('Failed to read file');\n+        };\n         reader.readAsDataURL(file);\n       });\n```\n\nOr better, use reject:\n\n```diff\n-      dataToSend = await new Promise<string>((resolve) => {\n+      dataToSend = await new Promise<string>((resolve, reject) => {\n         const reader = new FileReader();\n         reader.onloadend = () => resolve(reader.result as string);\n+        reader.onerror = () => reject(new Error('Failed to read file'));\n         reader.readAsDataURL(file);\n       });\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n        dataToSend = await new Promise<string>((resolve, reject) => {\n          const reader = new FileReader();\n          reader.onloadend = () => resolve(reader.result as string);\n          reader.onerror = () => reject(new Error('Failed to read file'));\n          reader.readAsDataURL(file);\n        });\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useExpenseInvoiceUpload.tsx` around lines 143 - 147, The FileReader\nwrapper in useExpenseInvoiceUpload.tsx currently only sets reader.onloadend and\nnever handles errors, so the Promise may never resolve on read failure; change\nthe Promise signature to (resolve, reject) and add reader.onerror (and\noptionally reader.onabort) handlers that call reject(new Error(...)) with a\ndescriptive message or the reader.error, and keep reader.onloadend resolving\nwith reader.result as string; ensure the Promise returns or throws on error to\navoid hanging.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "46bcd2a98e554023488869a2b8a31c578ef29a54",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856490,
+        "file": "src/hooks/useExpenseInvoiceUpload.tsx",
+        "line": 215
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**updateInvoiceUpload silently fails without user notification.**\n\nWhen an update fails, the function logs the error and returns `null`, but unlike `uploadInvoice` and `processInvoice`, it doesn't show a toast notification to the user. This could leave users unaware that their invoice metadata wasn't saved.\n\n<details>\n<summary>♻️ Suggested fix</summary>\n\n```diff\n   const updateInvoiceUpload = async (invoiceUploadId: string, updates: Partial<ExpenseInvoiceUpload>) => {\n     const { data, error } = await supabase\n       .from('expense_invoice_uploads')\n       .update(updates)\n       .eq('id', invoiceUploadId)\n       .select()\n       .single();\n\n     if (error) {\n       console.error('Error updating invoice upload:', error);\n+      toast({\n+        title: 'Error',\n+        description: 'Failed to update invoice details',\n+        variant: 'destructive',\n+      });\n       return null;\n     }\n\n     return data as ExpenseInvoiceUpload;\n   };\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useExpenseInvoiceUpload.tsx` around lines 201 - 215, The\nupdateInvoiceUpload function currently only logs errors and returns null on\nfailure; add user feedback by invoking the same toast/error notification used in\nuploadInvoice and processInvoice when Supabase returns an error. In\nupdateInvoiceUpload, import or reference the existing toast utility (or the\nshowErrorToast helper) and call it with a descriptive message plus the error\ndetails inside the if (error) branch, then keep returning null (or propagate) as\nbefore so callers still get a null result; ensure you reference the function\nname updateInvoiceUpload and the supabase\n.from('expense_invoice_uploads').update(...) block when making the change.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "9cead2683ad7bfac3684dd2e05a341bbf67f92db",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856496,
+        "file": "src/hooks/useTopVendors.tsx",
+        "line": 77
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, locate and read the useTopVendors.tsx file\nfd -t f \"useTopVendors.tsx\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for pending_outflows table definition/schema\nrg -t ts -t tsx \"pending_outflows\" --max-count 20 -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for linked_bank_transaction_id in the codebase\nrg -t ts -t tsx \"linked_bank_transaction_id\" --max-count 20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the useTopVendors.tsx file\ncat -n src/hooks/useTopVendors.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 8414\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for pending_outflows in codebase without file type restriction\nrg \"pending_outflows\" -B 2 -A 2 | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4030\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for linked_bank_transaction_id\nrg \"linked_bank_transaction_id\" -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 7626\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for database migrations or schema definitions\nfd -t f -e sql -e ts -e tsx | grep -i \"migrat\\|schema\" | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1580\n\n---\n\n\n\n</details>\n\n**Filter pending outflows to exclude already-matched bank transactions.**\n\nWhen a payment is both in `bank_transactions` (status 'pending') and `pending_outflows` with a `linked_bank_transaction_id` set, the current code combines them without deduplication, resulting in double-counted amounts. Add `.is('linked_bank_transaction_id', null)` to the pending_outflows query to include only unmatched records.\n\n<details>\n<summary>Relevant code context</summary>\n\n```\nconst { data: pendingData, error: pendingError } = await supabase\n  .from('pending_outflows')\n  .select('issue_date, amount, vendor_name')\n  .eq('restaurant_id', selectedRestaurant.restaurant_id)\n  .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])\n  .is('linked_bank_transaction_id', null)  // Add this line\n  .gte('issue_date', format(previousPeriodStart, 'yyyy-MM-dd'))\n  .lte('issue_date', format(endDate, 'yyyy-MM-dd'));\n```\n\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useTopVendors.tsx` around lines 53 - 77, The pending_outflows query\nis including records already linked to bank transactions causing duplicates when\nyou merge into combinedTxns; update the Supabase query that populates\npendingOutflows (the call returning pendingData in useTopVendors) to filter out\nmatched records by adding .is('linked_bank_transaction_id', null) so only\nunmatched pending_outflows are selected before mapping to pendingTxnLike and\nconcatenating with txns.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "47e17f77e30eaf672bb89c19f5ac4dd85bc28c11",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856501,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 127
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🌐 Web query:\n\n`OpenRouter API PDF handling file-parser plugin format payload`\n\n💡 Result:\n\nUse the file-parser plugin and include the PDF as a file entry inside the messages content array. Key points:\n\n- messages: an array of message objects. Each message.content is an array of content items with type \"text\" or \"file\".\n- For a PDF file content item:\n  - either provide a public URL (fileData / file_data = \"https://.../document.pdf\"), or\n  - provide a base64 data URL: \"data:application/pdf;base64,<BASE64_PDF>\".\n  - include filename (e.g. \"document.pdf\").\n- plugins: include { \"id\": \"file-parser\", \"pdf\": { \"engine\": \"<pdf-text|mistral-ocr|native>\" } } (engine defaults described in docs; pdf-text is free, mistral-ocr for scanned PDFs, native used when model supports file input).  \n- You can send multiple PDFs as separate file content items. You may also return and re-send file annotations to skip re-parsing.\n\nMinimal JSON example:\n\n{\n  \"model\": \"<MODEL>\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        { \"type\": \"text\", \"text\": \"Summarize this PDF.\" },\n        {\n          \"type\": \"file\",\n          \"file\": {\n            \"filename\": \"document.pdf\",\n            \"file_data\": \"data:application/pdf;base64,<<BASE64_PDF>>\"\n          }\n        }\n      ]\n    }\n  ],\n  \"plugins\": [\n    {\n      \"id\": \"file-parser\",\n      \"pdf\": { \"engine\": \"pdf-text\" }\n    }\n  ]\n}\n\nSources: OpenRouter PDF/Plugins docs. [1][2]\n\nReferences\n[1] OpenRouter Plugins / PDF Inputs documentation.  \n[2] OpenRouter \"Images & PDFs\" / examples (base64 & plugin examples).\n\n---\n\n🌐 Web query:\n\n`OpenRouter model IDs google/gemini-2.5-flash meta-llama/llama-4-maverick google/gemma-3-27b-it available`\n\n💡 Result:\n\nYes — all three model IDs appear listed on OpenRouter:\n\n- google/gemini-2.5-flash — listed on OpenRouter. ([openrouter.ai](https://openrouter.ai/google/gemma-3-27b-it/api?utm_source=openai))  \n- meta-llama/llama-4-maverick — present in OpenRouter model listings/cache. ([glama.ai](https://glama.ai/mcp/servers/%40jck411/MCP_BACKEND_OPENROUTER/blob/c30954a92131358ee17267f3c97ed5b6b854feff/openrouter_models_cache.json?utm_source=openai))  \n- google/gemma-3-27b-it (also shown with the suffix :free in some listings) — listed on OpenRouter. ([openrouter.ai](https://openrouter.ai/google/gemma-3-27b-it/versions?utm_source=openai))\n\nIf you want the exact OpenRouter model-id strings or the API response entries, I can fetch and paste them.\n\nCitations:\n\n- 1: https://openrouter.ai/google/gemma-3-27b-it/api?utm_source=openai\n- 2: https://glama.ai/mcp/servers/%40jck411/MCP_BACKEND_OPENROUTER/blob/c30954a92131358ee17267f3c97ed5b6b854feff/openrouter_models_cache.json?utm_source=openai\n- 3: https://openrouter.ai/google/gemma-3-27b-it/versions?utm_source=openai\n\n---\n\n🌐 Web query:\n\n`esm.sh version pinning best practices Deno imports exact versions`\n\n💡 Result:\n\nShort best-practices for using esm.sh with Deno (pinning & deterministic imports)\n\n- Always pin the package version in the esm.sh URL (e.g. https://esm.sh/react@19.2.0). This prevents accidental upgrades. [1]\n- Pin esm.sh’s build output to make the CDN response immutable: add ?pin=BUILD_VERSION (e.g. ?pin=v95) when you need guaranteed identical builds across time. Use this for production-critical imports. [2]\n- Use an import map (deno.json imports) so your code uses short/bare specifiers while the map contains exact esm.sh URLs (with package + build pin as needed). This centralizes updates. [4]\n- Commit deno.lock and enable frozen locks in CI/production (or run deno with --lock/--frozen) so dependency resolution is deterministic and CI fails on unexpected changes. Prefer exact versions for applications. [3]\n- Optionally vendor/cache critical modules (or self-host esm.sh) for extra resilience and to avoid outages or transient build regressions on the CDN. Pinning + a lockfile + CI frozen locks gives the strongest reproducibility. [2][3]\n- If you rely on TypeScript types from esm.sh, be aware of the X-TypeScript-Types header and use ?no-dts to opt out when needed. [1]\n\nReferences\n- esm.sh usage & Deno compatibility. [1]\n- Pin build/version guidance (pin=BUILD_VERSION) & self-hosting. [2]\n- Deno modules, lockfile, pinning recommendations and frozen lockfile practices. [3]\n- Deno import maps (use import map in deno.json to centralize exact esm.sh URLs). [4]\n\n---\n\n\n\n</details>\n\n**Pin esm.sh import version and fix OpenRouter PDF payload format.**\n\n- `https://esm.sh/@supabase/supabase-js@2` must be pinned to an exact version (e.g., `@supabase/supabase-js@2.46.1`) to ensure deterministic builds.\n- The PDF `file_data` must be a data URL or public URL. Currently passing raw base64 to OpenRouter's file-parser plugin will fail. Use either `\"data:application/pdf;base64,<BASE64_DATA>\"` or a public HTTPS URL. The `imageData` parameter should be prefixed accordingly before being passed to `buildRequestBody()`.\n\n<details>\n<summary>Confirmed model IDs</summary>\nAll three model IDs (google/gemini-2.5-flash, meta-llama/llama-4-maverick, google/gemma-3-27b-it) are available on OpenRouter and valid.\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/functions/process-expense-invoice/index.ts` around lines 1 - 127,\nPin the Supabase client import to an exact version (replace\n\"https://esm.sh/@supabase/supabase-js@2\" with a specific tag like\n\"@supabase/supabase-js@2.46.1\") and ensure PDF payloads are passed as a valid\ndata URL or public HTTPS URL before calling buildRequestBody; specifically,\nupdate the code that supplies imageData (the\nExpenseInvoiceProcessRequest.imageData handling) to prefix raw base64 with\n\"data:application/pdf;base64,\" when isPDF is true, and then pass that prefixed\nstring into buildRequestBody(modelId, systemPrompt, isPDF, mediaData) so the\nfile-parser plugin receives a proper data URL rather than raw base64.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "8c71c41ae3cfde2bfe56e8e67f6bbf4b84682ba7",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856512,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 158
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Bug: `normalizeDate` rejects future dates, breaking `dueDate`.**\n\n`normalizeDate` returns null if `date > now` (Line 151-152). That’s reasonable for `invoiceDate`, but `dueDate` is commonly in the future—so this will drop valid due dates (Line 423-424).\n\n<details>\n<summary>Proposed fix</summary>\n\n```diff\n-function normalizeDate(dateString: string | undefined): string | null {\n+function normalizeDate(\n+  dateString: string | undefined,\n+  opts?: { allowFuture?: boolean },\n+): string | null {\n   if (!dateString) return null;\n   try {\n     const date = new Date(dateString);\n     const now = new Date();\n     const minDate = new Date(\"2000-01-01\");\n-    if (isNaN(date.getTime()) || date > now || date < minDate) {\n+    const allowFuture = opts?.allowFuture ?? false;\n+    if (isNaN(date.getTime()) || (!allowFuture && date > now) || date < minDate) {\n       return null;\n     }\n     return date.toISOString().split(\"T\")[0];\n   } catch {\n     return null;\n   }\n }\n```\n\n```diff\n-    let invoiceDate = normalizeDate(parsedData.invoiceDate);\n-    const dueDate = normalizeDate(parsedData.dueDate);\n+    let invoiceDate = normalizeDate(parsedData.invoiceDate);\n+    const dueDate = normalizeDate(parsedData.dueDate, { allowFuture: true });\n```\n</details>  \n\n\n\nAlso applies to: 422-424\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/functions/process-expense-invoice/index.ts` around lines 145 - 158,\nnormalizeDate currently rejects any future date which is appropriate for\ninvoiceDate but breaks dueDate; modify normalizeDate(dateString: string |\nundefined, allowFuture = false): string | null so the future-date check (date >\nnow) is skipped when allowFuture is true, keeping the minDate and NaN checks.\nThen update callers that normalize dueDate to call normalizeDate(dueDate, true)\n(leave invoiceDate calls unchanged).\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "51ae52171c87419a509dafcecc819745a469874c",
+      "status": "in_progress",
+      "created_at": "2026-01-15T21:40:26.206Z",
+      "updated_at": "2026-01-15T21:45:41.486Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856523,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 285
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's look at the complete file to understand the context better\ncd supabase/functions/process-expense-invoice && wc -l index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 73\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for MODELS configuration and maxRetries\nrg \"MODELS\\s*=\" supabase/functions/process-expense-invoice/ -A 20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1773\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there's any timeout or AbortController setup in the file\nrg \"AbortController|timeout|signal\" supabase/functions/process-expense-invoice/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 586\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for any fetch configuration or utilities\nrg \"fetch\\(\" supabase/functions/process-expense-invoice/ -B 2 -A 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1442\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the specific section of callModel to see all status code handling\nsed -n '192,285p' supabase/functions/process-expense-invoice/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2753\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for any 5xx or other status code handling in the file\nrg \"status|5\\d\\d|4\\d\\d\" supabase/functions/process-expense-invoice/index.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3698\n\n---\n\n\n\n</details>\n\n**Add timeout and expand retry strategy for OpenRouter call.**\n\nThe `fetch()` to OpenRouter lacks a timeout, which can cause the function to hang indefinitely. The codebase already implements timeout handling with `AbortController` for PDF fetching (20-second timeout)—apply the same pattern here.\n\nAdditionally, only 429 (rate limit) responses are retried for non-throwing failures; transient 5xx errors should also trigger a retry with exponential backoff, not just break and fail.\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "9bdef65a1a805a822ae3646189bad5d6a3771697",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.207Z",
+      "updated_at": "2026-01-15T21:40:26.207Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856532,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 317
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Missing authentication/authorization while using Service Role key (any caller can process/update any upload).**\n\nThe function uses `SUPABASE_SERVICE_ROLE_KEY` (Line 303-305) and performs privileged reads/writes keyed only by `invoiceUploadId` (Line 306-311). This is a critical authz bypass unless the function is strictly internal. As per coding guidelines for `supabase/functions/**/*.ts`, authenticate the user and verify permissions before accessing/updating data.\n\n<details>\n<summary>Proposed direction (sketch)</summary>\n\n```diff\n serve(async (req) => {\n   if (req.method === \"OPTIONS\") {\n     return new Response(null, { headers: corsHeaders });\n   }\n\n   try {\n+    // 1) User-auth client (RLS enforced) to identify caller\n+    const supabaseUrl = Deno.env.get(\"SUPABASE_URL\");\n+    const supabaseAnonKey = Deno.env.get(\"SUPABASE_ANON_KEY\");\n+    if (!supabaseUrl || !supabaseAnonKey) {\n+      return new Response(JSON.stringify({ error: \"Server misconfigured\" }), {\n+        headers: { ...corsHeaders, \"Content-Type\": \"application/json\" },\n+        status: 500,\n+      });\n+    }\n+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {\n+      global: { headers: { Authorization: req.headers.get(\"Authorization\") ?? \"\" } },\n+    });\n+    const { data: { user }, error: userError } = await userClient.auth.getUser();\n+    if (userError || !user) {\n+      return new Response(JSON.stringify({ error: \"Unauthorized\" }), {\n+        headers: { ...corsHeaders, \"Content-Type\": \"application/json\" },\n+        status: 401,\n+      });\n+    }\n+\n     const { invoiceUploadId, imageData, isPDF }: ExpenseInvoiceProcessRequest = await req.json();\n     if (!invoiceUploadId || !imageData) {\n       return new Response(JSON.stringify({ error: \"Invoice upload ID and image data are required\" }), {\n         headers: { ...corsHeaders, \"Content-Type\": \"application/json\" },\n         status: 400,\n       });\n     }\n \n-    const supabaseUrl = Deno.env.get(\"SUPABASE_URL\")!;\n-    const supabaseServiceKey = Deno.env.get(\"SUPABASE_SERVICE_ROLE_KEY\")!;\n-    const supabase = createClient(supabaseUrl, supabaseServiceKey);\n+    // 2) Service-role client only after authorization checks\n+    const supabaseServiceKey = Deno.env.get(\"SUPABASE_SERVICE_ROLE_KEY\");\n+    if (!supabaseServiceKey) {\n+      return new Response(JSON.stringify({ error: \"Server misconfigured\" }), {\n+        headers: { ...corsHeaders, \"Content-Type\": \"application/json\" },\n+        status: 500,\n+      });\n+    }\n+    const supabase = createClient(supabaseUrl, supabaseServiceKey);\n \n     const { data: uploadInfo, error: uploadError } = await supabase\n       .from(\"expense_invoice_uploads\")\n       .select(\"restaurant_id, file_name\")\n       .eq(\"id\", invoiceUploadId)\n       .single();\n \n     if (uploadError || !uploadInfo) {\n       return new Response(JSON.stringify({ error: \"Failed to fetch invoice upload info\" }), {\n         headers: { ...corsHeaders, \"Content-Type\": \"application/json\" },\n         status: 500,\n       });\n     }\n+\n+    // 3) Verify user has access to uploadInfo.restaurant_id (example table)\n+    const { data: membership, error: membershipError } = await userClient\n+      .from(\"user_restaurants\")\n+      .select(\"id\")\n+      .eq(\"restaurant_id\", uploadInfo.restaurant_id)\n+      .eq(\"user_id\", user.id)\n+      .maybeSingle();\n+    if (membershipError || !membership) {\n+      return new Response(JSON.stringify({ error: \"Forbidden\" }), {\n+        headers: { ...corsHeaders, \"Content-Type\": \"application/json\" },\n+        status: 403,\n+      });\n+    }\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/functions/process-expense-invoice/index.ts` around lines 287 - 317,\nThe function is using SUPABASE_SERVICE_ROLE_KEY with no caller authentication\nand then reads/updates rows by invoiceUploadId (serve handler, invoiceUploadId),\nenabling anyone to act on any upload; fix by authenticating the request (verify\nAuthorization header / JWT via supabase.auth.getUser or verifyJWT) to obtain the\ncaller's user id, then fetch the expense_upload row using invoiceUploadId and\nassert the row.restaurant_id (or owner) matches the authenticated user's allowed\nscope (or that the user belongs to that restaurant) before proceeding; only\nafter this authorization check should you use the service role client to perform\nprivileged reads/writes, and return 401/403 when auth fails.\n```\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "24701cc21b1063c5caf60382f2dc85d76753b10b",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.207Z",
+      "updated_at": "2026-01-15T21:40:26.207Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "321",
+        "comment_id": 2694856540,
+        "file": "supabase/functions/process-expense-invoice/index.ts",
+        "line": 370
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**SSRF risk: fetching arbitrary `imageData` URL for PDFs.**\n\nWhen `isPDF` is true, the function will `fetch(imageData)` (Line 335) without validating host/protocol, enabling SSRF. At minimum, restrict to `https:` and an allowlist (e.g., your Supabase Storage domain) or require the client to send base64 directly.\n\n<details>\n<summary>🧰 Tools</summary>\n\n<details>\n<summary>🪛 GitHub Check: CodeQL</summary>\n\n[warning] 363-366: Information exposure through a stack trace\nThis information exposed to the user depends on [stack trace information](1).\n\n</details>\n\n</details>\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "14120650b47302e1ebd8d86b61e267c4c6c07124",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.207Z",
+      "updated_at": "2026-01-15T21:40:26.207Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZvCPQRudvc-5EsygUD6",
+        "pr": "321",
+        "file": "src/components/pending-outflows/AddExpenseSheet.tsx",
+        "line": 36
+      },
+      "title": "Refactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.",
+      "body": "Refactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "5b94dd279c4eecfe8a6068a9fa5cdcb4545f497b",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.208Z",
+      "updated_at": "2026-01-15T21:40:26.208Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZvCPQRudvc-5EsygUD7",
+        "pr": "321",
+        "file": "src/components/pending-outflows/AddExpenseSheet.tsx",
+        "line": 36
+      },
+      "title": "Mark the props of the component as read-only.",
+      "body": "Mark the props of the component as read-only.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "b466ac2199f98ad1da5f810e4621cb74d041fd1e",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.208Z",
+      "updated_at": "2026-01-15T21:40:26.208Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZvCPQRudvc-5EsygUD8",
+        "pr": "321",
+        "file": "src/components/pending-outflows/AddExpenseSheet.tsx",
+        "line": 330
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "1e10888e94466d8ddd5154b190b45e908563f7b4",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.208Z",
+      "updated_at": "2026-01-15T21:40:26.208Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZvCPQRudvc-5EsygUD9",
+        "pr": "321",
+        "file": "src/components/pending-outflows/AddExpenseSheet.tsx",
+        "line": 418
+      },
+      "title": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "body": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "344e1e0437bca0981cc7aabfa47928c202b14cbb",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.208Z",
+      "updated_at": "2026-01-15T21:40:26.208Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZvCPQOmdvc-5EsygUD4",
+        "pr": "321",
+        "file": "src/hooks/useExpenseInvoiceUpload.tsx",
+        "line": 73
+      },
+      "title": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "body": "Prefer `String#replaceAll()` over `String#replace()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e7b2e1bdae8d4799798e262d83c44393ead52dd6",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.208Z",
+      "updated_at": "2026-01-15T21:40:26.208Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZvCPQOmdvc-5EsygUD5",
+        "pr": "321",
+        "file": "src/hooks/useExpenseInvoiceUpload.tsx",
+        "line": 74
+      },
+      "title": "Refactor this code to not use nested template literals.",
+      "body": "Refactor this code to not use nested template literals.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "22206effe0a318a20dcdf8d2b83711eb9180fa4d",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.208Z",
+      "updated_at": "2026-01-15T21:40:26.208Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/dashboard/CashFlowSankeyChart.tsx",
+        "line": 75
+      },
+      "title": "@typescript-eslint/no-explicit-any in CashFlowSankeyChart.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/dashboard/CashFlowSankeyChart.tsx"
+      ],
+      "id": "283300fa4339c9b85be4c29e4a6cba286168e280",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.222Z",
+      "updated_at": "2026-01-15T21:40:26.222Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/dashboard/CashFlowSankeyChart.tsx",
+        "line": 126
+      },
+      "title": "@typescript-eslint/no-explicit-any in CashFlowSankeyChart.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/dashboard/CashFlowSankeyChart.tsx"
+      ],
+      "id": "450574aa5837a6ca52940e4eb9f841b1a362b179",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.222Z",
+      "updated_at": "2026-01-15T21:40:26.222Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/dashboard/CashFlowSankeyChart.tsx",
+        "line": 208
+      },
+      "title": "@typescript-eslint/no-explicit-any in CashFlowSankeyChart.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/components/dashboard/CashFlowSankeyChart.tsx"
+      ],
+      "id": "57f079dfce6e4de2ae4ff75ec904395fa982d3d7",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.222Z",
+      "updated_at": "2026-01-15T21:40:26.222Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useExpenseInvoiceUpload.tsx",
+        "line": 177
+      },
+      "title": "@typescript-eslint/no-explicit-any in useExpenseInvoiceUpload.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/hooks/useExpenseInvoiceUpload.tsx"
+      ],
+      "id": "35750ce39210cef7094924be71bfc26f14bb36a7",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.223Z",
+      "updated_at": "2026-01-15T21:40:26.223Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 142
+      },
+      "title": "@typescript-eslint/no-explicit-any in Index.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "d13f976d3b4fcee8a636aa18af489f6c8b6ebb75",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.224Z",
+      "updated_at": "2026-01-15T21:40:26.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 314
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "React Hook useMemo has a missing dependency: 'dailyAvgSpending'. Either include it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "b3ac75b453d0539143d39ea9bf993a709499ce12",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.224Z",
+      "updated_at": "2026-01-15T21:40:26.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx",
+        "line": 317
+      },
+      "title": "react-hooks/exhaustive-deps in Index.tsx",
+      "body": "The 'monthlyData' logical expression could make the dependencies of useEffect Hook (at line 403) change on every render. To fix this, wrap the initialization of 'monthlyData' in its own useMemo() Hook.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Index.tsx"
+      ],
+      "id": "12d01299114dae0d9f03aa8d601fcdf43b38c49b",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.224Z",
+      "updated_at": "2026-01-15T21:40:26.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/POSSales.tsx",
+        "line": 101
+      },
+      "title": "@typescript-eslint/no-explicit-any in POSSales.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/POSSales.tsx"
+      ],
+      "id": "13d424030fc706d013def5f3e5768b21792db5cf",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.224Z",
+      "updated_at": "2026-01-15T21:40:26.224Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/POSSales.tsx",
+        "line": 1437
+      },
+      "title": "@typescript-eslint/no-explicit-any in POSSales.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/POSSales.tsx"
+      ],
+      "id": "6d52d5724b75e12cffd485743a23ed95e1283c84",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.225Z",
+      "updated_at": "2026-01-15T21:40:26.225Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-categorize-pos-sales/index.ts",
+        "line": 319
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-categorize-pos-sales/index.ts"
+      ],
+      "id": "5c546add2552856f6ad1d48d709a3d5f54d083ee",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.225Z",
+      "updated_at": "2026-01-15T21:40:26.225Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-categorize-pos-sales/index.ts",
+        "line": 327
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/ai-categorize-pos-sales/index.ts"
+      ],
+      "id": "ecce0ce9b74156184d0cefe769bf1b97590b60ca",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.225Z",
+      "updated_at": "2026-01-15T21:40:26.225Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts",
+        "line": 85
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts"
+      ],
+      "id": "fca49bf32044c73b11d6bc84f59cb8baa555e724",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.227Z",
+      "updated_at": "2026-01-15T21:40:26.227Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts",
+        "line": 90
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts"
+      ],
+      "id": "480d9007e6014a7fa03d581fc9a88ee198095533",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.227Z",
+      "updated_at": "2026-01-15T21:40:26.227Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts",
+        "line": 164
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\/.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts"
+      ],
+      "id": "613fe0d86e5d83e984dea1a77476aab1086f52c4",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.227Z",
+      "updated_at": "2026-01-15T21:40:26.227Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts",
+        "line": 174
+      },
+      "title": "no-useless-escape in index.ts",
+      "body": "Unnecessary escape character: \\/.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts"
+      ],
+      "id": "c7680fd30d9136aeb512d0898b937f1188c12efd",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.227Z",
+      "updated_at": "2026-01-15T21:40:26.227Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts",
+        "line": 392
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-expense-invoice/index.ts"
+      ],
+      "id": "4dcdd2bcfdd21ac238217f21328c689df0ffb7af",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.227Z",
+      "updated_at": "2026-01-15T21:40:26.227Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 63
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "482ce7f2d5b84fa3849305e417c7605eb87f62ce",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 66
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "5f0a21598f9819e2a0be231547cd4e09c80464f5",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 100
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "874684630af3e074fb92d49666f9324af6f4458f",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 174
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "b48fcbb1810e9b715eebb110162f81195391b469",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 175
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "4740c42c45b05b1352fa2548899fb56d5f3b7cf0",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 178
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "c45f82a1931d73f44c791992ba0ee2efd78f8d3f",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts",
+        "line": 194
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-pos-sales.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-pos-sales.spec.ts"
+      ],
+      "id": "f67af2ec2ab57c4dc688fbce6c399376ade4712f",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 63
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "20c303f427df1cac5ffea8b2d0716b61c153abad",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 66
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "6a49fb9ae396cc6a331f4c820629c1a7724dbb82",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 115
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "943434ba1be80246d5dfe405d384d90f2b2c26c2",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 190
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "36651c2be35e1f538eae7caa0ac625da993d8f1c",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 193
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "4363d364ab5e51b9254418afccbf611a265d6e9c",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.228Z",
+      "updated_at": "2026-01-15T21:40:26.228Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts",
+        "line": 215
+      },
+      "title": "@typescript-eslint/no-explicit-any in bulk-edit-transactions.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/bulk-edit-transactions.spec.ts"
+      ],
+      "id": "1cfeb943a209008a02c6240fae15b13a5f29843f",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tips-flow.spec.ts",
+        "line": 116
+      },
+      "title": "@typescript-eslint/no-explicit-any in tips-flow.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/tips-flow.spec.ts"
+      ],
+      "id": "6c1c712ebe515c2de09f878bcde60d17afe11c6e",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 18
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "1a036ae6da190a4500316b66081d4b58375e629f",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 29
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "24d150334cf81c5616084043d1298eca999b7b0a",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 31
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "fc1f7f18fc8e7cc99e2f51df1434b635a9d53fbb",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 58
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "c719bc53fedfa9e0911056fd6dca3f59814f9374",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 73
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "86f80a80031640f4f49a504800746051b6ab016b",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 94
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "6ddb367690e6de4d54ec770a7a596d4382171bab",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 109
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "4b2691e598113a078a050f43c5ca5bef81e429ee",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 116
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "65ccb15587af08013c66a8d20b3353544bdf8fe9",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 131
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "42dd491e4257ab9e4f0f3eda09c4b8ecaa3425b5",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 174
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "c6de1bc8caecb10d366903b77ab7ecd727402449",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 233
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "9424de175f3f47e06577d57da68bb22fddaffee0",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 399
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "fa6a633bb934c38076b2c6bd4730f6fbfd335af4",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 435
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "b2f9c914142eabcb4033ba084466f9ca4cfee2c1",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 448
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "8a8ea1a72ce57e6eee140e6a386f11425a467cee",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "/Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts",
+        "line": 519
+      },
+      "title": "@typescript-eslint/no-explicit-any in e2e-supabase.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/helpers/e2e-supabase.ts"
+      ],
+      "id": "4444abfe8bf36de016bc4281cb32eebb8ddb6ffd",
+      "status": "open",
+      "created_at": "2026-01-15T21:40:26.229Z",
+      "updated_at": "2026-01-15T21:40:26.229Z"
     }
   ]
 }

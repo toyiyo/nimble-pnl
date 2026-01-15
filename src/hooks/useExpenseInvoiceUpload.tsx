@@ -140,9 +140,11 @@ export const useExpenseInvoiceUpload = () => {
 
         dataToSend = signedUrlData.signedUrl;
       } else {
-        dataToSend = await new Promise<string>((resolve) => {
+        dataToSend = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.onabort = () => reject(new Error('File read was aborted'));
           reader.readAsDataURL(file);
         });
       }
@@ -208,6 +210,11 @@ export const useExpenseInvoiceUpload = () => {
 
     if (error) {
       console.error('Error updating invoice upload:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update invoice details',
+        variant: 'destructive',
+      });
       return null;
     }
 

@@ -114,7 +114,15 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
         setFormData((prev) => ({ ...prev, vendor_name: newSupplier.name }));
         setSelectedSupplierId(newSupplier.id);
       } catch (error) {
-        console.error('Error creating supplier:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error creating supplier:', error);
+        }
+        const errorMessage = error instanceof Error ? error.message : null;
+        toast({
+          title: 'Error',
+          description: errorMessage ? `Failed to create supplier: ${errorMessage}` : 'Failed to create supplier',
+          variant: 'destructive',
+        });
       }
       return;
     }
@@ -216,7 +224,15 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
 
       onOpenChange(false);
     } catch (error) {
-      console.error('Error creating expense:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error creating expense:', error);
+      }
+      const errorMessage = error instanceof Error ? error.message : null;
+      toast({
+        title: 'Error',
+        description: errorMessage ? `Failed to create expense: ${errorMessage}` : 'Failed to create expense',
+        variant: 'destructive',
+      });
     }
   };
 

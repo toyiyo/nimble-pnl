@@ -22,17 +22,8 @@ async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof gen
   await page.waitForURL(/\/auth/);
 
   const signupTab = page.getByRole('tab', { name: /sign up/i });
-  if (await signupTab.isVisible().catch(() => false)) {
-    await signupTab.click();
-  } else {
-    const signupBtn = page.getByRole('button', { name: /sign up|create account|get started/i }).first();
-    const signupLink = page.getByRole('link', { name: /sign up|create account|get started/i }).first();
-    if (await signupBtn.isVisible().catch(() => false)) {
-      await signupBtn.click();
-    } else if (await signupLink.isVisible().catch(() => false)) {
-      await signupLink.click();
-    }
-  }
+  await expect(signupTab).toBeVisible({ timeout: 10000 });
+  await signupTab.click();
 
   await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
   await page.getByLabel(/email/i).first().fill(user.email);

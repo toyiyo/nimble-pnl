@@ -1,6 +1,6 @@
 import { BulkCategorizePanel } from '../bulk-edit/BulkCategorizePanel';
 
-interface BulkCategorizeTransactionsPanelProps {
+interface BulkCategorizePosSalesPanelProps {
   readonly isOpen: boolean;
   readonly onClose: () => void;
   readonly selectedCount: number;
@@ -9,16 +9,16 @@ interface BulkCategorizeTransactionsPanelProps {
 }
 
 /**
- * Side panel for bulk categorizing bank transactions
- * Wraps the shared BulkCategorizePanel with transaction-specific configuration
+ * Side panel for bulk categorizing POS sales
+ * Wraps the shared BulkCategorizePanel with POS-specific configuration
  */
-export function BulkCategorizeTransactionsPanel({
+export function BulkCategorizePosSalesPanel({
   isOpen,
   onClose,
   selectedCount,
   onApply,
   isApplying = false,
-}: BulkCategorizeTransactionsPanelProps) {
+}: BulkCategorizePosSalesPanelProps) {
   return (
     <BulkCategorizePanel
       isOpen={isOpen}
@@ -26,8 +26,9 @@ export function BulkCategorizeTransactionsPanel({
       selectedCount={selectedCount}
       onApply={onApply}
       isApplying={isApplying}
-      itemType="transaction"
-      accountTypes={['asset', 'liability', 'equity', 'revenue', 'expense']}
+      itemType="sale"
+      accountTypes={['revenue', 'liability']}
+      helpText="Choose the accounting category for these sales (typically revenue accounts)"
     />
   );
 }

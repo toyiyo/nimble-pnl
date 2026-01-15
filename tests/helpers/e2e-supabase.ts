@@ -18,7 +18,7 @@ export async function exposeSupabaseHelpers(page: Page) {
     (window as any).__supabase = supabase;
 
     const waitForUser = async (): Promise<{ id: string } | null> => {
-      for (let i = 0; i < 25; i++) {
+      for (let i = 0; i < 50; i++) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) return user;
         await new Promise(res => setTimeout(res, 300));
@@ -32,7 +32,7 @@ export async function exposeSupabaseHelpers(page: Page) {
       const user = userId ? { id: userId } : await waitForUser();
       if (!user?.id) return null;
 
-      for (let i = 0; i < 25; i++) {
+      for (let i = 0; i < 50; i++) {
         const { data, error } = await supabase
           .from('user_restaurants')
           .select('restaurant_id')

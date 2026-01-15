@@ -78,10 +78,13 @@ export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: Pendin
               </CardDescription>
             </div>
           </div>
-          <Button onClick={onAddClick} size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Expense
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button onClick={onAddClick} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Add expense
+            </Button>
+            <span className="text-xs text-muted-foreground">Upload invoice</span>
+          </div>
         </div>
         
         {totalPending > 0 && (
@@ -107,7 +110,7 @@ export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: Pendin
               </p>
               <Button onClick={onAddClick}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Expense
+                Add expense
               </Button>
             </CardContent>
           </Card>

@@ -28,23 +28,31 @@ import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDed
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
 import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2, ChevronDown, MoreHorizontal } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MetricIcon } from '@/components/MetricIcon';
 import { PageHeader } from '@/components/PageHeader';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { RecipeCreateFromExistingDialog } from '@/components/RecipeCreateFromExistingDialog';
 
 export default function Recipes() {
   const { user } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
-  const { recipes, loading, fetchRecipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const { recipes, loading, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
   const [deletingRecipe, setDeletingRecipe] = useState<any>(null);
+  const [isFromExistingOpen, setIsFromExistingOpen] = useState(false);
+  const [createFromBasePayload, setCreateFromBasePayload] = useState<{
+    prefill: any;
+    basedOn: { id: string; name: string };
+  } | null>(null);
+  const [createFromBaseRecipeId, setCreateFromBaseRecipeId] = useState<string | null>(null);
   const [showAutoSettings, setShowAutoSettings] = useState(false);
   const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
   const [newProductId, setNewProductId] = useState<string | null>(null);
@@ -224,15 +232,38 @@ export default function Recipes() {
               <span className="hidden sm:inline">Auto Deduction</span>
               <span className="sm:hidden">Auto</span>
             </Button>
-            <Button 
-              onClick={() => setIsCreateDialogOpen(true)} 
-              className="w-full sm:w-auto gap-2 group bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-200"
-              aria-label="Create new recipe"
-            >
-              <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden="true" />
-              <span className="hidden sm:inline">Create Recipe</span>
-              <span className="sm:hidden">New Recipe</span>
-            </Button>
+            <DropdownMenu>
+              <div className="inline-flex w-full sm:w-auto">
+                <Button 
+                  onClick={() => {
+                    setCreateFromBasePayload(null);
+                    setCreateFromBaseRecipeId(null);
+                    setIsCreateDialogOpen(true);
+                  }}
+                  className="w-full sm:w-auto gap-2 group bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary transition-all duration-200 rounded-r-none"
+                  aria-label="Create new recipe"
+                >
+                  <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden="true" />
+                  <span className="hidden sm:inline">Create Recipe</span>
+                  <span className="sm:hidden">New Recipe</span>
+                </Button>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="default"
+                    className="rounded-l-none border-l border-primary/30 px-2"
+                    aria-label="Recipe create options"
+                  >
+                    <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </div>
+              <DropdownMenuContent align="end" className="bg-background z-50">
+                <DropdownMenuItem onClick={() => setIsFromExistingOpen(true)}>
+                  From Existing Recipe
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled>From Template (soon)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       />
@@ -339,59 +370,93 @@ export default function Recipes() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all">
-          <RecipeTable
-            recipes={filteredRecipes}
-            products={products}
-            loading={loading}
-            onEdit={setEditingRecipe}
-            onDelete={setDeletingRecipe}
-            sortBy={sortBy}
-            sortDirection={sortDirection}
-            showOnlyWarnings={showOnlyWarnings}
-            onCreate={() => setIsCreateDialogOpen(true)}
-          />
-        </TabsContent>
+      <TabsContent value="all">
+        <RecipeTable
+          recipes={filteredRecipes}
+          products={products}
+          loading={loading}
+          onEdit={setEditingRecipe}
+          onDelete={setDeletingRecipe}
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          showOnlyWarnings={showOnlyWarnings}
+          onCreate={() => setIsCreateDialogOpen(true)}
+          onCreateFromBase={(recipe) => {
+            setCreateFromBaseRecipeId(recipe.id);
+            setIsFromExistingOpen(true);
+          }}
+        />
+      </TabsContent>
 
         <TabsContent value="mapped">
           <RecipeTable
             recipes={mappedRecipes}
             products={products}
             loading={loading}
-            onEdit={setEditingRecipe}
-            onDelete={setDeletingRecipe}
-            sortBy={sortBy}
-            sortDirection={sortDirection}
-            showOnlyWarnings={showOnlyWarnings}
-            onCreate={() => setIsCreateDialogOpen(true)}
-          />
-        </TabsContent>
+          onEdit={setEditingRecipe}
+          onDelete={setDeletingRecipe}
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          showOnlyWarnings={showOnlyWarnings}
+          onCreate={() => setIsCreateDialogOpen(true)}
+          onCreateFromBase={(recipe) => {
+            setCreateFromBaseRecipeId(recipe.id);
+            setIsFromExistingOpen(true);
+          }}
+        />
+      </TabsContent>
 
         <TabsContent value="unmapped">
           <RecipeTable
             recipes={unmappedRecipes}
             products={products}
             loading={loading}
-            onEdit={setEditingRecipe}
-            onDelete={setDeletingRecipe}
-            sortBy={sortBy}
-            sortDirection={sortDirection}
-            showOnlyWarnings={showOnlyWarnings}
-            onCreate={() => setIsCreateDialogOpen(true)}
-          />
-        </TabsContent>
+          onEdit={setEditingRecipe}
+          onDelete={setDeletingRecipe}
+          sortBy={sortBy}
+          sortDirection={sortDirection}
+          showOnlyWarnings={showOnlyWarnings}
+          onCreate={() => setIsCreateDialogOpen(true)}
+          onCreateFromBase={(recipe) => {
+            setCreateFromBaseRecipeId(recipe.id);
+            setIsFromExistingOpen(true);
+          }}
+        />
+      </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
+      <RecipeCreateFromExistingDialog
+        isOpen={isFromExistingOpen}
+        onClose={() => {
+          setIsFromExistingOpen(false);
+          setCreateFromBaseRecipeId(null);
+        }}
+        recipes={recipes}
+        products={products}
+        fetchRecipeIngredients={fetchRecipeIngredients}
+        initialRecipeId={createFromBaseRecipeId}
+        onConfirm={({ prefill, basedOn }) => {
+          setCreateFromBasePayload({ prefill, basedOn });
+          setIsFromExistingOpen(false);
+          setInitialPosItemName(undefined);
+          setIsCreateDialogOpen(true);
+          setCreateFromBaseRecipeId(null);
+        }}
+      />
+
       <RecipeDialog
         isOpen={isCreateDialogOpen}
         onClose={() => {
           setIsCreateDialogOpen(false);
           setInitialPosItemName(undefined);
+          setCreateFromBasePayload(null);
         }}
         restaurantId={selectedRestaurant?.restaurant_id}
         onRecipeUpdated={fetchRecipes}
         initialPosItemName={initialPosItemName}
+        prefill={createFromBasePayload?.prefill}
+        basedOn={createFromBasePayload?.basedOn}
       />
 
       <RecipeDialog
@@ -421,9 +486,10 @@ interface RecipeTableProps {
   sortDirection: 'asc' | 'desc';
   showOnlyWarnings: boolean;
   onCreate?: () => void;
+  onCreateFromBase?: (recipe: any) => void;
 }
 
-function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate }: RecipeTableProps) {
+function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate, onCreateFromBase }: RecipeTableProps) {
   // Pre-calculate conversion validation for all recipes (keyed by recipe ID)
   const recipeValidationsById = useMemo(() => {
     const validationMap = new Map();
@@ -556,10 +622,15 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
                       )}
                     </div>
                     <div className="flex gap-1 ml-2">
-                      <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} className="h-8 w-8 p-0">
+                      <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} className="h-8 w-8 p-0" aria-label="Edit recipe">
                         <Edit className="w-3 h-3" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => onDelete(recipe)} className="h-8 w-8 p-0">
+                      {onCreateFromBase && (
+                        <Button variant="ghost" size="sm" onClick={() => onCreateFromBase(recipe)} className="h-8 px-2 text-xs">
+                          Create variation
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => onDelete(recipe)} className="h-8 w-8 p-0" aria-label="Delete recipe">
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
@@ -701,20 +772,24 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onEdit(recipe)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onDelete(recipe)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" aria-label="Recipe actions">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-background">
+                          <DropdownMenuItem onClick={() => onEdit(recipe)}>Edit</DropdownMenuItem>
+                          {onCreateFromBase && (
+                            <DropdownMenuItem onClick={() => onCreateFromBase(recipe)}>
+                              Create variation
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => onDelete(recipe)} className="text-destructive focus:text-destructive">
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                  </TableRow>

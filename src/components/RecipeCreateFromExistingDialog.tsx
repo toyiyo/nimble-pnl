@@ -19,6 +19,7 @@ interface RecipeCreateFromExistingDialogProps {
   products: Product[];
   fetchRecipeIngredients: (recipeId: string) => Promise<RecipeIngredient[]>;
   onConfirm: (payload: { prefill: RecipePrefill; basedOn: { id: string; name: string } }) => void;
+  initialRecipeId?: string | null;
 }
 
 export function RecipeCreateFromExistingDialog({
@@ -28,6 +29,7 @@ export function RecipeCreateFromExistingDialog({
   products,
   fetchRecipeIngredients,
   onConfirm,
+  initialRecipeId,
 }: RecipeCreateFromExistingDialogProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [step, setStep] = useState<"choose" | "confirm">("choose");
@@ -59,6 +61,15 @@ export function RecipeCreateFromExistingDialog({
       });
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !initialRecipeId) return;
+    const match = recipes.find((recipe) => recipe.id === initialRecipeId);
+    if (match) {
+      setSelectedRecipe(match);
+      setStep("confirm");
+    }
+  }, [isOpen, initialRecipeId, recipes]);
 
   useEffect(() => {
     if (step !== "confirm" || !selectedRecipe) return;

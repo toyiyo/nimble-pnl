@@ -37,6 +37,7 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
   const { updatePendingOutflow, deletePendingOutflow } = usePendingOutflowMutations();
 
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const [pendingVendorName, setPendingVendorName] = useState<string>('');
   const [formData, setFormData] = useState<UpdatePendingOutflowInput>({
     vendor_name: '',
     payment_method: 'other',
@@ -68,14 +69,21 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
       );
       if (match) {
         setSelectedSupplierId(match.id);
+        setPendingVendorName('');
+      } else if (expense.vendor_name) {
+        // No match found - show as pending vendor name
+        setSelectedSupplierId('new_supplier');
+        setPendingVendorName(expense.vendor_name);
       } else {
         setSelectedSupplierId('');
+        setPendingVendorName('');
       }
     }
   }, [expense, open, suppliers]);
 
   const resetState = useCallback(() => {
     setSelectedSupplierId('');
+    setPendingVendorName('');
     setFormData({
       vendor_name: '',
       payment_method: 'other',
@@ -103,6 +111,7 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
         const newSupplier = await createSupplier({ name: supplierName });
         setFormData((prev) => ({ ...prev, vendor_name: newSupplier.name }));
         setSelectedSupplierId(newSupplier.id);
+        setPendingVendorName('');
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : null;
         toast({
@@ -117,6 +126,7 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
     const supplier = suppliers.find((s) => s.id === value);
     if (supplier) {
       setFormData((prev) => ({ ...prev, vendor_name: supplier.name }));
+      setPendingVendorName('');
     }
   };
 
@@ -216,6 +226,7 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
                 suppliers={suppliers}
                 placeholder="Select or create vendor..."
                 showNewIndicator
+                pendingNewName={pendingVendorName}
               />
             </div>
 
@@ -314,15 +325,15 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Category</Label>
               <SearchableAccountSelector
-                value={formData.category_id || ''}
+                value={formData.category_id || undefined}
                 onValueChange={(value) =>
                   setFormData((prev) => ({
                     ...prev,
                     category_id: value || null,
                   }))
                 }
-                placeholder="Select category..."
-                filterByTypes={['expense', 'cost_of_goods_sold']}
+                filterByTypes={['expense', 'asset', 'cogs']}
+                placeholder="Select category (expense, COGS, or asset)..."
               />
             </div>
 

@@ -465,6 +465,12 @@ export default function Recipes() {
         restaurantId={selectedRestaurant?.restaurant_id}
         recipe={editingRecipe}
         onRecipeUpdated={fetchRecipes}
+        onCreateFromBase={(recipe) => {
+          setEditingRecipe(null);
+          setCreateFromBasePayload(null);
+          setCreateFromBaseRecipeId(recipe.id);
+          setIsFromExistingOpen(true);
+        }}
       />
 
       <DeleteRecipeDialog

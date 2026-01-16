@@ -360,6 +360,18 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
               ? 'Update the recipe details and ingredients.' 
               : 'Create a new recipe with ingredients and portions.'}
           </DialogDescription>
+          {recipe && onCreateFromBase && (
+            <div className="mt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onCreateFromBase(recipe)}
+              >
+                Create variation
+              </Button>
+            </div>
+          )}
           {basedOn && (
             <div className="mt-3 rounded-lg border border-border/60 bg-muted/40 p-3 text-sm">
               <span className="font-medium">Based on {basedOn.name}</span>

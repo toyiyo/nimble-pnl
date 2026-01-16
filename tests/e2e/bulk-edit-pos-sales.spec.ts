@@ -38,13 +38,30 @@ async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof gen
   await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
   await addRestaurantButton.click();
 
-  const dialog = page.getByRole('dialog');
+  // Filter specifically for RestaurantSelector dialog to avoid confusion with OnboardingDrawer
+  const dialog = page.getByRole('dialog').filter({ hasText: /add new restaurant/i });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
   await dialog.getByLabel(/address/i).fill('123 Main St');
   await dialog.getByLabel(/phone/i).fill('555-123-4567');
   await dialog.getByRole('button', { name: /create|add|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+  // Close onboarding drawer if it appears (it defaults to open for new restaurants)
+  try {
+    const onboardingDrawer = page.locator('[role="dialog"]').filter({ hasText: /getting started/i });
+    if (await onboardingDrawer.isVisible({ timeout: 4000 })) {
+      const closeButton = onboardingDrawer.getByRole('button', { name: /close/i });
+      if (await closeButton.isVisible()) {
+        await closeButton.click();
+        await expect(onboardingDrawer).not.toBeVisible();
+      } else {
+        await page.keyboard.press('Escape');
+      }
+    }
+  } catch (e) {
+    console.log('Onboarding drawer handling skipped or failed', e);
+  }
 }
 
 test.describe('POS Sales Bulk Edit', () => {

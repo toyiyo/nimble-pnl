@@ -292,7 +292,7 @@ serve(async (req) => {
     }
 
     // Format examples for the prompt
-    const examples = (exampleTransactions || []).map(ex => ({
+    const examples = (exampleTransactions || []).map((ex: any) => ({
       description: ex.description,
       merchant_name: ex.merchant_name,
       normalized_payee: ex.normalized_payee,
@@ -300,7 +300,7 @@ serve(async (req) => {
       account_code: ex.chart_of_accounts?.account_code,
       account_name: ex.chart_of_accounts?.account_name,
       account_type: ex.chart_of_accounts?.account_type
-    })).filter(ex => ex.account_code); // Only include examples with valid account info
+    })).filter((ex: any) => ex.account_code); // Only include examples with valid account info
 
     console.log(`📚 Using ${examples.length} example categorizations to improve AI accuracy`);
 
@@ -395,10 +395,11 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

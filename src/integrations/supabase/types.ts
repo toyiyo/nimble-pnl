@@ -1901,6 +1901,87 @@ export type Database = {
         }
         Relationships: []
       }
+      expense_invoice_uploads: {
+        Row: {
+          created_at: string
+          due_date: string | null
+          error_message: string | null
+          field_confidence: Json | null
+          file_name: string | null
+          file_size: number | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          pending_outflow_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          raw_file_url: string | null
+          raw_ocr_data: Json | null
+          restaurant_id: string
+          status: string
+          total_amount: number | null
+          updated_at: string
+          vendor_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          due_date?: string | null
+          error_message?: string | null
+          field_confidence?: Json | null
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          pending_outflow_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id: string
+          status?: string
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          due_date?: string | null
+          error_message?: string | null
+          field_confidence?: Json | null
+          file_name?: string | null
+          file_size?: number | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          pending_outflow_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          raw_file_url?: string | null
+          raw_ocr_data?: Json | null
+          restaurant_id?: string
+          status?: string
+          total_amount?: number | null
+          updated_at?: string
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_invoice_uploads_pending_outflow_id_fkey"
+            columns: ["pending_outflow_id"]
+            isOneToOne: false
+            referencedRelation: "pending_outflows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_invoice_uploads_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_statement_cache: {
         Row: {
           end_date: string
@@ -2721,87 +2802,6 @@ export type Database = {
             foreignKeyName: "notification_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: true
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      expense_invoice_uploads: {
-        Row: {
-          created_at: string
-          due_date: string | null
-          error_message: string | null
-          field_confidence: Json | null
-          file_name: string | null
-          file_size: number | null
-          id: string
-          invoice_date: string | null
-          invoice_number: string | null
-          pending_outflow_id: string | null
-          processed_at: string | null
-          processed_by: string | null
-          raw_file_url: string | null
-          raw_ocr_data: Json | null
-          restaurant_id: string
-          status: string
-          total_amount: number | null
-          updated_at: string
-          vendor_name: string | null
-        }
-        Insert: {
-          created_at?: string
-          due_date?: string | null
-          error_message?: string | null
-          field_confidence?: Json | null
-          file_name?: string | null
-          file_size?: number | null
-          id?: string
-          invoice_date?: string | null
-          invoice_number?: string | null
-          pending_outflow_id?: string | null
-          processed_at?: string | null
-          processed_by?: string | null
-          raw_file_url?: string | null
-          raw_ocr_data?: Json | null
-          restaurant_id: string
-          status?: string
-          total_amount?: number | null
-          updated_at?: string
-          vendor_name?: string | null
-        }
-        Update: {
-          created_at?: string
-          due_date?: string | null
-          error_message?: string | null
-          field_confidence?: Json | null
-          file_name?: string | null
-          file_size?: number | null
-          id?: string
-          invoice_date?: string | null
-          invoice_number?: string | null
-          pending_outflow_id?: string | null
-          processed_at?: string | null
-          processed_by?: string | null
-          raw_file_url?: string | null
-          raw_ocr_data?: Json | null
-          restaurant_id?: string
-          status?: string
-          total_amount?: number | null
-          updated_at?: string
-          vendor_name?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "expense_invoice_uploads_pending_outflow_id_fkey"
-            columns: ["pending_outflow_id"]
-            isOneToOne: false
-            referencedRelation: "pending_outflows"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "expense_invoice_uploads_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },

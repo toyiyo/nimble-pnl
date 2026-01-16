@@ -5,12 +5,15 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
 import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflowsList";
 import { AddExpenseSheet } from "@/components/pending-outflows/AddExpenseSheet";
+import { EditExpenseSheet } from "@/components/pending-outflows/EditExpenseSheet";
 import { Wallet, TrendingUp, CheckCircle2 } from "lucide-react";
+import type { PendingOutflow } from "@/types/pending-outflows";
 import { MetricIcon } from "@/components/MetricIcon";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
 
 export default function Expenses() {
   const [showAddExpenseSheet, setShowAddExpenseSheet] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<PendingOutflow | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
   
   const { data: expenses } = usePendingOutflows();
@@ -88,13 +91,21 @@ export default function Expenses() {
 
           <PendingOutflowsList 
             onAddClick={() => setShowAddExpenseSheet(true)}
+            onEditExpense={setEditingExpense}
             statusFilter="all"
           />
         </div>
       </div>
 
       {selectedRestaurant && (
-        <AddExpenseSheet open={showAddExpenseSheet} onOpenChange={setShowAddExpenseSheet} />
+        <>
+          <AddExpenseSheet open={showAddExpenseSheet} onOpenChange={setShowAddExpenseSheet} />
+          <EditExpenseSheet
+            expense={editingExpense}
+            open={!!editingExpense}
+            onOpenChange={(open) => !open && setEditingExpense(null)}
+          />
+        </>
       )}
     </div>
   );

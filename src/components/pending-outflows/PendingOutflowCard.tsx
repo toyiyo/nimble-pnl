@@ -27,9 +27,10 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface PendingOutflowCardProps {
   outflow: PendingOutflow;
+  onEdit?: (outflow: PendingOutflow) => void;
 }
 
-export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
+export const PendingOutflowCard = ({ outflow, onEdit }: PendingOutflowCardProps) => {
   const [showVoidDialog, setShowVoidDialog] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [showMatches, setShowMatches] = useState(false);
@@ -98,11 +99,18 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
 
   return (
     <>
-      <Card className={cn(
-        "transition-all hover:shadow-md",
-        outflow.status === 'cleared' && "opacity-60",
-        hasHighScoreMatch && "border-green-500/50 bg-green-50/5"
-      )}>
+      <Card 
+        className={cn(
+          "transition-all hover:shadow-lg hover:border-primary/30 cursor-pointer group",
+          outflow.status === 'cleared' && "opacity-60",
+          hasHighScoreMatch && "border-green-500/50 bg-green-50/5"
+        )}
+        onClick={() => onEdit?.(outflow)}
+        role="button"
+        tabIndex={0}
+        aria-label={`Edit expense for ${outflow.vendor_name}`}
+        onKeyDown={(e) => e.key === 'Enter' && onEdit?.(outflow)}
+      >
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
@@ -169,7 +177,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
                     <Button
                       size="sm"
                       variant={hasHighScoreMatch ? "default" : "outline"}
-                      onClick={() => setShowMatches(!showMatches)}
+                      onClick={(e) => { e.stopPropagation(); setShowMatches(!showMatches); }}
                     >
                       <Sparkles className="w-3 h-3 mr-1" />
                       {hasHighScoreMatch ? 'Confirm Match' : `${matches.length} Match${matches.length > 1 ? 'es' : ''}`}
@@ -178,7 +186,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setShowManualMatch(true)}
+                    onClick={(e) => { e.stopPropagation(); setShowManualMatch(true); }}
                     aria-label="Manual match transaction"
                   >
                     <Link className="w-3 h-3" />
@@ -186,7 +194,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setShowVoidDialog(true)}
+                    onClick={(e) => { e.stopPropagation(); setShowVoidDialog(true); }}
                     aria-label="Void expense"
                   >
                     <XCircle className="w-3 h-3" />
@@ -194,7 +202,7 @@ export const PendingOutflowCard = ({ outflow }: PendingOutflowCardProps) => {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={handleDelete}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(); }}
                     aria-label="Delete expense"
                   >
                     <Trash2 className="w-3 h-3" />

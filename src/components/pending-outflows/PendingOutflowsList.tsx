@@ -7,14 +7,15 @@ import { usePendingOutflows } from "@/hooks/usePendingOutflows";
 import { PendingOutflowCard } from "./PendingOutflowCard";
 import { Plus, Wallet, AlertCircle } from "lucide-react";
 import { formatCurrency } from "@/utils/pdfExport";
-import type { PendingOutflowStatus } from "@/types/pending-outflows";
+import type { PendingOutflow, PendingOutflowStatus } from "@/types/pending-outflows";
 
 interface PendingOutflowsListProps {
   onAddClick: () => void;
+  onEditExpense?: (expense: PendingOutflow) => void;
   statusFilter?: PendingOutflowStatus | 'all';
 }
 
-export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: PendingOutflowsListProps) {
+export function PendingOutflowsList({ onAddClick, onEditExpense, statusFilter = 'all' }: PendingOutflowsListProps) {
   const { data: pendingOutflows, isLoading, error } = usePendingOutflows();
 
   const filteredOutflows = useMemo(() => {
@@ -117,7 +118,7 @@ export function PendingOutflowsList({ onAddClick, statusFilter = 'all' }: Pendin
         ) : (
           <div className="space-y-3">
             {filteredOutflows.map((outflow) => (
-              <PendingOutflowCard key={outflow.id} outflow={outflow} />
+              <PendingOutflowCard key={outflow.id} outflow={outflow} onEdit={onEditExpense} />
             ))}
           </div>
         )}

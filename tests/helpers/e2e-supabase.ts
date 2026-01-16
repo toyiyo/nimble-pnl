@@ -523,3 +523,76 @@ export async function exposeSupabaseHelpers(page: Page) {
   await page.addInitScript(injectHelpers);
   await page.evaluate(injectHelpers);
 }
+
+/**
+ * Generate unique test user credentials to avoid conflicts
+ */
+export const generateTestUser = (prefix: string = 'test') => {
+  const ts = Date.now();
+  const random = Math.random().toString(36).slice(2, 6);
+  return {
+    email: `${prefix}-${ts}-${random}@test.com`,
+    password: 'TestPassword123!',
+    fullName: `${prefix} Test User ${ts}`,
+    restaurantName: `${prefix} Test Restaurant ${ts}`,
+  };
+};
+
+/**
+ * Standard signup and restaurant creation flow for E2E tests
+ * Handles OnboardingDrawer that appears after restaurant creation
+ */
+export async function signUpAndCreateRestaurant(
+  page: Page,
+  user: { email: string; password: string; fullName: string; restaurantName: string }
+) {
+  const { expect } = await import('@playwright/test');
+  
+  await page.goto('/auth');
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload();
+  await page.waitForURL(/\/auth/);
+
+  const signupTab = page.getByRole('tab', { name: /sign up/i });
+  await expect(signupTab).toBeVisible({ timeout: 10000 });
+  await signupTab.click();
+
+  await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
+  await page.getByLabel(/email/i).first().fill(user.email);
+  await page.getByLabel(/full name/i).fill(user.fullName);
+  await page.getByLabel(/password/i).first().fill(user.password);
+  await page.getByRole('button', { name: /sign up|create account/i }).click();
+  await page.waitForURL('/', { timeout: 15000 });
+
+  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
+  await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
+  await addRestaurantButton.click();
+
+  // Filter specifically for RestaurantSelector dialog to avoid confusion with OnboardingDrawer
+  const dialog = page.getByRole('dialog').filter({ hasText: /add new restaurant/i });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
+  await dialog.getByLabel(/address/i).fill('123 Main St');
+  await dialog.getByLabel(/phone/i).fill('555-123-4567');
+  await dialog.getByRole('button', { name: /create|add|save/i }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 5000 });
+
+  // Close onboarding drawer if it appears (it defaults to open for new restaurants)
+  try {
+    const onboardingDrawer = page.locator('[role="dialog"]').filter({ hasText: /getting started/i });
+    if (await onboardingDrawer.isVisible({ timeout: 4000 })) {
+      const closeButton = onboardingDrawer.getByRole('button', { name: /close/i });
+      if (await closeButton.isVisible()) {
+        await closeButton.click();
+        await expect(onboardingDrawer).not.toBeVisible();
+      } else {
+        await page.keyboard.press('Escape');
+      }
+    }
+  } catch (e) {
+    console.log('Onboarding drawer handling skipped or failed', e);
+  }
+}

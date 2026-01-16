@@ -50,16 +50,40 @@ export function useTopVendors(startDate: Date, endDate: Date, bankAccountId: str
 
       if (error) throw error;
 
+      let pendingOutflows: { issue_date: string; amount: number; vendor_name: string }[] = [];
+
+      if (!bankAccountId || bankAccountId === 'all') {
+        const { data: pendingData, error: pendingError } = await supabase
+          .from('pending_outflows')
+          .select('issue_date, amount, vendor_name')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+          .is('linked_bank_transaction_id', null)
+          .gte('issue_date', format(previousPeriodStart, 'yyyy-MM-dd'))
+          .lte('issue_date', format(endDate, 'yyyy-MM-dd'));
+
+        if (pendingError) throw pendingError;
+        pendingOutflows = pendingData || [];
+      }
+
       const txns = transactions || [];
+      const pendingTxnLike = pendingOutflows.map((outflow) => ({
+        transaction_date: outflow.issue_date,
+        amount: -Math.abs(outflow.amount),
+        merchant_name: outflow.vendor_name,
+        normalized_payee: null,
+        description: null,
+      }));
+      const combinedTxns = [...txns, ...pendingTxnLike];
 
       // Filter for current period
-      const currentPeriodTxns = txns.filter(t => {
+      const currentPeriodTxns = combinedTxns.filter(t => {
         const txnDate = parseISO(t.transaction_date);
         return txnDate >= startDate && txnDate <= endDate;
       });
 
       // Filter for previous period
-      const previousPeriodTxns = txns.filter(t => {
+      const previousPeriodTxns = combinedTxns.filter(t => {
         const txnDate = parseISO(t.transaction_date);
         return txnDate >= previousPeriodStart && txnDate < startDate;
       });

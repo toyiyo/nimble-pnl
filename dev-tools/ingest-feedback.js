@@ -350,4 +350,7 @@ if (
   );
 }
 
-main();
+// Only run main() if this script is executed directly (not imported as a module)
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

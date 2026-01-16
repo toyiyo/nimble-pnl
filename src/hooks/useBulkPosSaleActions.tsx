@@ -106,14 +106,15 @@ export function useBulkMapRecipe() {
   return useMutation({
     mutationFn: async ({ itemName, recipeId, restaurantId }: BulkMapRecipeParams) => {
       // Create a POS item mapping in the database
-      const { data, error } = await supabase
-        .from('pos_item_mappings')
+      // Using type assertion to work around TypeScript depth issues with generated types
+      const { data, error } = await (supabase
+        .from('pos_item_mappings' as 'restaurants')
         .upsert({
           restaurant_id: restaurantId,
           pos_item_name: itemName,
           recipe_id: recipeId,
-        })
-        .select();
+        } as never)
+        .select() as unknown as Promise<{ data: unknown; error: unknown }>);
 
       if (error) throw error;
       return data;

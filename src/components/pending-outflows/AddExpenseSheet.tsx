@@ -371,7 +371,9 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                         {isLowConfidence('vendorName') && (
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                              <button type="button" className="inline-flex" aria-label="Vendor name uncertain - please confirm">
+                                <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                              </button>
                             </TooltipTrigger>
                             <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
                           </Tooltip>
@@ -395,7 +397,9 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                           {isLowConfidence('invoiceDate') && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                <button type="button" className="inline-flex" aria-label="Date uncertain - please confirm">
+                                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
                             </Tooltip>
@@ -403,6 +407,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                         </div>
                         <Input
                           type="date"
+                          aria-label="Invoice date"
                           value={formData.issue_date}
                           onChange={(event) => setFormData((prev) => ({ ...prev, issue_date: event.target.value }))}
                           className={cn(isLowConfidence('invoiceDate') && 'border-dashed')}
@@ -416,7 +421,9 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                           {isLowConfidence('totalAmount') && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                <button type="button" className="inline-flex" aria-label="Amount uncertain - please confirm">
+                                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
                             </Tooltip>
@@ -427,6 +434,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                           step="0.01"
                           min="0"
                           placeholder="0.00"
+                          aria-label="Total amount"
                           value={formData.amount || ''}
                           onChange={(event) =>
                             setFormData((prev) => ({
@@ -458,7 +466,9 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                           {isLowConfidence('dueDate') && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                <button type="button" className="inline-flex" aria-label="Due date uncertain - please confirm">
+                                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
                             </Tooltip>
@@ -467,6 +477,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                         <Input
                           id="due_date"
                           type="date"
+                          aria-label="Due date"
                           value={formData.due_date || ''}
                           onChange={(event) =>
                             setFormData((prev) => ({
@@ -485,7 +496,9 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                           {isLowConfidence('invoiceNumber') && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                <button type="button" className="inline-flex" aria-label="Invoice number uncertain - please confirm">
+                                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </button>
                               </TooltipTrigger>
                               <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
                             </Tooltip>
@@ -493,6 +506,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                         </div>
                         <Input
                           id="reference_number"
+                          aria-label="Invoice number"
                           value={formData.reference_number || ''}
                           onChange={(event) =>
                             setFormData((prev) => ({

@@ -147,13 +147,20 @@ function extractDateFromFilename(filename: string | null): string | null {
   if (!filename) return null;
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
 
+  const isValidParts = (y: number, m: number, d: number): boolean => {
+    const date = new Date(y, m, d);
+    return date.getFullYear() === y && date.getMonth() === m && date.getDate() === d;
+  };
+
   const isoPattern = /(\d{4})[-_.\/](\d{1,2})[-_.\/](\d{1,2})/;
   const isoMatch = nameWithoutExt.match(isoPattern);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split("T")[0];
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10) - 1;
+    const d = parseInt(day, 10);
+    if (isValidParts(y, m, d)) {
+      return new Date(y, m, d).toISOString().split("T")[0];
     }
   }
 
@@ -161,9 +168,11 @@ function extractDateFromFilename(filename: string | null): string | null {
   const usMatch = nameWithoutExt.match(usPattern);
   if (usMatch) {
     const [, month, day, year] = usMatch;
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split("T")[0];
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10) - 1;
+    const d = parseInt(day, 10);
+    if (isValidParts(y, m, d)) {
+      return new Date(y, m, d).toISOString().split("T")[0];
     }
   }
 
@@ -199,6 +208,9 @@ async function callModel(
     };
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -208,7 +220,10 @@ async function callModel(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const responseData = await response.json().catch(() => ({}));
       const tokenUsage = extractTokenUsage(responseData);
@@ -240,7 +255,7 @@ async function callModel(
         tokenUsage,
       );
 
-      if (response.status === 429 && retryCount < modelConfig.maxRetries - 1) {
+      if ((response.status === 429 || response.status >= 500) && retryCount < modelConfig.maxRetries - 1) {
         await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount + 1) * 1000));
         retryCount++;
         continue;
@@ -285,8 +300,29 @@ serve(async (req) => {
       });
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      return new Response(JSON.stringify({ error: "Server misconfigured" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+    });
+
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: uploadInfo, error: uploadError } = await supabase
@@ -299,6 +335,20 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Failed to fetch invoice upload info" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,
+      });
+    }
+
+    const { data: membership, error: membershipError } = await userClient
+      .from("user_restaurants")
+      .select("id")
+      .eq("restaurant_id", uploadInfo.restaurant_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (membershipError || !membership) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
       });
     }
 
@@ -318,10 +368,30 @@ serve(async (req) => {
       pdfBase64Data = normalizedPdfInput.value;
 
       if (normalizedPdfInput.isRemote) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000);
-
         try {
+          const url = new URL(normalizedPdfInput.value);
+          
+          if (url.protocol !== 'https:') {
+            throw new Error('Only HTTPS URLs are allowed');
+          }
+
+          const allowedHosts = [
+            supabaseUrl ? new URL(supabaseUrl).hostname : null,
+            'supabase.co',
+            'supabase.in',
+          ].filter(Boolean);
+
+          const isAllowed = allowedHosts.some(host => 
+            host && (url.hostname === host || url.hostname.endsWith(`.${host}`))
+          );
+
+          if (!isAllowed) {
+            throw new Error('URL host not allowed');
+          }
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 20000);
+
           const pdfResponse = await fetch(normalizedPdfInput.value, { signal: controller.signal });
           clearTimeout(timeoutId);
 

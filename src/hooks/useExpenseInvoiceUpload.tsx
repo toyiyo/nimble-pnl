@@ -113,6 +113,15 @@ export const useExpenseInvoiceUpload = () => {
   };
 
   const processInvoice = async (invoiceUploadId: string, file: File) => {
+    if (!selectedRestaurant?.restaurant_id) {
+      toast({
+        title: 'Error',
+        description: 'Please select a restaurant first',
+        variant: 'destructive',
+      });
+      return null;
+    }
+
     setIsProcessing(true);
     try {
       const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -123,6 +132,7 @@ export const useExpenseInvoiceUpload = () => {
           .from('expense_invoice_uploads')
           .select('raw_file_url')
           .eq('id', invoiceUploadId)
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
           .single();
 
         if (invoiceError || !invoiceData?.raw_file_url) {
@@ -201,10 +211,20 @@ export const useExpenseInvoiceUpload = () => {
   };
 
   const updateInvoiceUpload = async (invoiceUploadId: string, updates: Partial<ExpenseInvoiceUpload>) => {
+    if (!selectedRestaurant?.restaurant_id) {
+      toast({
+        title: 'Error',
+        description: 'Please select a restaurant first',
+        variant: 'destructive',
+      });
+      return null;
+    }
+
     const { data, error } = await supabase
       .from('expense_invoice_uploads')
       .update(updates)
       .eq('id', invoiceUploadId)
+      .eq('restaurant_id', selectedRestaurant.restaurant_id)
       .select()
       .single();
 

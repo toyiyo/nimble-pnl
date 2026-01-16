@@ -60,7 +60,9 @@ async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof gen
       }
     }
   } catch (e) {
-    console.log('Onboarding drawer handling skipped or failed', e);
+    if (process.env.DEBUG_E2E) {
+      console.warn('Onboarding drawer handling skipped or failed', e);
+    }
   }
 }
 

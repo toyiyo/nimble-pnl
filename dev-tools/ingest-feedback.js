@@ -8,6 +8,23 @@ import process from "node:process";
 const ROOT = process.cwd();
 const QUEUE_PATH = path.resolve(ROOT, "dev-tools/review_queue.json");
 
+/**
+ * Normalize file paths to be relative to the repository root
+ * @param {string} filePath - Absolute or relative file path
+ * @returns {string} Repository-relative file path
+ */
+function normalizeFilePath(filePath) {
+  if (!filePath) return filePath;
+  
+  // If it's an absolute path, make it relative to ROOT
+  if (path.isAbsolute(filePath)) {
+    return path.relative(ROOT, filePath);
+  }
+  
+  // Already relative, return as-is
+  return filePath;
+}
+
 const args = process.argv.slice(2);
 const inputs = { gh: [], sonar: [], problems: [], testsJson: [] };
 const defaultTests = [];
@@ -124,7 +141,7 @@ function parseGhComments(filePath) {
       origin_ref: {
         pr: prNumber || c.pull_request_url?.split("/").pop(),
         comment_id: c.id,
-        file: c.path || c.position || c.original_position ? c.path : undefined,
+        file: normalizeFilePath(c.path || c.position || c.original_position ? c.path : undefined),
         line:
           c.line ||
           c.original_line ||
@@ -152,7 +169,7 @@ function parseSonar(filePath) {
       origin_ref: {
         sonar_key: issue.key,
         pr: prNumber || undefined,
-        file: file || undefined,
+        file: normalizeFilePath(file || undefined),
         line: issue.line || undefined,
       },
       title: (issue.message || issue.rule || "Sonar issue").slice(0, 160),
@@ -209,7 +226,7 @@ function parseProblems(filePath) {
             : "info";
       items.push({
         source: "problems",
-        origin_ref: { file: filePath, line: msg.line || msg.startLine },
+        origin_ref: { file: normalizeFilePath(filePath), line: msg.line || msg.startLine },
         title:
           (msg.ruleId
             ? `${msg.ruleId} in ${path.basename(filePath)}`
@@ -282,7 +299,7 @@ function parseTestsJson(filePath) {
       const body = messages.join("\n\n") || "Test failed.";
       items.push({
         source: "tests",
-        origin_ref: { file: resolvedTestFile || testFile || undefined },
+        origin_ref: { file: normalizeFilePath(resolvedTestFile || testFile || undefined) },
         title: `Test failure: ${title}`.slice(0, 160),
         body,
         severity: "major",

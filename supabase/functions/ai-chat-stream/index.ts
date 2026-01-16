@@ -304,14 +304,15 @@ function createSSEStream(
         );
 
         controller.close();
-      } catch (error) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Stream error';
         console.error('Stream error:', error);
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ 
             type: 'error', 
             error: { 
               code: 'STREAM_ERROR', 
-              message: error.message 
+              message: errorMessage 
             } 
           })}\n\n`)
         );

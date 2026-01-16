@@ -4,9 +4,26 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+interface CloverConnection {
+  id: string;
+  refresh_token: string | null;
+  region: 'na' | 'eu' | 'latam' | 'apac';
+  access_token: string;
+  expires_at: string | null;
+  environment: string;
+  merchant_id: string;
+}
+
+const regionAPIDomains: Record<string, string> = {
+  na: "api.clover.com",
+  eu: "api.eu.clover.com",
+  latam: "api.la.clover.com",
+  apac: "api.clover.com",
+};
+
 /**
  * Helper function to refresh Clover access token
- */ async function refreshCloverToken(connection, supabase) {
+ */ async function refreshCloverToken(connection: CloverConnection, supabase: any): Promise<string> {
   console.log("Attempting to refresh Clover token...");
   if (!connection.refresh_token) {
     throw new Error("No refresh token available. Please reconnect your Clover account.");
@@ -16,13 +33,6 @@ const corsHeaders = {
   // Use production credentials only
   const CLOVER_APP_ID = Deno.env.get("CLOVER_APP_ID");
   const CLOVER_APP_SECRET = Deno.env.get("CLOVER_APP_SECRET");
-  // Use production API domains
-  const regionAPIDomains = {
-    na: "api.clover.com",
-    eu: "api.eu.clover.com",
-    latam: "api.la.clover.com",
-    apac: "api.clover.com",
-  };
   const CLOVER_API_DOMAIN = regionAPIDomains[connection.region] || "api.clover.com";
   const tokenRefreshUrl = `https://${CLOVER_API_DOMAIN}/oauth/v2/refresh`;
   const refreshResponse = await fetch(tokenRefreshUrl, {
@@ -123,7 +133,7 @@ Deno.serve(async (req) => {
           latam: "api.la.clover.com",
           apac: "api.clover.com",
         };
-        const CLOVER_API_DOMAIN = regionAPIDomains[connection.region] || regionAPIDomains.na;
+        const CLOVER_API_DOMAIN = regionAPIDomains[(connection as CloverConnection).region] || regionAPIDomains.na;
         const tokenRefreshUrl = `https://${CLOVER_API_DOMAIN}/oauth/v2/refresh`;
         const refreshResponse = await fetch(tokenRefreshUrl, {
           method: "POST",
@@ -195,7 +205,7 @@ Deno.serve(async (req) => {
       latam: "api.la.clover.com",
       apac: "api.clover.com",
     };
-    const CLOVER_API_DOMAIN = regionAPIDomains[connection.region] || "api.clover.com";
+    const CLOVER_API_DOMAIN = regionAPIDomains[(connection as CloverConnection).region] || "api.clover.com";
     const BASE_URL = `https://${CLOVER_API_DOMAIN}/v3/merchants/${connection.merchant_id}`;
     console.log("Using Clover API:", {
       environment: "production",
@@ -282,16 +292,18 @@ Deno.serve(async (req) => {
               });
               clearTimeout(retryTimeoutId);
               console.log("Retry request completed with status:", ordersResponse.status);
-            } catch (refreshError) {
-              console.error("Failed to refresh token:", refreshError.message);
-              errors.push(`Token refresh failed: ${refreshError.message}`);
+            } catch (refreshError: unknown) {
+              const refreshErrorMessage = refreshError instanceof Error ? refreshError.message : 'Unknown error';
+              console.error("Failed to refresh token:", refreshErrorMessage);
+              errors.push(`Token refresh failed: ${refreshErrorMessage}`);
               break;
             }
           }
-        } catch (fetchError) {
+        } catch (fetchError: unknown) {
           clearTimeout(timeoutId);
-          console.error("Fetch timeout or error:", fetchError.message);
-          errors.push(`Fetch error: ${fetchError.message}`);
+          const fetchErrorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+          console.error("Fetch timeout or error:", fetchErrorMessage);
+          errors.push(`Fetch error: ${fetchErrorMessage}`);
           break;
         }
         if (!ordersResponse.ok) {
@@ -349,8 +361,8 @@ Deno.serve(async (req) => {
 
                 // Sum tips and amounts from payments (source of truth)
                 // Note: taxAmount is not provided by Clover API - we calculate it later from order total
-                tipCents = payments.reduce((s, p) => s + (p.tipAmount ?? 0), 0);
-                paidCents = payments.reduce((s, p) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
+                tipCents = payments.reduce((s: number, p: any) => s + (p.tipAmount ?? 0), 0);
+                paidCents = payments.reduce((s: number, p: any) => s + (p.amount ?? 0), 0); // includes tax, excludes tip
 
                 console.log(`Order ${order.id} payments:`, {
                   paymentCount: payments.length,
@@ -373,8 +385,9 @@ Deno.serve(async (req) => {
                 // Fallback to order-level fields if payment fetch fails
                 tipCents = order.tipAmount ?? 0;
               }
-            } catch (paymentError) {
-              console.error(`Error fetching payments for order ${order.id}:`, paymentError.message);
+            } catch (paymentError: unknown) {
+              const paymentErrorMessage = paymentError instanceof Error ? paymentError.message : 'Unknown error';
+              console.error(`Error fetching payments for order ${order.id}:`, paymentErrorMessage);
               // Fallback to order-level fields
               tipCents = order.tipAmount ?? 0;
             }
@@ -384,8 +397,8 @@ Deno.serve(async (req) => {
             if (taxCents === 0) {
               // Calculate tax from order total minus line items subtotal
               const revenueSubtotal = order.lineItems?.elements
-                ?.filter(li => li.isRevenue)
-                .reduce((sum, li) => {
+                ?.filter((li: any) => li.isRevenue)
+                .reduce((sum: number, li: any) => {
                   const qty = (li.unitQty ?? 1000) / 1000;
                   const price = li.price ?? 0;
                   return sum + (price * qty);
@@ -572,8 +585,8 @@ Deno.serve(async (req) => {
                 let itemName = null;
                 if (disc.lineItemRef?.id) {
                   // Find the line item name by matching the ID
-                  const li = order.lineItems?.elements?.find((li) => li.id === disc.lineItemRef.id);
-                  if (li) itemName = li.name;
+                  const lineItem = order.lineItems?.elements?.find((li: any) => li.id === disc.lineItemRef.id);
+                  if (lineItem) itemName = lineItem.name;
                 }
 
                 // Construct entry name
@@ -614,9 +627,10 @@ Deno.serve(async (req) => {
               }
             }
             ordersSynced++;
-          } catch (orderError) {
+          } catch (orderError: unknown) {
+            const orderErrorMessage = orderError instanceof Error ? orderError.message : 'Unknown error';
             console.error(`Error processing order ${order.id}:`, orderError);
-            errors.push(`Order ${order.id}: ${orderError.message}`);
+            errors.push(`Order ${order.id}: ${orderErrorMessage}`);
           }
         }
         offset += limit;
@@ -652,9 +666,10 @@ Deno.serve(async (req) => {
           .eq("pos_system", "clover");
         console.log("Items in unified_sales after sync:", syncedItems?.length || 0);
       }
-    } catch (syncError) {
+    } catch (syncError: unknown) {
+      const syncErrorMessage = syncError instanceof Error ? syncError.message : 'Unknown error';
       console.error("Sync error:", syncError);
-      errors.push(syncError.message);
+      errors.push(syncErrorMessage);
     }
     return new Response(
       JSON.stringify({
@@ -676,11 +691,12 @@ Deno.serve(async (req) => {
         },
       },
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error("Clover sync error:", error);
     return new Response(
       JSON.stringify({
-        error: error.message,
+        error: errorMessage,
       }),
       {
         status: 400,

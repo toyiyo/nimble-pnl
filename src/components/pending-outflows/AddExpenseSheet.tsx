@@ -21,9 +21,10 @@ import {
   Image as ImageIcon,
   Loader2,
   UploadCloud,
-  Camera,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ImageCapture } from '@/components/ImageCapture';
 
 interface AddExpenseSheetProps {
   open: boolean;
@@ -48,9 +49,9 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [fieldConfidence, setFieldConfidence] = useState<Record<string, number | null> | null>(null);
   const [hasOcrError, setHasOcrError] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<CreatePendingOutflowInput>({
     vendor_name: '',
@@ -71,6 +72,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
     setSelectedSupplierId('');
     setFieldConfidence(null);
     setHasOcrError(false);
+    setShowCamera(false);
     setFormData({
       vendor_name: '',
       payment_method: DEFAULT_PAYMENT_METHOD,
@@ -248,62 +250,90 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
 
         <div className="mt-6 space-y-6">
           {step === 'drop' && (
-            <Card
-              className={cn(
-                'border-2 border-dashed rounded-2xl transition-colors',
-                isDragging ? 'border-primary/60 bg-primary/5' : 'border-muted-foreground/30',
-              )}
-            >
-              <CardContent
-                className="p-10 text-center space-y-6"
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
+            showCamera ? (
+              <Card className="border-2 rounded-2xl">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm font-medium">Take a photo of the invoice</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowCamera(false)}
+                      aria-label="Close camera"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <ImageCapture
+                    onImageCaptured={async (blob) => {
+                      const file = new File([blob], `expense-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                      setShowCamera(false);
+                      await handleFileSelected(file);
+                    }}
+                    onError={(error) => {
+                      toast({
+                        title: 'Camera Error',
+                        description: error,
+                        variant: 'destructive',
+                      });
+                      setShowCamera(false);
+                    }}
+                    preferredFacingMode="environment"
+                    autoStart={true}
+                    allowUpload={false}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <Card
+                className={cn(
+                  'border-2 border-dashed rounded-2xl transition-colors',
+                  isDragging ? 'border-primary/60 bg-primary/5' : 'border-muted-foreground/30',
+                )}
               >
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-                  <UploadCloud className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-lg font-semibold">Drag invoice here</p>
-                  <p className="text-sm text-muted-foreground">PDF or image files supported.</p>
-                </div>
-                <div className="flex flex-wrap justify-center gap-3">
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    Choose file
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => cameraInputRef.current?.click()}>
-                    <Camera className="mr-2 h-4 w-4" />
-                    Take photo
-                  </Button>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-muted-foreground"
-                  onClick={() => setStep('review')}
+                <CardContent
+                  className="p-10 text-center space-y-6"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
                 >
-                  Enter manually
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp,image/jpg"
-                  className="hidden"
-                  onChange={handleFileInputChange}
-                />
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handleFileInputChange}
-                />
-              </CardContent>
-            </Card>
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+                    <UploadCloud className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-lg font-semibold">Drag invoice here</p>
+                    <p className="text-sm text-muted-foreground">PDF or image files supported.</p>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                      Choose file
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setShowCamera(true)}>
+                      Take photo
+                    </Button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-muted-foreground"
+                    onClick={() => setStep('review')}
+                  >
+                    Enter manually
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp,image/jpg"
+                    className="hidden"
+                    onChange={handleFileInputChange}
+                  />
+                </CardContent>
+              </Card>
+            )
           )}
 
           {step === 'review' && (

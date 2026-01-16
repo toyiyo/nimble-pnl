@@ -228,14 +228,15 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error("Error processing Clover webhook:", error);
     
     // Still return 200 to prevent Clover from retrying
     return new Response(
       JSON.stringify({ 
         message: "Webhook received but processing failed",
-        error: error.message 
+        error: errorMessage 
       }),
       {
         status: 200,

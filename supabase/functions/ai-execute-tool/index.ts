@@ -428,7 +428,7 @@ async function calculateRevenueHealth(
   const largestDeposit = revenueDeposits.reduce((max: number, d: any) => Math.max(max, d.amount), 0);
   
   // Calculate deposit frequency
-  const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a, b) => a - b);
+  const dates = revenueDeposits.map((d: any) => new Date(d.transaction_date).getTime()).sort((a: number, b: number) => a - b);
   let totalGap = 0;
   for (let i = 1; i < dates.length; i++) {
     totalGap += (dates[i] - dates[i-1]) / (1000 * 60 * 60 * 24); // Convert to days
@@ -655,8 +655,9 @@ async function executeGetFinancialIntelligence(
       },
     };
     
-  } catch (error) {
-    throw new Error(`Failed to calculate financial intelligence: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to calculate financial intelligence: ${errorMessage}`);
   }
 }
 
@@ -984,8 +985,9 @@ async function executeGetFinancialStatement(
       default:
         throw new Error(`Unknown statement type: ${statement_type}`);
     }
-  } catch (error) {
-    throw new Error(`Failed to generate financial statement: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to generate financial statement: ${errorMessage}`);
   }
 }
 
@@ -1292,9 +1294,10 @@ async function executeGetAiInsights(
       dataContext.high_cost_products = highCostProducts;
     }
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error fetching data for insights:', error);
-    throw new Error(`Failed to fetch data: ${error.message}`);
+    throw new Error(`Failed to fetch data: ${errorMessage}`);
   }
 
   // Construct prompt for AI
@@ -1674,8 +1677,9 @@ async function executeGenerateReport(
       },
     };
 
-  } catch (error) {
-    throw new Error(`Failed to generate report: ${error.message}`);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to generate report: ${errorMessage}`);
   }
 }
 
@@ -1788,7 +1792,8 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to execute tool';
     console.error('Tool execution error:', error);
     
     return new Response(
@@ -1796,7 +1801,7 @@ serve(async (req) => {
         ok: false,
         error: {
           code: 'TOOL_EXECUTION_ERROR',
-          message: error.message || 'Failed to execute tool',
+          message: errorMessage,
         },
       }),
       {

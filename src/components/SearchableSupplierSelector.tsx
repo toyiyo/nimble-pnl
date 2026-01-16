@@ -25,6 +25,8 @@ interface SearchableSupplierSelectorProps {
   disabled?: boolean;
   placeholder?: string;
   showNewIndicator?: boolean;
+  /** Name to display when value is 'new_supplier' (e.g., from OCR) */
+  pendingNewName?: string;
 }
 
 export function SearchableSupplierSelector({
@@ -34,6 +36,7 @@ export function SearchableSupplierSelector({
   disabled = false,
   placeholder = "Search suppliers...",
   showNewIndicator = false,
+  pendingNewName = '',
 }: SearchableSupplierSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -62,7 +65,8 @@ export function SearchableSupplierSelector({
   // Handle display for special values
   const getDisplayValue = () => {
     if (value === 'new_supplier') {
-      return searchValue || '+ Create New Supplier';
+      // Prefer pendingNewName (from OCR), then searchValue, then fallback
+      return pendingNewName || searchValue || '+ Create New Supplier';
     }
     if (selectedSupplier) return selectedSupplier.name;
     return placeholder;

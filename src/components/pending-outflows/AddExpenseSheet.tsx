@@ -23,7 +23,7 @@ import {
   UploadCloud,
   X,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { ImageCapture } from '@/components/ImageCapture';
 
 interface AddExpenseSheetProps {
@@ -47,6 +47,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
   const [fileType, setFileType] = useState<'pdf' | 'image' | null>(null);
   const [invoiceUploadId, setInvoiceUploadId] = useState<string | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const [pendingVendorName, setPendingVendorName] = useState<string>('');
   const [fieldConfidence, setFieldConfidence] = useState<Record<string, number | null> | null>(null);
   const [hasOcrError, setHasOcrError] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
@@ -70,6 +71,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
     setFileType(null);
     setInvoiceUploadId(null);
     setSelectedSupplierId('');
+    setPendingVendorName('');
     setFieldConfidence(null);
     setHasOcrError(false);
     setShowCamera(false);
@@ -103,6 +105,11 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
     );
     if (match) {
       setSelectedSupplierId(match.id);
+      setPendingVendorName('');
+    } else if (formData.vendor_name) {
+      // No match found - show as pending new vendor
+      setSelectedSupplierId('new_supplier');
+      setPendingVendorName(formData.vendor_name);
     }
   }, [formData.vendor_name, selectedSupplierId, suppliers]);
 
@@ -115,6 +122,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
         const newSupplier = await createSupplier({ name: supplierName });
         setFormData((prev) => ({ ...prev, vendor_name: newSupplier.name }));
         setSelectedSupplierId(newSupplier.id);
+        setPendingVendorName('');
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
           console.error('Error creating supplier:', error);
@@ -132,6 +140,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
     const supplier = suppliers.find((s) => s.id === value);
     if (supplier) {
       setFormData((prev) => ({ ...prev, vendor_name: supplier.name }));
+      setPendingVendorName('');
     }
   };
 
@@ -415,6 +424,7 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                         suppliers={suppliers}
                         placeholder="Select or create vendor..."
                         showNewIndicator
+                        pendingNewName={pendingVendorName}
                       />
                     </div>
 
@@ -444,19 +454,26 @@ export function AddExpenseSheet({ open, onOpenChange }: AddExpenseSheetProps) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <span className={cn(isLowConfidence('totalAmount') && 'underline decoration-dotted')}>
-                            Total
-                          </span>
-                          {isLowConfidence('totalAmount') && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button type="button" className="inline-flex" aria-label="Amount uncertain - please confirm">
-                                  <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
-                            </Tooltip>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span className={cn(isLowConfidence('totalAmount') && 'underline decoration-dotted')}>
+                              Total
+                            </span>
+                            {isLowConfidence('totalAmount') && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button type="button" className="inline-flex" aria-label="Amount uncertain - please confirm">
+                                    <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>We weren't fully sure - please confirm</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                          {formData.amount > 0 && (
+                            <span className="text-sm font-medium text-foreground">
+                              {formatCurrency(formData.amount)}
+                            </span>
                           )}
                         </div>
                         <Input

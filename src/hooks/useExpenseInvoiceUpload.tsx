@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import type { Json } from '@/integrations/supabase/types';
 
 export interface ExpenseInvoiceUpload {
   id: string;
@@ -16,7 +17,7 @@ export interface ExpenseInvoiceUpload {
   file_name: string | null;
   file_size: number | null;
   status: string;
-  raw_ocr_data: Record<string, unknown> | null;
+  raw_ocr_data: Json | null;
   field_confidence: Record<string, number | null> | null;
   processed_at: string | null;
   processed_by: string | null;

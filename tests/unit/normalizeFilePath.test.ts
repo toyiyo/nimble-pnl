@@ -34,16 +34,13 @@ describe('normalizeFilePath - Path Sanitization', () => {
 
     it('CRITICAL: should strip home directory prefix', () => {
       const ROOT = process.cwd();
-      const homeDir = '/Users/josedelgado/Documents/GitHub/nimble-pnl';
-      const filePath = `${homeDir}/src/components/CashFlowSankeyChart.tsx`;
+      // Use ROOT dynamically instead of hardcoding a path
+      const filePath = path.join(ROOT, 'src/components/CashFlowSankeyChart.tsx');
       
-      // If ROOT matches homeDir structure
-      if (ROOT.includes('nimble-pnl')) {
-        const result = normalizeFilePath(filePath);
-        expect(result).toBe('src/components/CashFlowSankeyChart.tsx');
-        expect(result).not.toContain('/Users');
-        expect(result).not.toContain('josedelgado');
-      }
+      const result = normalizeFilePath(filePath);
+      expect(result).toBe('src/components/CashFlowSankeyChart.tsx');
+      expect(result).not.toContain(ROOT);
+      expect(result).not.toMatch(/^\.\.\//);
     });
 
     it('should handle nested paths', () => {

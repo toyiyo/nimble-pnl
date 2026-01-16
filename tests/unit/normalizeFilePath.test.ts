@@ -1,25 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
+import { normalizeFilePath } from '../../dev-tools/ingest-feedback.js';
 
 /**
  * Test suite for normalizeFilePath function in dev-tools/ingest-feedback.js
  * This validates that absolute paths are converted to repo-relative paths
  */
-
-// Mirror the implementation for testing
-function normalizeFilePath(filePath: string | undefined): string | undefined {
-  if (!filePath) return filePath;
-  
-  const ROOT = process.cwd();
-  
-  // If it's an absolute path, make it relative to ROOT
-  if (path.isAbsolute(filePath)) {
-    return path.relative(ROOT, filePath);
-  }
-  
-  // Already relative, return as-is
-  return filePath;
-}
 
 describe('normalizeFilePath - Path Sanitization', () => {
   describe('Absolute paths', () => {

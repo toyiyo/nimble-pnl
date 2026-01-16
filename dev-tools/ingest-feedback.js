@@ -13,7 +13,7 @@ const QUEUE_PATH = path.resolve(ROOT, "dev-tools/review_queue.json");
  * @param {string} filePath - Absolute or relative file path
  * @returns {string} Repository-relative file path
  */
-function normalizeFilePath(filePath) {
+export function normalizeFilePath(filePath) {
   if (!filePath) return filePath;
   
   // If it's an absolute path, make it relative to ROOT

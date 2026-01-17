@@ -63,9 +63,12 @@ interface RecipeDialogProps {
   recipe?: Recipe | null;
   onRecipeUpdated?: () => void;
   initialPosItemName?: string;
+  prefill?: Partial<FormData>;
+  basedOn?: { id: string; name: string };
+  onCreateFromBase?: (recipe: Recipe) => void;
 }
 
-export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated, initialPosItemName }: RecipeDialogProps) {
+export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
@@ -75,16 +78,18 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
   const [estimatedCost, setEstimatedCost] = useState(0);
   const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
 
+  const defaultValues: FormData = {
+    name: '',
+    description: '',
+    pos_item_name: '',
+    pos_item_id: '',
+    serving_size: 1,
+    ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
+  };
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      pos_item_name: '',
-      pos_item_id: '',
-      serving_size: 1,
-      ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
-    },
+    defaultValues,
   });
 
   const { fields, append, remove } = useFieldArray({
@@ -164,17 +169,25 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
           });
         }
       } else {
-        form.reset({
-          name: initialPosItemName || '',
-          description: '',
-          pos_item_name: initialPosItemName || '',
-          pos_item_id: '',
-          serving_size: 1,
-          ingredients: [{ product_id: '', quantity: 1, unit: 'oz' as const, notes: '' }],
-        });
+        const posDefaults = initialPosItemName
+          ? { name: initialPosItemName, pos_item_name: initialPosItemName }
+          : {};
+        const mergedDefaults: FormData = {
+          ...defaultValues,
+          ...posDefaults,
+          ...prefill,
+          ingredients: prefill?.ingredients?.length ? prefill.ingredients : defaultValues.ingredients,
+        };
+
+        form.reset(mergedDefaults);
       }
     }
-  }, [recipe?.id, isOpen, initialPosItemName, form]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
+  }, [recipe?.id, isOpen, initialPosItemName, form, prefill]); // Only depend on recipe.id, not the whole recipe object or fetchRecipeIngredients
+
+  const nameValue = form.watch('name') || '';
+  const baseName = basedOn?.name?.trim().toLowerCase();
+  const isNameValid = nameValue.trim().length > 0 && nameValue.trim().toLowerCase() !== baseName;
+  const isSubmitDisabled = loading || (basedOn ? !isNameValid : false);
 
   // Calculate estimated cost when ingredients change using enhanced unit conversions
   useEffect(() => {
@@ -347,6 +360,23 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
               ? 'Update the recipe details and ingredients.' 
               : 'Create a new recipe with ingredients and portions.'}
           </DialogDescription>
+          {recipe && onCreateFromBase && (
+            <div className="mt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onCreateFromBase(recipe)}
+              >
+                Create variation
+              </Button>
+            </div>
+          )}
+          {basedOn && (
+            <div className="mt-3 rounded-lg border border-border/60 bg-muted/40 p-3 text-sm">
+              <span className="font-medium">Based on {basedOn.name}</span>
+            </div>
+          )}
         </DialogHeader>
 
         <Form {...form}>
@@ -363,7 +393,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Recipe Name *</FormLabel>
+                        <FormLabel htmlFor="recipe-name">Recipe Name *</FormLabel>
                         <FormControl>
                           <Input 
                             placeholder="e.g., Margarita" 
@@ -525,7 +555,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={isSubmitDisabled}>
                 {loading ? 'Saving...' : recipe ? 'Update Recipe' : 'Create Recipe'}
               </Button>
             </div>

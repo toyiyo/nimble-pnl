@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PrepRecipe } from '@/hooks/usePrepRecipes';
 import { Product } from '@/hooks/useProducts';
 import { IngredientUnit, MEASUREMENT_UNITS } from '@/lib/recipeUnits';
+import { calculateOutputUnitCost, summarizePrepRecipeCosts } from '@/lib/prepRecipeCosting';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,10 +10,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { PrepRecipeIngredientRow } from '@/components/prep/PrepRecipeIngredientRow';
+import { QuickProductFixDialog } from '@/components/prep/QuickProductFixDialog';
 
 export interface PrepRecipeFormValues {
   name: string;
@@ -35,6 +38,7 @@ interface PrepRecipeDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onSubmit: (values: PrepRecipeFormValues) => Promise<void>;
+  readonly onQuickFixSave: (productId: string, updates: Partial<Product>) => Promise<boolean>;
   readonly products: Product[];
   readonly editingRecipe?: PrepRecipe | null;
 }
@@ -55,11 +59,14 @@ export function PrepRecipeDialog({
   open,
   onOpenChange,
   onSubmit,
+  onQuickFixSave,
   products,
   editingRecipe,
 }: PrepRecipeDialogProps) {
   const [formValues, setFormValues] = useState<PrepRecipeFormValues>(defaultForm);
   const [saving, setSaving] = useState(false);
+  const [quickFixOpen, setQuickFixOpen] = useState(false);
+  const [quickFixProduct, setQuickFixProduct] = useState<Product | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -85,6 +92,13 @@ export function PrepRecipeDialog({
     }
   }, [editingRecipe, open]);
 
+  useEffect(() => {
+    if (!open) {
+      setQuickFixOpen(false);
+      setQuickFixProduct(null);
+    }
+  }, [open]);
+
   const ingredientRows = formValues.ingredients;
 
   const productLookup = useMemo(() => {
@@ -92,6 +106,16 @@ export function PrepRecipeDialog({
     products.forEach((p) => map.set(p.id, p));
     return map;
   }, [products]);
+
+  const costSummary = useMemo(() => summarizePrepRecipeCosts(ingredientRows, productLookup), [
+    ingredientRows,
+    productLookup,
+  ]);
+
+  const estimatedPerUnit = useMemo(
+    () => calculateOutputUnitCost(costSummary.estimatedTotal, formValues.default_yield || 0),
+    [costSummary.estimatedTotal, formValues.default_yield]
+  );
 
   const handleIngredientChange = <K extends keyof PrepRecipeFormValues['ingredients'][number]>(
     index: number,
@@ -270,83 +294,45 @@ export function PrepRecipeDialog({
                   </Button>
                 </div>
 
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span>Estimated batch cost</span>
+                    <span className="font-semibold text-foreground">${costSummary.estimatedTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Estimated per {formValues.default_yield_unit}</span>
+                    <span className="font-medium text-foreground">
+                      {formValues.default_yield > 0 ? `$${estimatedPerUnit.toFixed(2)}` : '--'}
+                    </span>
+                  </div>
+                  {costSummary.missingCount > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 text-amber-700">
+                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+                        Missing {costSummary.missingCount}
+                      </Badge>
+                      <span>
+                        ingredient{costSummary.missingCount === 1 ? '' : 's'} need product data to estimate cost.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
                 <ScrollArea className="flex-1 min-h-0 pr-2">
                   <div className="space-y-3 pb-1">
                     {ingredientRows.map((ingredient, index) => (
-                      <div key={ingredient.id || `temp-${index}`} className="rounded-lg border bg-card p-3 shadow-sm space-y-3">
-                        <div className="grid grid-cols-12 gap-2 items-center">
-                          <div className="col-span-12 sm:col-span-5 space-y-1">
-                            <Label>Product</Label>
-                            <Select
-                              value={ingredient.product_id}
-                              onValueChange={(value) => handleIngredientChange(index, 'product_id', value)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select product" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {products.map((product) => (
-                                  <SelectItem key={product.id} value={product.id}>
-                                    {product.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="col-span-6 sm:col-span-3 space-y-1">
-                            <Label htmlFor={`ingredient-quantity-${ingredient.id || index}`}>Quantity</Label>
-                            <Input
-                              id={`ingredient-quantity-${ingredient.id || index}`}
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={ingredient.quantity}
-                              onChange={(e) => handleIngredientChange(index, 'quantity', Number.parseFloat(e.target.value) || 0)}
-                            />
-                          </div>
-
-                          <div className="col-span-6 sm:col-span-3 space-y-1">
-                            <Label>Unit</Label>
-                            <Select
-                              value={ingredient.unit}
-                              onValueChange={(value) => handleIngredientChange(index, 'unit', value as IngredientUnit)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MEASUREMENT_UNITS.map((unit) => (
-                                  <SelectItem key={unit} value={unit}>
-                                    {unit}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="col-span-12 sm:col-span-1 flex justify-end">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-muted-foreground hover:text-destructive"
-                              onClick={() => removeIngredientRow(index)}
-                              aria-label="Remove ingredient"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label>Notes</Label>
-                          <Input
-                            value={ingredient.notes || ''}
-                            onChange={(e) => handleIngredientChange(index, 'notes', e.target.value)}
-                            placeholder="Prep notes, trim %, alternates"
-                          />
-                        </div>
-                      </div>
+                      <PrepRecipeIngredientRow
+                        key={ingredient.id || `temp-${index}`}
+                        ingredient={ingredient}
+                        index={index}
+                        products={products}
+                        measurementUnits={MEASUREMENT_UNITS}
+                        onChange={handleIngredientChange}
+                        onRemove={() => removeIngredientRow(index)}
+                        onQuickFix={(product) => {
+                          setQuickFixProduct(product);
+                          setQuickFixOpen(true);
+                        }}
+                      />
                     ))}
 
                     {ingredientRows.length === 0 && (
@@ -400,6 +386,15 @@ export function PrepRecipeDialog({
           </DialogFooter>
         </div>
       </DialogContent>
+      <QuickProductFixDialog
+        open={quickFixOpen}
+        onOpenChange={(value) => {
+          setQuickFixOpen(value);
+          if (!value) setQuickFixProduct(null);
+        }}
+        product={quickFixProduct}
+        onSave={onQuickFixSave}
+      />
     </Dialog>
   );
 }

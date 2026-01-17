@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
+import { calculatePrepIngredientCost } from '@/lib/prepRecipeCosting';
 import { PrepRecipe, PrepRecipeIngredient } from './usePrepRecipes';
 
 export type ProductionRunStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled' | 'draft';
@@ -21,6 +22,8 @@ export interface ProductionRunIngredient {
     cost_per_unit?: number;
     uom_purchase?: string;
     current_stock?: number;
+    size_value?: number | null;
+    size_unit?: string | null;
   };
 }
 
@@ -109,7 +112,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
               unit,
               notes,
               sort_order,
-              product:products(id, name, cost_per_unit, uom_purchase, current_stock)
+              product:products(id, name, cost_per_unit, uom_purchase, current_stock, size_value, size_unit)
             )
           ),
           ingredients:production_run_ingredients(
@@ -120,7 +123,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
             actual_quantity,
             unit,
             variance_percent,
-            product:products(id, name, cost_per_unit, uom_purchase, current_stock)
+            product:products(id, name, cost_per_unit, uom_purchase, current_stock, size_value, size_unit)
           )
         `)
         .eq('restaurant_id', restaurantId)
@@ -302,8 +305,19 @@ export const useProductionRuns = (restaurantId: string | null) => {
       const payloadIng = payloadLookup.get(ing.product_id);
       const rawQty = payloadIng?.actual_quantity ?? payloadIng?.expected_quantity ?? ing.actual_quantity ?? ing.expected_quantity ?? 0;
       const actualQty = Number(rawQty) || 0;
-      const costPerUnit = ing.product?.cost_per_unit || 0;
-      return sum + costPerUnit * actualQty;
+      const unit = payloadIng?.unit ?? ing.unit;
+      if (!ing.product || !unit || actualQty <= 0) {
+        return sum;
+      }
+      const result = calculatePrepIngredientCost({
+        product: ing.product,
+        quantity: actualQty,
+        unit,
+      });
+      if (result.status === 'ok' && result.cost != null) {
+        return sum + result.cost;
+      }
+      return sum;
     }, 0);
   }, []);
 
@@ -348,9 +362,10 @@ export const useProductionRuns = (restaurantId: string | null) => {
     run: ProductionRun | undefined;
     payload: CompleteRunPayload;
     ingredientCostTotal: number;
+    actualYield: number;
     supplierInfo?: SupplierInfo | null;
   }) => {
-    const { run, payload, ingredientCostTotal, supplierInfo } = params;
+    const { run, payload, ingredientCostTotal, actualYield, supplierInfo } = params;
     if (!run?.restaurant_id || !run?.prep_recipe) return null;
 
     const unit = determineOutputUnit(run, payload);
@@ -374,7 +389,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
         par_level_min: 0,
         par_level_max: 0,
         reorder_point: 0,
-        cost_per_unit: ingredientCostTotal,
+        cost_per_unit: ingredientCostTotal > 0 ? ingredientCostTotal / Math.max(actualYield, 1) : 0,
         supplier_id: supplierInfo?.supplierId || null,
         supplier_name: supplierInfo?.supplierName || null,
         description: 'Auto-created prep output',
@@ -450,6 +465,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
         run,
         payload,
         ingredientCostTotal,
+        actualYield,
         supplierInfo,
       });
       await linkPrepRecipeToProduct(run.prep_recipe.id, outputProductId);

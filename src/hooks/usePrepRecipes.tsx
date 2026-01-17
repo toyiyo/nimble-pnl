@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
+import { calculateOutputUnitCost, calculatePrepIngredientCost, summarizePrepRecipeCosts } from '@/lib/prepRecipeCosting';
 
 export interface PrepRecipeIngredient {
   id: string;
@@ -19,6 +20,8 @@ export interface PrepRecipeIngredient {
     current_stock?: number;
     uom_purchase?: string;
     category?: string;
+    size_value?: number | null;
+    size_unit?: string | null;
   };
 }
 
@@ -109,7 +112,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             unit,
             notes,
             sort_order,
-            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category)
+            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category, size_value, size_unit)
           )
         `)
         .eq('restaurant_id', restaurantId)
@@ -202,16 +205,24 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     const { data: ingredientProducts, error: productError } = await supabase
       .from('products')
-      .select('id, cost_per_unit')
+      .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit')
       .in('id', ingredientProductIds)
       .eq('restaurant_id', restaurant_id);
 
     if (productError) throw productError;
 
-    const costMap = new Map((ingredientProducts || []).map(p => [p.id, p.cost_per_unit || 0]));
+    const productMap = new Map((ingredientProducts || []).map(p => [p.id, p]));
     return ingredientPayload.reduce((sum, ing) => {
-      const costPerUnit = costMap.get(ing.product_id) || 0;
-      return sum + costPerUnit * (ing.quantity || 0);
+      const product = productMap.get(ing.product_id);
+      const result = calculatePrepIngredientCost({
+        product,
+        quantity: ing.quantity || 0,
+        unit: ing.unit,
+      });
+      if (result.status === 'ok' && result.cost != null) {
+        return sum + result.cost;
+      }
+      return sum;
     }, 0);
   }, []);
 
@@ -240,6 +251,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       .replace(/[^A-Z0-9]+/g, '-')
       .replace(/(^-+|-+$)/g, '') || 'PREP';
     const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const outputUnitCost = calculateOutputUnitCost(ingredientCostTotal, input.default_yield);
 
     const { data: newProduct, error: productError } = await supabase
       .from('products')
@@ -255,7 +267,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         par_level_min: 0,
         par_level_max: 0,
         reorder_point: 0,
-        cost_per_unit: ingredientCostTotal,
+        cost_per_unit: outputUnitCost,
         supplier_id: supplierInfo?.supplierId || null,
         supplier_name: supplierInfo?.supplierName || null,
         description: 'Auto-created prep output',
@@ -267,7 +279,13 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     return newProduct?.id || null;
   }, []);
 
-  const updateExistingOutputProduct = useCallback(async (outputProductId: string, restaurantId: string, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
+  const updateExistingOutputProduct = useCallback(async (
+    outputProductId: string,
+    restaurantId: string,
+    ingredientCostTotal: number,
+    defaultYield: number,
+    supplierInfo?: { supplierId: string; supplierName: string } | null
+  ) => {
     if (!restaurantId) {
       throw new Error('Restaurant is required to update output product');
     }
@@ -288,7 +306,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       updated_at: string;
     }> = {};
     if (ingredientCostTotal > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
-      updates.cost_per_unit = ingredientCostTotal;
+      updates.cost_per_unit = calculateOutputUnitCost(ingredientCostTotal, defaultYield);
     }
     if (supplierInfo) {
       if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
@@ -315,7 +333,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       return createOutputProduct(input, ingredientCostTotal, supplierInfo);
     }
 
-    await updateExistingOutputProduct(outputProductId, input.restaurant_id, ingredientCostTotal, supplierInfo);
+    await updateExistingOutputProduct(outputProductId, input.restaurant_id, ingredientCostTotal, input.default_yield, supplierInfo);
     return outputProductId;
   }, [ensureSupplierIfNeeded, findExistingOutputProduct, createOutputProduct, updateExistingOutputProduct]);
 
@@ -376,7 +394,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             unit,
             notes,
             sort_order,
-            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category)
+            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category, size_value, size_unit)
           )
         `)
         .eq('id', recipe.id)
@@ -508,16 +526,24 @@ export const usePrepRecipes = (restaurantId: string | null) => {
   }, [user, toast, restaurantId]);
 
   const recipeStats = useMemo(() => {
-    return prepRecipes.reduce<Record<string, { ingredientCount: number; costPerBatch: number; costPerUnit: number }>>((acc, recipe) => {
-      const costPerBatch = (recipe.ingredients || []).reduce((sum, ing) => {
-        const unitCost = ing.product?.cost_per_unit || 0;
-        return sum + unitCost * (ing.quantity || 0);
-      }, 0);
-      const costPerUnit = recipe.default_yield > 0 ? costPerBatch / recipe.default_yield : 0;
+    return prepRecipes.reduce<Record<string, { ingredientCount: number; costPerBatch: number; costPerUnit: number; missingCount: number }>>((acc, recipe) => {
+      const ingredients = recipe.ingredients || [];
+      const productMap = new Map(ingredients.map((ing) => [ing.product_id, ing.product]));
+      const { estimatedTotal, missingCount } = summarizePrepRecipeCosts(
+        ingredients.map((ing) => ({
+          product_id: ing.product_id,
+          quantity: ing.quantity,
+          unit: ing.unit,
+        })),
+        productMap
+      );
+      const costPerBatch = estimatedTotal;
+      const costPerUnit = calculateOutputUnitCost(costPerBatch, recipe.default_yield || 0);
       acc[recipe.id] = {
-        ingredientCount: recipe.ingredients?.length || 0,
+        ingredientCount: ingredients.length,
         costPerBatch,
         costPerUnit,
+        missingCount,
       };
       return acc;
     }, {});

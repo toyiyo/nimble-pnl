@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { PrepRecipeIngredientRow } from '@/components/prep/PrepRecipeIngredientRow';
-import { QuickProductFixDialog } from '@/components/prep/QuickProductFixDialog';
+import { ProductUpdateDialog } from '@/components/ProductUpdateDialog';
 
 export interface PrepRecipeFormValues {
   name: string;
@@ -38,7 +38,8 @@ interface PrepRecipeDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly onSubmit: (values: PrepRecipeFormValues) => Promise<void>;
-  readonly onQuickFixSave: (productId: string, updates: Partial<Product>) => Promise<boolean>;
+  readonly onProductUpdate: (productId: string, updates: Partial<Product>, quantityToAdd: number) => Promise<void>;
+  readonly onProductEnhance?: (product: Product) => Promise<any>;
   readonly products: Product[];
   readonly editingRecipe?: PrepRecipe | null;
 }
@@ -59,14 +60,15 @@ export function PrepRecipeDialog({
   open,
   onOpenChange,
   onSubmit,
-  onQuickFixSave,
+  onProductUpdate,
+  onProductEnhance,
   products,
   editingRecipe,
 }: PrepRecipeDialogProps) {
   const [formValues, setFormValues] = useState<PrepRecipeFormValues>(defaultForm);
   const [saving, setSaving] = useState(false);
-  const [quickFixOpen, setQuickFixOpen] = useState(false);
-  const [quickFixProduct, setQuickFixProduct] = useState<Product | null>(null);
+  const [productEditOpen, setProductEditOpen] = useState(false);
+  const [productEditProduct, setProductEditProduct] = useState<Product | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -94,8 +96,8 @@ export function PrepRecipeDialog({
 
   useEffect(() => {
     if (!open) {
-      setQuickFixOpen(false);
-      setQuickFixProduct(null);
+      setProductEditOpen(false);
+      setProductEditProduct(null);
     }
   }, [open]);
 
@@ -329,8 +331,8 @@ export function PrepRecipeDialog({
                         onChange={handleIngredientChange}
                         onRemove={() => removeIngredientRow(index)}
                         onQuickFix={(product) => {
-                          setQuickFixProduct(product);
-                          setQuickFixOpen(true);
+                          setProductEditProduct(product);
+                          setProductEditOpen(true);
                         }}
                       />
                     ))}
@@ -386,15 +388,19 @@ export function PrepRecipeDialog({
           </DialogFooter>
         </div>
       </DialogContent>
-      <QuickProductFixDialog
-        open={quickFixOpen}
-        onOpenChange={(value) => {
-          setQuickFixOpen(value);
-          if (!value) setQuickFixProduct(null);
-        }}
-        product={quickFixProduct}
-        onSave={onQuickFixSave}
-      />
+      {productEditProduct && (
+        <ProductUpdateDialog
+          open={productEditOpen}
+          onOpenChange={(value) => {
+            setProductEditOpen(value);
+            if (!value) setProductEditProduct(null);
+          }}
+          product={productEditProduct}
+          onUpdate={(updates, quantityToAdd) => onProductUpdate(productEditProduct.id, updates, quantityToAdd)}
+          onEnhance={onProductEnhance}
+          presentation="sheet"
+        />
+      )}
     </Dialog>
   );
 }

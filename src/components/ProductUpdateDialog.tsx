@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
   Form,
   FormControl,
@@ -83,6 +84,7 @@ interface ProductUpdateDialogProps {
   product: Product;
   onUpdate: (updates: Partial<Product>, quantityToAdd: number) => Promise<void>;
   onEnhance?: (product: Product) => Promise<any>;
+  presentation?: 'dialog' | 'sheet';
 }
 
 const CATEGORIES = [
@@ -109,6 +111,7 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   product,
   onUpdate,
   onEnhance,
+  presentation = 'dialog',
 }) => {
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
@@ -366,817 +369,846 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const mode = form.watch('adjustment_mode') || 'add';
   const totalAfterUpdate = mode === 'set_exact' ? exactCount : currentStock + newQuantity;
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-            <div className="flex-1">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+  const isSheet = presentation === 'sheet';
+  const contentClassName = isSheet
+    ? 'h-full w-full sm:w-[85vw] lg:w-[960px] sm:max-w-none overflow-y-auto'
+    : 'max-w-5xl max-h-[95vh] overflow-y-auto';
+
+  const mainContent = (
+    <div className="space-y-4">
+      <DialogHeader>
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex-1">
+                <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span>Update Product: {product.name}</span>
+                  <Badge variant="secondary" className="w-fit">
+                    Current Stock: {currentStock} {product.uom_purchase || 'units'}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="mt-1">
+                  Add inventory quantity and update product information
+                </DialogDescription>
+              </div>
+              {onEnhance && (
+                <Button 
+                  onClick={handleEnhance}
+                  disabled={isEnhancing}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2 w-fit"
+                >
+                  {isEnhancing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Enhancing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      AI Enhance
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+          {product.image_url || imageUrl ? (
+            <div className="flex-shrink-0">
+              <img 
+                src={imageUrl || product.image_url} 
+                alt={product.name}
+                className="w-24 h-24 object-cover rounded-lg border border-border"
+              />
+            </div>
+          ) : null}
+        </div>
+      </DialogHeader>
+
+      {/* AI Enhancement Suggestions */}
+      {enhancedData && Object.keys(enhancedData).some(key => enhancedData[key] && key !== 'nutritionalInfo' && key !== 'ingredients' && key !== 'packageSize' && key !== 'manufacturer') && (
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-blue-900">
+              <Sparkles className="h-5 w-5" />
+              AI Enhancement Suggestions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {enhancedData.description && (
+              <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
                 <div className="flex-1">
-                  <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span>Update Product: {product.name}</span>
-                    <Badge variant="secondary" className="w-fit">
-                      Current Stock: {currentStock} {product.uom_purchase || 'units'}
-                    </Badge>
-                  </DialogTitle>
-                  <DialogDescription className="mt-1">
-                    Add inventory quantity and update product information
-                  </DialogDescription>
+                  <div className="font-medium text-sm text-gray-700">Description</div>
+                  <div className="text-sm mt-1 text-gray-600">{enhancedData.description}</div>
                 </div>
-                {onEnhance && (
-                  <Button 
-                    onClick={handleEnhance}
-                    disabled={isEnhancing}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-2 w-fit"
-                  >
-                    {isEnhancing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Enhancing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        AI Enhance
-                      </>
-                    )}
-                  </Button>
+                <Button
+                  onClick={() => applyEnhancedField('description', enhancedData.description)}
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Apply
+                </Button>
+              </div>
+            )}
+            {enhancedData.brand && (
+              <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-700">Brand</div>
+                  <div className="text-sm mt-1 text-gray-600">{enhancedData.brand}</div>
+                </div>
+                <Button
+                  onClick={() => applyEnhancedField('brand', enhancedData.brand)}
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Apply
+                </Button>
+              </div>
+            )}
+            {enhancedData.category && (
+              <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-700">Category</div>
+                  <div className="text-sm mt-1 text-gray-600">{enhancedData.category}</div>
+                </div>
+                <Button
+                  onClick={() => applyEnhancedField('category', enhancedData.category)}
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Apply
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+          {/* Quantity Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Inventory Update</CardTitle>
+              <div className="flex gap-2 mt-2">
+                <Button
+                  type="button"
+                  variant={adjustmentMode === 'add' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setAdjustmentMode('add');
+                    form.setValue('adjustment_mode', 'add');
+                  }}
+                >
+                  Add Quantity
+                </Button>
+                <Button
+                  type="button"
+                  variant={adjustmentMode === 'set_exact' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setAdjustmentMode('set_exact');
+                    form.setValue('adjustment_mode', 'set_exact');
+                  }}
+                >
+                  Set Exact Count
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {adjustmentMode === 'add' ? (
+                  <div className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="quantity_to_add"
+                      render={({ field }) => {
+                        const purchaseUnit = form.watch('uom_purchase') || 'pieces';
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>
+                              Quantity to Add (in {purchaseUnit})
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                placeholder="Enter quantity"
+                                value={field.value ?? ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  field.onChange(value === '' ? undefined : Number(value));
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="exact_count"
+                      render={({ field }) => {
+                        const purchaseUnit = form.watch('uom_purchase') || 'pieces';
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>Exact Stock Count (in {purchaseUnit})</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.1"
+                                placeholder="Enter exact count"
+                                value={field.value ?? ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  field.onChange(value === '' ? undefined : Number(value));
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-muted-foreground">
+                              This will trigger an "adjustment" transaction for count reconciliation
+                            </p>
+                          </FormItem>
+                        );
+                      }}
+                    />
+                  </div>
                 )}
               </div>
-            </div>
-            {product.image_url || imageUrl ? (
-              <div className="flex-shrink-0">
-                <img 
-                  src={imageUrl || product.image_url} 
-                  alt={product.name}
-                  className="w-24 h-24 object-cover rounded-lg border border-border"
-                />
-              </div>
-            ) : null}
-          </div>
-        </DialogHeader>
 
-        {/* AI Enhancement Suggestions */}
-        {enhancedData && Object.keys(enhancedData).some(key => enhancedData[key] && key !== 'nutritionalInfo' && key !== 'ingredients' && key !== 'packageSize' && key !== 'manufacturer') && (
-          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-blue-900">
-                <Sparkles className="h-5 w-5" />
-                AI Enhancement Suggestions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {enhancedData.description && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-gray-700">Description</div>
-                    <div className="text-sm mt-1 text-gray-600">{enhancedData.description}</div>
-                  </div>
-                  <Button
-                    onClick={() => applyEnhancedField('description', enhancedData.description)}
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Apply
-                  </Button>
-                </div>
-              )}
-              {enhancedData.brand && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-gray-700">Brand</div>
-                    <div className="text-sm mt-1 text-gray-600">{enhancedData.brand}</div>
-                  </div>
-                  <Button
-                    onClick={() => applyEnhancedField('brand', enhancedData.brand)}
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Apply
-                  </Button>
-                </div>
-              )}
-              {enhancedData.category && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-gray-700">Category</div>
-                    <div className="text-sm mt-1 text-gray-600">{enhancedData.category}</div>
-                  </div>
-                  <Button
-                    onClick={() => applyEnhancedField('category', enhancedData.category)}
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Apply
-                  </Button>
+              {(newQuantity > 0 || adjustmentMode === 'set_exact') && (
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-sm">
+                    <strong>Stock Update Preview:</strong><br />
+                    {(() => {
+                      const displayUnit = form.getValues('uom_purchase') || 'units';
+                      
+                      const formatValue = (value: number) => {
+                        return value % 1 === 0 ? value.toString() : value.toFixed(2);
+                      };
+                      
+                      if (product.id) {
+                        if (adjustmentMode === 'set_exact') {
+                          const adjustment = exactCount - currentStock;
+                          return `Current: ${formatValue(currentStock)} → Set to: ${formatValue(exactCount)} ${displayUnit} (${adjustment >= 0 ? '+' : ''}${formatValue(adjustment)} adjustment)`;
+                        } else {
+                          return `Current: ${formatValue(currentStock)} → New Total: ${formatValue(totalAfterUpdate)} ${displayUnit}`;
+                        }
+                      } else {
+                        const initialValue = adjustmentMode === 'set_exact' ? exactCount : newQuantity;
+                        return `Initial Stock: ${formatValue(initialValue)} ${displayUnit}`;
+                      }
+                    })()}
+                  </p>
                 </div>
               )}
             </CardContent>
           </Card>
-        )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            {/* Quantity Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Inventory Update</CardTitle>
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    type="button"
-                    variant={adjustmentMode === 'add' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => {
-                      setAdjustmentMode('add');
-                      form.setValue('adjustment_mode', 'add');
-                    }}
-                  >
-                    Add Quantity
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={adjustmentMode === 'set_exact' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => {
-                      setAdjustmentMode('set_exact');
-                      form.setValue('adjustment_mode', 'set_exact');
-                    }}
-                  >
-                    Set Exact Count
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {adjustmentMode === 'add' ? (
-                    <div className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="quantity_to_add"
-                        render={({ field }) => {
-                          const purchaseUnit = form.watch('uom_purchase') || 'pieces';
-                          
-                          return (
-                            <FormItem>
-                              <FormLabel>
-                                Quantity to Add (in {purchaseUnit})
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.1"
-                                  placeholder="Enter quantity"
-                                  value={field.value ?? ''}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    field.onChange(value === '' ? undefined : Number(value));
-                                  }}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          );
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="exact_count"
-                        render={({ field }) => {
-                          const purchaseUnit = form.watch('uom_purchase') || 'pieces';
-                          
-                          return (
-                            <FormItem>
-                              <FormLabel>Exact Stock Count (in {purchaseUnit})</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.1"
-                                  placeholder="Enter exact count"
-                                  value={field.value ?? ''}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    field.onChange(value === '' ? undefined : Number(value));
-                                  }}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                              <p className="text-xs text-muted-foreground">
-                                This will trigger an "adjustment" transaction for count reconciliation
-                              </p>
-                            </FormItem>
-                          );
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
 
-                {(newQuantity > 0 || adjustmentMode === 'set_exact') && (
-                  <div className="p-3 bg-muted rounded-md">
-                    <p className="text-sm">
-                      <strong>Stock Update Preview:</strong><br />
-                      {(() => {
-                        const displayUnit = form.getValues('uom_purchase') || 'units';
-                        
-                        const formatValue = (value: number) => {
-                          return value % 1 === 0 ? value.toString() : value.toFixed(2);
-                        };
-                        
-                        if (product.id) {
-                          if (adjustmentMode === 'set_exact') {
-                            const adjustment = exactCount - currentStock;
-                            return `Current: ${formatValue(currentStock)} → Set to: ${formatValue(exactCount)} ${displayUnit} (${adjustment >= 0 ? '+' : ''}${formatValue(adjustment)} adjustment)`;
-                          } else {
-                            return `Current: ${formatValue(currentStock)} → New Total: ${formatValue(totalAfterUpdate)} ${displayUnit}`;
-                          }
-                        } else {
-                          const initialValue = adjustmentMode === 'set_exact' ? exactCount : newQuantity;
-                          return `Initial Stock: ${formatValue(initialValue)} ${displayUnit}`;
-                        }
-                      })()}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Basic Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Basic Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="sku"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>SKU *</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field}
-                            onChange={(e) => {
-                              console.log('[ProductUpdateDialog] SKU field onChange:', e.target.value);
-                              field.onChange(e);
-                            }}
-                            placeholder="e.g., BEEF-001" 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Product Name *</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., Ground Beef 80/20" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
+          {/* Basic Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Basic Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="description"
+                  name="sku"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Description</FormLabel>
+                      <FormLabel>SKU *</FormLabel>
                       <FormControl>
-                        <Textarea {...field} rows={3} placeholder="Additional product details..." />
+                        <Input 
+                          {...field}
+                          onChange={(e) => {
+                            console.log('[ProductUpdateDialog] SKU field onChange:', e.target.value);
+                            field.onChange(e);
+                          }}
+                          placeholder="e.g., BEEF-001" 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                {/* Image Upload Section */}
-                <div className="space-y-2">
-                  <Label>Product Image</Label>
-                  <div className="flex items-center space-x-4">
-                    <div className="relative">
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        disabled={uploading}
-                        className="hidden"
-                        id="image-upload-update"
-                      />
-                      <Label
-                        htmlFor="image-upload-update"
-                        className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
-                      >
-                        {imageUrl || product.image_url ? (
-                          <img
-                            src={imageUrl || product.image_url}
-                            alt="Product preview"
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        ) : (
-                          <div className="text-center">
-                            <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
-                            <span className="text-sm text-gray-500">
-                              {uploading ? 'Uploading...' : 'Upload Image'}
-                            </span>
-                          </div>
-                        )}
-                      </Label>
-                    </div>
-                    {(imageUrl || product.image_url) && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setImageUrl('');
-                          form.setValue('image_url', '');
-                        }}
-                        className="h-8"
-                      >
-                        <X className="h-4 w-4 mr-1" />
-                        Remove
-                      </Button>
-                    )}
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Product Name *</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., Ground Beef 80/20" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea {...field} rows={3} placeholder="Additional product details..." />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Image Upload Section */}
+              <div className="space-y-2">
+                <Label>Product Image</Label>
+                <div className="flex items-center space-x-4">
+                  <div className="relative">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={uploading}
+                      className="hidden"
+                      id="image-upload-update"
+                    />
+                    <Label
+                      htmlFor="image-upload-update"
+                      className="flex items-center justify-center w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-gray-400 transition-colors"
+                    >
+                      {imageUrl || product.image_url ? (
+                        <img
+                          src={imageUrl || product.image_url}
+                          alt="Product preview"
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                      ) : (
+                        <div className="text-center">
+                          <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          <span className="text-sm text-gray-500">
+                            {uploading ? 'Uploading...' : 'Upload Image'}
+                          </span>
+                        </div>
+                      )}
+                    </Label>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="brand"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Brand</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="e.g., Local Farm Co." />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="category"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Category</FormLabel>
-                        <FormControl>
-                          <Input
-                            list="categories-list"
-                            placeholder="Enter or select category"
-                            {...field}
-                          />
-                        </FormControl>
-                        <datalist id="categories-list">
-                          {CATEGORIES.map((category) => (
-                            <option key={category} value={category} />
-                          ))}
-                        </datalist>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Enhanced Size & Packaging Section */}
-            <SizePackagingSection form={form} />
-
-            {/* Cost & Supplier */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Cost & Supplier</CardTitle>
-                  <div className="flex items-center gap-2">
-                    {pendingSupplierDetails && !product.id && (
-                      <Badge variant="secondary" className="text-xs">
-                        Will link supplier: {pendingSupplierDetails.name || 'Unnamed'}
-                      </Badge>
-                    )}
+                  {(imageUrl || product.image_url) && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        // Pre-populate with current product cost when opening
-                        setNewSupplier({ 
-                          supplier_id: '', 
-                          cost: form.getValues('cost_per_unit') || product.cost_per_unit || 0, 
-                          supplier_sku: form.getValues('supplier_sku') || '' 
-                        });
-                        setShowAddSupplier(!showAddSupplier);
+                        setImageUrl('');
+                        form.setValue('image_url', '');
                       }}
+                      className="h-8"
                     >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Supplier
+                      <X className="h-4 w-4 mr-1" />
+                      Remove
                     </Button>
-                  </div>
+                  )}
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {!product.id && pendingSupplierDetails && (
-                  <Card className="bg-muted/40 border-dashed">
-                    <CardContent className="pt-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Will be saved when this product is created</p>
-                          <p className="font-semibold">{pendingSupplierDetails.name || 'Supplier'}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {pendingSupplierDetails.sku ? `SKU: ${pendingSupplierDetails.sku}` : 'No supplier SKU set'}
-                            {pendingSupplierDetails.cost !== undefined ? ` • $${pendingSupplierDetails.cost.toFixed(2)} per unit` : ''}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowAddSupplier(true)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setPendingSupplierId(null);
-                              setPendingSupplierDetails(null);
-                              form.setValue('supplier_name', '');
-                              form.setValue('supplier_sku', '');
-                              form.setValue('cost_per_unit', undefined);
-                            }}
-                          >
-                            Clear
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-                {showAddSupplier && (
-                  <Card className="bg-muted/50">
-                    <CardContent className="pt-4 space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>Supplier</Label>
-                          <SearchableSupplierSelector
-                            value={newSupplier.supplier_id}
-                            onValueChange={(value, isNew) => {
-                              setNewSupplier({ ...newSupplier, supplier_id: value });
-                              setIsNewSupplier(isNew);
-                            }}
-                            suppliers={allSuppliers}
-                            placeholder="Search or create supplier..."
-                            showNewIndicator={isNewSupplier}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Cost per Unit ($)</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={newSupplier.cost || ''}
-                            onChange={(e) => setNewSupplier({ ...newSupplier, cost: Number(e.target.value) })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Supplier SKU</Label>
-                          <Input
-                            placeholder="Supplier's code"
-                            value={newSupplier.supplier_sku}
-                            onChange={(e) => setNewSupplier({ ...newSupplier, supplier_sku: e.target.value })}
-                          />
-                        </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="brand"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Brand</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., Local Farm Co." />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <FormControl>
+                        <Input
+                          list="categories-list"
+                          placeholder="Enter or select category"
+                          {...field}
+                        />
+                      </FormControl>
+                      <datalist id="categories-list">
+                        {CATEGORIES.map((category) => (
+                          <option key={category} value={category} />
+                        ))}
+                      </datalist>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Enhanced Size & Packaging Section */}
+          <SizePackagingSection form={form} />
+
+          {/* Cost & Supplier */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Cost & Supplier</CardTitle>
+                <div className="flex items-center gap-2">
+                  {pendingSupplierDetails && !product.id && (
+                    <Badge variant="secondary" className="text-xs">
+                      Will link supplier: {pendingSupplierDetails.name || 'Unnamed'}
+                    </Badge>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Pre-populate with current product cost when opening
+                      setNewSupplier({ 
+                        supplier_id: '', 
+                        cost: form.getValues('cost_per_unit') || product.cost_per_unit || 0, 
+                        supplier_sku: form.getValues('supplier_sku') || '' 
+                      });
+                      setShowAddSupplier(!showAddSupplier);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Supplier
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!product.id && pendingSupplierDetails && (
+                <Card className="bg-muted/40 border-dashed">
+                  <CardContent className="pt-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Will be saved when this product is created</p>
+                        <p className="font-semibold">{pendingSupplierDetails.name || 'Supplier'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {pendingSupplierDetails.sku ? `SKU: ${pendingSupplierDetails.sku}` : 'No supplier SKU set'}
+                          {pendingSupplierDetails.cost !== undefined ? ` • $${pendingSupplierDetails.cost.toFixed(2)} per unit` : ''}
+                        </p>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           type="button"
+                          variant="outline"
                           size="sm"
-                          disabled={savingSupplier}
-                          onClick={async () => {
-                            // Validate inputs
-                            if (!newSupplier.supplier_id || newSupplier.supplier_id.trim() === '') {
-                              toast({
-                                title: 'Error',
-                                description: 'Please select a supplier',
-                                variant: 'destructive',
-                              });
-                              return;
-                            }
-
-                            // Validate cost
-                            if (!Number.isFinite(newSupplier.cost) || newSupplier.cost < 0) {
-                              toast({
-                                title: 'Error',
-                                description: 'Enter a valid non-negative cost',
-                                variant: 'destructive',
-                              });
-                              return;
-                            }
-
-                            if (!restaurantId) {
-                              toast({
-                                title: 'Error',
-                                description: 'Restaurant context is required',
-                                variant: 'destructive',
-                              });
-                              return;
-                            }
-
-                        if (savingSupplier) return; // Prevent double-clicks
-                        
-                        setSavingSupplier(true);
-                        try {
-                          let supplierIdToUse: string;
-                          let supplierNameToUse = newSupplier.supplier_id;
-                          
-                          // Create new supplier if needed
-                          if (isNewSupplier) {
-                            const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
-                            if (!createdSupplier?.id) {
-                              throw new Error('Failed to create supplier - no ID returned');
-                            }
-                            supplierIdToUse = createdSupplier.id;
-                            supplierNameToUse = createdSupplier.name;
-                          } else {
-                            // Validate UUID format for existing supplier
-                            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                            if (!uuidRegex.test(newSupplier.supplier_id)) {
-                              throw new Error('Invalid supplier ID format');
-                            }
-                            supplierIdToUse = newSupplier.supplier_id;
-                            const matchedSupplier = allSuppliers.find(s => s.id === supplierIdToUse);
-                            supplierNameToUse = matchedSupplier?.name || supplierNameToUse;
-                          }
-                          
-                          // Final validation before insert
-                          if (!supplierIdToUse || supplierIdToUse.trim() === '') {
-                            throw new Error('Supplier ID is empty after processing');
-                          }
-
-                          // If the product has not been created yet, capture supplier details to apply on save
-                          if (!product.id) {
-                            setPendingSupplierId(supplierIdToUse);
-                            setPendingSupplierDetails({
-                              id: supplierIdToUse,
-                              name: supplierNameToUse,
-                              cost: newSupplier.cost || undefined,
-                              sku: newSupplier.supplier_sku || undefined,
-                            });
-                            form.setValue('supplier_name', supplierNameToUse);
-                            form.setValue('supplier_sku', newSupplier.supplier_sku);
-                            form.setValue('cost_per_unit', newSupplier.cost);
-
-                            toast({
-                              title: 'Supplier saved for new product',
-                              description: 'This supplier will be linked once the product is created.',
-                            });
-
-                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
-                            setIsNewSupplier(false);
-                            setShowAddSupplier(false);
-                            return;
-                          }
-                          
-                          const isFirstSupplier = productSuppliers.length === 0;
-                          
-                          const { error } = await supabase
-                            .from('product_suppliers')
-                                .insert({
-                                  restaurant_id: restaurantId,
-                                  product_id: product.id,
-                                  supplier_id: supplierIdToUse,
-                                  last_unit_cost: newSupplier.cost,
-                                  supplier_sku: newSupplier.supplier_sku,
-                                  is_preferred: isFirstSupplier,
-                                });
-
-                              if (error) {
-                                console.error('Database insert error:', error);
-                                throw error;
-                              }
-
-                              // Update product cost_per_unit when adding supplier
-                              if (newSupplier.cost > 0) {
-                                const { error: updateError } = await supabase
-                                  .from('products')
-                                  .update({ cost_per_unit: newSupplier.cost })
-                                  .eq('id', product.id);
-
-                                if (updateError) {
-                                  console.error('Failed to update product cost:', updateError);
-                                }
-                                
-                                // Refetch product data to update UI
-                                const { data: updatedProduct } = await supabase
-                                  .from('products')
-                                  .select('*')
-                                  .eq('id', product.id)
-                                  .single();
-                                
-                                if (updatedProduct) {
-                                  Object.assign(product, updatedProduct);
-                                }
-                              }
-
-                              toast({
-                                title: 'Supplier added',
-                                description: 'Successfully added supplier to product',
-                              });
-
-                              setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
-                              setIsNewSupplier(false);
-                              setShowAddSupplier(false);
-                              fetchSuppliers();
-                            } catch (error: any) {
-                              console.error('Error adding supplier:', error);
-                              const errorMessage = error?.message || 'Failed to add supplier';
-                              toast({
-                                title: 'Error',
-                                description: errorMessage,
-                                variant: 'destructive',
-                              });
-                            } finally {
-                              setSavingSupplier(false);
-                            }
-                          }}
+                          onClick={() => setShowAddSupplier(true)}
                         >
-                          {savingSupplier ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            'Save Supplier'
-                          )}
+                          Edit
                         </Button>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setShowAddSupplier(false);
-                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
-                            setIsNewSupplier(false);
+                            setPendingSupplierId(null);
+                            setPendingSupplierDetails(null);
+                            form.setValue('supplier_name', '');
+                            form.setValue('supplier_sku', '');
+                            form.setValue('cost_per_unit', undefined);
                           }}
                         >
-                          Cancel
+                          Clear
                         </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {showAddSupplier && (
+                <Card className="bg-muted/50">
+                  <CardContent className="pt-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Supplier</Label>
+                        <SearchableSupplierSelector
+                          value={newSupplier.supplier_id}
+                          onValueChange={(value, isNew) => {
+                            setNewSupplier({ ...newSupplier, supplier_id: value });
+                            setIsNewSupplier(isNew);
+                          }}
+                          suppliers={allSuppliers}
+                          placeholder="Search or create supplier..."
+                          showNewIndicator={isNewSupplier}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Cost per Unit ($)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={newSupplier.cost || ''}
+                          onChange={(e) => setNewSupplier({ ...newSupplier, cost: Number(e.target.value) })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Supplier SKU</Label>
+                        <Input
+                          placeholder="Supplier's code"
+                          value={newSupplier.supplier_sku}
+                          onChange={(e) => setNewSupplier({ ...newSupplier, supplier_sku: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={savingSupplier}
+                        onClick={async () => {
+                          // Validate inputs
+                          if (!newSupplier.supplier_id || newSupplier.supplier_id.trim() === '') {
+                            toast({
+                              title: 'Error',
+                              description: 'Please select a supplier',
+                              variant: 'destructive',
+                            });
+                            return;
+                          }
 
-                {productSuppliers.length > 0 ? (
-                  <div className="border rounded-lg">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Supplier</TableHead>
-                          <TableHead className="text-right">Last Price</TableHead>
-                          <TableHead className="text-right">Avg Price</TableHead>
-                          <TableHead className="text-center">Purchases</TableHead>
-                          <TableHead>Last Order</TableHead>
-                          <TableHead className="text-center">Preferred</TableHead>
-                          <TableHead className="text-right w-[180px]">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {productSuppliers.map((ps) => (
-                          <TableRow key={ps.id}>
-                            <TableCell className="font-medium">
-                              {ps.supplier_name}
-                              {ps.supplier_sku && (
-                                <div className="text-xs text-muted-foreground">SKU: {ps.supplier_sku}</div>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {ps.last_unit_cost ? `$${ps.last_unit_cost.toFixed(2)}` : '-'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {ps.average_unit_cost ? `$${ps.average_unit_cost.toFixed(2)}` : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {ps.purchase_count || 0}
-                            </TableCell>
-                            <TableCell>
-                              {ps.last_purchase_date
-                                ? new Date(ps.last_purchase_date).toLocaleDateString()
-                                : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
+                          // Validate cost
+                          if (!Number.isFinite(newSupplier.cost) || newSupplier.cost < 0) {
+                            toast({
+                              title: 'Error',
+                              description: 'Enter a valid non-negative cost',
+                              variant: 'destructive',
+                            });
+                            return;
+                          }
+
+                          if (!restaurantId) {
+                            toast({
+                              title: 'Error',
+                              description: 'Restaurant context is required',
+                              variant: 'destructive',
+                            });
+                            return;
+                          }
+
+                      if (savingSupplier) return; // Prevent double-clicks
+                      
+                      setSavingSupplier(true);
+                      try {
+                        let supplierIdToUse: string;
+                        let supplierNameToUse = newSupplier.supplier_id;
+                        
+                        // Create new supplier if needed
+                        if (isNewSupplier) {
+                          const createdSupplier = await createSupplier({ name: newSupplier.supplier_id });
+                          if (!createdSupplier?.id) {
+                            throw new Error('Failed to create supplier - no ID returned');
+                          }
+                          supplierIdToUse = createdSupplier.id;
+                          supplierNameToUse = createdSupplier.name;
+                        } else {
+                          // Validate UUID format for existing supplier
+                          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                          if (!uuidRegex.test(newSupplier.supplier_id)) {
+                            throw new Error('Invalid supplier ID format');
+                          }
+                          supplierIdToUse = newSupplier.supplier_id;
+                          const matchedSupplier = allSuppliers.find(s => s.id === supplierIdToUse);
+                          supplierNameToUse = matchedSupplier?.name || supplierNameToUse;
+                        }
+                        
+                        // Final validation before insert
+                        if (!supplierIdToUse || supplierIdToUse.trim() === '') {
+                          throw new Error('Supplier ID is empty after processing');
+                        }
+
+                        // If the product has not been created yet, capture supplier details to apply on save
+                        if (!product.id) {
+                          setPendingSupplierId(supplierIdToUse);
+                          setPendingSupplierDetails({
+                            id: supplierIdToUse,
+                            name: supplierNameToUse,
+                            cost: newSupplier.cost || undefined,
+                            sku: newSupplier.supplier_sku || undefined,
+                          });
+                          form.setValue('supplier_name', supplierNameToUse);
+                          form.setValue('supplier_sku', newSupplier.supplier_sku);
+                          form.setValue('cost_per_unit', newSupplier.cost);
+
+                          toast({
+                            title: 'Supplier saved for new product',
+                            description: 'This supplier will be linked once the product is created.',
+                          });
+
+                          setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                          setIsNewSupplier(false);
+                          setShowAddSupplier(false);
+                          return;
+                        }
+                        
+                        const isFirstSupplier = productSuppliers.length === 0;
+                        
+                        const { error } = await supabase
+                          .from('product_suppliers')
+                              .insert({
+                                restaurant_id: restaurantId,
+                                product_id: product.id,
+                                supplier_id: supplierIdToUse,
+                                last_unit_cost: newSupplier.cost,
+                                supplier_sku: newSupplier.supplier_sku,
+                                is_preferred: isFirstSupplier,
+                              });
+
+                            if (error) {
+                              console.error('Database insert error:', error);
+                              throw error;
+                            }
+
+                            // Update product cost_per_unit when adding supplier
+                            if (newSupplier.cost > 0) {
+                              const { error: updateError } = await supabase
+                                .from('products')
+                                .update({ cost_per_unit: newSupplier.cost })
+                                .eq('id', product.id);
+
+                              if (updateError) {
+                                console.error('Failed to update product cost:', updateError);
+                              }
+                              
+                              // Refetch product data to update UI
+                              const { data: updatedProduct } = await supabase
+                                .from('products')
+                                .select('*')
+                                .eq('id', product.id)
+                                .single();
+                              
+                              if (updatedProduct) {
+                                Object.assign(product, updatedProduct);
+                              }
+                            }
+
+                            toast({
+                              title: 'Supplier added',
+                              description: 'Successfully added supplier to product',
+                            });
+
+                            setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                            setIsNewSupplier(false);
+                            setShowAddSupplier(false);
+                            fetchSuppliers();
+                          } catch (error: any) {
+                            console.error('Error adding supplier:', error);
+                            const errorMessage = error?.message || 'Failed to add supplier';
+                            toast({
+                              title: 'Error',
+                              description: errorMessage,
+                              variant: 'destructive',
+                            });
+                          } finally {
+                            setSavingSupplier(false);
+                          }
+                        }}
+                      >
+                        {savingSupplier ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Supplier'
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowAddSupplier(false);
+                          setNewSupplier({ supplier_id: '', cost: 0, supplier_sku: '' });
+                          setIsNewSupplier(false);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {productSuppliers.length > 0 ? (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Supplier</TableHead>
+                        <TableHead className="text-right">Last Price</TableHead>
+                        <TableHead className="text-right">Avg Price</TableHead>
+                        <TableHead className="text-center">Purchases</TableHead>
+                        <TableHead>Last Order</TableHead>
+                        <TableHead className="text-center">Preferred</TableHead>
+                        <TableHead className="text-right w-[180px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productSuppliers.map((ps) => (
+                        <TableRow key={ps.id}>
+                          <TableCell className="font-medium">
+                            {ps.supplier_name}
+                            {ps.supplier_sku && (
+                              <div className="text-xs text-muted-foreground">SKU: {ps.supplier_sku}</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {ps.last_unit_cost ? `$${ps.last_unit_cost.toFixed(2)}` : '-'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {ps.average_unit_cost ? `$${ps.average_unit_cost.toFixed(2)}` : '-'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {ps.purchase_count || 0}
+                          </TableCell>
+                          <TableCell>
+                            {ps.last_purchase_date
+                              ? new Date(ps.last_purchase_date).toLocaleDateString()
+                              : '-'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                await setPreferredSupplier(ps.id);
+                                
+                                // Update product cost_per_unit when setting preferred supplier
+                                if (ps.last_unit_cost && ps.last_unit_cost > 0) {
+                                  const { error } = await supabase
+                                    .from('products')
+                                    .update({ cost_per_unit: ps.last_unit_cost })
+                                    .eq('id', product.id);
+
+                                  if (error) {
+                                    console.error('Failed to update product cost:', error);
+                                  }
+                                }
+                              }}
+                              disabled={ps.is_preferred}
+                            >
+                              <Star
+                                className={`h-4 w-4 ${
+                                  ps.is_preferred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
+                                }`}
+                              />
+                            </Button>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-1 justify-end">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setPriceUpdateDialog({
+                                    open: true,
+                                    supplier: ps,
+                                    price: ps.last_unit_cost?.toString() || '0',
+                                  });
+                                }}
+                              >
+                                <DollarSign className="h-4 w-4" />
+                              </Button>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={async () => {
-                                  await setPreferredSupplier(ps.id);
-                                  
-                                  // Update product cost_per_unit when setting preferred supplier
-                                  if (ps.last_unit_cost && ps.last_unit_cost > 0) {
-                                    const { error } = await supabase
-                                      .from('products')
-                                      .update({ cost_per_unit: ps.last_unit_cost })
-                                      .eq('id', product.id);
+                                onClick={() => {
+                                  if (confirm('Remove this supplier from this product?')) {
+                                  removeSupplier(ps.id);
+                                }
+                              }}
+                              disabled={productSuppliers.length === 1}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No suppliers added yet. Click "Add Supplier" to get started.
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-                                    if (error) {
-                                      console.error('Failed to update product cost:', error);
-                                    }
-                                  }
-                                }}
-                                disabled={ps.is_preferred}
-                              >
-                                <Star
-                                  className={`h-4 w-4 ${
-                                    ps.is_preferred ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground'
-                                  }`}
-                                />
-                              </Button>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex gap-1 justify-end">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setPriceUpdateDialog({
-                                      open: true,
-                                      supplier: ps,
-                                      price: ps.last_unit_cost?.toString() || '0',
-                                    });
-                                  }}
-                                >
-                                  <DollarSign className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    if (confirm('Remove this supplier from this product?')) {
-                                    removeSupplier(ps.id);
-                                  }
-                                }}
-                                disabled={productSuppliers.length === 1}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No suppliers added yet. Click "Add Supplier" to get started.
-                  </div>
+          {/* Inventory Levels */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Inventory Levels
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <FormField
+                control={form.control}
+                name="reorder_point"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Reorder Point ({form.watch('uom_purchase') || 'units'})</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      When stock falls to this level, you'll get an alert to reorder
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Inventory Levels */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Inventory Levels
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
-                  name="reorder_point"
+                  name="par_level_min"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Reorder Point ({form.watch('uom_purchase') || 'units'})</FormLabel>
+                      <FormLabel>Minimum Par Level ({form.watch('uom_purchase') || 'units'})</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -1188,81 +1220,73 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                         />
                       </FormControl>
                       <FormDescription>
-                        When stock falls to this level, you'll get an alert to reorder
+                        Minimum stock you want to maintain
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="par_level_min"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Minimum Par Level ({form.watch('uom_purchase') || 'units'})</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0"
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Minimum stock you want to maintain
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="par_level_max"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Maximum Par Level ({form.watch('uom_purchase') || 'units'})</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0"
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Maximum stock level (useful for space management)
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                <FormField
+                  control={form.control}
+                  name="par_level_max"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Maximum Par Level ({form.watch('uom_purchase') || 'units'})</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0"
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Maximum stock level (useful for space management)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
 
-            <div className="flex flex-col sm:flex-row justify-end gap-2">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => onOpenChange(false)}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-              <Button type="submit" className="w-full sm:w-auto">
-                Update Product
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
+          <div className="flex flex-col sm:flex-row justify-end gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => onOpenChange(false)}
+              className="w-full sm:w-auto"
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="w-full sm:w-auto">
+              Update Product
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
+  );
+
+  return (
+    <>
+      {isSheet ? (
+        <Sheet open={open} onOpenChange={onOpenChange}>
+          <SheetContent side="right" className={contentClassName}>
+            {mainContent}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className={contentClassName}>
+            {mainContent}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Price Update Dialog */}
       <Dialog open={priceUpdateDialog.open} onOpenChange={(open) => setPriceUpdateDialog({ ...priceUpdateDialog, open })}>
@@ -1365,6 +1389,6 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
           </div>
         </DialogContent>
       </Dialog>
-    </Dialog>
+    </>
   );
 };

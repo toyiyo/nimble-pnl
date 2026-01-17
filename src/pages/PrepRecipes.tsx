@@ -14,6 +14,7 @@ import { PrepRecipeCard } from '@/components/prep/PrepRecipeCard';
 import { ChefHat, Plus, Search } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ProductEnhancementService } from '@/services/productEnhancementService';
 
 export default function PrepRecipes() {
   const { user } = useAuth();
@@ -29,7 +30,7 @@ export default function PrepRecipes() {
   const { prepRecipes, loading, error, createPrepRecipe, updatePrepRecipe, recipeStats, fetchPrepRecipes } = usePrepRecipes(
     selectedRestaurant?.restaurant_id || null
   );
-  const { products, updateProduct } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, updateProductWithQuantity } = useProducts(selectedRestaurant?.restaurant_id || null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,12 +74,32 @@ export default function PrepRecipes() {
     }
   };
 
-  const handleQuickFixSave = async (productId: string, updates: Partial<Product>) => {
-    const saved = await updateProduct(productId, updates);
+  const handleProductUpdate = async (productId: string, updates: Partial<Product>, quantityToAdd: number) => {
+    const finalStock = updates.current_stock ?? 0;
+    const currentStock = finalStock - quantityToAdd;
+    const difference = finalStock - currentStock;
+    const reason = difference === quantityToAdd && quantityToAdd > 0
+      ? 'Adjustment - Inventory addition'
+      : difference >= 0
+        ? 'Adjustment - Manual correction (count increase)'
+        : 'Adjustment - Manual correction (count decrease)';
+
+    const saved = await updateProductWithQuantity(
+      productId,
+      updates,
+      currentStock,
+      finalStock,
+      'adjustment',
+      reason
+    );
+
     if (saved) {
       await fetchPrepRecipes();
     }
-    return saved;
+  };
+
+  const handleProductEnhance = async (product: Product) => {
+    return ProductEnhancementService.enhanceProduct(product);
   };
 
   if (!user) {
@@ -215,7 +236,8 @@ export default function PrepRecipes() {
           if (!open) setEditingRecipe(null);
         }}
         onSubmit={handleSaveRecipe}
-        onQuickFixSave={handleQuickFixSave}
+        onProductUpdate={handleProductUpdate}
+        onProductEnhance={handleProductEnhance}
         products={products}
         editingRecipe={editingRecipe}
       />

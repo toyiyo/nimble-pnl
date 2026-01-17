@@ -1,7 +1,7 @@
 -- Verify production run costing and inventory impact for a simple batch:
 -- 5 lb chicken breast -> 10 L chicken broth
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- Auth context
 SELECT set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-0000000000ab","role":"authenticated"}', true);
@@ -87,6 +87,12 @@ SELECT is(
   (SELECT cost_per_unit::numeric FROM production_runs WHERE id = '10000000-0000-0000-0000-000000000030'),
   2.495::numeric,
   'Run cost_per_unit recorded as $2.495 per L'
+);
+
+SELECT is(
+  (SELECT cost_per_unit::numeric FROM products WHERE id = '10000000-0000-0000-0000-000000000011'),
+  2.495::numeric,
+  'Output product cost_per_unit updated to $2.495 per L'
 );
 
 SELECT * FROM finish();

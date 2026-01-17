@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ProductionRun, ProductionRunIngredient, ProductionRunStatus } from '@/hooks/useProductionRuns';
 import { IngredientUnit, MEASUREMENT_UNITS } from '@/lib/recipeUnits';
+import { calculatePrepIngredientCost } from '@/lib/prepRecipeCosting';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,10 +88,18 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
     }
 
     // Calculate total ingredient cost based on actual quantities (or expected if no actuals)
+    // Use the same conversion logic as prep recipe cost estimation
     const totalIngredientCost = ingredientActuals.reduce((sum, ing) => {
       const quantity = ing.actual_quantity ?? ing.expected_quantity ?? 0;
-      const costPerUnit = ing.product?.cost_per_unit || 0;
-      return sum + (quantity * costPerUnit);
+      if (quantity === 0) return sum;
+      
+      const result = calculatePrepIngredientCost({
+        product: ing.product,
+        quantity,
+        unit: ing.unit || 'unit',
+      });
+      
+      return sum + (result.cost ?? 0);
     }, 0);
 
     const costPerUnit = totalIngredientCost / yieldValue;

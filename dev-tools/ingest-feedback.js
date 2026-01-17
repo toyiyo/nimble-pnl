@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const ROOT = process.cwd();
 const QUEUE_PATH = path.resolve(ROOT, "dev-tools/review_queue.json");
@@ -351,6 +352,7 @@ if (
 }
 
 // Only run main() when script is executed directly, not when imported
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMainModule) {
   main();
 }

@@ -102,7 +102,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
           *,
           prep_recipe:prep_recipes(
             *,
-            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit),
+            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit),
             ingredients:prep_recipe_ingredients(
               id,
               product_id,
@@ -110,7 +110,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
               unit,
               notes,
               sort_order,
-              product:products(id, name, cost_per_unit, uom_purchase, current_stock)
+              product:products(id, name, cost_per_unit, uom_purchase, current_stock, size_value, size_unit)
             )
           ),
           ingredients:production_run_ingredients(
@@ -121,7 +121,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
             actual_quantity,
             unit,
             variance_percent,
-            product:products(id, name, cost_per_unit, uom_purchase, current_stock)
+            product:products(id, name, cost_per_unit, uom_purchase, current_stock, size_value, size_unit)
           )
         `)
         .eq('restaurant_id', restaurantId)

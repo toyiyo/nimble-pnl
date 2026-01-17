@@ -19,6 +19,8 @@ export interface PrepRecipeIngredient {
     cost_per_unit?: number;
     current_stock?: number;
     uom_purchase?: string;
+    size_value?: number | null;
+    size_unit?: string | null;
     category?: string;
   };
 }
@@ -42,6 +44,8 @@ export interface PrepRecipe {
     current_stock?: number;
     uom_purchase?: string;
     cost_per_unit?: number;
+    size_value?: number | null;
+    size_unit?: string | null;
   } | null;
   ingredients?: PrepRecipeIngredient[];
 }
@@ -102,7 +106,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         .from('prep_recipes')
         .select(`
           *,
-          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit),
+          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit),
           ingredients:prep_recipe_ingredients(
             id,
             prep_recipe_id,
@@ -111,7 +115,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             unit,
             notes,
             sort_order,
-            product:products(id, name, cost_per_unit, current_stock, uom_purchase, category)
+            product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category)
           )
         `)
         .eq('restaurant_id', restaurantId)
@@ -635,11 +639,27 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
   const recipeStats = useMemo(() => {
     return prepRecipes.reduce<Record<string, { ingredientCount: number; costPerBatch: number; costPerUnit: number }>>((acc, recipe) => {
-      const costPerBatch = (recipe.ingredients || []).reduce((sum, ing) => {
-        const unitCost = ing.product?.cost_per_unit || 0;
-        return sum + unitCost * (ing.quantity || 0);
-      }, 0);
+      const ingredientsForCalculation = (recipe.ingredients || []).map((ing) => ({
+        product_id: ing.product_id,
+        quantity: ing.quantity,
+        unit: ing.unit,
+        product: ing.product
+          ? {
+              id: ing.product.id,
+              name: ing.product.name,
+              cost_per_unit: ing.product.cost_per_unit,
+              uom_purchase: ing.product.uom_purchase,
+              size_value: ing.product.size_value,
+              size_unit: ing.product.size_unit,
+              current_stock: ing.product.current_stock,
+            }
+          : undefined,
+      }));
+
+      const costResult = calculateIngredientsCost(ingredientsForCalculation);
+      const costPerBatch = costResult.totalCost;
       const costPerUnit = recipe.default_yield > 0 ? costPerBatch / recipe.default_yield : 0;
+
       acc[recipe.id] = {
         ingredientCount: recipe.ingredients?.length || 0,
         costPerBatch,

@@ -139,6 +139,7 @@ describe('useTipSplits - reopenSplit', () => {
     await waitFor(() => {
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({
         queryKey: ['tip-splits', 'restaurant-123'],
+        exact: false,
       });
     });
   });

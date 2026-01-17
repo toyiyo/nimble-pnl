@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePrepRecipes, PrepRecipe } from '@/hooks/usePrepRecipes';
 import { UserRestaurant } from '@/hooks/useRestaurants';
-import { useProducts } from '@/hooks/useProducts';
+import { useProducts, Product } from '@/hooks/useProducts';
 import { PageHeader } from '@/components/PageHeader';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Input } from '@/components/ui/input';
@@ -26,10 +26,10 @@ export default function PrepRecipes() {
     canCreateRestaurant,
   } = useRestaurantContext();
 
-  const { prepRecipes, loading, error, createPrepRecipe, updatePrepRecipe, recipeStats } = usePrepRecipes(
+  const { prepRecipes, loading, error, createPrepRecipe, updatePrepRecipe, recipeStats, fetchPrepRecipes } = usePrepRecipes(
     selectedRestaurant?.restaurant_id || null
   );
-  const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, updateProduct } = useProducts(selectedRestaurant?.restaurant_id || null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -71,6 +71,14 @@ export default function PrepRecipes() {
       // Consider showing a toast notification to the user
       console.error('Failed to save recipe:', error);
     }
+  };
+
+  const handleQuickFixSave = async (productId: string, updates: Partial<Product>) => {
+    const saved = await updateProduct(productId, updates);
+    if (saved) {
+      await fetchPrepRecipes();
+    }
+    return saved;
   };
 
   if (!user) {
@@ -207,6 +215,7 @@ export default function PrepRecipes() {
           if (!open) setEditingRecipe(null);
         }}
         onSubmit={handleSaveRecipe}
+        onQuickFixSave={handleQuickFixSave}
         products={products}
         editingRecipe={editingRecipe}
       />

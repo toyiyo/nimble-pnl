@@ -294,17 +294,46 @@ export const useProductionRuns = (restaurantId: string | null) => {
   const calculateIngredientCostTotal = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {
     if (!run?.ingredients || run.ingredients.length === 0) return 0;
 
+    // Use the SAME cost calculation logic that recipes use
+    // This ensures consistency between batch and recipe costing
+    // See: BATCH_FUNCTIONALITY_AUDIT.md and src/lib/prepCostCalculation.ts
+    const { calculateIngredientsCost } = require('@/lib/prepCostCalculation');
+
     const payloadLookup = new Map(
       (payload.ingredients || []).map(ing => [ing.product_id, ing])
     );
 
-    return run.ingredients.reduce((sum, ing) => {
+    // Transform ingredients to match the shared interface
+    const ingredientsForCalculation = run.ingredients.map(ing => {
       const payloadIng = payloadLookup.get(ing.product_id);
       const rawQty = payloadIng?.actual_quantity ?? payloadIng?.expected_quantity ?? ing.actual_quantity ?? ing.expected_quantity ?? 0;
       const actualQty = Number(rawQty) || 0;
-      const costPerUnit = ing.product?.cost_per_unit || 0;
-      return sum + costPerUnit * actualQty;
-    }, 0);
+
+      return {
+        product_id: ing.product_id,
+        quantity: actualQty,
+        unit: ing.unit || 'unit',
+        product: ing.product ? {
+          id: ing.product.id,
+          name: ing.product.name,
+          cost_per_unit: ing.product.cost_per_unit,
+          uom_purchase: ing.product.uom_purchase,
+          size_value: (ing.product as any).size_value,
+          size_unit: (ing.product as any).size_unit,
+          current_stock: ing.product.current_stock,
+        } : undefined,
+      };
+    });
+
+    // Calculate cost with proper unit conversion
+    const result = calculateIngredientsCost(ingredientsForCalculation);
+
+    // Log warnings if any conversion issues occurred
+    if (result.warnings.length > 0) {
+      console.warn('[Batch Cost Calculation] Warnings:', result.warnings);
+    }
+
+    return result.totalCost;
   }, []);
 
   const determineOutputUnit = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {

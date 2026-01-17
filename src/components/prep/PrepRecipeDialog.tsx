@@ -13,6 +13,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 import { calculateIngredientsCost, formatCostResult } from '@/lib/prepCostCalculation';
 
 export interface PrepRecipeFormValues {
@@ -335,21 +336,14 @@ export function PrepRecipeDialog({
 
                           <div className="col-span-6 sm:col-span-3 space-y-1">
                             <Label>Unit</Label>
-                            <Select
-                              value={ingredient.unit}
-                              onValueChange={(value) => handleIngredientChange(index, 'unit', value as IngredientUnit)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MEASUREMENT_UNITS.map((unit) => (
-                                  <SelectItem key={unit} value={unit}>
-                                    {unit}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <GroupedUnitSelector
+                            value={ingredient.unit}
+                            onValueChange={(value) => handleIngredientChange(index, 'unit', value as IngredientUnit)}
+                            placeholder="Unit"
+                            productName={productLookup.get(ingredient.product_id)?.name}
+                            productSizeUnit={productLookup.get(ingredient.product_id)?.size_unit || productLookup.get(ingredient.product_id)?.uom_purchase}
+                            className="w-full"
+                          />
                           </div>
 
                           <div className="col-span-12 sm:col-span-1 flex justify-end">

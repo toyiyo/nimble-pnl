@@ -9,13 +9,15 @@ interface PrepRecipeCardProps {
   recipe: PrepRecipe;
   costPerBatch?: number;
   costPerUnit?: number;
+  missingCount?: number;
   onEdit?: () => void;
 }
 
-export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEdit }: Readonly<PrepRecipeCardProps>) {
+export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, missingCount = 0, onEdit }: Readonly<PrepRecipeCardProps>) {
   const ingredientCount = recipe.ingredients?.length || 0;
   const stockDisplay = recipe.output_product?.current_stock ?? null;
   const stockUnit = recipe.output_product?.uom_purchase || recipe.default_yield_unit;
+  const hasMissing = missingCount > 0;
 
   return (
     <Card className="hover:shadow-md transition-all duration-200 border-border/70">
@@ -54,11 +56,16 @@ export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEd
                 {ingredientCount} ingredient{ingredientCount === 1 ? '' : 's'}
               </Badge>
               <Badge variant="outline" className="rounded-full">
-                ${costPerBatch.toFixed(2)} / batch
+                {hasMissing ? `Estimated $${costPerBatch.toFixed(2)}` : `$${costPerBatch.toFixed(2)}`} / batch
               </Badge>
               <Badge variant="outline" className="rounded-full">
-                ${costPerUnit.toFixed(2)} / {recipe.default_yield_unit}
+                {hasMissing ? `Estimated $${costPerUnit.toFixed(2)}` : `$${costPerUnit.toFixed(2)}`} / {recipe.default_yield_unit}
               </Badge>
+              {hasMissing && (
+                <Badge variant="outline" className="rounded-full border-amber-300 bg-amber-50 text-amber-700">
+                  Missing {missingCount}
+                </Badge>
+              )}
             </div>
           </div>
 

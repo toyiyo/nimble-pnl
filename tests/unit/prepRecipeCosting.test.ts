@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculatePrepIngredientCost, summarizePrepRecipeCosts } from '@/lib/prepRecipeCosting';
+import { calculateOutputUnitCost, calculatePrepIngredientCost, summarizePrepRecipeCosts } from '@/lib/prepRecipeCosting';
 
 const baseProduct = {
   id: 'p1',
@@ -66,5 +66,13 @@ describe('prepRecipeCosting', () => {
 
     expect(summary.missingCount).toBe(1);
     expect(summary.estimatedTotal).toBeCloseTo(1.21, 2);
+  });
+
+  it('calculates output unit cost from batch cost and yield', () => {
+    expect(calculateOutputUnitCost(40, 10)).toBeCloseTo(4, 2);
+  });
+
+  it('falls back to batch cost when yield is zero', () => {
+    expect(calculateOutputUnitCost(40, 0)).toBe(40);
   });
 });

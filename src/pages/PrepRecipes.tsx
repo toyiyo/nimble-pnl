@@ -165,6 +165,7 @@ export default function PrepRecipes() {
             recipe={recipe}
             costPerBatch={recipeStats[recipe.id]?.costPerBatch}
             costPerUnit={recipeStats[recipe.id]?.costPerUnit}
+            missingCount={recipeStats[recipe.id]?.missingCount}
             onEdit={() => {
               setEditingRecipe(recipe);
               setDialogOpen(true);

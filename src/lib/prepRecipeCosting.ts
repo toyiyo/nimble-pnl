@@ -105,3 +105,10 @@ export function summarizePrepRecipeCosts(
 
   return { estimatedTotal, missingCount };
 }
+
+export function calculateOutputUnitCost(totalCost: number, outputYield: number) {
+  if (outputYield > 0) {
+    return totalCost / outputYield;
+  }
+  return totalCost;
+}

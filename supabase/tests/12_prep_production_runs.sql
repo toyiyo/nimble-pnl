@@ -1,4 +1,4 @@
--- Prep production run should convert ingredients, transfer out raw, and transfer in output with cost snapshot
+-- Prep production run should convert ingredients, record usage, and transfer in output with cost snapshot
 BEGIN;
 
 -- Setup
@@ -21,9 +21,19 @@ VALUES
   ('00000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000001', 'WATER', 'Water', 'L', 1, 'L', 0.10, 100),
   ('00000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'SOUP-BASE', 'Chicken Soup Base', 'L', 1, 'L', 0, 0);
 
--- Prep recipe blueprint
-INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit, output_product_id)
-VALUES ('00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', 'Chicken Soup Base', 10, 'L', '00000000-0000-0000-0000-000000000013');
+-- Prep recipe blueprint (linked to recipe for unified deductions)
+INSERT INTO recipes (id, restaurant_id, name, description, serving_size, is_active)
+VALUES ('00000000-0000-0000-0000-000000000121', '00000000-0000-0000-0000-000000000001', 'Chicken Soup Base', NULL, 10, true)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit)
+VALUES
+  ('00000000-0000-0000-0000-000000000121', '00000000-0000-0000-0000-000000000011', 5.25, 'kg'),
+  ('00000000-0000-0000-0000-000000000121', '00000000-0000-0000-0000-000000000012', 5, 'L')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO prep_recipes (id, restaurant_id, recipe_id, name, default_yield, default_yield_unit, output_product_id)
+VALUES ('00000000-0000-0000-0000-000000000021', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000121', 'Chicken Soup Base', 10, 'L', '00000000-0000-0000-0000-000000000013');
 
 -- Production run and ingredients (batch scaled to 20L, actual same as expected)
 INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit, created_by)
@@ -56,15 +66,15 @@ SELECT is(
   'Soup base stock increased by 20 L'
 );
 
--- Assert transactions: two transfers out, one transfer in
+-- Assert transactions: two usage deductions, one transfer in
 SELECT is(
-  (SELECT count(*)::bigint FROM inventory_transactions WHERE reference_id = '00000000-0000-0000-0000-000000000031' AND transaction_type = 'transfer' AND quantity < 0),
+  (SELECT count(*)::bigint FROM inventory_transactions WHERE reference_id LIKE '00000000-0000-0000-0000-000000000031_%' AND transaction_type = 'usage' AND quantity < 0),
   2::bigint,
-  'Two transfer-out transactions for ingredients'
+  'Two usage transactions for ingredients'
 );
 
 SELECT is(
-  (SELECT count(*)::bigint FROM inventory_transactions WHERE reference_id = '00000000-0000-0000-0000-000000000031' AND transaction_type = 'transfer' AND quantity > 0),
+  (SELECT count(*)::bigint FROM inventory_transactions WHERE reference_id LIKE '00000000-0000-0000-0000-000000000031_%' AND transaction_type = 'transfer' AND quantity > 0),
   1::bigint,
   'One transfer-in transaction for output'
 );

@@ -91,7 +91,7 @@ test.describe('Prep Production E2E Flow', () => {
     await page.getByRole('combobox').filter({ hasText: 'Select product' }).click();
     await page.getByText('CHICKEN-BREAST').first().click();
     await page.getByRole('combobox').filter({ hasText: 'kg' }).click();
-    await page.getByRole('option', { name: 'lb' }).click();
+    await page.getByRole('option', { name: 'unit', exact: true }).click();
     await page.getByRole('combobox', { name: 'Output item' }).click();
     await page.locator('.fixed.inset-0').click();
     await page.getByRole('spinbutton', { name: 'Default yield' }).click();

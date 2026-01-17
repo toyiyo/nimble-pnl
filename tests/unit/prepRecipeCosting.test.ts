@@ -19,6 +19,15 @@ const containerProduct = {
   size_unit: null,
 };
 
+const countProduct = {
+  id: 'p3',
+  name: 'Chicken Breast',
+  cost_per_unit: 10,
+  uom_purchase: 'unit',
+  size_value: 1,
+  size_unit: 'unit',
+};
+
 describe('prepRecipeCosting', () => {
   it('computes cost with conversion', () => {
     const result = calculatePrepIngredientCost({
@@ -50,6 +59,17 @@ describe('prepRecipeCosting', () => {
     });
 
     expect(result.status).toBe('missing_size');
+  });
+
+  it('computes cost for count-based ingredients', () => {
+    const result = calculatePrepIngredientCost({
+      product: countProduct,
+      quantity: 10,
+      unit: 'unit',
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.cost).toBeCloseTo(100, 2);
   });
 
   it('summarizes missing ingredients', () => {

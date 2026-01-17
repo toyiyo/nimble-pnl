@@ -19,13 +19,13 @@ type IngredientRow = {
 type IngredientField = keyof IngredientRow;
 
 interface PrepRecipeIngredientRowProps {
-  ingredient: IngredientRow;
-  index: number;
-  products: Product[];
-  measurementUnits: readonly IngredientUnit[];
-  onChange: <K extends IngredientField>(index: number, field: K, value: IngredientRow[K]) => void;
-  onRemove: () => void;
-  onQuickFix: (product: Product) => void;
+  readonly ingredient: IngredientRow;
+  readonly index: number;
+  readonly products: Product[];
+  readonly measurementUnits: readonly IngredientUnit[];
+  readonly onChange: <K extends IngredientField>(index: number, field: K, value: IngredientRow[K]) => void;
+  readonly onRemove: () => void;
+  readonly onQuickFix: (product: Product) => void;
 }
 
 export function PrepRecipeIngredientRow({
@@ -44,50 +44,57 @@ export function PrepRecipeIngredientRow({
     [products, ingredient.product_id]
   );
 
-  const costResult = useMemo(() => {
-    if (!selectedProduct || ingredient.quantity <= 0 || !ingredient.unit) {
-      return null;
-    }
+  const hasValidInputs = Boolean(selectedProduct && ingredient.quantity > 0 && ingredient.unit);
 
-    return calculatePrepIngredientCost({
-      product: selectedProduct,
-      quantity: ingredient.quantity,
-      unit: ingredient.unit,
-    });
-  }, [selectedProduct, ingredient.quantity, ingredient.unit]);
+  const costResult = useMemo(() => {
+    if (hasValidInputs) {
+      return calculatePrepIngredientCost({
+        product: selectedProduct,
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+      });
+    }
+    return null;
+  }, [hasValidInputs, selectedProduct, ingredient.quantity, ingredient.unit]);
 
   const purchaseUnit = selectedProduct?.uom_purchase || 'unit';
-  const hasWarning = costResult && costResult.status !== 'ok' && costResult.status !== 'missing_product';
+  const hasWarning = Boolean(costResult && costResult.status !== 'ok' && costResult.status !== 'missing_product');
   const costLabel = costResult?.cost != null ? `$${costResult.cost.toFixed(2)}` : '--';
 
   const warningBadge = useMemo(() => {
-    if (!hasWarning || !costResult) return null;
-    if (costResult.status === 'missing_cost') return 'Missing cost';
-    if (costResult.status === 'missing_size') return 'Missing size';
-    if (costResult.status === 'incompatible_units') return 'Unit mismatch';
-    if (costResult.status === 'fallback') return 'Check units';
-    return 'Needs review';
+    if (hasWarning && costResult) {
+      if (costResult.status === 'missing_cost') return 'Missing cost';
+      if (costResult.status === 'missing_size') return 'Missing size';
+      if (costResult.status === 'incompatible_units') return 'Unit mismatch';
+      if (costResult.status === 'fallback') return 'Check units';
+      return 'Needs review';
+    }
+    return null;
   }, [hasWarning, costResult]);
 
   const warningMessage = useMemo(() => {
-    if (!hasWarning || !costResult) return null;
-    if (costResult.status === 'missing_cost') {
-      return 'Add a unit cost to calculate this ingredient.';
+    if (hasWarning && costResult) {
+      if (costResult.status === 'missing_cost') {
+        return 'Add a unit cost to calculate this ingredient.';
+      }
+      if (costResult.status === 'missing_size') {
+        return `Add size info for ${purchaseUnit} to convert ${ingredient.unit}.`;
+      }
+      if (costResult.status === 'incompatible_units') {
+        return `Update size unit so it matches ${ingredient.unit}.`;
+      }
+      if (costResult.status === 'fallback') {
+        return 'Conversion used a fallback. Confirm unit setup.';
+      }
+      return 'Review conversion settings for this ingredient.';
     }
-    if (costResult.status === 'missing_size') {
-      return `Add size info for ${purchaseUnit} to convert ${ingredient.unit}.`;
-    }
-    if (costResult.status === 'incompatible_units') {
-      return `Update size unit so it matches ${ingredient.unit}.`;
-    }
-    if (costResult.status === 'fallback') {
-      return 'Conversion used a fallback. Confirm unit setup.';
-    }
-    return 'Review conversion settings for this ingredient.';
+    return null;
   }, [hasWarning, costResult, purchaseUnit, ingredient.unit]);
 
   const conversionPath = costResult?.conversionDetails?.conversionPath?.filter(Boolean) ?? [];
   const conversionText = conversionPath.length ? conversionPath.join(' → ') : null;
+  const canShowDetails = hasValidInputs;
+  const showDetailsPanel = showDetails && canShowDetails;
 
   const quantityId = `prep-ingredient-quantity-${ingredient.product_id || index}`;
   const notesId = `prep-ingredient-notes-${ingredient.product_id || index}`;
@@ -182,7 +189,7 @@ export function PrepRecipeIngredientRow({
         </div>
       )}
 
-      {selectedProduct && ingredient.quantity > 0 && ingredient.unit && (
+      {canShowDetails && (
         <Button
           type="button"
           variant="ghost"
@@ -197,7 +204,7 @@ export function PrepRecipeIngredientRow({
         </Button>
       )}
 
-      {showDetails && selectedProduct && (
+      {showDetailsPanel && (
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-2">
           {costResult?.status === 'ok' && costResult.cost != null ? (
             <>
@@ -219,7 +226,7 @@ export function PrepRecipeIngredientRow({
                 <span>Purchase unit</span>
                 <span className="text-foreground">{purchaseUnit}</span>
               </div>
-              {selectedProduct.size_value && selectedProduct.size_unit && (
+              {selectedProduct?.size_value && selectedProduct?.size_unit && (
                 <div className="flex items-center justify-between gap-4">
                   <span>Package size</span>
                   <span className="text-foreground">

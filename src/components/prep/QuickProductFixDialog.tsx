@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import type { Product } from '@/hooks/useProducts';
 
 interface QuickProductFixDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  product: Product | null;
-  onSave: (productId: string, updates: Partial<Product>) => Promise<boolean> | void;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly product: Product | null;
+  readonly onSave: (productId: string, updates: Partial<Product>) => Promise<boolean> | void;
 }
 
 export function QuickProductFixDialog({ open, onOpenChange, product, onSave }: QuickProductFixDialogProps) {

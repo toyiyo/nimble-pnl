@@ -192,7 +192,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
       return splitId;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId], exact: false });
       
       // Also update employee_tips for payroll integration
       if (variables.status === 'approved') {
@@ -235,7 +235,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId], exact: false });
       toast({
         title: 'Split deleted',
         description: 'The tip split has been removed.',
@@ -271,7 +271,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
       return splitId;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['tip-splits', restaurantId], exact: false });
       toast({
         title: 'Split reopened',
         description: 'Tip split is now editable. Changes will be logged in audit trail.',

@@ -65,7 +65,10 @@ test.describe('Prep Production E2E Flow', () => {
     await page.getByRole('spinbutton', { name: 'Amount per Package 📦' }).click();
     await page.getByRole('spinbutton', { name: 'Amount per Package 📦' }).fill('10');
     await page.getByRole('spinbutton', { name: 'Amount per Package 📦' }).press('Tab');
-    await page.getByRole('combobox').filter({ hasText: 'Select unit' }).press('Tab');
+    await page.getByRole('combobox').filter({ hasText: 'Select unit' }).click();
+    await page.getByRole('option', { name: 'lb' }).click();
+    await page.getByRole('combobox', { name: /package type/i }).click();
+    await page.getByRole('option', { name: 'Bag', exact: true }).click();
     await page.getByRole('spinbutton', { name: 'Amount per Package 📦' }).click();
     await page.getByRole('button', { name: 'Add Supplier' }).click();
     await page.getByRole('combobox').filter({ hasText: 'Search or create supplier...' }).click();
@@ -82,7 +85,7 @@ test.describe('Prep Production E2E Flow', () => {
     await expect(page.getByRole('heading', { name: 'CHICKEN-BREAST' })).toBeVisible();
     await expect(page.getByText('CHICKEN BREAST')).toBeVisible();
     await expect(page.getByText('$10.00')).toBeVisible(); // Cost per unit
-    await expect(page.getByText('10.00 pieces')).toBeVisible(); // Stock quantity
+    await expect(page.getByText('10.00 bag')).toBeVisible(); // Stock quantity
 
     // Step 2: Create a prep recipe with that inventory item
     await page.getByRole('button', { name: 'Prep Recipes' }).click();
@@ -105,7 +108,9 @@ test.describe('Prep Production E2E Flow', () => {
     // Validate Step 2: Recipe was created correctly
     await expect(page.getByText('CHICKEN SOUP', { exact: true })).toBeVisible();
     await expect(page.getByText('Yields 10 L')).toBeVisible(); // Yield
-    await expect(page.getByText('$10.00 / L')).toBeVisible(); // Ingredient quantity
+    await expect(
+      page.getByLabel(/Cost \$10\.00 per batch, \$1\.00 per L/)
+    ).toBeVisible(); // Cost per batch + unit
 
     // Step 3: Create and complete a prep production batch
     await page.getByRole('button', { name: 'Batches' }).click();
@@ -126,9 +131,12 @@ test.describe('Prep Production E2E Flow', () => {
 
    
    await page.getByRole('button', { name: 'Inventory' }).click();
-   await page.getByRole('button', { name: 'Edit' }).first().click();
+   const chickenCard = page.getByRole('heading', { name: 'CHICKEN-BREAST' }).locator('..').locator('..');
+   await chickenCard.getByRole('button', { name: 'Edit' }).click();
 
-   // Validate Step 5: Inventory was updated correctly
-   await expect(page.getByText('0.00 pieces')).toBeVisible(); // Stock should be 0 (10 units used)
+   // Validate Step 5: Inventory was updated correctly (10 lb used -> 1 bag consumed)
+   await expect(
+     page.getByRole('dialog').getByText(/Current Stock: 9(?:\.0+)? bag/)
+   ).toBeVisible();
   });
 });

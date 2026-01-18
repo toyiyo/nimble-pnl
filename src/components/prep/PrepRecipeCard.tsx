@@ -53,11 +53,16 @@ export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEd
               <Badge variant="outline" className="rounded-full">
                 {ingredientCount} ingredient{ingredientCount === 1 ? '' : 's'}
               </Badge>
-              <Badge variant="outline" className="rounded-full">
-                ${costPerBatch.toFixed(2)} / batch
-              </Badge>
-              <Badge variant="outline" className="rounded-full">
-                ${costPerUnit.toFixed(2)} / {recipe.default_yield_unit}
+              <Badge
+                variant="outline"
+                className="rounded-full gap-1"
+                aria-label={`Cost $${costPerBatch.toFixed(2)} per batch, $${costPerUnit.toFixed(2)} per ${recipe.default_yield_unit}`}
+              >
+                <span className="text-muted-foreground">Cost</span>
+                <span className="font-medium text-foreground tabular-nums">${costPerBatch.toFixed(2)}</span>
+                <span className="text-muted-foreground">/ batch ·</span>
+                <span className="font-medium text-foreground tabular-nums">${costPerUnit.toFixed(2)}</span>
+                <span className="text-muted-foreground">/ {recipe.default_yield_unit}</span>
               </Badge>
             </div>
           </div>

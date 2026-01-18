@@ -13,6 +13,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
+import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
+import { calculateIngredientsCost, formatCostResult } from '@/lib/prepCostCalculation';
 
 export interface PrepRecipeFormValues {
   name: string;
@@ -92,6 +94,32 @@ export function PrepRecipeDialog({
     products.forEach((p) => map.set(p.id, p));
     return map;
   }, [products]);
+
+  // Compute a live preview of cost and inventory deduction for the current ingredient rows.
+  // Uses the shared calculation logic in src/lib/prepCostCalculation.ts
+  const previewCost = useMemo(() => {
+    const ingredientInfos = formValues.ingredients.map((ing) => {
+      const product = productLookup.get(ing.product_id);
+      return {
+        product_id: ing.product_id,
+        quantity: ing.quantity,
+        unit: ing.unit,
+        product: product
+          ? {
+              id: product.id,
+              name: product.name,
+              cost_per_unit: product.cost_per_unit ?? 0,
+              uom_purchase: product.uom_purchase,
+              size_value: product.size_value,
+              size_unit: product.size_unit,
+              current_stock: product.current_stock,
+            }
+          : undefined,
+      };
+    });
+
+    return calculateIngredientsCost(ingredientInfos);
+  }, [formValues.ingredients, productLookup]);
 
   const handleIngredientChange = <K extends keyof PrepRecipeFormValues['ingredients'][number]>(
     index: number,
@@ -308,21 +336,14 @@ export function PrepRecipeDialog({
 
                           <div className="col-span-6 sm:col-span-3 space-y-1">
                             <Label>Unit</Label>
-                            <Select
-                              value={ingredient.unit}
-                              onValueChange={(value) => handleIngredientChange(index, 'unit', value as IngredientUnit)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {MEASUREMENT_UNITS.map((unit) => (
-                                  <SelectItem key={unit} value={unit}>
-                                    {unit}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <GroupedUnitSelector
+                            value={ingredient.unit}
+                            onValueChange={(value) => handleIngredientChange(index, 'unit', value as IngredientUnit)}
+                            placeholder="Unit"
+                            productName={productLookup.get(ingredient.product_id)?.name}
+                            productSizeUnit={productLookup.get(ingredient.product_id)?.size_unit || productLookup.get(ingredient.product_id)?.uom_purchase}
+                            className="w-full"
+                          />
                           </div>
 
                           <div className="col-span-12 sm:col-span-1 flex justify-end">
@@ -345,6 +366,31 @@ export function PrepRecipeDialog({
                             onChange={(e) => handleIngredientChange(index, 'notes', e.target.value)}
                             placeholder="Prep notes, trim %, alternates"
                           />
+                        </div>
+
+                        {/* Cost & inventory preview for this ingredient */}
+                        <div className="flex items-center justify-between text-sm text-muted-foreground mt-2" aria-live="polite">
+                          {ingredient.product_id ? (
+                            previewCost.ingredients[index] ? (
+                              <>
+                                <div>
+                                  <span className="text-muted-foreground">Cost</span>
+                                  <div className="font-medium">${previewCost.ingredients[index].costImpact.toFixed(2)}</div>
+                                </div>
+
+                                <div className="text-right">
+                                  <span className="text-muted-foreground">Inventory</span>
+                                  <div className="font-medium">
+                                    {previewCost.ingredients[index].inventoryDeduction.toFixed(4)} {previewCost.ingredients[index].inventoryDeductionUnit}
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-muted-foreground">Calculating…</div>
+                            )
+                          ) : (
+                            <div className="text-muted-foreground">No product selected</div>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
+import { calculateIngredientsCost } from '@/lib/prepCostCalculation';
 import { PrepRecipe, PrepRecipeIngredient } from './usePrepRecipes';
 
 export type ProductionRunStatus = 'planned' | 'in_progress' | 'completed' | 'cancelled' | 'draft';
@@ -101,7 +102,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
           *,
           prep_recipe:prep_recipes(
             *,
-            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit),
+            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit),
             ingredients:prep_recipe_ingredients(
               id,
               product_id,
@@ -109,7 +110,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
               unit,
               notes,
               sort_order,
-              product:products(id, name, cost_per_unit, uom_purchase, current_stock)
+              product:products(id, name, cost_per_unit, uom_purchase, current_stock, size_value, size_unit)
             )
           ),
           ingredients:production_run_ingredients(
@@ -120,7 +121,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
             actual_quantity,
             unit,
             variance_percent,
-            product:products(id, name, cost_per_unit, uom_purchase, current_stock)
+            product:products(id, name, cost_per_unit, uom_purchase, current_stock, size_value, size_unit)
           )
         `)
         .eq('restaurant_id', restaurantId)
@@ -294,17 +295,52 @@ export const useProductionRuns = (restaurantId: string | null) => {
   const calculateIngredientCostTotal = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {
     if (!run?.ingredients || run.ingredients.length === 0) return 0;
 
+    // Use the SAME cost calculation logic that recipes use
+    // This ensures consistency between batch and recipe costing
+    // See: BATCH_FUNCTIONALITY_AUDIT.md and src/lib/prepCostCalculation.ts
     const payloadLookup = new Map(
       (payload.ingredients || []).map(ing => [ing.product_id, ing])
     );
 
-    return run.ingredients.reduce((sum, ing) => {
+    // Transform ingredients to match the shared interface
+    const ingredientsForCalculation = run.ingredients.map(ing => {
       const payloadIng = payloadLookup.get(ing.product_id);
       const rawQty = payloadIng?.actual_quantity ?? payloadIng?.expected_quantity ?? ing.actual_quantity ?? ing.expected_quantity ?? 0;
       const actualQty = Number(rawQty) || 0;
-      const costPerUnit = ing.product?.cost_per_unit || 0;
-      return sum + costPerUnit * actualQty;
-    }, 0);
+
+      return {
+        product_id: ing.product_id,
+        quantity: actualQty,
+        unit: ing.unit || 'unit',
+        product: ing.product ? {
+          id: ing.product.id,
+          name: ing.product.name,
+          cost_per_unit: ing.product.cost_per_unit,
+          uom_purchase: ing.product.uom_purchase,
+          size_value: (ing.product as any).size_value,
+          size_unit: (ing.product as any).size_unit,
+          current_stock: ing.product.current_stock,
+        } : undefined,
+      };
+    });
+
+    // Calculate cost with proper unit conversion
+    const result = calculateIngredientsCost(ingredientsForCalculation);
+
+    // Log warnings if any conversion issues occurred
+    if (result.warnings.length > 0) {
+      console.warn('[Batch Cost Calculation] Warnings:', result.warnings);
+    }
+
+    return result.totalCost;
+  }, []);
+
+  const calculateOutputCostPerUnit = useCallback((ingredientCostTotal: number, actualYield: number) => {
+    if (ingredientCostTotal <= 0) return null;
+
+    if (actualYield <= 0) return null;
+
+    return Math.max(0, ingredientCostTotal / actualYield);
   }, []);
 
   const determineOutputUnit = useCallback((run: ProductionRun | undefined, payload: CompleteRunPayload) => {
@@ -349,8 +385,9 @@ export const useProductionRuns = (restaurantId: string | null) => {
     payload: CompleteRunPayload;
     ingredientCostTotal: number;
     supplierInfo?: SupplierInfo | null;
+    actualYield: number;
   }) => {
-    const { run, payload, ingredientCostTotal, supplierInfo } = params;
+    const { run, payload, ingredientCostTotal, supplierInfo, actualYield } = params;
     if (!run?.restaurant_id || !run?.prep_recipe) return null;
 
     const unit = determineOutputUnit(run, payload);
@@ -374,7 +411,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
         par_level_min: 0,
         par_level_max: 0,
         reorder_point: 0,
-        cost_per_unit: ingredientCostTotal,
+        cost_per_unit: calculateOutputCostPerUnit(ingredientCostTotal, actualYield) || 0,
         supplier_id: supplierInfo?.supplierId || null,
         supplier_name: supplierInfo?.supplierName || null,
         description: 'Auto-created prep output',
@@ -384,16 +421,13 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
     if (productError) throw productError;
     return newProduct?.id || null;
-  }, [determineOutputUnit]);
+  }, [calculateOutputCostPerUnit, determineOutputUnit]);
 
   const updateExistingOutputProduct = useCallback(async (params: {
     outputProductId: string | null;
-    ingredientCostTotal: number;
     supplierInfo?: SupplierInfo | null;
-    variance: number | null;
-    actualYield: number;
   }) => {
-    const { outputProductId, ingredientCostTotal, supplierInfo, variance, actualYield } = params;
+    const { outputProductId, supplierInfo } = params;
     if (!outputProductId) return;
 
     const { data: currentProduct, error: currentError } = await supabase
@@ -405,11 +439,6 @@ export const useProductionRuns = (restaurantId: string | null) => {
     if (currentError) throw currentError;
 
     const updates: Record<string, number | string | null> = {};
-    if (ingredientCostTotal > 0) {
-      const varianceAdjustment = variance ? (1 - (variance / 100)) : 1;
-      const adjustedCostPerUnit = (ingredientCostTotal / Math.max(actualYield, 1)) * varianceAdjustment;
-      updates.cost_per_unit = Math.max(0, adjustedCostPerUnit);
-    }
     if (supplierInfo) {
       if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
       if (!currentProduct?.supplier_name) updates.supplier_name = supplierInfo.supplierName;
@@ -428,10 +457,9 @@ export const useProductionRuns = (restaurantId: string | null) => {
     run: ProductionRun | undefined;
     payload: CompleteRunPayload;
     ingredientCostTotal: number;
-    variance: number | null;
     actualYield: number;
   }) => {
-    const { run, payload, ingredientCostTotal, variance, actualYield } = params;
+    const { run, payload, ingredientCostTotal, actualYield } = params;
     let outputProductId = run?.prep_recipe?.output_product_id || null;
     const supplierInfo = await ensureSupplierIfNeeded(run, ingredientCostTotal, outputProductId);
 
@@ -451,6 +479,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
         payload,
         ingredientCostTotal,
         supplierInfo,
+        actualYield,
       });
       await linkPrepRecipeToProduct(run.prep_recipe.id, outputProductId);
       return outputProductId;
@@ -458,10 +487,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
 
     await updateExistingOutputProduct({
       outputProductId,
-      ingredientCostTotal,
       supplierInfo,
-      variance,
-      actualYield,
     });
 
     return outputProductId;
@@ -565,7 +591,6 @@ export const useProductionRuns = (restaurantId: string | null) => {
         run,
         payload,
         ingredientCostTotal,
-        variance,
         actualYield,
       });
 

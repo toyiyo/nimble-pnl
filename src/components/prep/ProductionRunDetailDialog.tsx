@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ProductionRun, ProductionRunIngredient, ProductionRunStatus } from '@/hooks/useProductionRuns';
 import { IngredientUnit, MEASUREMENT_UNITS } from '@/lib/recipeUnits';
+import { calculateIngredientsCost } from '@/lib/prepCostCalculation';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -66,11 +67,11 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
     return varianceSum / withExpected.length;
   }, [ingredientActuals]);
 
-  const projectedCosts = useMemo(() => {
-    // Handle null run
-    if (!run) {
-      return { costPerUnit: null, totalCost: null };
-    }
+    const projectedCosts = useMemo(() => {
+      // Handle null run
+      if (!run) {
+        return { costPerUnit: null, totalCost: null };
+      }
 
     // For completed batches, use the stored values
     if (run.status === 'completed') {
@@ -80,24 +81,42 @@ export function ProductionRunDetailDialog({ run, open, onOpenChange, onSave, sav
       };
     }
 
-    // For in-progress batches, calculate projected costs
+    // For in-progress batches, calculate projected costs using shared helper
     const yieldValue = actualYield ? Number(actualYield) : (run.target_yield || 0);
     if (yieldValue === 0 || ingredientActuals.length === 0) {
       return { costPerUnit: null, totalCost: null };
     }
 
-    // Calculate total ingredient cost based on actual quantities (or expected if no actuals)
-    const totalIngredientCost = ingredientActuals.reduce((sum, ing) => {
+    const ingredientPayload = ingredientActuals.map((ing) => {
       const quantity = ing.actual_quantity ?? ing.expected_quantity ?? 0;
-      const costPerUnit = ing.product?.cost_per_unit || 0;
-      return sum + (quantity * costPerUnit);
-    }, 0);
+      return {
+        product_id: ing.product_id,
+        quantity,
+        unit: ing.unit || 'unit',
+        product: ing.product
+          ? {
+              id: ing.product.id,
+              name: ing.product.name,
+              cost_per_unit: ing.product.cost_per_unit,
+              uom_purchase: ing.product.uom_purchase,
+              size_value: (ing.product as any).size_value,
+              size_unit: (ing.product as any).size_unit,
+              current_stock: ing.product.current_stock,
+            }
+          : undefined,
+      };
+    });
 
-    const costPerUnit = totalIngredientCost / yieldValue;
+    const { totalCost } = calculateIngredientsCost(ingredientPayload);
+    if (totalCost === 0) {
+      return { costPerUnit: null, totalCost: null };
+    }
+
+    const costPerUnit = totalCost / yieldValue;
 
     return {
-      costPerUnit: totalIngredientCost > 0 ? costPerUnit : null,
-      totalCost: totalIngredientCost > 0 ? totalIngredientCost : null,
+      costPerUnit: Math.max(0, costPerUnit),
+      totalCost: Math.max(0, totalCost),
     };
   }, [run?.status, run?.cost_per_unit, run?.actual_total_cost, run?.target_yield, actualYield, ingredientActuals]);
 

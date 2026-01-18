@@ -42,6 +42,7 @@ import {
   isPast,
   differenceInMinutes,
 } from 'date-fns';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { Shift } from '@/types/scheduling';
 
 const formatShiftDuration = (startTime: string, endTime: string, breakMinutes: number) => {
@@ -112,12 +113,12 @@ const EmployeeSchedule = () => {
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: 0 })
+    startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
   );
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
   const [selectedShiftForTrade, setSelectedShiftForTrade] = useState<Shift | null>(null);
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: WEEK_STARTS_ON });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
@@ -195,7 +196,7 @@ const EmployeeSchedule = () => {
   };
 
   const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
+    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON }));
   };
 
   if (!restaurantId) {

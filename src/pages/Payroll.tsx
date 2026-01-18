@@ -35,6 +35,7 @@ import {
   Banknote,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks, endOfDay } from 'date-fns';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import {
   Table,
   TableBody,
@@ -59,10 +60,10 @@ const Payroll = () => {
 
   const [periodType, setPeriodType] = useState<PayPeriodType>('current_week');
   const [customStartDate, setCustomStartDate] = useState<Date>(
-    startOfWeek(new Date(), { weekStartsOn: 0 })
+    startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
   );
   const [customEndDate, setCustomEndDate] = useState<Date>(
-    endOfWeek(new Date(), { weekStartsOn: 0 })
+    endOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
   );
 
   // Calculate date range based on period type
@@ -71,21 +72,21 @@ const Payroll = () => {
     switch (periodType) {
       case 'current_week':
         return {
-          start: startOfWeek(today, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
+          start: startOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
+          end: endOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
         };
       case 'last_week': {
         const lastWeek = subWeeks(today, 1);
         return {
-          start: startOfWeek(lastWeek, { weekStartsOn: 0 }),
-          end: endOfWeek(lastWeek, { weekStartsOn: 0 }),
+          start: startOfWeek(lastWeek, { weekStartsOn: WEEK_STARTS_ON }),
+          end: endOfWeek(lastWeek, { weekStartsOn: WEEK_STARTS_ON }),
         };
       }
       case 'last_2_weeks': {
         const lastWeek = subWeeks(today, 1);
         return {
-          start: startOfWeek(subWeeks(lastWeek, 1), { weekStartsOn: 0 }),
-          end: endOfWeek(lastWeek, { weekStartsOn: 0 }),
+          start: startOfWeek(subWeeks(lastWeek, 1), { weekStartsOn: WEEK_STARTS_ON }),
+          end: endOfWeek(lastWeek, { weekStartsOn: WEEK_STARTS_ON }),
         };
       }
       case 'custom':
@@ -95,8 +96,8 @@ const Payroll = () => {
         };
       default:
         return {
-          start: startOfWeek(today, { weekStartsOn: 0 }),
-          end: endOfWeek(today, { weekStartsOn: 0 }),
+          start: startOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
+          end: endOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
         };
     }
   };
@@ -212,8 +213,8 @@ const Payroll = () => {
     } else {
       // Move to previous week
       const newDate = subWeeks(start, 1);
-      setCustomStartDate(startOfWeek(newDate, { weekStartsOn: 0 }));
-      setCustomEndDate(endOfWeek(newDate, { weekStartsOn: 0 }));
+      setCustomStartDate(startOfWeek(newDate, { weekStartsOn: WEEK_STARTS_ON }));
+      setCustomEndDate(endOfWeek(newDate, { weekStartsOn: WEEK_STARTS_ON }));
       setPeriodType('custom');
     }
   };
@@ -226,8 +227,8 @@ const Payroll = () => {
     } else {
       // Move to next week
       const newDate = addWeeks(start, 1);
-      setCustomStartDate(startOfWeek(newDate, { weekStartsOn: 0 }));
-      setCustomEndDate(endOfWeek(newDate, { weekStartsOn: 0 }));
+      setCustomStartDate(startOfWeek(newDate, { weekStartsOn: WEEK_STARTS_ON }));
+      setCustomEndDate(endOfWeek(newDate, { weekStartsOn: WEEK_STARTS_ON }));
       setPeriodType('custom');
     }
   };

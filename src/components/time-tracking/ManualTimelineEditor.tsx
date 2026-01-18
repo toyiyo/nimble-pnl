@@ -22,6 +22,8 @@ interface TimeBlock {
   notes?: string; // Optional notes
   clockInPunchId?: string;
   clockOutPunchId?: string;
+  hasClockInTime?: boolean;
+  hasClockOutTime?: boolean;
   isNew?: boolean; // Track if this is unsaved
   isSaving?: boolean;
   isImported?: boolean;
@@ -113,6 +115,8 @@ export const ManualTimelineEditor = ({
               clockInPunchId: punch.id,
               clockOutPunchId: nextPunch.id,
               notes: punch.notes || nextPunch.notes,
+              hasClockInTime: true,
+              hasClockOutTime: true,
               isImported: Boolean(importSource),
               importSource: importSource || undefined,
             });
@@ -122,7 +126,7 @@ export const ManualTimelineEditor = ({
       }
       
       const totalHours = blocks.reduce((sum, block) => 
-        sum + differenceInMinutes(block.endTime, block.startTime) / 60, 0
+        sum + getBlockDurationMinutes(block) / 60, 0
       );
       
       const hasWarning = totalHours > 12;
@@ -150,12 +154,21 @@ export const ManualTimelineEditor = ({
   };
 
   // Calculate time from position
-  const getTimeFromPosition = (positionPercent: number): Date => {
-    const relativeHour = (positionPercent / 100) * TOTAL_HOURS;
-    const hour = HOURS_START + relativeHour;
-    const result = addHours(startOfDay(date), hour);
-    return snapToInterval(result);
-  };
+const getTimeFromPosition = (positionPercent: number): Date => {
+  const relativeHour = (positionPercent / 100) * TOTAL_HOURS;
+  const hour = HOURS_START + relativeHour;
+  const result = addHours(startOfDay(date), hour);
+  return snapToInterval(result);
+};
+
+const getBlockDurationMinutes = (block: TimeBlock) => {
+  if (!block.hasClockInTime || !block.hasClockOutTime) {
+    return 0;
+  }
+  const diffMinutes = differenceInMinutes(block.endTime, block.startTime);
+  const adjusted = diffMinutes - (block.breakMinutes || 0);
+  return Math.max(adjusted, 0);
+};
 
   // Handle drag to create or adjust (Pointer Events API for snappy feel)
   const handlePointerDown = useCallback((
@@ -195,6 +208,8 @@ export const ManualTimelineEditor = ({
             startTime: time,
             endTime: time,
             isNew: true,
+            hasClockInTime: true,
+            hasClockOutTime: true,
           });
           updated.set(employeeId, { ...employeeDay });
         }
@@ -250,7 +265,7 @@ export const ManualTimelineEditor = ({
       
       employeeDay.blocks[blockIndex] = block;
       employeeDay.totalHours = employeeDay.blocks.reduce((sum, b) => 
-        sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
+        sum + getBlockDurationMinutes(b) / 60, 0
       );
       employeeDay.hasWarning = employeeDay.totalHours > 12;
       
@@ -288,7 +303,14 @@ export const ManualTimelineEditor = ({
   }, []);
 
   // Helper: Update block after successful save
-  const updateBlockAfterSave = useCallback((employeeId: string, blockId: string, clockInId: string, clockOutId: string) => {
+  const updateBlockAfterSave = useCallback((
+    employeeId: string,
+    blockId: string,
+    updates: {
+      clockInPunchId?: string;
+      clockOutPunchId?: string;
+    }
+  ) => {
     setEmployeeDays(prev => {
       const updated = new Map(prev);
       const day = updated.get(employeeId);
@@ -297,13 +319,18 @@ export const ManualTimelineEditor = ({
       const blockIndex = day.blocks.findIndex(b => b.id === blockId);
       if (blockIndex === -1) return prev;
       
-      day.blocks[blockIndex] = {
+      const patchedBlock = {
         ...day.blocks[blockIndex],
-        clockInPunchId: clockInId,
-        clockOutPunchId: clockOutId,
         isNew: false,
         isSaving: false,
       };
+      if (updates.clockInPunchId) {
+        patchedBlock.clockInPunchId = updates.clockInPunchId;
+      }
+      if (updates.clockOutPunchId) {
+        patchedBlock.clockOutPunchId = updates.clockOutPunchId;
+      }
+      day.blocks[blockIndex] = patchedBlock;
       updated.set(employeeId, { ...day });
       return updated;
     });
@@ -312,44 +339,52 @@ export const ManualTimelineEditor = ({
   // Helper: Perform save operation
   const performSave = useCallback(async (employeeId: string, blockId: string, block: TimeBlock) => {
     try {
-      if (block.isNew || !block.clockInPunchId) {
-        // Create new punch pair
-        const clockInResult = await createPunch.mutateAsync({
-          restaurant_id: restaurantId,
-          employee_id: employeeId,
-          punch_type: 'clock_in',
-          punch_time: block.startTime.toISOString(),
-          notes: 'Manual entry by manager',
-        });
-        
-        const clockOutResult = await createPunch.mutateAsync({
-          restaurant_id: restaurantId,
-          employee_id: employeeId,
-          punch_type: 'clock_out',
-          punch_time: block.endTime.toISOString(),
-          notes: 'Manual entry by manager',
-        });
-        
-        updateBlockAfterSave(employeeId, blockId, clockInResult.id, clockOutResult.id);
-      } else {
-        // Update existing punches
-        const promises = [];
+      let createdClockIn: TimePunch | null = null;
+      let createdClockOut: TimePunch | null = null;
+
+      if (block.hasClockInTime) {
         if (block.clockInPunchId) {
-          promises.push(updatePunch.mutateAsync({
+          await updatePunch.mutateAsync({
             id: block.clockInPunchId,
             punch_time: block.startTime.toISOString(),
-          }));
+          });
+        } else {
+          createdClockIn = await createPunch.mutateAsync({
+            restaurant_id: restaurantId,
+            employee_id: employeeId,
+            punch_type: 'clock_in',
+            punch_time: block.startTime.toISOString(),
+            notes: 'Manual entry by manager',
+          });
         }
+      }
+
+      if (block.hasClockOutTime) {
         if (block.clockOutPunchId) {
-          promises.push(updatePunch.mutateAsync({
+          await updatePunch.mutateAsync({
             id: block.clockOutPunchId,
             punch_time: block.endTime.toISOString(),
-          }));
+          });
+        } else {
+          createdClockOut = await createPunch.mutateAsync({
+            restaurant_id: restaurantId,
+            employee_id: employeeId,
+            punch_type: 'clock_out',
+            punch_time: block.endTime.toISOString(),
+            notes: 'Manual entry by manager',
+          });
         }
-        await Promise.all(promises);
+      }
+
+      if (createdClockIn || createdClockOut) {
+        updateBlockAfterSave(employeeId, blockId, {
+          ...(createdClockIn && { clockInPunchId: createdClockIn.id }),
+          ...(createdClockOut && { clockOutPunchId: createdClockOut.id }),
+        });
+      } else {
         updateBlockSavingState(employeeId, blockId, false);
       }
-      
+
       setLastSaved(new Date());
       setTimeout(() => setLastSaved(null), 2000);
     } catch (error) {
@@ -431,9 +466,9 @@ export const ManualTimelineEditor = ({
         const day = updated.get(employeeId);
         if (day) {
           day.blocks = day.blocks.filter(b => b.id !== blockId);
-          day.totalHours = day.blocks.reduce((sum, b) => 
-            sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
-          );
+        day.totalHours = day.blocks.reduce((sum, b) => 
+          sum + getBlockDurationMinutes(b) / 60, 0
+        );
           day.hasWarning = day.totalHours > 12;
           updated.set(employeeId, { ...day });
         }
@@ -457,37 +492,70 @@ export const ManualTimelineEditor = ({
     const endInput = document.getElementById(`end-time-${employeeId}`) as HTMLInputElement;
     const breakInput = document.getElementById(`break-${employeeId}`) as HTMLInputElement;
     const notesInput = document.getElementById(`notes-${employeeId}`) as HTMLInputElement;
-    
-    if (!startInput.value || !endInput.value) {
+
+    const startValue = startInput.value.trim();
+    const endValue = endInput.value.trim();
+    const hasStart = Boolean(startValue);
+    const hasEnd = Boolean(endValue);
+
+    if (!hasStart && !hasEnd) {
       toast({
-        title: 'Missing times',
-        description: 'Please enter both start and end times',
+        title: 'Missing time',
+        description: 'Enter either a start or end time.',
         variant: 'destructive',
       });
       return;
     }
-    
-    // Parse time inputs (format: "HH:MM")
-    const [startHour, startMin] = startInput.value.split(':').map(Number);
-    const [endHour, endMin] = endInput.value.split(':').map(Number);
-    
-    const startDate = new Date(date);
-    startDate.setHours(startHour, startMin, 0, 0);
-    const startTime = startDate; // Keep exact user-entered time (no snapping)
-    
-    const endDate = new Date(date);
-    endDate.setHours(endHour, endMin, 0, 0);
-    const endTime = endDate; // Keep exact user-entered time (no snapping)
-    
-    if (startTime >= endTime) {
+
+    const parseTimeValue = (value: string) => {
+      const [hour, minute] = value.split(':').map(Number);
+      if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+      const result = new Date(date);
+      result.setHours(hour, minute, 0, 0);
+      return result;
+    };
+
+    const startTime = hasStart ? parseTimeValue(startValue) : null;
+    const endTime = hasEnd ? parseTimeValue(endValue) : null;
+
+    if (hasStart && !startTime) {
+      toast({
+        title: 'Invalid start time',
+        description: 'Please enter a valid start time.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (hasEnd && !endTime) {
+      toast({
+        title: 'Invalid end time',
+        description: 'Please enter a valid end time.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (
+      hasStart
+      && hasEnd
+      && startTime
+      && endTime
+      && startTime >= endTime
+    ) {
       toast({
         title: 'Invalid range',
-        description: 'End time must be after start time',
+        description: 'End time must be after start time.',
         variant: 'destructive',
       });
       return;
     }
-    
+
+    const finalStart = startTime ?? endTime ?? new Date(date);
+    const finalEnd = endTime ?? startTime ?? new Date(date);
+
+    const breakMinutes = Number.parseInt(breakInput.value, 10);
+    const normalizedBreak = Number.isNaN(breakMinutes) ? 0 : Math.max(breakMinutes, 0);
+
     const newBlockId = `new-${Date.now()}`;
     setEmployeeDays(prev => {
       const updated = new Map(prev);
@@ -495,27 +563,29 @@ export const ManualTimelineEditor = ({
       if (day) {
         day.blocks.push({
           id: newBlockId,
-          startTime,
-          endTime,
-          breakMinutes: Number.parseInt(breakInput.value) || 0,
+          startTime: finalStart,
+          endTime: finalEnd,
+          breakMinutes: normalizedBreak,
           notes: notesInput.value || undefined,
           isNew: true,
+          hasClockInTime: hasStart,
+          hasClockOutTime: hasEnd,
         });
         day.totalHours = day.blocks.reduce((sum, b) => 
-          sum + (differenceInMinutes(b.endTime, b.startTime) - (b.breakMinutes || 0)) / 60, 0
+          sum + getBlockDurationMinutes(b) / 60, 0
         );
         day.hasWarning = day.totalHours > 12;
         updated.set(employeeId, { ...day });
       }
       return updated;
     });
-    
+
     triggerAutoSave(employeeId, newBlockId);
-    
+
     // Clear inputs
     startInput.value = '';
     endInput.value = '';
-    breakInput.value = '30';
+    breakInput.value = '0';
     notesInput.value = '';
   }, [date, toast, triggerAutoSave]);
 
@@ -743,7 +813,7 @@ export const ManualTimelineEditor = ({
                       type="number"
                       min="0"
                       max="120"
-                      defaultValue="30"
+                      defaultValue="0"
                       className="h-9 text-sm"
                     />
                   </div>
@@ -780,7 +850,7 @@ export const ManualTimelineEditor = ({
                   <div className="space-y-2 mt-4">
                     <Label className="text-sm">Time blocks</Label>
                     {employeeDay.blocks.map((block) => {
-                      const workMinutes = differenceInMinutes(block.endTime, block.startTime) - (block.breakMinutes || 0);
+                      const workMinutes = getBlockDurationMinutes(block);
                       return (
                         <div
                           key={block.id}

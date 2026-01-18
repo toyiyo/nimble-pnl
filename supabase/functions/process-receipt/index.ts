@@ -648,11 +648,11 @@ serve(async (req) => {
 
         pdfBase64Data = `data:application/pdf;base64,${base64}`;
         console.log("✅ PDF converted to base64, size:", base64.length);
-      } catch (fetchError) {
+      } catch (fetchError: unknown) {
         clearTimeout(timeoutId); // Ensure timeout is cleared
 
         // Check if error was due to abort/timeout
-        if (fetchError.name === "AbortError") {
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
           console.error("📄 PDF fetch timeout");
           return new Response(
             JSON.stringify({
@@ -667,7 +667,7 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             error: "Failed to fetch PDF for processing",
-            details: fetchError.message,
+            details: fetchError instanceof Error ? fetchError.message : String(fetchError),
           }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );

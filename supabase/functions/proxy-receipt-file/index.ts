@@ -131,10 +131,10 @@ serve(async (req) => {
         'Cache-Control': 'private, max-age=3600', // Private cache only - no intermediate caching of sensitive receipts
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in proxy-receipt-file:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

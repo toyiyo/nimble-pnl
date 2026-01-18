@@ -3022,6 +3022,7 @@ export type Database = {
           name: string
           output_product_id: string | null
           prep_time_minutes: number | null
+          recipe_id: string | null
           restaurant_id: string
           updated_at: string
         }
@@ -3035,6 +3036,7 @@ export type Database = {
           name: string
           output_product_id?: string | null
           prep_time_minutes?: number | null
+          recipe_id?: string | null
           restaurant_id: string
           updated_at?: string
         }
@@ -3048,6 +3050,7 @@ export type Database = {
           name?: string
           output_product_id?: string | null
           prep_time_minutes?: number | null
+          recipe_id?: string | null
           restaurant_id?: string
           updated_at?: string
         }
@@ -3057,6 +3060,13 @@ export type Database = {
             columns: ["output_product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prep_recipes_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
           {

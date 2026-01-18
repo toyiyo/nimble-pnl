@@ -1,17 +1,25 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { getEncryptionService, logSecurityEvent } from "../_shared/encryption.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
-const getLocalYMD = (date, timeZone)=>{
+
+interface YMD {
+  year: number;
+  month: number;
+  day: number;
+}
+
+const getLocalYMD = (date: Date, timeZone: string): YMD => {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   });
-  const parts = formatter.formatToParts(date).reduce((acc, part)=>{
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
     if (part.type === 'year') acc.year = parseInt(part.value, 10);
     if (part.type === 'month') acc.month = parseInt(part.value, 10);
     if (part.type === 'day') acc.day = parseInt(part.value, 10);
@@ -23,36 +31,40 @@ const getLocalYMD = (date, timeZone)=>{
   });
   return parts;
 };
-const getLocalDateRangeDays = (startDate, endDate, timeZone)=>{
-  const days = [];
+
+const getLocalDateRangeDays = (startDate: Date, endDate: Date, timeZone: string): YMD[] => {
+  const days: YMD[] = [];
   const start = getLocalYMD(startDate, timeZone);
   const end = getLocalYMD(endDate, timeZone);
   const startValue = Date.UTC(start.year, start.month - 1, start.day);
   const endValue = Date.UTC(end.year, end.month - 1, end.day);
-  for(let ts = startValue; ts <= endValue; ts += 24 * 60 * 60 * 1000){
+  for (let ts = startValue; ts <= endValue; ts += 24 * 60 * 60 * 1000) {
     const d = new Date(ts);
     const local = getLocalYMD(d, timeZone);
     days.push(local);
   }
   return days;
 };
-const withRetry = async (fn, attempts = 3, delayMs = 500)=>{
-  let lastError;
-  for(let i = 0; i < attempts; i++){
+
+const withRetry = async <T>(fn: () => Promise<T>, attempts = 3, delayMs = 500): Promise<T> => {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
     try {
       return await fn();
     } catch (err) {
       lastError = err;
       if (i < attempts - 1) {
-        await new Promise((r)=>setTimeout(r, delayMs));
+        await new Promise((r) => setTimeout(r, delayMs));
       }
     }
   }
   throw lastError;
 };
+
 // Build a formatter cache for timezone-aware conversions
-const formatterCache = new Map();
-const getFormatter = (timeZone)=>{
+const formatterCache = new Map<string, Intl.DateTimeFormat>();
+
+const getFormatter = (timeZone: string): Intl.DateTimeFormat => {
   if (!formatterCache.has(timeZone)) {
     formatterCache.set(timeZone, new Intl.DateTimeFormat('en-US', {
       timeZone,
@@ -65,41 +77,45 @@ const getFormatter = (timeZone)=>{
       hour12: false
     }));
   }
-  return formatterCache.get(timeZone);
+  return formatterCache.get(timeZone)!;
 };
+
 // Convert a local date/time in a specific timezone to a UTC Date
-const localTimeToUtc = (year, month, day, hour, minute, timeZone)=>{
+const localTimeToUtc = (year: number, month: number, day: number, hour: number, minute: number, timeZone: string): Date => {
   const formatter = getFormatter(timeZone);
   const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0);
   const parts = formatter.formatToParts(new Date(utcGuess));
-  const read = (type)=>parseInt(parts.find((p)=>p.type === type)?.value ?? '0', 10);
+  const read = (type: string): number => parseInt(parts.find((p) => p.type === type)?.value ?? '0', 10);
   const correctedUtc = Date.UTC(read('year'), read('month') - 1, read('day'), read('hour'), read('minute'), read('second'));
   const offset = correctedUtc - utcGuess;
   return new Date(utcGuess - offset);
 };
+
 // Deterministic stringify to build stable hashes/ids
-const stableStringify = (obj)=>{
+const stableStringify = (obj: unknown): string => {
   if (obj === null || typeof obj !== 'object') {
     return JSON.stringify(obj);
   }
   if (Array.isArray(obj)) {
     return `[${obj.map(stableStringify).join(',')}]`;
   }
-  const keys = Object.keys(obj).sort();
-  const entries = keys.map((k)=>`${JSON.stringify(k)}:${stableStringify(obj[k])}`);
+  const keys = Object.keys(obj as Record<string, unknown>).sort();
+  const entries: string[] = keys.map((k) => `${JSON.stringify(k)}:${stableStringify((obj as Record<string, unknown>)[k])}`);
   return `{${entries.join(',')}}`;
 };
-const makeHashId = async (base, payload)=>{
+
+const makeHashId = async (base: string, payload: unknown): Promise<string> => {
   const encoder = new TextEncoder();
   const data = encoder.encode(`${base}|${stableStringify(payload)}`);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map((b)=>b.toString(16).padStart(2, '0')).join('');
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   return `${base}-${hashHex.slice(0, 12)}`;
 };
 /**
  * Fetch ticket detail (closed) from Lighthouse API
- */ async function fetchLighthouseTicketDetails(token, start, end, locations, locale = 'en-US') {
+ */
+async function fetchLighthouseTicketDetails(token: string, start: string, end: string, locations: number[], locale = 'en-US') {
   const url = 'https://lighthouse-api.harbortouch.com/api/v1/reports/echo-pro/ticket-detail-closed';
   const payload = {
     start,
@@ -271,7 +287,7 @@ Deno.serve(async (req)=>{
         })();
         lighthouseToken = authResponse.token;
         // Extract all unique location IDs from permissions
-        const locationIds = Array.from(new Set((authResponse.permissions || []).map((p)=>p.l).filter((l)=>typeof l === 'number')));
+        const locationIds = Array.from(new Set((authResponse.permissions || []).map((p: { l?: number }) => p.l).filter((l: unknown): l is number => typeof l === 'number')));
         const { data: updatedConn, error: tokenError } = await supabase.from('shift4_connections').update({
           lighthouse_token: await encryption.encrypt(lighthouseToken),
           lighthouse_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
@@ -294,12 +310,12 @@ Deno.serve(async (req)=>{
       // Prepare request params (align days to restaurant timezone)
       const startDay = new Date(startDate);
       const endDay = new Date(endDate);
-      let locations = [];
+      let locations: number[] = [];
       if (connection.lighthouse_location_ids) {
         try {
           const parsed = JSON.parse(connection.lighthouse_location_ids);
           if (Array.isArray(parsed)) {
-            locations = parsed.filter((l)=>typeof l === 'number');
+            locations = parsed.filter((l: unknown): l is number => typeof l === 'number');
           }
         } catch (e) {
           console.error('Failed to parse lighthouse_location_ids:', connection.lighthouse_location_ids, e);
@@ -310,7 +326,7 @@ Deno.serve(async (req)=>{
         throw new Error('No valid Lighthouse location IDs found for sync');
       }
       // Shared currency parser
-      const parseCurrency = (value)=>{
+      const parseCurrency = (value: unknown): number => {
         if (value === null || value === undefined) return 0;
         if (typeof value === 'number') return value;
         const cleaned = String(value).replace(/[^0-9.-]/g, '');
@@ -325,11 +341,11 @@ Deno.serve(async (req)=>{
       const rangeStartIso = rangeStart.toISOString();
       const rangeEndIso = rangeEnd.toISOString();
       const fallbackDateString = `${startParts.year}-${String(startParts.month).padStart(2, '0')}-${String(startParts.day).padStart(2, '0')}`;
-      const parseTicketDateTime = (value, timezone)=>{
+      const parseTicketDateTime = (value: unknown, timezone: string): { dateStr: string; timeStr: string; utcDate: Date } | null => {
         if (!value || typeof value !== 'string') return null;
         const [mdy, timeRaw] = value.trim().split(/\s+/);
         if (!mdy || !timeRaw) return null;
-        const [mm, dd, yyyy] = mdy.split('/').map((n)=>parseInt(n, 10));
+        const [mm, dd, yyyy] = mdy.split('/').map((n) => parseInt(n, 10));
         const timeMatch = timeRaw.match(/(\d{1,2}):(\d{2})(AM|PM)/i);
         if (!mm || !dd || !yyyy || !timeMatch) return null;
         const [, hh, min, ampm] = timeMatch;
@@ -349,9 +365,10 @@ Deno.serve(async (req)=>{
       let salesSummary;
       try {
         salesSummary = await withRetry(()=>fetchLighthouseTicketDetails(lighthouseToken, rangeStartIso, rangeEndIso, locations, 'en-US'), 3, 750);
-      } catch (err) {
-        console.error(`[${fallbackDateString}] Lighthouse fetch failed:`, err?.message || err);
-        results.errors.push(`[${fallbackDateString}] Lighthouse fetch failed: ${err?.message || err}`);
+      } catch (err: unknown) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[${fallbackDateString}] Lighthouse fetch failed:`, errMessage);
+        results.errors.push(`[${fallbackDateString}] Lighthouse fetch failed: ${errMessage}`);
         throw err;
       }
       const tickets = Array.isArray(salesSummary.rows) ? salesSummary.rows : [];

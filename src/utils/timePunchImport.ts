@@ -410,6 +410,15 @@ export const buildTimePunchImportPreview = ({
       const actionValue = getMappedValue(row, mappingLookup, 'action');
       const type = mapActionToPunchType(actionValue);
       const timestampValue = getMappedValue(row, mappingLookup, 'timestamp')?.trim();
+      if (
+        timestampValue
+        && !looksLikeDate(timestampValue)
+        && !dateValue
+      ) {
+        invalidTimes += 1;
+        skippedRows += 1;
+        return;
+      }
 
       const parsed = timestampValue
         ? looksLikeDate(timestampValue)
@@ -442,6 +451,11 @@ export const buildTimePunchImportPreview = ({
       timeColumns.forEach(({ field, type }) => {
         const timeValue = getMappedValue(row, mappingLookup, field)?.trim();
         if (!timeValue) return;
+
+        if (!looksLikeDate(timeValue) && !dateValue) {
+          invalidTimes += 1;
+          return;
+        }
 
         const parsed = looksLikeDate(timeValue)
           ? parseDateTime(undefined, timeValue)

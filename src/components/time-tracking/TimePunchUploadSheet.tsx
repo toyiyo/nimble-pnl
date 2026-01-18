@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { Upload, FileText, Loader2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -10,8 +10,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { useBulkCreateEmployeeTips, useBulkCreateTimePunches } from '@/hooks/useTimePunches';
+import { useCreateEmployee } from '@/hooks/useEmployees';
 import { cn, formatCurrency } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Employee } from '@/types/scheduling';
 import {
@@ -153,6 +154,9 @@ export const TimePunchUploadSheet = ({
 }: TimePunchUploadSheetProps) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const createEmployeeMutation = useCreateEmployee();
+  const bulkCreateTimePunches = useBulkCreateTimePunches();
+  const bulkCreateEmployeeTips = useBulkCreateEmployeeTips();
   const [step, setStep] = useState<UploadStep>('upload');
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
@@ -164,6 +168,7 @@ export const TimePunchUploadSheet = ({
   const [employeePositions, setEmployeePositions] = useState<Record<string, string>>({});
   const [creatingEmployees, setCreatingEmployees] = useState<Record<string, boolean>>({});
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>(employees);
+  const mappingTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setAvailableEmployees(employees);
@@ -178,6 +183,10 @@ export const TimePunchUploadSheet = ({
 
   useEffect(() => {
     if (!open) {
+      if (mappingTimeoutRef.current) {
+        clearTimeout(mappingTimeoutRef.current);
+        mappingTimeoutRef.current = null;
+      }
       setStep('upload');
       setHeaders([]);
       setRows([]);
@@ -189,6 +198,13 @@ export const TimePunchUploadSheet = ({
       setCreatingEmployees({});
     }
   }, [open]);
+
+  useEffect(() => () => {
+    if (mappingTimeoutRef.current) {
+      clearTimeout(mappingTimeoutRef.current);
+      mappingTimeoutRef.current = null;
+    }
+  }, []);
 
   const mappingValidation = useMemo(() => {
     const mappedFields = new Map<string, number>();
@@ -272,9 +288,8 @@ export const TimePunchUploadSheet = ({
     setCreatingEmployees(prev => ({ ...prev, [key]: true }));
 
     try {
-      const { data, error } = await supabase
-        .from('employees')
-        .insert({
+      await createEmployeeMutation.mutateAsync(
+        {
           restaurant_id: restaurantId,
           name: name.trim(),
           position,
@@ -282,25 +297,16 @@ export const TimePunchUploadSheet = ({
           is_active: true,
           compensation_type: 'hourly',
           hourly_rate: 0,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setAvailableEmployees(prev => [data as Employee, ...prev]);
-      handleMapEmployee(name, data.id);
-      queryClient.invalidateQueries({ queryKey: ['employees', restaurantId] });
-      toast({
-        title: 'Employee created',
-        description: `${name} is ready to use.`,
-      });
-    } catch (error) {
-      toast({
-        title: 'Failed to create employee',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
+        },
+        {
+          onSuccess: (data) => {
+            setAvailableEmployees(prev => [data, ...prev]);
+            handleMapEmployee(name, data.id);
+          },
+        }
+      );
+    } catch {
+      // Errors are surfaced via the hook toast
     } finally {
       setCreatingEmployees(prev => ({ ...prev, [key]: false }));
     }
@@ -335,7 +341,13 @@ export const TimePunchUploadSheet = ({
       setHeaders(headers);
       setRows(rows);
       setMappings(suggestTimePunchMappings(headers, rows));
-      setTimeout(() => setStep('mapping'), 350);
+      if (mappingTimeoutRef.current) {
+        clearTimeout(mappingTimeoutRef.current);
+      }
+      mappingTimeoutRef.current = window.setTimeout(() => {
+        setStep('mapping');
+        mappingTimeoutRef.current = null;
+      }, 350);
     } catch (error) {
       setStep('upload');
       toast({
@@ -374,33 +386,28 @@ export const TimePunchUploadSheet = ({
     setStep('importing');
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const createdBy = user?.id ?? null;
-      const punchPayload = preview.punches.map(punch => ({
-        ...punch,
-        created_by: createdBy,
-      }));
+      const employeeLookup = availableEmployees.reduce<Record<string, { id: string; name: string; position?: string | null }>>((acc, employee) => {
+        acc[employee.id] = {
+          id: employee.id,
+          name: employee.name,
+          position: employee.position ?? null,
+        };
+        return acc;
+      }, {});
 
-      const chunkSize = 500;
-      for (let i = 0; i < punchPayload.length; i += chunkSize) {
-        const chunk = punchPayload.slice(i, i + chunkSize);
-        const { error } = await supabase.from('time_punches').insert(chunk);
-        if (error) throw error;
-      }
+      await bulkCreateTimePunches.mutateAsync({
+        restaurantId,
+        punches: preview.punches,
+        employeeLookup,
+      });
 
       if (preview.tips.length > 0) {
-        const tipPayload = preview.tips.map(tip => ({
-          ...tip,
-          created_by: createdBy,
-        }));
-        for (let i = 0; i < tipPayload.length; i += chunkSize) {
-          const chunk = tipPayload.slice(i, i + chunkSize);
-          const { error } = await supabase.from('employee_tips').insert(chunk);
-          if (error) throw error;
-        }
+        await bulkCreateEmployeeTips.mutateAsync({
+          restaurantId,
+          tips: preview.tips,
+        });
       }
 
-      queryClient.invalidateQueries({ queryKey: ['timePunches', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['employees', restaurantId] });
 
       toast({
@@ -540,7 +547,10 @@ export const TimePunchUploadSheet = ({
                         handleMapEmployee(name, value);
                       }}
                     >
-                      <SelectTrigger className="h-9">
+                      <SelectTrigger
+                        className="h-9"
+                        aria-label={`Map employee for ${name} (${key})`}
+                      >
                         <SelectValue placeholder="Map to employee" />
                       </SelectTrigger>
                       <SelectContent>
@@ -565,6 +575,7 @@ export const TimePunchUploadSheet = ({
                         }
                         className="h-9"
                         placeholder="Position"
+                        aria-label={`Position for ${name} (${key})`}
                       />
                       <Button
                         variant="outline"

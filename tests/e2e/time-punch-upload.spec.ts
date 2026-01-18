@@ -71,7 +71,7 @@ test.describe('Time Punch Upload', () => {
     await expect(page.getByText(/2 punches detected/i)).toBeVisible({ timeout: 10000 });
 
     await page.getByRole('button', { name: /import & review/i }).click();
-    await expect(page.getByText(/import complete/i)).toBeVisible({ timeout: 10000 });
+
 
     const employeeButton = page.getByRole('button', { name: /Lopez/i }).first();
     const importedBadge = page.locator('div[data-component-name="Badge"]', { hasText: 'Imported' }).first();

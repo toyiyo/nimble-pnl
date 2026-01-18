@@ -23,6 +23,7 @@ import {
   addDays, addWeeks, addMonths, isSameDay, differenceInMinutes,
   startOfDay, endOfDay
 } from 'date-fns';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
@@ -248,8 +249,8 @@ const TimePunchesManager = () => {
         return { start: startOfDay(currentDate), end: endOfDay(currentDate) };
       case 'week':
         return { 
-          start: startOfWeek(currentDate, { weekStartsOn: 0 }), 
-          end: endOfWeek(currentDate, { weekStartsOn: 0 }) 
+          start: startOfWeek(currentDate, { weekStartsOn: WEEK_STARTS_ON }), 
+          end: endOfWeek(currentDate, { weekStartsOn: WEEK_STARTS_ON }) 
         };
       case 'month':
         return {

@@ -24,6 +24,8 @@ interface TimeBlock {
   clockOutPunchId?: string;
   isNew?: boolean; // Track if this is unsaved
   isSaving?: boolean;
+  isImported?: boolean;
+  importSource?: string;
 }
 
 interface EmployeeDay {
@@ -47,6 +49,12 @@ interface ManualTimelineEditorProps {
 const HOURS_START = 0; // Midnight (12am)
 const HOURS_END = 24; // Midnight (12am next day)
 const TOTAL_HOURS = HOURS_END - HOURS_START;
+
+const getImportSource = (punch: TimePunch | undefined) => {
+  if (!punch?.device_info) return null;
+  if (!punch.device_info.startsWith('import:')) return null;
+  return punch.device_info.replace('import:', '').trim() || 'Uploaded';
+};
 
 export const ManualTimelineEditor = ({ 
   employees, 
@@ -97,12 +105,16 @@ export const ManualTimelineEditor = ({
         if (punch.punch_type === 'clock_in') {
           const nextPunch = sortedPunches[i + 1];
           if (nextPunch?.punch_type === 'clock_out') {
+            const importSource = getImportSource(punch) || getImportSource(nextPunch);
             blocks.push({
               id: `${punch.id}-${nextPunch.id}`,
               startTime: new Date(punch.punch_time),
               endTime: new Date(nextPunch.punch_time),
               clockInPunchId: punch.id,
               clockOutPunchId: nextPunch.id,
+              notes: punch.notes || nextPunch.notes,
+              isImported: Boolean(importSource),
+              importSource: importSource || undefined,
             });
             i++; // Skip the clock_out - required for loop control
           }
@@ -637,6 +649,8 @@ export const ManualTimelineEditor = ({
                         !isDragging && "transition-all duration-150", // Only transition when NOT dragging
                         block.isSaving 
                           ? "bg-primary/50 animate-pulse" 
+                          : block.isImported
+                          ? "bg-primary/60 hover:bg-primary/70 border border-primary/30"
                           : "bg-primary hover:bg-primary/90"
                       )}
                       style={{
@@ -784,6 +798,18 @@ export const ManualTimelineEditor = ({
                               <span className="text-xs text-muted-foreground">
                                 ({formatDuration(workMinutes)})
                               </span>
+                              {block.isImported && (
+                                <>
+                                  <Badge variant="outline" className="text-xs bg-muted/40 border-muted-foreground/30">
+                                    Imported
+                                  </Badge>
+                                  {block.importSource && (
+                                    <Badge variant="outline" className="text-xs bg-muted/40 border-muted-foreground/30">
+                                      {block.importSource}
+                                    </Badge>
+                                  )}
+                                </>
+                              )}
                             </div>
                             {Boolean(block.breakMinutes && block.breakMinutes > 0) && (
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

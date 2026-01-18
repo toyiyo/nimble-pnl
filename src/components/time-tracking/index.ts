@@ -4,3 +4,4 @@ export { PunchStreamView } from './PunchStreamView';
 export { ReceiptStyleView } from './ReceiptStyleView';
 export { ManualTimelineEditor } from './ManualTimelineEditor';
 export { MobileTimeEntry } from './MobileTimeEntry';
+export { TimePunchUploadSheet } from './TimePunchUploadSheet';

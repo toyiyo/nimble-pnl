@@ -2,18 +2,21 @@ import { PrepRecipe } from '@/hooks/usePrepRecipes';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChefHat, Clock, Edit, Package } from 'lucide-react';
+import { AlertTriangle, ChefHat, Clock, Edit, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
 
 interface PrepRecipeCardProps {
   recipe: PrepRecipe;
   costPerBatch?: number;
   costPerUnit?: number;
   onEdit?: () => void;
+  conversionStatus?: { hasIssues: boolean; issueCount: number };
 }
 
-export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEdit }: Readonly<PrepRecipeCardProps>) {
+export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEdit, conversionStatus }: Readonly<PrepRecipeCardProps>) {
   const ingredientCount = recipe.ingredients?.length || 0;
+  const hasNoIngredients = ingredientCount === 0;
   const stockDisplay = recipe.output_product?.current_stock ?? null;
   const stockUnit = recipe.output_product?.uom_purchase || recipe.default_yield_unit;
 
@@ -53,6 +56,23 @@ export function PrepRecipeCard({ recipe, costPerBatch = 0, costPerUnit = 0, onEd
               <Badge variant="outline" className="rounded-full">
                 {ingredientCount} ingredient{ingredientCount === 1 ? '' : 's'}
               </Badge>
+              {conversionStatus && (
+                <RecipeConversionStatusBadge
+                  hasIssues={conversionStatus.hasIssues}
+                  issueCount={conversionStatus.issueCount}
+                  size="sm"
+                  showText={true}
+                />
+              )}
+              {hasNoIngredients && (
+                <Badge
+                  variant="outline"
+                  className="rounded-full bg-amber-50 text-amber-700 border-amber-300"
+                >
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  No ingredients
+                </Badge>
+              )}
               <Badge
                 variant="outline"
                 className="rounded-full gap-1"

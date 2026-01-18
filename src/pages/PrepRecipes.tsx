@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePrepRecipes, PrepRecipe } from '@/hooks/usePrepRecipes';
 import { UserRestaurant } from '@/hooks/useRestaurants';
-import { useProducts } from '@/hooks/useProducts';
+import { useProducts, Product } from '@/hooks/useProducts';
 import { PageHeader } from '@/components/PageHeader';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PrepRecipeDialog, PrepRecipeFormValues } from '@/components/prep/PrepRecipeDialog';
 import { PrepRecipeCard } from '@/components/prep/PrepRecipeCard';
+import { ProductUpdateSheet } from '@/components/ProductUpdateDialog';
 import { ChefHat, Plus, Search } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
 
 export default function PrepRecipes() {
   const { user } = useAuth();
@@ -29,11 +31,12 @@ export default function PrepRecipes() {
   const { prepRecipes, loading, error, createPrepRecipe, updatePrepRecipe, recipeStats } = usePrepRecipes(
     selectedRestaurant?.restaurant_id || null
   );
-  const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, updateProductWithQuantity } = useProducts(selectedRestaurant?.restaurant_id || null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<PrepRecipe | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const filteredRecipes = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -44,6 +47,15 @@ export default function PrepRecipes() {
         recipe.output_product?.name?.toLowerCase().includes(term)
     );
   }, [prepRecipes, searchTerm]);
+
+  const recipeValidations = useMemo(() => {
+    const map = new Map<string, { hasIssues: boolean; issueCount: number }>();
+    prepRecipes.forEach((recipe) => {
+      const validation = validateRecipeConversions(recipe.ingredients || [], products);
+      map.set(recipe.id, { hasIssues: validation.hasIssues, issueCount: validation.issueCount });
+    });
+    return map;
+  }, [prepRecipes, products]);
 
   const handleRestaurantSelect = (restaurant: UserRestaurant) => {
     setSelectedRestaurant(restaurant);
@@ -71,6 +83,20 @@ export default function PrepRecipes() {
       // Consider showing a toast notification to the user
       console.error('Failed to save recipe:', error);
     }
+  };
+
+  const handleInventoryUpdate = async (updates: Partial<Product>, _quantityToAdd: number) => {
+    if (!editingProduct) return;
+    const currentStock = editingProduct.current_stock || 0;
+    const finalStock = updates.current_stock ?? currentStock;
+    await updateProductWithQuantity(
+      editingProduct.id,
+      updates,
+      currentStock,
+      finalStock,
+      'adjustment',
+      'Inventory update from prep recipes'
+    );
   };
 
   if (!user) {
@@ -165,6 +191,7 @@ export default function PrepRecipes() {
             recipe={recipe}
             costPerBatch={recipeStats[recipe.id]?.costPerBatch}
             costPerUnit={recipeStats[recipe.id]?.costPerUnit}
+            conversionStatus={recipeValidations.get(recipe.id)}
             onEdit={() => {
               setEditingRecipe(recipe);
               setDialogOpen(true);
@@ -208,7 +235,19 @@ export default function PrepRecipes() {
         onSubmit={handleSaveRecipe}
         products={products}
         editingRecipe={editingRecipe}
+        onEditProduct={setEditingProduct}
       />
+
+      {editingProduct && (
+        <ProductUpdateSheet
+          open={!!editingProduct}
+          onOpenChange={(open) => {
+            if (!open) setEditingProduct(null);
+          }}
+          product={editingProduct}
+          onUpdate={handleInventoryUpdate}
+        />
+      )}
     </div>
   );
 }

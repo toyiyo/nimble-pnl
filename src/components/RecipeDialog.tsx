@@ -32,11 +32,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, DollarSign, Calculator, ChefHat } from 'lucide-react';
 import { useRecipes, Recipe, CreateRecipeData } from '@/hooks/useRecipes';
-import { useProducts } from '@/hooks/useProducts';
+import { Product } from '@/hooks/useProducts';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { RecipeIngredientItem } from '@/components/RecipeIngredientItem';
 import { SearchablePOSItemSelector } from '@/components/SearchablePOSItemSelector';
-import { RecipeConversionInfo } from '@/components/RecipeConversionInfo';
 import { calculateInventoryImpact, getProductUnitInfo } from "@/lib/enhancedUnitConversion";
 import { MEASUREMENT_UNITS, IngredientUnit, toIngredientUnit } from '@/lib/recipeUnits';
 
@@ -60,17 +59,18 @@ interface RecipeDialogProps {
   isOpen: boolean;
   onClose: () => void;
   restaurantId: string;
+  products: Product[];
   recipe?: Recipe | null;
   onRecipeUpdated?: () => void;
   initialPosItemName?: string;
   prefill?: Partial<FormData>;
   basedOn?: { id: string; name: string };
   onCreateFromBase?: (recipe: Recipe) => void;
+  onEditProduct?: (product: Product) => void;
 }
 
-export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase }: RecipeDialogProps) {
+export function RecipeDialog({ isOpen, onClose, restaurantId, products, recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase, onEditProduct }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
-  const { products } = useProducts(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
   const navigate = useNavigate();
   
@@ -543,6 +543,7 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, recipe, onRecipeUp
                         toggleConversionDetails={() => toggleConversionDetails(index)}
                         measurementUnits={MEASUREMENT_UNITS}
                         onCreateNewProduct={handleCreateNewProduct}
+                        onEditProduct={onEditProduct}
                       />
                     ))}
                   </div>

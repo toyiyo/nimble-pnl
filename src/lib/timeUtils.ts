@@ -39,7 +39,7 @@ const convertTo24Hour = (hour: number, period?: string): number => {
  * @param date The date to use for the time range
  * @returns Object with start and end dates, or null if invalid
  */
-export const parseTimeRange = (input: string, date: Date): { start: Date; end: Date } | null => {
+export const parseTimeRange = (input: string, date: Date, snap: boolean = true): { start: Date; end: Date } | null => {
   // Remove whitespace
   const cleanInput = input.trim().replace(/\s+/g, '');
   
@@ -63,7 +63,11 @@ export const parseTimeRange = (input: string, date: Date): { start: Date; end: D
   // Validate range
   if (start >= end) return null;
   
-  return { start: snapToInterval(start), end: snapToInterval(end) };
+  // Only snap to interval if requested (default true for backwards compatibility)
+  if (snap) {
+    return { start: snapToInterval(start), end: snapToInterval(end) };
+  }
+  return { start, end };
 };
 
 /**

@@ -461,11 +461,11 @@ export const ManualTimelineEditor = ({
     
     const startDate = new Date(date);
     startDate.setHours(startHour, startMin, 0, 0);
-    const startTime = snapToInterval(startDate);
+    const startTime = startDate; // Keep exact user-entered time (no snapping)
     
     const endDate = new Date(date);
     endDate.setHours(endHour, endMin, 0, 0);
-    const endTime = snapToInterval(endDate);
+    const endTime = endDate; // Keep exact user-entered time (no snapping)
     
     if (startTime >= endTime) {
       toast({

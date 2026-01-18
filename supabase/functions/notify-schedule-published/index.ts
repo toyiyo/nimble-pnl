@@ -245,11 +245,11 @@ serve(async (req) => {
         status: 200,
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error in notify-schedule-published:", error);
     return new Response(
       JSON.stringify({
-        error: error.message || "An error occurred",
+        error: error instanceof Error ? error.message : "An error occurred",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

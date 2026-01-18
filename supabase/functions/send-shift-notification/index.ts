@@ -48,7 +48,7 @@ const ACTION_CONFIG: Record<RequestBody['action'], {
     statusColor: '#f59e0b',
     statusText: 'Modified',
     settingKey: 'notify_shift_modified',
-    message: (hasChanges) => hasChanges 
+    message: (hasChanges: boolean) => hasChanges 
       ? 'Your shift details have been changed. Please review the updated information below.'
       : 'Your shift has been updated.',
   },

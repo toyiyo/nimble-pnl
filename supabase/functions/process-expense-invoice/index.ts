@@ -409,8 +409,8 @@ serve(async (req) => {
           }
           const base64 = btoa(binaryString);
           pdfBase64Data = `data:application/pdf;base64,${base64}`;
-        } catch (fetchError) {
-          clearTimeout(timeoutId);
+        } catch (fetchError: unknown) {
+          // timeoutId is already cleared after successful fetch, only need to handle error state
           await supabase
             .from("expense_invoice_uploads")
             .update({

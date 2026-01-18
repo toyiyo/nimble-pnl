@@ -44,8 +44,11 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', 
   year: 'numeric'
 });
 
+// Use a type alias for the Supabase client that's more permissive
+type SupabaseClient = ReturnType<typeof createClient>;
+
 const buildEmails = async (
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   restaurantId: string,
   employeeEmail?: string,
   notifyEmployee?: boolean,
@@ -68,7 +71,7 @@ const buildEmails = async (
 
     if (!managersError && managers) {
       managers.forEach((manager: { user?: { email?: string } | null } | null) => {
-        if (manager.user?.email) {
+        if (manager?.user?.email) {
           emails.push(manager.user.email);
         }
       });

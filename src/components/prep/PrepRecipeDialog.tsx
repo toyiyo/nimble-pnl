@@ -9,12 +9,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
-import { calculateIngredientsCost, formatCostResult } from '@/lib/prepCostCalculation';
+import { calculateIngredientsCost } from '@/lib/prepCostCalculation';
+import { COUNT_UNITS, VOLUME_UNITS, WEIGHT_UNITS } from '@/lib/enhancedUnitConversion';
+import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
 
 export interface PrepRecipeFormValues {
   name: string;
@@ -39,6 +41,7 @@ interface PrepRecipeDialogProps {
   readonly onSubmit: (values: PrepRecipeFormValues) => Promise<void>;
   readonly products: Product[];
   readonly editingRecipe?: PrepRecipe | null;
+  readonly onEditProduct?: (product: Product) => void;
 }
 
 const defaultForm: PrepRecipeFormValues = {
@@ -59,6 +62,7 @@ export function PrepRecipeDialog({
   onSubmit,
   products,
   editingRecipe,
+  onEditProduct,
 }: PrepRecipeDialogProps) {
   const [formValues, setFormValues] = useState<PrepRecipeFormValues>(defaultForm);
   const [saving, setSaving] = useState(false);
@@ -120,6 +124,10 @@ export function PrepRecipeDialog({
 
     return calculateIngredientsCost(ingredientInfos);
   }, [formValues.ingredients, productLookup]);
+
+  const conversionValidation = useMemo(() => {
+    return validateRecipeConversions(formValues.ingredients, products);
+  }, [formValues.ingredients, products]);
 
   const handleIngredientChange = <K extends keyof PrepRecipeFormValues['ingredients'][number]>(
     index: number,
@@ -300,7 +308,27 @@ export function PrepRecipeDialog({
 
                 <ScrollArea className="flex-1 min-h-0 pr-2">
                   <div className="space-y-3 pb-1">
-                    {ingredientRows.map((ingredient, index) => (
+                    {ingredientRows.map((ingredient, index) => {
+                      const selectedProduct = productLookup.get(ingredient.product_id);
+                      const conversionIssue = conversionValidation.issues.find(
+                        (issue) => issue.ingredientIndex === index
+                      );
+                      const hasDirectConversion = selectedProduct?.size_unit
+                        ? (() => {
+                            const sizeUnit = selectedProduct.size_unit.toLowerCase();
+                            const recipeUnit = ingredient.unit.toLowerCase();
+                            const bothWeight = WEIGHT_UNITS.includes(sizeUnit) && WEIGHT_UNITS.includes(recipeUnit);
+                            const bothVolume = VOLUME_UNITS.includes(sizeUnit) && VOLUME_UNITS.includes(recipeUnit);
+                            const bothCount = COUNT_UNITS.includes(sizeUnit) && COUNT_UNITS.includes(recipeUnit);
+                            return bothWeight || bothVolume || bothCount;
+                          })()
+                        : true;
+                      const fallbackMessage = selectedProduct
+                        ? `No direct conversion from ${ingredient.unit} to ${selectedProduct.size_unit || selectedProduct.uom_purchase || 'unit'}.`
+                        : 'No direct conversion for the selected units.';
+                      const showFallbackWarning = !conversionIssue && selectedProduct && !hasDirectConversion;
+
+                      return (
                       <div key={ingredient.id || `temp-${index}`} className="rounded-lg border bg-card p-3 shadow-sm space-y-3">
                         <div className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-12 sm:col-span-5 space-y-1">
@@ -340,8 +368,8 @@ export function PrepRecipeDialog({
                             value={ingredient.unit}
                             onValueChange={(value) => handleIngredientChange(index, 'unit', value as IngredientUnit)}
                             placeholder="Unit"
-                            productName={productLookup.get(ingredient.product_id)?.name}
-                            productSizeUnit={productLookup.get(ingredient.product_id)?.size_unit || productLookup.get(ingredient.product_id)?.uom_purchase}
+                            productName={selectedProduct?.name}
+                            productSizeUnit={selectedProduct?.size_unit || selectedProduct?.uom_purchase}
                             className="w-full"
                           />
                           </div>
@@ -392,8 +420,39 @@ export function PrepRecipeDialog({
                             <div className="text-muted-foreground">No product selected</div>
                           )}
                         </div>
+
+                        {(conversionIssue || showFallbackWarning) && selectedProduct && (
+                          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-amber-800">Conversion Warning</p>
+                                <p className="text-amber-700">
+                                  {conversionIssue
+                                    ? (conversionIssue.issue === 'fallback_1to1' ? fallbackMessage : conversionIssue.message)
+                                    : fallbackMessage}
+                                </p>
+                                <p className="text-xs text-amber-600 mt-1">
+                                  Inventory will be deducted 1:1 (e.g., 1 {ingredient.unit} = 1 {selectedProduct.uom_purchase || 'unit'})
+                                </p>
+                                {onEditProduct && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 h-7 px-2 text-xs"
+                                    onClick={() => onEditProduct(selectedProduct)}
+                                  >
+                                    Edit inventory details
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))}
+                    );
+                  })}
 
                     {ingredientRows.length === 0 && (
                       <div className="text-sm text-muted-foreground border border-dashed rounded-lg p-4">

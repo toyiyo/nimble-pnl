@@ -20,6 +20,7 @@ interface RecipeIngredientItemProps {
   toggleConversionDetails: () => void;
   measurementUnits: readonly string[];
   onCreateNewProduct?: () => void;
+  onEditProduct?: (product: Product) => void;
 }
 
 export function RecipeIngredientItem({
@@ -30,13 +31,15 @@ export function RecipeIngredientItem({
   showConversionDetails,
   toggleConversionDetails,
   measurementUnits,
-  onCreateNewProduct
+  onCreateNewProduct,
+  onEditProduct,
 }: RecipeIngredientItemProps) {
   // Get the currently selected product for smart unit suggestions
   const productField = control._getWatch(`ingredients.${index}.product_id`);
   const quantityField = control._getWatch(`ingredients.${index}.quantity`);
   const unitField = control._getWatch(`ingredients.${index}.unit`);
-  const selectedProduct = products.find(p => p.id === productField);
+  const safeProducts = products ?? [];
+  const selectedProduct = safeProducts.find(p => p.id === productField);
   
   // Check for conversion issues
   const conversionIssue = useMemo(() => {
@@ -98,6 +101,17 @@ export function RecipeIngredientItem({
             <p className="text-xs text-amber-600 mt-1">
               Inventory will be deducted 1:1 (e.g., 1 {unitField} = 1 {selectedProduct?.uom_purchase || 'unit'})
             </p>
+            {onEditProduct && selectedProduct && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 h-7 px-2 text-xs"
+                onClick={() => onEditProduct(selectedProduct)}
+              >
+                Edit inventory details
+              </Button>
+            )}
           </div>
           <Badge variant="outline" className="bg-amber-200 text-amber-800 border-amber-400 text-xs whitespace-nowrap">
             1:1 Fallback

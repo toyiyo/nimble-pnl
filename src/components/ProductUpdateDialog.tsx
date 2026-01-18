@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
   Form,
   FormControl,
@@ -103,7 +104,7 @@ const UNITS = [
   'case', 'box', 'bag', 'bottle', 'can', 'jar', 'pack',
 ];
 
-export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
+const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
   open,
   onOpenChange,
   product,
@@ -367,124 +368,123 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
   const totalAfterUpdate = mode === 'set_exact' ? exactCount : currentStock + newQuantity;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-            <div className="flex-1">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <div className="flex-1">
-                  <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span>Update Product: {product.name}</span>
-                    <Badge variant="secondary" className="w-fit">
-                      Current Stock: {currentStock} {product.uom_purchase || 'units'}
-                    </Badge>
-                  </DialogTitle>
-                  <DialogDescription className="mt-1">
-                    Add inventory quantity and update product information
-                  </DialogDescription>
-                </div>
-                {onEnhance && (
-                  <Button 
-                    onClick={handleEnhance}
-                    disabled={isEnhancing}
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-2 w-fit"
-                  >
-                    {isEnhancing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Enhancing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        AI Enhance
-                      </>
-                    )}
-                  </Button>
-                )}
+    <>
+      <DialogHeader>
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="flex-1">
+                <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span>Update Product: {product.name}</span>
+                  <Badge variant="secondary" className="w-fit">
+                    Current Stock: {currentStock} {product.uom_purchase || 'units'}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="mt-1">
+                  Add inventory quantity and update product information
+                </DialogDescription>
               </div>
+              {onEnhance && (
+                <Button 
+                  onClick={handleEnhance}
+                  disabled={isEnhancing}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2 w-fit"
+                >
+                  {isEnhancing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Enhancing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      AI Enhance
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
-            {product.image_url || imageUrl ? (
-              <div className="flex-shrink-0">
-                <img 
-                  src={imageUrl || product.image_url} 
-                  alt={product.name}
-                  className="w-24 h-24 object-cover rounded-lg border border-border"
-                />
-              </div>
-            ) : null}
           </div>
-        </DialogHeader>
+          {product.image_url || imageUrl ? (
+            <div className="flex-shrink-0">
+              <img 
+                src={imageUrl || product.image_url} 
+                alt={product.name}
+                className="w-24 h-24 object-cover rounded-lg border border-border"
+              />
+            </div>
+          ) : null}
+        </div>
+      </DialogHeader>
 
-        {/* AI Enhancement Suggestions */}
-        {enhancedData && Object.keys(enhancedData).some(key => enhancedData[key] && key !== 'nutritionalInfo' && key !== 'ingredients' && key !== 'packageSize' && key !== 'manufacturer') && (
-          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-blue-900">
-                <Sparkles className="h-5 w-5" />
-                AI Enhancement Suggestions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {enhancedData.description && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-gray-700">Description</div>
-                    <div className="text-sm mt-1 text-gray-600">{enhancedData.description}</div>
-                  </div>
-                  <Button
-                    onClick={() => applyEnhancedField('description', enhancedData.description)}
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Apply
-                  </Button>
+      {/* AI Enhancement Suggestions */}
+      {enhancedData && Object.keys(enhancedData).some(key => enhancedData[key] && key !== 'nutritionalInfo' && key !== 'ingredients' && key !== 'packageSize' && key !== 'manufacturer') && (
+        <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-blue-900">
+              <Sparkles className="h-5 w-5" />
+              AI Enhancement Suggestions
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {enhancedData.description && (
+              <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-700">Description</div>
+                  <div className="text-sm mt-1 text-gray-600">{enhancedData.description}</div>
                 </div>
-              )}
-              {enhancedData.brand && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-gray-700">Brand</div>
-                    <div className="text-sm mt-1 text-gray-600">{enhancedData.brand}</div>
-                  </div>
-                  <Button
-                    onClick={() => applyEnhancedField('brand', enhancedData.brand)}
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Apply
-                  </Button>
+                <Button
+                  onClick={() => applyEnhancedField('description', enhancedData.description)}
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Apply
+                </Button>
+              </div>
+            )}
+            {enhancedData.brand && (
+              <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-700">Brand</div>
+                  <div className="text-sm mt-1 text-gray-600">{enhancedData.brand}</div>
                 </div>
-              )}
-              {enhancedData.category && (
-                <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-gray-700">Category</div>
-                    <div className="text-sm mt-1 text-gray-600">{enhancedData.category}</div>
-                  </div>
-                  <Button
-                    onClick={() => applyEnhancedField('category', enhancedData.category)}
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Apply
-                  </Button>
+                <Button
+                  onClick={() => applyEnhancedField('brand', enhancedData.brand)}
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Apply
+                </Button>
+              </div>
+            )}
+            {enhancedData.category && (
+              <div className="flex flex-col sm:flex-row gap-2 p-3 bg-white rounded-lg border">
+                <div className="flex-1">
+                  <div className="font-medium text-sm text-gray-700">Category</div>
+                  <div className="text-sm mt-1 text-gray-600">{enhancedData.category}</div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                <Button
+                  onClick={() => applyEnhancedField('category', enhancedData.category)}
+                  size="sm"
+                  variant="outline"
+                  className="w-fit"
+                >
+                  <CheckCircle className="h-4 w-4 mr-1" />
+                  Apply
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
             {/* Quantity Section */}
             <Card>
               <CardHeader>
@@ -1260,9 +1260,8 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
                 Update Product
               </Button>
             </div>
-          </form>
-        </Form>
-      </DialogContent>
+        </form>
+      </Form>
 
       {/* Price Update Dialog */}
       <Dialog open={priceUpdateDialog.open} onOpenChange={(open) => setPriceUpdateDialog({ ...priceUpdateDialog, open })}>
@@ -1365,6 +1364,22 @@ export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = ({
           </div>
         </DialogContent>
       </Dialog>
-    </Dialog>
+    </>
   );
 };
+
+export const ProductUpdateDialog: React.FC<ProductUpdateDialogProps> = (props) => (
+  <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+      <ProductUpdateContent {...props} />
+    </DialogContent>
+  </Dialog>
+);
+
+export const ProductUpdateSheet: React.FC<ProductUpdateDialogProps> = (props) => (
+  <Sheet open={props.open} onOpenChange={props.onOpenChange}>
+    <SheetContent side="right" className="w-full sm:max-w-2xl lg:max-w-3xl overflow-y-auto">
+      <ProductUpdateContent {...props} />
+    </SheetContent>
+  </Sheet>
+);

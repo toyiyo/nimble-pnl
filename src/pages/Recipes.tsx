@@ -3,7 +3,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useRecipes } from '@/hooks/useRecipes';
-import { useProducts } from '@/hooks/useProducts';
+import { useProducts, Product } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,7 @@ import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
 import { RecipeSuggestions } from '@/components/RecipeSuggestions';
 import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
 import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductionDialog';
+import { ProductUpdateSheet } from '@/components/ProductUpdateDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
@@ -41,7 +42,7 @@ export default function Recipes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { recipes, loading, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
-  const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
+  const { products, updateProductWithQuantity } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -56,11 +57,26 @@ export default function Recipes() {
   const [showAutoSettings, setShowAutoSettings] = useState(false);
   const [initialPosItemName, setInitialPosItemName] = useState<string | undefined>();
   const [newProductId, setNewProductId] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'cost' | 'salePrice' | 'margin' | 'created'>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showOnlyWarnings, setShowOnlyWarnings] = useState(false);
 
   const { setupAutoDeduction } = useAutomaticInventoryDeduction();
+
+  const handleInventoryUpdate = async (updates: Partial<Product>, _quantityToAdd: number) => {
+    if (!editingProduct) return;
+    const currentStock = editingProduct.current_stock || 0;
+    const finalStock = updates.current_stock ?? currentStock;
+    await updateProductWithQuantity(
+      editingProduct.id,
+      updates,
+      currentStock,
+      finalStock,
+      'adjustment',
+      'Inventory update from recipes'
+    );
+  };
 
   // Check if we navigated here with a POS item to create a recipe for
   useEffect(() => {
@@ -453,16 +469,19 @@ export default function Recipes() {
           setCreateFromBasePayload(null);
         }}
         restaurantId={selectedRestaurant?.restaurant_id}
+        products={products}
         onRecipeUpdated={fetchRecipes}
         initialPosItemName={initialPosItemName}
         prefill={createFromBasePayload?.prefill}
         basedOn={createFromBasePayload?.basedOn}
+        onEditProduct={setEditingProduct}
       />
 
       <RecipeDialog
         isOpen={!!editingRecipe}
         onClose={() => setEditingRecipe(null)}
         restaurantId={selectedRestaurant?.restaurant_id}
+        products={products}
         recipe={editingRecipe}
         onRecipeUpdated={fetchRecipes}
         onCreateFromBase={(recipe) => {
@@ -471,6 +490,7 @@ export default function Recipes() {
           setCreateFromBaseRecipeId(recipe.id);
           setIsFromExistingOpen(true);
         }}
+        onEditProduct={setEditingProduct}
       />
 
       <DeleteRecipeDialog
@@ -478,6 +498,17 @@ export default function Recipes() {
         onClose={() => setDeletingRecipe(null)}
         recipe={deletingRecipe}
       />
+
+      {editingProduct && (
+        <ProductUpdateSheet
+          open={!!editingProduct}
+          onOpenChange={(open) => {
+            if (!open) setEditingProduct(null);
+          }}
+          product={editingProduct}
+          onUpdate={handleInventoryUpdate}
+        />
+      )}
     </div>
   );
 }

@@ -38,7 +38,8 @@ export function RecipeIngredientItem({
   const productField = control._getWatch(`ingredients.${index}.product_id`);
   const quantityField = control._getWatch(`ingredients.${index}.quantity`);
   const unitField = control._getWatch(`ingredients.${index}.unit`);
-  const selectedProduct = products.find(p => p.id === productField);
+  const safeProducts = products ?? [];
+  const selectedProduct = safeProducts.find(p => p.id === productField);
   
   // Check for conversion issues
   const conversionIssue = useMemo(() => {

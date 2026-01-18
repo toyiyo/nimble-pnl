@@ -69,7 +69,7 @@ interface RecipeDialogProps {
   onEditProduct?: (product: Product) => void;
 }
 
-export function RecipeDialog({ isOpen, onClose, restaurantId, products, recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase, onEditProduct }: RecipeDialogProps) {
+export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase, onEditProduct }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
   const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
   const navigate = useNavigate();

@@ -54,6 +54,7 @@ import {
   ReceiptStyleView,
   ManualTimelineEditor,
   MobileTimeEntry,
+  TimePunchUploadSheet,
 } from '@/components/time-tracking';
 import { StatusSummary, KioskModeCard, EmployeePinsCard } from '@/components/time-clock';
 
@@ -75,6 +76,7 @@ const TimePunchesManager = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [visualizationMode, setVisualizationMode] = useState<VisualizationMode>('manual');
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [punchToDelete, setPunchToDelete] = useState<TimePunch | null>(null);
@@ -550,6 +552,27 @@ const TimePunchesManager = () => {
         anomalies={processedData.totalAnomalies}
         incompleteSessions={incompleteSessions.length}
       />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-1 rounded-lg border bg-muted/30 p-1">
+          <Button
+            variant={visualizationMode === 'manual' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setVisualizationMode('manual');
+              setViewMode('day');
+            }}
+          >
+            Manual Entry
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setUploadOpen(true)}>
+            Upload Punches
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/integrations')}>
+            POS Sync
+          </Button>
+        </div>
+      </div>
 
       {/* Section 2: Primary Workspace - Daily manager work */}
       <Card>
@@ -1123,6 +1146,20 @@ const TimePunchesManager = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TimePunchUploadSheet
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        restaurantId={restaurantId}
+        employees={employees}
+        onImportComplete={(summary) => {
+          setVisualizationMode('manual');
+          setViewMode('day');
+          if (summary.firstPunchDate) {
+            setCurrentDate(summary.firstPunchDate);
+          }
+        }}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!punchToDelete} onOpenChange={() => setPunchToDelete(null)}>

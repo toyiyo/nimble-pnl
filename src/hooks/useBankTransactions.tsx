@@ -46,6 +46,8 @@ export interface BankTransaction {
   ai_confidence: 'high' | 'medium' | 'low' | null;
   ai_reasoning: string | null;
   notes: string | null;
+  receipt_id: string | null;
+  expense_invoice_upload_id: string | null;
   created_at: string;
   updated_at: string;
   connected_bank?: {
@@ -64,6 +66,11 @@ export interface BankTransaction {
   supplier?: {
     id: string;
     name: string;
+  } | null;
+  expense_invoice_upload?: {
+    id: string;
+    raw_file_url: string | null;
+    file_name: string | null;
   } | null;
 }
 
@@ -98,6 +105,11 @@ const buildBaseQuery = (restaurantId: string) =>
       supplier:suppliers(
         id,
         name
+      ),
+      expense_invoice_upload:expense_invoice_uploads(
+        id,
+        raw_file_url,
+        file_name
       )
     `, { count: 'exact' })
     .eq('restaurant_id', restaurantId);

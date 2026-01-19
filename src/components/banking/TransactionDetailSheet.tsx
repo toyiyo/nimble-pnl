@@ -345,6 +345,32 @@ export function TransactionDetailSheet({
 
           <Separator />
 
+          {/* Attachment Rail */}
+          <div className="space-y-2">
+            <AttachmentRail
+              attachments={attachments}
+              onAdd={() => fileInputRef.current?.click()}
+              onRemove={(id) => removeAttachment(id)}
+              onView={setViewerAttachment}
+              showInheritedLabel={transaction.expense_invoice_upload_id ? "From linked expense" : undefined}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  uploadAttachment(file);
+                  e.target.value = '';
+                }
+              }}
+            />
+          </div>
+
+          <Separator />
+
           {/* Edit Form - Only show if not split */}
           {!transaction.is_split && (
             <div className="space-y-4">

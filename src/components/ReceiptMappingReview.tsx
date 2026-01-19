@@ -12,8 +12,9 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { ReceiptStatusBar, ReceiptItemRow, ReceiptBatchActions } from '@/components/receipt';
+import { ReceiptImagePanel } from '@/components/receipt-import/ReceiptImagePanel';
 import { 
-  Package, Image, FileText, Download, CalendarIcon, 
+  Package, CalendarIcon, 
   AlertCircle, CheckCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
@@ -474,53 +475,15 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   return (
     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Receipt Image/PDF Column */}
+      {/* Receipt Image/PDF Column - Sticky with zoom/pan */}
       {receiptDetails?.raw_file_url && (
-        <Card className="lg:col-span-1 lg:sticky lg:top-4 lg:h-fit">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              {isPDF ? <FileText className="h-4 w-4" /> : <Image className="h-4 w-4" />}
-              Receipt
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {imageError ? (
-              <div className="border rounded-lg p-6 text-center space-y-3">
-                <AlertCircle className="h-10 w-10 mx-auto text-muted-foreground" />
-                <p className="text-sm font-medium">Unable to display</p>
-                {fileBlobUrl && (
-                  <a
-                    href={fileBlobUrl}
-                    download={receiptDetails.file_name || 'receipt'}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border rounded-md hover:bg-accent"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download
-                  </a>
-                )}
-              </div>
-            ) : isPDF ? (
-              <object
-                data={fileBlobUrl || undefined}
-                type="application/pdf"
-                className="w-full h-[500px] rounded-lg border"
-                onError={() => setImageError(true)}
-              >
-                <div className="border rounded-lg p-6 text-center">
-                  <FileText className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm">PDF preview not available</p>
-                </div>
-              </object>
-            ) : (
-              <img 
-                src={fileBlobUrl || undefined} 
-                alt="Receipt" 
-                className="w-full h-auto rounded-lg border"
-                onError={() => setImageError(true)}
-              />
-            )}
-          </CardContent>
-        </Card>
+        <ReceiptImagePanel
+          fileUrl={fileBlobUrl}
+          fileName={receiptDetails?.file_name}
+          isPDF={isPDF}
+          className="lg:col-span-1"
+          onError={() => setImageError(true)}
+        />
       )}
       
       {/* Main Content Column */}

@@ -1,6 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Download, RotateCw, ZoomIn, ZoomOut, AlertCircle, Copy, RefreshCw } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useState, useCallback, useEffect } from 'react';
+import { X, Download, AlertCircle, Copy, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,6 +9,7 @@ import {
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { ImageViewer } from './ImageViewer';
 import type { Attachment } from './AttachmentThumbnail';
 
 interface UsedByItem {
@@ -34,18 +34,13 @@ export function AttachmentViewer({
   usedBy = [],
   onDownload,
 }: AttachmentViewerProps) {
-  const [rotation, setRotation] = useState(0);
-  const [scale, setScale] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   // Reset state when attachment changes
   useEffect(() => {
-    setRotation(0);
-    setScale(1);
     setIsLoading(true);
     setPdfBlobUrl(null);
     setPdfError(null);
@@ -87,10 +82,6 @@ export function AttachmentViewer({
 
     return () => {
       cancelled = true;
-      // Clean up blob URL on unmount
-      if (pdfBlobUrl) {
-        URL.revokeObjectURL(pdfBlobUrl);
-      }
     };
   }, [attachment?.id, attachment?.storagePath, attachment?.fileType, isOpen]);
 
@@ -102,16 +93,13 @@ export function AttachmentViewer({
     }
   }, [isOpen, pdfBlobUrl]);
 
-  const handleRotate = useCallback(() => {
-    setRotation((prev) => (prev + 90) % 360);
-  }, []);
-
-  const handleZoomIn = useCallback(() => {
-    setScale((prev) => Math.min(prev + 0.25, 3));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setScale((prev) => Math.max(prev - 0.25, 0.5));
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
   }, []);
 
   const handleDownload = useCallback(async () => {
@@ -165,7 +153,6 @@ export function AttachmentViewer({
       setIsLoading(true);
       setPdfError(null);
       setPdfBlobUrl(null);
-      // Force re-run the effect by updating state
       const load = async () => {
         try {
           const { data, error } = await supabase.storage
@@ -189,13 +176,6 @@ export function AttachmentViewer({
     }
   }, [attachment]);
 
-  // Handle scroll zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setScale((prev) => Math.max(0.5, Math.min(3, prev + delta)));
-  }, []);
-
   if (!attachment) return null;
 
   const isPdf = attachment.fileType === 'pdf';
@@ -216,40 +196,6 @@ export function AttachmentViewer({
             {attachment.fileName}
           </div>
           <div className="flex items-center gap-2">
-            {!isPdf && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={handleZoomOut}
-                  aria-label="Zoom out"
-                >
-                  <ZoomOut className="h-5 w-5" />
-                </Button>
-                <span className="text-white/60 text-sm min-w-[3rem] text-center">
-                  {Math.round(scale * 100)}%
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={handleZoomIn}
-                  aria-label="Zoom in"
-                >
-                  <ZoomIn className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-white/80 hover:text-white hover:bg-white/10"
-                  onClick={handleRotate}
-                  aria-label="Rotate"
-                >
-                  <RotateCw className="h-5 w-5" />
-                </Button>
-              </>
-            )}
             <Button
               variant="ghost"
               size="icon"
@@ -272,11 +218,7 @@ export function AttachmentViewer({
         </div>
 
         {/* Main content area */}
-        <div
-          ref={containerRef}
-          className="flex-1 flex items-center justify-center overflow-auto p-8 pt-16"
-          onWheel={!isPdf ? handleWheel : undefined}
-        >
+        <div className="flex-1 flex items-center justify-center overflow-auto p-8 pt-16">
           {isPdf ? (
             <div className="w-full h-full flex flex-col items-center justify-center">
               {isLoading && (
@@ -337,27 +279,20 @@ export function AttachmentViewer({
               )}
             </div>
           ) : (
-            <div
-              className="relative transition-transform duration-200"
-              style={{
-                transform: `rotate(${rotation}deg) scale(${scale})`,
-                transformOrigin: 'center center',
-              }}
-            >
-              {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-white/30 border-t-white" />
-                </div>
-              )}
-              <img
+            <div className="w-full h-full max-w-4xl max-h-[80vh]">
+              <ImageViewer
                 src={attachment.fileUrl}
                 alt={attachment.fileName}
-                className={cn(
-                  'max-w-full max-h-[70vh] object-contain rounded-lg shadow-2xl',
-                  isLoading && 'opacity-0'
-                )}
-                onLoad={() => setIsLoading(false)}
-                draggable={false}
+                className="w-full h-full"
+                showControls
+                controlsPosition="overlay"
+                onError={() => {
+                  toast({
+                    title: 'Failed to load image',
+                    description: 'The image could not be displayed.',
+                    variant: 'destructive',
+                  });
+                }}
               />
             </div>
           )}

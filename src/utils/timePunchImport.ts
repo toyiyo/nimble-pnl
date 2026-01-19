@@ -118,6 +118,7 @@ export interface TimePunchInsert {
 export interface EmployeeTipInsert {
   restaurant_id: string;
   employee_id: string;
+  shift_id?: string | null;
   tip_amount: number;
   tip_source: string;
   tip_date: string;

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Download, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, Download, RotateCw, ZoomIn, ZoomOut, AlertCircle, Copy, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import type { Attachment } from './AttachmentThumbnail';
 
 interface UsedByItem {
@@ -35,14 +37,70 @@ export function AttachmentViewer({
   const [rotation, setRotation] = useState(0);
   const [scale, setScale] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   // Reset state when attachment changes
   useEffect(() => {
     setRotation(0);
     setScale(1);
     setIsLoading(true);
+    setPdfBlobUrl(null);
+    setPdfError(null);
   }, [attachment?.id]);
+
+  // Load PDF as blob to bypass domain blocking
+  useEffect(() => {
+    if (!attachment || attachment.fileType !== 'pdf' || !isOpen) return;
+
+    let cancelled = false;
+
+    const loadPdfBlob = async () => {
+      setIsLoading(true);
+      setPdfError(null);
+
+      try {
+        const { data, error } = await supabase.storage
+          .from('receipt-images')
+          .download(attachment.storagePath);
+
+        if (cancelled) return;
+
+        if (error || !data) {
+          throw new Error('Failed to load PDF');
+        }
+
+        const blobUrl = URL.createObjectURL(data);
+        setPdfBlobUrl(blobUrl);
+        setIsLoading(false);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error loading PDF:', error);
+        setPdfError('Unable to load PDF. The file may be blocked by your browser or network.');
+        setIsLoading(false);
+      }
+    };
+
+    loadPdfBlob();
+
+    return () => {
+      cancelled = true;
+      // Clean up blob URL on unmount
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [attachment?.id, attachment?.storagePath, attachment?.fileType, isOpen]);
+
+  // Clean up blob URL when dialog closes
+  useEffect(() => {
+    if (!isOpen && pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
+  }, [isOpen, pdfBlobUrl]);
 
   const handleRotate = useCallback(() => {
     setRotation((prev) => (prev + 90) % 360);
@@ -56,14 +114,80 @@ export function AttachmentViewer({
     setScale((prev) => Math.max(prev - 0.25, 0.5));
   }, []);
 
-  const handleDownload = useCallback(() => {
-    if (attachment && onDownload) {
+  const handleDownload = useCallback(async () => {
+    if (!attachment) return;
+
+    if (onDownload) {
       onDownload(attachment);
-    } else if (attachment) {
-      // Fallback: open in new tab
-      window.open(attachment.fileUrl, '_blank');
+      return;
     }
-  }, [attachment, onDownload]);
+
+    // Fallback: blob-based download
+    try {
+      const { data, error } = await supabase.storage
+        .from('receipt-images')
+        .download(attachment.storagePath);
+
+      if (error || !data) {
+        throw new Error('Failed to download');
+      }
+
+      const blobUrl = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = attachment.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast({
+        title: 'Download failed',
+        description: 'Unable to download the file.',
+        variant: 'destructive',
+      });
+    }
+  }, [attachment, onDownload, toast]);
+
+  const handleCopyLink = useCallback(() => {
+    if (attachment?.fileUrl) {
+      navigator.clipboard.writeText(attachment.fileUrl);
+      toast({
+        title: 'Link copied',
+        description: 'Secure link copied to clipboard.',
+      });
+    }
+  }, [attachment?.fileUrl, toast]);
+
+  const handleRetry = useCallback(() => {
+    if (attachment) {
+      setIsLoading(true);
+      setPdfError(null);
+      setPdfBlobUrl(null);
+      // Force re-run the effect by updating state
+      const load = async () => {
+        try {
+          const { data, error } = await supabase.storage
+            .from('receipt-images')
+            .download(attachment.storagePath);
+
+          if (error || !data) {
+            throw new Error('Failed to load PDF');
+          }
+
+          const blobUrl = URL.createObjectURL(data);
+          setPdfBlobUrl(blobUrl);
+          setIsLoading(false);
+        } catch (error) {
+          console.error('Error loading PDF:', error);
+          setPdfError('Unable to load PDF. The file may be blocked by your browser or network.');
+          setIsLoading(false);
+        }
+      };
+      load();
+    }
+  }, [attachment]);
 
   // Handle scroll zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -156,16 +280,61 @@ export function AttachmentViewer({
           {isPdf ? (
             <div className="w-full h-full flex flex-col items-center justify-center">
               {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center z-20">
+                <div className="flex flex-col items-center justify-center gap-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-white/30 border-t-white" />
+                  <p className="text-white/60 text-sm">Loading PDF...</p>
                 </div>
               )}
-              <iframe
-                src={`${attachment.fileUrl}#toolbar=1&navpanes=0`}
-                className="w-full h-[calc(100vh-120px)] rounded-lg bg-white"
-                title={attachment.fileName}
-                onLoad={() => setIsLoading(false)}
-              />
+              
+              {pdfError && (
+                <div className="flex flex-col items-center justify-center gap-4 max-w-md text-center p-6 rounded-lg bg-white/5 border border-white/10">
+                  <AlertCircle className="h-12 w-12 text-amber-400" />
+                  <div>
+                    <h3 className="text-white text-lg font-medium mb-2">Unable to display PDF</h3>
+                    <p className="text-white/60 text-sm mb-4">{pdfError}</p>
+                    <p className="text-white/40 text-xs">
+                      This may be caused by an ad blocker or network policy blocking access.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-white/20 text-white hover:bg-white/10"
+                      onClick={handleRetry}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Retry
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-white/20 text-white hover:bg-white/10"
+                      onClick={handleDownload}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-white/20 text-white hover:bg-white/10"
+                      onClick={handleCopyLink}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Link
+                    </Button>
+                  </div>
+                </div>
+              )}
+              
+              {pdfBlobUrl && !pdfError && (
+                <iframe
+                  src={`${pdfBlobUrl}#toolbar=1&navpanes=0`}
+                  className="w-full h-[calc(100vh-120px)] rounded-lg bg-white"
+                  title={attachment.fileName}
+                />
+              )}
             </div>
           ) : (
             <div

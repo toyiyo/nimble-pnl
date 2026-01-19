@@ -86,6 +86,7 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
               fileName,
               fileUrl: signedUrlData.signedUrl,
               fileType: isPdf ? 'pdf' : 'image',
+              storagePath: upload.raw_file_url,
               isInherited: context?.type === 'bank_transaction' && !!linkedExpenseId,
               inheritedFrom: context?.type === 'bank_transaction' ? 'linked expense' : undefined,
             });
@@ -199,6 +200,7 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
           fileName: file.name,
           fileUrl: signedUrlData?.signedUrl || '',
           fileType: isPdf ? 'pdf' : 'image',
+          storagePath: filePath,
         };
       } catch (error) {
         console.error('Error uploading attachment:', error);
@@ -257,23 +259,30 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
     },
   });
 
-  // Download an attachment
+  // Download an attachment using blob to avoid domain blocking
   const downloadAttachment = useCallback(
     async (attachment: Attachment) => {
       try {
-        // For images, we can use the signed URL directly
-        if (attachment.fileType === 'image') {
-          const link = document.createElement('a');
-          link.href = attachment.fileUrl;
-          link.download = attachment.fileName;
-          link.target = '_blank';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } else {
-          // For PDFs, open in new tab
-          window.open(attachment.fileUrl, '_blank');
+        // Use blob-based download to avoid domain blocking
+        const { data, error } = await supabase.storage
+          .from('receipt-images')
+          .download(attachment.storagePath);
+
+        if (error || !data) {
+          throw new Error('Failed to download file');
         }
+
+        // Create blob URL and trigger download
+        const blobUrl = URL.createObjectURL(data);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = attachment.fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up blob URL
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
       } catch (error) {
         console.error('Error downloading attachment:', error);
         toast({

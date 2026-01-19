@@ -14,6 +14,7 @@ export interface Attachment {
   fileName: string;
   fileUrl: string;
   fileType: 'image' | 'pdf';
+  storagePath: string; // Supabase Storage path for blob-based fallback
   isInherited?: boolean;
   inheritedFrom?: string;
 }

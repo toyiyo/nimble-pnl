@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,8 +18,10 @@ import {
 } from '@/components/ui/alert-dialog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
 import { useSuppliers } from '@/hooks/useSuppliers';
+import { useAttachments } from '@/hooks/useAttachments';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
+import { AttachmentRail, AttachmentViewer, type Attachment } from '@/components/attachments';
 import { useToast } from '@/hooks/use-toast';
 import type { PendingOutflow, PaymentMethod, UpdatePendingOutflowInput } from '@/types/pending-outflows';
 import { Loader2, Trash2 } from 'lucide-react';
@@ -35,7 +37,21 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
   const { toast } = useToast();
   const { suppliers, createSupplier } = useSuppliers();
   const { updatePendingOutflow, deletePendingOutflow } = usePendingOutflowMutations();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Attachment handling
+  const {
+    attachments,
+    isLoading: attachmentsLoading,
+    isUploading,
+    uploadAttachment,
+    removeAttachment,
+    downloadAttachment,
+  } = useAttachments({
+    context: expense ? { type: 'expense', expenseId: expense.id } : null,
+  });
+
+  const [viewerAttachment, setViewerAttachment] = useState<Attachment | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [pendingVendorName, setPendingVendorName] = useState<string>('');
   const [formData, setFormData] = useState<UpdatePendingOutflowInput>({
@@ -215,6 +231,30 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
           </AlertDialog>
         </SheetHeader>
 
+        {/* Attachment Rail */}
+        <div className="mt-4">
+          <AttachmentRail
+            attachments={attachments}
+            onAdd={() => fileInputRef.current?.click()}
+            onRemove={removeAttachment}
+            onView={setViewerAttachment}
+            isReconciled={!!expense?.linked_bank_transaction_id}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                await uploadAttachment(file);
+                e.target.value = '';
+              }
+            }}
+          />
+        </div>
+
         <div className="mt-6 space-y-6">
           <div className="space-y-4">
             {/* Vendor */}
@@ -372,6 +412,19 @@ export function EditExpenseSheet({ expense, open, onOpenChange }: EditExpenseShe
             </Button>
           </div>
         </div>
+
+        {/* Attachment Viewer */}
+        <AttachmentViewer
+          attachment={viewerAttachment}
+          isOpen={!!viewerAttachment}
+          onClose={() => setViewerAttachment(null)}
+          onDownload={downloadAttachment}
+          usedBy={expense ? [{
+            type: 'expense',
+            label: expense.vendor_name,
+            amount: formatCurrency(expense.amount),
+          }] : []}
+        />
       </SheetContent>
     </Sheet>
   );

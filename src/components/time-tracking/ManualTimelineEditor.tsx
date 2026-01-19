@@ -349,13 +349,14 @@ const getBlockDurationMinutes = (block: TimeBlock) => {
             punch_time: block.startTime.toISOString(),
           });
         } else {
-          createdClockIn = await createPunch.mutateAsync({
+          const result = await createPunch.mutateAsync({
             restaurant_id: restaurantId,
             employee_id: employeeId,
             punch_type: 'clock_in',
             punch_time: block.startTime.toISOString(),
             notes: 'Manual entry by manager',
           });
+          createdClockIn = result as unknown as TimePunch;
         }
       }
 
@@ -366,13 +367,14 @@ const getBlockDurationMinutes = (block: TimeBlock) => {
             punch_time: block.endTime.toISOString(),
           });
         } else {
-          createdClockOut = await createPunch.mutateAsync({
+          const result = await createPunch.mutateAsync({
             restaurant_id: restaurantId,
             employee_id: employeeId,
             punch_type: 'clock_out',
             punch_time: block.endTime.toISOString(),
             notes: 'Manual entry by manager',
           });
+          createdClockOut = result as unknown as TimePunch;
         }
       }
 

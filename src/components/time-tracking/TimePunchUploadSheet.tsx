@@ -300,7 +300,7 @@ export const TimePunchUploadSheet = ({
         },
         {
           onSuccess: (data) => {
-            setAvailableEmployees(prev => [data, ...prev]);
+            setAvailableEmployees(prev => [data as Employee, ...prev]);
             handleMapEmployee(name, data.id);
           },
         }

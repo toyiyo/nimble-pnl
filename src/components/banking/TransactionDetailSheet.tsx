@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BankTransaction, useCategorizeTransaction } from "@/hooks/useBankTransactions";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { useAttachments } from "@/hooks/useAttachments";
 import {
   Sheet,
   SheetContent,
@@ -9,7 +10,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -25,6 +25,7 @@ import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelec
 import { useSuppliers } from "@/hooks/useSuppliers";
 import { toast } from "sonner";
 import { EnhancedCategoryRulesDialog } from "./EnhancedCategoryRulesDialog";
+import { AttachmentRail, AttachmentViewer, type Attachment } from "@/components/attachments";
 
 interface TransactionDetailSheetProps {
   transaction: BankTransaction;
@@ -50,6 +51,8 @@ export function TransactionDetailSheet({
     transaction.supplier_id
   );
   const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [viewerAttachment, setViewerAttachment] = useState<Attachment | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when transaction changes
   useEffect(() => {
@@ -64,6 +67,18 @@ export function TransactionDetailSheet({
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || '');
   const { formatTransactionDate } = useDateFormat();
   const { suppliers, createSupplier } = useSuppliers();
+
+  // Attachment handling - show attachments from linked expense if available
+  const {
+    attachments,
+    isUploading,
+    uploadAttachment,
+    removeAttachment,
+    downloadAttachment,
+  } = useAttachments({
+    context: { type: 'bank_transaction', transactionId: transaction.id },
+    linkedExpenseId: transaction.expense_invoice_upload_id ? undefined : undefined, // Could be enhanced to fetch linked expense
+  });
 
   // Fetch split details if transaction is split
   const { data: splits } = useQuery({
@@ -449,6 +464,18 @@ export function TransactionDetailSheet({
       onOpenChange={setShowRulesDialog}
       defaultTab="bank"
       prefilledRule={getPrefilledRuleData()}
+    />
+
+    <AttachmentViewer
+      attachment={viewerAttachment}
+      isOpen={!!viewerAttachment}
+      onClose={() => setViewerAttachment(null)}
+      onDownload={downloadAttachment}
+      usedBy={[{
+        type: 'bank_transaction',
+        label: transaction.merchant_name || transaction.description.substring(0, 30),
+        amount: formattedAmount,
+      }]}
     />
     </>
   );

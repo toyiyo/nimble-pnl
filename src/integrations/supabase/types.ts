@@ -433,8 +433,8 @@ export type Database = {
           created_at: string
           currency: string
           description: string
-          expense_invoice_upload_id: string | null
           excluded_reason: string | null
+          expense_invoice_upload_id: string | null
           id: string
           inventory_transaction_id: string | null
           is_categorized: boolean
@@ -474,8 +474,8 @@ export type Database = {
           created_at?: string
           currency?: string
           description: string
-          expense_invoice_upload_id?: string | null
           excluded_reason?: string | null
+          expense_invoice_upload_id?: string | null
           id?: string
           inventory_transaction_id?: string | null
           is_categorized?: boolean
@@ -515,8 +515,8 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string
-          expense_invoice_upload_id?: string | null
           excluded_reason?: string | null
+          expense_invoice_upload_id?: string | null
           id?: string
           inventory_transaction_id?: string | null
           is_categorized?: boolean
@@ -563,17 +563,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "bank_transactions_inventory_transaction_id_fkey"
-            columns: ["inventory_transaction_id"]
-            isOneToOne: false
-            referencedRelation: "inventory_transactions"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "bank_transactions_expense_invoice_upload_id_fkey"
             columns: ["expense_invoice_upload_id"]
             isOneToOne: false
             referencedRelation: "expense_invoice_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_inventory_transaction_id_fkey"
+            columns: ["inventory_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_transactions"
             referencedColumns: ["id"]
           },
           {

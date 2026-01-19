@@ -42,9 +42,12 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
     return linkedExpenseId || null;
   }, [context, linkedExpenseId]);
 
+  // For bank transactions, also fetch attachments linked directly to the transaction
+  const transactionId = context?.type === 'bank_transaction' ? context.transactionId : null;
+
   // Fetch attachments for the given expense
-  const { data: rawAttachments = [], isLoading } = useQuery({
-    queryKey: ['attachments', expenseIdToFetch, restaurantId],
+  const { data: rawExpenseAttachments = [], isLoading: isLoadingExpense } = useQuery({
+    queryKey: ['attachments', 'expense', expenseIdToFetch, restaurantId],
     queryFn: async () => {
       if (!expenseIdToFetch || !restaurantId) return [];
 
@@ -62,6 +65,48 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
+
+  // Fetch attachments linked directly to a bank transaction
+  const { data: rawTransactionAttachments = [], isLoading: isLoadingTransaction } = useQuery({
+    queryKey: ['attachments', 'transaction', transactionId, restaurantId],
+    queryFn: async () => {
+      if (!transactionId || !restaurantId) return [];
+
+      // Get the bank transaction's expense_invoice_upload_id
+      const { data: transaction, error: txError } = await supabase
+        .from('bank_transactions')
+        .select('expense_invoice_upload_id')
+        .eq('id', transactionId)
+        .single();
+
+      if (txError || !transaction?.expense_invoice_upload_id) return [];
+
+      // Fetch the linked attachment
+      const { data, error } = await supabase
+        .from('expense_invoice_uploads')
+        .select('id, raw_file_url, file_name, status, pending_outflow_id')
+        .eq('id', transaction.expense_invoice_upload_id)
+        .eq('restaurant_id', restaurantId)
+        .not('raw_file_url', 'is', null);
+
+      if (error) throw error;
+      return data as ExpenseInvoiceUpload[];
+    },
+    enabled: !!transactionId && !!restaurantId,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+  });
+
+  // Combine attachments from both sources, removing duplicates
+  const rawAttachments = useMemo(() => {
+    const combined = [...rawExpenseAttachments, ...rawTransactionAttachments];
+    const seen = new Set<string>();
+    return combined.filter((a) => {
+      if (seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
+  }, [rawExpenseAttachments, rawTransactionAttachments]);
 
   // Convert raw attachments to Attachment format with signed URLs
   const { data: attachments = [], isLoading: isLoadingUrls } = useQuery({
@@ -87,8 +132,8 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
               fileUrl: signedUrlData.signedUrl,
               fileType: isPdf ? 'pdf' : 'image',
               storagePath: upload.raw_file_url,
-              isInherited: context?.type === 'bank_transaction' && !!linkedExpenseId,
-              inheritedFrom: context?.type === 'bank_transaction' ? 'linked expense' : undefined,
+              isInherited: context?.type === 'bank_transaction' && !!upload.pending_outflow_id,
+              inheritedFrom: upload.pending_outflow_id ? 'linked expense' : undefined,
             });
           }
         } catch (error) {
@@ -182,6 +227,19 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
 
         if (invoiceError) throw invoiceError;
 
+        // For bank transactions, link the upload to the transaction
+        if (context.type === 'bank_transaction') {
+          const { error: linkError } = await supabase
+            .from('bank_transactions')
+            .update({ expense_invoice_upload_id: invoiceData.id })
+            .eq('id', context.transactionId);
+
+          if (linkError) {
+            console.error('Failed to link attachment to transaction:', linkError);
+            // Don't fail the upload, just log the error
+          }
+        }
+
         // Get signed URL for the uploaded file
         const { data: signedUrlData } = await supabase.storage
           .from('receipt-images')
@@ -189,6 +247,10 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
 
         // Invalidate queries to refresh the list
         queryClient.invalidateQueries({ queryKey: ['attachments'] });
+        // Also invalidate bank transactions query to reflect the new attachment
+        if (context.type === 'bank_transaction') {
+          queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+        }
 
         toast({
           title: 'Receipt uploaded',
@@ -295,9 +357,11 @@ export const useAttachments = ({ context, linkedExpenseId }: UseAttachmentsOptio
     [toast]
   );
 
+  const isLoading = isLoadingExpense || isLoadingTransaction || isLoadingUrls;
+
   return {
     attachments,
-    isLoading: isLoading || isLoadingUrls,
+    isLoading,
     isUploading,
     uploadAttachment,
     removeAttachment: removeAttachment.mutate,

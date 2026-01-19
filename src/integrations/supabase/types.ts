@@ -433,6 +433,7 @@ export type Database = {
           created_at: string
           currency: string
           description: string
+          expense_invoice_upload_id: string | null
           excluded_reason: string | null
           id: string
           inventory_transaction_id: string | null
@@ -473,6 +474,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description: string
+          expense_invoice_upload_id?: string | null
           excluded_reason?: string | null
           id?: string
           inventory_transaction_id?: string | null
@@ -513,6 +515,7 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string
+          expense_invoice_upload_id?: string | null
           excluded_reason?: string | null
           id?: string
           inventory_transaction_id?: string | null
@@ -564,6 +567,13 @@ export type Database = {
             columns: ["inventory_transaction_id"]
             isOneToOne: false
             referencedRelation: "inventory_transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_expense_invoice_upload_id_fkey"
+            columns: ["expense_invoice_upload_id"]
+            isOneToOne: false
+            referencedRelation: "expense_invoice_uploads"
             referencedColumns: ["id"]
           },
           {

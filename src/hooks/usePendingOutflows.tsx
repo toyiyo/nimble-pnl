@@ -139,6 +139,78 @@ export function usePendingOutflowMutations() {
       pendingOutflowId: string; 
       bankTransactionId: string;
     }) => {
+      // Fetch pending outflow with invoice uploads
+      const { data: pendingOutflow, error: fetchError } = await supabase
+        .from('pending_outflows')
+        .select(`
+          *,
+          expense_invoice_uploads(
+            id,
+            ai_category,
+            ai_confidence,
+            ai_reasoning
+          )
+        `)
+        .eq('id', pendingOutflowId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!pendingOutflow) throw new Error('Pending outflow not found');
+
+      // Fetch current bank transaction to merge notes
+      const { data: bankTransaction, error: btFetchError } = await supabase
+        .from('bank_transactions')
+        .select('notes, category_id, suggested_category_id')
+        .eq('id', bankTransactionId)
+        .single();
+
+      if (btFetchError) throw btFetchError;
+      if (!bankTransaction) throw new Error('Bank transaction not found');
+
+      // Prepare updates for bank transaction
+      const bankTransactionUpdates: any = {
+        is_categorized: true,
+        matched_at: new Date().toISOString(),
+      };
+
+      // Copy category_id if pending outflow has one and bank transaction doesn't
+      if (pendingOutflow.category_id && !bankTransaction.category_id) {
+        bankTransactionUpdates.category_id = pendingOutflow.category_id;
+      }
+
+      // Copy suggested_category_id from pending outflow's category as AI suggestion
+      if (pendingOutflow.category_id && !bankTransaction.suggested_category_id) {
+        bankTransactionUpdates.suggested_category_id = pendingOutflow.category_id;
+        // Set AI confidence and reasoning if available from invoice upload
+        const invoiceUpload = pendingOutflow.expense_invoice_uploads?.[0];
+        if (invoiceUpload) {
+          bankTransactionUpdates.ai_confidence = invoiceUpload.ai_confidence;
+          bankTransactionUpdates.ai_reasoning = invoiceUpload.ai_reasoning;
+        }
+      }
+
+      // Merge notes: append pending outflow notes to existing bank transaction notes
+      const mergedNotes = [bankTransaction.notes, pendingOutflow.notes]
+        .filter(Boolean)
+        .join('\n\n');
+      if (mergedNotes) {
+        bankTransactionUpdates.notes = mergedNotes;
+      }
+
+      // Link expense invoice upload if present
+      const invoiceUpload = pendingOutflow.expense_invoice_uploads?.[0];
+      if (invoiceUpload) {
+        bankTransactionUpdates.expense_invoice_upload_id = invoiceUpload.id;
+      }
+
+      // Update bank transaction
+      const { error: btError } = await supabase
+        .from('bank_transactions')
+        .update(bankTransactionUpdates)
+        .eq('id', bankTransactionId);
+
+      if (btError) throw btError;
+
       // Update pending outflow
       const { error: poError } = await supabase
         .from('pending_outflows')
@@ -150,17 +222,6 @@ export function usePendingOutflowMutations() {
         .eq('id', pendingOutflowId);
 
       if (poError) throw poError;
-
-      // Mark bank transaction as categorized
-      const { error: btError } = await supabase
-        .from('bank_transactions')
-        .update({
-          is_categorized: true,
-          matched_at: new Date().toISOString(),
-        })
-        .eq('id', bankTransactionId);
-
-      if (btError) throw btError;
 
       return { pendingOutflowId, bankTransactionId };
     },

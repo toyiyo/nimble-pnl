@@ -146,9 +146,10 @@ export function usePendingOutflowMutations() {
           *,
           expense_invoice_uploads(
             id,
-            ai_category,
-            ai_confidence,
-            ai_reasoning
+            raw_file_url,
+            file_name,
+            raw_ocr_data,
+            field_confidence
           )
         `)
         .eq('id', pendingOutflowId)
@@ -181,12 +182,7 @@ export function usePendingOutflowMutations() {
       // Copy suggested_category_id from pending outflow's category as AI suggestion
       if (pendingOutflow.category_id && !bankTransaction.suggested_category_id) {
         bankTransactionUpdates.suggested_category_id = pendingOutflow.category_id;
-        // Set AI confidence and reasoning if available from invoice upload
-        const invoiceUpload = pendingOutflow.expense_invoice_uploads?.[0];
-        if (invoiceUpload) {
-          bankTransactionUpdates.ai_confidence = invoiceUpload.ai_confidence;
-          bankTransactionUpdates.ai_reasoning = invoiceUpload.ai_reasoning;
-        }
+        // Note: AI confidence and reasoning would be set here if available from invoice processing
       }
 
       // Merge notes: append pending outflow notes to existing bank transaction notes

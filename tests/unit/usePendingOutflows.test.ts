@@ -55,9 +55,10 @@ describe('usePendingOutflowMutations', () => {
         notes: 'Expense notes',
         expense_invoice_uploads: [{
           id: 'upload-789',
-          ai_category: 'Office Supplies',
-          ai_confidence: 'high' as const,
-          ai_reasoning: 'Based on invoice content',
+          raw_file_url: 'https://example.com/file.pdf',
+          file_name: 'invoice.pdf',
+          raw_ocr_data: { ai_category: 'Office Supplies', ai_confidence: 'high', ai_reasoning: 'Based on invoice content' },
+          field_confidence: { vendor_name: 0.95, total_amount: 0.98 }
         }],
       };
 
@@ -129,8 +130,6 @@ describe('usePendingOutflowMutations', () => {
         matched_at: expect.any(String),
         category_id: 'cat-456', // copied from pending outflow
         suggested_category_id: 'cat-456', // copied as AI suggestion
-        ai_confidence: 'high',
-        ai_reasoning: 'Based on invoice content',
         notes: 'Bank notes\n\nExpense notes', // merged notes
         expense_invoice_upload_id: 'upload-789', // linked upload
       });

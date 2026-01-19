@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Download, RotateCw, ZoomIn, ZoomOut, FileText, ExternalLink } from 'lucide-react';
+import { X, Download, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -154,17 +154,18 @@ export function AttachmentViewer({
           onWheel={!isPdf ? handleWheel : undefined}
         >
           {isPdf ? (
-            <div className="flex flex-col items-center gap-4 text-white/80">
-              <FileText className="h-16 w-16" />
-              <p className="text-lg">{attachment.fileName}</p>
-              <Button
-                variant="outline"
-                className="border-white/20 text-white hover:bg-white/10"
-                onClick={handleDownload}
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Open PDF
-              </Button>
+            <div className="w-full h-full flex flex-col items-center justify-center">
+              {isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center z-20">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-white/30 border-t-white" />
+                </div>
+              )}
+              <iframe
+                src={`${attachment.fileUrl}#toolbar=1&navpanes=0`}
+                className="w-full h-[calc(100vh-120px)] rounded-lg bg-white"
+                title={attachment.fileName}
+                onLoad={() => setIsLoading(false)}
+              />
             </div>
           ) : (
             <div

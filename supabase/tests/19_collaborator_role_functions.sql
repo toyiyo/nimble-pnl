@@ -9,7 +9,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(26);
+SELECT plan(32);
 
 -- ============================================================================
 -- Test: user_has_role function exists and has correct signature
@@ -260,6 +260,87 @@ SELECT ok(
         WHERE proname = 'user_has_capability'
     ),
     'user_has_capability should define new pending_outflows and inventory_transactions capabilities'
+);
+
+-- ============================================================================
+-- Test: user_has_capability behavioral tests with fixtures
+-- ============================================================================
+
+-- Create idempotent test fixtures
+INSERT INTO auth.users (id, email)
+VALUES ('19000000-0000-0000-0000-000000000001', 'test-owner-19@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email)
+VALUES ('19000000-0000-0000-0000-000000000002', 'test-accountant-19@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.restaurants (id, name)
+VALUES ('19000000-0000-0000-0000-000000000099', 'Test Restaurant 19')
+ON CONFLICT (id) DO NOTHING;
+
+-- Create owner role
+INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role)
+VALUES (
+    '19000000-0000-0000-0000-000000000101',
+    '19000000-0000-0000-0000-000000000001',
+    '19000000-0000-0000-0000-000000000099',
+    'owner'
+)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
+
+-- Create collaborator_accountant role
+INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role)
+VALUES (
+    '19000000-0000-0000-0000-000000000102',
+    '19000000-0000-0000-0000-000000000002',
+    '19000000-0000-0000-0000-000000000099',
+    'collaborator_accountant'
+)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'collaborator_accountant';
+
+-- Test: Owner should have view:dashboard capability
+SELECT set_config('request.jwt.claims', '{"sub":"19000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT is(
+    public.user_has_capability('19000000-0000-0000-0000-000000000099'::uuid, 'view:dashboard'),
+    TRUE,
+    'user_has_capability returns TRUE for owner with view:dashboard'
+);
+
+-- Test: Owner should have manage:team capability
+SELECT is(
+    public.user_has_capability('19000000-0000-0000-0000-000000000099'::uuid, 'manage:team'),
+    TRUE,
+    'user_has_capability returns TRUE for owner with manage:team'
+);
+
+-- Test: Owner should NOT have unknown capability
+SELECT is(
+    public.user_has_capability('19000000-0000-0000-0000-000000000099'::uuid, 'nonexistent:capability'),
+    FALSE,
+    'user_has_capability returns FALSE for unknown capability'
+);
+
+-- Test: Collaborator accountant should have view:transactions capability
+SELECT set_config('request.jwt.claims', '{"sub":"19000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+SELECT is(
+    public.user_has_capability('19000000-0000-0000-0000-000000000099'::uuid, 'view:transactions'),
+    TRUE,
+    'user_has_capability returns TRUE for collaborator_accountant with view:transactions'
+);
+
+-- Test: Collaborator accountant should NOT have view:dashboard capability
+SELECT is(
+    public.user_has_capability('19000000-0000-0000-0000-000000000099'::uuid, 'view:dashboard'),
+    FALSE,
+    'user_has_capability returns FALSE for collaborator_accountant with view:dashboard'
+);
+
+-- Test: Collaborator accountant should NOT have manage:team capability
+SELECT is(
+    public.user_has_capability('19000000-0000-0000-0000-000000000099'::uuid, 'manage:team'),
+    FALSE,
+    'user_has_capability returns FALSE for collaborator_accountant with manage:team'
 );
 
 SELECT * FROM finish();

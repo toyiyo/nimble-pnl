@@ -77,14 +77,8 @@ test.describe('Collaborator Role Routing and Access', () => {
       // Allowed paths should be accessible
       for (const path of allowed) {
         await page.goto(path);
-        // Should stay on the allowed path, not redirect to auth
-        await expect(page).not.toHaveURL('/auth');
-        // Should not be redirected to dashboard (collaborators can't access /)
-        if (path !== landing) {
-          // Just verify we're not kicked to auth
-          const currentUrl = page.url();
-          expect(currentUrl).not.toContain('/auth');
-        }
+        // Should stay on the allowed path, not redirect to auth or elsewhere
+        await expect(page).toHaveURL(path, { timeout: 5000 });
       }
 
       // Forbidden paths should redirect to landing

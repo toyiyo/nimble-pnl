@@ -29249,12 +29249,15 @@
       "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Critical: Duplicate policy definitions will cause migration failure.**\n\nThe migration defines policies for `inventory_transactions` twice:\n- Lines 51-62: Creates policies using `view:inventory` / `edit:inventory` capabilities\n- Lines 369-386: Attempts to create policies with the same names using `view:inventory_transactions` / `edit:inventory_transactions` capabilities\n\nThe second set will fail with \"policy already exists\" errors since the first set already created these policies.\n\nAdditionally, there's a capability inconsistency—the TypeScript `Capability` type in `types.ts` does not include `view:inventory_transactions` or `edit:inventory_transactions`, only `view:inventory` and `edit:inventory`.\n\n\n\n<details>\n<summary>Proposed fix: Remove duplicate section and use consistent capabilities</summary>\n\n```diff\n -- ============================================================================\n--- inventory_transactions and inventory_transactions_ITEMS TABLES\n+-- PURCHASE_ORDER_ITEMS TABLE (if exists)\n -- Collaborator access: collaborator_inventory only\n -- ============================================================================\n\n-DROP POLICY IF EXISTS \"Users can view inventory_transactions for their restaurants\" ON public.inventory_transactions;\n-DROP POLICY IF EXISTS \"Users can insert inventory_transactions for their restaurants\" ON public.inventory_transactions;\n-DROP POLICY IF EXISTS \"Users can update inventory_transactions for their restaurants\" ON public.inventory_transactions;\n-\n-CREATE POLICY \"Users can view inventory_transactions for their restaurants\"\n-ON public.inventory_transactions\n-FOR SELECT\n-USING (user_has_capability(restaurant_id, 'view:inventory_transactions'));\n-\n-CREATE POLICY \"Users can insert inventory_transactions for their restaurants\"\n-ON public.inventory_transactions\n-FOR INSERT\n-WITH CHECK (user_has_capability(restaurant_id, 'edit:inventory_transactions'));\n-\n-CREATE POLICY \"Users can update inventory_transactions for their restaurants\"\n-ON public.inventory_transactions\n-FOR UPDATE\n-USING (user_has_capability(restaurant_id, 'edit:inventory_transactions'));\n+-- If purchase_order_items table exists, add policies here using view:purchase_orders / edit:purchase_orders\n```\n</details>\n\n\nAlso applies to: 369-386\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/migrations/20260120100100_update_rls_for_collaborators.sql` around\nlines 51 - 62, Remove the duplicate policy creation block for the\ninventory_transactions table (the second occurrence that tries to create\npolicies named \"Users can view inventory transactions for their restaurants\" and\n\"Users can insert inventory transactions for their restaurants\") and ensure the\nremaining policy definitions use the same capability strings as the TypeScript\nCapability type (use 'view:inventory' and 'edit:inventory' rather than\n'view:inventory_transactions'/'edit:inventory_transactions'); locate the\nduplicate by the policy names on public.inventory_transactions and update the\nSQL so only one set of CREATE POLICY statements exists and the WITH CHECK/USING\nexpressions call user_has_capability(restaurant_id, 'view:inventory') /\n'edit:inventory'.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "2c4142fec490c4cc4091630c15440da02ba7cefe",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-21T14:27:12.859Z",
-      "updated_at": "2026-01-21T14:42:52.843Z",
+      "updated_at": "2026-01-21T15:18:20.080Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Removed duplicate inventory_transactions policies at lines 364-386. Now only one set of policies exists at lines 51-62 using view:inventory/edit:inventory capabilities."
       ]
     },
     {
@@ -29269,12 +29272,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n#!/bin/bash\n# Verify all capabilities used in SQL are defined in TypeScript\n\necho \"=== Capabilities used in SQL migration ===\"\ngrep -oP \"user_has_capability\\([^,]+,\\s*'\\K[^']+(?='\\))\" supabase/migrations/20260120100100_update_rls_for_collaborators.sql 2>/dev/null | sort -u\n\necho \"\"\necho \"=== Capabilities defined in TypeScript types file ===\"\nif [ -f \"src/lib/permissions/types.ts\" ]; then\n  cat src/lib/permissions/types.ts | grep -oP \"'[a-z_]+:[a-z_]+'\" | sort -u\nelse\n  echo \"File not found: src/lib/permissions/types.ts\"\n  echo \"Searching for types files...\"\n  find . -name \"*types*\" -path \"*/permissions/*\" -type f 2>/dev/null | head -20\nfi\n\necho \"\"\necho \"=== All files in supabase/migrations directory ===\"\nls -la supabase/migrations/ 2>/dev/null | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3507\n\n---\n\n\n\n</details>\n\n**Add `pending_outflows` capabilities to the TypeScript type definition.**\n\nThe policies reference `view:pending_outflows` and `edit:pending_outflows`, but these capabilities are not defined in `src/lib/permissions/types.ts`. The database will enforce permission checks for capabilities the application never grants, causing permission failures or unexpected denials.\n\nAdd these capabilities to the `Capability` type in TypeScript, or map the table to existing capabilities (e.g., `view:expenses` / `edit:expenses`) if semantically appropriate.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/migrations/20260120100100_update_rls_for_collaborators.sql` around\nlines 194 - 212, The Capability type in src/lib/permissions/types.ts is missing\nthe 'view:pending_outflows' and 'edit:pending_outflows' entries referenced by\nthe new RLS policies; add those two string literals to the Capability union (or\nthe enum/const array used to define capabilities) so TypeScript knows the app\ncan grant them, and update any related mappings (e.g., permission-to-table map\nor default role grants) that list capabilities to include these new values;\nalternatively, if you intend to reuse existing capabilities, map the\npending_outflows RLS to an existing capability name (e.g.,\n'view:expenses'/'edit:expenses') in the same types/config instead of adding new\nentries.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "0a5a9e1b2f12d38719ffe3cf211b0682fb2ee23f",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-21T14:27:12.859Z",
-      "updated_at": "2026-01-21T14:42:52.843Z",
+      "updated_at": "2026-01-21T15:18:20.435Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "pending_outflows capabilities were already present in src/lib/permissions/types.ts at lines 70-71 (view:pending_outflows, edit:pending_outflows). No changes needed."
       ]
     },
     {
@@ -29289,12 +29295,15 @@
       "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Admin API usage will fail in browser context.**\n\nThe `__inviteCollaborator` helper uses `supabase.auth.admin.listUsers()` at line 535, which requires the service role key. Since this runs in browser context (injected via `page.evaluate`), only the anon key is available, and the admin API call will fail.\n\n\n<details>\n<summary>🔧 Suggested fix - remove admin fallback or use different approach</summary>\n\n```diff\n     // Get the user ID (either from signup or existing user)\n     let userId = authUser?.user?.id;\n     if (!userId) {\n-      // Try to get existing user by email\n-      const { data: existingUsers } = await supabase.auth.admin.listUsers();\n-      const existingUser = existingUsers.users.find(u => u.email === email);\n-      if (existingUser) {\n-        userId = existingUser.id;\n-      } else {\n-        throw new Error('Could not find or create collaborator user');\n-      }\n+      // If signup didn't return a user (e.g., already registered), \n+      // the test should use a unique email or handle this case differently\n+      throw new Error('Could not create collaborator user - email may already be registered');\n     }\n```\n\nAlternatively, ensure test emails are unique using the existing `generateTestUser` helper pattern.\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@tests/helpers/e2e-supabase.ts` around lines 519 - 560, The helper\n__inviteCollaborator must not call supabase.auth.admin.listUsers() (admin API)\nfrom the browser; remove the admin fallback block that references\nsupabase.auth.admin.listUsers and instead require/produce a unique test email\nusing the existing generateTestUser pattern (or have the caller pass a generated\nunique email), then use supabase.auth.signUp and the returned authUser.user.id\nfor userId and proceed to upsert into user_restaurants (keep the upsert logic\nand error handling in __inviteCollaborator); if signUp fails with an 'already\nregistered' error, surface a clear error asking tests to use generateTestUser\n(do not attempt any admin API calls).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "beb824af71d2297fea1e4cd0670a993fcf4ca27c",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-21T14:27:12.859Z",
-      "updated_at": "2026-01-21T14:42:52.843Z",
+      "updated_at": "2026-01-21T15:18:20.779Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Removed admin API fallback (supabase.auth.admin.listUsers). Now requires unique email via generateTestUser() and throws clear error if email already registered."
       ]
     },
     {
@@ -29309,12 +29318,15 @@
       "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Weak URL assertion for root route.**\n\nThe check `route.split('/')[1] || '/'` produces `'/'` for the root route, making `expect(url).toContain('/')` match any URL containing a slash—effectively a no-op assertion that won't catch incorrect redirects.\n\n\n\n<details>\n<summary>🐛 Suggested fix</summary>\n\n```diff\n       for (const route of ownerRoutes) {\n         await page.goto(route);\n         await expect(page).not.toHaveURL('/auth');\n-        // Should not be redirected elsewhere (owner has full access)\n-        const url = page.url();\n-        expect(url).toContain(route.split('/')[1] || '/'); // Basic check\n+        // Owner should stay on the requested route\n+        await expect(page).toHaveURL(route);\n       }\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@tests/e2e/permissions-roles.spec.ts` around lines 128 - 134, The current\nassertion uses route.split('/')[1] || '/' which becomes '/' for the root route\nand results in a useless contains check; instead compute the page pathname\n(e.g., via URL(page.url()).pathname) and assert equality with the expected route\npath (use the exact route string from ownerRoutes, normalizing root to '/' if\nneeded) inside the loop that iterates over ownerRoutes so the test fails on\nincorrect redirects; update the assertions around ownerRoutes in the test to\ncompare pathname equality rather than substring containment.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
       "severity": "info",
       "id": "60acbdc7e87cd7a7be246beb6128cc31f7f57080",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-21T14:27:12.859Z",
-      "updated_at": "2026-01-21T14:42:52.843Z",
+      "updated_at": "2026-01-21T15:18:21.098Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Replaced weak toContain assertion with exact route comparison using toHaveURL(route)."
       ]
     },
     {
@@ -29327,12 +29339,15 @@
       "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=330) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [18.9% Coverage on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=330&metric=new_coverage&view=list) (required ≥ 80%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=330)\n\n",
       "severity": "info",
       "id": "6e1feaa713c3eca57b8bd3b6570c75391829ceb7",
-      "status": "in_progress",
+      "status": "fixed",
       "created_at": "2026-01-21T14:27:12.860Z",
-      "updated_at": "2026-01-21T14:42:52.843Z",
+      "updated_at": "2026-01-21T15:18:21.415Z",
       "tests_to_run": [
         "npm run lint",
         "npm test:all"
+      ],
+      "notes": [
+        "Added comprehensive tests for useCollaborators hook (16 tests covering all mutations and queries). All 1795 unit tests pass."
       ]
     },
     {

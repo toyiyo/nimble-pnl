@@ -128,9 +128,8 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     for (const route of ownerRoutes) {
       await page.goto(route);
       await expect(page).not.toHaveURL('/auth');
-      // Should not be redirected elsewhere (owner has full access)
-      const url = page.url();
-      expect(url).toContain(route.split('/')[1] || '/'); // Basic check
+      // Owner should stay on the requested route (has full access)
+      await expect(page).toHaveURL(route);
     }
   });
 

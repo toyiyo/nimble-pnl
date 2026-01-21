@@ -517,6 +517,8 @@ export async function exposeSupabaseHelpers(page: Page) {
     };
 
     // Helper to invite a collaborator (for testing)
+    // IMPORTANT: Use generateTestUser() to create unique emails for each test
+    // The admin API is not available in browser context
     (window as any).__inviteCollaborator = async (email: string, role: string, restaurantId: string) => {
       // Create a test user for the collaborator
       const { data: authUser, error: authError } = await supabase.auth.signUp({
@@ -524,21 +526,23 @@ export async function exposeSupabaseHelpers(page: Page) {
         password: 'TestPassword123!',
       });
 
-      if (authError && !authError.message.includes('already registered')) {
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new Error(
+            `Collaborator email "${email}" is already registered. ` +
+            'Use generateTestUser() to create unique test emails for each test run.'
+          );
+        }
         throw new Error(`Failed to create collaborator user: ${authError.message}`);
       }
 
-      // Get the user ID (either from signup or existing user)
-      let userId = authUser?.user?.id;
+      // Get the user ID from signup response
+      const userId = authUser?.user?.id;
       if (!userId) {
-        // Try to get existing user by email
-        const { data: existingUsers } = await supabase.auth.admin.listUsers();
-        const existingUser = existingUsers.users.find(u => u.email === email);
-        if (existingUser) {
-          userId = existingUser.id;
-        } else {
-          throw new Error('Could not find or create collaborator user');
-        }
+        throw new Error(
+          'Could not create collaborator user - signup did not return a user ID. ' +
+          'Ensure the email is unique using generateTestUser().'
+        );
       }
 
       // Add user to restaurant with collaborator role

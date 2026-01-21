@@ -54,10 +54,12 @@ export const useCollaboratorsQuery = (restaurantId: string | null) => {
       let profilesMap = new Map<string, { email: string; full_name?: string }>();
 
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles, error: profilesError } = await supabase
           .from('profiles')
           .select('user_id, email, full_name')
           .in('user_id', userIds);
+
+        if (profilesError) throw profilesError;
 
         if (profiles) {
           profilesMap = new Map(profiles.map(p => [p.user_id, { email: p.email, full_name: p.full_name }]));
@@ -99,12 +101,20 @@ export const useCollaboratorInvitesQuery = (restaurantId: string | null) => {
 
       // Get profile names for inviters
       const inviterIds = [...new Set(invitations?.map(inv => inv.invited_by) || [])];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .in('user_id', inviterIds);
+      let profilesMap = new Map<string, string | null>();
 
-      const profilesMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
+      if (inviterIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', inviterIds);
+
+        if (profilesError) throw profilesError;
+
+        if (profiles) {
+          profilesMap = new Map(profiles.map(p => [p.user_id, p.full_name]));
+        }
+      }
 
       return (invitations || []).map(inv => ({
         id: inv.id,

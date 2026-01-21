@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users } from 'lucide-react';
+import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
 import {
@@ -18,7 +19,7 @@ import {
 
 interface CollaboratorInvitationsProps {
   restaurantId: string;
-  userRole: string;
+  userRole: Role;
 }
 
 const roleIcons: Record<string, typeof Calculator> = {
@@ -35,14 +36,12 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
   const canManage = userRole === 'owner' || userRole === 'manager';
 
   // Use React Query hooks
-  const { data: collaborators = [], isLoading: collaboratorsLoading } = useCollaboratorsQuery(restaurantId);
-  const { data: pendingInvites = [], isLoading: invitesLoading } = useCollaboratorInvitesQuery(restaurantId);
+  const { data: collaborators, isLoading: collaboratorsLoading, error: collaboratorsError } = useCollaboratorsQuery(restaurantId);
+  const { data: pendingInvites, isLoading: invitesLoading, error: invitesError } = useCollaboratorInvitesQuery(restaurantId);
 
   const sendInvitationMutation = useSendCollaboratorInvitation();
   const cancelInvitationMutation = useCancelCollaboratorInvitation();
   const removeCollaboratorMutation = useRemoveCollaborator();
-
-  const loading = collaboratorsLoading || invitesLoading;
 
   const handleSendInvitation = () => {
     if (!email || !selectedRole) {
@@ -237,11 +236,27 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Loading...</p>
+          {collaboratorsLoading ? (
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-6 w-20" />
+                </div>
+              ))}
             </div>
-          ) : collaborators.length > 0 ? (
+          ) : collaboratorsError ? (
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
+              <AlertCircle className="h-5 w-5 flex-shrink-0" />
+              <p className="text-sm">Failed to load collaborators</p>
+            </div>
+          ) : collaborators && collaborators.length > 0 ? (
             <div className="space-y-3">
               {collaborators.map((collab) => {
                 const Icon = roleIcons[collab.role] || Calculator;
@@ -297,7 +312,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
       </Card>
 
       {/* Pending Invitations */}
-      {pendingInvites.filter(i => i.status === 'pending').length > 0 && (
+      {(invitesLoading || invitesError || pendingInvites?.some(i => i.status === 'pending')) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Pending Invitations</CardTitle>
@@ -306,53 +321,74 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {pendingInvites
-                .filter(invite => invite.status === 'pending')
-                .map((invite) => {
-                  const Icon = roleIcons[invite.role] || Calculator;
-                  const metadata = ROLE_METADATA[invite.role as Role];
-
-                  return (
-                    <div
-                      key={invite.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-muted">
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm">{invite.email}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Invited by {invite.invitedBy} • Expires{' '}
-                            {invite.expiresAt
-                              ? new Date(invite.expiresAt).toLocaleDateString()
-                              : 'never'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={statusColors[invite.status]}>
-                          {statusIcons[invite.status]}
-                          <span className="ml-1 capitalize">{invite.status}</span>
-                        </Badge>
-                        {canManage && invite.status === 'pending' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCancelInvitation(invite.id, invite.email)}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            aria-label={`Cancel invitation for ${invite.email}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+            {invitesLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map((i) => (
+                  <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-8 w-8 rounded-lg" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-32" />
                       </div>
                     </div>
-                  );
-                })}
-            </div>
+                    <Skeleton className="h-6 w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : invitesError ? (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                <p className="text-sm">Failed to load invitations</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pendingInvites
+                  ?.filter(invite => invite.status === 'pending')
+                  .map((invite) => {
+                    const Icon = roleIcons[invite.role] || Calculator;
+
+                    return (
+                      <div
+                        key={invite.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-muted">
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{invite.email}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Invited by {invite.invitedBy} • Expires{' '}
+                              {invite.expiresAt
+                                ? new Date(invite.expiresAt).toLocaleDateString()
+                                : 'never'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={statusColors[invite.status]}>
+                            {statusIcons[invite.status]}
+                            <span className="ml-1 capitalize">{invite.status}</span>
+                          </Badge>
+                          {canManage && invite.status === 'pending' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCancelInvitation(invite.id, invite.email)}
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              aria-label={`Cancel invitation for ${invite.email}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

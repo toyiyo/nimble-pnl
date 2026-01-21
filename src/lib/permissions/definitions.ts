@@ -136,6 +136,7 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:inventory',
     'edit:inventory',
     'view:inventory_audit',
+    'edit:inventory_audit',
     'view:purchase_orders',
     'view:receipt_import',
     'edit:receipt_import',

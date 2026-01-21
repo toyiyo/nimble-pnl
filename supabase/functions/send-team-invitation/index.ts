@@ -151,12 +151,28 @@ const handler = async (req: Request): Promise<Response> => {
     // Create invitation acceptance URL
     const invitationUrl = `https://app.easyshifthq.com/accept-invitation?token=${invitationToken}`;
 
+    // Get friendly role label for email
+    const roleLabels: Record<string, string> = {
+      'owner': 'Owner',
+      'manager': 'Manager',
+      'chef': 'Chef',
+      'staff': 'Staff Member',
+      'kiosk': 'Kiosk',
+      'collaborator_accountant': 'Accountant',
+      'collaborator_inventory': 'Inventory Helper',
+      'collaborator_chef': 'Recipe Consultant',
+    };
+    const friendlyRole = roleLabels[role] || role;
+    const isCollaborator = role.startsWith('collaborator_');
+
     // Send invitation email
     try {
       const emailResponse = await resend.emails.send({
         from: "EasyShiftHQ <notifications@easyshifthq.com>",
         to: [email],
-        subject: `You're invited to join ${restaurant.name}`,
+        subject: isCollaborator
+          ? `You're invited to collaborate with ${restaurant.name}`
+          : `You're invited to join ${restaurant.name}`,
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
             <!-- Header with Logo -->
@@ -171,13 +187,13 @@ const handler = async (req: Request): Promise<Response> => {
                 <span style="font-size: 20px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px;">EasyShiftHQ</span>
               </div>
             </div>
-            
+
             <!-- Content -->
             <div style="padding: 40px 32px; background: #ffffff;">
-              <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">You're invited to join ${restaurant.name}</h1>
-              
+              <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${isCollaborator ? `You're invited to collaborate with ${restaurant.name}` : `You're invited to join ${restaurant.name}`}</h1>
+
               <p style="color: #6b7280; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
-                You've been invited to join <strong style="color: #1f2937;">${restaurant.name}</strong> as a <strong style="color: #1f2937;">${role}</strong> on EasyShiftHQ.
+                You've been invited to ${isCollaborator ? 'collaborate with' : 'join'} <strong style="color: #1f2937;">${restaurant.name}</strong> as ${isCollaborator ? 'an' : 'a'} <strong style="color: #1f2937;">${friendlyRole}</strong> on EasyShiftHQ.
               </p>
               
               <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">
@@ -188,7 +204,7 @@ const handler = async (req: Request): Promise<Response> => {
                   </tr>
                   <tr>
                     <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Role:</td>
-                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${role}</td>
+                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${friendlyRole}</td>
                   </tr>
                   <tr>
                     <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Expires:</td>

@@ -9,8 +9,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TeamInvitations } from '@/components/TeamInvitations';
 import { TeamMembers } from '@/components/TeamMembers';
+import { CollaboratorInvitations } from '@/components/CollaboratorInvitations';
 import { MetricIcon } from '@/components/MetricIcon';
-import { UserPlus, Building, ArrowLeft, Users } from 'lucide-react';
+import { UserPlus, Building, ArrowLeft, Users, Handshake } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
@@ -114,9 +115,9 @@ const Team = () => {
         </Card>
 
         <Tabs defaultValue="members" className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-2 h-auto">
-            <TabsTrigger 
-              value="members" 
+          <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsTrigger
+              value="members"
               id="members-tab"
               className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
               aria-label="View team members"
@@ -124,8 +125,17 @@ const Team = () => {
               <UserPlus className="h-4 w-4 mb-1" aria-hidden="true" />
               <span className="text-xs md:text-sm">Team Members</span>
             </TabsTrigger>
-            <TabsTrigger 
-              value="invitations" 
+            <TabsTrigger
+              value="collaborators"
+              id="collaborators-tab"
+              className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
+              aria-label="View collaborators"
+            >
+              <Handshake className="h-4 w-4 mb-1" aria-hidden="true" />
+              <span className="text-xs md:text-sm">Collaborators</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="invitations"
               id="invitations-tab"
               className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
               aria-label="View pending invitations"
@@ -136,14 +146,21 @@ const Team = () => {
           </TabsList>
 
           <TabsContent value="members" role="tabpanel" aria-labelledby="members-tab">
-            <TeamMembers 
+            <TeamMembers
+              restaurantId={selectedRestaurant.restaurant_id}
+              userRole={selectedRestaurant.role}
+            />
+          </TabsContent>
+
+          <TabsContent value="collaborators" role="tabpanel" aria-labelledby="collaborators-tab">
+            <CollaboratorInvitations
               restaurantId={selectedRestaurant.restaurant_id}
               userRole={selectedRestaurant.role}
             />
           </TabsContent>
 
           <TabsContent value="invitations" role="tabpanel" aria-labelledby="invitations-tab">
-            <TeamInvitations 
+            <TeamInvitations
               restaurantId={selectedRestaurant.restaurant_id}
               userRole={selectedRestaurant.role}
             />

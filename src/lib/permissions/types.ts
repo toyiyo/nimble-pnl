@@ -67,6 +67,10 @@ export type Capability =
   | 'view:receipt_import'
   | 'edit:receipt_import'
   | 'view:reports'
+  | 'view:pending_outflows'
+  | 'edit:pending_outflows'
+  | 'view:inventory_transactions'
+  | 'edit:inventory_transactions'
 
   // Recipe capabilities (chef surface)
   | 'view:recipes'

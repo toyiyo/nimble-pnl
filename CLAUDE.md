@@ -43,7 +43,7 @@ npm run test:all               # All tests (unit + db + e2e)
 - **Testing**: Vitest (unit), Playwright (E2E), pgTAP (SQL)
 
 ### Directory Structure
-```
+```text
 src/
 ├── components/         # Feature components + ui/ (shadcn primitives)
 ├── pages/              # Route components (40+)
@@ -75,7 +75,7 @@ const { data, isLoading } = useQuery({
 });
 ```
 
-**Role-based access**: Roles are owner/manager/chef/staff/kiosk. ProtectedRoute wrapper enforces access.
+**Role-based access**: Roles are owner/manager/chef/staff/kiosk plus collaborators (collaborator_accountant, collaborator_inventory, collaborator_chef). ProtectedRoute wrapper enforces access.
 
 **Edge functions pattern**: CORS handling → Auth → Permission check → Business logic → JSON response
 

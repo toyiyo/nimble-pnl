@@ -1,33 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Mail, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users } from 'lucide-react';
+import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
-
-interface Collaborator {
-  id: string;
-  email: string;
-  role: string;
-  createdAt: string;
-  profileName?: string;
-}
-
-interface PendingInvite {
-  id: string;
-  email: string;
-  role: string;
-  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
-  createdAt: string;
-  expiresAt?: string;
-  invitedBy?: string;
-}
+import {
+  useCollaboratorsQuery,
+  useCollaboratorInvitesQuery,
+  useSendCollaboratorInvitation,
+  useCancelCollaboratorInvitation,
+  useRemoveCollaborator,
+} from '@/hooks/useCollaborators';
 
 interface CollaboratorInvitationsProps {
   restaurantId: string;
@@ -41,105 +28,23 @@ const roleIcons: Record<string, typeof Calculator> = {
 };
 
 export const CollaboratorInvitations = ({ restaurantId, userRole }: CollaboratorInvitationsProps) => {
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [email, setEmail] = useState('');
-  const [sending, setSending] = useState(false);
   const { toast } = useToast();
 
   const canManage = userRole === 'owner' || userRole === 'manager';
 
-  useEffect(() => {
-    fetchCollaborators();
-    fetchPendingInvites();
-  }, [restaurantId]);
+  // Use React Query hooks
+  const { data: collaborators = [], isLoading: collaboratorsLoading } = useCollaboratorsQuery(restaurantId);
+  const { data: pendingInvites = [], isLoading: invitesLoading } = useCollaboratorInvitesQuery(restaurantId);
 
-  const fetchCollaborators = async () => {
-    try {
-      // Get all collaborators for this restaurant
-      const { data: userRestaurants, error } = await supabase
-        .from('user_restaurants')
-        .select(`
-          id,
-          user_id,
-          role,
-          created_at
-        `)
-        .eq('restaurant_id', restaurantId)
-        .like('role', 'collaborator_%');
+  const sendInvitationMutation = useSendCollaboratorInvitation();
+  const cancelInvitationMutation = useCancelCollaboratorInvitation();
+  const removeCollaboratorMutation = useRemoveCollaborator();
 
-      if (error) throw error;
+  const loading = collaboratorsLoading || invitesLoading;
 
-      // Get user emails from auth.users via profiles
-      const userIds = userRestaurants?.map(ur => ur.user_id) || [];
-      let profilesMap = new Map<string, { email: string; full_name?: string }>();
-
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, email, full_name')
-          .in('user_id', userIds);
-
-        if (profiles) {
-          profilesMap = new Map(profiles.map(p => [p.user_id, { email: p.email, full_name: p.full_name }]));
-        }
-      }
-
-      const formattedCollaborators: Collaborator[] = (userRestaurants || []).map(ur => ({
-        id: ur.id,
-        email: profilesMap.get(ur.user_id)?.email || 'Unknown',
-        role: ur.role,
-        createdAt: ur.created_at,
-        profileName: profilesMap.get(ur.user_id)?.full_name,
-      }));
-
-      setCollaborators(formattedCollaborators);
-    } catch (error) {
-      console.error('Error fetching collaborators:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPendingInvites = async () => {
-    try {
-      const { data: invitations, error } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .like('role', 'collaborator_%')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Get profile names for inviters
-      const inviterIds = [...new Set(invitations?.map(inv => inv.invited_by) || [])];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name')
-        .in('user_id', inviterIds);
-
-      const profilesMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
-
-      const formatted: PendingInvite[] = (invitations || []).map(inv => ({
-        id: inv.id,
-        email: inv.email,
-        role: inv.role,
-        status: inv.status as 'pending' | 'accepted' | 'expired' | 'cancelled',
-        createdAt: inv.created_at,
-        expiresAt: inv.expires_at,
-        invitedBy: profilesMap.get(inv.invited_by) || 'Unknown',
-      }));
-
-      setPendingInvites(formatted);
-    } catch (error) {
-      console.error('Error fetching pending invites:', error);
-    }
-  };
-
-  const sendInvitation = async () => {
+  const handleSendInvitation = () => {
     if (!email || !selectedRole) {
       toast({
         title: "Error",
@@ -149,88 +54,31 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
       return;
     }
 
-    setSending(true);
-    try {
-      const { error } = await supabase.functions.invoke('send-team-invitation', {
-        body: {
-          restaurantId,
-          email,
-          role: selectedRole,
+    sendInvitationMutation.mutate(
+      { restaurantId, email, role: selectedRole },
+      {
+        onSuccess: () => {
+          setEmail('');
+          setSelectedRole(null);
         },
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Invitation sent",
-        description: `${email} has been invited as ${ROLE_METADATA[selectedRole].label}`,
-      });
-
-      setEmail('');
-      setSelectedRole(null);
-      fetchPendingInvites();
-    } catch (error) {
-      console.error('Error sending invitation:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send invitation",
-        variant: "destructive",
-      });
-    } finally {
-      setSending(false);
-    }
+      }
+    );
   };
 
-  const cancelInvitation = async (inviteId: string, inviteEmail: string) => {
-    try {
-      const { error } = await supabase
-        .from('invitations')
-        .delete()
-        .eq('id', inviteId)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Invitation cancelled",
-        description: `Invitation to ${inviteEmail} has been cancelled`,
-      });
-
-      fetchPendingInvites();
-    } catch (error) {
-      console.error('Error cancelling invitation:', error);
-      toast({
-        title: "Error",
-        description: "Failed to cancel invitation",
-        variant: "destructive",
-      });
-    }
+  const handleCancelInvitation = (inviteId: string, inviteEmail: string) => {
+    cancelInvitationMutation.mutate({
+      inviteId,
+      inviteEmail,
+      restaurantId,
+    });
   };
 
-  const removeCollaborator = async (collaboratorId: string, collaboratorEmail: string) => {
-    try {
-      const { error } = await supabase
-        .from('user_restaurants')
-        .delete()
-        .eq('id', collaboratorId)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Collaborator removed",
-        description: `${collaboratorEmail} no longer has access`,
-      });
-
-      fetchCollaborators();
-    } catch (error) {
-      console.error('Error removing collaborator:', error);
-      toast({
-        title: "Error",
-        description: "Failed to remove collaborator",
-        variant: "destructive",
-      });
-    }
+  const handleRemoveCollaborator = (collaboratorId: string, collaboratorEmail: string) => {
+    removeCollaboratorMutation.mutate({
+      collaboratorId,
+      collaboratorEmail,
+      restaurantId,
+    });
   };
 
   const statusIcons = {
@@ -344,8 +192,11 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
               onChange={(e) => setEmail(e.target.value)}
               className="flex-1"
             />
-            <Button onClick={sendInvitation} disabled={sending || !email}>
-              {sending ? 'Sending...' : 'Send Invite'}
+            <Button
+              onClick={handleSendInvitation}
+              disabled={sendInvitationMutation.isPending || !email}
+            >
+              {sendInvitationMutation.isPending ? 'Sending...' : 'Send Invite'}
             </Button>
           </div>
         </div>
@@ -424,8 +275,9 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => removeCollaborator(collab.id, collab.email)}
+                          onClick={() => handleRemoveCollaborator(collab.id, collab.email)}
                           className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          aria-label={`Remove collaborator ${collab.email}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -489,8 +341,9 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => cancelInvitation(invite.id, invite.email)}
+                            onClick={() => handleCancelInvitation(invite.id, invite.email)}
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            aria-label={`Cancel invitation for ${invite.email}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

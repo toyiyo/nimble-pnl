@@ -607,6 +607,10 @@ describe('Capability Coverage', () => {
       'view:receipt_import',
       'edit:receipt_import',
       'view:reports',
+      'view:pending_outflows',
+      'edit:pending_outflows',
+      'view:inventory_transactions',
+      'edit:inventory_transactions',
       'view:recipes',
       'edit:recipes',
       'view:prep_recipes',
@@ -660,8 +664,8 @@ describe('Permission Regression Snapshots', () => {
 
   it('collaborator roles should have focused capabilities', () => {
     // Collaborators should have limited, scoped access
-    expect(ROLE_CAPABILITIES['collaborator_accountant'].length).toBeLessThan(20);
-    expect(ROLE_CAPABILITIES['collaborator_inventory'].length).toBeLessThan(12);
+    expect(ROLE_CAPABILITIES['collaborator_accountant'].length).toBeLessThan(22);
+    expect(ROLE_CAPABILITIES['collaborator_inventory'].length).toBeLessThan(14);
     expect(ROLE_CAPABILITIES['collaborator_chef'].length).toBeLessThan(12);
   });
 });

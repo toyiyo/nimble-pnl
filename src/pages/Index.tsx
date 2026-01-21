@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,6 +67,7 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 const Index = () => {
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
+  const { isCollaborator, landingPath } = usePermissions();
   const { lowStockItems, reorderAlerts, loading: alertsLoading } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
   const { data: connectedBanks, isLoading: banksLoading } = useConnectedBanks(selectedRestaurant?.restaurant_id || null);
   const {
@@ -471,6 +473,11 @@ const Index = () => {
     if (!average) return 0;
     return ((current - average) / average) * 100;
   };
+
+  // Redirect collaborators to their designated landing page (they don't see the dashboard)
+  if (isCollaborator && landingPath !== '/') {
+    return <Navigate to={landingPath} replace />;
+  }
 
   return (
     <>

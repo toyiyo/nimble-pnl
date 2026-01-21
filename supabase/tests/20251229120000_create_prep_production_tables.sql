@@ -166,26 +166,32 @@ SELECT lives_ok(
   'Chef can UPDATE prep_recipes'
 );
 
--- Reset recipe name for staff test
+-- Reset recipe name for staff test (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 UPDATE prep_recipes SET name = 'Test Recipe' WHERE id = '00000000-0000-0000-0000-000000000301';
+SET LOCAL role TO authenticated;
+
+-- Staff cannot view prep_recipes (no view:prep_recipes capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT results_eq(
-  'SELECT name FROM prep_recipes WHERE id = ''00000000-0000-0000-0000-000000000301''',
-  ARRAY['Test Recipe'::text],
-  'Staff cannot UPDATE prep_recipes (name unchanged)'
+  'SELECT COUNT(*) FROM prep_recipes WHERE id = ''00000000-0000-0000-0000-000000000301''',
+  ARRAY[0::bigint],
+  'Staff cannot view prep_recipes (no access)'
 );
 
--- Test DELETE policies (owner/manager can delete, chef/staff cannot)
+-- Test DELETE policies (owner/manager/chef can delete, staff cannot view)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 SELECT lives_ok(
   'DELETE FROM prep_recipes WHERE id = ''00000000-0000-0000-0000-000000000301''',
   'Owner can DELETE prep_recipes'
 );
 
--- Recreate the recipe for further tests
+-- Recreate the recipe for further tests (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit, output_product_id) VALUES
   ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000101', 'Test Recipe', 10, 'kg', '00000000-0000-0000-0000-000000000201')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 SELECT lives_ok(
@@ -193,23 +199,33 @@ SELECT lives_ok(
   'Manager can DELETE prep_recipes'
 );
 
--- Recreate the recipe for further tests
+-- Recreate the recipe for further tests (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit, output_product_id) VALUES
   ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000101', 'Test Recipe', 10, 'kg', '00000000-0000-0000-0000-000000000201')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
+-- Chef CAN delete prep_recipes (has edit:prep_recipes capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
-SELECT results_eq(
-  'SELECT COUNT(*) FROM prep_recipes WHERE id = ''00000000-0000-0000-0000-000000000301''',
-  ARRAY[1::bigint],
-  'Chef cannot DELETE prep_recipes (recipe still exists)'
+SELECT lives_ok(
+  'DELETE FROM prep_recipes WHERE id = ''00000000-0000-0000-0000-000000000301''',
+  'Chef can DELETE prep_recipes'
 );
 
+-- Recreate the recipe for staff test (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
+INSERT INTO prep_recipes (id, restaurant_id, name, default_yield, default_yield_unit, output_product_id) VALUES
+  ('00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000101', 'Test Recipe', 10, 'kg', '00000000-0000-0000-0000-000000000201')
+ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
+
+-- Staff cannot view prep_recipes (no view:prep_recipes capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT results_eq(
   'SELECT COUNT(*) FROM prep_recipes WHERE id = ''00000000-0000-0000-0000-000000000301''',
-  ARRAY[1::bigint],
-  'Staff cannot DELETE prep_recipes (recipe still exists)'
+  ARRAY[0::bigint],
+  'Staff cannot view prep_recipes (no access)'
 );
 
 -- ============================================================================
@@ -251,11 +267,12 @@ SELECT results_eq(
   'Chef can SELECT prep_recipe_ingredients'
 );
 
+-- Staff cannot view prep_recipe_ingredients (no view:recipes capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT results_eq(
   'SELECT COUNT(*) FROM prep_recipe_ingredients pri JOIN prep_recipes pr ON pri.prep_recipe_id = pr.id WHERE EXISTS (SELECT 1 FROM user_restaurants ur WHERE ur.restaurant_id = pr.restaurant_id AND ur.user_id = ''00000000-0000-0000-0000-000000000004'')',
-  ARRAY[1::bigint],
-  'Staff can SELECT prep_recipe_ingredients'
+  ARRAY[0::bigint],
+  'Staff cannot SELECT prep_recipe_ingredients (no access)'
 );
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000005","role":"authenticated"}', true);
@@ -284,10 +301,12 @@ SELECT lives_ok(
   'Chef can DELETE prep_recipe_ingredients'
 );
 
--- Recreate ingredient for staff test
+-- Recreate ingredient for staff test (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO prep_recipe_ingredients (id, prep_recipe_id, product_id, quantity, unit) VALUES
   ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000301', '00000000-0000-0000-0000-000000000202', 5, 'L')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT throws_like(
@@ -300,10 +319,16 @@ SELECT throws_like(
 -- PRODUCTION_RUNS RLS TESTS
 -- ============================================================================
 
+-- Switch to postgres role to bypass RLS for test data setup
+SET LOCAL role TO postgres;
+
 -- Recreate production run for testing
 INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES
   ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301', 'planned', 10, 'kg')
 ON CONFLICT DO NOTHING;
+
+-- Switch back to authenticated role for RLS tests
+SET LOCAL role TO authenticated;
 
 -- Test SELECT policies (all roles can view)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
@@ -327,11 +352,12 @@ SELECT results_eq(
   'Chef can SELECT production_runs'
 );
 
+-- Staff cannot view production_runs (no view:batches capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT results_eq(
   'SELECT COUNT(*) FROM production_runs pr WHERE EXISTS (SELECT 1 FROM user_restaurants ur WHERE ur.restaurant_id = pr.restaurant_id AND ur.user_id = ''00000000-0000-0000-0000-000000000004'')',
-  ARRAY[1::bigint],
-  'Staff can SELECT production_runs'
+  ARRAY[0::bigint],
+  'Staff cannot SELECT production_runs (no access)'
 );
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000005","role":"authenticated"}', true);
@@ -360,13 +386,15 @@ SELECT lives_ok(
   'Chef can INSERT production_runs'
 );
 
+-- Staff cannot insert production_runs (no edit:batches capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
-SELECT lives_ok(
-  'INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES (gen_random_uuid(), ''00000000-0000-0000-0000-000000000101'', ''00000000-0000-0000-0000-000000000301'', ''planned'', 8, ''kg'')',
-  'Staff can INSERT production_runs'
+SELECT throws_like(
+  $$INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301', 'planned', 8, 'kg')$$,
+  '%row-level security%',
+  'Staff cannot INSERT production_runs (blocked by RLS)'
 );
 
--- Test UPDATE policies (all kitchen roles can update)
+-- Test UPDATE policies (owner/manager/chef can update, staff cannot)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 SELECT lives_ok(
   'UPDATE production_runs SET status = ''in_progress'' WHERE id = ''00000000-0000-0000-0000-000000000501''',
@@ -385,23 +413,28 @@ SELECT lives_ok(
   'Chef can UPDATE production_runs'
 );
 
+-- Staff cannot update production_runs (no edit:batches capability)
+-- Note: UPDATE silently affects 0 rows when SELECT policy fails, so we verify no rows are visible
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
-SELECT lives_ok(
-  'UPDATE production_runs SET notes = ''Updated by staff'' WHERE id = ''00000000-0000-0000-0000-000000000501''',
-  'Staff can UPDATE production_runs'
+SELECT results_eq(
+  'SELECT COUNT(*) FROM production_runs WHERE id = ''00000000-0000-0000-0000-000000000501''',
+  ARRAY[0::bigint],
+  'Staff cannot view or update production_runs (no access)'
 );
 
--- Test DELETE policies (owner/manager/chef can delete, staff cannot)
+-- Test DELETE policies (owner/manager/chef can delete, staff cannot view)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 SELECT lives_ok(
   'DELETE FROM production_runs WHERE id = ''00000000-0000-0000-0000-000000000501''',
   'Owner can DELETE production_runs'
 );
 
--- Recreate production run for further tests
+-- Recreate production run for further tests (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES
   ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301', 'planned', 10, 'kg')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 SELECT lives_ok(
@@ -409,10 +442,12 @@ SELECT lives_ok(
   'Manager can DELETE production_runs'
 );
 
--- Recreate production run for further tests
+-- Recreate production run for further tests (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES
   ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301', 'planned', 10, 'kg')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
 SELECT lives_ok(
@@ -420,21 +455,27 @@ SELECT lives_ok(
   'Chef can DELETE production_runs'
 );
 
--- Recreate production run for staff test
+-- Recreate production run for staff test (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES
   ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000101', '00000000-0000-0000-0000-000000000301', 'planned', 10, 'kg')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
+-- Staff cannot view production_runs, so cannot verify delete behavior
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT results_eq(
   'SELECT COUNT(*) FROM production_runs WHERE id = ''00000000-0000-0000-0000-000000000501''',
-  ARRAY[1::bigint],
-  'Staff cannot DELETE production_runs (run still exists)'
+  ARRAY[0::bigint],
+  'Staff cannot view production_runs (no access)'
 );
 
 -- ============================================================================
 -- PRODUCTION_RUN_INGREDIENTS RLS TESTS
 -- ============================================================================
+
+-- Use postgres role to bypass RLS for test data setup
+SET LOCAL role TO postgres;
 
 -- Recreate production run for ingredients testing
 INSERT INTO production_runs (id, restaurant_id, prep_recipe_id, status, target_yield, target_yield_unit) VALUES
@@ -445,6 +486,9 @@ ON CONFLICT DO NOTHING;
 INSERT INTO production_run_ingredients (id, production_run_id, product_id, expected_quantity, unit) VALUES
   ('00000000-0000-0000-0000-000000000601', '00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000202', 5, 'L')
 ON CONFLICT DO NOTHING;
+
+-- Switch back to authenticated role for RLS tests
+SET LOCAL role TO authenticated;
 
 -- Test SELECT policies (all roles can view)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
@@ -468,11 +512,12 @@ SELECT results_eq(
   'Chef can SELECT production_run_ingredients'
 );
 
+-- Staff cannot view production_run_ingredients (no view:batches capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
 SELECT results_eq(
   'SELECT COUNT(*) FROM production_run_ingredients pri WHERE EXISTS (SELECT 1 FROM production_runs pr JOIN user_restaurants ur ON pr.restaurant_id = ur.restaurant_id WHERE pri.production_run_id = pr.id AND ur.user_id = ''00000000-0000-0000-0000-000000000004'')',
-  ARRAY[1::bigint],
-  'Staff can SELECT production_run_ingredients'
+  ARRAY[0::bigint],
+  'Staff cannot SELECT production_run_ingredients (no access)'
 );
 
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000005","role":"authenticated"}', true);
@@ -501,15 +546,19 @@ SELECT lives_ok(
   'Chef can DELETE production_run_ingredients'
 );
 
--- Recreate ingredient for staff test
+-- Recreate ingredient for staff test (use postgres to bypass RLS)
+SET LOCAL role TO postgres;
 INSERT INTO production_run_ingredients (id, production_run_id, product_id, expected_quantity, unit) VALUES
   ('00000000-0000-0000-0000-000000000601', '00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000202', 5, 'L')
 ON CONFLICT DO NOTHING;
+SET LOCAL role TO authenticated;
 
+-- Staff cannot insert production_run_ingredients (no edit:batches capability)
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
-SELECT lives_ok(
-  'INSERT INTO production_run_ingredients (id, production_run_id, product_id, expected_quantity, unit) VALUES (gen_random_uuid(), ''00000000-0000-0000-0000-000000000501'', ''00000000-0000-0000-0000-000000000202'', 2, ''L'')',
-  'Staff can INSERT production_run_ingredients'
+SELECT throws_like(
+  $$INSERT INTO production_run_ingredients (id, production_run_id, product_id, expected_quantity, unit) VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000202', 2, 'L')$$,
+  '%row-level security%',
+  'Staff cannot INSERT production_run_ingredients (blocked by RLS)'
 );
 
 SELECT * FROM finish();

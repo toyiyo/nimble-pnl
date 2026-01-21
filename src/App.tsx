@@ -108,28 +108,83 @@ const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { ch
   );
 };
 
-// Staff Role Checker Component
-const StaffRoleChecker = ({ 
-  children, 
-  allowStaff, 
-  currentPath 
-}: { 
-  children: React.ReactNode; 
+// Collaborator route configurations
+// Each collaborator role has a landing page and list of allowed paths
+const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }> = {
+  collaborator_accountant: {
+    landing: '/transactions',
+    allowed: [
+      '/transactions',
+      '/banking',
+      '/expenses',
+      '/invoices',
+      '/customers',
+      '/chart-of-accounts',
+      '/financial-statements',
+      '/financial-intelligence',
+      '/payroll', // Read-only for bookkeeping
+      '/employees', // View for payroll context
+      '/settings',
+    ],
+  },
+  collaborator_inventory: {
+    landing: '/inventory',
+    allowed: [
+      '/inventory',
+      '/inventory-audit',
+      '/purchase-orders',
+      '/receipt-import',
+      '/settings',
+    ],
+  },
+  collaborator_chef: {
+    landing: '/recipes',
+    allowed: [
+      '/recipes',
+      '/prep-recipes',
+      '/batches',
+      '/inventory', // View-only for ingredient context
+      '/settings',
+    ],
+  },
+};
+
+// Role Route Checker Component - handles staff, kiosk, and collaborator routing
+const StaffRoleChecker = ({
+  children,
+  allowStaff,
+  currentPath
+}: {
+  children: React.ReactNode;
   allowStaff: boolean;
   currentPath: string;
 }) => {
   const { selectedRestaurant } = useRestaurantContext();
-  
+
   const role = selectedRestaurant?.role;
   const isStaff = role === 'staff';
   const isKiosk = role === 'kiosk';
-  
+  const isCollaborator = role?.startsWith('collaborator_');
+
   // CRITICAL: Kiosk users can ONLY access /kiosk - nothing else
   // This must be checked first before any other logic
   if (isKiosk && currentPath !== '/kiosk') {
     return <Navigate to="/kiosk" replace />;
   }
-  
+
+  // Collaborator routing - redirect to their landing page if not on allowed path
+  if (isCollaborator && role) {
+    const config = COLLABORATOR_ROUTES[role];
+    if (config) {
+      const isAllowedPath = config.allowed.some(path =>
+        currentPath === path || currentPath.startsWith(path + '/')
+      );
+      if (!isAllowedPath) {
+        return <Navigate to={config.landing} replace />;
+      }
+    }
+  }
+
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
   const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/employee/shifts', '/settings'];
   const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
@@ -138,7 +193,7 @@ const StaffRoleChecker = ({
   if (isStaff && !allowStaff && !isStaffAllowedPath) {
     return <Navigate to="/employee/clock" replace />;
   }
-  
+
   return <>{children}</>;
 };
 

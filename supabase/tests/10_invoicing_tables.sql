@@ -146,7 +146,7 @@ SELECT ok(
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename = 'invoices'
-      AND policyname = 'Users can delete draft invoices for their restaurants'
+      AND policyname = 'Users can delete invoices for their restaurants'
   ),
   'invoices DELETE policy should exist'
 );

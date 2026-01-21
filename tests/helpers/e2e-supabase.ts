@@ -516,6 +516,85 @@ export async function exposeSupabaseHelpers(page: Page) {
       ]);
     };
 
+    // Helper to invite a collaborator (for testing)
+    // IMPORTANT: Use generateTestUser() to create unique emails for each test
+    // The admin API is not available in browser context
+    (window as any).__inviteCollaborator = async (email: string, role: string, restaurantId: string) => {
+      // Create a test user for the collaborator
+      const { data: authUser, error: authError } = await supabase.auth.signUp({
+        email,
+        password: 'TestPassword123!',
+      });
+
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new Error(
+            `Collaborator email "${email}" is already registered. ` +
+            'Use generateTestUser() to create unique test emails for each test run.'
+          );
+        }
+        throw new Error(`Failed to create collaborator user: ${authError.message}`);
+      }
+
+      // Get the user ID from signup response
+      const userId = authUser?.user?.id;
+      if (!userId) {
+        throw new Error(
+          'Could not create collaborator user - signup did not return a user ID. ' +
+          'Ensure the email is unique using generateTestUser().'
+        );
+      }
+
+      // Add user to restaurant with collaborator role
+      const { error: roleError } = await supabase
+        .from('user_restaurants')
+        .upsert({
+          user_id: userId,
+          restaurant_id: restaurantId,
+          role: role,
+        }, {
+          onConflict: 'user_id,restaurant_id'
+        });
+
+      if (roleError) {
+        throw new Error(`Failed to assign collaborator role: ${roleError.message}`);
+      }
+
+      return { userId, role };
+    };
+
+    // Helper to simulate a different role for the current user (for testing routing)
+    (window as any).__simulateCollaboratorRole = async (role: string) => {
+      const user = await waitForUser();
+      if (!user?.id) throw new Error('No user session');
+
+      // Get current restaurant
+      const restaurantId = await (window as any).__getRestaurantId(user.id);
+      if (!restaurantId) throw new Error('No restaurant');
+
+      // Update the user's role in user_restaurants
+      const { error } = await supabase
+        .from('user_restaurants')
+        .update({ role })
+        .eq('user_id', user.id)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) {
+        throw new Error(`Failed to simulate role: ${error.message}`);
+      }
+
+      // Update localStorage to reflect the new role
+      const key = `selectedRestaurant_${user.id}`;
+      const currentData = localStorage.getItem(key);
+      if (currentData) {
+        const restaurantData = JSON.parse(currentData);
+        restaurantData.role = role;
+        localStorage.setItem(key, JSON.stringify(restaurantData));
+      }
+
+      return { role, restaurantId };
+    };
+
     (window as any).__supabaseHelpersReady = true;
   };
 

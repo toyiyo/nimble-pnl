@@ -38,12 +38,14 @@ import {
   CreditCard,
   Utensils,
   Boxes,
+  Calculator,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 // Navigation structure
 const navigationGroups = [
@@ -101,6 +103,128 @@ const navigationGroups = [
   },
 ];
 
+// Navigation groups for collaborator roles
+interface NavItem {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const collaboratorAccountantNav: NavGroup[] = [
+  {
+    label: 'Financial',
+    items: [
+      { path: '/transactions', label: 'Transactions', icon: Receipt },
+      { path: '/banking', label: 'Banks', icon: Wallet },
+      { path: '/expenses', label: 'Expenses', icon: DollarSign },
+      { path: '/invoices', label: 'Invoices', icon: FileText },
+      { path: '/customers', label: 'Customers', icon: Users },
+      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
+      { path: '/financial-statements', label: 'Statements', icon: FileText },
+      { path: '/financial-intelligence', label: 'Intelligence', icon: TrendingUp },
+    ],
+  },
+  {
+    label: 'Payroll',
+    items: [
+      { path: '/payroll', label: 'Payroll', icon: Wallet },
+      { path: '/employees', label: 'Employees', icon: Users },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
+];
+
+const collaboratorInventoryNav: NavGroup[] = [
+  {
+    label: 'Inventory',
+    items: [
+      { path: '/inventory', label: 'Inventory', icon: Package },
+      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
+      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
+      { path: '/receipt-import', label: 'Receipt Import', icon: Receipt },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
+];
+
+const collaboratorChefNav: NavGroup[] = [
+  {
+    label: 'Recipes',
+    items: [
+      { path: '/recipes', label: 'Recipes', icon: ChefHat },
+      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
+      { path: '/batches', label: 'Batches', icon: Boxes },
+    ],
+  },
+  {
+    label: 'Inventory',
+    items: [
+      { path: '/inventory', label: 'Inventory', icon: Package },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
+];
+
+const staffNav: NavGroup[] = [
+  {
+    label: 'Employee',
+    items: [
+      { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+      { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
+      { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
+      { path: '/employee/pay', label: 'My Pay', icon: Wallet },
+      { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
+];
+
+// Get navigation groups based on role
+function getNavigationForRole(role: string | undefined): NavGroup[] {
+  if (!role) return [];
+
+  switch (role) {
+    case 'kiosk':
+      return []; // Kiosk users see no sidebar
+    case 'staff':
+      return staffNav;
+    case 'collaborator_accountant':
+      return collaboratorAccountantNav;
+    case 'collaborator_inventory':
+      return collaboratorInventoryNav;
+    case 'collaborator_chef':
+      return collaboratorChefNav;
+    default:
+      // owner, manager, chef get full navigation
+      return navigationGroups;
+  }
+}
+
 export function AppSidebar() {
   const { state: sidebarState } = useSidebar();
   const location = useLocation();
@@ -108,36 +232,9 @@ export function AppSidebar() {
   const { signOut, user } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
 
-  // Check user role
+  // Get navigation based on user role
   const role = selectedRestaurant?.role;
-  const isStaff = role === 'staff';
-  const isKiosk = role === 'kiosk';
-
-  // Kiosk users should never see the sidebar (they're on noChrome route)
-  // But as a safety measure, show nothing if somehow they do
-  // Staff users get limited navigation
-  const filteredNavigationGroups = isKiosk
-    ? [] // Kiosk: no navigation at all
-    : isStaff
-    ? [
-        {
-          label: 'Employee',
-          items: [
-            { path: '/employee/clock', label: 'Time Clock', icon: Clock },
-            { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
-            { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
-            { path: '/employee/pay', label: 'My Pay', icon: Wallet },
-            { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
-          ],
-        },
-        {
-          label: 'Settings',
-          items: [
-            { path: '/settings', label: 'Settings', icon: Settings },
-          ],
-        },
-      ]
-    : navigationGroups; // Full access for owner/manager/chef
+  const filteredNavigationGroups = getNavigationForRole(role);
 
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === '/';

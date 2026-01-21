@@ -13,7 +13,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(36);
+SELECT plan(32);
 
 -- ============================================================================
 -- Test: Products table has capability-based policies
@@ -159,6 +159,7 @@ SELECT policies_are(
     'public',
     'invoices',
     ARRAY[
+        'Deny anonymous access to invoices',
         'Users can view invoices for their restaurants',
         'Users can insert invoices for their restaurants',
         'Users can update invoices for their restaurants',
@@ -191,6 +192,7 @@ SELECT policies_are(
     'public',
     'customers',
     ARRAY[
+        'Deny anonymous access to customers',
         'Users can view customers for their restaurants',
         'Users can insert customers for their restaurants',
         'Users can update customers for their restaurants',
@@ -239,6 +241,7 @@ SELECT policies_are(
     'public',
     'purchase_orders',
     ARRAY[
+        'Deny anonymous access to purchase_orders',
         'Users can view purchase_orders for their restaurants',
         'Users can insert purchase_orders for their restaurants',
         'Users can update purchase_orders for their restaurants',
@@ -286,6 +289,7 @@ SELECT policies_are(
     'public',
     'employees',
     ARRAY[
+        'Deny anonymous access to employees',
         'Users can view employees for their restaurants',
         'Owners and managers can manage employees'
     ],
@@ -337,6 +341,7 @@ SELECT policies_are(
     'public',
     'chart_of_accounts',
     ARRAY[
+        'Deny anonymous access to chart_of_accounts',
         'Users can view chart_of_accounts for their restaurants',
         'Users can insert chart_of_accounts for their restaurants',
         'Users can update chart_of_accounts for their restaurants',

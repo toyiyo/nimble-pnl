@@ -26,6 +26,7 @@ import { TipDraftsList } from '@/components/tips/TipDraftsList';
 import { TipPeriodTimeline } from '@/components/tips/TipPeriodTimeline';
 import { TipPeriodSummary } from '@/components/tips/TipPeriodSummary';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
+import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
 import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,12 +55,14 @@ export const Tips = () => {
   const [periodOffset, setPeriodOffset] = useState(0); // 0 = current week, -1 = previous, +1 = next
 
   // ============ Memoized Date Calculations ============
-  // Period dates for Overview mode (weekly view)
+  // Period dates for Overview mode (weekly view, Monday start to align with payroll)
   const { periodStart, periodEnd, periodStartStr, periodEndStr } = useMemo(() => {
     const now = new Date();
     const day = now.getDay();
+    // Calculate days since Monday (Monday = 0, Tuesday = 1, ..., Sunday = 6)
+    const daysSinceMonday = day === 0 ? 6 : day - 1;
     const baseStart = new Date(now);
-    baseStart.setDate(now.getDate() - day); // Sunday as start
+    baseStart.setDate(now.getDate() - daysSinceMonday); // Monday as start
     baseStart.setHours(0, 0, 0, 0);
 
     const start = new Date(baseStart);
@@ -628,24 +631,22 @@ export const Tips = () => {
       </header>
 
       {/* Setup/Settings Dialog */}
-      {showSetup && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80"
-        >
-          <Card className="max-w-lg w-full">
-            <CardHeader>
-              <CardTitle>Tip Pool Settings</CardTitle>
-              <CardDescription>Configure tip pooling, share method, and eligible employees.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Add your settings form here, e.g. share method, cadence, employees, etc. */}
-              <Button variant="default" onClick={() => setShowSetup(false)} aria-label="Close settings">Close</Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <TipPoolSettingsDialog
+        open={showSetup}
+        onClose={() => setShowSetup(false)}
+        tipSource={tipSource}
+        shareMethod={shareMethod}
+        splitCadence={splitCadence}
+        roleWeights={roleWeights}
+        selectedEmployees={selectedEmployees}
+        eligibleEmployees={eligibleEmployees}
+        isLoading={settingsLoading}
+        onTipSourceChange={setTipSource}
+        onShareMethodChange={setShareMethod}
+        onSplitCadenceChange={setSplitCadence}
+        onRoleWeightsChange={setRoleWeights}
+        onSelectedEmployeesChange={setSelectedEmployees}
+      />
 
       {restaurantId && <DisputeManager restaurantId={restaurantId} />}
 

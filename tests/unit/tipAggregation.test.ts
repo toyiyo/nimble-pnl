@@ -23,7 +23,7 @@ describe('tipAggregation - Double-Counting Prevention', () => {
         { employee_id: employee2, amount: 1500, split_date: '2026-01-04' },
         { employee_id: employee1, amount: 2000, split_date: '2026-01-05' },
       ];
-      
+
       const dates = getDatesWithApprovedSplits(items);
       expect(dates.size).toBe(2);
       expect(dates.has('2026-01-04')).toBe(true);
@@ -35,10 +35,49 @@ describe('tipAggregation - Double-Counting Prevention', () => {
         { employee_id: employee1, amount: 1000 },
         { employee_id: employee2, amount: 1500, split_date: '2026-01-04' },
       ];
-      
+
       const dates = getDatesWithApprovedSplits(items);
       expect(dates.size).toBe(1);
       expect(dates.has('2026-01-04')).toBe(true);
+    });
+
+    describe('CRITICAL: $0 splits should NOT count as having a split', () => {
+      it('does NOT include dates where all split items have $0 amount', () => {
+        const items: TipSplitItem[] = [
+          { employee_id: employee1, amount: 0, split_date: '2026-01-04' },
+          { employee_id: employee2, amount: 0, split_date: '2026-01-04' },
+        ];
+
+        const dates = getDatesWithApprovedSplits(items);
+        expect(dates.size).toBe(0);
+        expect(dates.has('2026-01-04')).toBe(false);
+      });
+
+      it('includes dates only when at least one split item has amount > 0', () => {
+        const items: TipSplitItem[] = [
+          { employee_id: employee1, amount: 0, split_date: '2026-01-04' },
+          { employee_id: employee2, amount: 1500, split_date: '2026-01-04' }, // Has money
+          { employee_id: employee1, amount: 0, split_date: '2026-01-05' }, // All $0
+        ];
+
+        const dates = getDatesWithApprovedSplits(items);
+        expect(dates.size).toBe(1);
+        expect(dates.has('2026-01-04')).toBe(true);
+        expect(dates.has('2026-01-05')).toBe(false);
+      });
+
+      it('REGRESSION: $0 splits should allow employee declarations to be counted', () => {
+        // Real bug scenario: Manager creates a split but forgets to allocate money
+        // Employees have declared tips that should NOT be blocked
+        const items: TipSplitItem[] = [
+          { employee_id: employee1, amount: 0, split_date: '2026-01-18' },
+          { employee_id: employee2, amount: 0, split_date: '2026-01-18' },
+        ];
+
+        const dates = getDatesWithApprovedSplits(items);
+        // Jan 18 should NOT be in the set because all amounts are $0
+        expect(dates.has('2026-01-18')).toBe(false);
+      });
     });
   });
 
@@ -181,9 +220,116 @@ describe('tipAggregation - Double-Counting Prevention', () => {
       ];
 
       const result = aggregateTipsWithDateFiltering(splitItems, employeeTips);
-      
+
       expect(result.get(employee1)?.total).toBe(0);
       expect(result.get(employee2)?.total).toBe(0);
+    });
+
+    describe('CRITICAL: $0 splits allow employee declarations', () => {
+      it('includes employee declarations when split has $0 allocations', () => {
+        // Scenario: Manager creates split but all allocations are $0
+        // Employee declarations for that date should still be counted
+        const splitItems: TipSplitItem[] = [
+          { employee_id: employee1, amount: 0, split_date: '2026-01-18' },
+          { employee_id: employee2, amount: 0, split_date: '2026-01-18' },
+        ];
+
+        const employeeTips: EmployeeTip[] = [
+          { employee_id: employee1, amount: 5000, tip_date: '2026-01-18' }, // $50
+          { employee_id: employee2, amount: 3000, tip_date: '2026-01-18' }, // $30
+        ];
+
+        const result = aggregateTipsWithDateFiltering(splitItems, employeeTips);
+
+        // Employee declarations should be included since split has $0
+        expect(result.get(employee1)?.total).toBe(5000);
+        expect(result.get(employee1)?.fromDeclaration).toBe(5000);
+        expect(result.get(employee1)?.fromSplit).toBe(0);
+
+        expect(result.get(employee2)?.total).toBe(3000);
+        expect(result.get(employee2)?.fromDeclaration).toBe(3000);
+        expect(result.get(employee2)?.fromSplit).toBe(0);
+      });
+
+      it('REGRESSION: prevents lost tips when hours-based split yields $0 due to no hours', () => {
+        // Real bug scenario from production:
+        // - Manager enters $500 tips for Jan 18
+        // - Hours split calculated but no one has hours logged = all $0 allocations
+        // - Employee declarations of $80 were being blocked
+        // - Fixed: $0 splits don't block employee declarations
+
+        const splitItems: TipSplitItem[] = [
+          { employee_id: employee1, amount: 0, split_date: '2026-01-18' },
+          { employee_id: employee2, amount: 0, split_date: '2026-01-18' },
+        ];
+
+        const employeeTips: EmployeeTip[] = [
+          { employee_id: employee1, amount: 4000, tip_date: '2026-01-18' }, // $40 cash
+          { employee_id: employee1, amount: 4000, tip_date: '2026-01-18' }, // $40 credit
+        ];
+
+        const result = aggregateTipsWithDateFiltering(splitItems, employeeTips);
+
+        // Employee 1 should get their $80 declaration
+        expect(result.get(employee1)?.total).toBe(8000);
+        expect(result.get(employee1)?.fromDeclaration).toBe(8000);
+      });
+
+      it('correctly blocks employee declarations when split HAS money', () => {
+        // When a split has actual money allocated, employee declarations ARE blocked
+        const splitItems: TipSplitItem[] = [
+          { employee_id: employee1, amount: 5000, split_date: '2026-01-18' }, // $50
+          { employee_id: employee2, amount: 5000, split_date: '2026-01-18' }, // $50
+        ];
+
+        const employeeTips: EmployeeTip[] = [
+          { employee_id: employee1, amount: 4000, tip_date: '2026-01-18' }, // Should be excluded
+          { employee_id: employee2, amount: 6000, tip_date: '2026-01-18' }, // Should be excluded
+        ];
+
+        const result = aggregateTipsWithDateFiltering(splitItems, employeeTips);
+
+        // Should use split amounts, not declarations
+        expect(result.get(employee1)?.total).toBe(5000);
+        expect(result.get(employee1)?.fromSplit).toBe(5000);
+        expect(result.get(employee1)?.fromDeclaration).toBe(0);
+
+        expect(result.get(employee2)?.total).toBe(5000);
+        expect(result.get(employee2)?.fromSplit).toBe(5000);
+        expect(result.get(employee2)?.fromDeclaration).toBe(0);
+      });
+
+      it('handles mixed scenario: some dates with $0 splits, some with money', () => {
+        const splitItems: TipSplitItem[] = [
+          // Jan 18: All $0 (broken hours-based split)
+          { employee_id: employee1, amount: 0, split_date: '2026-01-18' },
+          { employee_id: employee2, amount: 0, split_date: '2026-01-18' },
+          // Jan 19: Has money (working split)
+          { employee_id: employee1, amount: 7500, split_date: '2026-01-19' },
+          { employee_id: employee2, amount: 7500, split_date: '2026-01-19' },
+        ];
+
+        const employeeTips: EmployeeTip[] = [
+          // Jan 18 declarations - should be included
+          { employee_id: employee1, amount: 4000, tip_date: '2026-01-18' },
+          { employee_id: employee2, amount: 3000, tip_date: '2026-01-18' },
+          // Jan 19 declarations - should be EXCLUDED (split has money)
+          { employee_id: employee1, amount: 10000, tip_date: '2026-01-19' },
+          { employee_id: employee2, amount: 12000, tip_date: '2026-01-19' },
+        ];
+
+        const result = aggregateTipsWithDateFiltering(splitItems, employeeTips);
+
+        // Employee 1: Jan 18 declaration ($40) + Jan 19 split ($75) = $115
+        expect(result.get(employee1)?.total).toBe(11500);
+        expect(result.get(employee1)?.fromDeclaration).toBe(4000);
+        expect(result.get(employee1)?.fromSplit).toBe(7500);
+
+        // Employee 2: Jan 18 declaration ($30) + Jan 19 split ($75) = $105
+        expect(result.get(employee2)?.total).toBe(10500);
+        expect(result.get(employee2)?.fromDeclaration).toBe(3000);
+        expect(result.get(employee2)?.fromSplit).toBe(7500);
+      });
     });
   });
 

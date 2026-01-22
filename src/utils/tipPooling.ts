@@ -43,14 +43,31 @@ export function calculateTipSplitEven(
 /**
  * Calculate tip splits by hours worked.
  * Rounds each share to cents and assigns any rounding remainder to the last participant.
+ * Falls back to even split if no hours are recorded (prevents $0 allocations).
  */
 export function calculateTipSplitByHours(
   totalTipsCents: number,
   participants: Array<{ id: string; name: string; hours: number }>
 ): TipShare[] {
-  const totalHours = participants.reduce((sum, p) => sum + (p.hours || 0), 0);
-  if (totalTipsCents <= 0 || totalHours <= 0) {
+  if (totalTipsCents <= 0 || participants.length === 0) {
     return participants.map(p => ({ employeeId: p.id, name: p.name, hours: p.hours, amountCents: 0 }));
+  }
+
+  const totalHours = participants.reduce((sum, p) => sum + (p.hours || 0), 0);
+
+  // Fall back to even split if no one has hours logged
+  // This prevents $0 allocations when tips exist but hours don't
+  if (totalHours <= 0) {
+    const evenShare = Math.floor(totalTipsCents / participants.length);
+    let allocated = 0;
+    return participants.map((p, idx) => {
+      if (idx === participants.length - 1) {
+        const remainder = totalTipsCents - allocated;
+        return { employeeId: p.id, name: p.name, hours: p.hours, amountCents: remainder };
+      }
+      allocated += evenShare;
+      return { employeeId: p.id, name: p.name, hours: p.hours, amountCents: evenShare };
+    });
   }
 
   const shares: TipShare[] = [];
@@ -76,14 +93,31 @@ export function calculateTipSplitByHours(
 /**
  * Calculate tip splits by role weights.
  * Weight is attached to position; remainder goes to last participant.
+ * Falls back to even split if no weights are defined (prevents $0 allocations).
  */
 export function calculateTipSplitByRole(
   totalTipsCents: number,
   participants: Array<{ id: string; name: string; role: string; weight: number }>
 ): TipShare[] {
-  const totalWeight = participants.reduce((sum, p) => sum + (p.weight || 0), 0);
-  if (totalTipsCents <= 0 || totalWeight <= 0) {
+  if (totalTipsCents <= 0 || participants.length === 0) {
     return participants.map(p => ({ employeeId: p.id, name: p.name, role: p.role, amountCents: 0 }));
+  }
+
+  const totalWeight = participants.reduce((sum, p) => sum + (p.weight || 0), 0);
+
+  // Fall back to even split if no weights are defined
+  // This prevents $0 allocations when tips exist but weights don't
+  if (totalWeight <= 0) {
+    const evenShare = Math.floor(totalTipsCents / participants.length);
+    let allocated = 0;
+    return participants.map((p, idx) => {
+      if (idx === participants.length - 1) {
+        const remainder = totalTipsCents - allocated;
+        return { employeeId: p.id, name: p.name, role: p.role, amountCents: remainder };
+      }
+      allocated += evenShare;
+      return { employeeId: p.id, name: p.name, role: p.role, amountCents: evenShare };
+    });
   }
 
   const shares: TipShare[] = [];

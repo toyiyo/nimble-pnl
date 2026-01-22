@@ -93,9 +93,15 @@ test.describe('Tip pooling flow', () => {
     await page.goto('/tips');
     const tipsHeading = page.getByRole('heading', { name: /^tips$/i }).first();
     await expect(tipsHeading).toBeVisible({ timeout: 10000 });
-    
+
+    // Switch to Daily Entry mode (page defaults to Overview mode)
+    const dailyEntryButton = page.getByRole('button', { name: /daily entry/i });
+    await expect(dailyEntryButton).toBeVisible({ timeout: 5000 });
+    await dailyEntryButton.click();
+
     // Click to open tip entry dialog
     const enterTipsButton = page.getByRole('button', { name: /enter.*tips/i }).first();
+    await expect(enterTipsButton).toBeVisible({ timeout: 5000 });
     await enterTipsButton.click();
     await expect(page.locator('#tip-amount')).toBeVisible({ timeout: 10000 });
 

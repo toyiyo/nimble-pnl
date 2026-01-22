@@ -92,9 +92,25 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     staleTime: 30000,
   });
 
-  // Get split for a specific date
+  // Get split for a specific date (from cache - use for display only)
   const getSplitForDate = (date: string) => {
     return splits?.find(s => s.split_date === date);
+  };
+
+  // Check database directly for existing split (prevents race conditions)
+  const checkExistingSplit = async (date: string): Promise<string | null> => {
+    if (!restaurantId) return null;
+
+    const { data } = await supabase
+      .from('tip_splits')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('split_date', date)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    return data?.id || null;
   };
 
   // Helper: Update existing split
@@ -180,12 +196,24 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
     mutationFn: async (input: CreateTipSplitInput) => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
+      // Validation: Cannot approve with empty shares or $0 total
+      if (input.status === 'approved') {
+        if (!input.shares || input.shares.length === 0) {
+          throw new Error('Cannot approve tips without employee allocations');
+        }
+        const totalAllocated = input.shares.reduce((sum, s) => sum + s.amountCents, 0);
+        if (totalAllocated === 0) {
+          throw new Error('Cannot approve tips with $0 total allocation');
+        }
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const existing = getSplitForDate(input.split_date);
-      const splitId = existing 
-        ? await updateExistingSplit(existing.id, input, user.id)
+      // Check database directly to prevent race conditions with stale cache
+      const existingId = await checkExistingSplit(input.split_date);
+      const splitId = existingId
+        ? await updateExistingSplit(existingId, input, user.id)
         : await createNewSplit(input, user.id);
 
       await insertSplitItems(splitId, input);

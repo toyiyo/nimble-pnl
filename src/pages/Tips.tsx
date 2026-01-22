@@ -4,10 +4,8 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useTimePunches } from '@/hooks/useTimePunches';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format } from 'date-fns';
@@ -25,6 +23,9 @@ import { DisputeManager } from '@/components/tips/DisputeManager';
 import { RecentTipSplits } from '@/components/tips/RecentTipSplits';
 import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
 import { TipDraftsList } from '@/components/tips/TipDraftsList';
+import { TipPeriodTimeline } from '@/components/tips/TipPeriodTimeline';
+import { TipPeriodSummary } from '@/components/tips/TipPeriodSummary';
+import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
 import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,28 +37,135 @@ const defaultWeights: Record<string, number> = {
   'Host': 1,
 };
 
-type ViewMode = 'setup' | 'daily';
+type ViewMode = 'overview' | 'daily' | 'history';
 
 export const Tips = () => {
+  // ============ Context Hooks ============
   const { loading } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const { employees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'active' });
   const { toast } = useToast();
 
-  const { settings, updateSettings, isLoading: settingsLoading } = useTipPoolSettings(restaurantId);
-
-  const [viewMode, setViewMode] = useState<ViewMode>('daily');
+  // ============ State Hooks ============
+  const [showSetup, setShowSetup] = useState(false);
+  const [lockDialogOpen, setLockDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('overview');
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [periodOffset, setPeriodOffset] = useState(0); // 0 = current week, -1 = previous, +1 = next
 
+  // ============ Memoized Date Calculations ============
+  // Period dates for Overview mode (weekly view)
+  const { periodStart, periodEnd, periodStartStr, periodEndStr } = useMemo(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const baseStart = new Date(now);
+    baseStart.setDate(now.getDate() - day); // Sunday as start
+    baseStart.setHours(0, 0, 0, 0);
+
+    const start = new Date(baseStart);
+    start.setDate(baseStart.getDate() + periodOffset * 7);
+
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+
+    return {
+      periodStart: start,
+      periodEnd: end,
+      periodStartStr: format(start, 'yyyy-MM-dd'),
+      periodEndStr: format(end, 'yyyy-MM-dd'),
+    };
+  }, [periodOffset]);
+
+  // Selected date for Daily Entry mode
   const today = format(selectedDate, 'yyyy-MM-dd');
-  // Force UTC interpretation to avoid timezone confusion
-  // Without 'Z', new Date('2026-01-03T00:00:00') is treated as local time
-  const todayStart = new Date(today + 'T00:00:00Z');
-  const todayEnd = new Date(today + 'T23:59:59.999Z');
-  
+  const todayStart = useMemo(() => new Date(today + 'T00:00:00Z'), [today]);
+  const todayEnd = useMemo(() => new Date(today + 'T23:59:59.999Z'), [today]);
+
+  // ============ Data Fetching Hooks ============
+  const { employees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'active' });
+  const { settings, updateSettings, isLoading: settingsLoading } = useTipPoolSettings(restaurantId);
   const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
-  const { saveTipSplit, isSaving, splits } = useTipSplits(restaurantId, today, today);
+
+  // Query for Daily Entry mode - single day
+  const { saveTipSplit, isSaving, splits: dailySplits } = useTipSplits(restaurantId, today, today);
+
+  // Query for Overview mode - full period range
+  const { splits: periodSplits, isLoading: periodSplitsLoading } = useTipSplits(
+    restaurantId,
+    periodStartStr,
+    periodEndStr
+  );
+
+  // Use appropriate splits based on view mode
+  const splits = viewMode === 'overview' ? periodSplits : dailySplits;
+
+  // ============ Computed Values ============
+  // Period validation stats for lock button
+  const periodValidation = useMemo(() => {
+    if (!periodSplits) {
+      return { canLock: false, approved: 0, drafts: 0, withShares: 0, total: 0 };
+    }
+
+    const relevantSplits = periodSplits.filter(s => {
+      const d = new Date(s.split_date + 'T00:00:00');
+      return d >= periodStart && d <= periodEnd && s.status !== 'archived';
+    });
+
+    const approved = relevantSplits.filter(s => s.status === 'approved');
+    const drafts = relevantSplits.filter(s => s.status === 'draft');
+    const withShares = approved.filter(s => s.items && s.items.length > 0);
+
+    return {
+      canLock: approved.length > 0 && drafts.length === 0 && withShares.length === approved.length,
+      approved: approved.length,
+      drafts: drafts.length,
+      withShares: withShares.length,
+      total: relevantSplits.length,
+    };
+  }, [periodSplits, periodStart, periodEnd]);
+
+  // ============ Handlers ============
+  // Navigate to Daily Entry for a specific day (from Overview timeline click)
+  const handleDayClick = (date: Date) => {
+    setSelectedDate(date);
+    setViewMode('daily');
+  };
+
+  // Lock all approved splits in the period (creates payroll snapshot)
+  const handleLockPeriod = async () => {
+    if (!restaurantId || !periodSplits) return;
+
+    // Only lock approved splits that have employee shares
+    const splitsToLock = periodSplits.filter(s => {
+      const d = new Date(s.split_date + 'T00:00:00');
+      return d >= periodStart && d <= periodEnd &&
+        s.status === 'approved' &&
+        s.items && s.items.length > 0;
+    });
+
+    if (splitsToLock.length === 0) {
+      toast({
+        title: 'Cannot lock period',
+        description: 'No approved tips with employee allocations found.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    for (const split of splitsToLock) {
+      await supabase
+        .from('tip_splits')
+        .update({ status: 'archived' })
+        .eq('id', split.id);
+    }
+
+    setLockDialogOpen(false);
+    toast({
+      title: 'Period locked for payroll',
+      description: `${splitsToLock.length} day(s) locked. Tips are now included in payroll.`,
+    });
+  };
 
   const { tipData: posTipData, hasTips: hasPOSTips } = usePOSTipsForDate(restaurantId, today);
 
@@ -500,17 +608,54 @@ export const Tips = () => {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2">
-        <p className="text-sm text-muted-foreground">Dashboard → Tips</p>
-        <h1 className="text-2xl font-bold">Tips</h1>
-        <p className="text-muted-foreground max-w-2xl">
-          Simple, trust-building tip splits. One choice at a time, with a live preview.
-        </p>
+      <header className="space-y-2 flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">Dashboard → Tips</p>
+          <h1 className="text-2xl font-bold">Tips</h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Simple, trust-building tip splits. One choice at a time, with a live preview.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          aria-label="Setup"
+          className="gap-2"
+          onClick={() => setShowSetup(true)}
+          onKeyDown={e => e.key === 'Enter' && setShowSetup(true)}
+        >
+          <Settings className="h-5 w-5" />
+        </Button>
       </header>
+
+      {/* Setup/Settings Dialog */}
+      {showSetup && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80"
+        >
+          <Card className="max-w-lg w-full">
+            <CardHeader>
+              <CardTitle>Tip Pool Settings</CardTitle>
+              <CardDescription>Configure tip pooling, share method, and eligible employees.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Add your settings form here, e.g. share method, cadence, employees, etc. */}
+              <Button variant="default" onClick={() => setShowSetup(false)} aria-label="Close settings">Close</Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {restaurantId && <DisputeManager restaurantId={restaurantId} />}
 
       <div className="flex gap-2">
+        <Button
+          variant={viewMode === 'overview' ? 'default' : 'outline'}
+          onClick={() => setViewMode('overview')}
+        >
+          Overview
+        </Button>
         <Button
           variant={viewMode === 'daily' ? 'default' : 'outline'}
           onClick={() => setViewMode('daily')}
@@ -518,14 +663,93 @@ export const Tips = () => {
           Daily Entry
         </Button>
         <Button
-          variant={viewMode === 'setup' ? 'default' : 'outline'}
-          onClick={() => setViewMode('setup')}
-          className="gap-2"
+          variant={viewMode === 'history' ? 'default' : 'outline'}
+          onClick={() => setViewMode('history')}
         >
-          <Settings className="h-4 w-4" />
-          Setup
+          History
         </Button>
       </div>
+
+      {viewMode === 'overview' && (
+        <div className="space-y-6">
+          {/* Period navigation controls */}
+          <div className="flex items-center justify-between pb-2">
+            <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)}>
+              ← Previous
+            </Button>
+            <span className="font-semibold text-lg">
+              {`Week of ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`}
+            </span>
+            <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0}>
+              Next →
+            </Button>
+          </div>
+
+          {/* Payroll integration guidance */}
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>How tips flow to payroll:</strong> Click a day to enter tips → Review employee allocations → Approve → Lock period when ready for payroll.
+              Only <strong>approved</strong> tips with employee allocations appear in payroll reports.
+            </AlertDescription>
+          </Alert>
+
+          {/* Period summary card */}
+          <TipPeriodSummary
+            splits={periodSplits}
+            startDate={periodStart}
+            endDate={periodEnd}
+            isLoading={periodSplitsLoading}
+            shareMethod={shareMethod}
+          />
+
+          {/* Timeline visualization - clicking navigates to Daily Entry */}
+          <TipPeriodTimeline
+            startDate={periodStart}
+            endDate={periodEnd}
+            splits={periodSplits}
+            onDayClick={handleDayClick}
+            isLoading={periodSplitsLoading}
+          />
+
+          {/* Lock period section with validation feedback */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="font-medium">Ready for payroll?</p>
+                  <p className="text-sm text-muted-foreground">
+                    {periodValidation.approved} approved, {periodValidation.drafts} drafts
+                    {periodValidation.drafts > 0 && (
+                      <span className="text-yellow-600"> — approve all drafts first</span>
+                    )}
+                    {periodValidation.approved > 0 && periodValidation.withShares < periodValidation.approved && (
+                      <span className="text-destructive"> — some approved tips have no employee allocations</span>
+                    )}
+                  </p>
+                </div>
+                <Button
+                  variant="default"
+                  onClick={() => setLockDialogOpen(true)}
+                  aria-label="Lock tips for this period"
+                  disabled={!periodValidation.canLock}
+                >
+                  Lock for payroll
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Lock period dialog */}
+          <LockPeriodDialog
+            open={lockDialogOpen}
+            periodLabel={`Week of ${periodStart.toLocaleDateString()}`}
+            onConfirm={handleLockPeriod}
+            onCancel={() => setLockDialogOpen(false)}
+            loading={isSaving}
+          />
+        </div>
+      )}
 
       {viewMode === 'daily' && (
         <>
@@ -615,135 +839,30 @@ export const Tips = () => {
         </>
       )}
 
-      {viewMode === 'setup' && (
-        <>
+      {viewMode === 'history' && (
+        <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>1. How were tips collected?</CardTitle>
+              <CardTitle>Tip History</CardTitle>
+              <CardDescription>Locked periods and payroll reference</CardDescription>
             </CardHeader>
             <CardContent>
-              <RadioGroup value={tipSource} onValueChange={val => setTipSource(val as TipSource)} className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="manual" id="source-manual" />
-                  <Label htmlFor="source-manual" className="cursor-pointer">We enter tips ourselves</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="pos" id="source-pos" />
-                  <Label htmlFor="source-pos" className="cursor-pointer">Tips come from the POS</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">You can change this later.</p>
-              </RadioGroup>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>2. Who shares tips?</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-muted-foreground">Active, tip-eligible employees only.</p>
-              <div className="grid md:grid-cols-2 gap-3">
-                {eligibleEmployees.map(emp => (
-                  <label key={emp.id} className="flex items-center space-x-3 rounded-md border p-3 cursor-pointer hover:bg-muted/50">
-                    <Checkbox
-                      checked={selectedEmployees.has(emp.id)}
-                      onCheckedChange={checked => {
-                        setSelectedEmployees(prev => {
-                          const next = new Set(prev);
-                          if (checked) next.add(emp.id);
-                          else next.delete(emp.id);
-                          return next;
-                        });
-                      }}
-                    />
-                    <div>
-                      <div className="font-medium">{emp.name}</div>
-                      <div className="text-sm text-muted-foreground">{emp.position}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-              <Button onClick={handleSaveSettings} variant="outline" className="w-full">
-                Save employee selection
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>3. How should tips be shared?</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <RadioGroup value={shareMethod} onValueChange={val => setShareMethod(val as ShareMethod)} className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="hours" id="share-hours" />
-                  <Label htmlFor="share-hours" className="cursor-pointer">By hours worked</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="role" id="share-role" />
-                  <Label htmlFor="share-role" className="cursor-pointer">By role</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="manual" id="share-manual" />
-                  <Label htmlFor="share-manual" className="cursor-pointer">I'll decide manually</Label>
-                </div>
-              </RadioGroup>
-
-              {shareMethod === 'role' && (
-                <div className="space-y-3 pt-3 border-t">
-                  <p className="text-sm text-muted-foreground">Adjust weights by role.</p>
-                  {Array.from(new Set(participants.map(p => p.position))).map(role => (
-                    <div key={role} className="flex items-center space-x-3">
-                      <Label className="w-32">{role}</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={roleWeights[role] ?? 1}
-                        onChange={e => {
-                          const val = Number.parseFloat(e.target.value || '1');
-                          setRoleWeights(prev => ({ ...prev, [role]: Math.max(0, val) }));
-                        }}
-                        onBlur={handleSaveSettings}
-                      />
-                      <span className="text-sm text-muted-foreground">×</span>
-                    </div>
+              {splits?.filter(s => s.status === 'archived').length ? (
+                <ul className="space-y-2">
+                  {splits.filter(s => s.status === 'archived').map(s => (
+                    <li key={s.id} className="border rounded p-3 flex flex-col">
+                      <span className="font-semibold">{format(new Date(s.split_date + 'T00:00:00'), 'MMM d, yyyy')}</span>
+                      <span className="text-sm text-muted-foreground">Amount: ${(s.total_amount / 100).toFixed(2)}</span>
+                      <span className="text-xs text-muted-foreground">Payroll snapshot: {s.approved_at ? format(new Date(s.approved_at), 'MMM d, yyyy, h:mm a') : 'N/A'}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
+              ) : (
+                <span className="text-muted-foreground">No locked periods yet.</span>
               )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>4. When should tips be split?</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RadioGroup value={splitCadence} onValueChange={val => setSplitCadence(val as SplitCadence)} className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="daily" id="cadence-daily" />
-                  <Label htmlFor="cadence-daily" className="cursor-pointer">Every day</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="weekly" id="cadence-weekly" />
-                  <Label htmlFor="cadence-weekly" className="cursor-pointer">Every week</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="shift" id="cadence-shift" />
-                  <Label htmlFor="cadence-shift" className="cursor-pointer">Per shift</Label>
-                </div>
-                <p className="text-sm text-muted-foreground">Daily keeps things simplest.</p>
-              </RadioGroup>
-            </CardContent>
-          </Card>
-
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              Your settings are saved automatically. Switch to "Daily Entry" to start entering tips.
-            </AlertDescription>
-          </Alert>
-        </>
+        </div>
       )}
     </div>
   );

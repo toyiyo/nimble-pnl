@@ -8066,6 +8066,7 @@ export const Constants = {
         "insurance",
         "repairs_maintenance",
         "professional_fees",
+        "depreciation",
       ],
       account_type_enum: [
         "asset",

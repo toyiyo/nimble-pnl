@@ -149,6 +149,7 @@ vi.mock('lucide-react', () => ({
   Trash2: () => React.createElement('div', { 'data-testid': 'trash-icon' }),
   Camera: () => React.createElement('div', { 'data-testid': 'camera-icon' }),
   ChevronDown: () => React.createElement('div', { 'data-testid': 'chevron-down-icon' }),
+  ChevronsUpDown: () => React.createElement('div', { 'data-testid': 'chevrons-updown-icon' }),
   Loader2: () => React.createElement('div', { 'data-testid': 'loader-icon' }),
   Star: () => React.createElement('div', { 'data-testid': 'star-icon' }),
   ImageIcon: () => React.createElement('div', { 'data-testid': 'image-icon' }),

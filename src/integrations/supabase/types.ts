@@ -7542,6 +7542,22 @@ export type Database = {
           typical_price: number
         }[]
       }
+      get_unified_sales_totals: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_search_term?: string
+          p_start_date?: string
+        }
+        Returns: {
+          collected_at_pos: number
+          discounts: number
+          pass_through_amount: number
+          revenue: number
+          total_count: number
+          unique_items: number
+        }[]
+      }
       get_users_by_ids: {
         Args: { user_ids: string[] }
         Returns: {

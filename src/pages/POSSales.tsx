@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useUnifiedSalesTotals } from "@/hooks/useUnifiedSalesTotals";
+import { subDays, format as formatDateFn } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -60,8 +62,9 @@ export default function POSSales() {
   const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  // Default to last 30 days for better UX and performance
+  const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
@@ -124,6 +127,16 @@ export default function POSSales() {
     startDate: startDate || undefined,
     endDate: endDate || undefined,
   });
+
+  // Server-side aggregated totals for dashboard metrics (independent of pagination)
+  const { totals: serverTotals, isLoading: totalsLoading } = useUnifiedSalesTotals(
+    selectedRestaurant?.restaurant_id || null,
+    {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      searchTerm: searchTerm || undefined,
+    }
+  );
 
   // Filter revenue and liability accounts for categorization (matching split dialog)
   const categoryAccounts = useMemo(() => {
@@ -461,29 +474,31 @@ export default function POSSales() {
   };
 
   const contextDescription = useMemo(() => {
+    const countSuffix = serverTotals.totalCount > 0 ? ` (${serverTotals.totalCount.toLocaleString()} sales)` : '';
+    
     if (startDate && endDate) {
-      return `Totals for ${formatShortDate(startDate)} - ${formatShortDate(endDate)}`;
+      return `Totals for ${formatShortDate(startDate)} - ${formatShortDate(endDate)}${countSuffix}`;
     }
     if (startDate) {
-      return `Totals since ${formatShortDate(startDate)}`;
+      return `Totals since ${formatShortDate(startDate)}${countSuffix}`;
     }
     if (endDate) {
-      return `Totals through ${formatShortDate(endDate)}`;
+      return `Totals through ${formatShortDate(endDate)}${countSuffix}`;
     }
     if (searchTerm) {
-      return `Matching "${searchTerm}"`;
+      return `Matching "${searchTerm}"${countSuffix}`;
     }
     if (recipeFilter === "with-recipe") {
-      return "Totals for mapped recipes";
+      return `Totals for mapped recipes${countSuffix}`;
     }
     if (recipeFilter === "without-recipe") {
-      return "Totals for items without recipes";
+      return `Totals for items without recipes${countSuffix}`;
     }
     if (selectedView === "grouped") {
-      return "Totals by item grouping";
+      return `Totals by item grouping${countSuffix}`;
     }
-    return "Totals reflect visible transactions";
-  }, [startDate, endDate, searchTerm, recipeFilter, selectedView]);
+    return `All sales${countSuffix}`;
+  }, [startDate, endDate, searchTerm, recipeFilter, selectedView, serverTotals.totalCount]);
 
   const latestSyncTime = useMemo(() => {
     if (!integrationStatuses || integrationStatuses.length === 0) return undefined;
@@ -506,61 +521,24 @@ export default function POSSales() {
     resetCategorizeError();
   };
 
-  // Calculate dashboard metrics - MUST be before conditional return to follow Rules of Hooks
-  const dashboardMetrics = useMemo(() => {
-    const totalSales = filteredSales.length;
-    
-    // Separate revenue items from discounts and pass-through items based on adjustment_type
-    let revenue = 0;
-    let discounts = 0;
-    let passThroughAmount = 0;
-    
-    filteredSales.forEach(sale => {
-      // Calculate total for this sale (including child splits if applicable)
-      let saleTotal = 0;
-      
-      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
-        // Sum child split amounts for split sales
-        saleTotal = sale.child_splits.reduce((childSum, split) => 
-          childSum + (split.totalPrice || 0), 0
-        );
-      } else {
-        // Use parent sale amount for non-split sales
-        saleTotal = sale.totalPrice || 0;
-      }
-      
-      // Categorize based on adjustment_type
-      if (sale.adjustment_type === 'discount') {
-        // Discounts are negative and shown separately
-        discounts += saleTotal;
-      } else if (sale.adjustment_type) {
-        // Other adjustment types are pass-through (tax, tip, service_charge, fee)
-        passThroughAmount += saleTotal;
-      } else {
-        // Items without adjustment_type are revenue
-        revenue += saleTotal;
-      }
-    });
-    
-    const collectedAtPOS = revenue + passThroughAmount + discounts;
-    const uniqueItems = new Set(filteredSales.map(sale => sale.itemName)).size;
-    
-    // Count items that don't have a recipe mapping (use recipeByItemName as source of truth)
+  // Dashboard metrics from server-side aggregation (accurate regardless of pagination)
+  // unmappedCount still needs client-side calculation as it depends on recipe mappings
+  const unmappedCount = useMemo(() => {
     const uniqueItemNames = new Set(filteredSales.map(sale => sale.itemName));
-    const unmappedCount = Array.from(uniqueItemNames).filter(
+    return Array.from(uniqueItemNames).filter(
       itemName => !hasRecipeMapping(itemName, recipeByItemName)
     ).length;
-    
-    return {
-      totalSales,
-      revenue,
-      discounts,
-      passThroughAmount,
-      collectedAtPOS,
-      uniqueItems,
-      unmappedCount,
-    };
   }, [filteredSales, recipeByItemName]);
+
+  const dashboardMetrics = useMemo(() => ({
+    totalSales: serverTotals.totalCount,
+    revenue: serverTotals.revenue,
+    discounts: serverTotals.discounts,
+    passThroughAmount: serverTotals.passThroughAmount,
+    collectedAtPOS: serverTotals.collectedAtPOS,
+    uniqueItems: serverTotals.uniqueItems,
+    unmappedCount,
+  }), [serverTotals, unmappedCount]);
 
   const activeFiltersCount = [
     searchTerm, 

@@ -63,7 +63,7 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       // Fetch current and previous period transactions with chart of accounts join
       let query = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, ai_confidence, chart_of_accounts!category_id(account_name, account_subtype)')
+        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, is_split, ai_confidence, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(previousPeriodStart, 'yyyy-MM-dd'))
@@ -248,9 +248,9 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
         ? (aiCategorizedCount / currentPeriodTxns.length) * 100 
         : 0;
 
-      // Uncategorized Spend
+      // Uncategorized Spend - exclude split transactions (they have categories in child splits)
       const uncategorizedSpend = currentOutflows
-        .filter(t => !t.category_id)
+        .filter(t => !t.category_id && !t.is_split)
         .reduce((sum, t) => sum + Math.abs(t.amount), 0);
       
       const uncategorizedPercentage = totalOutflows > 0 

@@ -60,6 +60,7 @@ import InvoiceForm from "./pages/InvoiceForm";
 import InvoiceDetail from "./pages/InvoiceDetail";
 import StripeAccountManagement from "./pages/StripeAccountManagement";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
+import Assets from "./pages/Assets";
 
 import { queryClientConfig } from "@/lib/react-query-config";
 
@@ -122,6 +123,7 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
       '/chart-of-accounts',
       '/financial-statements',
       '/financial-intelligence',
+      '/assets', // Asset management
       '/payroll', // Read-only for bookkeeping
       '/employees', // View for payroll context
       '/settings',
@@ -251,6 +253,7 @@ const App = () => (
           <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
           <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
+            <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />

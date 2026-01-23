@@ -60,6 +60,7 @@ const SUBTYPE_DISPLAY_NAMES: Record<string, string> = {
   'insurance': 'Insurance',
   'repairs_maintenance': 'Repairs & Maintenance',
   'professional_fees': 'Professional Services',
+  'depreciation': 'Depreciation',
   
 };
 

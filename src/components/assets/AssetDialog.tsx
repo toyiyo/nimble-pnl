@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
 import {
   Sheet,
   SheetContent,
@@ -25,7 +26,17 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   Collapsible,
   CollapsibleContent,
@@ -34,7 +45,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, ChevronDown, Upload, X, Star, Trash2, ImageIcon } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAssetPhotos, type AssetPhotoWithUrl } from '@/hooks/useAssetPhotos';
@@ -49,17 +60,36 @@ interface AssetDialogProps {
   isSaving: boolean;
 }
 
-export function AssetDialog({
-  open,
-  onOpenChange,
-  asset,
-  onSave,
-  isSaving,
-}: AssetDialogProps) {
+export function AssetDialog(props: AssetDialogProps) {
+  const { open, onOpenChange, asset, onSave, isSaving } = props;
+  const queryClient = useQueryClient();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
+
+  // State for add location dialog
+  const [addLocationOpen, setAddLocationOpen] = useState(false);
+  const [newLocationName, setNewLocationName] = useState('');
+  const [addingLocation, setAddingLocation] = useState(false);
+
+  // State for pending photos (for new assets)
+  const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
+
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
+
+  const handleAddLocation = async () => {
+    if (!newLocationName.trim() || !restaurantId) return;
+    setAddingLocation(true);
+    const { error } = await supabase
+      .from('inventory_locations')
+      .insert({ name: newLocationName.trim(), restaurant_id: restaurantId });
+    setAddingLocation(false);
+    if (!error) {
+      setAddLocationOpen(false);
+      setNewLocationName('');
+      await queryClient.invalidateQueries(['inventory-locations', restaurantId]);
+    }
+  };
 
   const form = useForm<AssetFormData>({
     defaultValues: {
@@ -89,6 +119,62 @@ export function AssetDialog({
     setPrimaryPhoto,
   } = useAssetPhotos({ assetId: asset?.id || null });
 
+  // Standalone photo upload function for new assets
+  const uploadPhotoForAsset = useCallback(async (file: File, assetId: string) => {
+    const { selectedRestaurant } = useRestaurantContext();
+    const restaurantId = selectedRestaurant?.restaurant_id;
+
+    if (!restaurantId) {
+      throw new Error('No restaurant selected');
+    }
+
+    const isImage = file.type.startsWith('image/');
+    if (!isImage) {
+      throw new Error('Please upload an image file (JPG, PNG, etc).');
+    }
+
+    const MAX_FILE_SIZE_MB = 10;
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      throw new Error(`File is ${fileSizeMB}MB. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
+    }
+
+    // Generate unique file path
+    const fileExt = file.name.includes('.') ? file.name.split('.').pop() : 'jpg';
+    const sanitizedBaseName = file.name
+      .replace(fileExt ? `.${fileExt}` : '', '')
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+    const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
+    const filePath = `${restaurantId}/assets/${assetId}/${finalFileName}`;
+
+    // Upload to storage
+    const { error: uploadError } = await supabase.storage
+      .from('asset-images')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    // Create database record
+    const { data: photoData, error: photoError } = await supabase
+      .from('asset_photos')
+      .insert({
+        asset_id: assetId,
+        restaurant_id: restaurantId,
+        storage_path: filePath,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type,
+        is_primary: true, // First photo is primary
+      })
+      .select()
+      .single();
+
+    if (photoError) throw photoError;
+
+    return photoData;
+  }, []);
+
   // Fetch locations
   const { data: locations = [] } = useQuery({
     queryKey: ['inventory-locations', restaurantId],
@@ -110,12 +196,13 @@ export function AssetDialog({
     queryKey: ['chart-of-accounts-assets', restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [];
+      // Use .in for multiple subtypes, not .eq
       const { data, error } = await supabase
         .from('chart_of_accounts')
         .select('id, account_code, account_name, account_type, account_subtype')
         .eq('restaurant_id', restaurantId)
         .in('account_subtype', ['fixed_assets', 'accumulated_depreciation', 'depreciation'])
-        .order('account_code');
+        .order('account_code', { ascending: true });
       if (error) throw error;
       return data;
     },
@@ -163,12 +250,19 @@ export function AssetDialog({
   // Photo upload dropzone
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
-      if (!asset?.id) return;
-      for (const file of acceptedFiles) {
-        await uploadPhoto(file);
+      if (!acceptedFiles.length) return;
+
+      if (asset?.id) {
+        // Existing asset: upload immediately
+        for (const file of acceptedFiles) {
+          await uploadPhotoForAsset(file, asset.id);
+        }
+      } else {
+        // New asset: store for later upload
+        setPendingPhotos(prev => [...prev, ...acceptedFiles]);
       }
     },
-    [asset?.id, uploadPhoto]
+    [asset?.id, uploadPhotoForAsset]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -176,11 +270,32 @@ export function AssetDialog({
     accept: {
       'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
     },
-    disabled: !asset?.id || isUploading,
+    disabled: isUploading,
   });
 
   const handleSubmit = async (data: AssetFormData) => {
-    await onSave(data);
+    const savedAsset = await onSave(data);
+
+    // Upload pending photos for new assets
+    if (savedAsset && pendingPhotos.length > 0) {
+      try {
+        for (const file of pendingPhotos) {
+          await uploadPhotoForAsset(file, savedAsset.id);
+        }
+        setPendingPhotos([]);
+        toast({
+          title: 'Photos uploaded successfully',
+          description: `${pendingPhotos.length} photo(s) added to asset.`,
+        });
+      } catch (error) {
+        console.error('Failed to upload pending photos:', error);
+        toast({
+          title: 'Photo upload failed',
+          description: 'Asset was saved but some photos failed to upload.',
+          variant: 'destructive',
+        });
+      }
+    }
   };
 
   const isEditing = !!asset;
@@ -207,8 +322,8 @@ export function AssetDialog({
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="photos" disabled={!isEditing}>
-              Photos {photos.length > 0 && `(${photos.length})`}
+            <TabsTrigger value="photos">
+              Photos {(photos.length > 0 || pendingPhotos.length > 0) && `(${photos.length + pendingPhotos.length})`}
             </TabsTrigger>
           </TabsList>
 
@@ -282,21 +397,70 @@ export function AssetDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Location</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ''}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select location (optional)" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="">No location</SelectItem>
-                            {locations.map((loc) => (
-                              <SelectItem key={loc.id} value={loc.id}>
-                                {loc.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex gap-2 items-center">
+                          <Select onValueChange={val => {
+                            if (val === '__add_location__') {
+                              setAddLocationOpen(true);
+                            } else {
+                              field.onChange(val);
+                            }
+                          }} value={field.value || ''}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select location (optional)" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {locations.length === 0 ? (
+                                <SelectItem value="no_locations" disabled>No locations available</SelectItem>
+                              ) : (
+                                <>
+                                  <SelectItem value="none">No location</SelectItem>
+                                  {locations
+                                    .filter((loc) => typeof loc.id === 'string' && loc.id.trim() !== '')
+                                    .map((loc) => (
+                                      <SelectItem key={loc.id} value={loc.id}>
+                                        {loc.name}
+                                      </SelectItem>
+                                    ))}
+                                  <SelectSeparator />
+                                  <SelectItem value="__add_location__" className="text-primary cursor-pointer" aria-label="Add new location">
+                                    + Add new location
+                                  </SelectItem>
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <Dialog open={addLocationOpen} onOpenChange={setAddLocationOpen}>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Add New Location</DialogTitle>
+                                <DialogDescription>Enter a name for the new inventory location.</DialogDescription>
+                              </DialogHeader>
+                              <Input
+                                autoFocus
+                                value={newLocationName}
+                                onChange={e => setNewLocationName(e.target.value)}
+                                placeholder="e.g. Walk-in Freezer"
+                                aria-label="Location name"
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleAddLocation();
+                                }}
+                                disabled={addingLocation}
+                              />
+                              <DialogFooter>
+                                <Button
+                                  type="button"
+                                  onClick={handleAddLocation}
+                                  disabled={!newLocationName.trim() || addingLocation}
+                                  aria-label="Save location"
+                                >
+                                  {addingLocation ? 'Saving...' : 'Save'}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -463,21 +627,27 @@ export function AssetDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Asset Account</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <Select onValueChange={val => field.onChange(val === 'none' ? '' : val)} value={field.value || 'none'}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select asset account" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
-                              {accounts
-                                .filter((a) => a.account_subtype === 'fixed_assets')
-                                .map((acc) => (
-                                  <SelectItem key={acc.id} value={acc.id}>
-                                    {acc.account_code} - {acc.account_name}
-                                  </SelectItem>
-                                ))}
+                              {accounts.filter((a) => a.account_subtype === 'fixed_assets').length === 0 ? (
+                                <SelectItem value="no_accounts" disabled>No asset accounts</SelectItem>
+                              ) : (
+                                <>
+                                  <SelectItem value="none">None</SelectItem>
+                                  {accounts
+                                    .filter((a) => a.account_subtype === 'fixed_assets' && typeof a.id === 'string' && a.id.trim() !== '')
+                                    .map((acc) => (
+                                      <SelectItem key={acc.id} value={acc.id}>
+                                        {acc.account_code} - {acc.account_name}
+                                      </SelectItem>
+                                    ))}
+                                </>
+                              )}
                             </SelectContent>
                           </Select>
                           <FormDescription>Debit account for asset value</FormDescription>
@@ -492,21 +662,27 @@ export function AssetDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Accumulated Depreciation Account</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <Select onValueChange={val => field.onChange(val === 'none' ? '' : val)} value={field.value || 'none'}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select account" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
-                              {accounts
-                                .filter((a) => a.account_subtype === 'accumulated_depreciation')
-                                .map((acc) => (
-                                  <SelectItem key={acc.id} value={acc.id}>
-                                    {acc.account_code} - {acc.account_name}
-                                  </SelectItem>
-                                ))}
+                              {accounts.filter((a) => a.account_subtype === 'accumulated_depreciation').length === 0 ? (
+                                <SelectItem value="no_accounts" disabled>No accumulated depreciation accounts</SelectItem>
+                              ) : (
+                                <>
+                                  <SelectItem value="none">None</SelectItem>
+                                  {accounts
+                                    .filter((a) => a.account_subtype === 'accumulated_depreciation' && typeof a.id === 'string' && a.id.trim() !== '')
+                                    .map((acc) => (
+                                      <SelectItem key={acc.id} value={acc.id}>
+                                        {acc.account_code} - {acc.account_name}
+                                      </SelectItem>
+                                    ))}
+                                </>
+                              )}
                             </SelectContent>
                           </Select>
                           <FormDescription>Credit account for accumulated depreciation</FormDescription>
@@ -521,21 +697,27 @@ export function AssetDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Depreciation Expense Account</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ''}>
+                          <Select onValueChange={val => field.onChange(val === 'none' ? '' : val)} value={field.value || 'none'}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select expense account" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
-                              {accounts
-                                .filter((a) => a.account_subtype === 'depreciation')
-                                .map((acc) => (
-                                  <SelectItem key={acc.id} value={acc.id}>
-                                    {acc.account_code} - {acc.account_name}
-                                  </SelectItem>
-                                ))}
+                              {accounts.filter((a) => a.account_subtype === 'depreciation').length === 0 ? (
+                                <SelectItem value="no_accounts" disabled>No depreciation expense accounts</SelectItem>
+                              ) : (
+                                <>
+                                  <SelectItem value="none">None</SelectItem>
+                                  {accounts
+                                    .filter((a) => a.account_subtype === 'depreciation' && typeof a.id === 'string' && a.id.trim() !== '')
+                                    .map((acc) => (
+                                      <SelectItem key={acc.id} value={acc.id}>
+                                        {acc.account_code} - {acc.account_name}
+                                      </SelectItem>
+                                    ))}
+                                </>
+                              )}
                             </SelectContent>
                           </Select>
                           <FormDescription>Debit account for depreciation expense</FormDescription>
@@ -584,96 +766,125 @@ export function AssetDialog({
           </TabsContent>
 
           <TabsContent value="photos" className="mt-4">
-            {isEditing && (
-              <div className="space-y-6">
-                {/* Upload Area */}
-                <div
-                  {...getRootProps()}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-                    isDragActive
-                      ? 'border-primary bg-primary/5'
-                      : 'border-muted-foreground/25 hover:border-primary/50'
-                  } ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <input {...getInputProps()} />
-                  {isUploading ? (
-                    <div className="flex flex-col items-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      <p className="mt-2 text-sm text-muted-foreground">Uploading...</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <Upload className="h-8 w-8 text-muted-foreground" />
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {isDragActive
-                          ? 'Drop the images here...'
-                          : 'Drag & drop images, or click to select'}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        JPG, PNG, GIF up to 10MB
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Photo Grid */}
-                {isLoadingPhotos ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i} className="aspect-square bg-muted animate-pulse rounded-lg" />
-                    ))}
-                  </div>
-                ) : photos.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                    <p>No photos yet. Upload some images to document this asset.</p>
+            <div className="space-y-6">
+              {/* Upload Area */}
+              <div
+                {...getRootProps()}
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
+                  isDragActive
+                    ? 'border-primary bg-primary/5'
+                    : 'border-muted-foreground/25 hover:border-primary/50'
+                } ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <input {...getInputProps()} />
+                {isUploading ? (
+                  <div className="flex flex-col items-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">Uploading...</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    {photos.map((photo) => (
-                      <div
-                        key={photo.id}
-                        className="relative group aspect-square rounded-lg overflow-hidden bg-muted"
-                      >
-                        <img
-                          src={photo.signedUrl}
-                          alt={photo.caption || photo.file_name}
-                          className="w-full h-full object-cover"
-                        />
-                        {photo.is_primary && (
-                          <div className="absolute top-2 left-2">
-                            <span className="bg-primary text-primary-foreground text-xs px-2 py-1 rounded flex items-center gap-1">
-                              <Star className="h-3 w-3" />
-                              Primary
-                            </span>
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                          {!photo.is_primary && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => setPrimaryPhoto(photo.id)}
-                              aria-label="Set as primary photo"
-                            >
-                              <Star className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => deletePhoto(photo.id)}
-                            aria-label="Delete photo"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="flex flex-col items-center">
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {isDragActive
+                        ? 'Drop the images here...'
+                        : 'Drag & drop images, or click to select'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      JPG, PNG, GIF up to 10MB
+                    </p>
                   </div>
                 )}
               </div>
-            )}
+
+              {/* Photo Grid */}
+              {isLoadingPhotos && isEditing ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="aspect-square bg-muted animate-pulse rounded-lg" />
+                  ))}
+                </div>
+              ) : (photos.length === 0 && pendingPhotos.length === 0) ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ImageIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No photos yet. Upload some images to document this asset.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Existing photos (for editing) */}
+                  {photos.map((photo) => (
+                    <div
+                      key={photo.id}
+                      className="relative group aspect-square rounded-lg overflow-hidden bg-muted"
+                    >
+                      <img
+                        src={photo.signedUrl}
+                        alt={photo.caption || photo.file_name}
+                        className="w-full h-full object-cover"
+                      />
+                      {photo.is_primary && (
+                        <div className="absolute top-2 left-2">
+                          <span className="bg-primary text-primary-foreground text-xs px-2 py-1 rounded flex items-center gap-1">
+                            <Star className="h-3 w-3" />
+                            Primary
+                          </span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        {!photo.is_primary && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setPrimaryPhoto(photo.id)}
+                            aria-label="Set as primary photo"
+                          >
+                            <Star className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => deletePhoto(photo.id)}
+                          aria-label="Delete photo"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Pending photos (for new assets) */}
+                  {pendingPhotos.map((file, index) => (
+                    <div
+                      key={`pending-${index}`}
+                      className="relative group aspect-square rounded-lg overflow-hidden bg-muted"
+                    >
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Pending upload: ${file.name}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute top-2 left-2">
+                        <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded">
+                          Pending
+                        </span>
+                      </div>
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            setPendingPhotos(prev => prev.filter((_, i) => i !== index));
+                          }}
+                          aria-label="Remove pending photo"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </SheetContent>

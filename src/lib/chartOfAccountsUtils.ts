@@ -103,7 +103,7 @@ export const DEFAULT_ACCOUNTS = [
   { account_code: '6075', account_name: 'Meals & Entertainment', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: 'Business meals' },
   { account_code: '6080', account_name: 'Vehicle Expenses', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: 'Fuel, repairs' },
   { account_code: '6090', account_name: 'Taxes & Licenses', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: 'Business taxes' },
-  { account_code: '6100', account_name: 'Depreciation Expense', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: 'Depreciation of assets' },
+  { account_code: '6100', account_name: 'Depreciation Expense', account_type: 'expense', account_subtype: 'depreciation', normal_balance: 'debit', description: 'Depreciation of assets' },
   { account_code: '6110', account_name: 'Amortization Expense', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: 'Amortization of intangibles' },
   { account_code: '6120', account_name: 'Franchise Royalties', account_type: 'expense', account_subtype: 'other_expenses', normal_balance: 'debit', description: '% of sales paid to franchisor' },
   { account_code: '6130', account_name: 'Franchise Advertising Fees', account_type: 'expense', account_subtype: 'marketing', normal_balance: 'debit', description: 'Co-op marketing fund' },

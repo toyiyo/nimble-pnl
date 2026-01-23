@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,14 @@ export function AssetDisposeDialog({
   const [disposalDate, setDisposalDate] = useState(new Date().toISOString().split('T')[0]);
   const [disposalProceeds, setDisposalProceeds] = useState('');
   const [disposalNotes, setDisposalNotes] = useState('');
+
+  useEffect(() => {
+    if (open && asset) {
+      setDisposalDate(new Date().toISOString().split('T')[0]);
+      setDisposalProceeds('');
+      setDisposalNotes('');
+    }
+  }, [asset, open]);
 
   const handleDispose = () => {
     if (!asset) return;

@@ -197,10 +197,14 @@ export function useAssetPhotos({ assetId }: UseAssetPhotosOptions) {
 
       // Delete from storage
       if (photo?.storage_path) {
-        await supabase.storage.from('asset-images').remove([photo.storage_path]);
+        const { error: storageError } = await supabase.storage.from('asset-images').remove([photo.storage_path]);
+        if (storageError) {
+          console.error('Failed to delete photo from storage:', storageError);
+          throw new Error(`Storage deletion failed: ${storageError.message}`);
+        }
       }
 
-      // Delete database record
+      // Delete database record (only if storage deletion succeeded)
       const { error: deleteError } = await supabase
         .from('asset_photos')
         .delete()

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -75,6 +76,8 @@ export default function Assets() {
   const {
     assets,
     isLoading,
+    error,
+    refetch,
     createAssetAsync,
     updateAssetAsync,
     disposeAsset: handleDisposeAsset,
@@ -248,15 +251,35 @@ export default function Assets() {
 
           {/* Asset List */}
           <div className="mt-6">
-            <AssetList
-              assets={filteredAssets}
-              isLoading={isLoading}
-              onEdit={handleEdit}
-              onDispose={handleDispose}
-              onDelete={deleteAsset}
-              onViewPhotos={handleViewPhotos}
-              onDepreciate={handleDepreciate}
-            />
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertTitle>Error Loading Assets</AlertTitle>
+                <AlertDescription className="flex items-center justify-between">
+                  <span>
+                    {error instanceof Error ? error.message : 'Failed to load assets. Please try again.'}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetch()}
+                    className="ml-4"
+                  >
+                    Retry
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            {!error && (
+              <AssetList
+                assets={filteredAssets}
+                isLoading={isLoading}
+                onEdit={handleEdit}
+                onDispose={handleDispose}
+                onDelete={deleteAsset}
+                onViewPhotos={handleViewPhotos}
+                onDepreciate={handleDepreciate}
+              />
+            )}
           </div>
         </CardContent>
       </Card>

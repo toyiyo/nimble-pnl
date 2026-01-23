@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { ImageViewer } from '@/components/attachments/ImageViewer';
 import {
@@ -67,7 +67,6 @@ export function AssetDialog(props: AssetDialogProps) {
   const queryClient = useQueryClient();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
-  const { toast } = useToast();
 
   // State for add location dialog
   const [addLocationOpen, setAddLocationOpen] = useState(false);
@@ -268,6 +267,19 @@ export function AssetDialog(props: AssetDialogProps) {
     }
   }, [watchCategory, asset, form]);
 
+  // Cache blob URLs for pending photos to prevent memory leaks
+  const pendingPhotoUrls = useMemo(() => {
+    return pendingPhotos.map(file => URL.createObjectURL(file));
+  }, [pendingPhotos]);
+
+  // Cleanup blob URLs when pendingPhotos changes or component unmounts
+  useEffect(() => {
+    const currentUrls = pendingPhotoUrls;
+    return () => {
+      currentUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [pendingPhotoUrls]);
+
   // Photo upload dropzone
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -276,7 +288,12 @@ export function AssetDialog(props: AssetDialogProps) {
       if (asset?.id) {
         // Existing asset: upload immediately
         for (const file of acceptedFiles) {
-          await uploadPhotoForAsset(file, asset.id);
+          try {
+            await uploadPhotoForAsset(file, asset.id);
+          } catch (error) {
+            console.error('Failed to upload photo:', error);
+            toast.error(`Failed to upload ${file.name}. Please try again.`);
+          }
         }
       } else {
         // New asset: store for later upload
@@ -305,17 +322,10 @@ export function AssetDialog(props: AssetDialogProps) {
           await uploadPhotoForAsset(file, savedAsset.id);
         }
         setPendingPhotos([]);
-        toast({
-          title: 'Photos uploaded successfully',
-          description: `${photoCount} photo(s) added to asset.`,
-        });
+        toast.success(`${photoCount} photo(s) added to asset.`);
       } catch (error) {
         console.error('Failed to upload pending photos:', error);
-        toast({
-          title: 'Photo upload failed',
-          description: 'Asset was saved but some photos failed to upload.',
-          variant: 'destructive',
-        });
+        toast.error('Asset was saved but some photos failed to upload.');
       }
     }
   };
@@ -888,10 +898,10 @@ export function AssetDialog(props: AssetDialogProps) {
                     <div
                       key={`pending-${index}`}
                       className="relative group aspect-square rounded-lg overflow-hidden bg-muted cursor-pointer"
-                      onClick={() => handleViewImage(URL.createObjectURL(file), `Pending upload: ${file.name}`, true)}
+                      onClick={() => handleViewImage(pendingPhotoUrls[index], `Pending upload: ${file.name}`, true)}
                     >
                       <img
-                        src={URL.createObjectURL(file)}
+                        src={pendingPhotoUrls[index]}
                         alt={`Pending upload: ${file.name}`}
                         className="w-full h-full object-cover"
                       />
@@ -907,6 +917,8 @@ export function AssetDialog(props: AssetDialogProps) {
                           variant="destructive"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // Revoke the blob URL before removing the photo
+                            URL.revokeObjectURL(pendingPhotoUrls[index]);
                             setPendingPhotos(prev => prev.filter((_, i) => i !== index));
                           }}
                           aria-label="Remove pending photo"
@@ -963,11 +975,7 @@ export function AssetDialog(props: AssetDialogProps) {
                 showControls
                 controlsPosition="overlay"
                 onError={() => {
-                  toast({
-                    title: 'Failed to load image',
-                    description: 'The image could not be displayed.',
-                    variant: 'destructive',
-                  });
+                  toast.error('The image could not be displayed.');
                 }}
               />
             </div>

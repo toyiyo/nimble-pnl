@@ -118,14 +118,14 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
         daysOfCash = 0;
       } else if (netDailyBurn <= 0) {
         // Net positive or break-even - infinite runway
-        daysOfCash = 999;
+        daysOfCash = Infinity;
       } else {
         // Calculate runway based on book balance and net burn rate
         daysOfCash = bookBalance / netDailyBurn;
       }
 
       // Projected zero date
-      const projectedZeroDate = daysOfCash < 999 && daysOfCash > 0
+      const projectedZeroDate = daysOfCash !== Infinity && daysOfCash > 0
         ? addDays(endDate, Math.floor(daysOfCash))
         : null;
 
@@ -157,9 +157,9 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
       let runwayStatus: 'healthy' | 'caution' | 'critical' = 'healthy';
       if (bookBalance <= 0 || daysOfCash === 0) {
         runwayStatus = 'critical';
-      } else if (daysOfCash < 30) {
+      } else if (daysOfCash !== Infinity && daysOfCash < 30) {
         runwayStatus = 'critical';
-      } else if (daysOfCash < 60) {
+      } else if (daysOfCash !== Infinity && daysOfCash < 60) {
         runwayStatus = 'caution';
       }
 
@@ -171,7 +171,7 @@ export function useLiquidityMetrics(startDate: Date, endDate: Date, bankAccountI
         recommendation = `Critical: Only ${Math.floor(daysOfCash)} days of cash remaining. Reduce weekly burn by $${Math.round(cashBurnRate * 0.3)} or increase revenue.`;
       } else if (runwayStatus === 'caution') {
         recommendation = `Caution: ${Math.floor(daysOfCash)} days remaining. Monitor cash flow closely and consider reducing expenses by $${Math.round(avgWeeklyOutflow * 0.1)}/week.`;
-      } else if (daysOfCash >= 999) {
+      } else if (daysOfCash === Infinity) {
         recommendation = `Excellent: Cash flow is net positive. Continue monitoring to maintain healthy position.`;
       } else {
         recommendation = `Healthy: ${Math.floor(daysOfCash)} days of runway. Continue monitoring weekly trends.`;

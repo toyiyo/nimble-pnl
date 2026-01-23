@@ -44,7 +44,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
       // Fetch transactions for the period (including both posted and pending)
       let txQuery = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
+        .select('transaction_date, amount, status, description, merchant_name, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .in('status', ['posted', 'pending'])
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
@@ -104,12 +104,12 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
       );
 
       // Calculate uncategorized spend - only transactions with NO category_id assigned
-      // Note: Transactions categorized under "Uncategorized Expense" account ARE categorized
-      // (user made a conscious choice to put them there)
+      // Note: Split transactions have category_id NULL but their categories are in bank_transaction_splits
+      // So we exclude them from uncategorized count
       const outflows = txns.filter(t => t.amount < 0);
       const totalOutflows = Math.abs(outflows.reduce((sum, t) => sum + t.amount, 0));
       const uncategorizedSpend = Math.abs(
-        outflows.filter(t => !t.category_id).reduce((sum, t) => sum + t.amount, 0)
+        outflows.filter(t => !t.category_id && !t.is_split).reduce((sum, t) => sum + t.amount, 0)
       );
 
       // Calculate percentages

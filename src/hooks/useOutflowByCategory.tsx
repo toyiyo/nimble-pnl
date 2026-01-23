@@ -35,7 +35,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       // Fetch cleared and pending transactions (outflows only)
       let query = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, chart_of_accounts!category_id(account_name, account_subtype)')
+        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .in('status', ['posted', 'pending'])
         .lt('amount', 0) // Only outflows
@@ -80,7 +80,8 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       const categoryMap = new Map<string, { amount: number; pendingAmount: number; count: number; categoryId: string | null }>();
 
       // Process posted bank transactions
-      postedTxns.forEach(t => {
+      // Skip split parent transactions - their categories are in bank_transaction_splits
+      postedTxns.filter(t => !t.is_split).forEach(t => {
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
         const category = formatExpenseCategory(accountSubtype, accountName);
@@ -95,7 +96,8 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       });
 
       // Add pending bank transactions to category map
-      pendingTxns.forEach(t => {
+      // Skip split parent transactions
+      pendingTxns.filter(t => !t.is_split).forEach(t => {
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
         const category = formatExpenseCategory(accountSubtype, accountName);

@@ -77,7 +77,7 @@ export function SearchableLocationSelector({
   };
 
   const canCreate =
-    searchValue.trim().length > 0 &&
+    !!onCreateNew && searchValue.trim().length > 0 &&
     !locations.some((loc) => loc.name.toLowerCase() === searchValue.trim().toLowerCase());
 
   return (

@@ -223,8 +223,8 @@ CREATE POLICY "Users can view asset images for their restaurants"
       WHERE user_restaurants.user_id = auth.uid()
       AND user_restaurants.role IN ('owner', 'manager', 'collaborator_accountant')
       AND (
-        split_part(path, '/', 2) = user_restaurants.restaurant_id::text
-        OR path LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
+        split_part(name, '/', 2) = user_restaurants.restaurant_id::text
+        OR name LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
       )
     )
   );
@@ -238,8 +238,8 @@ CREATE POLICY "Owners managers and accountants can upload asset images"
       WHERE user_restaurants.user_id = auth.uid()
       AND user_restaurants.role IN ('owner', 'manager', 'collaborator_accountant')
       AND (
-        split_part(path, '/', 2) = user_restaurants.restaurant_id::text
-        OR path LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
+        split_part(name, '/', 2) = user_restaurants.restaurant_id::text
+        OR name LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
       )
     )
   );
@@ -253,8 +253,8 @@ CREATE POLICY "Owners managers and accountants can update asset images"
       WHERE user_restaurants.user_id = auth.uid()
       AND user_restaurants.role IN ('owner', 'manager', 'collaborator_accountant')
       AND (
-        split_part(path, '/', 2) = user_restaurants.restaurant_id::text
-        OR path LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
+        split_part(name, '/', 2) = user_restaurants.restaurant_id::text
+        OR name LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
       )
     )
   );
@@ -268,8 +268,8 @@ CREATE POLICY "Owners managers and accountants can delete asset images"
       WHERE user_restaurants.user_id = auth.uid()
       AND user_restaurants.role IN ('owner', 'manager', 'collaborator_accountant')
       AND (
-        split_part(path, '/', 2) = user_restaurants.restaurant_id::text
-        OR path LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
+        split_part(name, '/', 2) = user_restaurants.restaurant_id::text
+        OR name LIKE ('restaurants/' || user_restaurants.restaurant_id || '/%')
       )
     )
   );

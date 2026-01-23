@@ -186,8 +186,13 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
     return photoData;
   }, [selectedRestaurant]);
 
+
   // Fetch locations
-  const { data: locations = [] } = useQuery({
+  const {
+    data: locations = [],
+    isLoading: locationsLoading,
+    isError: locationsError,
+  } = useQuery({
     queryKey: ['inventory-locations', restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -200,10 +205,16 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
       return data;
     },
     enabled: !!restaurantId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   // Fetch chart of accounts for asset-related accounts
-  const { data: accounts = [] } = useQuery({
+  const {
+    data: accounts = [],
+    isLoading: accountsLoading,
+    isError: accountsError,
+  } = useQuery({
     queryKey: ['chart-of-accounts-assets', restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -218,6 +229,8 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
       return data;
     },
     enabled: !!restaurantId && showAdvanced,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   // Reset form when asset changes
@@ -429,29 +442,35 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Location</FormLabel>
-                        <SearchableLocationSelector
-                          value={field.value || ''}
-                          onValueChange={field.onChange}
-                          locations={locations.filter((loc): loc is { id: string; name: string } => typeof loc.id === 'string' && loc.id.trim() !== '')}
-                          placeholder="Search or create location..."
-                          onCreateNew={async (name) => {
-                            if (!name.trim() || !restaurantId) return;
-                            setAddingLocation(true);
-                            const { data, error } = await supabase
-                              .from('inventory_locations')
-                              .insert({ name: name.trim(), restaurant_id: restaurantId })
-                              .select('id')
-                              .single();
-                            setAddingLocation(false);
-                            if (!error && data?.id) {
-                              await queryClient.invalidateQueries({ queryKey: ['inventory-locations', restaurantId] as const });
-                              field.onChange(data.id);
-                            } else {
-                              toast.error('Failed to create location');
-                            }
-                          }}
-                          disabled={addingLocation}
-                        />
+                        {locationsLoading ? (
+                          <div className="h-10 flex items-center"><Loader2 className="animate-spin h-5 w-5 mr-2" /> Loading locations...</div>
+                        ) : locationsError ? (
+                          <div className="h-10 flex items-center text-destructive">Error loading locations</div>
+                        ) : (
+                          <SearchableLocationSelector
+                            value={field.value || ''}
+                            onValueChange={field.onChange}
+                            locations={locations.filter((loc): loc is { id: string; name: string } => typeof loc.id === 'string' && loc.id.trim() !== '')}
+                            placeholder="Search or create location..."
+                            onCreateNew={async (name) => {
+                              if (!name.trim() || !restaurantId) return;
+                              setAddingLocation(true);
+                              const { data, error } = await supabase
+                                .from('inventory_locations')
+                                .insert({ name: name.trim(), restaurant_id: restaurantId })
+                                .select('id')
+                                .single();
+                              setAddingLocation(false);
+                              if (!error && data?.id) {
+                                await queryClient.invalidateQueries({ queryKey: ['inventory-locations', restaurantId] as const });
+                                field.onChange(data.id);
+                              } else {
+                                toast.error('Failed to create location');
+                              }
+                            }}
+                            disabled={addingLocation}
+                          />
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -625,7 +644,15 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {accounts.filter((a) => a.account_subtype === 'fixed_assets').length === 0 ? (
+                              {accountsLoading ? (
+                                <SelectItem value="loading" disabled>
+                                  <Loader2 className="animate-spin h-4 w-4 mr-2 inline" /> Loading accounts...
+                                </SelectItem>
+                              ) : accountsError ? (
+                                <SelectItem value="error" disabled>
+                                  Error loading accounts
+                                </SelectItem>
+                              ) : accounts.filter((a) => a.account_subtype === 'fixed_assets').length === 0 ? (
                                 <SelectItem value="no_accounts" disabled>No asset accounts</SelectItem>
                               ) : (
                                 <>

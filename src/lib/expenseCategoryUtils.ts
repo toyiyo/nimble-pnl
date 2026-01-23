@@ -6,41 +6,61 @@
  */
 
 // Map account_subtype enum values to display-friendly labels
+// Based on actual account_subtype_enum from database
 const SUBTYPE_DISPLAY_NAMES: Record<string, string> = {
+  // Asset subtypes
+  'cash': 'Cash',
+  'bank': 'Bank Accounts',
+  'accounts_receivable': 'Accounts Receivable',
+  'inventory': 'Inventory',
+  'fixed_assets': 'Fixed Assets',
+  'other_current_assets': 'Other Current Assets',
+  'other_assets': 'Other Assets',
+  'prepaid_expenses': 'Prepaid Expenses',
+  'accumulated_depreciation': 'Accumulated Depreciation',
+  
+  // Liability subtypes
+  'accounts_payable': 'Accounts Payable',
+  'credit_card': 'Credit Card',
+  'loan': 'Loans',
+  'other_current_liabilities': 'Other Current Liabilities',
+  'long_term_liabilities': 'Long Term Liabilities',
+  'payroll_liabilities': 'Payroll Liabilities',
+  'deferred_revenue': 'Deferred Revenue',
+  'other_liabilities': 'Other Liabilities',
+  
+  // Equity subtypes
+  'owners_equity': 'Owner\'s Equity',
+  'retained_earnings': 'Retained Earnings',
+  'distributions': 'Distributions',
+  
+  // Revenue subtypes
+  'sales': 'Sales Revenue',
+  'other_income': 'Other Income',
+  'food_sales': 'Food Sales',
+  'beverage_sales': 'Beverage Sales',
+  'alcohol_sales': 'Alcohol Sales',
+  'catering_income': 'Catering Income',
+  
+  // COGS subtypes
+  'cost_of_goods_sold': 'Cost of Goods Sold',
+  'food_cost': 'Food Costs',
+  'beverage_cost': 'Beverage Costs',
+  'packaging_cost': 'Packaging & Supplies',
+  
   // Expense subtypes
+  'operating_expenses': 'Operating Expenses',
+  'payroll': 'Payroll',
   'labor': 'Labor & Payroll',
-  'payroll': 'Labor & Payroll',
+  'tax_expense': 'Taxes',
+  'other_expenses': 'Other Expenses',
   'rent': 'Rent & Occupancy',
   'utilities': 'Utilities',
   'marketing': 'Marketing & Advertising',
   'insurance': 'Insurance',
   'repairs_maintenance': 'Repairs & Maintenance',
   'professional_fees': 'Professional Services',
-  'bank_fees': 'Bank & Processing Fees',
-  'merchant_fees': 'Bank & Processing Fees',
-  'other_expenses': 'Other Expenses',
-  'office_expenses': 'Office & Admin',
-  'travel': 'Travel & Entertainment',
-  'depreciation': 'Depreciation & Amortization',
-  'amortization': 'Depreciation & Amortization',
-  'interest_expense': 'Interest & Financing',
-  'taxes': 'Taxes & Licenses',
-  'licenses': 'Taxes & Licenses',
   
-  // COGS subtypes
-  'food_cost': 'Food Costs',
-  'cost_of_goods_sold': 'Cost of Goods Sold',
-  'beverage_cost': 'Beverage Costs',
-  'packaging_cost': 'Packaging & Supplies',
-  'supplies': 'Supplies & Packaging',
-  
-  // Asset subtypes (for completeness)
-  'equipment': 'Equipment & Assets',
-  'inventory': 'Inventory',
-  
-  // Revenue subtypes (rarely used in expense context)
-  'sales': 'Sales Revenue',
-  'other_income': 'Other Income',
 };
 
 /**
@@ -94,7 +114,7 @@ export const EXPENSE_CATEGORIES = {
  * Checks if a category is a labor/payroll category
  */
 export function isLaborCategory(category: string): boolean {
-  return category === EXPENSE_CATEGORIES.LABOR;
+  return category === EXPENSE_CATEGORIES.LABOR || category === 'Payroll';
 }
 
 /**
@@ -103,7 +123,8 @@ export function isLaborCategory(category: string): boolean {
 export function isFoodCostCategory(category: string): boolean {
   return category === EXPENSE_CATEGORIES.FOOD_COST || 
          category === EXPENSE_CATEGORIES.COGS ||
-         category === 'Beverage Costs';
+         category === 'Beverage Costs' ||
+         category === 'Packaging & Supplies';
 }
 
 /**

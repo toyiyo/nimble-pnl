@@ -312,21 +312,29 @@ export function AssetDialog(props: AssetDialogProps) {
   });
 
   const handleSubmit = async (data: AssetFormData) => {
-    const savedAsset = await onSave(data);
+    try {
+      const savedAsset = await onSave(data);
 
-    // Upload pending photos for new assets
-    if (savedAsset && pendingPhotos.length > 0) {
-      const photoCount = pendingPhotos.length;
-      try {
-        for (const file of pendingPhotos) {
-          await uploadPhotoForAsset(file, savedAsset.id);
+      // Close dialog on successful save
+      onOpenChange(false);
+
+      // Upload pending photos for new assets
+      if (savedAsset && pendingPhotos.length > 0) {
+        const photoCount = pendingPhotos.length;
+        try {
+          for (const file of pendingPhotos) {
+            await uploadPhotoForAsset(file, savedAsset.id);
+          }
+          setPendingPhotos([]);
+          toast.success(`${photoCount} photo(s) added to asset.`);
+        } catch (error) {
+          console.error('Failed to upload pending photos:', error);
+          toast.error('Asset was saved but some photos failed to upload.');
         }
-        setPendingPhotos([]);
-        toast.success(`${photoCount} photo(s) added to asset.`);
-      } catch (error) {
-        console.error('Failed to upload pending photos:', error);
-        toast.error('Asset was saved but some photos failed to upload.');
       }
+    } catch (error) {
+      console.error('Failed to save asset:', error);
+      toast.error('Failed to save asset. Please try again.');
     }
   };
 

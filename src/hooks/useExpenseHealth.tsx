@@ -103,23 +103,13 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
           .reduce((sum, t) => sum + t.amount, 0)
       );
 
-      // Calculate uncategorized spend (including transactions with no category_id 
-      // OR categorized as "Uncategorized Income/Expense")
+      // Calculate uncategorized spend - only transactions with NO category_id assigned
+      // Note: Transactions categorized under "Uncategorized Expense" account ARE categorized
+      // (user made a conscious choice to put them there)
       const outflows = txns.filter(t => t.amount < 0);
       const totalOutflows = Math.abs(outflows.reduce((sum, t) => sum + t.amount, 0));
       const uncategorizedSpend = Math.abs(
-        outflows.filter(t => {
-          // No category assigned
-          if (!t.category_id) return true;
-          
-          // Categorized as "Uncategorized Expense" or "Uncategorized Income"
-          if (t.chart_of_accounts) {
-            const accountName = t.chart_of_accounts.account_name?.toLowerCase() || '';
-            return accountName.includes('uncategorized');
-          }
-          
-          return false;
-        }).reduce((sum, t) => sum + t.amount, 0)
+        outflows.filter(t => !t.category_id).reduce((sum, t) => sum + t.amount, 0)
       );
 
       // Calculate percentages

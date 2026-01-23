@@ -1,56 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { format, parseISO } from "date-fns";
-
-// Helper function to map account types to standard expense categories
-function mapToStandardCategory(accountSubtype: string, accountName: string): string {
-  const nameLower = accountName.toLowerCase();
-  
-  // Map labor/payroll accounts FIRST (highest priority)
-  if (accountSubtype === 'labor' || accountSubtype === 'payroll' || 
-      nameLower.includes('payroll') || nameLower.includes('salary') || 
-      nameLower.includes('wage') || nameLower.includes('labor')) {
-    return 'Labor/Payroll';
-  }
-  
-  // Map based on account subtype
-  if (accountSubtype === 'cost_of_goods_sold' || nameLower.includes('food') || nameLower.includes('inventory')) {
-    return 'Inventory/Food Purchases';
-  }
-  
-  // Map based on account name keywords
-  if (nameLower.includes('rent') || nameLower.includes('cam') || nameLower.includes('lease')) {
-    return 'Rent & CAM';
-  }
-  if (nameLower.includes('utilities') || nameLower.includes('electric') || nameLower.includes('gas') || nameLower.includes('water')) {
-    return 'Utilities';
-  }
-  if (nameLower.includes('supplies') || nameLower.includes('packaging')) {
-    return 'Supplies & Packaging';
-  }
-  if (nameLower.includes('marketing') || nameLower.includes('advertising')) {
-    return 'Marketing/Ads';
-  }
-  if (nameLower.includes('equipment') || nameLower.includes('maintenance') || nameLower.includes('repair')) {
-    return 'Equipment & Maintenance';
-  }
-  if (nameLower.includes('fee') || nameLower.includes('processing')) {
-    return 'Processing/Bank Fees';
-  }
-  if (nameLower.includes('loan') || nameLower.includes('interest')) {
-    return 'Loan/Lease Payments';
-  }
-  if (nameLower.includes('tax') || nameLower.includes('license')) {
-    return 'Taxes & Licenses';
-  }
-  if (nameLower.includes('waste') || nameLower.includes('adjustment')) {
-    return 'Waste/Adjustments';
-  }
-  
-  // Default to Other/Uncategorized
-  return 'Other/Uncategorized';
-}
+import { format } from "date-fns";
+import { formatExpenseCategory, isUncategorized } from "@/lib/expenseCategoryUtils";
 
 export interface CategorySpend {
   category: string;
@@ -69,21 +21,6 @@ interface OutflowByCategoryMetrics {
   uncategorizedAmount: number;
   uncategorizedPercentage: number;
 }
-
-const STANDARD_CATEGORIES = [
-  'Inventory/Food Purchases',
-  'Labor/Payroll',
-  'Rent & CAM',
-  'Utilities',
-  'Supplies & Packaging',
-  'Marketing/Ads',
-  'Equipment & Maintenance',
-  'Processing/Bank Fees',
-  'Loan/Lease Payments',
-  'Taxes & Licenses',
-  'Waste/Adjustments',
-  'Other/Uncategorized'
-];
 
 export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccountId: string = 'all') {
   const { selectedRestaurant } = useRestaurantContext();
@@ -144,15 +81,10 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
 
       // Process posted bank transactions
       postedTxns.forEach(t => {
-        let category = 'Other/Uncategorized';
-        let categoryId: string | null = null;
-
-        if (t.category_id && t.chart_of_accounts) {
-          categoryId = t.category_id;
-          const accountSubtype = t.chart_of_accounts.account_subtype;
-          const accountName = t.chart_of_accounts.account_name || '';
-          category = mapToStandardCategory(accountSubtype, accountName);
-        }
+        const accountSubtype = t.chart_of_accounts?.account_subtype;
+        const accountName = t.chart_of_accounts?.account_name;
+        const category = formatExpenseCategory(accountSubtype, accountName);
+        const categoryId = t.category_id || null;
 
         if (!categoryMap.has(category)) {
           categoryMap.set(category, { amount: 0, pendingAmount: 0, count: 0, categoryId });
@@ -164,15 +96,10 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
 
       // Add pending bank transactions to category map
       pendingTxns.forEach(t => {
-        let category = 'Other/Uncategorized';
-        let categoryId: string | null = null;
-
-        if (t.category_id && t.chart_of_accounts) {
-          categoryId = t.category_id;
-          const accountSubtype = t.chart_of_accounts.account_subtype;
-          const accountName = t.chart_of_accounts.account_name || '';
-          category = mapToStandardCategory(accountSubtype, accountName);
-        }
+        const accountSubtype = t.chart_of_accounts?.account_subtype;
+        const accountName = t.chart_of_accounts?.account_name;
+        const category = formatExpenseCategory(accountSubtype, accountName);
+        const categoryId = t.category_id || null;
 
         if (!categoryMap.has(category)) {
           categoryMap.set(category, { amount: 0, pendingAmount: 0, count: 0, categoryId });
@@ -183,15 +110,10 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
 
       // Add pending check outflows to category map
       pendingCheckTxns.forEach(t => {
-        let category = 'Other/Uncategorized';
-        let categoryId: string | null = null;
-
-        if (t.category_id && t.chart_account) {
-          categoryId = t.category_id;
-          const accountSubtype = t.chart_account.account_subtype;
-          const accountName = t.chart_account.account_name || '';
-          category = mapToStandardCategory(accountSubtype, accountName);
-        }
+        const accountSubtype = t.chart_account?.account_subtype;
+        const accountName = t.chart_account?.account_name;
+        const category = formatExpenseCategory(accountSubtype, accountName);
+        const categoryId = t.category_id || null;
 
         if (!categoryMap.has(category)) {
           categoryMap.set(category, { amount: 0, pendingAmount: 0, count: 0, categoryId });
@@ -212,7 +134,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
         }))
         .sort((a, b) => b.amount - a.amount);
 
-      const uncategorizedEntry = categories.find(c => c.category === 'Other/Uncategorized');
+      const uncategorizedEntry = categories.find(c => isUncategorized(c.category));
       const uncategorizedAmount = uncategorizedEntry?.amount || 0;
       const uncategorizedPercentage = uncategorizedEntry?.percentage || 0;
 

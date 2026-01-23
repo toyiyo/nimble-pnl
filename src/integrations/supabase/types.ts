@@ -7774,6 +7774,22 @@ export type Database = {
         }
         Returns: undefined
       }
+      user_has_capability: {
+        Args: { p_capability: string; p_restaurant_id: string }
+        Returns: boolean
+      }
+      user_has_role: {
+        Args: { p_restaurant_id: string; p_roles: string[] }
+        Returns: boolean
+      }
+      user_is_collaborator: {
+        Args: { p_restaurant_id: string }
+        Returns: boolean
+      }
+      user_is_internal_team: {
+        Args: { p_restaurant_id: string }
+        Returns: boolean
+      }
       validate_split_config: {
         Args: { p_split_config: Json }
         Returns: boolean

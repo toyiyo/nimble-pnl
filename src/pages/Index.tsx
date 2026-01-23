@@ -35,8 +35,6 @@ import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { PredictableExpensesCard } from '@/components/dashboard/PredictableExpensesCard';
-import { ExpenseHealthChips } from '@/components/dashboard/ExpenseHealthChips';
-import { ExpenseAlertsWidget } from '@/components/dashboard/ExpenseAlertsWidget';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import {
@@ -1023,19 +1021,6 @@ const Index = () => {
                   </p>
                   <CollapsibleContent>
                     <div className="space-y-6">
-                      {/* Expense Health and Alerts */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <ExpenseHealthChips 
-                          startDate={selectedPeriod.from}
-                          endDate={selectedPeriod.to}
-                          periodLabel={selectedPeriod.label}
-                        />
-                        <ExpenseAlertsWidget 
-                          startDate={selectedPeriod.from}
-                          endDate={selectedPeriod.to}
-                        />
-                      </div>
-
                       {/* Outflow by Category */}
                       <OutflowByCategoryCard
                         startDate={selectedPeriod.from}

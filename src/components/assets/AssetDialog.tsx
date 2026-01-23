@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { ImageViewer } from '@/components/attachments/ImageViewer';
 import {
   Sheet,
   SheetContent,
@@ -65,6 +67,7 @@ export function AssetDialog(props: AssetDialogProps) {
   const queryClient = useQueryClient();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
+  const { toast } = useToast();
 
   // State for add location dialog
   const [addLocationOpen, setAddLocationOpen] = useState(false);
@@ -73,6 +76,14 @@ export function AssetDialog(props: AssetDialogProps) {
 
   // State for pending photos (for new assets)
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
+
+  // State for image viewer dialog
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{
+    src: string;
+    alt: string;
+    isPending?: boolean;
+  } | null>(null);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
@@ -87,9 +98,20 @@ export function AssetDialog(props: AssetDialogProps) {
     if (!error) {
       setAddLocationOpen(false);
       setNewLocationName('');
-      await queryClient.invalidateQueries(['inventory-locations', restaurantId]);
+      await queryClient.invalidateQueries({ queryKey: ['inventory-locations', restaurantId] as const });
     }
   };
+
+  // Image viewer handlers
+  const handleViewImage = useCallback((src: string, alt: string, isPending = false) => {
+    setSelectedImage({ src, alt, isPending });
+    setImageViewerOpen(true);
+  }, []);
+
+  const handleCloseImageViewer = useCallback(() => {
+    setImageViewerOpen(false);
+    setSelectedImage(null);
+  }, []);
 
   const form = useForm<AssetFormData>({
     defaultValues: {
@@ -121,7 +143,6 @@ export function AssetDialog(props: AssetDialogProps) {
 
   // Standalone photo upload function for new assets
   const uploadPhotoForAsset = useCallback(async (file: File, assetId: string) => {
-    const { selectedRestaurant } = useRestaurantContext();
     const restaurantId = selectedRestaurant?.restaurant_id;
 
     if (!restaurantId) {
@@ -173,7 +194,7 @@ export function AssetDialog(props: AssetDialogProps) {
     if (photoError) throw photoError;
 
     return photoData;
-  }, []);
+  }, [selectedRestaurant]);
 
   // Fetch locations
   const { data: locations = [] } = useQuery({
@@ -278,6 +299,7 @@ export function AssetDialog(props: AssetDialogProps) {
 
     // Upload pending photos for new assets
     if (savedAsset && pendingPhotos.length > 0) {
+      const photoCount = pendingPhotos.length;
       try {
         for (const file of pendingPhotos) {
           await uploadPhotoForAsset(file, savedAsset.id);
@@ -285,7 +307,7 @@ export function AssetDialog(props: AssetDialogProps) {
         setPendingPhotos([]);
         toast({
           title: 'Photos uploaded successfully',
-          description: `${pendingPhotos.length} photo(s) added to asset.`,
+          description: `${photoCount} photo(s) added to asset.`,
         });
       } catch (error) {
         console.error('Failed to upload pending photos:', error);
@@ -308,16 +330,17 @@ export function AssetDialog(props: AssetDialogProps) {
   const monthlyDepreciation = usefulLifeMonths > 0 ? depreciableAmount / usefulLifeMonths : 0;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>{isEditing ? 'Edit Asset' : 'Add New Asset'}</SheetTitle>
-          <SheetDescription>
-            {isEditing
-              ? 'Update asset details and manage photos.'
-              : 'Enter the details for the new asset.'}
-          </SheetDescription>
-        </SheetHeader>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{isEditing ? 'Edit Asset' : 'Add New Asset'}</SheetTitle>
+            <SheetDescription>
+              {isEditing
+                ? 'Update asset details and manage photos.'
+                : 'Enter the details for the new asset.'}
+            </SheetDescription>
+          </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
           <TabsList className="grid w-full grid-cols-2">
@@ -815,7 +838,8 @@ export function AssetDialog(props: AssetDialogProps) {
                   {photos.map((photo) => (
                     <div
                       key={photo.id}
-                      className="relative group aspect-square rounded-lg overflow-hidden bg-muted"
+                      className="relative group aspect-square rounded-lg overflow-hidden bg-muted cursor-pointer"
+                      onClick={() => handleViewImage(photo.signedUrl, photo.caption || photo.file_name)}
                     >
                       <img
                         src={photo.signedUrl}
@@ -831,11 +855,15 @@ export function AssetDialog(props: AssetDialogProps) {
                         </div>
                       )}
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <span className="text-white text-sm font-medium">Click to view</span>
                         {!photo.is_primary && (
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => setPrimaryPhoto(photo.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPrimaryPhoto(photo.id);
+                            }}
                             aria-label="Set as primary photo"
                           >
                             <Star className="h-4 w-4" />
@@ -844,7 +872,10 @@ export function AssetDialog(props: AssetDialogProps) {
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => deletePhoto(photo.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deletePhoto(photo.id);
+                          }}
                           aria-label="Delete photo"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -856,7 +887,8 @@ export function AssetDialog(props: AssetDialogProps) {
                   {pendingPhotos.map((file, index) => (
                     <div
                       key={`pending-${index}`}
-                      className="relative group aspect-square rounded-lg overflow-hidden bg-muted"
+                      className="relative group aspect-square rounded-lg overflow-hidden bg-muted cursor-pointer"
+                      onClick={() => handleViewImage(URL.createObjectURL(file), `Pending upload: ${file.name}`, true)}
                     >
                       <img
                         src={URL.createObjectURL(file)}
@@ -868,11 +900,13 @@ export function AssetDialog(props: AssetDialogProps) {
                           Pending
                         </span>
                       </div>
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <span className="text-white text-sm font-medium">Click to view</span>
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setPendingPhotos(prev => prev.filter((_, i) => i !== index));
                           }}
                           aria-label="Remove pending photo"
@@ -889,5 +923,58 @@ export function AssetDialog(props: AssetDialogProps) {
         </Tabs>
       </SheetContent>
     </Sheet>
+
+    {/* Image Viewer Dialog */}
+    <Dialog open={imageViewerOpen} onOpenChange={handleCloseImageViewer}>
+      <DialogContent
+        className="max-w-[95vw] max-h-[95vh] w-full h-full p-0 bg-black/95 border-none overflow-hidden"
+        aria-describedby={undefined}
+      >
+        <VisuallyHidden>
+          <DialogTitle>View {selectedImage?.alt}</DialogTitle>
+        </VisuallyHidden>
+
+        {/* Top toolbar */}
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent">
+          <div className="text-white/80 text-sm truncate max-w-[60%]">
+            {selectedImage?.alt}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white/80 hover:text-white hover:bg-white/10"
+              onClick={handleCloseImageViewer}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Main content area */}
+        <div className="flex-1 flex items-center justify-center overflow-auto p-8 pt-16">
+          {selectedImage && (
+            <div className="w-full h-full max-w-4xl max-h-[80vh]">
+              <ImageViewer
+                src={selectedImage.src}
+                alt={selectedImage.alt}
+                className="w-full h-full"
+                showControls
+                controlsPosition="overlay"
+                onError={() => {
+                  toast({
+                    title: 'Failed to load image',
+                    description: 'The image could not be displayed.',
+                    variant: 'destructive',
+                  });
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

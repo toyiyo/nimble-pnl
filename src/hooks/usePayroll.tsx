@@ -139,13 +139,13 @@ export const usePayroll = (
 
       if (punchesError) throw punchesError;
 
-      // Fetch all approved tips for the period from tip_split_items
-      // First get the approved tip splits for this period
+      // Fetch all approved/archived tips for the period from tip_split_items
+      // Both 'approved' and 'archived' (locked) splits should be included in payroll
       const { data: approvedSplits, error: splitsError } = await supabase
         .from('tip_splits')
         .select('id, total_amount')
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'approved')
+        .in('status', ['approved', 'archived'])
         .gte('split_date', format(startDate, 'yyyy-MM-dd'))
         .lte('split_date', format(endDate, 'yyyy-MM-dd'));
 

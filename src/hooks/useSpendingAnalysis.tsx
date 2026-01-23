@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, parseISO, subDays } from "date-fns";
+import { formatExpenseCategory } from "@/lib/expenseCategoryUtils";
 
 interface VendorSpend {
   vendor: string;
@@ -59,10 +60,10 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       const periodDays = differenceInDays(endDate, startDate) + 1;
       const previousPeriodStart = subDays(startDate, periodDays);
 
-      // Fetch current and previous period transactions
+      // Fetch current and previous period transactions with chart of accounts join
       let query = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, ai_confidence')
+        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, is_split, ai_confidence, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .eq('status', 'posted')
         .gte('transaction_date', format(previousPeriodStart, 'yyyy-MM-dd'))
@@ -124,23 +125,12 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       const top3Total = topVendors.slice(0, 3).reduce((sum, v) => sum + v.total, 0);
       const vendorConcentration = totalOutflows > 0 ? (top3Total / totalOutflows) * 100 : 0;
 
-      // Category breakdown (simplified - based on keywords)
-      const categorizeTransaction = (t: typeof currentOutflows[0]) => {
-        const text = `${t.description || ''} ${t.merchant_name || ''} ${t.normalized_payee || ''}`.toLowerCase();
-        
-        if (text.includes('sysco') || text.includes('food') || text.includes('produce') || text.includes('restaurant depot')) return 'Food & Supplies';
-        if (text.includes('payroll') || text.includes('gusto') || text.includes('adp')) return 'Labor';
-        if (text.includes('electric') || text.includes('gas') || text.includes('water') || text.includes('utility')) return 'Utilities';
-        if (text.includes('rent') || text.includes('lease')) return 'Rent';
-        if (text.includes('insurance')) return 'Insurance';
-        if (text.includes('software') || text.includes('saas') || text.includes('subscription')) return 'Software/SaaS';
-        if (text.includes('marketing') || text.includes('advertising')) return 'Marketing';
-        return 'Other';
-      };
-
+      // Category breakdown using actual chart of accounts subtypes
       const categoryMap = new Map<string, number>();
       currentOutflows.forEach(t => {
-        const category = categorizeTransaction(t);
+        const accountSubtype = t.chart_of_accounts?.account_subtype;
+        const accountName = t.chart_of_accounts?.account_name;
+        const category = formatExpenseCategory(accountSubtype, accountName);
         categoryMap.set(category, (categoryMap.get(category) || 0) + Math.abs(t.amount));
       });
 
@@ -211,15 +201,16 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       const weeks = periodDays / 7;
       const avgWeeklyOutflow = weeks > 0 ? totalOutflows / weeks : 0;
 
-      // Payment Processing Fees
+      // Payment Processing Fees - look for fee-related accounts by name since no dedicated subtype exists
       const processingFeeTransactions = currentOutflows.filter(t => {
-        const desc = (t.description || '').toLowerCase();
-        return desc.includes('square fee') || 
-               desc.includes('stripe fee') || 
-               desc.includes('processing fee') ||
-               desc.includes('merchant fee') ||
-               desc.includes('card fee') ||
-               desc.includes('payment fee');
+        const accountName = (t.chart_of_accounts?.account_name || '').toLowerCase();
+        // Match accounts explicitly named for fees/processing, but NOT professional fees
+        return (accountName.includes('processing') || 
+                accountName.includes('merchant fee') || 
+                accountName.includes('bank fee') ||
+                accountName.includes('card fee') ||
+                accountName.includes('payment fee')) &&
+               !accountName.includes('professional');
       });
       const processingFees = processingFeeTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
       
@@ -257,9 +248,9 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
         ? (aiCategorizedCount / currentPeriodTxns.length) * 100 
         : 0;
 
-      // Uncategorized Spend
+      // Uncategorized Spend - exclude split transactions (they have categories in child splits)
       const uncategorizedSpend = currentOutflows
-        .filter(t => !t.category_id)
+        .filter(t => !t.category_id && !t.is_split)
         .reduce((sum, t) => sum + Math.abs(t.amount), 0);
       
       const uncategorizedPercentage = totalOutflows > 0 

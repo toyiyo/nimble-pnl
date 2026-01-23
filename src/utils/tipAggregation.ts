@@ -27,18 +27,23 @@ export interface AggregatedTip {
 }
 
 /**
- * Get dates that have approved tip splits.
+ * Get dates that have approved tip splits with actual money allocated.
  * These dates should exclude employee-declared tips to prevent double-counting.
+ *
+ * IMPORTANT: Only counts dates where amount > 0. Dates with $0 allocations
+ * should NOT block employee declarations since no money was actually split.
  */
 export function getDatesWithApprovedSplits(tipItems: TipSplitItem[]): Set<string> {
   const dates = new Set<string>();
-  
+
   for (const item of tipItems) {
-    if (item.split_date) {
+    // Only count as "having a split" if there's actual money allocated
+    // This prevents $0 splits from blocking employee declarations
+    if (item.split_date && item.amount > 0) {
       dates.add(item.split_date);
     }
   }
-  
+
   return dates;
 }
 

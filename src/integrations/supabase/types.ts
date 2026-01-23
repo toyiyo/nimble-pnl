@@ -7542,6 +7542,22 @@ export type Database = {
           typical_price: number
         }[]
       }
+      get_unified_sales_totals: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_search_term?: string
+          p_start_date?: string
+        }
+        Returns: {
+          collected_at_pos: number
+          discounts: number
+          pass_through_amount: number
+          revenue: number
+          total_count: number
+          unique_items: number
+        }[]
+      }
       get_users_by_ids: {
         Args: { user_ids: string[] }
         Returns: {
@@ -7773,6 +7789,22 @@ export type Database = {
           p_unit_cost: number
         }
         Returns: undefined
+      }
+      user_has_capability: {
+        Args: { p_capability: string; p_restaurant_id: string }
+        Returns: boolean
+      }
+      user_has_role: {
+        Args: { p_restaurant_id: string; p_roles: string[] }
+        Returns: boolean
+      }
+      user_is_collaborator: {
+        Args: { p_restaurant_id: string }
+        Returns: boolean
+      }
+      user_is_internal_team: {
+        Args: { p_restaurant_id: string }
+        Returns: boolean
       }
       validate_split_config: {
         Args: { p_split_config: Json }

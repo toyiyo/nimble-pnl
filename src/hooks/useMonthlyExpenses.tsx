@@ -1,53 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-
-// Helper function to map account types to standard expense categories
-function mapToStandardCategory(accountSubtype: string, accountName: string): string {
-  const nameLower = accountName.toLowerCase();
-  
-  // Map based on account subtype first
-  if (accountSubtype === 'cost_of_goods_sold' || nameLower.includes('food') || nameLower.includes('inventory')) {
-    return 'Inventory/Food Purchases';
-  }
-  if (accountSubtype === 'labor' || accountSubtype === 'payroll' || 
-      nameLower.includes('payroll') || nameLower.includes('labor') || 
-      nameLower.includes('wages') || nameLower.includes('salary')) {
-    return 'Labor/Payroll';
-  }
-  
-  // Map based on account name keywords
-  if (nameLower.includes('rent') || nameLower.includes('cam') || nameLower.includes('lease')) {
-    return 'Rent & CAM';
-  }
-  if (nameLower.includes('utilities') || nameLower.includes('electric') || nameLower.includes('gas') || nameLower.includes('water')) {
-    return 'Utilities';
-  }
-  if (nameLower.includes('supplies') || nameLower.includes('packaging')) {
-    return 'Supplies & Packaging';
-  }
-  if (nameLower.includes('marketing') || nameLower.includes('advertising')) {
-    return 'Marketing/Ads';
-  }
-  if (nameLower.includes('equipment') || nameLower.includes('maintenance') || nameLower.includes('repair')) {
-    return 'Equipment & Maintenance';
-  }
-  if (nameLower.includes('fee') || nameLower.includes('processing')) {
-    return 'Processing/Bank Fees';
-  }
-  if (nameLower.includes('loan') || nameLower.includes('interest')) {
-    return 'Loan/Lease Payments';
-  }
-  if (nameLower.includes('tax') || nameLower.includes('license')) {
-    return 'Taxes & Licenses';
-  }
-  if (nameLower.includes('waste') || nameLower.includes('adjustment')) {
-    return 'Waste/Adjustments';
-  }
-  
-  // Default to Other/Uncategorized
-  return 'Other/Uncategorized';
-}
+import { formatExpenseCategory, isLaborCategory, isFoodCostCategory } from '@/lib/expenseCategoryUtils';
 
 export interface MonthlyExpenseCategory {
   category: string;
@@ -65,7 +19,7 @@ export interface MonthlyExpenses {
 
 /**
  * Hook to fetch monthly expense data from bank transactions and pending outflows
- * Groups expenses by the 12 standard categories
+ * Groups expenses by chart of account subtypes
  * Includes pending outflows that haven't been matched to bank transactions to avoid double-counting
  */
 export function useMonthlyExpenses(
@@ -136,19 +90,15 @@ export function useMonthlyExpenses(
         
         month.totalExpenses += txnAmount;
 
-        let category = 'Other/Uncategorized';
+        const accountSubtype = t.chart_of_accounts?.account_subtype;
+        const accountName = t.chart_of_accounts?.account_name;
+        const category = formatExpenseCategory(accountSubtype, accountName);
 
-        if (t.category_id && t.chart_of_accounts) {
-          const accountSubtype = t.chart_of_accounts.account_subtype;
-          const accountName = t.chart_of_accounts.account_name || '';
-          category = mapToStandardCategory(accountSubtype, accountName);
-
-          // Track food cost and labor separately
-          if (category === 'Inventory/Food Purchases') {
-            month.foodCost += txnAmount;
-          } else if (category === 'Labor/Payroll') {
-            month.laborCost += txnAmount;
-          }
+        // Track food cost and labor separately using helper functions
+        if (isFoodCostCategory(category)) {
+          month.foodCost += txnAmount;
+        } else if (isLaborCategory(category)) {
+          month.laborCost += txnAmount;
         }
 
         if (!month.categoryMap.has(category)) {
@@ -178,19 +128,15 @@ export function useMonthlyExpenses(
         
         month.totalExpenses += txnAmount;
 
-        let category = 'Other/Uncategorized';
+        const accountSubtype = t.chart_account?.account_subtype;
+        const accountName = t.chart_account?.account_name;
+        const category = formatExpenseCategory(accountSubtype, accountName);
 
-        if (t.category_id && t.chart_account) {
-          const accountSubtype = t.chart_account.account_subtype;
-          const accountName = t.chart_account.account_name || '';
-          category = mapToStandardCategory(accountSubtype, accountName);
-
-          // Track food cost and labor separately
-          if (category === 'Inventory/Food Purchases') {
-            month.foodCost += txnAmount;
-          } else if (category === 'Labor/Payroll') {
-            month.laborCost += txnAmount;
-          }
+        // Track food cost and labor separately using helper functions
+        if (isFoodCostCategory(category)) {
+          month.foodCost += txnAmount;
+        } else if (isLaborCategory(category)) {
+          month.laborCost += txnAmount;
         }
 
         if (!month.categoryMap.has(category)) {

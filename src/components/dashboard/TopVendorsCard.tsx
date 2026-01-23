@@ -1,11 +1,9 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTopVendors } from '@/hooks/useTopVendors';
-import { Building2, TrendingUp, TrendingDown, Calendar, ArrowRight, AlertCircle } from 'lucide-react';
+import { Building2, ArrowRight, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { Button } from '@/components/ui/button';
 
 interface TopVendorsCardProps {
   startDate: Date;
@@ -13,19 +11,59 @@ interface TopVendorsCardProps {
   periodLabel: string;
 }
 
+// Clean up messy bank descriptions to readable vendor names
+const cleanVendorName = (name: string): string => {
+  // Remove common bank prefixes
+  let cleaned = name
+    .replace(/^(POS DEBIT|ORIG CO NAME:|CO ENTRY DESCR:.*|SEC:.*|IND ID:.*|ORIG ID:.*)/gi, '')
+    .replace(/ZELLE PAYMENT TO\s*/gi, '')
+    .replace(/Zelle payment to\s*/gi, '')
+    .replace(/JPM\w+$/gi, '') // Remove JPM reference codes
+    .replace(/\s+[A-Z]{2}\s*$/g, '') // Remove state codes at end
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  
+  // If it's just "CHECK", keep it
+  if (cleaned.toUpperCase() === 'CHECK') return 'Check Payment';
+  
+  // Capitalize properly
+  if (cleaned === cleaned.toUpperCase() && cleaned.length > 3) {
+    cleaned = cleaned
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+  
+  // Truncate if still too long
+  return cleaned.length > 25 ? cleaned.substring(0, 22) + '...' : cleaned;
+};
+
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
 export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCardProps) => {
-  const { data, isLoading, isError, error, refetch } = useTopVendors(startDate, endDate);
+  const { data, isLoading, isError, refetch } = useTopVendors(startDate, endDate);
   const navigate = useNavigate();
 
   if (isLoading) {
     return (
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-64 mt-2" />
+      <Card>
+        <CardHeader className="pb-3">
+          <Skeleton className="h-5 w-32" />
         </CardHeader>
         <CardContent>
-          <Skeleton className="h-64 w-full" />
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
         </CardContent>
       </Card>
     );
@@ -33,27 +71,14 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
 
   if (isError) {
     return (
-      <Card className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
-            <div>
-              <CardTitle className="text-2xl">Failed to Load Vendor Data</CardTitle>
-              <CardDescription>Top vendors by spend • {periodLabel}</CardDescription>
-            </div>
-          </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium">Top Vendors</CardTitle>
         </CardHeader>
-        <CardContent className="py-12 text-center">
-          <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Unable to load vendor information</h3>
-          <p className="text-muted-foreground mb-4">
-            {error?.message || 'An error occurred while fetching vendor data.'}
-          </p>
-          <p className="text-sm text-muted-foreground mb-6">
-            Check your connection or try refreshing the data.
-          </p>
-          <Button onClick={() => refetch()} variant="outline">
-            <TrendingUp className="h-4 w-4 mr-2" />
+        <CardContent className="py-8 text-center">
+          <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground mb-3">Failed to load vendors</p>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
             Retry
           </Button>
         </CardContent>
@@ -63,20 +88,13 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
 
   if (!data || data.topVendors.length === 0) {
     return (
-      <Card className="bg-gradient-to-br from-muted/50 to-transparent">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <Building2 className="h-6 w-6 text-primary" />
-            <div>
-              <CardTitle className="text-2xl">Top Vendors</CardTitle>
-              <CardDescription>Top vendors by spend • {periodLabel}</CardDescription>
-            </div>
-          </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium">Top Vendors</CardTitle>
         </CardHeader>
-        <CardContent className="py-12 text-center">
-          <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No vendor payments yet</h3>
-          <p className="text-muted-foreground">Connect bank or upload invoices to see vendor insights.</p>
+        <CardContent className="py-8 text-center">
+          <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground">No vendor payments yet</p>
         </CardContent>
       </Card>
     );
@@ -87,102 +105,41 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
   };
 
   return (
-    <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-      <CardHeader>
+    <Card>
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
-            <div>
-              <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                Top Vendors
-              </CardTitle>
-              <CardDescription>Top vendors by spend • {periodLabel}</CardDescription>
-            </div>
-          </div>
-          {data.vendorConcentration > 40 && (
-            <Badge variant="outline" className="bg-blue-500/10 text-blue-700 border-blue-500/20">
-              Top 3: {data.vendorConcentration.toFixed(0)}%
-            </Badge>
-          )}
+          <CardTitle className="text-base font-medium">Top Vendors</CardTitle>
+          <span className="text-xs text-muted-foreground">{periodLabel}</span>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {data.topVendors.map((vendor, idx) => {
-            const maxSpend = data.topVendors[0].spend;
-            const barWidth = (vendor.spend / maxSpend) * 100;
-            const showMoM = vendor.momChange !== undefined;
-            const momPositive = vendor.momChange !== undefined && vendor.momChange > 0;
-
-            return (
-              <button
-                key={vendor.vendor}
-                onClick={() => handleVendorClick(vendor.vendor)}
-                className="w-full text-left group"
-                aria-label={`View ${vendor.vendor} transactions`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="text-sm font-semibold text-muted-foreground">#{idx + 1}</span>
-                    <span className="font-medium truncate">{vendor.vendor}</span>
-                    {vendor.isRecurring && (
-                      <Badge variant="outline" className="text-xs">
-                        Recurring
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="text-right">
-                      <div className="font-semibold">
-                        ${vendor.spend.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {vendor.percentage.toFixed(1)}% • {vendor.paymentCount} payment{vendor.paymentCount !== 1 ? 's' : ''}
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="relative h-6 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-accent transition-all duration-300"
-                    style={{ width: `${barWidth}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center justify-between px-3">
-                    <div className="flex items-center gap-2">
-                      {showMoM && (
-                        <div className={`flex items-center gap-1 text-xs font-medium ${
-                          momPositive ? 'text-red-600' : 'text-green-600'
-                        }`}>
-                          {momPositive ? (
-                            <TrendingUp className="w-3 h-3" />
-                          ) : (
-                            <TrendingDown className="w-3 h-3" />
-                          )}
-                          {Math.abs(vendor.momChange!).toFixed(0)}% MoM
-                        </div>
-                      )}
-                    </div>
-                    {vendor.nextExpectedDate && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar className="w-3 h-3" />
-                        Next: {format(vendor.nextExpectedDate, 'MMM d')}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+        <div className="space-y-1">
+          {data.topVendors.map((vendor) => (
+            <button
+              key={vendor.vendor}
+              onClick={() => handleVendorClick(vendor.vendor)}
+              className="w-full flex items-center justify-between py-2.5 px-2 -mx-2 rounded-md hover:bg-accent/50 transition-colors group"
+              aria-label={`View ${vendor.vendor} transactions`}
+            >
+              <span className="text-sm font-medium truncate max-w-[60%]">
+                {cleanVendorName(vendor.vendor)}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">
+                  {formatCurrency(vendor.spend)}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </button>
+          ))}
         </div>
-
-        {data.vendorConcentration > 40 && (
-          <p className="text-xs text-muted-foreground mt-4">
-            High vendor concentration detected. Top 3 vendors represent {data.vendorConcentration.toFixed(0)}% of spending.
-          </p>
-        )}
+        
+        <button
+          onClick={() => navigate('/banking')}
+          className="w-full mt-3 pt-3 border-t border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View all transactions →
+        </button>
       </CardContent>
     </Card>
   );

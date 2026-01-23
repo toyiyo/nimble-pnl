@@ -34,7 +34,7 @@ import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCar
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
-import { PredictableExpensesCard } from '@/components/dashboard/PredictableExpensesCard';
+// PredictableExpensesCard removed - needs more transaction history to be useful
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import {
@@ -1028,15 +1028,12 @@ const Index = () => {
                         periodLabel={selectedPeriod.label}
                       />
 
-                      {/* Top Vendors and Predictable Expenses */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <TopVendorsCard
-                          startDate={selectedPeriod.from}
-                          endDate={selectedPeriod.to}
-                          periodLabel={selectedPeriod.label}
-                        />
-                        <PredictableExpensesCard lookAheadDays={30} />
-                      </div>
+                      {/* Top Vendors */}
+                      <TopVendorsCard
+                        startDate={selectedPeriod.from}
+                        endDate={selectedPeriod.to}
+                        periodLabel={selectedPeriod.label}
+                      />
                     </div>
                   </CollapsibleContent>
                 </div>

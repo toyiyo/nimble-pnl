@@ -156,7 +156,7 @@ export function useTopVendors(startDate: Date, endDate: Date, bankAccountId: str
           };
         })
         .sort((a, b) => b.spend - a.spend)
-        .slice(0, 10); // Top 10 vendors
+        .slice(0, 5); // Top 5 vendors
 
       // Calculate vendor concentration (top 3)
       const top3Total = topVendors.slice(0, 3).reduce((sum, v) => sum + v.spend, 0);

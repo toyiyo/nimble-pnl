@@ -1,3 +1,7 @@
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogTitle, DialogHeader, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -19,38 +23,27 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
+  SelectGroup,
   SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectLabel,
+  SelectItem,
   SelectSeparator,
+  SelectScrollUpButton,
+  SelectScrollDownButton,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, ChevronDown, Upload, X, Star, Trash2, ImageIcon } from 'lucide-react';
+import { SearchableLocationSelector } from '@/components/SearchableLocationSelector';
+import { Textarea } from '@/components/ui/textarea';
 import { useDropzone } from 'react-dropzone';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useAssetPhotos, type AssetPhotoWithUrl } from '@/hooks/useAssetPhotos';
+import { useAssetPhotos } from '@/hooks/useAssetPhotos';
 import type { Asset, AssetFormData } from '@/types/assets';
 import { DEFAULT_ASSET_CATEGORIES, getDefaultUsefulLife, formatAssetCurrency } from '@/types/assets';
 
@@ -62,15 +55,13 @@ interface AssetDialogProps {
   isSaving: boolean;
 }
 
-export function AssetDialog(props: AssetDialogProps) {
+export function AssetDialog(props: Readonly<AssetDialogProps>) {
   const { open, onOpenChange, asset, onSave, isSaving } = props;
   const queryClient = useQueryClient();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
 
-  // State for add location dialog
-  const [addLocationOpen, setAddLocationOpen] = useState(false);
-  const [newLocationName, setNewLocationName] = useState('');
+  // State for location creation
   const [addingLocation, setAddingLocation] = useState(false);
 
   // State for pending photos (for new assets)
@@ -438,70 +429,29 @@ export function AssetDialog(props: AssetDialogProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Location</FormLabel>
-                        <div className="flex gap-2 items-center">
-                          <Select onValueChange={val => {
-                            if (val === '__add_location__') {
-                              setAddLocationOpen(true);
+                        <SearchableLocationSelector
+                          value={field.value || ''}
+                          onValueChange={field.onChange}
+                          locations={locations.filter((loc): loc is { id: string; name: string } => typeof loc.id === 'string' && loc.id.trim() !== '')}
+                          placeholder="Search or create location..."
+                          onCreateNew={async (name) => {
+                            if (!name.trim() || !restaurantId) return;
+                            setAddingLocation(true);
+                            const { data, error } = await supabase
+                              .from('inventory_locations')
+                              .insert({ name: name.trim(), restaurant_id: restaurantId })
+                              .select('id')
+                              .single();
+                            setAddingLocation(false);
+                            if (!error && data?.id) {
+                              await queryClient.invalidateQueries({ queryKey: ['inventory-locations', restaurantId] as const });
+                              field.onChange(data.id);
                             } else {
-                              field.onChange(val);
+                              toast.error('Failed to create location');
                             }
-                          }} value={field.value || ''}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select location (optional)" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {locations.length === 0 ? (
-                                <SelectItem value="no_locations" disabled>No locations available</SelectItem>
-                              ) : (
-                                <>
-                                  <SelectItem value="none">No location</SelectItem>
-                                  {locations
-                                    .filter((loc) => typeof loc.id === 'string' && loc.id.trim() !== '')
-                                    .map((loc) => (
-                                      <SelectItem key={loc.id} value={loc.id}>
-                                        {loc.name}
-                                      </SelectItem>
-                                    ))}
-                                  <SelectSeparator />
-                                  <SelectItem value="__add_location__" className="text-primary cursor-pointer" aria-label="Add new location">
-                                    + Add new location
-                                  </SelectItem>
-                                </>
-                              )}
-                            </SelectContent>
-                          </Select>
-                          <Dialog open={addLocationOpen} onOpenChange={setAddLocationOpen}>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Add New Location</DialogTitle>
-                                <DialogDescription>Enter a name for the new inventory location.</DialogDescription>
-                              </DialogHeader>
-                              <Input
-                                autoFocus
-                                value={newLocationName}
-                                onChange={e => setNewLocationName(e.target.value)}
-                                placeholder="e.g. Walk-in Freezer"
-                                aria-label="Location name"
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') handleAddLocation();
-                                }}
-                                disabled={addingLocation}
-                              />
-                              <DialogFooter>
-                                <Button
-                                  type="button"
-                                  onClick={handleAddLocation}
-                                  disabled={!newLocationName.trim() || addingLocation}
-                                  aria-label="Save location"
-                                >
-                                  {addingLocation ? 'Saving...' : 'Save'}
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
+                          }}
+                          disabled={addingLocation}
+                        />
                         <FormMessage />
                       </FormItem>
                     )}

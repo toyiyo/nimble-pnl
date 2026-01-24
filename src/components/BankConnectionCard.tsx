@@ -44,6 +44,8 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<{ name: string; ids: string | string[] } | null>(null);
   const { toast } = useToast();
   const totalBalance = useMemo(
     () => bank.balances.reduce((sum, balance) => sum + balance.current_balance, 0),
@@ -187,16 +189,17 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
                 Sync transactions
               </DropdownMenuItem>
               {onDisconnect && (
-                <DisconnectBankDialog
-                  bankName={bank.institution_name}
-                  bankIds={bank.bankIds}
-                  onDisconnect={onDisconnect}
+                <DropdownMenuItem 
+                  className="flex items-center gap-2 text-destructive focus:text-destructive"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setDisconnectTarget({ name: bank.institution_name, ids: bank.bankIds });
+                    setDisconnectDialogOpen(true);
+                  }}
                 >
-                  <DropdownMenuItem className="flex items-center gap-2 text-destructive focus:text-destructive">
-                    <Unplug className="h-4 w-4" />
-                    Disconnect
-                  </DropdownMenuItem>
-                </DisconnectBankDialog>
+                  <Unplug className="h-4 w-4" />
+                  Disconnect
+                </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -263,16 +266,17 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
                           Sync transactions
                         </DropdownMenuItem>
                         {onDisconnect && (
-                          <DisconnectBankDialog
-                            bankName={balance.account_name}
-                            bankIds={balance.connected_bank_id || bank.bankIds[0]}
-                            onDisconnect={onDisconnect}
+                          <DropdownMenuItem 
+                            className="flex items-center gap-2 text-destructive focus:text-destructive"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              setDisconnectTarget({ name: balance.account_name, ids: balance.connected_bank_id || bank.bankIds[0] });
+                              setDisconnectDialogOpen(true);
+                            }}
                           >
-                            <DropdownMenuItem className="flex items-center gap-2 text-destructive focus:text-destructive">
-                              <Unplug className="h-4 w-4" />
-                              Disconnect account
-                            </DropdownMenuItem>
-                          </DisconnectBankDialog>
+                            <Unplug className="h-4 w-4" />
+                            Disconnect account
+                          </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -290,6 +294,20 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
           </div>
         )}
       </CardContent>
+
+      {/* Disconnect dialog - rendered outside dropdown to avoid Radix focus trap issues */}
+      {onDisconnect && disconnectTarget && (
+        <DisconnectBankDialog
+          bankName={disconnectTarget.name}
+          bankIds={disconnectTarget.ids}
+          onDisconnect={onDisconnect}
+          open={disconnectDialogOpen}
+          onOpenChange={(open) => {
+            setDisconnectDialogOpen(open);
+            if (!open) setDisconnectTarget(null);
+          }}
+        />
+      )}
     </Card>
   );
 };

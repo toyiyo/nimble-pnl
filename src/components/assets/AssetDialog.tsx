@@ -78,19 +78,6 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [activeTab, setActiveTab] = useState('details');
 
-  const handleAddLocation = async () => {
-    if (!newLocationName.trim() || !restaurantId) return;
-    setAddingLocation(true);
-    const { error } = await supabase
-      .from('inventory_locations')
-      .insert({ name: newLocationName.trim(), restaurant_id: restaurantId });
-    setAddingLocation(false);
-    if (!error) {
-      setAddLocationOpen(false);
-      setNewLocationName('');
-      await queryClient.invalidateQueries({ queryKey: ['inventory-locations', restaurantId] as const });
-    }
-  };
 
   // Image viewer handlers
   const handleViewImage = useCallback((src: string, alt: string, isPending = false) => {

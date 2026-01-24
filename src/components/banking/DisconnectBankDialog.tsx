@@ -22,6 +22,8 @@ interface DisconnectBankDialogProps {
   bankIds: string | string[];
   onDisconnect: (bankId: string, deleteData: boolean) => Promise<void>;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export const DisconnectBankDialog = ({
@@ -29,11 +31,25 @@ export const DisconnectBankDialog = ({
   bankIds,
   onDisconnect,
   children,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: DisconnectBankDialogProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  // Support both controlled and uncontrolled modes
+  const isControlled = controlledOpen !== undefined;
+  const isOpen = isControlled ? controlledOpen : internalOpen;
+
+  const setIsOpen = (open: boolean) => {
+    if (isControlled) {
+      controlledOnOpenChange?.(open);
+    } else {
+      setInternalOpen(open);
+    }
+  };
 
   const handleDisconnect = async () => {
     setIsDisconnecting(true);

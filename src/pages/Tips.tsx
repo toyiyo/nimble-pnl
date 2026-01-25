@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven } from '@/utils/tipPooling';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence } from '@/hooks/useTipPoolSettings';
@@ -82,8 +82,9 @@ export const Tips = () => {
 
   // Selected date for Daily Entry mode
   const today = format(selectedDate, 'yyyy-MM-dd');
-  const todayStart = useMemo(() => new Date(today + 'T00:00:00Z'), [today]);
-  const todayEnd = useMemo(() => new Date(today + 'T23:59:59.999Z'), [today]);
+  // Use local timezone-aware boundaries to match TimePunchesManager behavior
+  const todayStart = useMemo(() => startOfDay(selectedDate), [selectedDate]);
+  const todayEnd = useMemo(() => endOfDay(selectedDate), [selectedDate]);
 
   // ============ Data Fetching Hooks ============
   const { employees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'active' });

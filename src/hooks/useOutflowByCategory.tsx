@@ -35,9 +35,10 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       // Fetch cleared and pending transactions (outflows only)
       let query = supabase
         .from('bank_transactions')
-        .select('id, transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype)')
+        .select('id, transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, is_split, is_transfer, chart_of_accounts!category_id(account_name, account_subtype)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .in('status', ['posted', 'pending'])
+        .eq('is_transfer', false) // Exclude transfers
         .lt('amount', 0) // Only outflows
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
         .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));

@@ -6,6 +6,7 @@ import {
   calculatePayrollPeriod,
   PayrollPeriod,
   ManualPayment,
+  shouldIncludeEmployeeInPayroll,
 } from '@/utils/payrollCalculations';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -250,12 +251,17 @@ export const usePayroll = (
         }
       });
 
-      // Calculate payroll for all employees who have data in this period
-      // Don't filter by active status - historical data should include inactive employees
+      // Filter employees based on deactivation date vs payroll period
+      // Inactive employees are included only through their final week (the week containing their deactivation date)
+      const eligibleEmployees = employees.filter(employee => 
+        shouldIncludeEmployeeInPayroll(employee, startDate)
+      );
+
+      // Calculate payroll for eligible employees
       const payroll = calculatePayrollPeriod(
         startDate,
         endDate,
-        employees, // Include all employees (active and inactive)
+        eligibleEmployees,
         punchesPerEmployee,
         tipsPerEmployee,
         manualPaymentsPerEmployee

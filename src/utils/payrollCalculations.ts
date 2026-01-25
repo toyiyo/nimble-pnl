@@ -1,6 +1,7 @@
 import { TimePunch } from '@/types/timeTracking';
 import { Employee, CompensationType } from '@/types/scheduling';
-import { startOfWeek, format } from 'date-fns';
+import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { 
   calculateSalaryForPeriod, 
   calculateContractorPayForPeriod,
@@ -506,6 +507,38 @@ export function formatCurrency(cents: number): string {
  */
 export function formatHours(hours: number): string {
   return hours.toFixed(2);
+}
+
+/**
+ * Determine if an employee should appear in a payroll period.
+ * 
+ * Rules:
+ * - Active employees: Always included
+ * - Inactive employees: Included only if the payroll period start date
+ *   is on or before the end of their deactivation week
+ * 
+ * This ensures employees get paid for their final week and then stop appearing.
+ */
+export function shouldIncludeEmployeeInPayroll(
+  employee: Employee,
+  periodStartDate: Date
+): boolean {
+  // Active employees are always included
+  if (employee.is_active) return true;
+  
+  // For inactive employees, check if payroll period overlaps with their last week
+  const deactivationDate = employee.deactivated_at || employee.last_active_date;
+  if (!deactivationDate) {
+    // No deactivation date - shouldn't happen, but include to be safe
+    return true;
+  }
+  
+  // Get the end of the week containing the deactivation date
+  const deactivationParsed = parseISO(deactivationDate);
+  const endOfDeactivationWeek = endOfWeek(deactivationParsed, { weekStartsOn: WEEK_STARTS_ON });
+  
+  // Include if payroll period starts on or before the end of deactivation week
+  return periodStartDate <= endOfDeactivationWeek;
 }
 
 /**

@@ -12,7 +12,7 @@ import { EnhancedReconciliationDialog } from "@/components/banking/EnhancedRecon
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
 import { MetricIcon } from "@/components/MetricIcon";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -34,18 +34,44 @@ import { useBulkCategorizeTransactions, useBulkExcludeTransactions, useBulkMarkA
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 
 export default function Banking() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'upload_statement'>('for_review');
   const [activeStatementId, setActiveStatementId] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<TransactionFilters>({});
+  const [activeCategoryName, setActiveCategoryName] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'payee' | 'amount' | 'category'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showBulkCategorizePanel, setShowBulkCategorizePanel] = useState(false);
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
   const hasActiveFilters = searchTerm.length > 0 || Object.values(filters).some(v => v !== undefined && v !== '');
+  
+  // Handle navigation state from Dashboard category clicks
+  useEffect(() => {
+    const state = location.state as { 
+      categoryId?: string; 
+      categoryName?: string;
+      tab?: string;
+      filterUncategorized?: boolean;
+    } | null;
+    
+    if (state?.categoryId) {
+      setFilters(prev => ({ ...prev, categoryId: state.categoryId }));
+      setActiveCategoryName(state.categoryName || null);
+      setActiveTab('categorized');
+      // Clear the state to prevent re-applying on refresh
+      window.history.replaceState({}, document.title);
+    }
+    
+    if (state?.filterUncategorized) {
+      setFilters(prev => ({ ...prev, showUncategorized: true }));
+      setActiveTab('for_review');
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
   
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
@@ -482,16 +508,36 @@ export default function Banking() {
                     )}
                   </div>
                   {activeFilterCount > 0 && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                       <Filter className="h-4 w-4" />
                       <span>{activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active</span>
+                      {activeCategoryName && filters.categoryId && (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Tags className="h-3 w-3" />
+                          {activeCategoryName}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-4 w-4 p-0 ml-1 hover:bg-transparent"
+                            onClick={() => {
+                              setFilters(prev => ({ ...prev, categoryId: undefined }));
+                              setActiveCategoryName(null);
+                            }}
+                          >
+                            <XCircle className="h-3 w-3" />
+                          </Button>
+                        </Badge>
+                      )}
                       <Button 
                         variant="ghost" 
                         size="sm" 
-                        onClick={() => setFilters({})}
+                        onClick={() => {
+                          setFilters({});
+                          setActiveCategoryName(null);
+                        }}
                         className="h-7 text-xs"
                       >
-                        Clear
+                        Clear All
                       </Button>
                     </div>
                   )}

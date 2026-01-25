@@ -118,8 +118,19 @@ type SupabaseQuery = ReturnType<typeof buildBaseQuery>;
 type SplitBankTransactionArgs = Database['public']['Functions']['split_bank_transaction']['Args'];
 
 const applyStatusFilter = (query: SupabaseQuery, status?: TransactionStatus) => {
-  if (status === 'for_review') return query.eq('is_categorized', false).is('excluded_reason', null);
-  if (status === 'categorized') return query.eq('is_categorized', true).is('excluded_reason', null);
+  if (status === 'for_review') {
+    // Exclude split parent transactions - they are categorized via bank_transaction_splits
+    return query
+      .eq('is_categorized', false)
+      .eq('is_split', false)
+      .is('excluded_reason', null);
+  }
+  if (status === 'categorized') {
+    // Include split parent transactions as categorized (their splits have categories)
+    return query
+      .is('excluded_reason', null)
+      .or('is_categorized.eq.true,is_split.eq.true');
+  }
   if (status === 'excluded') return query.not('excluded_reason', 'is', null);
   if (status === 'reconciled') return query.eq('is_reconciled', true);
   return query;

@@ -104,10 +104,17 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
     value: cat.amount,
     percentage: cat.percentage,
     color: COLORS[idx % COLORS.length],
+    categoryId: cat.categoryId,
   }));
 
-  const handleCategoryClick = (category: string) => {
-    navigate('/banking', { state: { filterCategory: category } });
+  const handleCategoryClick = (categoryId: string | null, categoryName: string) => {
+    navigate('/banking', { 
+      state: { 
+        categoryId, 
+        categoryName,
+        tab: 'categorized' 
+      } 
+    });
   };
 
   return (
@@ -203,9 +210,19 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
                   outerRadius={100}
                   paddingAngle={2}
                   dataKey="value"
+                  onClick={(data) => {
+                    if (data && data.payload) {
+                      handleCategoryClick(data.payload.categoryId, data.payload.name);
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
                 >
                   {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.color}
+                      style={{ cursor: 'pointer' }}
+                    />
                   ))}
                 </Pie>
                 <Tooltip
@@ -237,7 +254,7 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
             {data.categories.slice(0, 8).map((cat, idx) => (
               <button
                 key={cat.category}
-                onClick={() => handleCategoryClick(cat.category)}
+                onClick={() => handleCategoryClick(cat.categoryId, cat.category)}
                 className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-accent/50 transition-colors text-left group"
                 aria-label={`View ${cat.category} transactions`}
               >

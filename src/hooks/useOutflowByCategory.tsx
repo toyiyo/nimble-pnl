@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format } from "date-fns";
-import { formatExpenseCategory, isUncategorized } from "@/lib/expenseCategoryUtils";
+import { getAccountDisplayName, isUncategorized } from "@/lib/expenseCategoryUtils";
 
 export interface CategorySpend {
   category: string;
@@ -110,7 +110,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       postedTxns.filter(t => !t.is_split).forEach(t => {
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
         const categoryId = t.category_id || null;
 
         if (!categoryMap.has(category)) {
@@ -126,7 +126,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       pendingTxns.filter(t => !t.is_split).forEach(t => {
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
         const categoryId = t.category_id || null;
 
         if (!categoryMap.has(category)) {
@@ -140,7 +140,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       pendingCheckTxns.forEach(t => {
         const accountSubtype = t.chart_account?.account_subtype;
         const accountName = t.chart_account?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
         const categoryId = t.category_id || null;
 
         if (!categoryMap.has(category)) {
@@ -154,7 +154,7 @@ export function useOutflowByCategory(startDate: Date, endDate: Date, bankAccount
       splitDetails.forEach(split => {
         const accountSubtype = split.chart_of_accounts?.account_subtype;
         const accountName = split.chart_of_accounts?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
         const categoryId = split.category_id || null;
 
         // Determine if this is posted or pending based on parent transaction

@@ -38,8 +38,13 @@ export function SalesVsBreakEvenChart({ data, isLoading }: SalesVsBreakEvenChart
 
   const handleBarClick = (entry: any) => {
     if (entry?.date) {
-      // Navigate to dashboard with that date selected
-      navigate(`/?date=${entry.date}`);
+      // Navigate to reports page with that specific date selected for Daily P&L view
+      navigate('/reports', { 
+        state: { 
+          selectedDate: entry.date,
+          reportType: 'daily-pnl',
+        } 
+      });
     }
   };
 
@@ -169,7 +174,7 @@ export function SalesVsBreakEvenChart({ data, isLoading }: SalesVsBreakEvenChart
         </div>
 
         <p className="text-xs text-muted-foreground text-center mt-4">
-          Click any bar to view the full Daily P&L for that date
+          Click any bar to view detailed P&L reports for that date
         </p>
       </CardContent>
     </Card>

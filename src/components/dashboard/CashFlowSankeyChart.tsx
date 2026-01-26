@@ -73,54 +73,59 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
-// Custom node component for the Sankey chart
-const CustomNode = (props: any) => {
-  const { x, y, width, height, index, payload, onNodeClick } = props;
-  const isMiddle = payload.name === 'Cash Flow';
-  const isClickable = payload.categoryIds && payload.categoryIds.length > 0;
-  
-  const handleClick = () => {
-    if (isClickable && onNodeClick) {
-      onNodeClick(payload.name, payload.categoryIds);
-    }
+// Custom node component factory for the Sankey chart
+// Recharts doesn't pass custom props through, so we use a factory pattern
+const createCustomNode = (onNodeClick: (name: string, categoryIds: string[]) => void) => {
+  return (props: any) => {
+    const { x, y, width, height, index, payload } = props;
+    const isMiddle = payload.name === 'Cash Flow';
+    const isClickable = payload.categoryIds && payload.categoryIds.length > 0;
+    
+    const handleClick = () => {
+      if (isClickable) {
+        onNodeClick(payload.name, payload.categoryIds);
+      }
+    };
+    
+    return (
+      <Layer key={`node-${index}`}>
+        <Rectangle
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={payload.color || 'hsl(var(--primary))'}
+          fillOpacity={isMiddle ? 1 : 0.9}
+          rx={4}
+          ry={4}
+          style={{ cursor: isClickable ? 'pointer' : 'default' }}
+          onClick={handleClick}
+        />
+        <text
+          x={isMiddle ? x + width / 2 : x < 100 ? x - 6 : x + width + 6}
+          y={y + height / 2}
+          textAnchor={isMiddle ? 'middle' : x < 100 ? 'end' : 'start'}
+          dominantBaseline="middle"
+          className="fill-foreground text-xs font-medium"
+          style={{ cursor: isClickable ? 'pointer' : 'default' }}
+          onClick={handleClick}
+        >
+          {payload.name}
+        </text>
+        <text
+          x={isMiddle ? x + width / 2 : x < 100 ? x - 6 : x + width + 6}
+          y={y + height / 2 + 14}
+          textAnchor={isMiddle ? 'middle' : x < 100 ? 'end' : 'start'}
+          dominantBaseline="middle"
+          className="fill-muted-foreground text-[10px]"
+          style={{ cursor: isClickable ? 'pointer' : 'default' }}
+          onClick={handleClick}
+        >
+          {formatCurrency(payload.value || 0)}
+        </text>
+      </Layer>
+    );
   };
-  
-  return (
-    <Layer key={`node-${index}`}>
-      <Rectangle
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill={payload.color || 'hsl(var(--primary))'}
-        fillOpacity={isMiddle ? 1 : 0.9}
-        rx={4}
-        ry={4}
-        className={isClickable ? 'cursor-pointer transition-opacity hover:opacity-80' : ''}
-        onClick={handleClick}
-      />
-      <text
-        x={isMiddle ? x + width / 2 : x < 100 ? x - 6 : x + width + 6}
-        y={y + height / 2}
-        textAnchor={isMiddle ? 'middle' : x < 100 ? 'end' : 'start'}
-        dominantBaseline="middle"
-        className={`fill-foreground text-xs font-medium ${isClickable ? 'cursor-pointer' : ''}`}
-        onClick={handleClick}
-      >
-        {payload.name}
-      </text>
-      <text
-        x={isMiddle ? x + width / 2 : x < 100 ? x - 6 : x + width + 6}
-        y={y + height / 2 + 14}
-        textAnchor={isMiddle ? 'middle' : x < 100 ? 'end' : 'start'}
-        dominantBaseline="middle"
-        className={`fill-muted-foreground text-[10px] ${isClickable ? 'cursor-pointer' : ''}`}
-        onClick={handleClick}
-      >
-        {formatCurrency(payload.value || 0)}
-      </text>
-    </Layer>
-  );
 };
 
 // Custom link component with gradient coloring and hover tooltip
@@ -535,7 +540,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
               nodePadding={24}
               margin={{ top: 20, right: 160, bottom: 20, left: 160 }}
               link={<CustomLink onMouseEnter={handleLinkMouseEnter} onMouseLeave={handleLinkMouseLeave} />}
-              node={<CustomNode onNodeClick={handleExpenseNodeClick} />}
+              node={createCustomNode(handleExpenseNodeClick)}
             >
             </Sankey>
           </ResponsiveContainer>

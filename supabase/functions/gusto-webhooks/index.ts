@@ -4,6 +4,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts';
 import { logSecurityEvent } from '../_shared/encryption.ts';
+import { createGustoClient, getGustoConfig } from '../_shared/gustoClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -165,12 +166,8 @@ async function processEvent(
 
     case 'employee.updated':
       console.log('[GUSTO-WEBHOOK] Employee updated in Gusto:', event.entity_uuid);
-      // Update the employee's onboarding status if they exist locally
-      await supabase
-        .from('employees')
-        .update({ gusto_onboarding_status: 'updated_in_gusto' })
-        .eq('gusto_employee_uuid', event.entity_uuid)
-        .eq('restaurant_id', restaurantId);
+      // Fetch the updated employee details from Gusto to get actual onboarding status
+      await syncEmployeeOnboardingStatus(supabase, restaurantId, event.entity_uuid);
       break;
 
     case 'employee.terminated':
@@ -287,5 +284,61 @@ async function upsertPayrollRun(
 
   if (error) {
     console.error('[GUSTO-WEBHOOK] Error upserting payroll run:', error);
+  }
+}
+
+/**
+ * Sync employee onboarding status from Gusto
+ * Called when we receive an employee.updated webhook
+ */
+async function syncEmployeeOnboardingStatus(
+  supabase: ReturnType<typeof createClient>,
+  restaurantId: string,
+  gustoEmployeeUuid: string
+): Promise<void> {
+  try {
+    // Get Gusto connection for this restaurant
+    const { data: connection, error: connectionError } = await supabase
+      .from('gusto_connections')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (connectionError || !connection) {
+      console.error('[GUSTO-WEBHOOK] No connection found for restaurant:', restaurantId);
+      return;
+    }
+
+    // Get Gusto config and create client
+    const gustoConfig = getGustoConfig(); // Use demo by default for webhooks
+    const gustoClient = await createGustoClient(connection.access_token, gustoConfig.baseUrl);
+
+    // Fetch the employee details from Gusto
+    const gustoEmployee = await gustoClient.getEmployee(gustoEmployeeUuid);
+
+    console.log('[GUSTO-WEBHOOK] Fetched employee from Gusto:', {
+      uuid: gustoEmployee.uuid,
+      name: `${gustoEmployee.first_name} ${gustoEmployee.last_name}`,
+      onboarding_status: gustoEmployee.onboarding_status,
+      terminated: gustoEmployee.terminated,
+    });
+
+    // Update the local employee record with the actual onboarding status
+    const { error: updateError } = await supabase
+      .from('employees')
+      .update({
+        gusto_onboarding_status: gustoEmployee.onboarding_status,
+        gusto_synced_at: new Date().toISOString(),
+      })
+      .eq('gusto_employee_uuid', gustoEmployeeUuid)
+      .eq('restaurant_id', restaurantId);
+
+    if (updateError) {
+      console.error('[GUSTO-WEBHOOK] Error updating employee onboarding status:', updateError);
+    } else {
+      console.log('[GUSTO-WEBHOOK] Updated employee onboarding status to:', gustoEmployee.onboarding_status);
+    }
+  } catch (error) {
+    console.error('[GUSTO-WEBHOOK] Error syncing employee onboarding status:', error);
   }
 }

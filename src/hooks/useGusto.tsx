@@ -67,7 +67,7 @@ export const useGusto = (restaurantId: string | null): UseGustoReturn => {
 
   // Convenience methods for common flows
   const openPayroll = async () => {
-    await flows.generateFlowUrl('payroll');
+    await flows.generateFlowUrl('run_payroll');
   };
 
   const openCompanySetup = async () => {
@@ -75,19 +75,19 @@ export const useGusto = (restaurantId: string | null): UseGustoReturn => {
   };
 
   const openEmployeeOnboarding = async (employeeUuid: string) => {
-    await flows.generateFlowUrl('employee_onboarding', employeeUuid, 'Employee');
+    await flows.generateFlowUrl('employee_self_management', employeeUuid, 'Employee');
   };
 
   const openContractorOnboarding = async (contractorUuid: string) => {
-    await flows.generateFlowUrl('contractor_onboarding', contractorUuid, 'Contractor');
+    await flows.generateFlowUrl('add_contractors', contractorUuid, 'Contractor');
   };
 
   const openBenefits = async () => {
-    await flows.generateFlowUrl('benefits');
+    await flows.generateFlowUrl('company_onboarding');
   };
 
   const openTaxes = async () => {
-    await flows.generateFlowUrl('taxes');
+    await flows.generateFlowUrl('federal_tax_setup');
   };
 
   return {

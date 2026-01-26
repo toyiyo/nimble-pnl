@@ -76,17 +76,44 @@ Deno.serve(async (req) => {
       throw new Error('Entity UUID is required for employee_self_management flow');
     }
 
-    // Verify user has access to restaurant (owner or manager)
-    const { data: userRestaurant, error: accessError } = await supabase
-      .from('user_restaurants')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('restaurant_id', restaurantId)
-      .in('role', ['owner', 'manager'])
-      .single();
+    // Authorization check depends on flow type
+    if (flowType === 'employee_self_management') {
+      // For employee self-management flows, verify the user is linked to this employee
+      const { data: employee, error: employeeError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('gusto_employee_uuid', entityUuid)
+        .eq('user_id', user.id)
+        .eq('restaurant_id', restaurantId)
+        .single();
 
-    if (accessError || !userRestaurant) {
-      throw new Error('Access denied to restaurant');
+      if (employeeError || !employee) {
+        // Fall back to owner/manager check - they can also access employee flows
+        const { data: userRestaurant, error: accessError } = await supabase
+          .from('user_restaurants')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('restaurant_id', restaurantId)
+          .in('role', ['owner', 'manager'])
+          .single();
+
+        if (accessError || !userRestaurant) {
+          throw new Error('Access denied: You can only access your own onboarding flow');
+        }
+      }
+    } else {
+      // For other flows, require owner or manager role
+      const { data: userRestaurant, error: accessError } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('restaurant_id', restaurantId)
+        .in('role', ['owner', 'manager'])
+        .single();
+
+      if (accessError || !userRestaurant) {
+        throw new Error('Access denied to restaurant');
+      }
     }
 
     // Get Gusto connection for this restaurant

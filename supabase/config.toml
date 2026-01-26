@@ -189,3 +189,6 @@ verify_jwt = false
 
 [functions.gusto-webhooks]
 verify_jwt = false
+
+[functions.gusto-pull-employees]
+verify_jwt = false

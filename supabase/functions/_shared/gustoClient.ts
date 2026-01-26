@@ -198,10 +198,32 @@ export class GustoClient {
   }
 
   // ============================================================================
-  // Time Activity Methods
+  // Time Tracking Methods (New API - replaces deprecated time_activities)
   // ============================================================================
 
+  /**
+   * Create a time sheet entry for an employee shift
+   * This is the new endpoint replacing the deprecated time_activities
+   */
+  async createTimeSheet(companyUuid: string, timeSheet: TimeSheetRequest) {
+    return this.request<TimeSheetResponse>(`/v1/companies/${companyUuid}/time_tracking/time_sheets`, {
+      method: 'POST',
+      body: timeSheet as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * Get time sheets for a company within a date range
+   */
+  async getTimeSheets(companyUuid: string, startDate: string, endDate: string) {
+    return this.request<TimeSheetResponse[]>(
+      `/v1/companies/${companyUuid}/time_tracking/time_sheets?start_date=${startDate}&end_date=${endDate}`
+    );
+  }
+
+  // Legacy method - deprecated but kept for reference
   async createTimeActivities(companyUuid: string, timeActivities: TimeActivityBatch) {
+    console.warn('[GUSTO-API] time_activities endpoint is deprecated, use createTimeSheet instead');
     return this.request<TimeActivityResponse>(`/v1/companies/${companyUuid}/time_activities`, {
       method: 'POST',
       body: timeActivities as unknown as Record<string, unknown>,
@@ -218,12 +240,79 @@ export class GustoClient {
   // Payroll Methods
   // ============================================================================
 
-  async getPayrolls(companyUuid: string) {
-    return this.request<GustoPayroll[]>(`/v1/companies/${companyUuid}/payrolls`);
+  /**
+   * Get all payrolls for a company
+   * By default returns only processed payrolls
+   */
+  async getPayrolls(companyUuid: string, processingStatuses?: string[]) {
+    const params = processingStatuses
+      ? `?processing_statuses=${processingStatuses.join(',')}`
+      : '';
+    return this.request<GustoPayroll[]>(`/v1/companies/${companyUuid}/payrolls${params}`);
+  }
+
+  /**
+   * Get unprocessed (upcoming) payrolls that can be updated
+   */
+  async getUnprocessedPayrolls(companyUuid: string) {
+    return this.request<GustoPayroll[]>(
+      `/v1/companies/${companyUuid}/payrolls?processing_statuses=unprocessed`
+    );
   }
 
   async getPayroll(companyUuid: string, payrollUuid: string) {
-    return this.request<GustoPayroll>(`/v1/companies/${companyUuid}/payrolls/${payrollUuid}`);
+    return this.request<GustoPayrollDetailed>(`/v1/companies/${companyUuid}/payrolls/${payrollUuid}`);
+  }
+
+  /**
+   * Prepare a payroll for updates - returns the current state and version
+   * Must be called before updating payroll
+   */
+  async preparePayroll(companyUuid: string, payrollUuid: string) {
+    return this.request<PreparedPayroll>(`/v1/companies/${companyUuid}/payrolls/${payrollUuid}/prepare`, {
+      method: 'PUT',
+    });
+  }
+
+  /**
+   * Update a payroll with employee compensations (hours, tips, bonuses, etc.)
+   * Requires the version from preparePayroll to handle conflicts
+   */
+  async updatePayroll(companyUuid: string, payrollUuid: string, updates: PayrollUpdate) {
+    return this.request<GustoPayrollDetailed>(`/v1/companies/${companyUuid}/payrolls/${payrollUuid}`, {
+      method: 'PUT',
+      body: updates as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * Calculate payroll totals after updates
+   */
+  async calculatePayroll(companyUuid: string, payrollUuid: string) {
+    return this.request<GustoPayrollDetailed>(`/v1/companies/${companyUuid}/payrolls/${payrollUuid}/calculate`, {
+      method: 'PUT',
+    });
+  }
+
+  // ============================================================================
+  // Earning Types Methods
+  // ============================================================================
+
+  /**
+   * Get all earning types for a company (including custom ones)
+   */
+  async getEarningTypes(companyUuid: string) {
+    return this.request<EarningTypesResponse>(`/v1/companies/${companyUuid}/earning_types`);
+  }
+
+  /**
+   * Create a custom earning type for the company
+   */
+  async createEarningType(companyUuid: string, name: string) {
+    return this.request<EarningType>(`/v1/companies/${companyUuid}/earning_types`, {
+      method: 'POST',
+      body: { name },
+    });
   }
 
   // ============================================================================
@@ -488,4 +577,118 @@ interface TimeActivityResponse {
 interface FlowResponse {
   url: string;
   expires_at: string;
+}
+
+// ============================================================================
+// Time Sheet Types (New API)
+// ============================================================================
+
+interface TimeSheetRequest {
+  entity_uuid: string; // Employee UUID
+  entity_type: 'Employee';
+  job_uuid: string;
+  time_zone: string; // IANA timezone, e.g., "America/New_York"
+  shift_started_at: string; // ISO 8601 UTC timestamp
+  shift_ended_at: string; // ISO 8601 UTC timestamp
+  entries: TimeSheetEntry[];
+}
+
+interface TimeSheetEntry {
+  hours_worked: number;
+  pay_classification: 'Regular' | 'Overtime' | 'Double Overtime';
+}
+
+interface TimeSheetResponse {
+  uuid: string;
+  entity_uuid: string;
+  entity_type: string;
+  job_uuid: string;
+  shift_started_at: string;
+  shift_ended_at: string;
+  entries: TimeSheetEntry[];
+}
+
+// ============================================================================
+// Payroll Types (Extended)
+// ============================================================================
+
+interface GustoPayrollDetailed extends GustoPayroll {
+  version: string;
+  payroll_deadline: string;
+  totals?: PayrollTotals;
+  employee_compensations: EmployeeCompensation[];
+}
+
+interface PreparedPayroll extends GustoPayrollDetailed {
+  fixed_compensation_types: FixedCompensationType[];
+}
+
+interface PayrollTotals {
+  company_debit: string;
+  net_pay: string;
+  tax_debit: string;
+  gross_pay: string;
+  reimbursements: string;
+  employer_taxes: string;
+  employee_taxes: string;
+  benefits: string;
+}
+
+interface EmployeeCompensation {
+  employee_uuid: string;
+  gross_pay?: string;
+  net_pay?: string;
+  payment_method?: string;
+  fixed_compensations: FixedCompensation[];
+  hourly_compensations: HourlyCompensation[];
+  paid_time_off?: PaidTimeOff[];
+}
+
+interface FixedCompensation {
+  name: string;
+  amount: string;
+  job_uuid: string;
+}
+
+interface HourlyCompensation {
+  name: string;
+  hours: string;
+  job_uuid: string;
+  compensation_multiplier: number;
+}
+
+interface PaidTimeOff {
+  name: string;
+  hours: string;
+}
+
+interface FixedCompensationType {
+  name: string;
+}
+
+interface PayrollUpdate {
+  version: string;
+  employee_compensations: EmployeeCompensationUpdate[];
+}
+
+interface EmployeeCompensationUpdate {
+  employee_uuid: string;
+  fixed_compensations?: FixedCompensation[];
+  hourly_compensations?: HourlyCompensation[];
+  paid_time_off?: PaidTimeOff[];
+}
+
+// ============================================================================
+// Earning Types
+// ============================================================================
+
+interface EarningTypesResponse {
+  default: EarningType[];
+  custom: EarningType[];
+}
+
+interface EarningType {
+  uuid: string;
+  name: string;
+  is_active: boolean;
 }

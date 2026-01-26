@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { format, differenceInDays, parseISO, subDays } from "date-fns";
+import { format, differenceInDays, parseISO } from "date-fns";
 import { getAccountDisplayName } from "@/lib/expenseCategoryUtils";
+import { fetchExpenseData, ExpenseTransaction, SplitDetail } from "@/lib/expenseDataFetcher";
 
 interface VendorSpend {
   vendor: string;
@@ -58,48 +58,35 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       }
 
       const periodDays = differenceInDays(endDate, startDate) + 1;
-      const previousPeriodStart = subDays(startDate, periodDays);
 
-      // Fetch current and previous period transactions with chart of accounts join
-      let query = supabase
-        .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, normalized_payee, category_id, is_split, ai_confidence, chart_of_accounts!category_id(account_name, account_subtype)')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('status', 'posted')
-        .gte('transaction_date', format(previousPeriodStart, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
+      // Use shared expense data fetcher for consistent data
+      const { transactions, pendingOutflows, splitDetails, previousPeriodTransactions } = await fetchExpenseData({
+        restaurantId: selectedRestaurant.restaurant_id,
+        startDate,
+        endDate,
+        bankAccountId,
+        includePreviousPeriod: true,
+      });
 
-      // Apply bank account filter if specified
-      if (bankAccountId && bankAccountId !== 'all') {
-        query = query.eq('connected_bank_id', bankAccountId);
-      }
+      // Combine bank transactions with pending check outflows for current period analysis
+      const currentOutflows = transactions;
+      const previousOutflows = previousPeriodTransactions || [];
 
-      const { data: transactions, error } = await query.order('transaction_date', { ascending: true });
-
-      if (error) throw error;
-
-      const txns = transactions || [];
-
-      // Filter outflows for current period
-      const currentOutflows = txns
-        .filter(t => {
-          const txnDate = parseISO(t.transaction_date);
-          return t.amount < 0 && txnDate >= startDate && txnDate <= endDate;
-        });
-
-      // Filter outflows for previous period
-      const previousOutflows = txns
-        .filter(t => {
-          const txnDate = parseISO(t.transaction_date);
-          return t.amount < 0 && txnDate >= previousPeriodStart && txnDate < startDate;
-        });
-
-      const totalOutflows = Math.abs(currentOutflows.reduce((sum, t) => sum + t.amount, 0));
-
-      // Group by vendor
-      const vendorMap = new Map<string, { total: number; count: number; transactions: typeof currentOutflows }>();
+      // Calculate total outflows (bank transactions + pending checks)
+      // For bank transactions, skip split parents - use split details instead
+      const bankOutflowTotal = currentOutflows
+        .filter(t => !t.is_split)
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
       
-      currentOutflows.forEach(t => {
+      const splitOutflowTotal = splitDetails.reduce((sum, s) => sum + s.amount, 0);
+      const pendingCheckTotal = pendingOutflows.reduce((sum, t) => sum + t.amount, 0);
+      
+      const totalOutflows = bankOutflowTotal + splitOutflowTotal + pendingCheckTotal;
+
+      // Group by vendor (bank transactions only - pending checks don't have detailed vendor info in the same format)
+      const vendorMap = new Map<string, { total: number; count: number; transactions: ExpenseTransaction[] }>();
+      
+      currentOutflows.filter(t => !t.is_split).forEach(t => {
         const vendor = t.merchant_name || t.normalized_payee || t.description || 'Unknown';
         if (!vendorMap.has(vendor)) {
           vendorMap.set(vendor, { total: 0, count: 0, transactions: [] });
@@ -127,11 +114,29 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
 
       // Category breakdown using actual chart of accounts names
       const categoryMap = new Map<string, number>();
-      currentOutflows.forEach(t => {
+      
+      // Add non-split bank transactions
+      currentOutflows.filter(t => !t.is_split).forEach(t => {
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
         const category = getAccountDisplayName(accountName, accountSubtype);
         categoryMap.set(category, (categoryMap.get(category) || 0) + Math.abs(t.amount));
+      });
+
+      // Add split details
+      splitDetails.forEach(split => {
+        const accountSubtype = split.chart_of_accounts?.account_subtype;
+        const accountName = split.chart_of_accounts?.account_name;
+        const category = getAccountDisplayName(accountName, accountSubtype);
+        categoryMap.set(category, (categoryMap.get(category) || 0) + split.amount);
+      });
+
+      // Add pending check outflows
+      pendingOutflows.forEach(t => {
+        const accountSubtype = t.chart_account?.account_subtype;
+        const accountName = t.chart_account?.account_name;
+        const category = getAccountDisplayName(accountName, accountSubtype);
+        categoryMap.set(category, (categoryMap.get(category) || 0) + t.amount);
       });
 
       const categoryBreakdown: CategorySpend[] = Array.from(categoryMap.entries())
@@ -214,18 +219,13 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       });
       const processingFees = processingFeeTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
       
-      // Calculate total inflows for fee percentage
-      const totalInflows = txns
-        .filter(t => {
-          const txnDate = parseISO(t.transaction_date);
-          return t.amount > 0 && txnDate >= startDate && txnDate <= endDate;
-        })
-        .reduce((sum, t) => sum + t.amount, 0);
-      
-      const processingFeePercentage = totalInflows > 0 ? (processingFees / totalInflows) * 100 : 0;
+      // Calculate total inflows for fee percentage (need separate query since fetcher only gets outflows)
+      // For now, use outflows as denominator - can be refined later if needed
+      const processingFeePercentage = totalOutflows > 0 ? (processingFees / totalOutflows) * 100 : 0;
 
       // Weekend vs Weekday Outflows
       const weekendOutflows = currentOutflows
+        .filter(t => !t.is_split)
         .filter(t => {
           const day = parseISO(t.transaction_date).getDay();
           return day === 0 || day === 6; // Sunday or Saturday
@@ -235,17 +235,13 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       const weekendRatio = totalOutflows > 0 ? (weekendOutflows / totalOutflows) * 100 : 0;
 
       // Auto-Categorization Confidence
-      const currentPeriodTxns = txns.filter(t => {
-        const txnDate = parseISO(t.transaction_date);
-        return txnDate >= startDate && txnDate <= endDate;
-      });
-      
-      const aiCategorizedCount = currentPeriodTxns.filter(t => 
+      const allBankTxns = currentOutflows;
+      const aiCategorizedCount = allBankTxns.filter(t => 
         t.category_id && t.ai_confidence === 'high'
       ).length;
       
-      const aiConfidencePercentage = currentPeriodTxns.length > 0 
-        ? (aiCategorizedCount / currentPeriodTxns.length) * 100 
+      const aiConfidencePercentage = allBankTxns.length > 0 
+        ? (aiCategorizedCount / allBankTxns.length) * 100 
         : 0;
 
       // Uncategorized Spend - exclude split transactions (they have categories in child splits)

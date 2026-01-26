@@ -4329,6 +4329,68 @@ export type Database = {
           },
         ]
       }
+      restaurant_operating_costs: {
+        Row: {
+          averaging_months: number | null
+          category: string
+          cost_type: string
+          created_at: string
+          display_order: number | null
+          entry_type: string
+          id: string
+          is_active: boolean | null
+          is_auto_calculated: boolean | null
+          manual_override: boolean | null
+          monthly_value: number | null
+          name: string
+          percentage_value: number | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          averaging_months?: number | null
+          category: string
+          cost_type: string
+          created_at?: string
+          display_order?: number | null
+          entry_type?: string
+          id?: string
+          is_active?: boolean | null
+          is_auto_calculated?: boolean | null
+          manual_override?: boolean | null
+          monthly_value?: number | null
+          name: string
+          percentage_value?: number | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          averaging_months?: number | null
+          category?: string
+          cost_type?: string
+          created_at?: string
+          display_order?: number | null
+          entry_type?: string
+          id?: string
+          is_active?: boolean | null
+          is_auto_calculated?: boolean | null
+          manual_override?: boolean | null
+          monthly_value?: number | null
+          name?: string
+          percentage_value?: number | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_operating_costs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurants: {
         Row: {
           address: string | null

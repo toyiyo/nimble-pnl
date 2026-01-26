@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { formatExpenseCategory, isLaborCategory, isFoodCostCategory } from '@/lib/expenseCategoryUtils';
+import { getAccountDisplayName, isLaborSubtype, isFoodCostSubtype } from '@/lib/expenseCategoryUtils';
 
 export interface MonthlyExpenseCategory {
   category: string;
@@ -93,12 +93,12 @@ export function useMonthlyExpenses(
 
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
 
-        // Track food cost and labor separately using helper functions
-        if (isFoodCostCategory(category)) {
+        // Track food cost and labor separately using subtype-based helper functions
+        if (isFoodCostSubtype(accountSubtype)) {
           month.foodCost += txnAmount;
-        } else if (isLaborCategory(category)) {
+        } else if (isLaborSubtype(accountSubtype)) {
           month.laborCost += txnAmount;
         }
 
@@ -134,12 +134,12 @@ export function useMonthlyExpenses(
 
         const accountSubtype = t.chart_account?.account_subtype;
         const accountName = t.chart_account?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
 
-        // Track food cost and labor separately using helper functions
-        if (isFoodCostCategory(category)) {
+        // Track food cost and labor separately using subtype-based helper functions
+        if (isFoodCostSubtype(accountSubtype)) {
           month.foodCost += txnAmount;
-        } else if (isLaborCategory(category)) {
+        } else if (isLaborSubtype(accountSubtype)) {
           month.laborCost += txnAmount;
         }
 

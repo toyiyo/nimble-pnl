@@ -134,3 +134,45 @@ export function isFoodCostCategory(category: string): boolean {
 export function isUncategorized(category: string): boolean {
   return category === EXPENSE_CATEGORIES.UNCATEGORIZED;
 }
+
+/**
+ * Returns the account name for display (no grouping by subtype).
+ * Falls back to subtype label if no account name provided.
+ * 
+ * @param accountName - The account_name from chart_of_accounts
+ * @param accountSubtype - The account_subtype enum value (used as fallback)
+ * @returns Display-friendly account name
+ */
+export function getAccountDisplayName(
+  accountName: string | null | undefined,
+  accountSubtype: string | null | undefined
+): string {
+  // If we have an account name, use it directly
+  if (accountName && accountName.trim()) {
+    return accountName;
+  }
+  
+  // Fall back to subtype label if no account name
+  if (accountSubtype) {
+    return SUBTYPE_DISPLAY_NAMES[accountSubtype] || toTitleCase(accountSubtype);
+  }
+  
+  return 'Uncategorized';
+}
+
+/**
+ * Checks if an account subtype represents a labor/payroll expense
+ */
+export function isLaborSubtype(accountSubtype: string | null | undefined): boolean {
+  return accountSubtype === 'labor' || accountSubtype === 'payroll';
+}
+
+/**
+ * Checks if an account subtype represents a food cost/COGS expense
+ */
+export function isFoodCostSubtype(accountSubtype: string | null | undefined): boolean {
+  return accountSubtype === 'food_cost' || 
+         accountSubtype === 'cost_of_goods_sold' ||
+         accountSubtype === 'beverage_cost' ||
+         accountSubtype === 'packaging_cost';
+}

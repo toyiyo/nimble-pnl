@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, differenceInDays, parseISO, subDays } from "date-fns";
-import { formatExpenseCategory } from "@/lib/expenseCategoryUtils";
+import { getAccountDisplayName } from "@/lib/expenseCategoryUtils";
 
 interface VendorSpend {
   vendor: string;
@@ -125,12 +125,12 @@ export function useSpendingAnalysis(startDate: Date, endDate: Date, bankAccountI
       const top3Total = topVendors.slice(0, 3).reduce((sum, v) => sum + v.total, 0);
       const vendorConcentration = totalOutflows > 0 ? (top3Total / totalOutflows) * 100 : 0;
 
-      // Category breakdown using actual chart of accounts subtypes
+      // Category breakdown using actual chart of accounts names
       const categoryMap = new Map<string, number>();
       currentOutflows.forEach(t => {
         const accountSubtype = t.chart_of_accounts?.account_subtype;
         const accountName = t.chart_of_accounts?.account_name;
-        const category = formatExpenseCategory(accountSubtype, accountName);
+        const category = getAccountDisplayName(accountName, accountSubtype);
         categoryMap.set(category, (categoryMap.get(category) || 0) + Math.abs(t.amount));
       });
 

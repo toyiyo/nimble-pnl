@@ -27,6 +27,7 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
+import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { 
   Calendar, 
   Plus, 
@@ -44,6 +45,7 @@ import {
   Unlock,
   Send,
   History,
+  Printer,
   ArrowLeftRight,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
@@ -183,6 +185,7 @@ const Scheduling = () => {
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
@@ -621,6 +624,10 @@ const Scheduling = () => {
                   Publish Schedule
                 </Button>
               )}
+              <Button variant="outline" onClick={() => setExportDialogOpen(true)} disabled={shifts.length === 0}>
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </Button>
               <Button variant="outline" onClick={handleAddEmployee}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Add Employee
@@ -884,6 +891,18 @@ const Scheduling = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Schedule Export Dialog */}
+      <ScheduleExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        shifts={shifts}
+        employees={allEmployees}
+        weekStart={currentWeekStart}
+        weekEnd={weekEnd}
+        restaurantName={selectedRestaurant?.restaurant?.name}
+        positionFilter={positionFilter}
+      />
     </div>
   );
 };

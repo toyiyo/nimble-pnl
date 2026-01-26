@@ -1,5 +1,6 @@
 // Gusto Sync Time Punches Edge Function
-// Syncs time punches from EasyShiftHQ to Gusto as time activities
+// Syncs time punches from EasyShiftHQ to Gusto as time sheets
+// Uses the new time_tracking/time_sheets API (replaces deprecated time_activities)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createGustoClient, getGustoConfig, GustoApiError } from '../_shared/gustoClient.ts';
@@ -26,15 +27,23 @@ interface TimePunch {
     gusto_employee_uuid: string | null;
     gusto_sync_status: string;
     compensation_type: string;
+    jobs?: Array<{
+      uuid: string;
+      primary: boolean;
+    }>;
   };
 }
 
-interface WorkPeriod {
+interface ShiftData {
   employeeId: string;
   gustoEmployeeUuid: string;
-  date: string; // YYYY-MM-DD
-  hours: number; // Decimal hours
-  isContractor: boolean;
+  jobUuid: string;
+  date: string;
+  shiftStartedAt: string;
+  shiftEndedAt: string;
+  regularHours: number;
+  overtimeHours: number;
+  doubleOvertimeHours: number;
 }
 
 Deno.serve(async (req) => {
@@ -89,6 +98,15 @@ Deno.serve(async (req) => {
       throw new Error('Access denied to restaurant');
     }
 
+    // Get restaurant timezone
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('timezone')
+      .eq('id', restaurantId)
+      .single();
+
+    const timezone = restaurant?.timezone || 'America/New_York';
+
     // Get Gusto connection for this restaurant
     const { data: connection, error: connectionError } = await supabase
       .from('gusto_connections')
@@ -107,8 +125,29 @@ Deno.serve(async (req) => {
     // Create Gusto client with decrypted token
     const gustoClient = await createGustoClient(connection.access_token, gustoConfig.baseUrl);
 
+    // Fetch employees with their Gusto job UUIDs
+    const { data: employees, error: employeesError } = await supabase
+      .from('employees')
+      .select('id, gusto_employee_uuid')
+      .eq('restaurant_id', restaurantId)
+      .not('gusto_employee_uuid', 'is', null);
+
+    if (employeesError) {
+      throw new Error(`Failed to fetch employees: ${employeesError.message}`);
+    }
+
+    // Get Gusto employees to find their job UUIDs
+    const gustoEmployees = await gustoClient.getEmployees(connection.company_uuid);
+    const employeeJobMap = new Map<string, string>();
+
+    for (const ge of gustoEmployees) {
+      const primaryJob = ge.jobs?.find(j => j.primary) || ge.jobs?.[0];
+      if (primaryJob) {
+        employeeJobMap.set(ge.uuid, primaryJob.uuid);
+      }
+    }
+
     // Fetch time punches for the date range
-    // Join with employees to get Gusto UUID
     const { data: timePunches, error: punchesError } = await supabase
       .from('time_punches')
       .select(`
@@ -127,7 +166,7 @@ Deno.serve(async (req) => {
       .eq('restaurant_id', restaurantId)
       .gte('punch_time', `${effectiveStartDate}T00:00:00`)
       .lte('punch_time', `${effectiveEndDate}T23:59:59`)
-      .not('employees.gusto_employee_uuid', 'is', null) // Only employees synced to Gusto
+      .not('employees.gusto_employee_uuid', 'is', null)
       .order('punch_time', { ascending: true });
 
     if (punchesError) {
@@ -138,8 +177,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         message: 'No time punches to sync',
-        punchesSynced: 0,
-        workPeriods: 0,
+        shiftsSynced: 0,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -147,68 +185,106 @@ Deno.serve(async (req) => {
 
     console.log(`[GUSTO-TIME] Processing ${timePunches.length} punches for ${effectiveStartDate} to ${effectiveEndDate}`);
 
-    // Group punches by employee and calculate work periods
-    const workPeriods = calculateWorkPeriods(timePunches as unknown as TimePunch[]);
+    // Calculate shifts from punches
+    const shifts = calculateShiftsFromPunches(
+      timePunches as unknown as TimePunch[],
+      employeeJobMap
+    );
 
-    if (workPeriods.length === 0) {
+    if (shifts.length === 0) {
       return new Response(JSON.stringify({
         success: true,
-        message: 'No complete work periods found to sync',
-        punchesSynced: timePunches.length,
-        workPeriods: 0,
+        message: 'No complete shifts found to sync',
+        punchesProcessed: timePunches.length,
+        shiftsSynced: 0,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[GUSTO-TIME] Found ${workPeriods.length} work periods to sync`);
+    console.log(`[GUSTO-TIME] Found ${shifts.length} shifts to sync`);
 
-    // Convert work periods to Gusto time activities format
-    const timeActivities = workPeriods.map(wp => ({
-      employee_uuid: wp.gustoEmployeeUuid,
-      date: wp.date,
-      hours: wp.hours.toFixed(2), // Gusto expects string with 2 decimal places
-      activity_type: 'regular', // Regular hours
-      description: 'Synced from EasyShiftHQ time tracking',
-    }));
+    // Sync each shift to Gusto
+    let syncedCount = 0;
+    const errors: Array<{ employeeId: string; error: string }> = [];
 
-    // Batch send to Gusto
-    try {
-      const response = await gustoClient.createTimeActivities(
-        connection.company_uuid,
-        { time_activities: timeActivities }
-      );
+    for (const shift of shifts) {
+      try {
+        // Build entries array based on hours classification
+        const entries: Array<{ hours_worked: number; pay_classification: string }> = [];
 
-      console.log(`[GUSTO-TIME] Successfully synced ${timeActivities.length} time activities`);
+        if (shift.regularHours > 0) {
+          entries.push({
+            hours_worked: shift.regularHours,
+            pay_classification: 'Regular',
+          });
+        }
+        if (shift.overtimeHours > 0) {
+          entries.push({
+            hours_worked: shift.overtimeHours,
+            pay_classification: 'Overtime',
+          });
+        }
+        if (shift.doubleOvertimeHours > 0) {
+          entries.push({
+            hours_worked: shift.doubleOvertimeHours,
+            pay_classification: 'Double Overtime',
+          });
+        }
 
-      // Update last synced timestamp
-      await supabase
-        .from('gusto_connections')
-        .update({ last_synced_at: new Date().toISOString() })
-        .eq('id', connection.id);
+        if (entries.length === 0) {
+          console.log(`[GUSTO-TIME] Skipping shift with 0 hours for employee ${shift.employeeId}`);
+          continue;
+        }
 
-      return new Response(JSON.stringify({
-        success: true,
-        message: `Synced ${timeActivities.length} work periods to Gusto`,
-        punchesSynced: timePunches.length,
-        workPeriods: workPeriods.length,
-        timeActivities: timeActivities.length,
-        dateRange: {
-          start: effectiveStartDate,
-          end: effectiveEndDate,
-        },
-        gustoResponse: response,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+        const timeSheetRequest = {
+          entity_uuid: shift.gustoEmployeeUuid,
+          entity_type: 'Employee' as const,
+          job_uuid: shift.jobUuid,
+          time_zone: timezone,
+          shift_started_at: shift.shiftStartedAt,
+          shift_ended_at: shift.shiftEndedAt,
+          entries,
+        };
 
-    } catch (error) {
-      if (error instanceof GustoApiError) {
-        console.error(`[GUSTO-TIME] Gusto API error:`, error);
-        throw new Error(`Gusto API error (${error.status}): ${error.message}`);
+        console.log(`[GUSTO-TIME] Creating time sheet:`, JSON.stringify(timeSheetRequest));
+
+        await gustoClient.createTimeSheet(connection.company_uuid, timeSheetRequest);
+        syncedCount++;
+
+      } catch (error) {
+        const errorMessage = error instanceof GustoApiError
+          ? `Gusto API error (${error.status}): ${error.message}`
+          : error instanceof Error
+            ? error.message
+            : 'Unknown error';
+
+        console.error(`[GUSTO-TIME] Error syncing shift for employee ${shift.employeeId}:`, errorMessage);
+        errors.push({ employeeId: shift.employeeId, error: errorMessage });
       }
-      throw error;
     }
+
+    // Update last synced timestamp
+    await supabase
+      .from('gusto_connections')
+      .update({ last_synced_at: new Date().toISOString() })
+      .eq('id', connection.id);
+
+    console.log(`[GUSTO-TIME] Sync complete: ${syncedCount} shifts synced, ${errors.length} errors`);
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: `Synced ${syncedCount} shifts to Gusto`,
+      punchesProcessed: timePunches.length,
+      shiftsSynced: syncedCount,
+      errors: errors.length > 0 ? errors : undefined,
+      dateRange: {
+        start: effectiveStartDate,
+        end: effectiveEndDate,
+      },
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error: unknown) {
     console.error('[GUSTO-TIME] Error:', error);
@@ -225,11 +301,14 @@ Deno.serve(async (req) => {
 });
 
 /**
- * Calculate work periods from time punches
- * Groups punches by employee and date, pairs clock_in/clock_out to calculate hours
+ * Calculate individual shifts from time punches
+ * Groups punches by employee and pairs clock_in/clock_out
  */
-function calculateWorkPeriods(punches: TimePunch[]): WorkPeriod[] {
-  const workPeriods: WorkPeriod[] = [];
+function calculateShiftsFromPunches(
+  punches: TimePunch[],
+  employeeJobMap: Map<string, string>
+): ShiftData[] {
+  const shifts: ShiftData[] = [];
 
   // Group punches by employee
   const byEmployee = new Map<string, TimePunch[]>();
@@ -244,7 +323,6 @@ function calculateWorkPeriods(punches: TimePunch[]): WorkPeriod[] {
 
   // Process each employee's punches
   for (const [employeeId, employeePunches] of byEmployee) {
-    // Get employee info from first punch
     const employee = employeePunches[0].employees;
 
     if (!employee.gusto_employee_uuid) {
@@ -252,83 +330,73 @@ function calculateWorkPeriods(punches: TimePunch[]): WorkPeriod[] {
       continue;
     }
 
-    // Group by date
-    const byDate = new Map<string, TimePunch[]>();
-
-    for (const punch of employeePunches) {
-      const date = punch.punch_time.split('T')[0];
-      if (!byDate.has(date)) {
-        byDate.set(date, []);
-      }
-      byDate.get(date)!.push(punch);
+    const jobUuid = employeeJobMap.get(employee.gusto_employee_uuid);
+    if (!jobUuid) {
+      console.log(`[GUSTO-TIME] Skipping employee ${employee.name} - no job UUID found`);
+      continue;
     }
 
-    // Calculate hours for each date
-    for (const [date, datePunches] of byDate) {
-      const hours = calculateHoursFromPunches(datePunches);
+    // Sort by time
+    const sorted = employeePunches.sort((a, b) =>
+      new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
+    );
 
-      if (hours > 0) {
-        workPeriods.push({
-          employeeId,
-          gustoEmployeeUuid: employee.gusto_employee_uuid,
-          date,
-          hours,
-          isContractor: employee.compensation_type === 'contractor',
-        });
-      }
-    }
-  }
+    // Find clock_in/clock_out pairs to create shifts
+    let clockInTime: Date | null = null;
+    let breakMinutes = 0;
+    let breakStartTime: Date | null = null;
 
-  return workPeriods;
-}
+    for (const punch of sorted) {
+      const punchTime = new Date(punch.punch_time);
 
-/**
- * Calculate total hours from a set of punches for a single day
- * Pairs clock_in with clock_out, subtracts breaks
- */
-function calculateHoursFromPunches(punches: TimePunch[]): number {
-  // Sort by time
-  const sorted = punches.sort((a, b) =>
-    new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
-  );
-
-  let totalMinutes = 0;
-  let clockInTime: Date | null = null;
-  let breakStartTime: Date | null = null;
-  let breakMinutes = 0;
-
-  for (const punch of sorted) {
-    const punchTime = new Date(punch.punch_time);
-
-    switch (punch.punch_type) {
-      case 'clock_in':
-        clockInTime = punchTime;
-        breakMinutes = 0; // Reset break minutes for new shift
-        break;
-
-      case 'clock_out':
-        if (clockInTime) {
-          const workMinutes = (punchTime.getTime() - clockInTime.getTime()) / (1000 * 60);
-          totalMinutes += workMinutes - breakMinutes;
-          clockInTime = null;
+      switch (punch.punch_type) {
+        case 'clock_in':
+          clockInTime = punchTime;
           breakMinutes = 0;
-        }
-        break;
+          break;
 
-      case 'break_start':
-        breakStartTime = punchTime;
-        break;
+        case 'clock_out':
+          if (clockInTime) {
+            const totalMinutes = (punchTime.getTime() - clockInTime.getTime()) / (1000 * 60) - breakMinutes;
+            const totalHours = Math.max(0, totalMinutes / 60);
 
-      case 'break_end':
-        if (breakStartTime) {
-          breakMinutes += (punchTime.getTime() - breakStartTime.getTime()) / (1000 * 60);
-          breakStartTime = null;
-        }
-        break;
+            // Classify hours (basic overtime rules - can be customized)
+            const regularHours = Math.min(totalHours, 8);
+            const overtimeHours = totalHours > 8 ? Math.min(totalHours - 8, 4) : 0;
+            const doubleOvertimeHours = totalHours > 12 ? totalHours - 12 : 0;
+
+            if (totalHours > 0) {
+              shifts.push({
+                employeeId,
+                gustoEmployeeUuid: employee.gusto_employee_uuid!,
+                jobUuid,
+                date: clockInTime.toISOString().split('T')[0],
+                shiftStartedAt: clockInTime.toISOString(),
+                shiftEndedAt: punchTime.toISOString(),
+                regularHours: Math.round(regularHours * 100) / 100,
+                overtimeHours: Math.round(overtimeHours * 100) / 100,
+                doubleOvertimeHours: Math.round(doubleOvertimeHours * 100) / 100,
+              });
+            }
+
+            clockInTime = null;
+            breakMinutes = 0;
+          }
+          break;
+
+        case 'break_start':
+          breakStartTime = punchTime;
+          break;
+
+        case 'break_end':
+          if (breakStartTime) {
+            breakMinutes += (punchTime.getTime() - breakStartTime.getTime()) / (1000 * 60);
+            breakStartTime = null;
+          }
+          break;
+      }
     }
   }
 
-  // Convert to hours and round to 2 decimal places
-  const hours = Math.max(0, totalMinutes / 60);
-  return Math.round(hours * 100) / 100;
+  return shifts;
 }

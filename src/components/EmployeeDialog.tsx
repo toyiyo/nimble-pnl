@@ -11,13 +11,24 @@ import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PositionCombobox } from '@/components/PositionCombobox';
-import { HelpCircle, Info } from 'lucide-react';
+import { HelpCircle, Info, AlertTriangle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { suggestRateCorrections } from '@/hooks/useEmployeeLaborCosts';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -81,6 +92,14 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [isEffectiveDateModalOpen, setIsEffectiveDateModalOpen] = useState(false);
   const [pendingCompChange, setPendingCompChange] = useState<PendingCompChange>(null);
   const [savingCompHistory, setSavingCompHistory] = useState(false);
+  
+  // High rate warning dialog state
+  const [isHighRateWarningOpen, setIsHighRateWarningOpen] = useState(false);
+  const [highRateSuggestions, setHighRateSuggestions] = useState<{ value: number; label: string }[]>([]);
+  const [pendingFormSubmit, setPendingFormSubmit] = useState<(() => Promise<void>) | null>(null);
+
+  // Threshold for high hourly rate warning (in dollars)
+  const HIGH_RATE_THRESHOLD = 50;
 
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
@@ -329,6 +348,45 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       ? Math.round(dailyRateWeeklyInCents / dailyRateDays)
       : undefined;
 
+    // Check for unusually high hourly rate
+    const hourlyRateInDollars = hourlyRateInCents / 100;
+    if (compensationType === 'hourly' && hourlyRateInDollars > HIGH_RATE_THRESHOLD) {
+      const suggestions = suggestRateCorrections(hourlyRateInDollars);
+      setHighRateSuggestions(suggestions);
+      
+      // Store the submit action for later execution if user confirms
+      setPendingFormSubmit(() => async () => {
+        await proceedWithSubmit(
+          hourlyRateInCents,
+          salaryAmountInCents,
+          contractorAmountInCents,
+          dailyRateWeeklyInCents,
+          dailyRateDays,
+          dailyRateAmountInCents
+        );
+      });
+      setIsHighRateWarningOpen(true);
+      return;
+    }
+
+    await proceedWithSubmit(
+      hourlyRateInCents,
+      salaryAmountInCents,
+      contractorAmountInCents,
+      dailyRateWeeklyInCents,
+      dailyRateDays,
+      dailyRateAmountInCents
+    );
+  };
+
+  const proceedWithSubmit = async (
+    hourlyRateInCents: number,
+    salaryAmountInCents: number | undefined,
+    contractorAmountInCents: number | undefined,
+    dailyRateWeeklyInCents: number | undefined,
+    dailyRateDays: number | undefined,
+    dailyRateAmountInCents: number | undefined
+  ) => {
     const employeeData = {
       restaurant_id: restaurantId,
       name,
@@ -339,11 +397,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 
         ? terminationDate 
-        : null, // Clear termination date if status is active
+        : null,
       notes: notes || undefined,
-      // Activation tracking - preserve existing state or default to true for new employees
       is_active: employee?.is_active ?? true,
-      // Compensation fields
       compensation_type: compensationType,
       hourly_rate: hourlyRateInCents,
       salary_amount: salaryAmountInCents,
@@ -398,6 +454,20 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         hireDate || getToday()
       );
     }
+  };
+
+  const handleConfirmHighRate = async () => {
+    setIsHighRateWarningOpen(false);
+    if (pendingFormSubmit) {
+      await pendingFormSubmit();
+      setPendingFormSubmit(null);
+    }
+  };
+
+  const handleSelectSuggestedRate = (suggestedRate: number) => {
+    setHourlyRate(suggestedRate.toFixed(2));
+    setIsHighRateWarningOpen(false);
+    setPendingFormSubmit(null);
   };
 
   const handleApplyCompChange = async () => {
@@ -916,6 +986,54 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* High Rate Warning Dialog */}
+      <AlertDialog open={isHighRateWarningOpen} onOpenChange={setIsHighRateWarningOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Unusually High Rate
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                <span className="font-semibold">${hourlyRate}/hr</span> is significantly higher than typical hourly rates.
+              </p>
+              {highRateSuggestions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm">Did you mean one of these?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {highRateSuggestions.map((suggestion) => (
+                      <Button
+                        key={suggestion.value}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSelectSuggestedRate(suggestion.value)}
+                      >
+                        {suggestion.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setIsHighRateWarningOpen(false);
+              setPendingFormSubmit(null);
+            }}>
+              Edit Manually
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmHighRate}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Keep ${hourlyRate}/hr
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

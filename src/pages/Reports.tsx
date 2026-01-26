@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { TrendingUp, AlertTriangle, DollarSign, Package, Download, LineChart as LineChartIcon, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,17 +19,53 @@ import { PnLTrendChart } from '@/components/PnLTrendChart';
 import { CostBreakdownChart } from '@/components/CostBreakdownChart';
 import { SupplierPriceAnalysisReport } from '@/components/SupplierPriceAnalysisReport';
 import { PeriodSelector, type Period } from '@/components/PeriodSelector';
-import { subDays } from 'date-fns';
+import { subDays, parseISO, startOfDay, endOfDay, format } from 'date-fns';
+
+interface LocationState {
+  selectedDate?: string;
+  reportType?: string;
+}
 
 export default function Reports() {
+  const location = useLocation();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   
-  const [selectedPeriod, setSelectedPeriod] = useState<Period>({
-    type: 'last30',
-    from: subDays(new Date(), 30),
-    to: new Date(new Date().setHours(23, 59, 59, 999)),
-    label: 'Last 30 Days'
+  // Check for navigation state from drill-down (e.g., from Budget chart)
+  const navState = location.state as LocationState | null;
+  
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>(() => {
+    // If navigated with a specific date, set that day as the period
+    if (navState?.selectedDate) {
+      const date = parseISO(navState.selectedDate);
+      return {
+        type: 'custom',
+        from: startOfDay(date),
+        to: endOfDay(date),
+        label: format(date, 'MMM d, yyyy'),
+      };
+    }
+    return {
+      type: 'last30',
+      from: subDays(new Date(), 30),
+      to: new Date(new Date().setHours(23, 59, 59, 999)),
+      label: 'Last 30 Days'
+    };
   });
+
+  // Handle navigation state changes
+  useEffect(() => {
+    if (navState?.selectedDate) {
+      const date = parseISO(navState.selectedDate);
+      setSelectedPeriod({
+        type: 'custom',
+        from: startOfDay(date),
+        to: endOfDay(date),
+        label: format(date, 'MMM d, yyyy'),
+      });
+      // Clear the state so refreshing doesn't keep the filter
+      window.history.replaceState({}, document.title);
+    }
+  }, [navState?.selectedDate]);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);

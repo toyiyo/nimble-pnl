@@ -13,6 +13,7 @@ import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
+import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
@@ -25,6 +26,7 @@ import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
+import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { 
   Calendar, 
   Plus, 
@@ -218,6 +220,18 @@ const Scheduling = () => {
     restaurantId
   );
 
+  // Calculate per-employee labor costs with outlier detection
+  const laborCostSummary = useEmployeeLaborCosts(shifts, allEmployees);
+
+  // Handler for clicking on an employee in the breakdown to edit them
+  const handleEditEmployeeById = useCallback((employeeId: string) => {
+    const employee = allEmployees.find(e => e.id === employeeId);
+    if (employee) {
+      setSelectedEmployee(employee);
+      setEmployeeDialogOpen(true);
+    }
+  }, [allEmployees]);
+
   // Apply position filter to active employees for new shift creation
   const filteredActiveEmployees = positionFilter && positionFilter !== 'all'
     ? activeEmployees.filter(emp => emp.position === positionFilter)
@@ -409,9 +423,23 @@ const Scheduling = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={laborCostSummary.isAverageHigh ? "border-destructive/50" : ""}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Labor Cost</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              Labor Cost
+              {laborCostSummary.isAverageHigh && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AlertTriangle className="h-4 w-4 text-destructive" aria-label="High average rate warning" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      <p className="text-xs">Average hourly rate is unusually high. Check for data entry errors in employee rates.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -430,6 +458,18 @@ const Scheduling = () => {
                       </span>
                     </span>
                   </div>
+                  {/* Average hourly rate indicator */}
+                  {laborCostBreakdown.hourly.hours > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Avg Rate:</span>
+                      <span className={`font-medium ${laborCostSummary.isAverageHigh ? 'text-destructive' : ''}`}>
+                        ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr
+                        {laborCostSummary.isAverageHigh && (
+                          <span className="text-destructive ml-1">⚠️</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   {laborCostBreakdown.salary.cost > 0 && (
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Salary:</span>
@@ -461,6 +501,18 @@ const Scheduling = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Top Earners Breakdown */}
+                {laborCostSummary.employeeCosts.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-border">
+                    <LaborCostBreakdown
+                      employeeCosts={laborCostSummary.employeeCosts}
+                      onEditEmployee={handleEditEmployeeById}
+                      maxItems={3}
+                      showViewAll={false}
+                    />
+                  </div>
+                )}
               </>
             )}
             <p className="text-xs text-muted-foreground mt-2">Estimated weekly cost</p>

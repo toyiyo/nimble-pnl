@@ -40,6 +40,7 @@ import {
   Boxes,
   Calculator,
   Building2,
+  Target,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -83,6 +84,7 @@ const navigationGroups = [
   {
     label: 'Accounting',
     items: [
+      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
       { path: '/customers', label: 'Customers', icon: Users },
       { path: '/invoices', label: 'Invoices', icon: FileText },
       { path: '/stripe-account', label: 'Financial Account', icon: CreditCard },
@@ -121,6 +123,7 @@ const collaboratorAccountantNav: NavGroup[] = [
   {
     label: 'Financial',
     items: [
+      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },

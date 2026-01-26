@@ -48,20 +48,43 @@ const INCOME_COLORS: Record<string, string> = {
   'default': 'hsl(var(--chart-2))',               // Primary green
 };
 
-// Color palette for expense categories (varied)
-const EXPENSE_COLORS: Record<string, string> = {
-  'Labor/Payroll': 'hsl(220, 70%, 60%)',       // Blue
-  'Inventory/Food Purchases': 'hsl(25, 95%, 53%)', // Orange
-  'Rent & CAM': 'hsl(280, 65%, 60%)',          // Purple
-  'Utilities': 'hsl(200, 70%, 50%)',           // Cyan
-  'Supplies & Packaging': 'hsl(45, 85%, 55%)', // Yellow
-  'Marketing/Ads': 'hsl(330, 70%, 55%)',       // Pink
-  'Equipment & Maintenance': 'hsl(180, 50%, 45%)', // Teal
-  'Processing/Bank Fees': 'hsl(0, 0%, 50%)',   // Gray
-  'Loan/Lease Payments': 'hsl(260, 50%, 50%)', // Violet
-  'Taxes & Licenses': 'hsl(350, 70%, 55%)',    // Red
-  'Waste/Adjustments': 'hsl(30, 70%, 45%)',    // Brown
-  'Other/Uncategorized': 'hsl(0, 0%, 60%)',    // Light Gray
+// Dynamic color palette for expense categories - generates consistent colors based on name
+const EXPENSE_COLOR_HUES = [
+  220, // Blue
+  25,  // Orange
+  280, // Purple
+  200, // Cyan
+  45,  // Yellow
+  330, // Pink
+  180, // Teal
+  350, // Red
+  260, // Violet
+  30,  // Brown
+  160, // Green
+  300, // Magenta
+];
+
+// Cache for consistent color assignment per category name
+const expenseColorCache = new Map<string, string>();
+
+const getExpenseColor = (categoryName: string): string => {
+  if (expenseColorCache.has(categoryName)) {
+    return expenseColorCache.get(categoryName)!;
+  }
+  
+  // Generate a consistent hash from the category name
+  let hash = 0;
+  for (let i = 0; i < categoryName.length; i++) {
+    hash = ((hash << 5) - hash) + categoryName.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  const hueIndex = Math.abs(hash) % EXPENSE_COLOR_HUES.length;
+  const hue = EXPENSE_COLOR_HUES[hueIndex];
+  const color = `hsl(${hue}, 65%, 55%)`;
+  
+  expenseColorCache.set(categoryName, color);
+  return color;
 };
 
 const formatCurrency = (value: number) => {
@@ -399,7 +422,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
     expenseCategories.forEach(cat => {
       nodes.push({ 
         name: cat.category, 
-        color: EXPENSE_COLORS[cat.category] || 'hsl(0, 0%, 60%)',
+        color: getExpenseColor(cat.category),
         categoryIds: cat.categoryIds, // Pass categoryIds for click-through navigation
       });
     });
@@ -425,7 +448,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
         source: cashFlowIndex,
         target: expenseStartIndex + index,
         value: cat.amount,
-        color: EXPENSE_COLORS[cat.category] || 'hsl(0, 0%, 60%)',
+        color: getExpenseColor(cat.category),
         sourceName: 'Cash Flow',
         targetName: cat.category,
         percentage,
@@ -561,15 +584,15 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
             <span className="text-xs text-muted-foreground">Cash Flow</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: EXPENSE_COLORS['Labor/Payroll'] }} />
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: 'hsl(220, 65%, 55%)' }} />
             <span className="text-xs text-muted-foreground">Labor</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: EXPENSE_COLORS['Inventory/Food Purchases'] }} />
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: 'hsl(25, 65%, 55%)' }} />
             <span className="text-xs text-muted-foreground">Food Cost</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: EXPENSE_COLORS['Other/Uncategorized'] }} />
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: 'hsl(0, 0%, 55%)' }} />
             <span className="text-xs text-muted-foreground">Other</span>
           </div>
         </div>

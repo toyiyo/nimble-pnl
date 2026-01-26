@@ -22,6 +22,8 @@ import RestaurantSettings from "./pages/RestaurantSettings";
 import SquareCallback from "./pages/SquareCallback";
 import CloverCallback from "./pages/CloverCallback";
 import ToastCallback from "./pages/ToastCallback";
+import GustoCallback from "./pages/GustoCallback";
+import GustoPayroll from "./pages/GustoPayroll";
 import { AcceptInvitation } from "./pages/AcceptInvitation";
 import { Inventory } from "./pages/Inventory";
 import InventoryAudit from "./pages/InventoryAudit";
@@ -260,6 +262,8 @@ const App = () => (
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/toast/callback" element={<ToastCallback />} />
+            <Route path="/gusto/callback" element={<GustoCallback />} />
+            <Route path="/payroll/gusto" element={<ProtectedRoute><GustoPayroll /></ProtectedRoute>} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

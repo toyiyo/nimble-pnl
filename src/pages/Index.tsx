@@ -30,6 +30,7 @@ import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
 import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
+import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
@@ -192,6 +193,12 @@ const Index = () => {
     todayStart,
     todayEnd,
     'all'
+  );
+
+  // Fetch break-even analysis data
+  const { data: breakEvenData, isLoading: breakEvenLoading } = useBreakEvenAnalysis(
+    selectedRestaurant?.restaurant_id || null,
+    14 // 14 days of history
   );
 
   // Calculate available cash from connected banks
@@ -574,15 +581,24 @@ const Index = () => {
               <CriticalAlertsBar alerts={criticalAlerts} />
 
               {/* Owner Snapshot Widget */}
-            <OwnerSnapshotWidget
-              todaySales={todaysData?.netRevenue || 0}
-              profitMargin={todayProfitMargin}
-              availableCash={availableCash}
-              cashRunway={cashRunway}
-              todayFoodCost={todaysData?.foodCost || 0}
-              todayLaborCost={todaysData?.laborCost || 0}
-              lastUpdated={format(new Date(), 'h:mm a')}
-            />
+              <OwnerSnapshotWidget
+                todaySales={todaysData?.netRevenue || 0}
+                profitMargin={todayProfitMargin}
+                availableCash={availableCash}
+                cashRunway={cashRunway}
+                todayFoodCost={todaysData?.foodCost || 0}
+                todayLaborCost={todaysData?.laborCost || 0}
+                lastUpdated={format(new Date(), 'h:mm a')}
+                breakEvenData={breakEvenData ? {
+                  dailyBreakEven: breakEvenData.dailyBreakEven,
+                  todayStatus: breakEvenData.todayStatus,
+                  todayDelta: breakEvenData.todayDelta,
+                  daysAbove: breakEvenData.daysAbove,
+                  daysBelow: breakEvenData.daysBelow,
+                  historyDays: 14,
+                } : null}
+                breakEvenLoading={breakEvenLoading}
+              />
 
               {/* AI Insights */}
               <DashboardInsights insights={insights} />

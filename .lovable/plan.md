@@ -1,172 +1,217 @@
 
-# Make Labor Costs More Transparent on Scheduling Page
 
-## Problem Identified
+# Schedule Export for Kitchen & Manager Display
 
-Your suspicion was correct! **Server 3** has an hourly rate of **$213/hour** (likely a typo - meant to be $2.13 or $21.30). With 68 hours scheduled, this single employee accounts for **$14,484** of your $18,994 weekly labor cost.
+## Overview
 
-The current Labor Cost card shows total cost and hours, but doesn't make it obvious when something is wrong.
+We'll create a **print-optimized schedule export** that serves two primary use cases:
+1. **Kitchen Display** - A clean, at-a-glance weekly grid posted in back-of-house
+2. **Manager Quick Reference** - Portable format for floor managers during shifts
+
+Following Apple's principle of **"do one thing exceptionally well"** and Notion's **"clarity over features"**, we'll focus on a single, beautifully formatted print view rather than multiple export formats.
 
 ---
 
-## Solution: Add Transparency & Outlier Detection
+## Design Principles Applied
 
-### 1. Show Average Hourly Rate
+| Principle | Application |
+|-----------|-------------|
+| **Simplicity** | Single "Print Schedule" button - no dropdown menus for format selection |
+| **Clarity** | Large, readable names and times - optimized for 10ft viewing distance in kitchen |
+| **Progressive Disclosure** | Basic info prominent, details (hours, cost) secondary |
+| **Actionable** | Each day clearly shows who works when - zero interpretation needed |
 
-Add a calculated "Avg $/hr" to the Labor Cost card so operators immediately see if the blended rate looks wrong:
+---
 
-```
-Labor Cost
-$18,994.76
-────────────────────────
-Hourly: $18,994.76 (482.0h)
-        → Avg: $39.41/hr  ⚠️
-```
+## User Experience Flow
 
-An average of $39.41/hr is a red flag for restaurant labor.
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Week Navigation                          [Print Schedule 🖨️]  │
+├─────────────────────────────────────────────────────────────────┤
+│  ... existing schedule grid ...                                 │
+└─────────────────────────────────────────────────────────────────┘
 
-### 2. Add "Top Earners" Breakdown
+        ↓ Click "Print Schedule"
 
-Show the top 3-5 employees by cost with their effective rate, making outliers immediately visible:
-
-```
-Top Earners This Week
-────────────────────────
-🔴 Server 3      68.0h × $213.00 = $14,484  [Edit]
-   Dish          68.0h × $13.00  = $884
-   Pizza PM      44.0h × $18.00  = $792
-```
-
-The red indicator and unusually high rate would immediately catch attention.
-
-### 3. Add Rate Validation Warning in Employee Dialog
-
-When saving an employee with an unusually high rate (e.g., >$50/hr for tipped positions, >$100/hr for any position), show a confirmation:
-
-```
-⚠️ Unusually High Rate
-$213.00/hr is significantly higher than typical rates.
-Did you mean $21.30/hr or $2.13/hr?
-[Keep $213.00] [Change to $21.30] [Edit Manually]
+┌─────────────────────────────────────────────────────────────────┐
+│                    PRINT PREVIEW DIALOG                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Preview:                                                       │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │ [Restaurant Name]                                          │  │
+│  │ Week of Jan 27 - Feb 2, 2026                              │  │
+│  │ ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐        │  │
+│  │ │     │ Mon │ Tue │ Wed │ Thu │ Fri │ Sat │ Sun │        │  │
+│  │ ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤        │  │
+│  │ │ John│ 6A  │ OFF │ 6A  │ 6A  │ OFF │ 5A  │ 5A  │        │  │
+│  │ │     │ 2P  │     │ 2P  │ 2P  │     │ 1P  │ 1P  │        │  │
+│  │ ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤        │  │
+│  │ │Maria│ OFF │ 4P  │ 4P  │ OFF │ 4P  │ 4P  │ OFF │        │  │
+│  │ │     │     │ CL  │ CL  │     │ CL  │ CL  │     │        │  │
+│  │ └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘        │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  Options:                                                        │
+│  ☑ Include position labels                                      │
+│  ☐ Include hours summary                                        │
+│                                                                  │
+│               [Cancel]              [Print]                      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Technical Implementation
 
-### Phase 1: Enhanced Labor Cost Card
-
-**File: `src/pages/Scheduling.tsx`**
-
-Update the Labor Cost card to show:
-- Average hourly rate (total hourly cost ÷ total hours)
-- Warning indicator if avg rate exceeds threshold (e.g., $35/hr)
-- Expandable section or link to see per-employee breakdown
-
-### Phase 2: Top Earners Component
-
-**New File: `src/components/scheduling/LaborCostBreakdown.tsx`**
-
-Create a component that:
-- Takes shifts and employees as props
-- Calculates cost per employee: `hours × hourly_rate`
-- Sorts by cost descending
-- Shows top 5 with visual indicators for outliers
-- Links each employee to edit dialog
-
-**Calculation Logic:**
-```typescript
-// Calculate per-employee cost
-const employeeCosts = employees.map(emp => {
-  const empShifts = shifts.filter(s => s.employee_id === emp.id);
-  const hours = empShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
-  const effectiveRate = emp.hourly_rate / 100; // Convert cents to dollars
-  const cost = hours * effectiveRate;
-  
-  return {
-    id: emp.id,
-    name: emp.name,
-    hours,
-    rate: effectiveRate,
-    cost,
-    isOutlier: effectiveRate > 50 || (cost > 1000 && effectiveRate > 25),
-  };
-}).filter(e => e.hours > 0).sort((a, b) => b.cost - a.cost);
-```
-
-### Phase 3: Rate Validation in Employee Dialog
-
-**File: `src/components/EmployeeDialog.tsx`**
-
-Add validation before save:
-- For hourly employees: warn if rate > $50/hr (or $100/hr for managers)
-- Suggest common typo corrections: $213 → $21.30 or $2.13
-- Allow override but require confirmation
-
----
-
-## UI Mockup
-
-### Enhanced Labor Cost Card
-
-```
-┌─────────────────────────────────────────────────────┐
-│  Labor Cost                                    $    │
-├─────────────────────────────────────────────────────┤
-│  $18,994.76                                         │
-│                                                     │
-│  Hourly: $18,994.76 (482.0h)                       │
-│  ⚠️ Avg Rate: $39.41/hr — unusually high           │
-│                                                     │
-│  ─────────────────────────────────────────────────  │
-│  Top Earners                                        │
-│  ┌─────────────────────────────────────────────┐   │
-│  │ 🔴 Server 3   68h × $213.00/hr = $14,484   │←──│ Click to edit
-│  │    Dish       68h × $13.00/hr  = $884      │   │
-│  │    Pizza PM   44h × $18.00/hr  = $792      │   │
-│  └─────────────────────────────────────────────┘   │
-│                                                     │
-│  [View All Employees →]                             │
-│                                                     │
-│  Estimated weekly cost                              │
-└─────────────────────────────────────────────────────┘
-```
-
-### Outlier Indicators
-
-| Rate | Indicator | Color |
-|------|-----------|-------|
-| < $25/hr | None | Normal |
-| $25-50/hr | ⚡ | Yellow (attention) |
-| > $50/hr | 🔴 | Red (likely error) |
-
----
-
-## Files to Create/Modify
+### Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/components/scheduling/LaborCostBreakdown.tsx` | Create | Top earners component |
-| `src/hooks/useEmployeeLaborCosts.tsx` | Create | Calculate per-employee costs |
-| `src/pages/Scheduling.tsx` | Modify | Integrate new components, show avg rate |
-| `src/components/EmployeeDialog.tsx` | Modify | Add rate validation warning |
+| `src/components/scheduling/ScheduleExportDialog.tsx` | **Create** | Print preview dialog with options |
+| `src/utils/scheduleExport.ts` | **Create** | PDF generation logic for schedule |
+| `src/pages/Scheduling.tsx` | **Modify** | Add "Print Schedule" button |
+
+---
+
+### Phase 1: Schedule Export Utility
+
+**File: `src/utils/scheduleExport.ts`**
+
+Create a dedicated schedule PDF generator optimized for kitchen display:
+
+- **Landscape orientation** - Better fit for weekly grid
+- **Large, bold names** - 14pt minimum for readability
+- **Compact time format** - "6A-2P" instead of "6:00 AM - 2:00 PM"
+- **Position as subtitle** - Smaller text under times
+- **Day columns** - Mon-Sun with dates
+- **"OFF" indicators** - Clear visual when employee not scheduled
+- **Footer** - Restaurant name, week dates, print timestamp
+
+**PDF Layout (Landscape A4/Letter):**
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                         [RESTAURANT NAME]                                       │
+│                    Week of January 27 - February 2, 2026                        │
+├────────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┬───────┤
+│        │   Mon    │   Tue    │   Wed    │   Thu    │   Fri    │  Sat   │  Sun  │
+│        │  Jan 27  │  Jan 28  │  Jan 29  │  Jan 30  │  Jan 31  │  Feb 1 │ Feb 2 │
+├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┼───────┤
+│ John D │  6A-2P   │   OFF    │  6A-2P   │  6A-2P   │   OFF    │ 5A-1P  │ 5A-1P │
+│ Cook   │          │          │          │          │          │        │       │
+├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┼───────┤
+│ Maria S│   OFF    │  4P-CL   │  4P-CL   │   OFF    │  4P-CL   │ 4P-CL  │  OFF  │
+│ Server │          │          │          │          │          │        │       │
+├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┼───────┤
+│ Alex T │  11A-7P  │  11A-7P  │   OFF    │  11A-7P  │ 11A-7P   │  OFF   │  OFF  │
+│ Prep   │          │          │          │          │          │        │       │
+└────────┴──────────┴──────────┴──────────┴──────────┴──────────┴────────┴───────┘
+│ Generated Jan 26, 2026 at 3:45 PM                    Total: 142.5 hrs | 8 staff │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Phase 2: Export Dialog Component
+
+**File: `src/components/scheduling/ScheduleExportDialog.tsx`**
+
+A simple, focused dialog with:
+
+1. **Visual preview** - Miniature representation of the output
+2. **Minimal options**:
+   - Include position labels (default: on)
+   - Include hours summary (default: off)
+3. **Two actions**: Cancel / Print
+
+**Key Features:**
+- Uses existing `Dialog` component from shadcn/ui
+- Generates PDF using jsPDF (already installed)
+- Landscape orientation for better fit
+- Respects current position filter (if applied)
+
+---
+
+### Phase 3: Integrate into Scheduling Page
+
+**File: `src/pages/Scheduling.tsx`**
+
+Add a "Print Schedule" button next to existing actions:
+
+```tsx
+// In the header action buttons area (around line 624)
+<Button variant="outline" onClick={() => setExportDialogOpen(true)}>
+  <Printer className="h-4 w-4 mr-2" />
+  Print Schedule
+</Button>
+```
+
+Pass required data to dialog:
+- `shifts` - Current week's shifts
+- `employees` - Employee lookup
+- `weekStart` / `weekEnd` - Date range
+- `restaurantName` - For header
+- `positionFilter` - Apply current filter
+
+---
+
+## PDF Generation Details
+
+### Time Formatting (Kitchen-Friendly)
+
+| Original | Kitchen Format |
+|----------|----------------|
+| 6:00 AM - 2:00 PM | 6A-2P |
+| 4:00 PM - 11:00 PM | 4P-11P |
+| 4:00 PM - 12:00 AM | 4P-CL |
+| 5:00 AM - 11:00 AM | 5A-11A |
+
+**"CL"** = Close (midnight or later) - common restaurant shorthand
+
+### Color Coding (Optional, if printing in color)
+
+| Status | Color |
+|--------|-------|
+| Scheduled shift | Black text |
+| OFF day | Gray text, lighter background |
+| Conflict | Yellow highlight |
+
+For kitchen displays, we'll default to high-contrast black/white for clarity.
+
+---
+
+## Alternative: CSV Export (Manager Use)
+
+For managers who want to manipulate data in spreadsheets, we can add a secondary CSV export option:
+
+**Columns:**
+- Employee Name
+- Position
+- Date
+- Start Time
+- End Time
+- Hours
+- Status
+
+This uses the existing `exportToCSV` utility from the project.
+
+---
+
+## Summary of Changes
+
+1. **Create** `src/utils/scheduleExport.ts` - PDF generation for schedule
+2. **Create** `src/components/scheduling/ScheduleExportDialog.tsx` - Print dialog
+3. **Modify** `src/pages/Scheduling.tsx` - Add Print button, state, and dialog
 
 ---
 
 ## Benefits
 
-1. **Immediate Visibility**: Operators see average rate and top earners at a glance
-2. **Outlier Detection**: Red flags on unusually high rates catch data entry errors
-3. **Quick Fix**: Click-to-edit links allow immediate correction
-4. **Prevention**: Rate validation on save prevents future typos
-5. **No Learning Curve**: Uses existing UI patterns, just adds more detail
+- **Zero cognitive load** - One button, one purpose
+- **Kitchen-optimized** - Large text, compact format, landscape
+- **Manager-friendly** - Hours summary, downloadable PDF
+- **Consistent** - Matches existing export patterns in the app
+- **Accessible** - High contrast, print-friendly
+- **Fast** - Client-side PDF generation, no server round-trip
 
----
-
-## Immediate Fix for Your Data
-
-After implementing this, you'll want to fix **Server 3**'s rate. Based on the data:
-- Other servers have rates of $2.13/hr (tipped minimum wage)
-- Server 3 likely should be $2.13/hr or possibly $21.30/hr
-
-This would reduce your weekly labor cost from ~$18,995 to ~$4,655 (if $2.13) or ~$5,933 (if $21.30).

@@ -165,8 +165,8 @@ const CustomLink = ({
   onMouseEnter,
   onMouseLeave,
 }: any) => {
-  // Guard against invalid values
-  if (!sourceX || !targetX || !linkWidth || linkWidth <= 0) {
+  // Guard against invalid values - use typeof checks to allow 0 as valid coordinate
+  if (typeof sourceX !== 'number' || typeof targetX !== 'number' || typeof linkWidth !== 'number' || linkWidth <= 0) {
     return null;
   }
   

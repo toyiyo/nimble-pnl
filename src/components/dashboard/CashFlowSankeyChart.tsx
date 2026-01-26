@@ -472,6 +472,17 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
   
   const netCashFlow = totalIncome - totalExpenses;
 
+  // Calculate dynamic chart height based on number of nodes
+  const chartHeight = useMemo(() => {
+    if (!sankeyData) return 400;
+    // Count the max nodes on either side (income sources vs expense categories)
+    const expenseNodeCount = sankeyData.nodes.length - 1; // -1 for Cash Flow node, income nodes are fewer
+    // Minimum 400px, scale up by ~40px per expense category beyond 8
+    const baseHeight = 400;
+    const extraNodes = Math.max(0, expenseNodeCount - 8);
+    return Math.min(800, baseHeight + extraNodes * 40); // Cap at 800px
+  }, [sankeyData]);
+
   if (isLoading) {
     return (
       <Card className="bg-gradient-to-br from-teal-50/50 via-background to-teal-50/30 dark:from-teal-950/20 dark:via-background dark:to-teal-950/10 border-teal-200 dark:border-teal-900">
@@ -554,7 +565,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[350px] relative">
+        <div style={{ height: chartHeight }} className="relative">
           <ChartTooltip data={tooltipData} />
           <ResponsiveContainer width="100%" height="100%">
             <Sankey

@@ -7,6 +7,7 @@ export interface MonthlyExpenseCategory {
   category: string;
   amount: number;
   transactionCount: number;
+  categoryIds: string[]; // Track UUIDs for drill-down navigation
 }
 
 export interface MonthlyExpenses {
@@ -68,7 +69,7 @@ export function useMonthlyExpenses(
         totalExpenses: number;
         laborCost: number;
         foodCost: number;
-        categoryMap: Map<string, { amount: number; count: number }>;
+        categoryMap: Map<string, { amount: number; count: number; categoryIds: Set<string> }>;
       }>();
 
       // Process cleared bank transactions
@@ -102,11 +103,14 @@ export function useMonthlyExpenses(
         }
 
         if (!month.categoryMap.has(category)) {
-          month.categoryMap.set(category, { amount: 0, count: 0 });
+          month.categoryMap.set(category, { amount: 0, count: 0, categoryIds: new Set() });
         }
         const catEntry = month.categoryMap.get(category)!;
         catEntry.amount += txnAmount;
         catEntry.count += 1;
+        if (t.category_id) {
+          catEntry.categoryIds.add(t.category_id);
+        }
       });
 
       // Process pending outflows (not yet matched to bank transactions)
@@ -140,11 +144,14 @@ export function useMonthlyExpenses(
         }
 
         if (!month.categoryMap.has(category)) {
-          month.categoryMap.set(category, { amount: 0, count: 0 });
+          month.categoryMap.set(category, { amount: 0, count: 0, categoryIds: new Set() });
         }
         const catEntry = month.categoryMap.get(category)!;
         catEntry.amount += txnAmount;
         // Don't increment count for pending outflows since they're not actual transactions yet
+        if (t.category_id) {
+          catEntry.categoryIds.add(t.category_id);
+        }
       });
 
       // Convert to array format
@@ -158,6 +165,7 @@ export function useMonthlyExpenses(
             category,
             amount: data.amount,
             transactionCount: data.count,
+            categoryIds: Array.from(data.categoryIds),
           }))
           .sort((a, b) => b.amount - a.amount), // Sort by amount descending
       }));

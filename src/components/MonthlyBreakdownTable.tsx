@@ -496,9 +496,22 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                       </h4>
                                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                         {expenseMonth.categories.map((cat, idx) => (
-                                          <div 
+                                          <button 
                                             key={idx}
-                                            className="flex items-center justify-between p-2 rounded bg-background/50 text-xs"
+                                            className="flex items-center justify-between p-2 rounded bg-background/50 text-xs text-left hover:bg-accent/50 transition-colors cursor-pointer w-full"
+                                            onClick={() => {
+                                              if (cat.categoryIds && cat.categoryIds.length > 0) {
+                                                navigate('/banking', { 
+                                                  state: { 
+                                                    categoryId: cat.categoryIds[0],
+                                                    categoryName: cat.category,
+                                                    tab: 'categorized' 
+                                                  } 
+                                                });
+                                              }
+                                            }}
+                                            disabled={!cat.categoryIds || cat.categoryIds.length === 0}
+                                            aria-label={`View ${cat.category} transactions`}
                                           >
                                             <div className="flex-1 min-w-0">
                                               <span className="font-medium truncate block">{cat.category}</span>
@@ -507,7 +520,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                             <span className="font-semibold text-red-600 ml-2">
                                               {formatCurrency(cat.amount)}
                                             </span>
-                                          </div>
+                                          </button>
                                         ))}
                                       </div>
                                       <div className="mt-2 flex justify-between text-xs">

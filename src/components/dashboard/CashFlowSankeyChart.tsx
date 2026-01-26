@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sankey, ResponsiveContainer, Layer, Rectangle } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useMonthlyExpenses, MonthlyExpenseCategory } from '@/hooks/useMonthlyExpenses';
@@ -16,6 +17,7 @@ interface CashFlowSankeyChartProps {
 interface SankeyNodeData {
   name: string;
   color?: string;
+  categoryIds?: string[]; // For expense nodes to enable click-through
 }
 
 interface SankeyLinkData {
@@ -73,8 +75,15 @@ const formatCurrency = (value: number) => {
 
 // Custom node component for the Sankey chart
 const CustomNode = (props: any) => {
-  const { x, y, width, height, index, payload } = props;
+  const { x, y, width, height, index, payload, onNodeClick } = props;
   const isMiddle = payload.name === 'Cash Flow';
+  const isClickable = payload.categoryIds && payload.categoryIds.length > 0;
+  
+  const handleClick = () => {
+    if (isClickable && onNodeClick) {
+      onNodeClick(payload.name, payload.categoryIds);
+    }
+  };
   
   return (
     <Layer key={`node-${index}`}>
@@ -87,13 +96,16 @@ const CustomNode = (props: any) => {
         fillOpacity={isMiddle ? 1 : 0.9}
         rx={4}
         ry={4}
+        className={isClickable ? 'cursor-pointer transition-opacity hover:opacity-80' : ''}
+        onClick={handleClick}
       />
       <text
         x={isMiddle ? x + width / 2 : x < 100 ? x - 6 : x + width + 6}
         y={y + height / 2}
         textAnchor={isMiddle ? 'middle' : x < 100 ? 'end' : 'start'}
         dominantBaseline="middle"
-        className="fill-foreground text-xs font-medium"
+        className={`fill-foreground text-xs font-medium ${isClickable ? 'cursor-pointer' : ''}`}
+        onClick={handleClick}
       >
         {payload.name}
       </text>
@@ -102,7 +114,8 @@ const CustomNode = (props: any) => {
         y={y + height / 2 + 14}
         textAnchor={isMiddle ? 'middle' : x < 100 ? 'end' : 'start'}
         dominantBaseline="middle"
-        className="fill-muted-foreground text-[10px]"
+        className={`fill-muted-foreground text-[10px] ${isClickable ? 'cursor-pointer' : ''}`}
+        onClick={handleClick}
       >
         {formatCurrency(payload.value || 0)}
       </text>
@@ -202,8 +215,22 @@ const ChartTooltip = ({ data }: { data: TooltipData | null }) => {
 
 export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps) => {
   const { selectedRestaurant } = useRestaurantContext();
+  const navigate = useNavigate();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
   const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
+
+  // Handler for clicking on expense nodes
+  const handleExpenseNodeClick = (categoryName: string, categoryIds: string[]) => {
+    if (categoryIds.length > 0) {
+      navigate('/banking', { 
+        state: { 
+          categoryId: categoryIds[0],
+          categoryName: categoryName,
+          tab: 'categorized' 
+        } 
+      });
+    }
+  };
 
   const handleLinkMouseEnter = (e: React.MouseEvent, payload: any) => {
     const rect = (e.currentTarget as SVGElement).closest('.recharts-wrapper')?.getBoundingClientRect();
@@ -315,14 +342,16 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
     
     if (expenseData && expenseData.length > 0) {
       // Combine all months' expenses
-      const categoryTotals = new Map<string, { amount: number; count: number }>();
+      const categoryTotals = new Map<string, { amount: number; count: number; categoryIds: Set<string> }>();
       
       expenseData.forEach(month => {
         month.categories.forEach(cat => {
-          const existing = categoryTotals.get(cat.category) || { amount: 0, count: 0 };
+          const existing = categoryTotals.get(cat.category) || { amount: 0, count: 0, categoryIds: new Set<string>() };
+          cat.categoryIds?.forEach(id => existing.categoryIds.add(id));
           categoryTotals.set(cat.category, {
             amount: existing.amount + cat.amount,
             count: existing.count + cat.transactionCount,
+            categoryIds: existing.categoryIds,
           });
         });
       });
@@ -332,6 +361,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
           category,
           amount: data.amount,
           transactionCount: data.count,
+          categoryIds: Array.from(data.categoryIds),
         }))
         .filter(cat => cat.amount > 0)
         .sort((a, b) => b.amount - a.amount);
@@ -344,6 +374,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
           category: 'Inventory/Food Purchases',
           amount: periodMetrics.foodCost,
           transactionCount: 0,
+          categoryIds: [],
         });
       }
       if (periodMetrics.laborCost > 0) {
@@ -351,6 +382,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
           category: 'Labor/Payroll',
           amount: periodMetrics.laborCost,
           transactionCount: 0,
+          categoryIds: [],
         });
       }
     }
@@ -363,6 +395,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
       nodes.push({ 
         name: cat.category, 
         color: EXPENSE_COLORS[cat.category] || 'hsl(0, 0%, 60%)',
+        categoryIds: cat.categoryIds, // Pass categoryIds for click-through navigation
       });
     });
 
@@ -502,7 +535,7 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
               nodePadding={24}
               margin={{ top: 20, right: 160, bottom: 20, left: 160 }}
               link={<CustomLink onMouseEnter={handleLinkMouseEnter} onMouseLeave={handleLinkMouseLeave} />}
-              node={<CustomNode />}
+              node={<CustomNode onNodeClick={handleExpenseNodeClick} />}
             >
             </Sankey>
           </ResponsiveContainer>

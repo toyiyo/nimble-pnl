@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
 import { supabase } from '@/integrations/supabase/client';
+
 import { useToast } from '@/hooks/use-toast';
-import { Database } from '@/integrations/supabase/types';
 
 // Use proper type from generated schema (or define manually to match actual DB)
 type ToastConnection = {
@@ -26,7 +27,7 @@ type ToastConnection = {
   updated_at: string;
 };
 
-export const useToastConnection = (restaurantId?: string | null) => {
+export function useToastConnection(restaurantId?: string | null) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -61,7 +62,7 @@ export const useToastConnection = (restaurantId?: string | null) => {
 
   // Legacy function for backward compatibility - used by components that call hook without restaurantId
   // and then call this function with a restaurantId parameter
-  const checkConnectionStatus = async (restaurantId: string) => {
+  async function checkConnectionStatus(restaurantId: string): Promise<ToastConnection | null> {
     if (!restaurantId) {
       return null;
     }
@@ -78,14 +79,14 @@ export const useToastConnection = (restaurantId?: string | null) => {
     }
 
     return data as ToastConnection | null;
-  };
+  }
 
-  const saveCredentials = async (
+  async function saveCredentials(
     restaurantId: string,
     clientId: string,
     clientSecret: string,
     toastRestaurantGuid: string
-  ) => {
+  ): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke('toast-save-credentials', {
       body: {
         restaurantId,
@@ -104,16 +105,16 @@ export const useToastConnection = (restaurantId?: string | null) => {
     }
 
     queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
-    
+
     toast({
       title: 'Credentials saved',
       description: 'Toast API credentials have been saved successfully'
     });
 
     return data;
-  };
+  }
 
-  const testConnection = async (restaurantId: string) => {
+  async function testConnection(restaurantId: string): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke('toast-test-connection', {
       body: { restaurantId }
     });
@@ -135,9 +136,9 @@ export const useToastConnection = (restaurantId?: string | null) => {
     }
 
     throw new Error('Connection test failed');
-  };
+  }
 
-  const saveWebhookSecret = async (restaurantId: string, webhookSecret: string) => {
+  async function saveWebhookSecret(restaurantId: string, webhookSecret: string): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke('toast-save-webhook-secret', {
       body: { restaurantId, webhookSecret }
     });
@@ -151,14 +152,14 @@ export const useToastConnection = (restaurantId?: string | null) => {
     }
 
     queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
-    
+
     toast({
       title: 'Webhook configured',
       description: 'Webhook secret has been saved successfully'
     });
 
     return data;
-  };
+  }
 
   // Mutation for disconnecting Toast
   const disconnectMutation = useMutation({
@@ -179,7 +180,7 @@ export const useToastConnection = (restaurantId?: string | null) => {
         description: 'Toast connection has been disabled'
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: 'Error',
         description: 'Failed to disconnect from Toast',
@@ -189,13 +190,22 @@ export const useToastConnection = (restaurantId?: string | null) => {
     }
   });
 
-  const disconnectToast = async (restaurantId: string) => {
+  async function disconnectToast(restaurantId: string): Promise<void> {
     return disconnectMutation.mutateAsync(restaurantId);
-  };
+  }
 
-  const triggerManualSync = async (restaurantId: string) => {
+  async function triggerManualSync(
+    restaurantId: string,
+    options?: { startDate?: string; endDate?: string }
+  ): Promise<Record<string, unknown> | null> {
+    const body = {
+      restaurantId,
+      ...(options?.startDate && { startDate: options.startDate }),
+      ...(options?.endDate && { endDate: options.endDate })
+    };
+
     const { data, error } = await supabase.functions.invoke('toast-sync-data', {
-      body: { restaurantId }
+      body
     });
 
     if (error) {
@@ -206,25 +216,24 @@ export const useToastConnection = (restaurantId?: string | null) => {
       throw new Error(data.error);
     }
 
-    toast({
-      title: 'Sync initiated',
-      description: `Synced ${data?.ordersSynced || 0} orders`
-    });
+    // Only show toast for non-custom range (custom range shows in UI)
+    if (!options?.startDate) {
+      toast({
+        title: 'Sync initiated',
+        description: `Synced ${data?.ordersSynced || 0} orders`
+      });
+    }
 
     queryClient.invalidateQueries({ queryKey: ['toast-connection', restaurantId] });
 
     return data;
-  };
+  }
 
-  const getConnectionStatus = (restaurantId: string) => {
-    return checkConnectionStatus(restaurantId);
-  };
-
-  const fetchLocations = async (
+  async function fetchLocations(
     restaurantId: string,
     clientId: string,
     clientSecret: string
-  ): Promise<{ success: boolean; locations: Array<{ guid: string; name: string; location: string }>; message?: string }> => {
+  ): Promise<{ success: boolean; locations: Array<{ guid: string; name: string; location: string }>; message?: string }> {
     const { data, error } = await supabase.functions.invoke('toast-fetch-locations', {
       body: {
         restaurantId,
@@ -242,7 +251,7 @@ export const useToastConnection = (restaurantId?: string | null) => {
     }
 
     return data;
-  };
+  }
 
   return {
     isConnected,
@@ -254,7 +263,6 @@ export const useToastConnection = (restaurantId?: string | null) => {
     disconnectToast,
     triggerManualSync,
     checkConnectionStatus,
-    getConnectionStatus,
     fetchLocations
   };
-};
+}

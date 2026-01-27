@@ -222,12 +222,50 @@ async function processOrderSafely(
   }
 }
 
-function calculateSyncRange(connection: ToastConnection): {
+interface DateRangeValidation {
+  isCustomRange: boolean;
+  error?: string;
+}
+
+function validateDateRange(
+  startDate: string | undefined,
+  endDate: string | undefined
+): DateRangeValidation {
+  if (!startDate && !endDate) {
+    return { isCustomRange: false };
+  }
+
+  if (!startDate || !endDate) {
+    return { isCustomRange: false, error: 'Both startDate and endDate are required for custom range' };
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return { isCustomRange: true, error: 'Invalid date format. Use ISO 8601 format.' };
+  }
+
+  if (start > end) {
+    return { isCustomRange: true, error: 'Start date must be before end date' };
+  }
+
+  const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysDiff > 90) {
+    return { isCustomRange: true, error: 'Date range cannot exceed 90 days' };
+  }
+
+  return { isCustomRange: true };
+}
+
+interface SyncRange {
   isInitialSync: boolean;
   syncCursor: number;
   batchStart: Date;
   batchEnd: Date;
-} {
+}
+
+function calculateSyncRange(connection: ToastConnection): SyncRange {
   const isInitialSync = !connection.initial_sync_done;
   const syncCursor = connection.sync_cursor || 0;
   const now = Date.now();
@@ -300,8 +338,13 @@ serve(async (req) => {
     }
 
     let restaurantId: string | undefined;
+    let customStartDate: string | undefined;
+    let customEndDate: string | undefined;
     try {
-      ({ restaurantId } = await req.json());
+      const body = await req.json();
+      restaurantId = body.restaurantId;
+      customStartDate = body.startDate;
+      customEndDate = body.endDate;
     } catch {
       return jsonResponse({ error: 'Invalid JSON body' }, 400);
     }
@@ -309,6 +352,12 @@ serve(async (req) => {
     if (!restaurantId) {
       return jsonResponse({ error: 'Missing restaurantId' }, 400);
     }
+
+    const dateRangeValidation = validateDateRange(customStartDate, customEndDate);
+    if (dateRangeValidation.error) {
+      return jsonResponse({ error: dateRangeValidation.error }, 400);
+    }
+    const isCustomRange = dateRangeValidation.isCustomRange;
 
     // Authorization gate: verify user has access via RLS
     const { data: authorizedConn, error: authorizedConnError } = await userSupabase
@@ -344,63 +393,87 @@ serve(async (req) => {
     const accessToken = await getValidAccessToken(connection, encryption, serviceSupabase);
 
     const ctx: SyncContext = { connection, encryption, serviceSupabase, accessToken };
-    const { isInitialSync, syncCursor, batchStart, batchEnd } = calculateSyncRange(connection);
-
-    if (DEBUG) {
-      console.log(`Starting sync (initial_sync: ${isInitialSync}, cursor: ${syncCursor} days)`);
-      console.log(`Sync range: ${batchStart.toISOString()} to ${batchEnd.toISOString()}`);
-    }
 
     let totalOrders = 0;
     let allErrors: Array<{ orderGuid: string; message: string }> = [];
     let syncComplete = false;
-    let newCursor = syncCursor;
+    let newCursor = 0;
+    let progress = 100;
 
-    if (isInitialSync && syncCursor < TARGET_DAYS) {
-      const result = await fetchOrdersForRange(ctx, batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
+    // Custom date range sync (user-specified backfill)
+    if (isCustomRange) {
+      if (DEBUG) {
+        console.log(`Custom range sync: ${customStartDate} to ${customEndDate}`);
+      }
+
+      // For custom range, fetch all orders (no 100-order limit per batch)
+      const result = await fetchOrdersForRange(ctx, customStartDate!, customEndDate!, 500);
       totalOrders = result.ordersProcessed;
       allErrors = result.errors;
-      newCursor = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
-      syncComplete = newCursor >= TARGET_DAYS;
-      if (DEBUG) console.log(`Batch complete: ${totalOrders} orders, new cursor: ${newCursor}`);
-    } else if (isInitialSync) {
       syncComplete = true;
+
+      if (DEBUG) console.log(`Custom range complete: ${totalOrders} orders`);
     } else {
-      const result = await fetchOrdersForRange(ctx, batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
-      totalOrders = result.ordersProcessed;
-      allErrors = result.errors;
-      syncComplete = true;
+      // Normal sync logic (initial or incremental)
+      const { isInitialSync, syncCursor, batchStart, batchEnd } = calculateSyncRange(connection);
+      newCursor = syncCursor;
+
+      if (DEBUG) {
+        console.log(`Starting sync (initial_sync: ${isInitialSync}, cursor: ${syncCursor} days)`);
+        console.log(`Sync range: ${batchStart.toISOString()} to ${batchEnd.toISOString()}`);
+      }
+
+      if (isInitialSync && syncCursor < TARGET_DAYS) {
+        const result = await fetchOrdersForRange(ctx, batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
+        totalOrders = result.ordersProcessed;
+        allErrors = result.errors;
+        newCursor = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
+        syncComplete = newCursor >= TARGET_DAYS;
+        progress = Math.round((newCursor / TARGET_DAYS) * 100);
+        if (DEBUG) console.log(`Batch complete: ${totalOrders} orders, new cursor: ${newCursor}`);
+      } else if (isInitialSync) {
+        syncComplete = true;
+      } else {
+        const result = await fetchOrdersForRange(ctx, batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
+        totalOrders = result.ordersProcessed;
+        allErrors = result.errors;
+        syncComplete = true;
+      }
     }
 
+    // Sync to unified_sales if we have orders
     if (syncComplete && totalOrders > 0) {
-      await tryUnifiedSalesSync(serviceSupabase, connection.restaurant_id, isInitialSync, totalOrders);
+      await tryUnifiedSalesSync(serviceSupabase, connection.restaurant_id, isCustomRange, totalOrders);
     }
 
-    // Update sync progress
-    const syncUpdate: Record<string, unknown> = {
-      last_sync_time: new Date().toISOString(),
-      connection_status: 'connected',
-      last_error: null,
-      last_error_at: null,
-      sync_cursor: syncComplete ? 0 : newCursor
-    };
-    if (syncComplete) {
-      syncUpdate.initial_sync_done = true;
-    }
+    // Update sync progress (skip for custom range backfills - don't change cursor)
+    if (!isCustomRange) {
+      const syncUpdate: Record<string, unknown> = {
+        last_sync_time: new Date().toISOString(),
+        connection_status: 'connected',
+        last_error: null,
+        last_error_at: null,
+        sync_cursor: syncComplete ? 0 : newCursor
+      };
+      if (syncComplete) {
+        syncUpdate.initial_sync_done = true;
+      }
 
-    const { error: syncUpdateError } = await serviceSupabase
-      .from('toast_connections')
-      .update(syncUpdate)
-      .eq('id', connection.id);
+      const { error: syncUpdateError } = await serviceSupabase
+        .from('toast_connections')
+        .update(syncUpdate)
+        .eq('id', connection.id);
 
-    if (syncUpdateError) {
-      console.error('Failed to update sync progress:', syncUpdateError.message);
+      if (syncUpdateError) {
+        console.error('Failed to update sync progress:', syncUpdateError.message);
+      }
     }
 
     await logSecurityEvent(serviceSupabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {
       ordersSynced: totalOrders,
       errorCount: allErrors.length,
-      syncComplete
+      syncComplete,
+      customRange: isCustomRange ? { startDate: customStartDate, endDate: customEndDate } : undefined
     });
 
     if (DEBUG) console.log(`Sync batch complete: ${totalOrders} orders, ${allErrors.length} errors, complete: ${syncComplete}`);
@@ -410,7 +483,8 @@ serve(async (req) => {
       ordersSynced: totalOrders,
       errors: allErrors,
       syncComplete,
-      progress: isInitialSync ? Math.round((newCursor / TARGET_DAYS) * 100) : 100
+      progress,
+      isCustomRange
     });
 
   } catch (error: any) {

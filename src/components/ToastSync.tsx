@@ -4,6 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { useToast } from '@/hooks/use-toast';
 import { useToastConnection } from '@/hooks/useToastConnection';
 import { RefreshCw, AlertCircle, CheckCircle2, Clock, Calendar } from 'lucide-react';
@@ -29,15 +32,19 @@ function formatError(error: string | SyncError): string {
   return typeof error === 'string' ? error : error.message;
 }
 
+type SyncMode = 'recent' | 'custom';
+
 export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [totalOrdersSynced, setTotalOrdersSynced] = useState(0);
   const [syncProgress, setSyncProgress] = useState(0);
+  const [syncMode, setSyncMode] = useState<SyncMode>('recent');
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const { toast } = useToast();
   const { connection, triggerManualSync, checkConnectionStatus } = useToastConnection(restaurantId);
 
-  async function executeSyncLoop(): Promise<{
+  async function executeSyncLoop(options?: { startDate?: string; endDate?: string }): Promise<{
     totalOrders: number;
     allErrors: (string | SyncError)[];
     complete: boolean;
@@ -47,7 +54,7 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
     let complete = false;
 
     while (!complete) {
-      const data = await triggerManualSync(restaurantId);
+      const data = await triggerManualSync(restaurantId, options);
 
       if (data?.ordersSynced === undefined) {
         break;
@@ -62,6 +69,11 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
       }
 
       complete = data.syncComplete !== false;
+
+      // Custom range syncs complete in one request
+      if (options?.startDate) {
+        complete = true;
+      }
 
       if (!complete) {
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -81,13 +93,33 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
       return;
     }
 
+    // Validate custom date range
+    if (syncMode === 'custom') {
+      if (!dateRange?.from || !dateRange?.to) {
+        toast({
+          title: 'Error',
+          description: 'Please select a date range',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     setIsLoading(true);
     setSyncResult(null);
     setTotalOrdersSynced(0);
     setSyncProgress(0);
 
     try {
-      const { totalOrders, allErrors } = await executeSyncLoop();
+      // Build sync options
+      const syncOptions = syncMode === 'custom' && dateRange
+        ? {
+            startDate: dateRange.from.toISOString(),
+            endDate: dateRange.to.toISOString()
+          }
+        : undefined;
+
+      const { totalOrders, allErrors } = await executeSyncLoop(syncOptions);
 
       setSyncResult({
         ordersSynced: totalOrders,
@@ -98,9 +130,13 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
 
       await checkConnectionStatus(restaurantId);
 
+      const description = syncMode === 'custom'
+        ? `${totalOrders} orders synced for ${format(dateRange!.from, 'MMM d')} - ${format(dateRange!.to, 'MMM d, yyyy')}`
+        : `${totalOrders} orders synced successfully`;
+
       toast({
         title: 'Sync complete',
-        description: `${totalOrders} orders synced successfully`,
+        description,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed';
@@ -174,9 +210,19 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
           />
         )}
 
+        <SyncModeSelector
+          syncMode={syncMode}
+          onSyncModeChange={setSyncMode}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          initialSyncDone={initialSyncDone}
+        />
+
         <SyncButton
           isLoading={isLoading}
           initialSyncDone={initialSyncDone}
+          syncMode={syncMode}
+          dateRange={dateRange}
           onSync={handleSync}
         />
 
@@ -257,24 +303,100 @@ function LastErrorAlert({ error, errorAt }: { error: string; errorAt?: string })
   );
 }
 
+interface SyncModeSelectorProps {
+  syncMode: SyncMode;
+  onSyncModeChange: (mode: SyncMode) => void;
+  dateRange: { from: Date; to: Date } | undefined;
+  onDateRangeChange: (range: { from: Date; to: Date } | undefined) => void;
+  initialSyncDone?: boolean;
+}
+
+function SyncModeSelector({
+  syncMode,
+  onSyncModeChange,
+  dateRange,
+  onDateRangeChange,
+  initialSyncDone
+}: SyncModeSelectorProps): JSX.Element {
+  return (
+    <div className="space-y-4">
+      <RadioGroup
+        value={syncMode}
+        onValueChange={(value) => onSyncModeChange(value as SyncMode)}
+        className="space-y-3"
+      >
+        <div className="flex items-start space-x-3">
+          <RadioGroupItem value="recent" id="recent" className="mt-1" />
+          <div className="flex-1">
+            <Label htmlFor="recent" className="font-medium cursor-pointer">
+              {initialSyncDone ? 'Sync recent orders' : 'Initial sync'}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {initialSyncDone
+                ? 'Fetch orders from the last 25 hours'
+                : 'Import last 90 days of order history'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start space-x-3">
+          <RadioGroupItem value="custom" id="custom" className="mt-1" />
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="custom" className="font-medium cursor-pointer">
+              Custom date range
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Backfill or re-sync orders for specific dates (max 90 days)
+            </p>
+            {syncMode === 'custom' && (
+              <div className="pt-2">
+                <DateRangePicker
+                  from={dateRange?.from}
+                  to={dateRange?.to}
+                  onSelect={onDateRangeChange}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </RadioGroup>
+    </div>
+  );
+}
+
 interface SyncButtonProps {
   isLoading: boolean;
   initialSyncDone?: boolean;
+  syncMode: SyncMode;
+  dateRange?: { from: Date; to: Date };
   onSync: () => void;
 }
 
-function SyncButton({ isLoading, initialSyncDone, onSync }: SyncButtonProps): JSX.Element {
+function getSyncDescription(
+  syncMode: SyncMode,
+  dateRange: { from: Date; to: Date } | undefined,
+  initialSyncDone: boolean | undefined
+): string {
+  if (syncMode === 'custom' && dateRange) {
+    return `Sync orders from ${format(dateRange.from, 'MMM d')} to ${format(dateRange.to, 'MMM d, yyyy')}`;
+  }
+  if (initialSyncDone) {
+    return 'Manually sync orders from the last 25 hours';
+  }
+  return 'Start initial sync (last 90 days of orders)';
+}
+
+function SyncButton({ isLoading, initialSyncDone, syncMode, dateRange, onSync }: SyncButtonProps): JSX.Element {
   const buttonText = isLoading ? 'Syncing...' : 'Sync Now';
-  const description = initialSyncDone
-    ? 'Manually sync orders from the last 25 hours'
-    : 'Start initial sync (last 90 days of orders)';
+  const description = getSyncDescription(syncMode, dateRange, initialSyncDone);
+  const isDisabled = isLoading || (syncMode === 'custom' && !dateRange);
 
   return (
     <div className="space-y-4">
       <div className="text-center">
         <Button
           onClick={onSync}
-          disabled={isLoading}
+          disabled={isDisabled}
           className="w-full max-w-xs mx-auto"
           size="lg"
         >

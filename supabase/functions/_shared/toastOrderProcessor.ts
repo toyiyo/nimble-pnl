@@ -1,20 +1,56 @@
 /**
  * Shared Toast order processing logic
  * Used by toast-webhook, toast-bulk-sync, and toast-sync-data edge functions
+ *
+ * NOTE: Toast API returns amounts in DOLLARS (not cents), so no division by 100 needed.
  */
+
+export interface ProcessOrderOptions {
+  /** Skip the unified_sales sync RPC - use when doing bulk sync (call once at end instead) */
+  skipUnifiedSalesSync?: boolean;
+}
 
 export async function processOrder(
   supabase: any,
   order: any,
   restaurantId: string,
-  toastRestaurantGuid: string
+  toastRestaurantGuid: string,
+  options: ProcessOrderOptions = {}
 ) {
-  // Parse order date and time
-  const closedDate = order.closedDate ? new Date(order.closedDate) : null;
+  // Parse order date and time - prefer check closedDate over order level
+  let closedDate = order.closedDate ? new Date(order.closedDate) : null;
+  if (!closedDate && order.checks?.[0]?.closedDate) {
+    closedDate = new Date(order.checks[0].closedDate);
+  }
   const orderDate = closedDate ? closedDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
   const orderTime = closedDate ? closedDate.toISOString().split('T')[1].split('.')[0] : null;
 
-  // Upsert order header
+  // Aggregate totals from checks (Toast stores amounts at check level, not order level)
+  let totalAmount = order.totalAmount ?? null;
+  let subtotalAmount = order.subtotal ?? null;
+  let taxAmount = order.taxAmount ?? null;
+  let tipAmount = order.tipAmount ?? null;
+  let discountAmount = order.discountAmount ?? null;
+
+  if (order.checks && order.checks.length > 0) {
+    // Sum up from checks if order-level totals are missing
+    if (totalAmount === null) {
+      totalAmount = order.checks.reduce((sum: number, c: any) => sum + (c.totalAmount ?? c.amount ?? 0), 0);
+    }
+    if (taxAmount === null) {
+      taxAmount = order.checks.reduce((sum: number, c: any) => sum + (c.taxAmount ?? 0), 0);
+    }
+    if (tipAmount === null) {
+      // Tips are often on payments
+      tipAmount = order.checks.reduce((sum: number, c: any) => {
+        const checkTip = c.tipAmount ?? 0;
+        const paymentTips = (c.payments || []).reduce((ps: number, p: any) => ps + (p.tipAmount ?? 0), 0);
+        return sum + checkTip + paymentTips;
+      }, 0);
+    }
+  }
+
+  // Upsert order header (amounts are already in dollars from Toast API)
   const { error: orderError } = await supabase.from('toast_orders').upsert({
     restaurant_id: restaurantId,
     toast_order_guid: order.guid,
@@ -22,12 +58,12 @@ export async function processOrder(
     order_number: order.orderNumber || null,
     order_date: orderDate,
     order_time: orderTime,
-    total_amount: order.totalAmount ? order.totalAmount / 100 : null,
-    subtotal_amount: order.subtotal ? order.subtotal / 100 : null,
-    tax_amount: order.taxAmount ? order.taxAmount / 100 : null,
-    tip_amount: order.tipAmount ? order.tipAmount / 100 : null,
-    discount_amount: order.discountAmount ? order.discountAmount / 100 : null,
-    service_charge_amount: order.serviceChargeAmount ? order.serviceChargeAmount / 100 : null,
+    total_amount: totalAmount,
+    subtotal_amount: subtotalAmount,
+    tax_amount: taxAmount,
+    tip_amount: tipAmount,
+    discount_amount: discountAmount,
+    service_charge_amount: order.serviceChargeAmount ?? null,
     payment_status: order.paymentStatus || null,
     dining_option: order.diningOption?.behavior || null,
     raw_json: order,
@@ -45,14 +81,17 @@ export async function processOrder(
     for (const check of order.checks) {
       if (check.selections) {
         for (const selection of check.selections) {
+          // Toast uses displayName as the primary item name
+          const itemName = selection.displayName || selection.itemName || selection.name || 'Unknown Item';
+
           const { error: itemError } = await supabase.from('toast_order_items').upsert({
             restaurant_id: restaurantId,
             toast_item_guid: selection.guid,
             toast_order_guid: order.guid,
-            item_name: selection.itemName || selection.name || 'Unknown Item',
+            item_name: itemName,
             quantity: selection.quantity || 1,
-            unit_price: selection.preDiscountPrice ? selection.preDiscountPrice / 100 : 0,
-            total_price: selection.price ? selection.price / 100 : 0,
+            unit_price: selection.preDiscountPrice ?? 0,
+            total_price: selection.price ?? 0,
             menu_category: selection.salesCategory || null,
             modifiers: selection.modifiers || null,
             raw_json: selection,
@@ -67,7 +106,7 @@ export async function processOrder(
         }
       }
 
-      // Process payments
+      // Process payments (amounts are already in dollars)
       if (check.payments) {
         for (const payment of check.payments) {
           const { error: paymentError } = await supabase.from('toast_payments').upsert({
@@ -75,10 +114,10 @@ export async function processOrder(
             toast_payment_guid: payment.guid,
             toast_order_guid: order.guid,
             payment_type: payment.type || null,
-            amount: payment.amount ? payment.amount / 100 : 0,
-            tip_amount: payment.tipAmount ? payment.tipAmount / 100 : null,
+            amount: payment.amount ?? 0,
+            tip_amount: payment.tipAmount ?? null,
             payment_date: orderDate,
-            payment_status: payment.status || null,
+            payment_status: payment.paymentStatus || payment.status || null,
             raw_json: payment,
             synced_at: new Date().toISOString(),
           }, {
@@ -94,12 +133,15 @@ export async function processOrder(
   }
 
   // Call RPC to sync financial breakdown to unified_sales
-  const { error: rpcError } = await supabase.rpc('toast_sync_financial_breakdown', {
-    p_order_guid: order.guid,
-    p_restaurant_id: restaurantId
-  });
+  // Skip during bulk sync - caller should call sync_toast_to_unified_sales once at the end
+  if (!options.skipUnifiedSalesSync) {
+    const { error: rpcError } = await supabase.rpc('toast_sync_financial_breakdown', {
+      p_order_guid: order.guid,
+      p_restaurant_id: restaurantId
+    });
 
-  if (rpcError) {
-    throw new Error(`Failed to sync financial breakdown: ${rpcError.message}`);
+    if (rpcError) {
+      throw new Error(`Failed to sync financial breakdown: ${rpcError.message}`);
+    }
   }
 }

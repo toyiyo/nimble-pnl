@@ -13,9 +13,14 @@ interface ToastSyncProps {
   restaurantId: string;
 }
 
+interface SyncError {
+  orderGuid?: string;
+  message: string;
+}
+
 interface SyncResult {
   ordersSynced: number;
-  errors: string[];
+  errors: (string | SyncError)[];
 }
 
 export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
@@ -215,7 +220,9 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
                   <div className="space-y-1">
                     <div className="font-medium">Some errors occurred:</div>
                     {syncResult.errors.map((error, idx) => (
-                      <div key={`error-${idx}`} className="text-sm">• {error}</div>
+                      <div key={`error-${idx}`} className="text-sm">
+                        • {typeof error === 'string' ? error : error.message}
+                      </div>
                     ))}
                   </div>
                 </AlertDescription>

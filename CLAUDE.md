@@ -153,6 +153,40 @@ Key files:
 ### POS (Square, Clover, Toast, Shift4)
 Use adapter pattern. Always write to `unified_sales` table. Never hardcode POS-specific logic in UI.
 
+#### Toast POS Integration
+**API Details:**
+- Base URL: `https://ws-api.toasttab.com`
+- Auth: OAuth with `TOAST_MACHINE_CLIENT` access type (Standard API Access)
+- Standard API does NOT support webhooks or restaurant auto-discovery
+- Location ID (Restaurant External GUID) must be obtained from Toast email or network inspector
+
+**Data Format:**
+- **Amounts are in DOLLARS, not cents** - Do NOT divide by 100
+- Item names use `displayName` field (not `itemName` or `name`)
+- Order totals are at check level, not order level - aggregate from `order.checks[]`
+- Timestamps include timezone: `2026-01-26T21:35:48.071+0000` (UTC)
+
+**Database Tables:**
+```
+toast_connections  → OAuth credentials (encrypted)
+toast_orders       → Order headers
+toast_order_items  → Line items (unique on restaurant_id, toast_item_guid, toast_order_guid)
+toast_payments     → Payment records (unique on restaurant_id, toast_payment_guid, toast_order_guid)
+unified_sales      → Normalized view for P&L (synced via RPC)
+```
+
+**Sync Pattern:**
+- Initial sync: 90 days of historical data
+- Incremental sync: 25 hours (24h + buffer)
+- Track via `initial_sync_done` flag on connection
+- Edge functions use service role key - remove `auth.uid()` checks from RPC functions
+
+**Key Files:**
+- `supabase/functions/_shared/toastOrderProcessor.ts` - Order processing logic
+- `supabase/functions/toast-sync-data/` - Manual sync endpoint
+- `src/hooks/useToastConnection.ts` - Frontend connection hook
+- `src/components/pos/ToastSetupWizard.tsx` - Setup UI
+
 ### Banking (Stripe Financial Connections)
 Never store bank credentials. Use Stripe for credential storage. Always verify webhook signatures.
 

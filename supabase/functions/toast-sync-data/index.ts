@@ -169,98 +169,132 @@ serve(async (req) => {
       }
     }
 
-    // Sync last 25 hours (24h + 1h buffer)
-    const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+    // Determine sync range based on initial_sync_done flag
+    // Initial sync: 90 days of historical data (batched in 7-day chunks to avoid timeouts)
+    // Subsequent syncs: 25 hours (24h + 1h buffer for timezone edge cases)
+    const isInitialSync = !connection.initial_sync_done;
+    const BATCH_DAYS = 7; // Process 7 days at a time for initial sync
+    const totalSyncDays = isInitialSync ? 90 : 1;
 
-    if (DEBUG) console.log(`Syncing orders from ${startDate} to ${endDate}`);
+    if (DEBUG) console.log(`Starting sync (initial_sync: ${isInitialSync}, ${totalSyncDays} days total)`);
 
     let totalOrders = 0;
-    let page = 1;
-    let hasMorePages = true;
     const errors: Array<{ orderGuid: string; message: string }> = [];
-    const MAX_ERRORS = 50; // Cap error collection
+    const MAX_ERRORS = 50;
 
-    while (hasMorePages) {
-      const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
-      
-      let ordersResponse;
-      try {
-        ordersResponse = await fetchWithTimeout(bulkUrl, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
-          }
-        }, 20000);
-      } catch (fetchError: any) {
-        console.error('Fetch orders failed:', fetchError.message);
-        throw new Error(`Failed to fetch orders: ${fetchError.message}`);
-      }
+    // Helper to fetch orders for a date range
+    async function fetchOrdersForRange(rangeStart: string, rangeEnd: string): Promise<number> {
+      let page = 1;
+      let rangeOrders = 0;
+      let hasMorePages = true;
 
-      if (!ordersResponse.ok) {
-        // Handle 401 with one retry after token refresh
-        if (ordersResponse.status === 401 && page === 1) {
-          if (DEBUG) console.log('Got 401, attempting token refresh and retry...');
-          const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
-          
-          const retryAuthResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              clientId: connection.client_id,
-              clientSecret: clientSecret,
-              userAccessType: 'TOAST_MACHINE_CLIENT'
-            })
-          }, 15000);
+      while (hasMorePages) {
+        const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(rangeStart)}&endDate=${encodeURIComponent(rangeEnd)}&pageSize=100&page=${page}`;
 
-          if (retryAuthResponse.ok) {
-            const authData = await retryAuthResponse.json();
-            accessToken = authData.token.accessToken;
-            
-            // Retry the fetch
-            ordersResponse = await fetchWithTimeout(bulkUrl, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
-              }
-            }, 20000);
-          }
+        let ordersResponse;
+        try {
+          ordersResponse = await fetchWithTimeout(bulkUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+            }
+          }, 30000);
+        } catch (fetchError: any) {
+          console.error('Fetch orders failed:', fetchError.message);
+          throw new Error(`Failed to fetch orders: ${fetchError.message}`);
         }
 
         if (!ordersResponse.ok) {
-          throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
-        }
-      }
+          // Handle 401 with one retry after token refresh
+          if (ordersResponse.status === 401 && page === 1) {
+            if (DEBUG) console.log('Got 401, attempting token refresh and retry...');
+            const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
 
-      const orders = await ordersResponse.json();
-      
-      if (!orders || orders.length === 0) {
-        hasMorePages = false;
-        break;
-      }
+            const retryAuthResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                clientId: connection.client_id,
+                clientSecret: clientSecret,
+                userAccessType: 'TOAST_MACHINE_CLIENT'
+              })
+            }, 15000);
 
-      for (const order of orders) {
-        try {
-          await processOrder(serviceSupabase, order, connection.restaurant_id, connection.toast_restaurant_guid);
-          totalOrders++;
-        } catch (orderError: any) {
-          console.error(`Error processing order ${order.guid || 'unknown'}:`, orderError.message);
-          if (errors.length < MAX_ERRORS) {
-            errors.push({
-              orderGuid: order.guid || order.id || 'unknown',
-              message: orderError.message || 'Unknown error'
-            });
+            if (retryAuthResponse.ok) {
+              const authData = await retryAuthResponse.json();
+              accessToken = authData.token.accessToken;
+
+              ordersResponse = await fetchWithTimeout(bulkUrl, {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+                }
+              }, 30000);
+            }
           }
-          // Continue processing other orders
+
+          if (!ordersResponse.ok) {
+            throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+          }
+        }
+
+        const orders = await ordersResponse.json();
+
+        if (!orders || orders.length === 0) {
+          break;
+        }
+
+        for (const order of orders) {
+          try {
+            // Skip per-order unified_sales sync during bulk - we'll do it once at the end
+            await processOrder(serviceSupabase, order, connection.restaurant_id, connection.toast_restaurant_guid, { skipUnifiedSalesSync: true });
+            rangeOrders++;
+          } catch (orderError: any) {
+            console.error(`Error processing order ${order.guid || 'unknown'}:`, orderError.message);
+            if (errors.length < MAX_ERRORS) {
+              errors.push({
+                orderGuid: order.guid || order.id || 'unknown',
+                message: orderError.message || 'Unknown error'
+              });
+            }
+          }
+        }
+
+        if (orders.length < 100) {
+          hasMorePages = false;
+        } else {
+          page++;
+          await new Promise(resolve => setTimeout(resolve, 200)); // Rate limiting
         }
       }
+      return rangeOrders;
+    }
 
-      if (orders.length < 100) {
-        hasMorePages = false;
-      } else {
-        page++;
-        await new Promise(resolve => setTimeout(resolve, 250)); // Rate limiting
+    // Process in batches for initial sync, single range for incremental
+    if (isInitialSync) {
+      // Break into 7-day chunks, working backwards from now
+      const now = Date.now();
+      for (let daysBack = 0; daysBack < totalSyncDays; daysBack += BATCH_DAYS) {
+        const batchEnd = new Date(now - daysBack * 24 * 3600 * 1000);
+        const batchStart = new Date(now - Math.min(daysBack + BATCH_DAYS, totalSyncDays) * 24 * 3600 * 1000);
+
+        if (DEBUG) console.log(`Batch: ${batchStart.toISOString()} to ${batchEnd.toISOString()}`);
+
+        const batchOrders = await fetchOrdersForRange(batchStart.toISOString(), batchEnd.toISOString());
+        totalOrders += batchOrders;
+
+        if (DEBUG) console.log(`Batch complete: ${batchOrders} orders (total: ${totalOrders})`);
+
+        // Small delay between batches
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+    } else {
+      // Incremental sync: just 25 hours
+      const endDate = new Date().toISOString();
+      const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+
+      if (DEBUG) console.log(`Incremental sync: ${startDate} to ${endDate}`);
+      totalOrders = await fetchOrdersForRange(startDate, endDate);
     }
 
     // Sync to unified_sales
@@ -274,13 +308,17 @@ serve(async (req) => {
       throw new Error(`Failed to sync to unified_sales: ${rpcError.message}`);
     }
 
-    // Update last sync time
-    const { error: syncUpdateError } = await serviceSupabase.from('toast_connections').update({
+    // Update last sync time and mark initial sync as done if applicable
+    const syncUpdate: Record<string, any> = {
       last_sync_time: new Date().toISOString(),
       connection_status: 'connected',
       last_error: null,
       last_error_at: null
-    }).eq('id', connection.id);
+    };
+    if (isInitialSync) {
+      syncUpdate.initial_sync_done = true;
+    }
+    const { error: syncUpdateError } = await serviceSupabase.from('toast_connections').update(syncUpdate).eq('id', connection.id);
 
     if (syncUpdateError) {
       console.error('Failed to update last_sync_time:', syncUpdateError.message);

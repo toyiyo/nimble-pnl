@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,20 +49,13 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const shift4Integration = useShift4Integration(restaurantId);
   
   // Toast-specific integration hook
-  const toastConnection = useToastConnection();
-  
+  const toastConnection = useToastConnection(restaurantId);
+
   // Check if this integration is Square, Clover, Shift4, or Toast and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
-  
-  // Check Toast connection status on mount
-  useEffect(() => {
-    if (isToastIntegration && restaurantId) {
-      toastConnection.checkConnectionStatus(restaurantId);
-    }
-  }, [restaurantId, isToastIntegration]);
   
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
                             isCloverIntegration ? cloverIntegration.isConnected :

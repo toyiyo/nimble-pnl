@@ -6510,6 +6510,8 @@ export type Database = {
           last_error_at: string | null
           last_sync_time: string | null
           restaurant_id: string
+          sync_cursor: number | null
+          sync_page: number | null
           toast_restaurant_guid: string
           token_expires_at: string | null
           token_fetched_at: string | null
@@ -6531,6 +6533,8 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id: string
+          sync_cursor?: number | null
+          sync_page?: number | null
           toast_restaurant_guid: string
           token_expires_at?: string | null
           token_fetched_at?: string | null
@@ -6552,6 +6556,8 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id?: string
+          sync_cursor?: number | null
+          sync_page?: number | null
           toast_restaurant_guid?: string
           token_expires_at?: string | null
           token_fetched_at?: string | null
@@ -6639,7 +6645,7 @@ export type Database = {
           synced_at: string
           toast_item_guid: string
           toast_order_guid: string
-          toast_order_id: string
+          toast_order_id: string | null
           total_price: number | null
           unit_price: number | null
         }
@@ -6655,7 +6661,7 @@ export type Database = {
           synced_at?: string
           toast_item_guid: string
           toast_order_guid: string
-          toast_order_id: string
+          toast_order_id?: string | null
           total_price?: number | null
           unit_price?: number | null
         }
@@ -6671,7 +6677,7 @@ export type Database = {
           synced_at?: string
           toast_item_guid?: string
           toast_order_guid?: string
-          toast_order_id?: string
+          toast_order_id?: string | null
           total_price?: number | null
           unit_price?: number | null
         }
@@ -8064,6 +8070,13 @@ export type Database = {
           supplier_name: string
         }[]
       }
+      sync_all_toast_to_unified_sales: {
+        Args: never
+        Returns: {
+          orders_synced: number
+          restaurant_id: string
+        }[]
+      }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
@@ -8076,10 +8089,16 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
-      sync_toast_to_unified_sales: {
-        Args: { p_restaurant_id: string }
-        Returns: number
-      }
+      sync_toast_to_unified_sales:
+        | { Args: { p_restaurant_id: string }; Returns: number }
+        | {
+            Args: {
+              p_end_date: string
+              p_restaurant_id: string
+              p_start_date: string
+            }
+            Returns: number
+          }
       text_soundex: { Args: { "": string }; Returns: string }
       toast_sync_financial_breakdown: {
         Args: { p_order_guid: string; p_restaurant_id: string }

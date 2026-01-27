@@ -160,11 +160,11 @@ serve(async (req) => {
             console.log("[FC-SESSION] ✓ Created new Stripe customer to prevent tenant conflict:", stripeCustomerId);
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("[FC-SESSION] Error verifying Stripe customer:", error);
         
         // If customer doesn't exist in Stripe (404), create a new one
-        if (error instanceof Stripe.errors.StripeError && error.statusCode === 404) {
+        if (error && typeof error === 'object' && 'statusCode' in error && (error as any).statusCode === 404) {
           console.log("[FC-SESSION] Stripe customer not found, creating new customer");
           const newCustomer = await stripe.customers.create({
             metadata: { restaurant_id: restaurantId },

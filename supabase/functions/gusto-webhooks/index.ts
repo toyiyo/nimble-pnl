@@ -4,7 +4,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts';
 import { logSecurityEvent } from '../_shared/encryption.ts';
-import { createGustoClient, getGustoConfig } from '../_shared/gustoClient.ts';
+import { createGustoClientWithRefresh, getGustoConfig, GustoConnection } from '../_shared/gustoClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -309,9 +309,13 @@ async function syncEmployeeOnboardingStatus(
       return;
     }
 
-    // Get Gusto config and create client
+    // Get Gusto config and create client with automatic token refresh
     const gustoConfig = getGustoConfig(); // Use demo by default for webhooks
-    const gustoClient = await createGustoClient(connection.access_token, gustoConfig.baseUrl);
+    const gustoClient = await createGustoClientWithRefresh(
+      connection as GustoConnection,
+      gustoConfig,
+      supabase
+    );
 
     // Fetch the employee details from Gusto
     const gustoEmployee = await gustoClient.getEmployee(gustoEmployeeUuid);

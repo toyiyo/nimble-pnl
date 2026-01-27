@@ -6,7 +6,7 @@
 // - Contractor payments
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { createGustoClient, getGustoConfig, GustoApiError } from '../_shared/gustoClient.ts';
+import { createGustoClientWithRefresh, getGustoConfig, GustoApiError, GustoConnection } from '../_shared/gustoClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,7 +98,11 @@ Deno.serve(async (req) => {
 
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
     const gustoConfig = getGustoConfig(origin || undefined);
-    const gustoClient = await createGustoClient(connection.access_token, gustoConfig.baseUrl);
+    const gustoClient = await createGustoClientWithRefresh(
+      connection as GustoConnection,
+      gustoConfig,
+      supabase
+    );
 
     // Get the target payroll
     let targetPayrollUuid = payrollUuid;

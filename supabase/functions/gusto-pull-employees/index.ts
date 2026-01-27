@@ -3,7 +3,7 @@
 // This handles employees created directly in Gusto that need to appear in EasyShiftHQ
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import { createGustoClient, getGustoConfig, GustoApiError } from '../_shared/gustoClient.ts';
+import { createGustoClientWithRefresh, getGustoConfig, GustoApiError, GustoConnection } from '../_shared/gustoClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,8 +85,12 @@ Deno.serve(async (req) => {
     const origin = req.headers.get('origin') || req.headers.get('referer')?.split('/').slice(0, 3).join('/');
     const gustoConfig = getGustoConfig(origin || undefined);
 
-    // Create Gusto client with decrypted token
-    const gustoClient = await createGustoClient(connection.access_token, gustoConfig.baseUrl);
+    // Create Gusto client with automatic token refresh
+    const gustoClient = await createGustoClientWithRefresh(
+      connection as GustoConnection,
+      gustoConfig,
+      supabase
+    );
 
     // Fetch all employees from Gusto
     console.log('[GUSTO-PULL] Fetching employees from Gusto company:', connection.company_uuid);

@@ -452,6 +452,85 @@ export async function encryptTokens(tokens: GustoTokenResponse): Promise<{
   return { encryptedAccessToken, encryptedRefreshToken };
 }
 
+/**
+ * Connection data from gusto_connections table
+ */
+export interface GustoConnection {
+  id: string;
+  restaurant_id: string;
+  company_uuid: string;
+  access_token: string;  // encrypted
+  refresh_token: string; // encrypted
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Create a Gusto client with automatic token refresh
+ * This will refresh the token if it's expired and update the database
+ */
+export async function createGustoClientWithRefresh(
+  connection: GustoConnection,
+  config: GustoConfig,
+  supabaseClient: { from: (table: string) => unknown }
+): Promise<GustoClient> {
+  const encryption = await getEncryptionService();
+
+  // First, try with the current access token
+  let accessToken = await encryption.decrypt(connection.access_token);
+
+  // Test if token is valid with a simple API call
+  const testClient = new GustoClient(accessToken, config.baseUrl);
+
+  try {
+    // Quick test - get company info (lightweight call)
+    await testClient.getCompany(connection.company_uuid);
+    console.log('[GUSTO-CLIENT] Access token is valid');
+    return testClient;
+  } catch (error) {
+    // Check if it's a 401 (unauthorized/expired token)
+    if (error instanceof GustoApiError && error.status === 401) {
+      console.log('[GUSTO-CLIENT] Access token expired, refreshing...');
+
+      if (!connection.refresh_token) {
+        throw new Error('No refresh token available. User needs to re-authenticate with Gusto.');
+      }
+
+      // Decrypt refresh token and get new tokens
+      const refreshToken = await encryption.decrypt(connection.refresh_token);
+      const newTokens = await refreshAccessToken(refreshToken, config);
+
+      // Encrypt new tokens
+      const { encryptedAccessToken, encryptedRefreshToken } = await encryptTokens(newTokens);
+
+      // Update database with new tokens
+      // Using type assertion since we just need the basic from().update() pattern
+      const updateResult = await (supabaseClient.from('gusto_connections') as {
+        update: (data: Record<string, unknown>) => { eq: (col: string, val: string) => Promise<{ error: Error | null }> }
+      })
+        .update({
+          access_token: encryptedAccessToken,
+          refresh_token: encryptedRefreshToken || connection.refresh_token,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', connection.id);
+
+      if (updateResult.error) {
+        console.error('[GUSTO-CLIENT] Failed to update tokens in database:', updateResult.error);
+        // Continue anyway - we have valid tokens in memory
+      } else {
+        console.log('[GUSTO-CLIENT] Tokens refreshed and saved to database');
+      }
+
+      // Return client with new access token
+      return new GustoClient(newTokens.access_token, config.baseUrl);
+    }
+
+    // Re-throw other errors
+    throw error;
+  }
+}
+
 // ============================================================================
 // Type Definitions
 // ============================================================================

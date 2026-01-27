@@ -6,6 +6,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Decode JWT payload without verification (just to read claims)
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = parts[1];
+    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -82,50 +95,63 @@ serve(async (req) => {
     }
 
     const authData = await authResponse.json();
-    const accessToken = authData.token.accessToken;
+    const accessToken = authData.token?.accessToken;
 
-    // Fetch accessible restaurants/locations
-    // The Toast API returns restaurants that the credentials have access to
-    const restaurantsResponse = await fetch('https://ws-api.toasttab.com/restaurants/v1/restaurants', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    if (!restaurantsResponse.ok) {
-      const errorText = await restaurantsResponse.text();
-      console.error('Failed to fetch Toast restaurants:', errorText);
-
-      // If we can't fetch the list, return empty - user may need to enter manually
-      return new Response(JSON.stringify({
-        success: true,
-        locations: [],
-        message: 'Could not automatically fetch locations. Please enter your Location ID manually.'
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const restaurantsData = await restaurantsResponse.json();
-
-    // Map to a simpler format
-    const locations = (restaurantsData || []).map((r: any) => ({
-      guid: r.guid || r.restaurantGuid,
-      name: r.name || r.restaurantName,
-      location: r.location?.address1 || r.address?.address1 || ''
+    // Log the full auth response structure to help debug
+    console.log('Toast auth response structure:', JSON.stringify({
+      hasToken: !!authData.token,
+      tokenKeys: authData.token ? Object.keys(authData.token) : [],
+      topLevelKeys: Object.keys(authData),
+      // Check for restaurant info in the response
+      restaurants: authData.restaurants,
+      restaurantGuids: authData.restaurantGuids,
+      scope: authData.scope,
     }));
 
+    // Try to decode the JWT to find restaurant GUIDs in claims
+    if (accessToken) {
+      const tokenPayload = decodeJwtPayload(accessToken);
+      console.log('JWT payload:', JSON.stringify(tokenPayload));
+
+      // Check common claim names for restaurant GUIDs
+      const possibleLocations =
+        tokenPayload?.restaurantGuids ||
+        tokenPayload?.restaurants ||
+        tokenPayload?.['toast-restaurant-external-ids'] ||
+        tokenPayload?.externalIds ||
+        tokenPayload?.scope;
+
+      if (Array.isArray(possibleLocations)) {
+        const locations = possibleLocations.map((guid: string, index: number) => ({
+          guid: guid,
+          name: `Location ${index + 1}`,
+          location: ''
+        }));
+
+        return new Response(JSON.stringify({
+          success: true,
+          locations: locations,
+          message: 'Found restaurant GUIDs in authentication token'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    // If we can't find locations in the token, return empty with helpful message
     return new Response(JSON.stringify({
       success: true,
-      locations: locations
+      locations: [],
+      credentialsValid: true,
+      message: 'Credentials are valid. Please enter your Restaurant External ID manually - find it in your Toast credential details under "Edit Location IDs".'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error: any) {
-    console.error('Error fetching Toast locations:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching Toast locations:', errorMessage);
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

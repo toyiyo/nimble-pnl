@@ -170,25 +170,30 @@ serve(async (req) => {
     }
 
     // Determine sync range based on initial_sync_done flag
-    // Initial sync: 90 days of historical data (batched in 7-day chunks to avoid timeouts)
+    // Initial sync: Process only 3 days at a time to avoid CPU limits
+    // Client should call repeatedly until initial_sync_done is true
     // Subsequent syncs: 25 hours (24h + 1h buffer for timezone edge cases)
     const isInitialSync = !connection.initial_sync_done;
-    const BATCH_DAYS = 7; // Process 7 days at a time for initial sync
-    const totalSyncDays = isInitialSync ? 90 : 1;
+    const BATCH_DAYS = 3; // Process only 3 days per request to stay under CPU limits
+    const MAX_ORDERS_PER_REQUEST = 100; // Cap orders per request
 
-    if (DEBUG) console.log(`Starting sync (initial_sync: ${isInitialSync}, ${totalSyncDays} days total)`);
+    // For initial sync, use sync_cursor to track progress (days back from now)
+    // sync_cursor stores how many days we've already synced
+    const syncCursor = connection.sync_cursor || 0;
+    const TARGET_DAYS = 90;
+
+    if (DEBUG) console.log(`Starting sync (initial_sync: ${isInitialSync}, cursor: ${syncCursor} days)`);
 
     let totalOrders = 0;
     const errors: Array<{ orderGuid: string; message: string }> = [];
     const MAX_ERRORS = 50;
 
-    // Helper to fetch orders for a date range
-    async function fetchOrdersForRange(rangeStart: string, rangeEnd: string): Promise<number> {
+    // Helper to fetch orders for a date range (with optional order limit)
+    async function fetchOrdersForRange(rangeStart: string, rangeEnd: string, maxOrders = 500): Promise<number> {
       let page = 1;
       let rangeOrders = 0;
-      let hasMorePages = true;
 
-      while (hasMorePages) {
+      while (rangeOrders < maxOrders) {
         const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(rangeStart)}&endDate=${encodeURIComponent(rangeEnd)}&pageSize=100&page=${page}`;
 
         let ordersResponse;
@@ -260,41 +265,45 @@ serve(async (req) => {
           }
         }
 
-        if (orders.length < 100) {
-          hasMorePages = false;
-        } else {
-          page++;
-          await new Promise(resolve => setTimeout(resolve, 200)); // Rate limiting
+        if (orders.length < 100 || rangeOrders >= maxOrders) {
+          break;
         }
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 200)); // Rate limiting
       }
       return rangeOrders;
     }
 
-    // Process in batches for initial sync, single range for incremental
-    if (isInitialSync) {
-      // Break into 7-day chunks, working backwards from now
+    // Process one batch per request to stay under CPU limits
+    let syncComplete = false;
+    let newCursor = syncCursor;
+
+    if (isInitialSync && syncCursor < TARGET_DAYS) {
+      // Process ONE batch of BATCH_DAYS, starting from cursor
       const now = Date.now();
-      for (let daysBack = 0; daysBack < totalSyncDays; daysBack += BATCH_DAYS) {
-        const batchEnd = new Date(now - daysBack * 24 * 3600 * 1000);
-        const batchStart = new Date(now - Math.min(daysBack + BATCH_DAYS, totalSyncDays) * 24 * 3600 * 1000);
+      const batchEnd = new Date(now - syncCursor * 24 * 3600 * 1000);
+      const batchStart = new Date(now - Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS) * 24 * 3600 * 1000);
 
-        if (DEBUG) console.log(`Batch: ${batchStart.toISOString()} to ${batchEnd.toISOString()}`);
+      if (DEBUG) console.log(`Initial sync batch: ${batchStart.toISOString()} to ${batchEnd.toISOString()} (days ${syncCursor}-${syncCursor + BATCH_DAYS})`);
 
-        const batchOrders = await fetchOrdersForRange(batchStart.toISOString(), batchEnd.toISOString());
-        totalOrders += batchOrders;
+      totalOrders = await fetchOrdersForRange(batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
+      newCursor = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
 
-        if (DEBUG) console.log(`Batch complete: ${batchOrders} orders (total: ${totalOrders})`);
+      if (DEBUG) console.log(`Batch complete: ${totalOrders} orders, new cursor: ${newCursor}`);
 
-        // Small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      // Check if we've completed the full 90 days
+      syncComplete = newCursor >= TARGET_DAYS;
+    } else if (isInitialSync) {
+      // Cursor reached target, mark complete
+      syncComplete = true;
     } else {
       // Incremental sync: just 25 hours
       const endDate = new Date().toISOString();
       const startDate = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
 
       if (DEBUG) console.log(`Incremental sync: ${startDate} to ${endDate}`);
-      totalOrders = await fetchOrdersForRange(startDate, endDate);
+      totalOrders = await fetchOrdersForRange(startDate, endDate, MAX_ORDERS_PER_REQUEST);
+      syncComplete = true; // Incremental syncs always complete in one request
     }
 
     // Sync to unified_sales
@@ -308,34 +317,39 @@ serve(async (req) => {
       throw new Error(`Failed to sync to unified_sales: ${rpcError.message}`);
     }
 
-    // Update last sync time and mark initial sync as done if applicable
-    const syncUpdate: Record<string, any> = {
+    // Update sync progress
+    const syncUpdate: Record<string, unknown> = {
       last_sync_time: new Date().toISOString(),
       connection_status: 'connected',
       last_error: null,
-      last_error_at: null
+      last_error_at: null,
+      sync_cursor: newCursor // Track progress for resumable sync
     };
-    if (isInitialSync) {
+    if (syncComplete) {
       syncUpdate.initial_sync_done = true;
+      syncUpdate.sync_cursor = 0; // Reset cursor when complete
     }
     const { error: syncUpdateError } = await serviceSupabase.from('toast_connections').update(syncUpdate).eq('id', connection.id);
 
     if (syncUpdateError) {
-      console.error('Failed to update last_sync_time:', syncUpdateError.message);
+      console.error('Failed to update sync progress:', syncUpdateError.message);
       // Non-fatal, continue
     }
 
     await logSecurityEvent(serviceSupabase, 'TOAST_MANUAL_SYNC', user.id, connection.restaurant_id, {
       ordersSynced: totalOrders,
-      errorCount: errors.length
+      errorCount: errors.length,
+      syncComplete
     });
 
-    if (DEBUG) console.log(`Manual sync completed: ${totalOrders} orders, ${errors.length} errors`);
+    if (DEBUG) console.log(`Sync batch complete: ${totalOrders} orders, ${errors.length} errors, complete: ${syncComplete}`);
 
     return new Response(JSON.stringify({
       success: true,
       ordersSynced: totalOrders,
-      errors: errors
+      errors: errors,
+      syncComplete, // Tell client if they need to call again
+      progress: isInitialSync ? Math.round((newCursor / TARGET_DAYS) * 100) : 100
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

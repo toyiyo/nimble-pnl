@@ -21,13 +21,17 @@ interface SyncError {
 interface SyncResult {
   ordersSynced: number;
   errors: (string | SyncError)[];
+  syncComplete?: boolean;
+  progress?: number;
 }
 
 export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [totalOrdersSynced, setTotalOrdersSynced] = useState(0);
+  const [syncProgress, setSyncProgress] = useState(0);
   const { toast } = useToast();
-  const { connection, triggerManualSync } = useToastConnection(restaurantId);
+  const { connection, triggerManualSync, checkConnectionStatus } = useToastConnection(restaurantId);
 
   const handleSync = async () => {
     if (!connection?.is_active) {
@@ -41,21 +45,52 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
 
     setIsLoading(true);
     setSyncResult(null);
+    setTotalOrdersSynced(0);
+    setSyncProgress(0);
+
+    let allErrors: (string | SyncError)[] = [];
+    let totalOrders = 0;
+    let complete = false;
 
     try {
-      const data = await triggerManualSync(restaurantId);
+      // Loop until sync is complete (handles resumable initial sync)
+      while (!complete) {
+        const data = await triggerManualSync(restaurantId);
 
-      if (data?.ordersSynced !== undefined) {
-        setSyncResult({
-          ordersSynced: data.ordersSynced,
-          errors: data.errors || []
-        });
+        if (data?.ordersSynced !== undefined) {
+          totalOrders += data.ordersSynced;
+          setTotalOrdersSynced(totalOrders);
+          setSyncProgress(data.progress || 100);
 
-        toast({
-          title: 'Sync complete',
-          description: `${data.ordersSynced} orders synced successfully`,
-        });
+          if (data.errors?.length) {
+            allErrors = [...allErrors, ...data.errors];
+          }
+
+          complete = data.syncComplete !== false;
+
+          if (!complete) {
+            // Brief pause between batches
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } else {
+          break;
+        }
       }
+
+      setSyncResult({
+        ordersSynced: totalOrders,
+        errors: allErrors,
+        syncComplete: true,
+        progress: 100
+      });
+
+      // Refresh connection status to update UI
+      await checkConnectionStatus(restaurantId);
+
+      toast({
+        title: 'Sync complete',
+        description: `${totalOrders} orders synced successfully`,
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed';
       toast({
@@ -64,6 +99,16 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
         variant: 'destructive',
       });
       console.error('Sync error:', error);
+
+      // Still show partial results if we synced some orders
+      if (totalOrders > 0) {
+        setSyncResult({
+          ordersSynced: totalOrders,
+          errors: [...allErrors, errorMessage],
+          syncComplete: false,
+          progress: syncProgress
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -189,12 +234,22 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
         {isLoading && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Syncing data from Toast...</span>
+              <span className="text-sm font-medium">
+                Syncing data from Toast... {syncProgress > 0 && `(${syncProgress}%)`}
+              </span>
               <RefreshCw className="h-4 w-4 animate-spin" />
             </div>
-            <Progress value={undefined} className="w-full" />
+            {totalOrdersSynced > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {totalOrdersSynced} orders synced so far
+              </p>
+            )}
+            <Progress value={syncProgress || undefined} className="w-full" />
             <p className="text-xs text-muted-foreground">
-              This may take a few minutes depending on the amount of data
+              {!initialSyncDone
+                ? 'Initial sync fetches 90 days of history in batches'
+                : 'Syncing recent orders'
+              }
             </p>
           </div>
         )}

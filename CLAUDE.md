@@ -176,10 +176,13 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 ```
 
 **Sync Pattern:**
-- Initial sync: 90 days of historical data
+- Initial sync: 90 days of historical data, processed in 3-day batches via `sync_cursor`
 - Incremental sync: 25 hours (24h + buffer)
-- Track via `initial_sync_done` flag on connection
+- Track via `initial_sync_done` and `sync_cursor` columns on connection
 - Edge functions use service role key - remove `auth.uid()` checks from RPC functions
+- **CPU Limits**: Edge functions have strict CPU limits (~10s). Batch processing and skip per-order RPC calls
+- **unified_sales sync**: For large imports, defer to cron job (runs every 6 hours) to avoid timeouts
+- Use `skipUnifiedSalesSync: true` in processOrder during bulk imports
 
 **Key Files:**
 - `supabase/functions/_shared/toastOrderProcessor.ts` - Order processing logic

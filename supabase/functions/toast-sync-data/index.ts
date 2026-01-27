@@ -306,15 +306,25 @@ serve(async (req) => {
       syncComplete = true; // Incremental syncs always complete in one request
     }
 
-    // Sync to unified_sales
-    if (DEBUG) console.log('Syncing to unified_sales...');
-    const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
-      p_restaurant_id: connection.restaurant_id
-    });
-
-    if (rpcError) {
-      console.error('RPC sync_toast_to_unified_sales failed:', rpcError.message);
-      throw new Error(`Failed to sync to unified_sales: ${rpcError.message}`);
+    // Unified sales sync is handled by scheduled cron job to avoid timeouts
+    // For large datasets, the RPC can take too long for edge function limits
+    // The cron job runs every 6 hours and will sync all pending data
+    if (syncComplete && totalOrders > 0) {
+      if (DEBUG) console.log('Data imported - unified_sales sync will be handled by scheduled job');
+      // For small syncs (incremental), try to sync immediately but don't fail if it times out
+      if (!isInitialSync && totalOrders < 50) {
+        try {
+          const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
+            p_restaurant_id: connection.restaurant_id
+          });
+          if (rpcError) {
+            console.warn('RPC sync_toast_to_unified_sales warning:', rpcError.message);
+            // Don't throw - let cron handle it
+          }
+        } catch (e) {
+          console.warn('Unified sales sync deferred to cron job');
+        }
+      }
     }
 
     // Update sync progress

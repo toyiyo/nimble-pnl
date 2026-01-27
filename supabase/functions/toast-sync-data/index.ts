@@ -13,8 +13,9 @@ const corsHeaders = {
 const FETCH_TIMEOUT_MS = 20000;
 const DEBUG = Deno.env.get('DEBUG') === 'true';
 const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentication/login';
-const BATCH_DAYS = 3;
-const MAX_ORDERS_PER_REQUEST = 100;
+// Reduced batch sizes to stay within Supabase Edge Function CPU limits (2s)
+const BATCH_DAYS = 1;  // Process 1 day at a time (was 3)
+const MAX_ORDERS_PER_REQUEST = 50;  // Fewer orders per batch (was 100)
 const TARGET_DAYS = 90;
 const MAX_ERRORS = 50;
 
@@ -288,16 +289,23 @@ async function tryUnifiedSalesSync(
   serviceSupabase: SupabaseClient,
   restaurantId: string,
   isInitialSync: boolean,
-  totalOrders: number
+  totalOrders: number,
+  startDate: string,
+  endDate: string
 ): Promise<void> {
+  // Skip unified_sales sync during initial import (too much data, would timeout)
+  // The scheduled cron job will handle this incrementally
   if (isInitialSync || totalOrders >= 50) {
     if (DEBUG) console.log('Data imported - unified_sales sync will be handled by scheduled job');
     return;
   }
 
   try {
+    // Use date-range version to avoid CPU timeouts
     const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
-      p_restaurant_id: restaurantId
+      p_restaurant_id: restaurantId,
+      p_start_date: startDate.split('T')[0],
+      p_end_date: endDate.split('T')[0]
     });
     if (rpcError) {
       console.warn('RPC sync_toast_to_unified_sales warning:', rpcError.message);
@@ -401,6 +409,8 @@ serve(async (req) => {
     let syncComplete = false;
     let newCursor = 0;
     let progress = 100;
+    let syncStartDate = '';
+    let syncEndDate = '';
 
     // Custom date range sync (user-specified backfill)
     if (isCustomRange) {
@@ -408,8 +418,11 @@ serve(async (req) => {
         console.log(`Custom range sync: ${customStartDate} to ${customEndDate}`);
       }
 
+      syncStartDate = customStartDate!;
+      syncEndDate = customEndDate!;
+
       // For custom range, fetch all orders (no 100-order limit per batch)
-      const result = await fetchOrdersForRange(ctx, customStartDate!, customEndDate!, 500);
+      const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, 500);
       totalOrders = result.ordersProcessed;
       allErrors = result.errors;
       syncComplete = true;
@@ -419,14 +432,16 @@ serve(async (req) => {
       // Normal sync logic (initial or incremental)
       const { isInitialSync, syncCursor, batchStart, batchEnd } = calculateSyncRange(connection);
       newCursor = syncCursor;
+      syncStartDate = batchStart.toISOString();
+      syncEndDate = batchEnd.toISOString();
 
       if (DEBUG) {
         console.log(`Starting sync (initial_sync: ${isInitialSync}, cursor: ${syncCursor} days)`);
-        console.log(`Sync range: ${batchStart.toISOString()} to ${batchEnd.toISOString()}`);
+        console.log(`Sync range: ${syncStartDate} to ${syncEndDate}`);
       }
 
       if (isInitialSync && syncCursor < TARGET_DAYS) {
-        const result = await fetchOrdersForRange(ctx, batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
+        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST);
         totalOrders = result.ordersProcessed;
         allErrors = result.errors;
         newCursor = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
@@ -436,16 +451,16 @@ serve(async (req) => {
       } else if (isInitialSync) {
         syncComplete = true;
       } else {
-        const result = await fetchOrdersForRange(ctx, batchStart.toISOString(), batchEnd.toISOString(), MAX_ORDERS_PER_REQUEST);
+        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST);
         totalOrders = result.ordersProcessed;
         allErrors = result.errors;
         syncComplete = true;
       }
     }
 
-    // Sync to unified_sales if we have orders
+    // Sync to unified_sales if we have orders (using date range to avoid CPU timeout)
     if (syncComplete && totalOrders > 0) {
-      await tryUnifiedSalesSync(serviceSupabase, connection.restaurant_id, isCustomRange, totalOrders);
+      await tryUnifiedSalesSync(serviceSupabase, connection.restaurant_id, isCustomRange, totalOrders, syncStartDate, syncEndDate);
     }
 
     // Update sync progress (skip for custom range backfills - don't change cursor)

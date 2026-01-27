@@ -75,7 +75,8 @@ DECLARE
   v_row_count INTEGER;
 BEGIN
   -- Authorization check: verify user has access to this restaurant
-  IF NOT EXISTS (
+  -- Skip check when called from service role (auth.uid() is NULL)
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.user_restaurants
     WHERE restaurant_id = p_restaurant_id
       AND user_id = auth.uid()
@@ -235,8 +236,196 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION sync_toast_to_unified_sales IS
-  'Syncs Toast orders to unified_sales. Called by edge functions with service role.';
+COMMENT ON FUNCTION sync_toast_to_unified_sales(UUID) IS
+  'Syncs ALL Toast orders to unified_sales. For large datasets, use the date-range version.';
+
+-- Overloaded version with date range for incremental/batched processing
+-- This is the preferred version for large datasets to avoid CPU timeouts
+CREATE OR REPLACE FUNCTION sync_toast_to_unified_sales(
+  p_restaurant_id UUID,
+  p_start_date DATE,
+  p_end_date DATE
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_synced_count INTEGER := 0;
+  v_row_count INTEGER;
+BEGIN
+  -- Authorization check: skip when called from service role (auth.uid() is NULL)
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
+  END IF;
+
+  -- Insert/Update REVENUE entries (from order items) - filtered by date
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id,
+    item_name, quantity, unit_price, total_price,
+    sale_date, sale_time, pos_category, item_type, raw_data, synced_at
+  )
+  SELECT
+    toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid,
+    toi.item_name, toi.quantity, toi.unit_price, toi.total_price,
+    too.order_date, too.order_time, toi.menu_category, 'sale', toi.raw_json, NOW()
+  FROM public.toast_order_items toi
+  INNER JOIN public.toast_orders too
+    ON toi.toast_order_guid = too.toast_order_guid
+    AND toi.restaurant_id = too.restaurant_id
+  WHERE toi.restaurant_id = p_restaurant_id
+    AND too.order_date >= p_start_date
+    AND too.order_date <= p_end_date
+    AND toi.total_price IS NOT NULL
+    AND toi.total_price != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    quantity = EXCLUDED.quantity,
+    unit_price = EXCLUDED.unit_price,
+    total_price = EXCLUDED.total_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    pos_category = EXCLUDED.pos_category,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
+  -- Insert/Update DISCOUNT entries - filtered by date
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id,
+    item_name, quantity, unit_price, total_price,
+    sale_date, sale_time, item_type, adjustment_type, raw_data, synced_at
+  )
+  SELECT
+    too.restaurant_id, 'toast', too.toast_order_guid, too.toast_order_guid || '_discount',
+    'Order Discount', 1, -ABS(too.discount_amount), -ABS(too.discount_amount),
+    too.order_date, too.order_time, 'discount', 'discount', too.raw_json, NOW()
+  FROM public.toast_orders too
+  WHERE too.restaurant_id = p_restaurant_id
+    AND too.order_date >= p_start_date
+    AND too.order_date <= p_end_date
+    AND too.discount_amount IS NOT NULL
+    AND too.discount_amount != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
+  -- Insert/Update TAX entries - filtered by date
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id,
+    item_name, quantity, unit_price, total_price,
+    sale_date, sale_time, item_type, adjustment_type, raw_data, synced_at
+  )
+  SELECT
+    too.restaurant_id, 'toast', too.toast_order_guid, too.toast_order_guid || '_tax',
+    'Sales Tax', 1, too.tax_amount, too.tax_amount,
+    too.order_date, too.order_time, 'tax', 'tax', too.raw_json, NOW()
+  FROM public.toast_orders too
+  WHERE too.restaurant_id = p_restaurant_id
+    AND too.order_date >= p_start_date
+    AND too.order_date <= p_end_date
+    AND too.tax_amount IS NOT NULL
+    AND too.tax_amount != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
+  -- Insert/Update TIP entries - filtered by payment_date
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id,
+    item_name, quantity, unit_price, total_price,
+    sale_date, sale_time, item_type, adjustment_type, raw_data, synced_at
+  )
+  SELECT
+    tp.restaurant_id, 'toast', tp.toast_order_guid, tp.toast_payment_guid || '_tip',
+    'Tip - ' || COALESCE(tp.payment_type, 'Unknown'), 1, tp.tip_amount, tp.tip_amount,
+    tp.payment_date, NULL, 'tip', 'tip', tp.raw_json, NOW()
+  FROM public.toast_payments tp
+  WHERE tp.restaurant_id = p_restaurant_id
+    AND tp.payment_date >= p_start_date
+    AND tp.payment_date <= p_end_date
+    AND tp.tip_amount IS NOT NULL
+    AND tp.tip_amount != 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
+  -- Insert/Update REFUND entries - filtered by payment_date
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id,
+    item_name, quantity, unit_price, total_price,
+    sale_date, sale_time, item_type, raw_data, synced_at
+  )
+  SELECT
+    tp.restaurant_id, 'toast', tp.toast_order_guid, tp.toast_payment_guid || '_refund',
+    'Refund - ' || COALESCE(tp.payment_type, 'Unknown'), 1,
+    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
+    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
+    tp.payment_date, NULL, 'refund', tp.raw_json, NOW()
+  FROM public.toast_payments tp
+  WHERE tp.restaurant_id = p_restaurant_id
+    AND tp.payment_date >= p_start_date
+    AND tp.payment_date <= p_end_date
+    AND tp.raw_json->>'refundStatus' IN ('PARTIAL', 'FULL')
+    AND (tp.raw_json->'refund'->>'refundAmount')::NUMERIC > 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET
+    item_name = EXCLUDED.item_name,
+    total_price = EXCLUDED.total_price,
+    unit_price = EXCLUDED.unit_price,
+    sale_date = EXCLUDED.sale_date,
+    sale_time = EXCLUDED.sale_time,
+    raw_data = EXCLUDED.raw_data,
+    synced_at = EXCLUDED.synced_at;
+
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_synced_count := v_synced_count + v_row_count;
+
+  RETURN v_synced_count;
+END;
+$$;
+
+COMMENT ON FUNCTION sync_toast_to_unified_sales(UUID, DATE, DATE) IS
+  'Syncs Toast orders within date range to unified_sales. Use for large datasets to avoid CPU timeouts.';
 
 -- DEPRECATED: Backward compatibility wrapper for toastOrderProcessor.ts
 -- p_order_guid is intentionally ignored - this performs a full restaurant sync.

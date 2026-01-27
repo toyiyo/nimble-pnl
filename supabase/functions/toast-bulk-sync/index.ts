@@ -22,7 +22,8 @@ const corsHeaders = {
 
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_RESTAURANTS_PER_RUN = 5;
-const MAX_ORDERS_PER_RESTAURANT = 200;
+// Reduced to stay within Supabase Edge Function CPU limits (2s)
+const MAX_ORDERS_PER_RESTAURANT = 100;  // Was 200
 const DELAY_BETWEEN_RESTAURANTS_MS = 2000;
 const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentication/login';
 
@@ -223,13 +224,18 @@ async function fetchAndProcessOrders(
 async function syncUnifiedSales(
   supabase: SupabaseClient,
   restaurantId: string,
-  ordersProcessed: number
+  ordersProcessed: number,
+  startDate: string,
+  endDate: string
 ): Promise<void> {
   if (ordersProcessed === 0) return;
 
-  console.log('Syncing to unified_sales...');
+  console.log(`Syncing to unified_sales for date range ${startDate} to ${endDate}...`);
+  // Use date-range version to avoid CPU timeouts on large datasets
   const { error: rpcError } = await supabase.rpc('sync_toast_to_unified_sales', {
-    p_restaurant_id: restaurantId
+    p_restaurant_id: restaurantId,
+    p_start_date: startDate.split('T')[0],  // Extract date portion
+    p_end_date: endDate.split('T')[0]
   });
 
   if (rpcError) {
@@ -293,7 +299,7 @@ async function processConnection(
       endDate
     );
 
-    await syncUnifiedSales(supabase, connection.restaurant_id, totalOrdersForRestaurant);
+    await syncUnifiedSales(supabase, connection.restaurant_id, totalOrdersForRestaurant, startDate, endDate);
     await updateConnectionSuccess(supabase, connection.id);
 
     await logSecurityEvent(supabase, 'TOAST_BULK_SYNC_SUCCESS', undefined, connection.restaurant_id, {

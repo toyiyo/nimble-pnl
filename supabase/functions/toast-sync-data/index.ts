@@ -327,21 +327,25 @@ interface UnifiedSalesSyncParams {
   serviceSupabase: SupabaseClient;
   restaurantId: string;
   isInitialSync: boolean;
+  isCustomRange: boolean;
   totalOrders: number;
   startDate: string;
   endDate: string;
 }
 
 async function tryUnifiedSalesSync(params: UnifiedSalesSyncParams): Promise<void> {
-  const { serviceSupabase, restaurantId, isInitialSync, totalOrders, startDate, endDate } = params;
+  const { serviceSupabase, restaurantId, isInitialSync, isCustomRange, totalOrders, startDate, endDate } = params;
   const ORDER_THRESHOLD = 50;
 
   // Skip unified_sales sync during initial 90-day import or large batches
-  // The scheduled cron job will handle this incrementally
-  if (isInitialSync || totalOrders >= ORDER_THRESHOLD) {
+  // UNLESS this is a custom range sync - user explicitly requested this data
+  // The scheduled cron job only processes last 7 days, so custom ranges need immediate sync
+  if (!isCustomRange && (isInitialSync || totalOrders >= ORDER_THRESHOLD)) {
     if (DEBUG) console.log('Data imported - unified_sales sync will be handled by scheduled job');
     return;
   }
+
+  if (DEBUG) console.log(`Syncing to unified_sales for ${startDate} to ${endDate}...`);
 
   try {
     const { error: rpcError } = await serviceSupabase.rpc('sync_toast_to_unified_sales', {
@@ -532,6 +536,7 @@ serve(async (req) => {
         serviceSupabase,
         restaurantId: connection.restaurant_id,
         isInitialSync: isInitialSyncPhase,
+        isCustomRange,
         totalOrders,
         startDate: syncStartDate,
         endDate: syncEndDate

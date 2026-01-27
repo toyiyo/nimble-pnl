@@ -507,6 +507,7 @@ COMMENT ON COLUMN toast_connections.sync_page IS
   'Page cursor for initial sync pagination. Tracks which page within the current sync_cursor day. Reset to 1 when moving to the next day.';
 
 -- Function to sync all active Toast connections to unified_sales
+-- Uses full sync (no date filter) to handle historical backfills properly
 CREATE OR REPLACE FUNCTION sync_all_toast_to_unified_sales()
 RETURNS TABLE(restaurant_id UUID, orders_synced INTEGER)
 LANGUAGE plpgsql
@@ -515,13 +516,7 @@ AS $$
 DECLARE
   v_connection RECORD;
   v_synced INTEGER;
-  v_start_date DATE;
-  v_end_date DATE;
 BEGIN
-  -- Process last 7 days to catch any missed orders
-  v_start_date := CURRENT_DATE - INTERVAL '7 days';
-  v_end_date := CURRENT_DATE + INTERVAL '1 day';
-
   -- Loop through all active Toast connections
   FOR v_connection IN
     SELECT tc.restaurant_id
@@ -529,12 +524,9 @@ BEGIN
     WHERE tc.is_active = true
   LOOP
     BEGIN
-      -- Sync this restaurant's orders to unified_sales
-      SELECT sync_toast_to_unified_sales(
-        v_connection.restaurant_id,
-        v_start_date,
-        v_end_date
-      ) INTO v_synced;
+      -- Sync ALL orders for this restaurant (no date filter)
+      -- This handles both incremental updates and historical backfills
+      SELECT sync_toast_to_unified_sales(v_connection.restaurant_id) INTO v_synced;
 
       restaurant_id := v_connection.restaurant_id;
       orders_synced := v_synced;
@@ -570,4 +562,4 @@ SELECT cron.schedule(
 );
 
 COMMENT ON FUNCTION sync_all_toast_to_unified_sales IS
-  'Aggregates toast_orders to unified_sales for all active Toast connections. Runs every 5 minutes via cron to ensure imported data appears quickly. Uses date-range sync (last 7 days) to minimize CPU usage while catching any missed orders.';
+  'Aggregates toast_orders to unified_sales for all active Toast connections. Runs every 5 minutes via cron. Uses full sync (no date filter) to ensure historical backfills are properly synced.';

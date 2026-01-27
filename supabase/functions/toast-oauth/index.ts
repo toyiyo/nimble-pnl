@@ -204,13 +204,9 @@ Deno.serve(async (req) => {
       }
 
       // Log security event
-      await logSecurityEvent(supabase, {
-        event_type: 'toast_connected',
-        restaurant_id: restaurantId,
-        details: {
-          toast_restaurant_guid: toastRestaurantGuid,
-          scopes: tokenData.scope?.split(' ') || [],
-        },
+      await logSecurityEvent(supabase, 'TOAST_CONNECTED', undefined, restaurantId, {
+        toast_restaurant_guid: toastRestaurantGuid,
+        scopes: tokenData.scope?.split(' ') || [],
       });
 
       console.log('Toast connection stored successfully for restaurant:', restaurantId);

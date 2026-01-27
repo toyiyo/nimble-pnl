@@ -242,7 +242,11 @@ Deno.serve(async (req)=>{
       endDate: endDate.toISOString(),
       timezone: restaurantTimezone
     });
-    const results = {
+    const results: {
+      chargesSynced: number;
+      refundsSynced: number;
+      errors: string[];
+    } = {
       chargesSynced: 0,
       refundsSynced: 0,
       errors: []
@@ -676,9 +680,10 @@ Deno.serve(async (req)=>{
       await supabase.from('shift4_connections').update({
         last_sync_at: new Date().toISOString()
       }).eq('id', connection.id);
-    } catch (syncError) {
+    } catch (syncError: unknown) {
       console.error('Lighthouse sync error:', syncError);
-      results.errors.push(syncError.message);
+      const errMsg = syncError instanceof Error ? syncError.message : String(syncError);
+      results.errors.push(errMsg);
     }
     const success = results.errors.length === 0;
     console.log('[Lighthouse Sync] Summary', {
@@ -695,11 +700,12 @@ Deno.serve(async (req)=>{
         'Content-Type': 'application/json'
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Shift4 sync error:', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
     return new Response(JSON.stringify({
       success: false,
-      error: error.message
+      error: errMsg
     }), {
       status: 400,
       headers: {

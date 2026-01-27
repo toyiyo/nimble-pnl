@@ -188,7 +188,7 @@ const handler = async (req: Request): Promise<Response> => {
         color: config.statusColor,
       },
       greeting: `Hi ${shift.employee?.name || 'there'},`,
-      message: config.message(hasChanges),
+      message: config.message(!!hasChanges),
       detailsCard: {
         items: detailsItems,
       },

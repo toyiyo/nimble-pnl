@@ -69,10 +69,10 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
         });
         setCurrentStep('complete');
       } else {
-        throw new Error(result.error || 'Connection test failed');
+        throw new Error(String(result.error) || 'Connection test failed');
       }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save credentials';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save credentials';
       toast({
         title: 'Error',
         description: errorMessage,

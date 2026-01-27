@@ -175,15 +175,22 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
               <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <AlertDescription>
                 <p className="font-semibold text-blue-900 dark:text-blue-100">How to find your Restaurant External ID:</p>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-blue-800 dark:text-blue-200 mt-2">
+
+                <div className="mt-3 p-3 bg-green-100 dark:bg-green-900/50 rounded-md border border-green-200 dark:border-green-800">
+                  <p className="font-medium text-green-900 dark:text-green-100 text-sm">Easiest: Check your email from Toast</p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                    When you created your API credentials, Toast sent an email with the Restaurant GUIDs for all your locations. Search your inbox for "Toast API" or "API credentials".
+                  </p>
+                </div>
+
+                <p className="font-medium text-blue-900 dark:text-blue-100 text-sm mt-3">Alternative: Find it in Toast Portal</p>
+                <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800 dark:text-blue-200 mt-1">
                   <li>Go to your <a href="https://www.toasttab.com/restaurants/admin/api-access/" target="_blank" rel="noopener noreferrer" className="underline font-medium">Toast API Access page</a></li>
-                  <li>Click on your credential name (e.g., "EasyShiftHQ") to view details</li>
-                  <li>Scroll down to find <strong>"Edit Location IDs"</strong> section</li>
-                  <li>Click on a location to see its <strong>Restaurant External ID</strong></li>
-                  <li>Copy the GUID - it looks like: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded text-xs">a1b2c3d4-e5f6-7890-abcd-ef1234567890</code></li>
+                  <li>Click on your credential name to view details</li>
+                  <li>Look in the <strong>"Edit Location IDs"</strong> section for the GUID</li>
                 </ol>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 italic">
-                  Note: This is NOT the integer "Restaurant ID" shown elsewhere. It must be a 36-character GUID.
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+                  Format: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code> (36 characters with dashes)
                 </p>
               </AlertDescription>
             </Alert>

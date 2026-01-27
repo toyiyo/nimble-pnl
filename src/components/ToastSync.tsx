@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,8 +6,8 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useToastConnection } from '@/hooks/useToastConnection';
-import { RefreshCw, Download, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
-import { format } from 'date-fns';
+import { RefreshCw, AlertCircle, CheckCircle2, Clock, Calendar } from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
 
 interface ToastSyncProps {
   restaurantId: string;
@@ -22,13 +22,7 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const { toast } = useToast();
-  const { connection, triggerManualSync, checkConnectionStatus } = useToastConnection();
-
-  useEffect(() => {
-    if (restaurantId) {
-      checkConnectionStatus(restaurantId);
-    }
-  }, [restaurantId, checkConnectionStatus]);
+  const { connection, triggerManualSync } = useToastConnection(restaurantId);
 
   const handleSync = async () => {
     if (!connection?.is_active) {
@@ -45,14 +39,25 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
 
     try {
       const data = await triggerManualSync(restaurantId);
-      
+
       if (data?.ordersSynced !== undefined) {
         setSyncResult({
           ordersSynced: data.ordersSynced,
           errors: data.errors || []
         });
+
+        toast({
+          title: 'Sync complete',
+          description: `${data.ordersSynced} orders synced successfully`,
+        });
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sync failed';
+      toast({
+        title: 'Sync failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
       console.error('Sync error:', error);
     } finally {
       setIsLoading(false);
@@ -68,7 +73,7 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
             Toast Data Sync
           </CardTitle>
           <CardDescription>
-            Connect to Toast to sync your historical data and enable automatic updates
+            Connect to Toast to sync your sales data
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -82,6 +87,9 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
       </Card>
     );
   }
+
+  const lastSyncTime = connection?.last_sync_time ? new Date(connection.last_sync_time) : null;
+  const initialSyncDone = connection?.initial_sync_done;
 
   return (
     <Card>
@@ -102,41 +110,51 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
               <Clock className="h-4 w-4" />
             </div>
             <div className="flex-1">
-              <h4 className="font-medium text-sm">Automated Nightly Sync</h4>
+              <h4 className="font-medium text-sm">Scheduled Sync Active</h4>
               <p className="text-xs text-muted-foreground">
-                Orders are automatically synced every night at 3 AM
+                Orders sync automatically every 6 hours
               </p>
-              {connection?.last_sync_time && (
+              {lastSyncTime && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Last synced: {format(new Date(connection.last_sync_time), 'PPp')}
+                  Last synced: {formatDistanceToNow(lastSyncTime, { addSuffix: true })}
+                  <span className="text-muted-foreground/60 ml-1">
+                    ({format(lastSyncTime, 'PPp')})
+                  </span>
                 </p>
               )}
             </div>
-            <Badge 
-              variant={connection?.webhook_active ? 'default' : 'secondary'}
-              className={connection?.webhook_active ? 'bg-green-100 text-green-700' : ''}
+            <Badge
+              variant="default"
+              className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
             >
-              {connection?.webhook_active ? (
-                <>
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Webhooks Active
-                </>
-              ) : (
-                'Webhooks Inactive'
-              )}
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Connected
             </Badge>
           </div>
         </div>
+
+        {/* Initial Sync Status */}
+        {!initialSyncDone && (
+          <Alert>
+            <Calendar className="h-4 w-4" />
+            <AlertDescription>
+              <strong>First sync pending:</strong> The next scheduled sync will import your last 90 days of orders.
+              You can also click "Sync Now" to start immediately.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Error Alert */}
         {connection?.last_error && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Last sync error: {connection.last_error}
-              <p className="text-xs mt-1">
-                {connection.last_error_at && `Occurred at ${format(new Date(connection.last_error_at), 'PPp')}`}
-              </p>
+              <strong>Last sync error:</strong> {connection.last_error}
+              {connection.last_error_at && (
+                <p className="text-xs mt-1">
+                  Occurred {formatDistanceToNow(new Date(connection.last_error_at), { addSuffix: true })}
+                </p>
+              )}
             </AlertDescription>
           </Alert>
         )}
@@ -154,7 +172,10 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
               {isLoading ? 'Syncing...' : 'Sync Now'}
             </Button>
             <p className="text-sm text-muted-foreground mt-2">
-              Manually trigger a sync for the last 25 hours
+              {initialSyncDone
+                ? 'Manually sync orders from the last 25 hours'
+                : 'Start initial sync (last 90 days of orders)'
+              }
             </p>
           </div>
         </div>
@@ -180,7 +201,7 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
               <CheckCircle2 className="h-5 w-5 text-green-600" />
               <h4 className="font-medium">Sync Complete</h4>
             </div>
-            
+
             <div className="space-y-1">
               <div className="text-2xl font-bold text-primary">{syncResult.ordersSynced}</div>
               <div className="text-sm text-muted-foreground">Orders synced</div>
@@ -193,8 +214,8 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
                 <AlertDescription>
                   <div className="space-y-1">
                     <div className="font-medium">Some errors occurred:</div>
-                    {syncResult.errors.map((error, index) => (
-                      <div key={index} className="text-sm">• {error}</div>
+                    {syncResult.errors.map((error, idx) => (
+                      <div key={`error-${idx}`} className="text-sm">• {error}</div>
                     ))}
                   </div>
                 </AlertDescription>
@@ -208,12 +229,12 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-2">
-              <div className="font-medium">How it works</div>
+              <div className="font-medium">How syncing works</div>
               <div className="text-sm space-y-1">
-                <div><strong>Nightly Sync:</strong> Orders are automatically synced every night at 3 AM</div>
-                <div><strong>Webhooks:</strong> Real-time order updates pushed from Toast as they occur</div>
+                <div><strong>Scheduled Sync:</strong> Orders sync automatically every 6 hours</div>
                 <div><strong>Manual Sync:</strong> Use the button above for immediate sync</div>
                 <div><strong>Historical Data:</strong> First sync imports last 90 days of orders</div>
+                <div><strong>Incremental:</strong> After initial sync, only new/updated orders are fetched</div>
               </div>
             </div>
           </AlertDescription>

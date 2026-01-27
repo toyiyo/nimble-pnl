@@ -84,8 +84,19 @@ const EmployeePortal = () => {
     hasGustoAccount
   );
 
-  // Auto-load payroll flow when tab is selected and employee needs onboarding
+  // Auto-navigate to payroll tab if employee needs onboarding (first time only)
   const [activeTab, setActiveTab] = useState('time-off');
+  const [hasAutoNavigated, setHasAutoNavigated] = useState(false);
+
+  useEffect(() => {
+    // Auto-navigate to payroll tab when employee needs onboarding
+    if (gustoConnected && needsOnboarding && !hasAutoNavigated && !onboardingLoading) {
+      setActiveTab('payroll');
+      setHasAutoNavigated(true);
+    }
+  }, [gustoConnected, needsOnboarding, hasAutoNavigated, onboardingLoading]);
+
+  // Auto-load payroll flow when tab is selected and employee needs onboarding
   useEffect(() => {
     if (activeTab === 'payroll' && hasGustoAccount && !flowUrl && !flowLoading && !flowExpired) {
       openOnboardingFlow();
@@ -656,8 +667,40 @@ const EmployeePortal = () => {
         </CardHeader>
       </Card>
 
+      {/* Payroll Setup Banner - Shows when employee needs to complete onboarding */}
+      {gustoConnected && (needsOnboarding || !hasGustoAccount) && activeTab !== 'payroll' && (
+        <Card className="bg-gradient-to-r from-yellow-500/10 via-orange-500/10 to-yellow-500/10 border-yellow-500/30 shadow-sm">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-yellow-500/20">
+                  <DollarSign className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">
+                    {hasGustoAccount ? 'Complete Your Payroll Setup' : 'Payroll Setup Pending'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {hasGustoAccount
+                      ? 'Finish setting up your tax forms and direct deposit to get paid.'
+                      : 'Your manager needs to add you to the payroll system.'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setActiveTab('payroll')}
+                className="shrink-0"
+              >
+                {hasGustoAccount ? 'Complete Setup' : 'View Status'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className={`grid w-full ${gustoConnected && hasGustoAccount ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <TabsList className={`grid w-full ${gustoConnected ? 'grid-cols-3' : 'grid-cols-2'}`}>
           <TabsTrigger value="time-off" className="flex items-center gap-2">
             <CalendarX className="h-4 w-4" />
             <span className="hidden sm:inline">Time Off</span>

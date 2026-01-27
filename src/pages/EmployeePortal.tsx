@@ -438,13 +438,19 @@ const EmployeePortal = () => {
     // Not synced to Gusto yet
     if (!hasGustoAccount) {
       return (
-        <Card>
+        <Card className="bg-yellow-500/5 border-yellow-500/20">
           <CardContent className="pt-6">
             <div className="text-center py-12">
-              <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Payroll Not Set Up</h3>
-              <p className="text-muted-foreground mb-4">
-                Your payroll account is being set up. Please check back soon or contact your manager.
+              <div className="mx-auto w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mb-4">
+                <AlertCircle className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Payroll Account Pending</h3>
+              <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+                Your manager needs to add you to the payroll system. Once added, you'll be able to complete your
+                tax forms and set up direct deposit here.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Please contact your manager to get started.
               </p>
             </div>
           </CardContent>
@@ -660,11 +666,11 @@ const EmployeePortal = () => {
             <Clock className="h-4 w-4" />
             <span className="hidden sm:inline">Availability</span>
           </TabsTrigger>
-          {gustoConnected && hasGustoAccount && (
+          {gustoConnected && (
             <TabsTrigger value="payroll" className="flex items-center gap-2 relative">
               <DollarSign className="h-4 w-4" />
               <span className="hidden sm:inline">Payroll</span>
-              {needsOnboarding && (
+              {(needsOnboarding || !hasGustoAccount) && (
                 <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive" />
               )}
             </TabsTrigger>

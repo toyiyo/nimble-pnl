@@ -1,3 +1,7 @@
+-- Allow all restaurant staff to view Gusto connection status
+-- This enables the Payroll tab to show for employees in the Employee Portal
+-- Staff can only VIEW, not modify the connection
+
 CREATE POLICY "All restaurant users can view Gusto connections"
 ON gusto_connections
 FOR SELECT

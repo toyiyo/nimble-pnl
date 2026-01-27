@@ -74,6 +74,15 @@ DECLARE
   v_synced_count INTEGER := 0;
   v_row_count INTEGER;
 BEGIN
+  -- Authorization check: verify user has access to this restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
+  END IF;
+
   -- Insert/Update REVENUE entries (from order items)
   INSERT INTO public.unified_sales (
     restaurant_id, pos_system, external_order_id, external_item_id,
@@ -200,8 +209,9 @@ BEGIN
   SELECT
     tp.restaurant_id, 'toast', tp.toast_order_guid, tp.toast_payment_guid || '_refund',
     'Refund - ' || COALESCE(tp.payment_type, 'Unknown'), 1,
-    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC, 0)),
-    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC, 0)),
+    -- Toast API sends refundAmount in cents, divide by 100 for dollars
+    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
+    -ABS(COALESCE((tp.raw_json->'refund'->>'refundAmount')::NUMERIC / 100, 0)),
     tp.payment_date, NULL, 'refund', tp.raw_json, NOW()
   FROM public.toast_payments tp
   WHERE tp.restaurant_id = p_restaurant_id

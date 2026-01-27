@@ -171,3 +171,24 @@ verify_jwt = true
 
 [functions.notify-schedule-published]
 verify_jwt = true
+
+[functions.toast-save-credentials]
+verify_jwt = false
+
+[functions.toast-test-connection]
+verify_jwt = false
+
+[functions.toast-save-webhook-secret]
+verify_jwt = false
+
+[functions.toast-sync-data]
+verify_jwt = false
+
+[functions.toast-webhook]
+verify_jwt = false
+
+[functions.toast-bulk-sync]
+verify_jwt = false
+
+[functions.toast-fetch-locations]
+verify_jwt = false

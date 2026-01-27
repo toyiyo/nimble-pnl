@@ -1,36 +1,114 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { useToast } from '@/hooks/use-toast';
 import { useToastConnection } from '@/hooks/useToastConnection';
-import { RefreshCw, Download, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
-import { format } from 'date-fns';
+import { RefreshCw, AlertCircle, CheckCircle2, Clock, Calendar } from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
 
 interface ToastSyncProps {
   restaurantId: string;
 }
 
-interface SyncResult {
-  ordersSynced: number;
-  errors: string[];
+interface SyncError {
+  orderGuid?: string;
+  message: string;
 }
 
-export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
+interface SyncResult {
+  ordersSynced: number;
+  errors: (string | SyncError)[];
+  syncComplete?: boolean;
+  progress?: number;
+}
+
+function formatError(error: string | SyncError): string {
+  return typeof error === 'string' ? error : error.message;
+}
+
+type SyncMode = 'recent' | 'custom';
+
+export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [totalOrdersSynced, setTotalOrdersSynced] = useState(0);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncMode, setSyncMode] = useState<SyncMode>('recent');
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const { toast } = useToast();
-  const { connection, triggerManualSync, checkConnectionStatus } = useToastConnection();
+  const { connection, triggerManualSync, checkConnectionStatus } = useToastConnection(restaurantId);
 
-  useEffect(() => {
-    if (restaurantId) {
-      checkConnectionStatus(restaurantId);
+  async function executeSyncLoop(options?: { startDate?: string; endDate?: string }): Promise<{
+    totalOrders: number;
+    allErrors: (string | SyncError)[];
+    complete: boolean;
+  }> {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
+    const BATCH_DELAY_MS = 500;
+
+    const allErrors: (string | SyncError)[] = [];
+    let totalOrders = 0;
+    let complete = false;
+    let consecutiveFailures = 0;
+    let currentPage: number | undefined;  // Page cursor for custom range pagination
+
+    while (!complete) {
+      try {
+        // Pass page cursor if we have one (for resuming custom range sync)
+        const requestOptions = {
+          ...options,
+          ...(currentPage && { page: currentPage })
+        };
+        const data = await triggerManualSync(restaurantId, requestOptions);
+
+        if (data?.ordersSynced === undefined) {
+          break;
+        }
+
+        consecutiveFailures = 0;
+        totalOrders += data.ordersSynced as number;
+        setTotalOrdersSynced(totalOrders);
+        setSyncProgress((data.progress as number) || 100);
+
+        // Update page cursor for next request
+        currentPage = data.nextPage as number | undefined;
+
+        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          allErrors.push(...(data.errors as (string | SyncError)[]));
+        }
+
+        complete = data.syncComplete !== false;
+
+        if (!complete) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        }
+      } catch (error) {
+        consecutiveFailures++;
+        const errorMessage = error instanceof Error ? error.message : 'Request failed';
+
+        console.warn(`Sync request failed (attempt ${consecutiveFailures}/${MAX_RETRIES}):`, errorMessage);
+
+        if (consecutiveFailures >= MAX_RETRIES) {
+          allErrors.push({ message: `Sync interrupted after ${MAX_RETRIES} retries: ${errorMessage}` });
+          break;
+        }
+
+        // Don't reset currentPage - retry from same page
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      }
     }
-  }, [restaurantId, checkConnectionStatus]);
 
-  const handleSync = async () => {
+    return { totalOrders, allErrors, complete };
+  }
+
+  async function handleSync(): Promise<void> {
     if (!connection?.is_active) {
       toast({
         title: 'Error',
@@ -40,24 +118,72 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
       return;
     }
 
+    // Validate custom date range
+    if (syncMode === 'custom') {
+      if (!dateRange?.from || !dateRange?.to) {
+        toast({
+          title: 'Error',
+          description: 'Please select a date range',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     setIsLoading(true);
     setSyncResult(null);
+    setTotalOrdersSynced(0);
+    setSyncProgress(0);
 
     try {
-      const data = await triggerManualSync(restaurantId);
-      
-      if (data?.ordersSynced !== undefined) {
+      // Build sync options
+      const syncOptions = syncMode === 'custom' && dateRange
+        ? {
+            startDate: dateRange.from.toISOString(),
+            endDate: dateRange.to.toISOString()
+          }
+        : undefined;
+
+      const { totalOrders, allErrors } = await executeSyncLoop(syncOptions);
+
+      setSyncResult({
+        ordersSynced: totalOrders,
+        errors: allErrors,
+        syncComplete: true,
+        progress: 100
+      });
+
+      await checkConnectionStatus(restaurantId);
+
+      const description = syncMode === 'custom'
+        ? `${totalOrders} orders synced for ${format(dateRange!.from, 'MMM d')} - ${format(dateRange!.to, 'MMM d, yyyy')}`
+        : `${totalOrders} orders synced successfully`;
+
+      toast({
+        title: 'Sync complete',
+        description,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sync failed';
+      toast({
+        title: 'Sync failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+      console.error('Sync error:', error);
+
+      if (totalOrdersSynced > 0) {
         setSyncResult({
-          ordersSynced: data.ordersSynced,
-          errors: data.errors || []
+          ordersSynced: totalOrdersSynced,
+          errors: [errorMessage],
+          syncComplete: false,
+          progress: syncProgress
         });
       }
-    } catch (error: any) {
-      console.error('Sync error:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   if (!connection?.is_active) {
     return (
@@ -68,7 +194,7 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
             Toast Data Sync
           </CardTitle>
           <CardDescription>
-            Connect to Toast to sync your historical data and enable automatic updates
+            Connect to Toast to sync your sales data
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -83,6 +209,9 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
     );
   }
 
+  const lastSyncTime = connection.last_sync_time ? new Date(connection.last_sync_time) : null;
+  const initialSyncDone = connection.initial_sync_done;
+
   return (
     <Card>
       <CardHeader>
@@ -95,130 +224,291 @@ export const ToastSync = ({ restaurantId }: ToastSyncProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Connection Status */}
-        <div className="bg-muted/50 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary">
-              <Clock className="h-4 w-4" />
-            </div>
-            <div className="flex-1">
-              <h4 className="font-medium text-sm">Automated Nightly Sync</h4>
-              <p className="text-xs text-muted-foreground">
-                Orders are automatically synced every night at 3 AM
-              </p>
-              {connection?.last_sync_time && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Last synced: {format(new Date(connection.last_sync_time), 'PPp')}
-                </p>
-              )}
-            </div>
-            <Badge 
-              variant={connection?.webhook_active ? 'default' : 'secondary'}
-              className={connection?.webhook_active ? 'bg-green-100 text-green-700' : ''}
-            >
-              {connection?.webhook_active ? (
-                <>
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Webhooks Active
-                </>
-              ) : (
-                'Webhooks Inactive'
-              )}
-            </Badge>
-          </div>
-        </div>
+        <ConnectionStatus lastSyncTime={lastSyncTime} />
 
-        {/* Error Alert */}
-        {connection?.last_error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Last sync error: {connection.last_error}
-              <p className="text-xs mt-1">
-                {connection.last_error_at && `Occurred at ${format(new Date(connection.last_error_at), 'PPp')}`}
-              </p>
-            </AlertDescription>
-          </Alert>
+        {!initialSyncDone && <InitialSyncPendingAlert />}
+
+        {connection.last_error && (
+          <LastErrorAlert
+            error={connection.last_error}
+            errorAt={connection.last_error_at}
+          />
         )}
 
-        {/* Manual Sync Button */}
-        <div className="space-y-4">
-          <div className="text-center">
-            <Button
-              onClick={handleSync}
-              disabled={isLoading}
-              className="w-full max-w-xs mx-auto"
-              size="lg"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Syncing...' : 'Sync Now'}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-2">
-              Manually trigger a sync for the last 25 hours
-            </p>
-          </div>
-        </div>
+        <SyncModeSelector
+          syncMode={syncMode}
+          onSyncModeChange={setSyncMode}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          initialSyncDone={initialSyncDone}
+        />
 
-        {/* Loading Progress */}
+        <SyncButton
+          isLoading={isLoading}
+          initialSyncDone={initialSyncDone}
+          syncMode={syncMode}
+          dateRange={dateRange}
+          onSync={handleSync}
+        />
+
         {isLoading && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Syncing data from Toast...</span>
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            </div>
-            <Progress value={undefined} className="w-full" />
-            <p className="text-xs text-muted-foreground">
-              This may take a few minutes depending on the amount of data
-            </p>
-          </div>
+          <SyncProgress
+            progress={syncProgress}
+            ordersSynced={totalOrdersSynced}
+            initialSyncDone={initialSyncDone}
+          />
         )}
 
-        {/* Sync Results */}
-        {syncResult && (
-          <div className="bg-muted/50 rounded-lg p-4 space-y-4">
-            <div className="flex items-center gap-2 mb-3">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <h4 className="font-medium">Sync Complete</h4>
-            </div>
-            
-            <div className="space-y-1">
-              <div className="text-2xl font-bold text-primary">{syncResult.ordersSynced}</div>
-              <div className="text-sm text-muted-foreground">Orders synced</div>
-            </div>
+        {syncResult && <SyncResults result={syncResult} />}
 
-            {/* Errors */}
-            {syncResult.errors && syncResult.errors.length > 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <div className="space-y-1">
-                    <div className="font-medium">Some errors occurred:</div>
-                    {syncResult.errors.map((error, index) => (
-                      <div key={index} className="text-sm">• {error}</div>
-                    ))}
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-        )}
-
-        {/* Info */}
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-2">
-              <div className="font-medium">How it works</div>
-              <div className="text-sm space-y-1">
-                <div><strong>Nightly Sync:</strong> Orders are automatically synced every night at 3 AM</div>
-                <div><strong>Webhooks:</strong> Real-time order updates pushed from Toast as they occur</div>
-                <div><strong>Manual Sync:</strong> Use the button above for immediate sync</div>
-                <div><strong>Historical Data:</strong> First sync imports last 90 days of orders</div>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
+        <HowSyncingWorksInfo />
       </CardContent>
     </Card>
   );
-};
+}
+
+function ConnectionStatus({ lastSyncTime }: { lastSyncTime: Date | null }): JSX.Element {
+  return (
+    <div className="bg-muted/50 rounded-lg p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary">
+          <Clock className="h-4 w-4" />
+        </div>
+        <div className="flex-1">
+          <h4 className="font-medium text-sm">Scheduled Sync Active</h4>
+          <p className="text-xs text-muted-foreground">
+            Orders sync automatically every 6 hours
+          </p>
+          {lastSyncTime && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Last synced: {formatDistanceToNow(lastSyncTime, { addSuffix: true })}
+              <span className="text-muted-foreground/60 ml-1">
+                ({format(lastSyncTime, 'PPp')})
+              </span>
+            </p>
+          )}
+        </div>
+        <Badge
+          variant="default"
+          className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+        >
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Connected
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+function InitialSyncPendingAlert(): JSX.Element {
+  return (
+    <Alert>
+      <Calendar className="h-4 w-4" />
+      <AlertDescription>
+        <strong>First sync pending:</strong> The next scheduled sync will import your last 90 days of orders.
+        You can also click "Sync Now" to start immediately.
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function LastErrorAlert({ error, errorAt }: { error: string; errorAt?: string }): JSX.Element {
+  return (
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
+      <AlertDescription>
+        <strong>Last sync error:</strong> {error}
+        {errorAt && (
+          <p className="text-xs mt-1">
+            Occurred {formatDistanceToNow(new Date(errorAt), { addSuffix: true })}
+          </p>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+interface SyncModeSelectorProps {
+  syncMode: SyncMode;
+  onSyncModeChange: (mode: SyncMode) => void;
+  dateRange: { from: Date; to: Date } | undefined;
+  onDateRangeChange: (range: { from: Date; to: Date } | undefined) => void;
+  initialSyncDone?: boolean;
+}
+
+function SyncModeSelector({
+  syncMode,
+  onSyncModeChange,
+  dateRange,
+  onDateRangeChange,
+  initialSyncDone
+}: SyncModeSelectorProps): JSX.Element {
+  return (
+    <div className="space-y-4">
+      <RadioGroup
+        value={syncMode}
+        onValueChange={(value) => onSyncModeChange(value as SyncMode)}
+        className="space-y-3"
+      >
+        <div className="flex items-start space-x-3">
+          <RadioGroupItem value="recent" id="recent" className="mt-1" />
+          <div className="flex-1">
+            <Label htmlFor="recent" className="font-medium cursor-pointer">
+              {initialSyncDone ? 'Sync recent orders' : 'Initial sync'}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {initialSyncDone
+                ? 'Fetch orders from the last 25 hours'
+                : 'Import last 90 days of order history'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start space-x-3">
+          <RadioGroupItem value="custom" id="custom" className="mt-1" />
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="custom" className="font-medium cursor-pointer">
+              Custom date range
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Backfill or re-sync orders for specific dates (max 90 days)
+            </p>
+            {syncMode === 'custom' && (
+              <div className="pt-2">
+                <DateRangePicker
+                  from={dateRange?.from}
+                  to={dateRange?.to}
+                  onSelect={onDateRangeChange}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </RadioGroup>
+    </div>
+  );
+}
+
+interface SyncButtonProps {
+  isLoading: boolean;
+  initialSyncDone?: boolean;
+  syncMode: SyncMode;
+  dateRange?: { from: Date; to: Date };
+  onSync: () => void;
+}
+
+function getSyncDescription(
+  syncMode: SyncMode,
+  dateRange: { from: Date; to: Date } | undefined,
+  initialSyncDone: boolean | undefined
+): string {
+  if (syncMode === 'custom' && dateRange) {
+    return `Sync orders from ${format(dateRange.from, 'MMM d')} to ${format(dateRange.to, 'MMM d, yyyy')}`;
+  }
+  if (initialSyncDone) {
+    return 'Manually sync orders from the last 25 hours';
+  }
+  return 'Start initial sync (last 90 days of orders)';
+}
+
+function SyncButton({ isLoading, initialSyncDone, syncMode, dateRange, onSync }: SyncButtonProps): JSX.Element {
+  const buttonText = isLoading ? 'Syncing...' : 'Sync Now';
+  const description = getSyncDescription(syncMode, dateRange, initialSyncDone);
+  const isDisabled = isLoading || (syncMode === 'custom' && !dateRange);
+
+  return (
+    <div className="space-y-4">
+      <div className="text-center">
+        <Button
+          onClick={onSync}
+          disabled={isDisabled}
+          className="w-full max-w-xs mx-auto"
+          size="lg"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          {buttonText}
+        </Button>
+        <p className="text-sm text-muted-foreground mt-2">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+interface SyncProgressProps {
+  progress: number;
+  ordersSynced: number;
+  initialSyncDone?: boolean;
+}
+
+function SyncProgress({ progress, ordersSynced, initialSyncDone }: SyncProgressProps): JSX.Element {
+  const statusText = initialSyncDone ? 'Syncing recent orders' : 'Initial sync fetches 90 days of history in batches';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">
+          Syncing data from Toast... {progress > 0 && `(${progress}%)`}
+        </span>
+        <RefreshCw className="h-4 w-4 animate-spin" />
+      </div>
+      {ordersSynced > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {ordersSynced} orders synced so far
+        </p>
+      )}
+      <Progress value={progress || undefined} className="w-full" />
+      <p className="text-xs text-muted-foreground">{statusText}</p>
+    </div>
+  );
+}
+
+function SyncResults({ result }: { result: SyncResult }): JSX.Element {
+  return (
+    <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+      <div className="flex items-center gap-2 mb-3">
+        <CheckCircle2 className="h-5 w-5 text-green-600" />
+        <h4 className="font-medium">Sync Complete</h4>
+      </div>
+
+      <div className="space-y-1">
+        <div className="text-2xl font-bold text-primary">{result.ordersSynced}</div>
+        <div className="text-sm text-muted-foreground">Orders synced</div>
+      </div>
+
+      {result.errors.length > 0 && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <div className="font-medium">Some errors occurred:</div>
+              {result.errors.map((error, idx) => (
+                <div key={`error-${idx}`} className="text-sm">
+                  {formatError(error)}
+                </div>
+              ))}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+    </div>
+  );
+}
+
+function HowSyncingWorksInfo(): JSX.Element {
+  return (
+    <Alert>
+      <AlertCircle className="h-4 w-4" />
+      <AlertDescription>
+        <div className="space-y-2">
+          <div className="font-medium">How syncing works</div>
+          <div className="text-sm space-y-1">
+            <div><strong>Scheduled Sync:</strong> Orders sync automatically every 6 hours</div>
+            <div><strong>Manual Sync:</strong> Use the button above for immediate sync</div>
+            <div><strong>Historical Data:</strong> First sync imports last 90 days of orders</div>
+            <div><strong>Incremental:</strong> After initial sync, only new/updated orders are fetched</div>
+          </div>
+        </div>
+      </AlertDescription>
+    </Alert>
+  );
+}

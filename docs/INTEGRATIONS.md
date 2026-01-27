@@ -8,6 +8,7 @@
 
 - [Bank Connections](#bank-connections)
 - [POS System Integrations](#pos-system-integrations)
+- [Large Data Import Pattern](#large-data-import-pattern)
 - [AI & Machine Learning](#ai--machine-learning)
 - [Invoicing & Payments](#invoicing--payments)
 - [Supabase Usage Patterns](#supabase-usage-patterns)
@@ -306,6 +307,359 @@ unified_sales (
 4. Create RPC function: `sync_[pos]_to_unified_sales()`
 5. Update `POSSystemType` in `types/pos.ts`
 6. Add to `useUnifiedSales.tsx` adapter selection
+
+---
+
+## 📦 Large Data Import Pattern
+
+### Overview
+
+When importing large transaction sets from POS systems (initial syncs, historical backfills), Supabase Edge Functions have CPU limits that can interrupt long-running operations:
+
+- **Soft limit**: 2 seconds CPU time per request
+- **Hard limit**: 50ms per request at scale
+- **Wall clock**: 400 seconds max
+
+This pattern ensures reliable data import even when CPU limits are reached.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Frontend                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  executeSyncLoop() - Retry loop with small batches      │   │
+│   │  • MAX_RETRIES = 3 per request                          │   │
+│   │  • RETRY_DELAY_MS = 2000 (CPU recovery)                 │   │
+│   │  • Accumulates orders across requests                   │   │
+│   └─────────────────────────────────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Multiple small requests
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Edge Function                                 │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  toast-sync-data (or [pos]-sync-data)                   │   │
+│   │  • MAX_ORDERS_PER_REQUEST = 10                          │   │
+│   │  • Returns hasMore flag when more data exists           │   │
+│   │  • Idempotent upserts (safe to retry)                   │   │
+│   └─────────────────────────────────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Inserts raw data
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Database                                    │
+│   ┌─────────────────┐         ┌─────────────────────────────┐   │
+│   │  toast_orders   │  ───►   │     unified_sales           │   │
+│   │  (raw data)     │  cron   │  (aggregated for dashboard) │   │
+│   └─────────────────┘         └─────────────────────────────┘   │
+│                                         ▲                        │
+│   ┌─────────────────────────────────────┴───────────────────┐   │
+│   │  pg_cron: sync_all_toast_to_unified_sales               │   │
+│   │  • Runs every 5 minutes                                 │   │
+│   │  • Aggregates raw orders → unified_sales                │   │
+│   │  • Uses date-range filtering for efficiency             │   │
+│   └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+#### 1. Frontend Sync Loop with Retry
+
+**Location**: `src/components/ToastSync.tsx` (or `[POS]Sync.tsx`)
+
+```typescript
+async function executeSyncLoop(options?: { startDate?: string; endDate?: string }): Promise<{
+  totalOrders: number;
+  allErrors: (string | SyncError)[];
+  complete: boolean;
+}> {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;  // Helps CPU limit recovery
+  const BATCH_DELAY_MS = 500;
+
+  const allErrors: (string | SyncError)[] = [];
+  let totalOrders = 0;
+  let complete = false;
+  let consecutiveFailures = 0;
+
+  while (!complete) {
+    try {
+      const data = await triggerManualSync(restaurantId, options);
+
+      if (data?.ordersSynced === undefined) {
+        break;
+      }
+
+      // Success - reset failure counter
+      consecutiveFailures = 0;
+      totalOrders += data.ordersSynced;
+      setTotalOrdersSynced(totalOrders);
+      setSyncProgress(data.progress || 100);
+
+      if (data.errors?.length) {
+        allErrors.push(...data.errors);
+      }
+
+      complete = data.syncComplete !== false;
+
+      if (!complete) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    } catch (error) {
+      consecutiveFailures++;
+      const errorMessage = error instanceof Error ? error.message : 'Request failed';
+
+      console.warn(`Sync request failed (attempt ${consecutiveFailures}/${MAX_RETRIES}):`, errorMessage);
+
+      if (consecutiveFailures >= MAX_RETRIES) {
+        allErrors.push({ message: `Sync interrupted after ${MAX_RETRIES} retries: ${errorMessage}` });
+        break;
+      }
+
+      // Wait before retrying (helps with CPU limit recovery)
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+
+  return { totalOrders, allErrors, complete };
+}
+```
+
+**Key Features**:
+- Accumulates orders across multiple requests
+- Retries on transient failures (CPU limits, network errors)
+- Resets retry counter on success
+- 2-second delay between retries for CPU recovery
+
+#### 2. Edge Function with Small Batches
+
+**Location**: `supabase/functions/toast-sync-data/index.ts` (or `[pos]-sync-data`)
+
+```typescript
+// Conservative batch sizes for Supabase Edge Function CPU limits
+const MAX_ORDERS_PER_REQUEST = 10;
+const PAGE_SIZE = 10;
+const BATCH_DAYS = 1;  // For initial sync, process 1 day at a time
+
+interface OrderFetchResult {
+  ordersProcessed: number;
+  errors: Array<{ orderGuid: string; message: string }>;
+  hasMore: boolean;  // True if we stopped due to maxOrders limit
+}
+
+// Response includes hasMore flag for frontend loop
+return jsonResponse({
+  ordersSynced: totalOrders,
+  errors: allErrors,
+  syncComplete: !result.hasMore,  // Frontend continues if false
+  progress: syncComplete ? 100 : 50
+});
+```
+
+**Key Features**:
+- Small batch sizes (10 orders per request)
+- Returns `hasMore` flag when more data exists
+- Uses `syncComplete` to signal frontend to continue or stop
+- Progress indicator (50% when more batches needed)
+
+#### 3. Idempotent Database Operations
+
+**Location**: `supabase/functions/_shared/toastOrderProcessor.ts`
+
+```typescript
+// Use UPSERT for idempotent operations (safe to retry)
+const { error: upsertError } = await supabase
+  .from('toast_orders')
+  .upsert({
+    restaurant_id: restaurantId,
+    toast_order_guid: order.guid,
+    // ... other fields
+  }, {
+    onConflict: 'restaurant_id,toast_order_guid'  // Unique constraint
+  });
+```
+
+**Key Features**:
+- Upsert with `ON CONFLICT DO UPDATE`
+- Safe to run multiple times
+- No duplicate data even if request retried
+
+#### 4. Cron Job for Aggregation
+
+**Location**: `supabase/migrations/20260127151647_toast_unified_sales_cron.sql`
+
+```sql
+-- Function to sync all active connections to unified_sales
+CREATE OR REPLACE FUNCTION sync_all_toast_to_unified_sales()
+RETURNS TABLE(restaurant_id UUID, orders_synced INTEGER)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_connection RECORD;
+  v_synced INTEGER;
+BEGIN
+  -- Process last 7 days to catch any missed orders
+  FOR v_connection IN
+    SELECT tc.restaurant_id
+    FROM public.toast_connections tc
+    WHERE tc.is_active = true
+  LOOP
+    BEGIN
+      SELECT sync_toast_to_unified_sales(
+        v_connection.restaurant_id,
+        (CURRENT_DATE - INTERVAL '7 days')::date,
+        (CURRENT_DATE + INTERVAL '1 day')::date
+      ) INTO v_synced;
+
+      restaurant_id := v_connection.restaurant_id;
+      orders_synced := v_synced;
+      RETURN NEXT;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'Failed to sync restaurant %: %', v_connection.restaurant_id, SQLERRM;
+    END;
+  END LOOP;
+END;
+$$;
+
+-- Schedule every 5 minutes
+SELECT cron.schedule(
+  'toast-unified-sales-sync',
+  '*/5 * * * *',
+  $$SELECT sync_all_toast_to_unified_sales()$$
+);
+```
+
+**Key Features**:
+- Runs every 5 minutes
+- Processes last 7 days (catches any missed orders)
+- Continues on error (doesn't fail entire batch)
+- Uses date-range filtering for efficiency
+
+### Data Flow
+
+```
+User clicks "Sync"
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Frontend: executeSyncLoop()                                │
+│  Loop while !complete:                                      │
+│    1. Call edge function (max 10 orders)                    │
+│    2. If error, retry up to 3 times with 2s delay           │
+│    3. Accumulate ordersSynced                               │
+│    4. Check syncComplete flag                               │
+└─────────────────────────────────────────────────────────────┘
+       │
+       ▼ (multiple requests)
+┌─────────────────────────────────────────────────────────────┐
+│  Edge Function: toast-sync-data                             │
+│  1. Fetch 10 orders from POS API                            │
+│  2. Upsert into toast_orders (raw data)                     │
+│  3. Return { ordersSynced, syncComplete, hasMore }          │
+└─────────────────────────────────────────────────────────────┘
+       │
+       ▼ (raw data saved)
+┌─────────────────────────────────────────────────────────────┐
+│  Database: toast_orders                                     │
+│  (Orders are safe even if aggregation fails)                │
+└─────────────────────────────────────────────────────────────┘
+       │
+       ▼ (every 5 minutes)
+┌─────────────────────────────────────────────────────────────┐
+│  pg_cron: sync_all_toast_to_unified_sales                   │
+│  1. Get all active connections                              │
+│  2. For each: aggregate toast_orders → unified_sales        │
+│  3. Use date-range (last 7 days) for efficiency             │
+└─────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Database: unified_sales                                    │
+│  (Aggregated data for dashboard)                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Checklist
+
+When implementing this pattern for a new POS integration:
+
+- [ ] **Edge Function**
+  - [ ] Set `MAX_ORDERS_PER_REQUEST = 10`
+  - [ ] Set `PAGE_SIZE = 10`
+  - [ ] Return `hasMore` flag when batch limit reached
+  - [ ] Return `syncComplete: !hasMore` in response
+  - [ ] Use upserts with `onConflict` for idempotency
+
+- [ ] **Frontend Component**
+  - [ ] Implement retry loop with `MAX_RETRIES = 3`
+  - [ ] Use `RETRY_DELAY_MS = 2000` for CPU recovery
+  - [ ] Accumulate `totalOrders` across requests
+  - [ ] Continue while `syncComplete === false`
+  - [ ] Show progress indicator (50% when hasMore)
+
+- [ ] **Database**
+  - [ ] Create raw data table (`[pos]_orders`)
+  - [ ] Add unique constraint for upserts
+  - [ ] Create aggregation function (`sync_[pos]_to_unified_sales`)
+  - [ ] Support date-range filtering in aggregation function
+  - [ ] Add cron job to run aggregation every 5 minutes
+
+- [ ] **Cron Jobs**
+  - [ ] Bulk sync (every 6 hours): fetch from POS API
+  - [ ] Aggregation sync (every 5 minutes): `[pos]_orders → unified_sales`
+
+### Best Practices
+
+✅ **DO:**
+- Use small batch sizes (10-30 orders per request)
+- Implement retry logic with delays for CPU recovery
+- Use upserts for idempotent operations
+- Separate raw data storage from aggregation
+- Use cron jobs for aggregation (decoupled from import)
+- Return progress indicators for long operations
+- Process date ranges in small chunks (1 day at a time for initial sync)
+
+❌ **DON'T:**
+- Process hundreds of orders in a single request
+- Skip retry logic (CPU limits are transient)
+- Assume aggregation will complete in import request
+- Use `INSERT` without `ON CONFLICT` (causes duplicates on retry)
+- Aggregate entire dataset on each request (use date-range)
+- Block UI without progress feedback
+
+### Error Handling
+
+| Error Type | Handling |
+|------------|----------|
+| CPU limit (soft) | Frontend retries with 2s delay |
+| Network error | Frontend retries up to 3 times |
+| POS API 401 | Refresh token, retry once |
+| POS API 429 | Exponential backoff |
+| Database constraint | Log and continue (idempotent) |
+| Aggregation timeout | Cron will retry in 5 minutes |
+
+### Monitoring
+
+Log these metrics for debugging:
+
+```typescript
+console.log('[TOAST-SYNC] Batch complete', {
+  restaurantId,
+  ordersProcessed: totalOrders,
+  hasMore: result.hasMore,
+  elapsedMs: Date.now() - startTime
+});
+```
+
+Key metrics to track:
+- Orders processed per request
+- Total sync duration
+- Retry count per sync
+- CPU limit hits (check Supabase logs)
+- Aggregation lag (time between import and unified_sales)
 
 ---
 
@@ -1766,7 +2120,7 @@ test('useSquareSalesAdapter fetches sales', async () => {
 
 ---
 
-**Last Updated**: 2025-10-25
+**Last Updated**: 2026-01-27
 
 **Maintainers**: Development Team
 

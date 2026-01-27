@@ -106,7 +106,7 @@ async function upsertOrder(
     restaurant_id: restaurantId,
     toast_order_guid: order.guid,
     toast_restaurant_guid: toastRestaurantGuid,
-    order_number: order.orderNumber || null,
+    order_number: order.displayNumber || order.orderNumber || null,
     order_date: dateTime.orderDate,
     order_time: dateTime.orderTime,
     total_amount: totals.totalAmount,

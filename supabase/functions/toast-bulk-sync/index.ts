@@ -4,26 +4,16 @@ import { getEncryptionService, EncryptionService } from "../_shared/encryption.t
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
 import { processOrder } from "../_shared/toastOrderProcessor.ts";
 
-/**
- * Toast Bulk Sync - Scheduled sync for all active Toast connections
- *
- * SCALE CONSIDERATIONS:
- * - Processes MAX_RESTAURANTS_PER_RUN restaurants per execution
- * - Uses round-robin via `last_sync_time` to ensure fair scheduling
- * - Each restaurant gets MAX_ORDERS_PER_RESTAURANT orders per run
- * - Cron runs every 6 hours, so all restaurants get synced eventually
- * - For 100+ restaurants, may need to increase cron frequency or add workers
- */
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Conservative limits for Supabase Edge Function CPU limits (2s per request)
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_RESTAURANTS_PER_RUN = 5;
-// Reduced to stay within Supabase Edge Function CPU limits (2s)
-const MAX_ORDERS_PER_RESTAURANT = 100;  // Was 200
+const MAX_ORDERS_PER_RESTAURANT = 30;
+const PAGE_SIZE = 10;
 const DELAY_BETWEEN_RESTAURANTS_MS = 2000;
 const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentication/login';
 
@@ -147,7 +137,7 @@ async function fetchOrderPage(
   endDate: string,
   page: number
 ): Promise<{ orders: any[]; refreshedToken?: string }> {
-  const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
+  const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=${PAGE_SIZE}&page=${page}`;
 
   let ordersResponse = await fetchWithTimeout(bulkUrl, {
     headers: {
@@ -211,7 +201,7 @@ async function fetchAndProcessOrders(
       totalOrdersForRestaurant++;
     }
 
-    const shouldContinue = orders.length >= 100 && totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT;
+    const shouldContinue = orders.length >= PAGE_SIZE && totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT;
     if (!shouldContinue) break;
 
     page++;

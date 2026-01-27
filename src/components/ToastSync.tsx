@@ -49,34 +49,49 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
     allErrors: (string | SyncError)[];
     complete: boolean;
   }> {
-    let allErrors: (string | SyncError)[] = [];
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
+    const BATCH_DELAY_MS = 500;
+
+    const allErrors: (string | SyncError)[] = [];
     let totalOrders = 0;
     let complete = false;
+    let consecutiveFailures = 0;
 
     while (!complete) {
-      const data = await triggerManualSync(restaurantId, options);
+      try {
+        const data = await triggerManualSync(restaurantId, options);
 
-      if (data?.ordersSynced === undefined) {
-        break;
-      }
+        if (data?.ordersSynced === undefined) {
+          break;
+        }
 
-      totalOrders += data.ordersSynced;
-      setTotalOrdersSynced(totalOrders);
-      setSyncProgress(data.progress || 100);
+        consecutiveFailures = 0;
+        totalOrders += data.ordersSynced;
+        setTotalOrdersSynced(totalOrders);
+        setSyncProgress(data.progress || 100);
 
-      if (data.errors?.length) {
-        allErrors = [...allErrors, ...data.errors];
-      }
+        if (data.errors?.length) {
+          allErrors.push(...data.errors);
+        }
 
-      complete = data.syncComplete !== false;
+        complete = data.syncComplete !== false;
 
-      // Custom range syncs complete in one request
-      if (options?.startDate) {
-        complete = true;
-      }
+        if (!complete) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        }
+      } catch (error) {
+        consecutiveFailures++;
+        const errorMessage = error instanceof Error ? error.message : 'Request failed';
 
-      if (!complete) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        console.warn(`Sync request failed (attempt ${consecutiveFailures}/${MAX_RETRIES}):`, errorMessage);
+
+        if (consecutiveFailures >= MAX_RETRIES) {
+          allErrors.push({ message: `Sync interrupted after ${MAX_RETRIES} retries: ${errorMessage}` });
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }
 

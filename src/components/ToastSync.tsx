@@ -57,22 +57,31 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
     let totalOrders = 0;
     let complete = false;
     let consecutiveFailures = 0;
+    let currentPage: number | undefined;  // Page cursor for custom range pagination
 
     while (!complete) {
       try {
-        const data = await triggerManualSync(restaurantId, options);
+        // Pass page cursor if we have one (for resuming custom range sync)
+        const requestOptions = {
+          ...options,
+          ...(currentPage && { page: currentPage })
+        };
+        const data = await triggerManualSync(restaurantId, requestOptions);
 
         if (data?.ordersSynced === undefined) {
           break;
         }
 
         consecutiveFailures = 0;
-        totalOrders += data.ordersSynced;
+        totalOrders += data.ordersSynced as number;
         setTotalOrdersSynced(totalOrders);
-        setSyncProgress(data.progress || 100);
+        setSyncProgress((data.progress as number) || 100);
 
-        if (data.errors?.length) {
-          allErrors.push(...data.errors);
+        // Update page cursor for next request
+        currentPage = data.nextPage as number | undefined;
+
+        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          allErrors.push(...(data.errors as (string | SyncError)[]));
         }
 
         complete = data.syncComplete !== false;
@@ -91,6 +100,7 @@ export function ToastSync({ restaurantId }: ToastSyncProps): JSX.Element {
           break;
         }
 
+        // Don't reset currentPage - retry from same page
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
       }
     }

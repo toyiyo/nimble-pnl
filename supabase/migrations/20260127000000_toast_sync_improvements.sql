@@ -486,3 +486,88 @@ COMMENT ON EXTENSION pg_cron IS 'Toast POS sync runs every 6 hours to:
 - Catch missed orders between sync windows
 - Handle order modifications after initial creation
 - Provide reasonable freshness (6 hour max lag) for P&L reporting';
+
+
+-- =====================================================
+-- SECTION 5: Unified Sales Aggregation Cron (5 min)
+-- =====================================================
+-- Runs every 5 minutes to aggregate toast_orders into unified_sales
+-- This ensures users see their imported data quickly without waiting
+-- for the 6-hour bulk sync cycle.
+
+-- Enable pg_net for HTTP requests (if not already enabled)
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- Add sync_page column to track page cursor within a date range
+-- This prevents missing orders when a single day has more orders than MAX_ORDERS_PER_REQUEST
+ALTER TABLE toast_connections
+ADD COLUMN IF NOT EXISTS sync_page INTEGER DEFAULT 1;
+
+COMMENT ON COLUMN toast_connections.sync_page IS
+  'Page cursor for initial sync pagination. Tracks which page within the current sync_cursor day. Reset to 1 when moving to the next day.';
+
+-- Function to sync all active Toast connections to unified_sales
+CREATE OR REPLACE FUNCTION sync_all_toast_to_unified_sales()
+RETURNS TABLE(restaurant_id UUID, orders_synced INTEGER)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_connection RECORD;
+  v_synced INTEGER;
+  v_start_date DATE;
+  v_end_date DATE;
+BEGIN
+  -- Process last 7 days to catch any missed orders
+  v_start_date := CURRENT_DATE - INTERVAL '7 days';
+  v_end_date := CURRENT_DATE + INTERVAL '1 day';
+
+  -- Loop through all active Toast connections
+  FOR v_connection IN
+    SELECT tc.restaurant_id
+    FROM public.toast_connections tc
+    WHERE tc.is_active = true
+  LOOP
+    BEGIN
+      -- Sync this restaurant's orders to unified_sales
+      SELECT sync_toast_to_unified_sales(
+        v_connection.restaurant_id,
+        v_start_date,
+        v_end_date
+      ) INTO v_synced;
+
+      restaurant_id := v_connection.restaurant_id;
+      orders_synced := v_synced;
+      RETURN NEXT;
+    EXCEPTION WHEN OTHERS THEN
+      -- Log error but continue with other restaurants
+      RAISE WARNING 'Failed to sync restaurant %: %', v_connection.restaurant_id, SQLERRM;
+    END;
+  END LOOP;
+
+  RETURN;
+END;
+$$;
+
+-- Grant execute to service role
+GRANT EXECUTE ON FUNCTION sync_all_toast_to_unified_sales() TO service_role;
+
+-- Unschedule existing job if it exists (for idempotent migrations)
+DO $$
+BEGIN
+  PERFORM cron.unschedule('toast-unified-sales-sync');
+EXCEPTION WHEN OTHERS THEN
+  -- Job doesn't exist, that's fine
+END;
+$$;
+
+-- Schedule unified_sales sync every 5 minutes
+-- This aggregates toast_orders into unified_sales for all active connections
+SELECT cron.schedule(
+  'toast-unified-sales-sync',
+  '*/5 * * * *',
+  $$SELECT sync_all_toast_to_unified_sales()$$
+);
+
+COMMENT ON FUNCTION sync_all_toast_to_unified_sales IS
+  'Aggregates toast_orders to unified_sales for all active Toast connections. Runs every 5 minutes via cron to ensure imported data appears quickly. Uses date-range sync (last 7 days) to minimize CPU usage while catching any missed orders.';

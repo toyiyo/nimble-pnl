@@ -196,12 +196,13 @@ export function useToastConnection(restaurantId?: string | null) {
 
   async function triggerManualSync(
     restaurantId: string,
-    options?: { startDate?: string; endDate?: string }
+    options?: { startDate?: string; endDate?: string; page?: number }
   ): Promise<Record<string, unknown> | null> {
     const body = {
       restaurantId,
       ...(options?.startDate && { startDate: options.startDate }),
-      ...(options?.endDate && { endDate: options.endDate })
+      ...(options?.endDate && { endDate: options.endDate }),
+      ...(options?.page && { page: options.page })  // Page cursor for custom range pagination
     };
 
     const { data, error } = await supabase.functions.invoke('toast-sync-data', {

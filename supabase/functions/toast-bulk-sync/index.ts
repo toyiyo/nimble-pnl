@@ -12,8 +12,8 @@ const corsHeaders = {
 // Conservative limits for Supabase Edge Function CPU limits (2s per request)
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_RESTAURANTS_PER_RUN = 5;
-const MAX_ORDERS_PER_RESTAURANT = 30;
-const PAGE_SIZE = 10;
+const MAX_ORDERS_PER_RESTAURANT = 100;  // Increased since PAGE_SIZE is now 100
+const PAGE_SIZE = 100;                   // Toast API max - minimizes API calls
 const DELAY_BETWEEN_RESTAURANTS_MS = 2000;
 const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentication/login';
 

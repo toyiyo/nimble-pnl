@@ -13,10 +13,12 @@ const corsHeaders = {
 const FETCH_TIMEOUT_MS = 20000;
 const DEBUG = Deno.env.get('DEBUG') === 'true';
 const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentication/login';
-// Conservative batch sizes for Supabase Edge Function CPU limits (2s per request)
+// Batch sizes optimized for Supabase Edge Function CPU limits (2s per request)
+// Toast API allows pageSize up to 100 - use max to minimize requests
 const BATCH_DAYS = 1;
-const MAX_ORDERS_PER_REQUEST = 10;
-const PAGE_SIZE = 10;
+const MAX_ORDERS_PER_REQUEST = 50;   // Orders to process per edge function request
+const MAX_ORDERS_INCREMENTAL = 500;  // Higher limit for incremental sync (25h window is small)
+const PAGE_SIZE = 100;               // Toast API max - minimizes API calls
 const TARGET_DAYS = 90;
 const MAX_ERRORS = 50;
 
@@ -30,6 +32,7 @@ interface ToastConnection {
   toast_restaurant_guid: string;
   initial_sync_done?: boolean;
   sync_cursor?: number;
+  sync_page?: number;  // Page cursor within current sync_cursor day
 }
 
 interface SyncContext {
@@ -125,12 +128,26 @@ async function getValidAccessToken(
   return refreshAccessToken(connection, encryption, serviceSupabase);
 }
 
+interface OrderPageResult {
+  orders: unknown[];
+  refreshedToken?: string;
+  hasNextPage: boolean;  // From Link header rel="next"
+}
+
+function checkHasNextPage(response: Response): boolean {
+  // Toast API uses RFC 5988 Link headers for pagination
+  // Example: <url>; rel="next", <url>; rel="self"
+  const linkHeader = response.headers.get('Link');
+  if (!linkHeader) return false;
+  return linkHeader.includes('rel="next"');
+}
+
 async function fetchOrderPage(
   ctx: SyncContext,
   rangeStart: string,
   rangeEnd: string,
   page: number
-): Promise<{ orders: any[]; refreshedToken?: string }> {
+): Promise<OrderPageResult> {
   const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(rangeStart)}&endDate=${encodeURIComponent(rangeEnd)}&pageSize=${PAGE_SIZE}&page=${page}`;
 
   let ordersResponse = await fetchWithTimeout(bulkUrl, {
@@ -154,7 +171,8 @@ async function fetchOrderPage(
     }, 30000);
 
     if (ordersResponse.ok) {
-      return { orders: await ordersResponse.json(), refreshedToken: newToken };
+      const hasNextPage = checkHasNextPage(ordersResponse);
+      return { orders: await ordersResponse.json(), refreshedToken: newToken, hasNextPage };
     }
   }
 
@@ -162,49 +180,61 @@ async function fetchOrderPage(
     throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
   }
 
-  return { orders: await ordersResponse.json() };
+  const hasNextPage = checkHasNextPage(ordersResponse);
+  return { orders: await ordersResponse.json(), hasNextPage };
+}
+
+interface FetchRangeOptions {
+  startPage?: number;  // Resume from this page (for cursor-based pagination)
+}
+
+interface OrderFetchResultWithCursor extends OrderFetchResult {
+  nextPage?: number;  // Next page to fetch if hasMore is true
 }
 
 async function fetchOrdersForRange(
   ctx: SyncContext,
   rangeStart: string,
   rangeEnd: string,
-  maxOrders: number
-): Promise<OrderFetchResult> {
+  maxOrders: number,
+  options?: FetchRangeOptions
+): Promise<OrderFetchResultWithCursor> {
   const errors: Array<{ orderGuid: string; message: string }> = [];
   let rangeOrders = 0;
-  let page = 1;
-  let lastPageFull = false;  // Track if last page had full results
+  let page = options?.startPage || 1;
+  let apiHasMorePages = false;  // From Toast API Link header (rel="next")
 
   while (rangeOrders < maxOrders) {
-    const { orders, refreshedToken } = await fetchOrderPage(ctx, rangeStart, rangeEnd, page);
+    const { orders, refreshedToken, hasNextPage } = await fetchOrderPage(ctx, rangeStart, rangeEnd, page);
+    apiHasMorePages = hasNextPage;
 
     if (refreshedToken) {
       ctx.accessToken = refreshedToken;
     }
 
     if (!orders || orders.length === 0) {
-      lastPageFull = false;
+      apiHasMorePages = false;
       break;
     }
-
-    lastPageFull = orders.length >= PAGE_SIZE;
 
     for (const order of orders) {
       const result = await processOrderSafely(ctx, order, errors);
       if (result) rangeOrders++;
     }
 
-    const shouldContinue = lastPageFull && rangeOrders < maxOrders;
+    // Continue if API has more pages AND we haven't hit our limit
+    const shouldContinue = apiHasMorePages && rangeOrders < maxOrders;
     if (!shouldContinue) break;
 
     page++;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
 
-  // hasMore is true if we stopped because of maxOrders limit AND the last page was full
-  const hasMore = rangeOrders >= maxOrders && lastPageFull;
-  return { ordersProcessed: rangeOrders, errors, hasMore };
+  // hasMore is true if we stopped because of maxOrders limit AND API has more pages
+  const hasMore = rangeOrders >= maxOrders && apiHasMorePages;
+  // Return next page for cursor-based pagination
+  const nextPage = hasMore ? page + 1 : undefined;
+  return { ordersProcessed: rangeOrders, errors, hasMore, nextPage };
 }
 
 async function processOrderSafely(
@@ -362,11 +392,13 @@ serve(async (req) => {
     let restaurantId: string | undefined;
     let customStartDate: string | undefined;
     let customEndDate: string | undefined;
+    let startPage = 1;  // Page cursor for resuming custom range syncs
     try {
       const body = await req.json();
       restaurantId = body.restaurantId;
       customStartDate = body.startDate;
       customEndDate = body.endDate;
+      startPage = body.page || 1;  // Resume from this page if provided
     } catch {
       return jsonResponse({ error: 'Invalid JSON body' }, 400);
     }
@@ -424,24 +456,26 @@ serve(async (req) => {
     let syncStartDate = '';
     let syncEndDate = '';
     let isInitialSyncPhase = false;
+    let nextPage: number | undefined;  // Page cursor for custom range pagination
 
     // Custom date range sync (user-specified backfill)
     if (isCustomRange) {
       if (DEBUG) {
-        console.log(`Custom range sync: ${customStartDate} to ${customEndDate}`);
+        console.log(`Custom range sync: ${customStartDate} to ${customEndDate}, starting page: ${startPage}`);
       }
 
       syncStartDate = customStartDate!;
       syncEndDate = customEndDate!;
       isInitialSyncPhase = false;
 
-      const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST);
+      const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST, { startPage });
       totalOrders = result.ordersProcessed;
       allErrors = result.errors;
       syncComplete = !result.hasMore;
+      nextPage = result.nextPage;  // Pass to frontend for next request
       progress = syncComplete ? 100 : 50;
 
-      if (DEBUG) console.log(`Custom range batch: ${totalOrders} orders, hasMore: ${result.hasMore}`);
+      if (DEBUG) console.log(`Custom range batch: ${totalOrders} orders, hasMore: ${result.hasMore}, nextPage: ${nextPage}`);
     } else {
       // Normal sync logic (initial or incremental)
       const { isInitialSync, syncCursor, batchStart, batchEnd } = calculateSyncRange(connection);
@@ -456,22 +490,39 @@ serve(async (req) => {
       }
 
       if (isInitialSync && syncCursor < TARGET_DAYS) {
-        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST);
+        // Use sync_page to resume within a day if needed (for days with many orders)
+        const currentPage = connection.sync_page || 1;
+        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST, { startPage: currentPage });
         totalOrders = result.ordersProcessed;
         allErrors = result.errors;
-        newCursor = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
-        syncComplete = newCursor >= TARGET_DAYS;
+
+        if (result.hasMore) {
+          // More orders on this day - stay on same day, save next page
+          newCursor = syncCursor;  // Don't advance
+          nextPage = result.nextPage;
+          syncComplete = false;
+          if (DEBUG) console.log(`Day has more orders, staying on cursor ${syncCursor}, next page: ${nextPage}`);
+        } else {
+          // Day complete - move to next day, reset page to 1
+          newCursor = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
+          nextPage = 1;  // Reset for next day
+          syncComplete = newCursor >= TARGET_DAYS;
+          if (DEBUG) console.log(`Day complete, advancing cursor to ${newCursor}`);
+        }
+
         progress = Math.round((newCursor / TARGET_DAYS) * 100);
-        if (DEBUG) console.log(`Batch complete: ${totalOrders} orders, new cursor: ${newCursor}`);
+        if (DEBUG) console.log(`Batch complete: ${totalOrders} orders, cursor: ${newCursor}, page: ${nextPage}`);
       } else if (isInitialSync) {
         syncComplete = true;
       } else {
-        // Incremental sync (last 25 hours)
-        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST);
+        // Incremental sync (last 25 hours) - use higher limit since window is small
+        // This completes in one request to avoid infinite loop (no page cursor)
+        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_INCREMENTAL);
         totalOrders = result.ordersProcessed;
         allErrors = result.errors;
-        syncComplete = !result.hasMore;
-        progress = syncComplete ? 100 : 50;
+        // Always complete incremental sync in one request (no cursor support yet)
+        syncComplete = true;
+        progress = 100;
       }
     }
 
@@ -494,7 +545,8 @@ serve(async (req) => {
         connection_status: 'connected',
         last_error: null,
         last_error_at: null,
-        sync_cursor: syncComplete ? 0 : newCursor
+        sync_cursor: syncComplete ? 0 : newCursor,
+        sync_page: syncComplete ? 1 : (nextPage || 1)  // Reset to 1 when complete, otherwise save next page
       };
       if (syncComplete) {
         syncUpdate.initial_sync_done = true;
@@ -525,7 +577,8 @@ serve(async (req) => {
       errors: allErrors,
       syncComplete,
       progress,
-      isCustomRange
+      isCustomRange,
+      nextPage  // Page cursor for frontend to resume custom range sync
     });
 
   } catch (error: any) {

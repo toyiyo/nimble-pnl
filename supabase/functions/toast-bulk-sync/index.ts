@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getEncryptionService } from "../_shared/encryption.ts";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEncryptionService, EncryptionService } from "../_shared/encryption.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
 import { processOrder } from "../_shared/toastOrderProcessor.ts";
 
@@ -21,9 +21,37 @@ const corsHeaders = {
 };
 
 const FETCH_TIMEOUT_MS = 20000;
-const MAX_RESTAURANTS_PER_RUN = 5; // Process max 5 restaurants per cron run
-const MAX_ORDERS_PER_RESTAURANT = 200; // Limit orders per restaurant per run
-const DELAY_BETWEEN_RESTAURANTS_MS = 2000; // 2 second delay between restaurants
+const MAX_RESTAURANTS_PER_RUN = 5;
+const MAX_ORDERS_PER_RESTAURANT = 200;
+const DELAY_BETWEEN_RESTAURANTS_MS = 2000;
+const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentication/login';
+
+interface ToastConnection {
+  id: string;
+  restaurant_id: string;
+  client_id: string;
+  client_secret_encrypted: string;
+  access_token_encrypted?: string;
+  token_expires_at?: string;
+  toast_restaurant_guid: string;
+  initial_sync_done?: boolean;
+}
+
+interface SyncResults {
+  totalConnections: number;
+  successfulSyncs: number;
+  failedSyncs: number;
+  totalOrdersSynced: number;
+  errors: string[];
+  processingTimeMs: number;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
@@ -42,6 +70,205 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise
   }
 }
 
+async function refreshAccessToken(
+  connection: ToastConnection,
+  encryption: EncryptionService,
+  supabase: SupabaseClient
+): Promise<string> {
+  console.log('Refreshing access token...');
+  const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
+
+  const authResponse = await fetchWithTimeout(TOAST_AUTH_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clientId: connection.client_id,
+      clientSecret: clientSecret,
+      userAccessType: 'TOAST_MACHINE_CLIENT'
+    })
+  });
+
+  if (!authResponse.ok) {
+    throw new Error(`Token refresh failed: ${authResponse.status}`);
+  }
+
+  const authData = await authResponse.json();
+  const accessToken = authData.token.accessToken;
+
+  const encryptedToken = await encryption.encrypt(accessToken);
+  const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
+
+  await supabase.from('toast_connections').update({
+    access_token_encrypted: encryptedToken,
+    token_expires_at: expiresAt.toISOString(),
+    token_fetched_at: new Date().toISOString()
+  }).eq('id', connection.id);
+
+  return accessToken;
+}
+
+async function getValidAccessToken(
+  connection: ToastConnection,
+  encryption: EncryptionService,
+  supabase: SupabaseClient
+): Promise<string> {
+  const existingToken = connection.access_token_encrypted
+    ? await encryption.decrypt(connection.access_token_encrypted)
+    : null;
+
+  const tokenExpired = !connection.token_expires_at ||
+    new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);
+
+  if (existingToken && !tokenExpired) {
+    return existingToken;
+  }
+
+  return refreshAccessToken(connection, encryption, supabase);
+}
+
+async function fetchAndProcessOrders(
+  supabase: SupabaseClient,
+  connection: ToastConnection,
+  accessToken: string,
+  startDate: string,
+  endDate: string
+): Promise<number> {
+  let page = 1;
+  let totalOrdersForRestaurant = 0;
+
+  while (totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT) {
+    const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
+
+    const ordersResponse = await fetchWithTimeout(bulkUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
+      }
+    });
+
+    if (!ordersResponse.ok) {
+      throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+    }
+
+    const orders = await ordersResponse.json();
+
+    if (!orders || orders.length === 0) {
+      break;
+    }
+
+    console.log(`Processing ${orders.length} orders from page ${page}`);
+
+    for (const order of orders) {
+      if (totalOrdersForRestaurant >= MAX_ORDERS_PER_RESTAURANT) break;
+
+      await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid, {
+        skipUnifiedSalesSync: true
+      });
+      totalOrdersForRestaurant++;
+    }
+
+    const shouldContinue = orders.length >= 100 && totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT;
+    if (!shouldContinue) break;
+
+    page++;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  return totalOrdersForRestaurant;
+}
+
+async function syncUnifiedSales(
+  supabase: SupabaseClient,
+  restaurantId: string,
+  ordersProcessed: number
+): Promise<void> {
+  if (ordersProcessed === 0) return;
+
+  console.log('Syncing to unified_sales...');
+  const { error: rpcError } = await supabase.rpc('sync_toast_to_unified_sales', {
+    p_restaurant_id: restaurantId
+  });
+
+  if (rpcError) {
+    console.warn('unified_sales sync warning:', rpcError.message);
+  }
+}
+
+async function updateConnectionSuccess(
+  supabase: SupabaseClient,
+  connectionId: string
+): Promise<void> {
+  await supabase.from('toast_connections').update({
+    last_sync_time: new Date().toISOString(),
+    initial_sync_done: true,
+    connection_status: 'connected',
+    last_error: null,
+    last_error_at: null
+  }).eq('id', connectionId);
+}
+
+async function updateConnectionError(
+  supabase: SupabaseClient,
+  connectionId: string,
+  errorMessage: string
+): Promise<void> {
+  await supabase.from('toast_connections').update({
+    connection_status: 'error',
+    last_error: errorMessage,
+    last_error_at: new Date().toISOString()
+  }).eq('id', connectionId);
+}
+
+async function processConnection(
+  supabase: SupabaseClient,
+  connection: ToastConnection,
+  encryption: EncryptionService,
+  results: SyncResults
+): Promise<void> {
+  try {
+    console.log(`Processing restaurant: ${connection.toast_restaurant_guid}`);
+
+    const accessToken = await getValidAccessToken(connection, encryption, supabase);
+
+    // Determine sync window
+    const syncHoursBack = connection.initial_sync_done ? 25 : 72;
+    const startDate = new Date(Date.now() - syncHoursBack * 3600 * 1000).toISOString();
+    const endDate = new Date().toISOString();
+
+    console.log(`Syncing orders from ${startDate} (${syncHoursBack}h back)`);
+
+    const totalOrdersForRestaurant = await fetchAndProcessOrders(
+      supabase,
+      connection,
+      accessToken,
+      startDate,
+      endDate
+    );
+
+    await syncUnifiedSales(supabase, connection.restaurant_id, totalOrdersForRestaurant);
+    await updateConnectionSuccess(supabase, connection.id);
+
+    await logSecurityEvent(supabase, 'TOAST_BULK_SYNC_SUCCESS', undefined, connection.restaurant_id, {
+      ordersProcessed: totalOrdersForRestaurant,
+      restaurantGuid: connection.toast_restaurant_guid
+    });
+
+    results.successfulSyncs++;
+    results.totalOrdersSynced += totalOrdersForRestaurant;
+
+    console.log(`Synced ${totalOrdersForRestaurant} orders for restaurant ${connection.toast_restaurant_guid}`);
+
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Error syncing restaurant ${connection.toast_restaurant_guid}:`, errorMessage);
+
+    await updateConnectionError(supabase, connection.id, errorMessage);
+
+    results.failedSyncs++;
+    results.errors.push(`${connection.toast_restaurant_guid}: ${errorMessage}`);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -56,8 +283,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get connections that need syncing, ordered by least recently synced
-    // This ensures fair round-robin scheduling across all restaurants
     const { data: connections, error: connectionsError } = await supabase
       .from('toast_connections')
       .select('*')
@@ -69,188 +294,40 @@ serve(async (req) => {
       throw new Error(`Failed to fetch connections: ${connectionsError.message}`);
     }
 
-    const results = {
+    const results: SyncResults = {
       totalConnections: connections?.length || 0,
       successfulSyncs: 0,
       failedSyncs: 0,
       totalOrdersSynced: 0,
-      errors: [] as string[],
+      errors: [],
       processingTimeMs: 0
     };
 
     if (!connections || connections.length === 0) {
       console.log('No active Toast connections found');
       results.processingTimeMs = Date.now() - startTime;
-      return new Response(JSON.stringify(results), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return jsonResponse(results);
     }
 
     const encryption = await getEncryptionService();
 
-    // Process each connection sequentially with delays
     for (let i = 0; i < connections.length; i++) {
-      const connection = connections[i];
-
-      // Add delay between restaurants (except first one)
       if (i > 0) {
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_RESTAURANTS_MS));
       }
 
-      try {
-        console.log(`[${i + 1}/${connections.length}] Processing restaurant: ${connection.toast_restaurant_guid}`);
-
-        // Get or refresh access token
-        let accessToken = connection.access_token_encrypted
-          ? await encryption.decrypt(connection.access_token_encrypted)
-          : null;
-
-        const tokenExpired = !connection.token_expires_at ||
-          new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);
-
-        if (!accessToken || tokenExpired) {
-          console.log('Refreshing access token...');
-          const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
-
-          const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              clientId: connection.client_id,
-              clientSecret: clientSecret,
-              userAccessType: 'TOAST_MACHINE_CLIENT'
-            })
-          });
-
-          if (!authResponse.ok) {
-            throw new Error(`Token refresh failed: ${authResponse.status}`);
-          }
-
-          const authData = await authResponse.json();
-          accessToken = authData.token.accessToken;
-
-          const encryptedToken = await encryption.encrypt(accessToken);
-          const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
-
-          await supabase.from('toast_connections').update({
-            access_token_encrypted: encryptedToken,
-            token_expires_at: expiresAt.toISOString(),
-            token_fetched_at: new Date().toISOString()
-          }).eq('id', connection.id);
-        }
-
-        // Determine sync window - always incremental for bulk sync
-        // Initial syncs should be triggered manually by the user
-        const syncHoursBack = connection.initial_sync_done ? 25 : 72; // 3 days for new connections
-        const startDate = new Date(Date.now() - syncHoursBack * 3600 * 1000).toISOString();
-        const endDate = new Date().toISOString();
-
-        console.log(`Syncing orders from ${startDate} (${syncHoursBack}h back)`);
-
-        // Fetch orders with limits
-        let page = 1;
-        let totalOrdersForRestaurant = 0;
-
-        while (totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT) {
-          const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
-
-          const ordersResponse = await fetchWithTimeout(bulkUrl, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
-            }
-          });
-
-          if (!ordersResponse.ok) {
-            throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
-          }
-
-          const orders = await ordersResponse.json();
-
-          if (!orders || orders.length === 0) {
-            break;
-          }
-
-          console.log(`Processing ${orders.length} orders from page ${page}`);
-
-          for (const order of orders) {
-            if (totalOrdersForRestaurant >= MAX_ORDERS_PER_RESTAURANT) break;
-
-            // Skip unified_sales sync during bulk - we do it once at the end
-            await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid, {
-              skipUnifiedSalesSync: true
-            });
-            totalOrdersForRestaurant++;
-          }
-
-          if (orders.length < 100 || totalOrdersForRestaurant >= MAX_ORDERS_PER_RESTAURANT) {
-            break;
-          }
-
-          page++;
-          await new Promise(resolve => setTimeout(resolve, 200)); // Rate limiting
-        }
-
-        // Sync to unified_sales (only if we processed orders)
-        if (totalOrdersForRestaurant > 0) {
-          console.log('Syncing to unified_sales...');
-          const { error: rpcError } = await supabase.rpc('sync_toast_to_unified_sales', {
-            p_restaurant_id: connection.restaurant_id
-          });
-
-          if (rpcError) {
-            console.warn('unified_sales sync warning:', rpcError.message);
-            // Don't fail the whole sync for this
-          }
-        }
-
-        // Update sync status
-        await supabase.from('toast_connections').update({
-          last_sync_time: new Date().toISOString(),
-          initial_sync_done: true,
-          connection_status: 'connected',
-          last_error: null,
-          last_error_at: null
-        }).eq('id', connection.id);
-
-        await logSecurityEvent(supabase, 'TOAST_BULK_SYNC_SUCCESS', undefined, connection.restaurant_id, {
-          ordersProcessed: totalOrdersForRestaurant,
-          restaurantGuid: connection.toast_restaurant_guid
-        });
-
-        results.successfulSyncs++;
-        results.totalOrdersSynced += totalOrdersForRestaurant;
-
-        console.log(`✓ Synced ${totalOrdersForRestaurant} orders for restaurant ${connection.toast_restaurant_guid}`);
-
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`✗ Error syncing restaurant ${connection.toast_restaurant_guid}:`, errorMessage);
-
-        await supabase.from('toast_connections').update({
-          connection_status: 'error',
-          last_error: errorMessage,
-          last_error_at: new Date().toISOString()
-        }).eq('id', connection.id);
-
-        results.failedSyncs++;
-        results.errors.push(`${connection.toast_restaurant_guid}: ${errorMessage}`);
-      }
+      console.log(`[${i + 1}/${connections.length}] Starting...`);
+      await processConnection(supabase, connections[i], encryption, results);
     }
 
     results.processingTimeMs = Date.now() - startTime;
     console.log(`Bulk sync completed in ${results.processingTimeMs}ms:`, results);
 
-    return new Response(JSON.stringify(results), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse(results);
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Toast bulk sync error:', errorMessage);
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: errorMessage }, 500);
   }
 });

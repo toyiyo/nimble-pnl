@@ -228,9 +228,11 @@ $$;
 COMMENT ON FUNCTION sync_toast_to_unified_sales IS
   'Syncs Toast orders to unified_sales. Called by edge functions with service role.';
 
--- Alias function for backward compatibility
+-- DEPRECATED: Backward compatibility wrapper for toastOrderProcessor.ts
+-- p_order_guid is intentionally ignored - this performs a full restaurant sync.
+-- TODO: Update toastOrderProcessor.ts to call sync_toast_to_unified_sales directly.
 CREATE OR REPLACE FUNCTION toast_sync_financial_breakdown(
-  p_order_guid TEXT,
+  p_order_guid TEXT,  -- Unused, kept for signature compatibility
   p_restaurant_id UUID
 )
 RETURNS INTEGER
@@ -238,6 +240,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  -- Ignores p_order_guid; syncs all orders for restaurant
   RETURN sync_toast_to_unified_sales(p_restaurant_id);
 END;
 $$;
@@ -254,10 +257,12 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 GRANT USAGE ON SCHEMA cron TO postgres;
 
 -- Remove existing job if present (for idempotency)
-SELECT cron.unschedule('toast-bulk-sync')
-WHERE EXISTS (
-  SELECT 1 FROM cron.job WHERE jobname = 'toast-bulk-sync'
-);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'toast-bulk-sync') THEN
+    PERFORM cron.unschedule('toast-bulk-sync');
+  END IF;
+END $$;
 
 -- Schedule bulk sync every 6 hours (3 AM, 9 AM, 3 PM, 9 PM)
 -- Provides 4 sync opportunities per day without overloading Toast API

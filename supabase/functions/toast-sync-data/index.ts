@@ -35,6 +35,7 @@ interface SyncContext {
   encryption: EncryptionService;
   serviceSupabase: SupabaseClient;
   accessToken: string;
+  tokenRefreshed?: boolean;  // Prevents multiple refresh attempts per sync session
 }
 
 interface OrderFetchResult {
@@ -136,9 +137,10 @@ async function fetchOrderPage(
     }
   }, 30000);
 
-  // Handle 401 with one retry after token refresh
-  if (!ordersResponse.ok && ordersResponse.status === 401 && page === 1) {
+  // Handle 401 with one retry after token refresh (per sync session)
+  if (!ordersResponse.ok && ordersResponse.status === 401 && !ctx.tokenRefreshed) {
     if (DEBUG) console.log('Got 401, attempting token refresh and retry...');
+    ctx.tokenRefreshed = true;
     const newToken = await refreshAccessToken(ctx.connection, ctx.encryption, ctx.serviceSupabase);
 
     ordersResponse = await fetchWithTimeout(bulkUrl, {

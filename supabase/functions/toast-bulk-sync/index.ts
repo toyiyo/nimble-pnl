@@ -98,11 +98,17 @@ async function refreshAccessToken(
   const encryptedToken = await encryption.encrypt(accessToken);
   const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
 
-  await supabase.from('toast_connections').update({
+  const { error: tokenUpdateError } = await supabase.from('toast_connections').update({
     access_token_encrypted: encryptedToken,
     token_expires_at: expiresAt.toISOString(),
     token_fetched_at: new Date().toISOString()
   }).eq('id', connection.id);
+
+  if (tokenUpdateError) {
+    // Token is valid for this request but won't be cached for next time.
+    // This is acceptable - log warning and continue.
+    console.warn('Token refresh succeeded but persistence failed:', tokenUpdateError.message);
+  }
 
   return accessToken;
 }
@@ -126,10 +132,56 @@ async function getValidAccessToken(
   return refreshAccessToken(connection, encryption, supabase);
 }
 
+interface FetchContext {
+  supabase: SupabaseClient;
+  connection: ToastConnection;
+  encryption: EncryptionService;
+  accessToken: string;
+  tokenRefreshed?: boolean;  // Prevents multiple refresh attempts per sync session
+}
+
+async function fetchOrderPage(
+  ctx: FetchContext,
+  startDate: string,
+  endDate: string,
+  page: number
+): Promise<{ orders: any[]; refreshedToken?: string }> {
+  const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
+
+  let ordersResponse = await fetchWithTimeout(bulkUrl, {
+    headers: {
+      'Authorization': `Bearer ${ctx.accessToken}`,
+      'Toast-Restaurant-External-ID': ctx.connection.toast_restaurant_guid
+    }
+  });
+
+  // Handle 401 with one retry after token refresh (per sync session)
+  if (!ordersResponse.ok && ordersResponse.status === 401 && !ctx.tokenRefreshed) {
+    console.log('Got 401, attempting token refresh and retry...');
+    ctx.tokenRefreshed = true;
+    const newToken = await refreshAccessToken(ctx.connection, ctx.encryption, ctx.supabase);
+
+    ordersResponse = await fetchWithTimeout(bulkUrl, {
+      headers: {
+        'Authorization': `Bearer ${newToken}`,
+        'Toast-Restaurant-External-ID': ctx.connection.toast_restaurant_guid
+      }
+    });
+
+    if (ordersResponse.ok) {
+      return { orders: await ordersResponse.json(), refreshedToken: newToken };
+    }
+  }
+
+  if (!ordersResponse.ok) {
+    throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+  }
+
+  return { orders: await ordersResponse.json() };
+}
+
 async function fetchAndProcessOrders(
-  supabase: SupabaseClient,
-  connection: ToastConnection,
-  accessToken: string,
+  ctx: FetchContext,
   startDate: string,
   endDate: string
 ): Promise<number> {
@@ -137,20 +189,11 @@ async function fetchAndProcessOrders(
   let totalOrdersForRestaurant = 0;
 
   while (totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT) {
-    const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
+    const { orders, refreshedToken } = await fetchOrderPage(ctx, startDate, endDate, page);
 
-    const ordersResponse = await fetchWithTimeout(bulkUrl, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Toast-Restaurant-External-ID': connection.toast_restaurant_guid
-      }
-    });
-
-    if (!ordersResponse.ok) {
-      throw new Error(`Failed to fetch orders: ${ordersResponse.status}`);
+    if (refreshedToken) {
+      ctx.accessToken = refreshedToken;
     }
-
-    const orders = await ordersResponse.json();
 
     if (!orders || orders.length === 0) {
       break;
@@ -161,7 +204,7 @@ async function fetchAndProcessOrders(
     for (const order of orders) {
       if (totalOrdersForRestaurant >= MAX_ORDERS_PER_RESTAURANT) break;
 
-      await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid, {
+      await processOrder(ctx.supabase, order, ctx.connection.restaurant_id, ctx.connection.toast_restaurant_guid, {
         skipUnifiedSalesSync: true
       });
       totalOrdersForRestaurant++;
@@ -237,10 +280,15 @@ async function processConnection(
 
     console.log(`Syncing orders from ${startDate} (${syncHoursBack}h back)`);
 
-    const totalOrdersForRestaurant = await fetchAndProcessOrders(
+    const ctx: FetchContext = {
       supabase,
       connection,
-      accessToken,
+      encryption,
+      accessToken
+    };
+
+    const totalOrdersForRestaurant = await fetchAndProcessOrders(
+      ctx,
       startDate,
       endDate
     );

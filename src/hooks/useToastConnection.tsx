@@ -220,6 +220,30 @@ export const useToastConnection = (restaurantId?: string | null) => {
     return checkConnectionStatus(restaurantId);
   };
 
+  const fetchLocations = async (
+    restaurantId: string,
+    clientId: string,
+    clientSecret: string
+  ): Promise<{ success: boolean; locations: Array<{ guid: string; name: string; location: string }>; message?: string }> => {
+    const { data, error } = await supabase.functions.invoke('toast-fetch-locations', {
+      body: {
+        restaurantId,
+        clientId,
+        clientSecret
+      }
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.error) {
+      throw new Error(data.error);
+    }
+
+    return data;
+  };
+
   return {
     isConnected,
     connection,
@@ -230,6 +254,7 @@ export const useToastConnection = (restaurantId?: string | null) => {
     disconnectToast,
     triggerManualSync,
     checkConnectionStatus,
-    getConnectionStatus
+    getConnectionStatus,
+    fetchLocations
   };
 };

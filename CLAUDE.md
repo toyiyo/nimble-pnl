@@ -186,9 +186,25 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 
 **Key Files:**
 - `supabase/functions/_shared/toastOrderProcessor.ts` - Order processing logic
-- `supabase/functions/toast-sync-data/` - Manual sync endpoint
+- `supabase/functions/toast-sync-data/` - Manual sync endpoint (user-triggered)
+- `supabase/functions/toast-bulk-sync/` - Scheduled sync (cron job)
 - `src/hooks/useToastConnection.ts` - Frontend connection hook
 - `src/components/pos/ToastSetupWizard.tsx` - Setup UI
+
+**Scale Considerations (100+ restaurants):**
+- Bulk sync processes max 5 restaurants per cron run (round-robin by `last_sync_time`)
+- Max 200 orders per restaurant per run
+- 2-second delay between restaurants to avoid API rate limits
+- Cron runs every 6 hours - all restaurants eventually get synced
+- For faster sync with many restaurants, increase cron frequency or add workers
+
+**Testing Cron Locally:**
+```bash
+# Call bulk sync directly (simulates cron job)
+curl -X POST http://localhost:54321/functions/v1/toast-bulk-sync \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json"
+```
 
 ### Banking (Stripe Financial Connections)
 Never store bank credentials. Use Stripe for credential storage. Always verify webhook signatures.

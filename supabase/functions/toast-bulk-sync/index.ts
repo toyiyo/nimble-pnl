@@ -4,22 +4,33 @@ import { getEncryptionService } from "../_shared/encryption.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
 import { processOrder } from "../_shared/toastOrderProcessor.ts";
 
+/**
+ * Toast Bulk Sync - Scheduled sync for all active Toast connections
+ *
+ * SCALE CONSIDERATIONS:
+ * - Processes MAX_RESTAURANTS_PER_RUN restaurants per execution
+ * - Uses round-robin via `last_sync_time` to ensure fair scheduling
+ * - Each restaurant gets MAX_ORDERS_PER_RESTAURANT orders per run
+ * - Cron runs every 6 hours, so all restaurants get synced eventually
+ * - For 100+ restaurants, may need to increase cron frequency or add workers
+ */
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const FETCH_TIMEOUT_MS = 30000; // 30 seconds
+const FETCH_TIMEOUT_MS = 20000;
+const MAX_RESTAURANTS_PER_RUN = 5; // Process max 5 restaurants per cron run
+const MAX_ORDERS_PER_RESTAURANT = 200; // Limit orders per restaurant per run
+const DELAY_BETWEEN_RESTAURANTS_MS = 2000; // 2 second delay between restaurants
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  
+
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal
-    });
+    const response = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
@@ -36,6 +47,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     console.log('Toast bulk sync started');
 
@@ -43,11 +56,14 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get all active Toast connections
+    // Get connections that need syncing, ordered by least recently synced
+    // This ensures fair round-robin scheduling across all restaurants
     const { data: connections, error: connectionsError } = await supabase
       .from('toast_connections')
       .select('*')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .order('last_sync_time', { ascending: true, nullsFirst: true })
+      .limit(MAX_RESTAURANTS_PER_RUN);
 
     if (connectionsError) {
       throw new Error(`Failed to fetch connections: ${connectionsError.message}`);
@@ -58,11 +74,13 @@ serve(async (req) => {
       successfulSyncs: 0,
       failedSyncs: 0,
       totalOrdersSynced: 0,
-      errors: [] as string[]
+      errors: [] as string[],
+      processingTimeMs: 0
     };
 
     if (!connections || connections.length === 0) {
       console.log('No active Toast connections found');
+      results.processingTimeMs = Date.now() - startTime;
       return new Response(JSON.stringify(results), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -70,30 +88,36 @@ serve(async (req) => {
 
     const encryption = await getEncryptionService();
 
-    // Process each connection
-    for (const connection of connections) {
+    // Process each connection sequentially with delays
+    for (let i = 0; i < connections.length; i++) {
+      const connection = connections[i];
+
+      // Add delay between restaurants (except first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_RESTAURANTS_MS));
+      }
+
       try {
-        console.log(`Processing restaurant: ${connection.toast_restaurant_guid}`);
+        console.log(`[${i + 1}/${connections.length}] Processing restaurant: ${connection.toast_restaurant_guid}`);
 
         // Get or refresh access token
-        let accessToken = connection.access_token_encrypted 
-          ? await encryption.decrypt(connection.access_token_encrypted) 
+        let accessToken = connection.access_token_encrypted
+          ? await encryption.decrypt(connection.access_token_encrypted)
           : null;
-        
-        const tokenExpired = !connection.token_expires_at || 
-          new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000); // Refresh if <1hr left
-        
+
+        const tokenExpired = !connection.token_expires_at ||
+          new Date(connection.token_expires_at).getTime() < Date.now() + (3600 * 1000);
+
         if (!accessToken || tokenExpired) {
           console.log('Refreshing access token...');
-          const clientId = connection.client_id;
           const clientSecret = await encryption.decrypt(connection.client_secret_encrypted);
-          
+
           const authResponse = await fetchWithTimeout('https://ws-api.toasttab.com/authentication/v1/authentication/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              clientId,
-              clientSecret,
+              clientId: connection.client_id,
+              clientSecret: clientSecret,
               userAccessType: 'TOAST_MACHINE_CLIENT'
             })
           });
@@ -104,11 +128,10 @@ serve(async (req) => {
 
           const authData = await authResponse.json();
           accessToken = authData.token.accessToken;
-          
-          // Cache token
+
           const encryptedToken = await encryption.encrypt(accessToken);
           const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
-          
+
           await supabase.from('toast_connections').update({
             access_token_encrypted: encryptedToken,
             token_expires_at: expiresAt.toISOString(),
@@ -116,36 +139,21 @@ serve(async (req) => {
           }).eq('id', connection.id);
         }
 
-        // Determine sync window
-        let startDate: string;
-        let endDate: string = new Date().toISOString();
-        
-        if (!connection.initial_sync_done) {
-          // Initial sync: last 90 days
-          const ninetyDaysAgo = new Date();
-          ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-          startDate = ninetyDaysAgo.toISOString();
-          console.log('Initial sync: fetching last 90 days of orders');
-        } else {
-          // Regular sync: last 25 hours (24h + 1h buffer for late modifications)
-          const lastSync = connection.last_sync_time 
-            ? new Date(connection.last_sync_time) 
-            : new Date(Date.now() - 25 * 3600 * 1000);
-          
-          startDate = new Date(lastSync.getTime() - 3600 * 1000).toISOString(); // 1hr buffer
-          console.log(`Regular sync from ${startDate}`);
-        }
+        // Determine sync window - always incremental for bulk sync
+        // Initial syncs should be triggered manually by the user
+        const syncHoursBack = connection.initial_sync_done ? 25 : 72; // 3 days for new connections
+        const startDate = new Date(Date.now() - syncHoursBack * 3600 * 1000).toISOString();
+        const endDate = new Date().toISOString();
 
-        // Fetch orders using /ordersBulk endpoint with pagination
+        console.log(`Syncing orders from ${startDate} (${syncHoursBack}h back)`);
+
+        // Fetch orders with limits
         let page = 1;
         let totalOrdersForRestaurant = 0;
-        let hasMorePages = true;
 
-        while (hasMorePages) {
+        while (totalOrdersForRestaurant < MAX_ORDERS_PER_RESTAURANT) {
           const bulkUrl = `https://ws-api.toasttab.com/orders/v2/ordersBulk?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&pageSize=100&page=${page}`;
-          
-          console.log(`Fetching page ${page}...`);
-          
+
           const ordersResponse = await fetchWithTimeout(bulkUrl, {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -158,35 +166,43 @@ serve(async (req) => {
           }
 
           const orders = await ordersResponse.json();
-          
+
           if (!orders || orders.length === 0) {
-            hasMorePages = false;
             break;
           }
 
           console.log(`Processing ${orders.length} orders from page ${page}`);
-          
-          // Process each order
+
           for (const order of orders) {
-            await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid);
+            if (totalOrdersForRestaurant >= MAX_ORDERS_PER_RESTAURANT) break;
+
+            // Skip unified_sales sync during bulk - we do it once at the end
+            await processOrder(supabase, order, connection.restaurant_id, connection.toast_restaurant_guid, {
+              skipUnifiedSalesSync: true
+            });
             totalOrdersForRestaurant++;
           }
 
-          // Check if there are more pages (if we got 100 orders, likely more exist)
-          if (orders.length < 100) {
-            hasMorePages = false;
-          } else {
-            page++;
-            // Rate limiting: max 5 requests/second per restaurant
-            await new Promise(resolve => setTimeout(resolve, 250));
+          if (orders.length < 100 || totalOrdersForRestaurant >= MAX_ORDERS_PER_RESTAURANT) {
+            break;
           }
+
+          page++;
+          await new Promise(resolve => setTimeout(resolve, 200)); // Rate limiting
         }
 
-        // Sync to unified_sales
-        console.log('Syncing to unified_sales...');
-        await supabase.rpc('sync_toast_to_unified_sales', {
-          p_restaurant_id: connection.restaurant_id
-        });
+        // Sync to unified_sales (only if we processed orders)
+        if (totalOrdersForRestaurant > 0) {
+          console.log('Syncing to unified_sales...');
+          const { error: rpcError } = await supabase.rpc('sync_toast_to_unified_sales', {
+            p_restaurant_id: connection.restaurant_id
+          });
+
+          if (rpcError) {
+            console.warn('unified_sales sync warning:', rpcError.message);
+            // Don't fail the whole sync for this
+          }
+        }
 
         // Update sync status
         await supabase.from('toast_connections').update({
@@ -204,33 +220,35 @@ serve(async (req) => {
 
         results.successfulSyncs++;
         results.totalOrdersSynced += totalOrdersForRestaurant;
-        
-        console.log(`Successfully synced ${totalOrdersForRestaurant} orders for restaurant ${connection.toast_restaurant_guid}`);
 
-      } catch (error: any) {
-        console.error(`Error syncing restaurant ${connection.toast_restaurant_guid}:`, error);
-        
-        // Update connection with error
+        console.log(`✓ Synced ${totalOrdersForRestaurant} orders for restaurant ${connection.toast_restaurant_guid}`);
+
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`✗ Error syncing restaurant ${connection.toast_restaurant_guid}:`, errorMessage);
+
         await supabase.from('toast_connections').update({
           connection_status: 'error',
-          last_error: error.message,
+          last_error: errorMessage,
           last_error_at: new Date().toISOString()
         }).eq('id', connection.id);
 
         results.failedSyncs++;
-        results.errors.push(`${connection.toast_restaurant_guid}: ${error.message}`);
+        results.errors.push(`${connection.toast_restaurant_guid}: ${errorMessage}`);
       }
     }
 
-    console.log('Bulk sync completed:', results);
+    results.processingTimeMs = Date.now() - startTime;
+    console.log(`Bulk sync completed in ${results.processingTimeMs}ms:`, results);
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error: any) {
-    console.error('Toast bulk sync error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Toast bulk sync error:', errorMessage);
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

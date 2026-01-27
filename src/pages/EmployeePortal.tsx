@@ -507,7 +507,8 @@ const EmployeePortal = () => {
                   src={flowUrl}
                   className="w-full h-[500px] border-0 rounded-b-lg"
                   title="Gusto Payroll"
-                  allow="clipboard-write"
+                  allow="clipboard-write; payment; geolocation"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground">
@@ -613,7 +614,8 @@ const EmployeePortal = () => {
                 src={flowUrl}
                 className="w-full h-[600px] border-0 rounded-b-lg"
                 title="Gusto Onboarding"
-                allow="clipboard-write"
+                allow="clipboard-write; payment; geolocation"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
               />
             </CardContent>
           </Card>

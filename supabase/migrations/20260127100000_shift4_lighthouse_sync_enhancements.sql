@@ -50,6 +50,7 @@ CREATE OR REPLACE FUNCTION sync_all_shift4_to_unified_sales()
 RETURNS TABLE(restaurant_id UUID, rows_synced INTEGER)
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_connection RECORD;
@@ -63,7 +64,7 @@ BEGIN
   LOOP
     BEGIN
       -- Call the existing sync function for this restaurant
-      SELECT sync_shift4_to_unified_sales(v_connection.restaurant_id) INTO v_synced;
+      SELECT public.sync_shift4_to_unified_sales(v_connection.restaurant_id) INTO v_synced;
 
       restaurant_id := v_connection.restaurant_id;
       rows_synced := v_synced;

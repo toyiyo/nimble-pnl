@@ -52,9 +52,10 @@ function calculateSyncRange(connection: Shift4Connection): {
 
   if (isInitialSync && syncCursor < TARGET_DAYS) {
     // Initial sync: process BATCH_DAYS days at a time, working backwards from today
-    // cursor=0 means start from today, cursor=3 means days 3-6, etc.
+    // cursor=0 means start from today (day 0), cursor=3 means days 3-5 (inclusive), etc.
+    // startDaysBack is one less than the next cursor to avoid off-by-one
     const endDaysBack = syncCursor;
-    const startDaysBack = Math.min(syncCursor + BATCH_DAYS, TARGET_DAYS);
+    const startDaysBack = Math.min(syncCursor + BATCH_DAYS - 1, TARGET_DAYS - 1);
 
     const endDate = new Date(now - endDaysBack * 24 * 3600 * 1000);
     const startDate = new Date(now - startDaysBack * 24 * 3600 * 1000);
@@ -76,7 +77,7 @@ async function updateConnectionSuccess(
   newCursor: number,
   syncComplete: boolean
 ): Promise<void> {
-  await supabase.from('shift4_connections').update({
+  const { error } = await supabase.from('shift4_connections').update({
     last_sync_time: new Date().toISOString(),
     sync_cursor: syncComplete ? 0 : newCursor,
     initial_sync_done: syncComplete,
@@ -84,6 +85,10 @@ async function updateConnectionSuccess(
     last_error: null,
     last_error_at: null
   }).eq('id', connectionId);
+
+  if (error) {
+    console.error(`[Shift4 Bulk Sync] Failed to update connection success for ${connectionId}:`, error.message);
+  }
 }
 
 async function updateConnectionError(
@@ -91,11 +96,15 @@ async function updateConnectionError(
   connectionId: string,
   errorMessage: string
 ): Promise<void> {
-  await supabase.from('shift4_connections').update({
+  const { error } = await supabase.from('shift4_connections').update({
     connection_status: 'error',
     last_error: errorMessage,
     last_error_at: new Date().toISOString()
   }).eq('id', connectionId);
+
+  if (error) {
+    console.error(`[Shift4 Bulk Sync] Failed to update connection error for ${connectionId}:`, error.message);
+  }
 }
 
 async function processConnection(
@@ -170,6 +179,19 @@ async function processConnection(
     console.error(`[Shift4 Bulk Sync] Error for ${connection.restaurant_id}:`, errorMessage);
 
     await updateConnectionError(supabase, connection.id, errorMessage);
+
+    // Log security event for failed sync
+    await logSecurityEvent(
+      supabase,
+      'SHIFT4_BULK_SYNC_FAILED',
+      undefined,
+      connection.restaurant_id,
+      {
+        error: errorMessage,
+        syncCursor: connection.sync_cursor,
+        initialSyncDone: connection.initial_sync_done
+      }
+    );
 
     results.failedSyncs++;
     results.errors.push(`${connection.restaurant_id}: ${errorMessage}`);

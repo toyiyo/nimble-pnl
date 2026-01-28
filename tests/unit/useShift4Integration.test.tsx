@@ -377,7 +377,7 @@ describe('useShift4Integration', () => {
       await expect(result.current.syncNow()).rejects.toThrow('Shift4 is not connected');
     });
 
-    it('should call sync edge function with hourly_sync action', async () => {
+    it('should call sync edge function and return transformed result', async () => {
       const mockConnection = {
         id: 'conn-1',
         restaurant_id: 'rest-1',
@@ -390,7 +390,7 @@ describe('useShift4Integration', () => {
       setupMockFrom(mockConnection);
 
       const mockInvoke = vi.fn().mockResolvedValue({
-        data: { success: true, results: { chargesSynced: 15, refundsSynced: 2, errors: [] } },
+        data: { success: true, results: { chargesSynced: 15, errors: [] } },
         error: null,
       });
 
@@ -404,20 +404,20 @@ describe('useShift4Integration', () => {
 
       await act(async () => {
         const syncResult = await result.current.syncNow();
-        expect(syncResult.results.chargesSynced).toBe(15);
+        // syncNow now returns the transformed result from triggerManualSync
+        expect(syncResult?.ticketsSynced).toBe(15);
       });
 
       expect(mockInvoke).toHaveBeenCalledWith('shift4-sync-data', {
         body: {
           restaurantId: 'rest-1',
-          action: 'hourly_sync',
         },
       });
 
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Sync Complete',
-          description: expect.stringContaining('17'), // 15 + 2
+          description: expect.stringContaining('15'),
         })
       );
     });

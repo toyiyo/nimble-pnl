@@ -37,10 +37,8 @@ export function getDaysFromNow(days: number): Date {
 }
 
 /**
- * Gets a date string N days ago in YYYY-MM-DD format
+ * Gets a date string N days ago in YYYY-MM-DD format (local time)
  */
 export function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.toISOString().split('T')[0];
+  return formatDateForInput(getDaysFromNow(-n));
 }

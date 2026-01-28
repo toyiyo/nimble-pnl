@@ -197,6 +197,15 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const SENSITIVE_PATTERNS = /supabase|password|secret|token|key|credential/i;
+
+function sanitizeErrorMessage(message: string): string {
+  if (SENSITIVE_PATTERNS.test(message)) {
+    return 'An internal error occurred during sync';
+  }
+  return message;
+}
+
 async function handleSyncRequest(req: Request): Promise<Response> {
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -303,6 +312,7 @@ Deno.serve(async (req) => {
   } catch (error: unknown) {
     console.error('Shift4 sync error:', error);
     const errMsg = error instanceof Error ? error.message : String(error);
-    return jsonResponse({ success: false, error: errMsg }, 400);
+    const sanitizedMsg = sanitizeErrorMessage(errMsg);
+    return jsonResponse({ success: false, error: sanitizedMsg }, 400);
   }
 });

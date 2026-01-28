@@ -49,6 +49,64 @@ interface YMD {
   day: number;
 }
 
+// Lighthouse API Types
+
+interface LighthousePermission {
+  l?: number;
+}
+
+interface LighthouseTicketItem {
+  name?: string;
+  qty?: number | string;
+  subtotal?: number | string;
+  discountTotal?: number | string;
+  surTotal?: number | string;
+  status?: string;
+}
+
+interface LighthousePayment {
+  tenderType?: string;
+  tip?: number | string;
+  // Array format: [tenderType, amount, tax, tip]
+}
+
+interface LighthouseTicket {
+  orderNumber?: string | number;
+  order?: string | number;
+  ticket?: string | number;
+  ticketNumber?: string | number;
+  status?: string;
+  completed?: string;
+  opened?: string;
+  grandTotal?: number | string;
+  locationId?: number | string;
+  location_id?: number | string;
+  loc_id?: number | string;
+  items?: LighthouseTicketItem[];
+  ticketDiscounts?: Array<[string, number | string] | { name?: string; amount?: number | string }>;
+  ticketFees?: Array<[string, ...unknown[]] | { name?: string; amount?: number | string; grandTotal?: number | string }>;
+  ticketTaxes?: Array<[string, number | string] | { name?: string; amount?: number | string }>;
+  ticketPayments?: Array<LighthousePayment | [string, number | string, number | string, number | string]>;
+}
+
+interface UnifiedSalesRow {
+  restaurant_id: string;
+  pos_system: string;
+  external_order_id: string;
+  external_item_id: string;
+  item_name: string;
+  item_type: string;
+  adjustment_type: string | null;
+  quantity: number;
+  total_price: number | null;
+  unit_price?: number | null;
+  sale_date: string;
+  sale_time: string;
+  raw_data: unknown;
+  synced_at: string;
+  updated_at: string;
+}
+
 // Utility Functions
 
 function getLocalYMD(date: Date, timeZone: string): YMD {
@@ -147,6 +205,19 @@ export function parseCurrency(value: unknown): number {
   const cleaned = String(value).replace(/[^0-9.-]/g, '');
   const parsed = parseFloat(cleaned);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractTicketLocationId(
+  ticket: LighthouseTicket,
+  fallback: number
+): number {
+  const rawId = ticket.locationId ?? ticket.location_id ?? ticket.loc_id;
+  if (typeof rawId === 'number') return rawId;
+  if (typeof rawId === 'string' && rawId) {
+    const parsed = parseInt(rawId, 10);
+    return Number.isNaN(parsed) ? fallback : parsed;
+  }
+  return fallback;
 }
 
 interface ParsedDateTime {
@@ -273,7 +344,7 @@ export async function fetchLighthouseTickets(
   end: string,
   locations: number[],
   locale = 'en-US'
-): Promise<any[]> {
+): Promise<LighthouseTicket[]> {
   const url = 'https://lighthouse-api.harbortouch.com/api/v1/reports/echo-pro/ticket-detail-closed';
   const payload = {
     start,
@@ -309,7 +380,7 @@ export async function fetchLighthouseTickets(
 
 export async function processTicket(
   supabase: SupabaseClient,
-  ticket: any,
+  ticket: LighthouseTicket,
   restaurantId: string,
   locationId: number,
   timezone: string,
@@ -374,7 +445,7 @@ export async function processTicket(
     .eq('external_order_id', chargeId);
 
   const existingIds = new Set((existingRows || []).map((r) => r.external_item_id));
-  const unifiedRows: any[] = [];
+  const unifiedRows: UnifiedSalesRow[] = [];
   let lineIndex = 0;
   let duplicatesThisTicket = 0;
 
@@ -678,9 +749,10 @@ export async function syncLighthouseData(
   const ticketsToProcess = tickets.slice(0, maxTickets);
 
   for (const ticket of ticketsToProcess) {
+    const locationId = extractTicketLocationId(ticket, locationIds[0]);
     await processTicket(
       supabase, ticket, connection.restaurant_id,
-      locationIds[0], restaurantTimezone, fallbackDateString,
+      locationId, restaurantTimezone, fallbackDateString,
       rangeStart, stats
     );
   }

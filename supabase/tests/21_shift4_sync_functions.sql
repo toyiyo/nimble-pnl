@@ -14,7 +14,7 @@ SELECT function_returns(
     'public',
     'sync_all_shift4_to_unified_sales',
     ARRAY[]::text[],
-    'record',
+    'setof record',
     'sync_all_shift4_to_unified_sales should return records'
 );
 
@@ -34,9 +34,8 @@ SELECT is(
 );
 
 -- Test that the function has explicit search_path set (security requirement)
-SELECT is(
+SELECT ok(
     (SELECT proconfig @> ARRAY['search_path=pg_catalog, public'] FROM pg_proc WHERE proname = 'sync_all_shift4_to_unified_sales'),
-    true,
     'sync_all_shift4_to_unified_sales should have explicit search_path'
 );
 

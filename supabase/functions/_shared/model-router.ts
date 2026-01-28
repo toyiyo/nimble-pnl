@@ -57,7 +57,7 @@ export const MODELS = [
     id: "anthropic/claude-3-haiku",
     supportsTools: true,
     reliableTools: true,
-    malformedFallback: false,
+    malformedFallback: true, // Very reliable tool calling, good fallback
     cost: 3,
   },
   {
@@ -65,7 +65,7 @@ export const MODELS = [
     id: "openai/gpt-4o-mini",
     supportsTools: true,
     reliableTools: true,
-    malformedFallback: false,
+    malformedFallback: true, // Very reliable tool calling, good fallback
     cost: 4,
   },
   // Additional models

@@ -241,7 +241,7 @@ async function handleSyncRequest(req: Request): Promise<Response> {
   const restaurantTimezone = restaurant?.timezone || 'America/Chicago';
 
   if (userId) {
-    await logSecurityEvent(supabase, 'SHIFT4_KEY_ACCESSED', userId, restaurantId, {
+    await logSecurityEvent(supabase as any, 'SHIFT4_KEY_ACCESSED', userId, restaurantId, {
       action,
       merchantId: connection.merchant_id
     });
@@ -267,7 +267,7 @@ async function handleSyncRequest(req: Request): Promise<Response> {
 
   try {
     stats = await syncLighthouseData(
-      supabase,
+      supabase as any,
       connection as Shift4Connection,
       startDate,
       endDate,
@@ -279,7 +279,7 @@ async function handleSyncRequest(req: Request): Promise<Response> {
     await updateConnectionSuccess(supabase, connection.id, isInitialSync, newCursor, syncComplete);
 
     if (userId) {
-      await logSecurityEvent(supabase, 'SHIFT4_SYNC_SUCCESS', userId, restaurantId, {
+      await logSecurityEvent(supabase as any, 'SHIFT4_SYNC_SUCCESS', userId, restaurantId, {
         ticketsProcessed: stats.ticketsProcessed,
         rowsInserted: stats.rowsInserted,
         action

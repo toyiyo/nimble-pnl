@@ -174,10 +174,23 @@ async function* parseSSEStream(stream: ReadableStream, model: string): AsyncGene
           try {
             const chunk = JSON.parse(data);
 
-            // Check for MALFORMED_FUNCTION_CALL before yielding
-            const finishReason = chunk.choices?.[0]?.finish_reason;
+            // Check for MALFORMED_FUNCTION_CALL in multiple locations
+            // OpenRouter may send it in different places depending on the model
+            const finishReason = chunk.choices?.[0]?.finish_reason
+              || chunk.choices?.[0]?.delta?.finish_reason
+              || chunk.finish_reason
+              || chunk.error?.code;
+
             if (finishReason === 'MALFORMED_FUNCTION_CALL') {
               console.error(`[OpenRouter] ${model} returned MALFORMED_FUNCTION_CALL - will retry with fallback model`);
+              throw new MalformedFunctionCallError(model);
+            }
+
+            // Also check for error objects that indicate malformed calls
+            if (chunk.error?.message?.includes('MALFORMED_FUNCTION_CALL') ||
+                chunk.error?.message?.includes('malformed function call') ||
+                chunk.error?.type === 'MALFORMED_FUNCTION_CALL') {
+              console.error(`[OpenRouter] ${model} error contains MALFORMED_FUNCTION_CALL - will retry with fallback model`);
               throw new MalformedFunctionCallError(model);
             }
 
@@ -283,6 +296,37 @@ function createSSEStream(
               }
             }
           }
+
+          // Check for empty response - likely MALFORMED_FUNCTION_CALL that wasn't signaled in stream
+          // This happens when the model fails to produce valid output (finish_reason only in metadata)
+          if (!fullContent && toolCalls.length === 0) {
+            console.error(`[OpenRouter] ${currentModel} produced empty response (no content, no tool calls) - treating as MALFORMED`);
+            throw new MalformedFunctionCallError(currentModel);
+          }
+
+          // Check for incomplete/malformed tool calls after stream completes
+          // If we have tool calls but any have empty names or unparseable arguments, treat as malformed
+          if (toolCalls.length > 0) {
+            for (const tc of toolCalls) {
+              if (!tc.function.name) {
+                console.error(`[OpenRouter] ${currentModel} produced tool call with empty name - treating as MALFORMED`);
+                throw new MalformedFunctionCallError(currentModel);
+              }
+              try {
+                // Try to parse arguments to verify they're valid JSON
+                const argsClean = tc.function.arguments
+                  .replace(/<\|[^|]+\|>/g, '')
+                  .trim();
+                if (argsClean) {
+                  JSON.parse(argsClean);
+                }
+              } catch {
+                console.error(`[OpenRouter] ${currentModel} produced invalid tool call arguments - treating as MALFORMED`);
+                throw new MalformedFunctionCallError(currentModel);
+              }
+            }
+          }
+
           return true; // Success
         } catch (error) {
           if (error instanceof MalformedFunctionCallError) {
@@ -299,6 +343,7 @@ function createSSEStream(
         // If MALFORMED, try fallback models
         if (!success) {
           const fallbackModels = getMalformedFallbackModels();
+          console.log(`[OpenRouter] MALFORMED detected, fallback models available: ${fallbackModels.join(', ')}`);
           for (const fallbackModel of fallbackModels) {
             if (triedModels.includes(fallbackModel)) {
               continue; // Skip already-tried models

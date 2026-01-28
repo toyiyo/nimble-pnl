@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -9,9 +10,16 @@ interface Shift4Connection {
   environment: 'production' | 'sandbox';
   connected_at: string;
   last_sync_at: string | null;
+  initial_sync_done?: boolean;
+  sync_cursor?: number;
+  is_active?: boolean;
+  connection_status?: string;
+  last_error?: string | null;
+  last_error_at?: string | null;
+  last_sync_time?: string | null;
 }
 
-export const useShift4Integration = (restaurantId: string | null) => {
+export function useShift4Integration(restaurantId: string | null) {
   const [isConnected, setIsConnected] = useState(false);
   const [connection, setConnection] = useState<Shift4Connection | null>(null);
   const [loading, setLoading] = useState(false);
@@ -83,15 +91,14 @@ export const useShift4Integration = (restaurantId: string | null) => {
         throw new Error(data.error || 'Failed to connect Shift4');
       }
 
+      const merchantIdDisplay = merchantId ? ` (Merchant ID: ${data.merchantId})` : '';
       toast({
         title: "Shift4 Connected",
-        description: `Successfully connected to Shift4${merchantId ? ` (Merchant ID: ${data.merchantId})` : ''}`,
+        description: `Successfully connected to Shift4${merchantIdDisplay}`,
       });
 
-      // Refresh connection status
       await checkConnection();
 
-      // Trigger initial sync
       toast({
         title: "Initial Sync Started",
         description: "Fetching your sales data from Shift4...",
@@ -115,11 +122,11 @@ export const useShift4Integration = (restaurantId: string | null) => {
           variant: "destructive",
         });
       } else if (syncData.success) {
-        const total = (syncData.results?.chargesSynced || 0) + 
-                      (syncData.results?.refundsSynced || 0);
+        const chargesSynced = syncData.results?.chargesSynced || 0;
+        const refundsSynced = syncData.results?.refundsSynced || 0;
         toast({
           title: "Initial Sync Complete",
-          description: `Synced ${total} records from Shift4.`,
+          description: `Synced ${chargesSynced + refundsSynced} records from Shift4.`,
         });
       }
 
@@ -193,12 +200,11 @@ export const useShift4Integration = (restaurantId: string | null) => {
         throw new Error(data.error || 'Sync failed');
       }
 
-      const total = (data.results?.chargesSynced || 0) + 
-                    (data.results?.refundsSynced || 0);
-
+      const chargesSynced = data.results?.chargesSynced || 0;
+      const refundsSynced = data.results?.refundsSynced || 0;
       toast({
         title: "Sync Complete",
-        description: `Synced ${total} records from Shift4.`,
+        description: `Synced ${chargesSynced + refundsSynced} records from Shift4.`,
       });
 
       await checkConnection();
@@ -226,4 +232,4 @@ export const useShift4Integration = (restaurantId: string | null) => {
     syncNow,
     checkConnection,
   };
-};
+}

@@ -35,3 +35,12 @@ export function getDaysFromNow(days: number): Date {
   result.setDate(result.getDate() + days);
   return result;
 }
+
+/**
+ * Gets a date string N days ago in YYYY-MM-DD format
+ */
+export function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split('T')[0];
+}

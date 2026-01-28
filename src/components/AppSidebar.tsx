@@ -28,7 +28,6 @@ import {
   CalendarCheck,
   LogOut,
   TrendingUp,
-  Sparkles,
   Clock,
   ClipboardList,
   DollarSign,
@@ -55,7 +54,6 @@ const navigationGroups = [
     label: 'Main',
     items: [
       { path: '/', label: 'Dashboard', icon: Home },
-      { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
     ],

@@ -119,10 +119,10 @@ export function getModel(options: GetModelOptions = {}): ModelConfig {
  * Prioritizes reliable tool-calling models over free models
  */
 export function getModelFallbackList(requiresTools = true): string[] {
-  const models = requiresTools 
+  const models = requiresTools
     ? MODELS.filter(m => m.supportsTools)
     : MODELS;
-  
+
   // Create a shallow copy to avoid mutating the original MODELS array
   return [...models]
     .sort((a, b) => {
@@ -134,4 +134,16 @@ export function getModelFallbackList(requiresTools = true): string[] {
       return a.cost - b.cost;
     })
     .map(m => m.id);
+}
+
+/**
+ * Get fallback models specifically for MALFORMED_FUNCTION_CALL errors.
+ * These Gemini models are known to handle tool calls more reliably.
+ * Used when the initial model returns a malformed function call response.
+ */
+export function getMalformedFallbackModels(): string[] {
+  return [
+    'google/gemini-2.5-flash',
+    'google/gemini-3-flash-preview',
+  ];
 }

@@ -220,6 +220,75 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
         }
       }
     },
+
+    // Labor cost analysis - available to all users
+    {
+      name: 'get_labor_costs',
+      description: 'Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations.',
+      parameters: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            enum: ['today', 'yesterday', 'week', 'month', 'custom'],
+            description: 'The time period for labor costs'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date for custom period (YYYY-MM-DD)'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date for custom period (YYYY-MM-DD)'
+          },
+          include_daily_breakdown: {
+            type: 'boolean',
+            description: 'Include day-by-day cost breakdown (default: true)',
+            default: true
+          },
+          include_employee_breakdown: {
+            type: 'boolean',
+            description: 'Include per-employee cost breakdown (default: false)',
+            default: false
+          }
+        },
+        required: ['period']
+      }
+    },
+
+    // Schedule overview - available to all users
+    {
+      name: 'get_schedule_overview',
+      description: 'Get overview of scheduled shifts and projected labor costs. Shows upcoming shifts, conflicts, and estimated labor cost based on scheduled hours.',
+      parameters: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            enum: ['today', 'tomorrow', 'week', 'month', 'custom'],
+            description: 'The time period for schedule overview'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date for custom period (YYYY-MM-DD)'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date for custom period (YYYY-MM-DD)'
+          },
+          include_projected_costs: {
+            type: 'boolean',
+            description: 'Include projected labor costs based on scheduled shifts (default: true)',
+            default: true
+          }
+        },
+        required: ['period']
+      }
+    },
   ];
 
   // Add financial intelligence for managers and owners
@@ -252,6 +321,165 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             }
           },
           required: ['analysis_type', 'start_date', 'end_date']
+        }
+      },
+      {
+        name: 'get_payroll_summary',
+        description: 'Get payroll summary for a pay period including employee earnings, hours worked, tips, and manual payments. Calculates regular and overtime pay for hourly employees, prorated salary for salaried employees, and contractor payments.',
+        parameters: {
+          type: 'object',
+          properties: {
+            period: {
+              type: 'string',
+              enum: ['current_week', 'last_week', 'current_month', 'last_month', 'custom'],
+              description: 'The pay period to summarize'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for custom period (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for custom period (YYYY-MM-DD)'
+            },
+            include_employee_details: {
+              type: 'boolean',
+              description: 'Include per-employee earnings breakdown (default: true)',
+              default: true
+            }
+          },
+          required: ['period']
+        }
+      },
+      {
+        name: 'get_tip_summary',
+        description: 'Get tip pooling summary including daily splits, employee tip earnings, and dispute tracking. Shows approved, draft, and archived tip splits.',
+        parameters: {
+          type: 'object',
+          properties: {
+            period: {
+              type: 'string',
+              enum: ['today', 'week', 'month', 'custom'],
+              description: 'The time period for tip summary'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for custom period (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for custom period (YYYY-MM-DD)'
+            },
+            status_filter: {
+              type: 'string',
+              enum: ['all', 'draft', 'approved', 'archived'],
+              description: 'Filter by tip split status (default: all)',
+              default: 'all'
+            }
+          },
+          required: ['period']
+        }
+      },
+      {
+        name: 'get_pending_outflows',
+        description: 'Get uncommitted expenses (checks, ACH pending clearance) that haven\'t been matched to bank transactions. Helps track outstanding payments and cash flow commitments.',
+        parameters: {
+          type: 'object',
+          properties: {
+            status_filter: {
+              type: 'string',
+              enum: ['all', 'pending', 'stale_30', 'stale_60', 'stale_90', 'cleared', 'voided'],
+              description: 'Filter by outflow status (default: all pending)',
+              default: 'all'
+            },
+            include_category_breakdown: {
+              type: 'boolean',
+              description: 'Include breakdown by expense category (default: true)',
+              default: true
+            }
+          }
+        }
+      },
+      {
+        name: 'get_operating_costs',
+        description: 'Get fixed, semi-variable, and variable operating cost breakdown. Includes break-even analysis showing required revenue to cover all costs.',
+        parameters: {
+          type: 'object',
+          properties: {
+            period: {
+              type: 'string',
+              enum: ['month', 'quarter', 'year', 'custom'],
+              description: 'The time period for operating costs analysis'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for custom period (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for custom period (YYYY-MM-DD)'
+            },
+            include_break_even: {
+              type: 'boolean',
+              description: 'Include break-even analysis (default: true)',
+              default: true
+            }
+          },
+          required: ['period']
+        }
+      },
+      {
+        name: 'get_monthly_trends',
+        description: 'Get 12-month P&L trends with full cost breakdown including revenue, food cost, labor cost (pending vs actual), and prime cost percentages per month.',
+        parameters: {
+          type: 'object',
+          properties: {
+            months_back: {
+              type: 'integer',
+              description: 'Number of months to look back (default: 12, max: 24)',
+              default: 12
+            },
+            include_percentages: {
+              type: 'boolean',
+              description: 'Include food/labor/prime cost percentages (default: true)',
+              default: true
+            }
+          }
+        }
+      },
+      {
+        name: 'get_expense_health',
+        description: 'Get expense health metrics including prime cost %, food cost %, labor cost % with industry benchmarks. Tracks processing fees, uncategorized spend, and cash coverage before payroll.',
+        parameters: {
+          type: 'object',
+          properties: {
+            period: {
+              type: 'string',
+              enum: ['week', 'month', 'quarter', 'custom'],
+              description: 'The time period for expense health analysis'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for custom period (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for custom period (YYYY-MM-DD)'
+            },
+            bank_account_id: {
+              type: 'string',
+              description: 'Optional bank account ID to filter by'
+            }
+          },
+          required: ['period']
         }
       },
       {
@@ -391,28 +619,36 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
  * Check if user has permission to use a tool
  */
 export function canUseTool(toolName: string, userRole: string): boolean {
-  // Navigation and basic query tools available to all
+  // Navigation and basic query tools available to all users
   const basicTools = [
     'navigate',
     'get_kpis',
     'get_inventory_status',
     'get_recipe_analytics',
     'get_sales_summary',
-    'get_inventory_transactions'
+    'get_inventory_transactions',
+    'get_labor_costs',      // Labor costs visible to all (aggregate data)
+    'get_schedule_overview' // Schedule overview visible to all
   ];
 
   if (basicTools.includes(toolName)) {
     return true;
   }
 
-  // Financial intelligence, bank transactions, financial statements, and report generation for managers and owners
+  // Financial intelligence, payroll, tips, and detailed financial tools for managers and owners
   const managerOwnerTools = [
     'get_financial_intelligence',
     'get_bank_transactions',
     'get_financial_statement',
-    'generate_report'
+    'generate_report',
+    'get_payroll_summary',   // Payroll details - manager+
+    'get_tip_summary',       // Tip pooling details - manager+
+    'get_pending_outflows',  // Uncommitted expenses - manager+
+    'get_operating_costs',   // Operating cost breakdown - manager+
+    'get_monthly_trends',    // Monthly P&L trends - manager+
+    'get_expense_health'     // Expense health metrics - manager+
   ];
-  
+
   if (managerOwnerTools.includes(toolName)) {
     return userRole === 'manager' || userRole === 'owner';
   }

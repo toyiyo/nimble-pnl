@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { getModel, getModelFallbackList } from "../_shared/model-router.ts";
+import { getModel, getModelFallbackList, getMalformedFallbackModels } from "../_shared/model-router.ts";
 import { getTools } from "../_shared/tools-registry.ts";
 import { logAICall, startStreamingSpan, type AICallMetadata } from "../_shared/braintrust.ts";
 
@@ -17,6 +17,18 @@ class HttpError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = 'HttpError';
+  }
+}
+
+/**
+ * Error thrown when model returns MALFORMED_FUNCTION_CALL finish reason.
+ * This typically happens with Gemini models when tool call JSON is malformed.
+ * Triggers retry with a different model.
+ */
+class MalformedFunctionCallError extends Error {
+  constructor(public model: string) {
+    super(`Model ${model} returned MALFORMED_FUNCTION_CALL`);
+    this.name = 'MalformedFunctionCallError';
   }
 }
 
@@ -137,9 +149,10 @@ async function callOpenRouter(
 }
 
 /**
- * Parse SSE stream from OpenRouter
+ * Parse SSE stream from OpenRouter.
+ * Detects MALFORMED_FUNCTION_CALL finish_reason and throws error to trigger retry.
  */
-async function* parseSSEStream(stream: ReadableStream): AsyncGenerator<any> {
+async function* parseSSEStream(stream: ReadableStream, model: string): AsyncGenerator<any> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -157,10 +170,23 @@ async function* parseSSEStream(stream: ReadableStream): AsyncGenerator<any> {
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
           if (data === '[DONE]') continue;
-          
+
           try {
-            yield JSON.parse(data);
+            const chunk = JSON.parse(data);
+
+            // Check for MALFORMED_FUNCTION_CALL before yielding
+            const finishReason = chunk.choices?.[0]?.finish_reason;
+            if (finishReason === 'MALFORMED_FUNCTION_CALL') {
+              console.error(`[OpenRouter] ${model} returned MALFORMED_FUNCTION_CALL - will retry with fallback model`);
+              throw new MalformedFunctionCallError(model);
+            }
+
+            yield chunk;
           } catch (e) {
+            // Re-throw MalformedFunctionCallError to propagate to caller
+            if (e instanceof MalformedFunctionCallError) {
+              throw e;
+            }
             console.error('Failed to parse SSE data:', e);
           }
         }
@@ -172,78 +198,140 @@ async function* parseSSEStream(stream: ReadableStream): AsyncGenerator<any> {
 }
 
 /**
- * Stream response with SSE
+ * Stream response with SSE.
+ * Handles MALFORMED_FUNCTION_CALL by internally retrying with fallback models.
  */
 function createSSEStream(
   openRouterStream: ReadableStream,
   messageId: string,
   model: string,
   messages: ChatMessage[],
-  restaurantId: string
+  restaurantId: string,
+  tools: Array<{ name: string; description: string; parameters: Record<string, unknown> }>
 ): ReadableStream {
   return new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      
+
       // Send message_start event
       controller.enqueue(
         encoder.encode(`data: ${JSON.stringify({ type: 'message_start', id: messageId })}\n\n`)
       );
 
       let fullContent = '';
-      const toolCalls: any[] = [];
+      const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+      let currentStream = openRouterStream;
+      let currentModel = model;
+      const triedModels = [model];
 
-      try {
-        for await (const chunk of parseSSEStream(openRouterStream)) {
-          const delta = chunk.choices?.[0]?.delta;
-          
-          if (!delta) continue;
+      // Helper to process a stream
+      const processStream = async (): Promise<boolean> => {
+        try {
+          for await (const chunk of parseSSEStream(currentStream, currentModel)) {
+            const delta = chunk.choices?.[0]?.delta;
 
-          // Handle content delta
-          if (delta.content) {
-            fullContent += delta.content;
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ 
-                type: 'message_delta', 
-                id: messageId, 
-                delta: delta.content 
-              })}\n\n`)
-            );
-          }
+            if (!delta) continue;
 
-          // Handle tool calls
-          if (delta.tool_calls) {
-            for (const toolCall of delta.tool_calls) {
-              const index = toolCall.index;
-              
-              // Ensure toolCalls[index] is initialized (handles sparse indexes)
-              if (!toolCalls[index]) {
-                toolCalls[index] = {
-                  id: toolCall.id || `tc_${Date.now()}_${index}`,
-                  type: 'function',
-                  function: {
-                    name: '',
-                    arguments: '',
-                  },
-                };
-              }
-              
-              // Update ID if provided
-              if (toolCall.id) {
-                toolCalls[index].id = toolCall.id;
-              }
-              
-              // For name: assign (names typically come complete in one chunk)
-              if (toolCall.function?.name) {
-                toolCalls[index].function.name = toolCall.function.name;
-              }
-              
-              // For arguments: concatenate (arguments stream as JSON tokens)
-              if (toolCall.function?.arguments) {
-                toolCalls[index].function.arguments += toolCall.function.arguments;
+            // Handle content delta
+            if (delta.content) {
+              fullContent += delta.content;
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({
+                  type: 'message_delta',
+                  id: messageId,
+                  delta: delta.content
+                })}\n\n`)
+              );
+            }
+
+            // Handle tool calls
+            if (delta.tool_calls) {
+              for (const toolCall of delta.tool_calls) {
+                const index = toolCall.index;
+
+                // Ensure toolCalls[index] is initialized (handles sparse indexes)
+                if (!toolCalls[index]) {
+                  toolCalls[index] = {
+                    id: toolCall.id || `tc_${Date.now()}_${index}`,
+                    type: 'function',
+                    function: {
+                      name: '',
+                      arguments: '',
+                    },
+                  };
+                }
+
+                // Update ID if provided
+                if (toolCall.id) {
+                  toolCalls[index].id = toolCall.id;
+                }
+
+                // For name: assign (names typically come complete in one chunk)
+                if (toolCall.function?.name) {
+                  toolCalls[index].function.name = toolCall.function.name;
+                }
+
+                // For arguments: concatenate (arguments stream as JSON tokens)
+                if (toolCall.function?.arguments) {
+                  toolCalls[index].function.arguments += toolCall.function.arguments;
+                }
               }
             }
           }
+          return true; // Success
+        } catch (error) {
+          if (error instanceof MalformedFunctionCallError) {
+            return false; // Signal to try fallback
+          }
+          throw error; // Re-throw other errors
+        }
+      };
+
+      try {
+        // Try processing the initial stream
+        let success = await processStream();
+
+        // If MALFORMED, try fallback models
+        if (!success) {
+          const fallbackModels = getMalformedFallbackModels();
+          for (const fallbackModel of fallbackModels) {
+            if (triedModels.includes(fallbackModel)) {
+              continue; // Skip already-tried models
+            }
+            triedModels.push(fallbackModel);
+
+            console.log(`[OpenRouter] Retrying with MALFORMED fallback: ${fallbackModel}`);
+
+            try {
+              currentStream = await callOpenRouter(fallbackModel, messages, tools, restaurantId);
+              currentModel = fallbackModel;
+              success = await processStream();
+
+              if (success) {
+                console.log(`[OpenRouter] MALFORMED fallback ${fallbackModel} succeeded`);
+                break;
+              }
+            } catch (fallbackError) {
+              console.error(`[OpenRouter] MALFORMED fallback ${fallbackModel} failed:`, fallbackError);
+              continue;
+            }
+          }
+        }
+
+        if (!success) {
+          // All models failed
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              error: {
+                code: 'ALL_MODELS_FAILED',
+                message: 'All AI models failed to process your request. Please try again.',
+                triedModels: triedModels,
+              }
+            })}\n\n`)
+          );
+          controller.close();
+          return;
         }
 
         // Send tool calls if any
@@ -255,7 +343,7 @@ function createSSEStream(
               .replace(/<\|python_start\|>/g, '')
               .replace(/<\|[^|]+\|>/g, '') // Remove any other special tokens
               .trim();
-            
+
             let args;
             try {
               args = JSON.parse(argsString);
@@ -265,7 +353,7 @@ function createSSEStream(
               // Keep raw string as arguments value so tool invocation still emits
               args = argsString;
             }
-            
+
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({
                 type: 'tool_call',
@@ -288,15 +376,15 @@ function createSSEStream(
         logAICall(
           'ai-chat-stream:completion',
           messages,
-          { content: fullContent, content_length: fullContent.length, tool_calls: toolCalls },
+          { content: fullContent, content_length: fullContent.length, tool_calls: toolCalls, final_model: currentModel },
           {
-            model: model,
+            model: currentModel,
             provider: 'openrouter',
             restaurant_id: restaurantId,
             edge_function: 'ai-chat-stream',
             temperature: 0.7,
             stream: true,
-            attempt: 1,
+            attempt: triedModels.length,
             success: true,
             status_code: 200,
           },
@@ -308,12 +396,12 @@ function createSSEStream(
         const errorMessage = error instanceof Error ? error.message : 'Stream error';
         console.error('Stream error:', error);
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ 
-            type: 'error', 
-            error: { 
-              code: 'STREAM_ERROR', 
-              message: errorMessage 
-            } 
+          encoder.encode(`data: ${JSON.stringify({
+            type: 'error',
+            error: {
+              code: 'STREAM_ERROR',
+              message: errorMessage
+            }
           })}\n\n`)
         );
         controller.close();
@@ -560,15 +648,16 @@ Tool Usage Guidelines:
       );
     }
 
-    // Create SSE response stream  
+    // Create SSE response stream
     const messageId = `msg_${Date.now()}`;
     const selectedModelName = attemptedModels[attemptedModels.length - 1]; // Last attempted is the successful one
     const sseStream = createSSEStream(
-      openRouterStream, 
-      messageId, 
-      selectedModelName, 
-      messagesWithSystem, 
-      projectRef
+      openRouterStream,
+      messageId,
+      selectedModelName,
+      messagesWithSystem,
+      projectRef,
+      tools
     );
 
     return new Response(sseStream, {

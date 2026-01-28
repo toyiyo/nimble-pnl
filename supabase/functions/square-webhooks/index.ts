@@ -30,21 +30,47 @@ Deno.serve(async (req) => {
     // Verify webhook signature if signature key is configured
     if (SQUARE_WEBHOOK_SIGNATURE_KEY && signature) {
       // Square uses notification URL + body for signature verification
+      // IMPORTANT: The URL must match EXACTLY what's configured in Square Developer Console
       const notificationUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/square-webhooks`;
       const signaturePayload = notificationUrl + rawBody;
+
+      // Debug: Log the URL being used (remove after debugging)
+      console.log('Webhook signature verification:', {
+        notificationUrl,
+        bodyLength: rawBody.length,
+        signatureKeyConfigured: !!SQUARE_WEBHOOK_SIGNATURE_KEY
+      });
       
       const computedSignature = createHmac('sha256', SQUARE_WEBHOOK_SIGNATURE_KEY)
         .update(signaturePayload)
         .digest('base64');
 
       if (signature !== computedSignature) {
-        console.error('Invalid Square webhook signature');
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        );
+        // Parse body to get event info for debugging
+        let eventInfo = { type: 'unknown', merchant_id: 'unknown', event_id: 'unknown' };
+        try {
+          const parsed = JSON.parse(rawBody);
+          eventInfo = {
+            type: parsed.type || 'unknown',
+            merchant_id: parsed.merchant_id || 'unknown',
+            event_id: parsed.event_id || parsed.data?.id || 'unknown'
+          };
+        } catch { /* ignore parse errors */ }
+
+        console.error('Invalid Square webhook signature', {
+          eventType: eventInfo.type,
+          merchantId: eventInfo.merchant_id,
+          eventId: eventInfo.event_id,
+          receivedSigPrefix: signature?.substring(0, 15),
+          computedSigPrefix: computedSignature?.substring(0, 15),
+          notificationUrl: notificationUrl,
+          hint: 'Multiple webhook subscriptions may exist - check Square Developer Console'
+        });
+
         await logSecurityEvent(supabase, 'SQUARE_WEBHOOK_INVALID_SIGNATURE', undefined, undefined, {
           receivedSignature: signature?.substring(0, 10) + '...',
+          eventType: eventInfo.type,
+          merchantId: eventInfo.merchant_id,
         });
         return new Response('Unauthorized', { status: 401, headers: corsHeaders });
       }

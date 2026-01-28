@@ -572,18 +572,19 @@ export function calculateActualLaborCost(
     });
   });
 
-  // Handle salary employees
-  const salaryEmployees = employees.filter(e => e.compensation_type === 'salary');
-  distributeFixedCosts(salaryEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
+  // Handle salary costs - pass all employees since calculateSalaryForPeriod
+  // checks compensation_type per-day via resolveCompensationForDate.
+  // This correctly handles employees who changed from salary to another type mid-period.
+  distributeFixedCosts(employees, startDate, endDate, dateStrings, dateMap, 'salary');
 
-  // Handle contractor employees
-  const contractorEmployees = employees.filter(
-    e => e.compensation_type === 'contractor' && e.contractor_payment_interval !== 'per-job'
-  );
-  distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
+  // Handle contractor costs - same approach for historical compensation handling.
+  // calculateContractorPayForPeriod already skips per-job contractors internally.
+  distributeFixedCosts(employees, startDate, endDate, dateStrings, dateMap, 'contractor');
 
   const dailyCosts = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
+  // Employee counts use current compensation_type (reflects present state).
+  // Note: Cost calculations above do properly include historical type changes.
   const activeSalaryCount = employees.filter(e => e.compensation_type === 'salary' && e.status === 'active').length;
   const activeContractorCount = employees.filter(e => e.compensation_type === 'contractor' && e.status === 'active').length;
   const activeDailyRateCount = employees.filter(e => e.compensation_type === 'daily_rate' && e.status === 'active').length;
@@ -684,16 +685,20 @@ export function calculateScheduledLaborCost(
     }
   });
 
-  // Handle salary and contractor costs
+  // Handle salary and contractor costs - pass all active employees since
+  // calculateSalaryForPeriod/calculateContractorPayForPeriod check type per-day.
+  // This correctly handles employees who changed compensation type mid-period.
   const activeEmployees = employees.filter(e => e.status === 'active');
+
+  distributeFixedCosts(activeEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
+  distributeFixedCosts(activeEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
+
+  // For employee counts in breakdown, use current types (reflects present state)
   const salaryEmployees = activeEmployees.filter(e => e.compensation_type === 'salary');
   const contractorEmployees = activeEmployees.filter(
     e => e.compensation_type === 'contractor' && e.contractor_payment_interval !== 'per-job'
   );
   const dailyRateEmployees = activeEmployees.filter(e => e.compensation_type === 'daily_rate');
-
-  distributeFixedCosts(salaryEmployees, startDate, endDate, dateStrings, dateMap, 'salary');
-  distributeFixedCosts(contractorEmployees, startDate, endDate, dateStrings, dateMap, 'contractor');
 
   const dailyCosts = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 

@@ -9,6 +9,10 @@ export function useAiChatMessages(sessionId?: string) {
   const queryClient = useQueryClient();
 
   // Fetch messages for a session
+  // NOTE: Multi-tenant isolation is enforced via RLS policy chain:
+  // - ai_chat_messages_select policy checks session_id IN (SELECT id FROM ai_chat_sessions WHERE user_id = auth.uid())
+  // - ai_chat_sessions_select policy checks user_id = auth.uid() AND restaurant_id IN (SELECT restaurant_id FROM user_restaurants WHERE user_id = auth.uid())
+  // This ensures users can only access messages for sessions in restaurants they belong to.
   const {
     data: messages,
     isLoading,

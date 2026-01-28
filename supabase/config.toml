@@ -164,10 +164,10 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.ai-chat-stream]
-verify_jwt = false
+verify_jwt = true
 
 [functions.ai-execute-tool]
-verify_jwt = false
+verify_jwt = true
 
 [functions.send-shift-trade-notification]
 verify_jwt = true

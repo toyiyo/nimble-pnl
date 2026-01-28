@@ -23,6 +23,7 @@ export const MODELS = [
     id: "google/gemini-2.5-flash-lite",
     supportsTools: true,
     reliableTools: true,
+    malformedFallback: false, // Primary model, not a fallback
     cost: 1,
   },
   // Best tool-calling models (paid but reliable)
@@ -31,6 +32,24 @@ export const MODELS = [
     id: "google/gemini-flash-1.5",
     supportsTools: true,
     reliableTools: true,
+    malformedFallback: false,
+    cost: 2,
+  },
+  // Reliable fallbacks for MALFORMED_FUNCTION_CALL errors
+  {
+    name: "Gemini 2.5 Flash",
+    id: "google/gemini-2.5-flash",
+    supportsTools: true,
+    reliableTools: true,
+    malformedFallback: true, // Good fallback for malformed tool calls
+    cost: 2,
+  },
+  {
+    name: "Gemini 3 Flash Preview",
+    id: "google/gemini-3-flash-preview",
+    supportsTools: true,
+    reliableTools: true,
+    malformedFallback: true, // Good fallback for malformed tool calls
     cost: 2,
   },
   {
@@ -38,6 +57,7 @@ export const MODELS = [
     id: "anthropic/claude-3-haiku",
     supportsTools: true,
     reliableTools: true,
+    malformedFallback: false,
     cost: 3,
   },
   {
@@ -45,6 +65,7 @@ export const MODELS = [
     id: "openai/gpt-4o-mini",
     supportsTools: true,
     reliableTools: true,
+    malformedFallback: false,
     cost: 4,
   },
   // Additional models
@@ -53,6 +74,7 @@ export const MODELS = [
     id: "meta-llama/llama-4-maverick",
     supportsTools: true,
     reliableTools: false,
+    malformedFallback: false,
     cost: 5,
   },
   {
@@ -60,6 +82,7 @@ export const MODELS = [
     id: "google/gemma-3-27b-it",
     supportsTools: true,
     reliableTools: false,
+    malformedFallback: false,
     cost: 5,
   },
 ];
@@ -138,12 +161,12 @@ export function getModelFallbackList(requiresTools = true): string[] {
 
 /**
  * Get fallback models specifically for MALFORMED_FUNCTION_CALL errors.
- * These Gemini models are known to handle tool calls more reliably.
+ * Returns models marked with malformedFallback: true in the MODELS array.
+ * These models are known to handle tool calls more reliably.
  * Used when the initial model returns a malformed function call response.
  */
 export function getMalformedFallbackModels(): string[] {
-  return [
-    'google/gemini-2.5-flash',
-    'google/gemini-3-flash-preview',
-  ];
+  return MODELS
+    .filter(m => m.malformedFallback && m.supportsTools && m.reliableTools)
+    .map(m => m.id);
 }

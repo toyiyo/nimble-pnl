@@ -219,13 +219,18 @@ function createSSEStream(
       );
 
       let fullContent = '';
-      const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+      let toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
       let currentStream = openRouterStream;
       let currentModel = model;
       const triedModels = [model];
 
       // Helper to process a stream
+      // Resets state at the start to prevent partial data leaking between retries
       const processStream = async (): Promise<boolean> => {
+        // Clear state at the start of each attempt to prevent partial data from previous attempts
+        toolCalls = [];
+        fullContent = '';
+
         try {
           for await (const chunk of parseSSEStream(currentStream, currentModel)) {
             const delta = chunk.choices?.[0]?.delta;

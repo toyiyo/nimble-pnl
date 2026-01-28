@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical } from 'lucide-react';
+import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical, ChefHat } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -52,12 +52,27 @@ export function AiChatPanel() {
     restaurantId,
   });
 
-  // Load messages from database when session changes
+  // Track the last synced session to prevent overwriting in-flight streaming content
+  const lastSyncedSessionRef = useRef<string | null>(null);
+  const hasLoadedInitialMessages = useRef(false);
+
+  // Load messages from database only when session actually switches
   useEffect(() => {
-    if (currentSessionId && dbMessages.length > 0) {
+    // Session changed - mark that we need to load messages
+    if (currentSessionId !== lastSyncedSessionRef.current) {
+      hasLoadedInitialMessages.current = false;
+      lastSyncedSessionRef.current = currentSessionId;
+
+      if (!currentSessionId) {
+        clearMessages();
+        return;
+      }
+    }
+
+    // Load messages once when they become available for the current session
+    if (currentSessionId && !hasLoadedInitialMessages.current && dbMessages.length > 0) {
       setMessages(dbMessages);
-    } else if (!currentSessionId) {
-      clearMessages();
+      hasLoadedInitialMessages.current = true;
     }
   }, [currentSessionId, dbMessages, setMessages, clearMessages]);
 
@@ -246,8 +261,8 @@ export function AiChatPanel() {
             >
               {showSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
             </Button>
-            <div className="p-1 rounded-md bg-gradient-to-br from-orange-400 to-amber-500 text-base flex items-center justify-center">
-              🧑‍🍳
+            <div className="p-1.5 rounded-md bg-gradient-to-br from-primary to-primary/70">
+              <ChefHat className="h-4 w-4 text-primary-foreground" />
             </div>
             <SheetTitle className="text-sm font-medium">Chef Assistant</SheetTitle>
           </div>
@@ -277,7 +292,9 @@ export function AiChatPanel() {
         {!restaurantId ? (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div>
-              <div className="text-5xl mb-4">🧑‍🍳</div>
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mb-4">
+                <ChefHat className="h-8 w-8 text-primary" />
+              </div>
               <h3 className="text-lg font-semibold mb-2">No Restaurant Selected</h3>
               <p className="text-muted-foreground text-sm">
                 Please select a restaurant to use the Chef Assistant.
@@ -302,8 +319,8 @@ export function AiChatPanel() {
               <ScrollArea className="flex-1 px-3">
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                    <div className="p-2 rounded-full bg-gradient-to-br from-orange-400/20 to-amber-500/20 mb-3 text-2xl">
-                      🧑‍🍳
+                    <div className="p-2 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 mb-3">
+                      <ChefHat className="h-6 w-6 text-primary" />
                     </div>
                     <h3 className="text-sm font-medium mb-1">How can I help, Chef?</h3>
                     <p className="text-xs text-muted-foreground max-w-[200px] mb-4">
@@ -330,8 +347,8 @@ export function AiChatPanel() {
                     {isStreaming && (
                       <div className="flex gap-2">
                         <div className="flex-shrink-0">
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-sm">
-                            🧑‍🍳
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center">
+                            <ChefHat className="h-3.5 w-3.5 text-primary-foreground" />
                           </div>
                         </div>
                         <Card className="max-w-[85%] px-3 py-2 bg-muted/50 border-0 shadow-none">

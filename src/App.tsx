@@ -95,22 +95,24 @@ const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { ch
           {noChrome ? (
             <div className="min-h-screen bg-background">{children}</div>
           ) : (
-            <SidebarProvider defaultOpen={true}>
-              <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
-                <AppSidebar />
-                <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-                  <AppHeader />
-                  <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
-                    {children}
-                  </main>
+            <>
+              <SidebarProvider defaultOpen={true}>
+                <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
+                  <AppSidebar />
+                  <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+                    <AppHeader />
+                    <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
+                      {children}
+                    </main>
+                  </div>
                 </div>
-              </div>
-            </SidebarProvider>
+              </SidebarProvider>
+              {/* Floating AI Chat - only for non-kiosk authenticated pages */}
+              <AiChatBubble />
+              <AiChatPanel />
+            </>
           )}
         </StaffRoleChecker>
-        {/* Floating AI Chat - available on all authenticated pages */}
-        <AiChatBubble />
-        <AiChatPanel />
       </AiChatProvider>
     </RestaurantProvider>
   );

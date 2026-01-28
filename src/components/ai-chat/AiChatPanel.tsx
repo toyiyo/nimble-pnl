@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Minus, X, Sparkles, Bot, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical } from 'lucide-react';
+import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -66,17 +66,43 @@ export function AiChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Track which messages have been saved to prevent duplicates
+  const savedMessageIdsRef = useRef<Set<string>>(new Set());
+
+  // Reset saved message tracking when session changes
+  useEffect(() => {
+    if (currentSessionId) {
+      // Initialize with existing DB message IDs when session loads
+      savedMessageIdsRef.current = new Set(dbMessages.map((m) => m.id));
+    } else {
+      savedMessageIdsRef.current.clear();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]); // Intentionally only depend on sessionId to reset tracking
+
   // Save messages after streaming completes
   useEffect(() => {
     const saveMessages = async () => {
       if (!isStreaming && currentSessionId && messages.length > 0) {
-        // Find messages not yet in database
-        const newMessages = messages.filter(
-          (msg) => !dbMessages.some((dbMsg) => dbMsg.id === msg.id)
-        );
+        // Find messages not yet in database by comparing content + role
+        // This avoids the ID mismatch issue (client IDs vs DB UUIDs)
+        const newMessages = messages.filter((msg) => {
+          // Skip if we've already processed this message
+          if (savedMessageIdsRef.current.has(msg.id)) {
+            return false;
+          }
+          // Check if a message with same content and role exists in DB
+          const existsInDb = dbMessages.some(
+            (dbMsg) => dbMsg.content === msg.content && dbMsg.role === msg.role
+          );
+          return !existsInDb;
+        });
 
         if (newMessages.length > 0) {
           try {
+            // Mark these messages as being saved
+            newMessages.forEach((msg) => savedMessageIdsRef.current.add(msg.id));
+
             await saveMessagesBatch(
               newMessages.map((msg) => ({
                 ...msg,
@@ -92,6 +118,8 @@ export function AiChatPanel() {
             }
           } catch (err) {
             console.error('Failed to save messages:', err);
+            // Remove from saved set if save failed
+            newMessages.forEach((msg) => savedMessageIdsRef.current.delete(msg.id));
           }
         }
       }
@@ -183,6 +211,7 @@ export function AiChatPanel() {
     <Sheet open={isOpen} onOpenChange={(open) => !open && closeChat()} modal={false}>
       <SheetContent
         side="right"
+        hideCloseButton
         className={cn(
           'p-0 border-l shadow-2xl bg-background/98 backdrop-blur-sm',
           'supports-[backdrop-filter]:bg-background/95',
@@ -217,10 +246,10 @@ export function AiChatPanel() {
             >
               {showSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
             </Button>
-            <div className="p-1.5 rounded-md bg-gradient-to-br from-violet-500 to-purple-600">
-              <Sparkles className="h-3.5 w-3.5 text-white" />
+            <div className="p-1 rounded-md bg-gradient-to-br from-orange-400 to-amber-500 text-base flex items-center justify-center">
+              🧑‍🍳
             </div>
-            <SheetTitle className="text-sm font-medium">Assistant</SheetTitle>
+            <SheetTitle className="text-sm font-medium">Chef Assistant</SheetTitle>
           </div>
           <div className="flex items-center gap-0.5">
             <Button
@@ -248,10 +277,10 @@ export function AiChatPanel() {
         {!restaurantId ? (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div>
-              <Bot className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <div className="text-5xl mb-4">🧑‍🍳</div>
               <h3 className="text-lg font-semibold mb-2">No Restaurant Selected</h3>
               <p className="text-muted-foreground text-sm">
-                Please select a restaurant to use the AI assistant.
+                Please select a restaurant to use the Chef Assistant.
               </p>
             </div>
           </div>
@@ -273,10 +302,10 @@ export function AiChatPanel() {
               <ScrollArea className="flex-1 px-3">
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                    <div className="p-2 rounded-full bg-muted/50 mb-3">
-                      <Bot className="h-6 w-6 text-muted-foreground" />
+                    <div className="p-2 rounded-full bg-gradient-to-br from-orange-400/20 to-amber-500/20 mb-3 text-2xl">
+                      🧑‍🍳
                     </div>
-                    <h3 className="text-sm font-medium mb-1">How can I help?</h3>
+                    <h3 className="text-sm font-medium mb-1">How can I help, Chef?</h3>
                     <p className="text-xs text-muted-foreground max-w-[200px] mb-4">
                       Ask about inventory, sales, recipes, or financials.
                     </p>
@@ -301,13 +330,14 @@ export function AiChatPanel() {
                     {isStreaming && (
                       <div className="flex gap-2">
                         <div className="flex-shrink-0">
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
-                            <Loader2 className="h-3 w-3 text-white animate-spin" />
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-sm">
+                            🧑‍🍳
                           </div>
                         </div>
                         <Card className="max-w-[85%] px-3 py-2 bg-muted/50 border-0 shadow-none">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <span>Thinking...</span>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Cooking up a response...</span>
                           </div>
                         </Card>
                       </div>

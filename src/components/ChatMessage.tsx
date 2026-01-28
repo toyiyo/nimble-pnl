@@ -1,5 +1,5 @@
 import { ChatMessage as ChatMessageType } from "@/types/ai-chat";
-import { Bot, User, Wrench, ArrowRight } from "lucide-react";
+import { User, Wrench, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -114,8 +114,8 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
       return (
         <div className="flex gap-3 mb-4 justify-start">
           <div className="flex-shrink-0">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <Bot className="h-5 w-5 text-primary-foreground" />
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-lg">
+              🧑‍🍳
             </div>
           </div>
           <Card className="max-w-[85%] md:max-w-[80%] px-4 py-3">
@@ -176,8 +176,8 @@ export const ChatMessage = ({ message, onNavigate }: ChatMessageProps) => {
     <div className={cn("flex gap-3 mb-4", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
         <div className="flex-shrink-0">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-            <Bot className="h-5 w-5 text-primary-foreground" />
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center text-lg">
+            🧑‍🍳
           </div>
         </div>
       )}

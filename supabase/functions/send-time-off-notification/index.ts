@@ -173,7 +173,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const uniqueEmails = await buildEmails(
-      supabase,
+      supabase as any,
       timeOffRequest.restaurant_id,
       timeOffRequest.employee?.email,
       settings.time_off_notify_employee,

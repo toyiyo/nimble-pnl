@@ -5067,11 +5067,17 @@ export type Database = {
       shift4_connections: {
         Row: {
           connected_at: string
+          connection_status: string | null
           created_at: string
           email: string | null
           environment: string
           id: string
+          initial_sync_done: boolean | null
+          is_active: boolean | null
+          last_error: string | null
+          last_error_at: string | null
           last_sync_at: string | null
+          last_sync_time: string | null
           lighthouse_location_ids: Json | null
           lighthouse_token: string | null
           lighthouse_token_expires_at: string | null
@@ -5079,15 +5085,22 @@ export type Database = {
           password: string | null
           restaurant_id: string
           secret_key: string | null
+          sync_cursor: number | null
           updated_at: string
         }
         Insert: {
           connected_at?: string
+          connection_status?: string | null
           created_at?: string
           email?: string | null
           environment?: string
           id?: string
+          initial_sync_done?: boolean | null
+          is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_sync_at?: string | null
+          last_sync_time?: string | null
           lighthouse_location_ids?: Json | null
           lighthouse_token?: string | null
           lighthouse_token_expires_at?: string | null
@@ -5095,15 +5108,22 @@ export type Database = {
           password?: string | null
           restaurant_id: string
           secret_key?: string | null
+          sync_cursor?: number | null
           updated_at?: string
         }
         Update: {
           connected_at?: string
+          connection_status?: string | null
           created_at?: string
           email?: string | null
           environment?: string
           id?: string
+          initial_sync_done?: boolean | null
+          is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_sync_at?: string | null
+          last_sync_time?: string | null
           lighthouse_location_ids?: Json | null
           lighthouse_token?: string | null
           lighthouse_token_expires_at?: string | null
@@ -5111,6 +5131,7 @@ export type Database = {
           password?: string | null
           restaurant_id?: string
           secret_key?: string | null
+          sync_cursor?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -8068,6 +8089,13 @@ export type Database = {
           match_type: string
           supplier_id: string
           supplier_name: string
+        }[]
+      }
+      sync_all_shift4_to_unified_sales: {
+        Args: never
+        Returns: {
+          restaurant_id: string
+          rows_synced: number
         }[]
       }
       sync_all_toast_to_unified_sales: {

@@ -280,10 +280,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             
             {/* Shift4 Sync Component */}
             {isShift4Integration && (
-              <Shift4Sync 
-                restaurantId={restaurantId} 
-                isConnected={actuallyConnected} 
-              />
+              <Shift4Sync restaurantId={restaurantId} />
             )}
             
             {/* Toast Sync Component */}

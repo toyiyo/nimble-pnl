@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -9,9 +10,16 @@ interface Shift4Connection {
   environment: 'production' | 'sandbox';
   connected_at: string;
   last_sync_at: string | null;
+  initial_sync_done?: boolean;
+  sync_cursor?: number;
+  is_active?: boolean;
+  connection_status?: string;
+  last_error?: string | null;
+  last_error_at?: string | null;
+  last_sync_time?: string | null;
 }
 
-export const useShift4Integration = (restaurantId: string | null) => {
+export function useShift4Integration(restaurantId: string | null) {
   const [isConnected, setIsConnected] = useState(false);
   const [connection, setConnection] = useState<Shift4Connection | null>(null);
   const [loading, setLoading] = useState(false);
@@ -83,15 +91,14 @@ export const useShift4Integration = (restaurantId: string | null) => {
         throw new Error(data.error || 'Failed to connect Shift4');
       }
 
+      const merchantIdDisplay = merchantId ? ` (Merchant ID: ${data.merchantId})` : '';
       toast({
         title: "Shift4 Connected",
-        description: `Successfully connected to Shift4${merchantId ? ` (Merchant ID: ${data.merchantId})` : ''}`,
+        description: `Successfully connected to Shift4${merchantIdDisplay}`,
       });
 
-      // Refresh connection status
       await checkConnection();
 
-      // Trigger initial sync
       toast({
         title: "Initial Sync Started",
         description: "Fetching your sales data from Shift4...",
@@ -115,11 +122,11 @@ export const useShift4Integration = (restaurantId: string | null) => {
           variant: "destructive",
         });
       } else if (syncData.success) {
-        const total = (syncData.results?.chargesSynced || 0) + 
-                      (syncData.results?.refundsSynced || 0);
+        const chargesSynced = syncData.results?.chargesSynced || 0;
+        const refundsSynced = syncData.results?.refundsSynced || 0;
         toast({
           title: "Initial Sync Complete",
-          description: `Synced ${total} records from Shift4.`,
+          description: `Synced ${chargesSynced + refundsSynced} records from Shift4.`,
         });
       }
 
@@ -172,6 +179,57 @@ export const useShift4Integration = (restaurantId: string | null) => {
     }
   }, [restaurantId, connection, toast]);
 
+  const triggerManualSync = useCallback(async (
+    options?: { startDate?: string; endDate?: string }
+  ): Promise<{
+    success: boolean;
+    ticketsSynced: number;
+    errors: string[];
+    syncComplete: boolean;
+    progress: number;
+    daysRemaining: number;
+  } | null> => {
+    if (!restaurantId) {
+      throw new Error('No restaurant selected');
+    }
+
+    // Build request body
+    const body: Record<string, unknown> = { restaurantId };
+
+    if (options?.startDate && options?.endDate) {
+      // Custom date range sync
+      body.dateRange = {
+        startDate: options.startDate,
+        endDate: options.endDate,
+      };
+    }
+    // If no options, the edge function will use default behavior:
+    // - initial_sync if not done, otherwise hourly_sync
+
+    const { data, error } = await supabase.functions.invoke('shift4-sync-data', {
+      body,
+    });
+
+    if (error) throw error;
+
+    if (!data.success && data.error) {
+      throw new Error(data.error);
+    }
+
+    await checkConnection();
+
+    return {
+      success: data.success,
+      ticketsSynced: data.results?.chargesSynced || 0,
+      errors: data.results?.errors || [],
+      syncComplete: data.syncProgress?.syncComplete ?? true,
+      progress: data.syncProgress?.syncComplete ? 100 :
+        Math.round(((90 - (data.syncProgress?.daysRemaining || 0)) / 90) * 100),
+      daysRemaining: data.syncProgress?.daysRemaining || 0,
+    };
+  }, [restaurantId, checkConnection]);
+
+  // Legacy syncNow for backward compatibility
   const syncNow = useCallback(async () => {
     if (!restaurantId || !isConnected) {
       throw new Error('Shift4 is not connected');
@@ -180,42 +238,29 @@ export const useShift4Integration = (restaurantId: string | null) => {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('shift4-sync-data', {
-        body: {
-          restaurantId,
-          action: 'hourly_sync',
-        },
-      });
+      const result = await triggerManualSync();
 
-      if (error) throw error;
-
-      if (!data.success) {
-        throw new Error(data.error || 'Sync failed');
+      if (result) {
+        toast({
+          title: "Sync Complete",
+          description: `Synced ${result.ticketsSynced} tickets from Shift4.`,
+        });
       }
 
-      const total = (data.results?.chargesSynced || 0) + 
-                    (data.results?.refundsSynced || 0);
-
-      toast({
-        title: "Sync Complete",
-        description: `Synced ${total} records from Shift4.`,
-      });
-
-      await checkConnection();
-
-      return data;
-    } catch (error: any) {
+      return result;
+    } catch (error: unknown) {
       console.error('Shift4 sync error:', error);
+      const message = error instanceof Error ? error.message : 'Failed to sync from Shift4';
       toast({
         title: "Sync Failed",
-        description: error.message || "Failed to sync from Shift4",
+        description: message,
         variant: "destructive",
       });
       throw error;
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, isConnected, toast, checkConnection]);
+  }, [restaurantId, isConnected, toast, triggerManualSync]);
 
   return {
     isConnected,
@@ -224,6 +269,7 @@ export const useShift4Integration = (restaurantId: string | null) => {
     connectShift4,
     disconnectShift4,
     syncNow,
+    triggerManualSync,
     checkConnection,
   };
-};
+}

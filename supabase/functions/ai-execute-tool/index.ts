@@ -21,6 +21,97 @@ interface ToolExecutionRequest {
   restaurant_id: string;
 }
 
+interface DateRange {
+  startDate: Date;
+  endDate: Date;
+  startDateStr: string;
+  endDateStr: string;
+}
+
+type PeriodType =
+  | 'today' | 'yesterday' | 'tomorrow'
+  | 'week' | 'month' | 'quarter' | 'year'
+  | 'current_week' | 'last_week' | 'current_month' | 'last_month'
+  | 'custom';
+
+/**
+ * Calculate date range from period string
+ * Centralizes the repeated date calculation logic across tool handlers
+ */
+function calculateDateRange(
+  period: PeriodType,
+  customStartDate?: string,
+  customEndDate?: string
+): DateRange {
+  const now = new Date();
+  let startDate: Date;
+  let endDate: Date = now;
+
+  switch (period) {
+    case 'today':
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      break;
+    case 'yesterday':
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
+      break;
+    case 'tomorrow':
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59);
+      break;
+    case 'week':
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+      break;
+    case 'current_week': {
+      const dayOfWeek = now.getDay();
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - dayOfWeek), 23, 59, 59);
+      break;
+    }
+    case 'last_week': {
+      const dayOfWeek = now.getDay();
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 7);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - 1, 23, 59, 59);
+      break;
+    }
+    case 'month':
+    case 'current_month':
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      break;
+    case 'last_month':
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      break;
+    case 'quarter': {
+      const quarter = Math.floor(now.getMonth() / 3);
+      startDate = new Date(now.getFullYear(), quarter * 3, 1);
+      break;
+    }
+    case 'year':
+      startDate = new Date(now.getFullYear(), 0, 1);
+      break;
+    case 'custom':
+      if (!customStartDate || !customEndDate) {
+        throw new Error('Custom period requires start_date and end_date');
+      }
+      startDate = new Date(customStartDate);
+      endDate = new Date(customEndDate);
+      break;
+    default:
+      // Default to current week
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+  }
+
+  return {
+    startDate,
+    endDate,
+    startDateStr: startDate.toISOString().split('T')[0],
+    endDateStr: endDate.toISOString().split('T')[0],
+  };
+}
+
 /**
  * Execute navigation tool
  */
@@ -154,17 +245,44 @@ async function executeGetKpis(
     throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
   }
 
-  // Fetch labor costs
-  const { data: laborCostData, error: laborCostError } = await supabase
-    .from('daily_labor_costs')
-    .select('total_labor_cost')
-    .eq('restaurant_id', restaurantId)
-    .gte('date', startDateStr)
-    .lte('date', endDateStr);
+  // Fetch labor costs using time_punches + employees (same as Dashboard)
+  // Import labor calculation module
+  const { calculateActualLaborCost } = await import('../_shared/laborCalculations.ts');
 
-  if (laborCostError) {
-    throw new Error(`Failed to fetch labor costs: ${laborCostError.message}`);
+  // Fetch time punches for the period
+  const { data: timePunches, error: punchesError } = await supabase
+    .from('time_punches')
+    .select('id, employee_id, restaurant_id, punch_time, punch_type')
+    .eq('restaurant_id', restaurantId)
+    .gte('punch_time', startDate.toISOString())
+    .lte('punch_time', endDate.toISOString())
+    .order('punch_time', { ascending: true });
+
+  if (punchesError) {
+    throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
   }
+
+  // Fetch all employees (including inactive for historical accuracy)
+  const { data: employees, error: employeesError } = await supabase
+    .from('employees')
+    .select('*')
+    .eq('restaurant_id', restaurantId);
+
+  if (employeesError) {
+    throw new Error(`Failed to fetch employees: ${employeesError.message}`);
+  }
+
+  // Calculate labor costs using shared module (same logic as Dashboard)
+  const { breakdown: laborBreakdown } = calculateActualLaborCost(
+    employees || [],
+    timePunches || [],
+    startDate,
+    endDate
+  );
+
+  // Convert to format expected by calculatePeriodMetrics
+  // Labor total is in dollars, convert to cents for consistency
+  const laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
 
   // Fetch inventory value
   const { data: inventory, error: invError } = await supabase
@@ -1683,6 +1801,829 @@ async function executeGenerateReport(
   }
 }
 
+// ============================================================================
+// NEW TOOL EXECUTION HANDLERS
+// ============================================================================
+
+/**
+ * Execute get_labor_costs tool
+ * Uses same calculation logic as Dashboard (time_punches + employees)
+ */
+async function executeGetLaborCosts(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date, include_daily_breakdown = true, include_employee_breakdown = false } = args;
+
+  const { calculateActualLaborCost } = await import('../_shared/laborCalculations.ts');
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  // Fetch time punches and employees in parallel
+  const [punchesResult, employeesResult] = await Promise.all([
+    supabase
+      .from('time_punches')
+      .select('id, employee_id, restaurant_id, punch_time, punch_type')
+      .eq('restaurant_id', restaurantId)
+      .gte('punch_time', startDate.toISOString())
+      .lte('punch_time', endDate.toISOString())
+      .order('punch_time', { ascending: true }),
+    supabase
+      .from('employees')
+      .select('*')
+      .eq('restaurant_id', restaurantId),
+  ]);
+
+  if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
+  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
+
+  const timePunches = punchesResult.data || [];
+  const employees = employeesResult.data || [];
+
+  // Calculate labor costs
+  const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
+
+  // Build employee breakdown if requested
+  const employeeBreakdown = include_employee_breakdown
+    ? employees.filter((e: any) => e.status === 'active').map((e: any) => ({
+        employee_id: e.id,
+        employee_name: e.name,
+        position: e.position,
+        compensation_type: e.compensation_type,
+      }))
+    : null;
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      breakdown: {
+        hourly: breakdown.hourly,
+        salary: breakdown.salary,
+        contractor: breakdown.contractor,
+        daily_rate: breakdown.daily_rate,
+        total: breakdown.total,
+      },
+      daily_costs: include_daily_breakdown ? dailyCosts : undefined,
+      employee_breakdown: employeeBreakdown,
+    },
+  };
+}
+
+/**
+ * Execute get_schedule_overview tool
+ * Shows scheduled shifts and projected labor costs
+ */
+async function executeGetScheduleOverview(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date, include_projected_costs = true } = args;
+
+  const { calculateScheduledLaborCost } = await import('../_shared/laborCalculations.ts');
+
+  // For schedule overview, 'week' and 'month' look forward from today
+  const now = new Date();
+  let startDate: Date;
+  let endDate: Date;
+
+  if (period === 'week') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7);
+  } else if (period === 'month') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  } else {
+    const range = calculateDateRange(period as PeriodType, start_date, end_date);
+    startDate = range.startDate;
+    endDate = range.endDate;
+  }
+
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  // Fetch shifts and employees in parallel
+  const [shiftsResult, employeesResult] = await Promise.all([
+    supabase
+      .from('shifts')
+      .select('*, employee:employees(id, name, position, compensation_type, hourly_rate)')
+      .eq('restaurant_id', restaurantId)
+      .gte('start_time', startDate.toISOString())
+      .lte('start_time', endDate.toISOString())
+      .order('start_time', { ascending: true }),
+    supabase
+      .from('employees')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('status', 'active'),
+  ]);
+
+  if (shiftsResult.error) throw new Error(`Failed to fetch shifts: ${shiftsResult.error.message}`);
+  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
+
+  const shifts = shiftsResult.data || [];
+  const employees = employeesResult.data || [];
+
+  // Calculate projected costs if requested and there are shifts
+  let projectedCosts = null;
+  if (include_projected_costs && shifts.length > 0) {
+    const shiftData = shifts.map((s: any) => ({
+      employee_id: s.employee_id,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      break_duration: s.break_duration || 0,
+    }));
+
+    const { breakdown } = calculateScheduledLaborCost(shiftData, employees, startDate, endDate);
+    projectedCosts = breakdown;
+  }
+
+  // Group shifts by date
+  const shiftsByDate: Record<string, any[]> = {};
+  for (const shift of shifts) {
+    const dateKey = new Date(shift.start_time).toISOString().split('T')[0];
+    if (!shiftsByDate[dateKey]) {
+      shiftsByDate[dateKey] = [];
+    }
+    shiftsByDate[dateKey].push({
+      id: shift.id,
+      employee_name: shift.employee?.name || 'Unknown',
+      position: shift.position || shift.employee?.position,
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      status: shift.status,
+    });
+  }
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      total_shifts: shifts.length,
+      shifts_by_date: shiftsByDate,
+      projected_labor_costs: projectedCosts,
+    },
+  };
+}
+
+/**
+ * Execute get_payroll_summary tool
+ * Comprehensive payroll calculation with tips and manual payments
+ */
+async function executeGetPayrollSummary(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date, include_employee_details = true } = args;
+  const { calculateActualLaborCost } = await import('../_shared/laborCalculations.ts');
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  // Fetch all required data in parallel
+  const [punchesResult, employeesResult, tipsResult, manualResult] = await Promise.all([
+    supabase
+      .from('time_punches')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .gte('punch_time', startDate.toISOString())
+      .lte('punch_time', endDate.toISOString())
+      .order('punch_time', { ascending: true }),
+    supabase
+      .from('employees')
+      .select('*')
+      .eq('restaurant_id', restaurantId),
+    supabase
+      .from('tip_splits')
+      .select('id, total_amount')
+      .eq('restaurant_id', restaurantId)
+      .in('status', ['approved', 'archived'])
+      .gte('split_date', startDateStr)
+      .lte('split_date', endDateStr),
+    supabase
+      .from('daily_labor_allocations')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('source', 'per-job')
+      .gte('date', startDateStr)
+      .lte('date', endDateStr),
+  ]);
+
+  if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
+  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
+  if (tipsResult.error) throw new Error(`Failed to fetch tips: ${tipsResult.error.message}`);
+  if (manualResult.error) throw new Error(`Failed to fetch manual payments: ${manualResult.error.message}`);
+
+  const punches = punchesResult.data || [];
+  const employees = employeesResult.data || [];
+  const tipSplits = tipsResult.data || [];
+  const manualPayments = manualResult.data || [];
+
+  // Fetch tip split items if there are splits
+  const tipsPerEmployee = new Map<string, number>();
+  if (tipSplits.length > 0) {
+    const splitIds = tipSplits.map((s: any) => s.id);
+    const { data: tipItems } = await supabase
+      .from('tip_split_items')
+      .select('employee_id, amount')
+      .in('tip_split_id', splitIds);
+
+    for (const item of tipItems || []) {
+      const current = tipsPerEmployee.get(item.employee_id) || 0;
+      tipsPerEmployee.set(item.employee_id, current + item.amount);
+    }
+  }
+
+  // Calculate labor costs
+  const { breakdown } = calculateActualLaborCost(employees, punches, startDate, endDate);
+
+  const totalTipsCents = tipSplits.reduce((sum: number, s: any) => sum + s.total_amount, 0);
+  const totalManualPaymentsCents = manualPayments.reduce((sum: number, p: any) => sum + p.allocated_cost, 0);
+  const totalTips = totalTipsCents / 100;
+  const totalManualPaymentsAmount = totalManualPaymentsCents / 100;
+
+  // Build employee details if requested
+  const activeEmployees = employees.filter((e: any) => e.status === 'active');
+  const employeeDetails = include_employee_details
+    ? activeEmployees.map((e: any) => ({
+        employee_id: e.id,
+        employee_name: e.name,
+        position: e.position,
+        compensation_type: e.compensation_type,
+        tips: (tipsPerEmployee.get(e.id) || 0) / 100,
+      }))
+    : null;
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      summary: {
+        total_gross_pay: breakdown.total,
+        total_tips: totalTips,
+        total_manual_payments: totalManualPaymentsAmount,
+        total_payroll: breakdown.total + totalTips + totalManualPaymentsAmount,
+        by_compensation_type: {
+          hourly: breakdown.hourly,
+          salary: breakdown.salary,
+          contractor: breakdown.contractor,
+          daily_rate: breakdown.daily_rate,
+        },
+      },
+      employee_count: activeEmployees.length,
+      employee_details: employeeDetails,
+    },
+  };
+}
+
+/**
+ * Execute get_tip_summary tool
+ */
+async function executeGetTipSummary(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date, status_filter = 'all' } = args;
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  // Build query
+  let query = supabase
+    .from('tip_splits')
+    .select(`
+      *,
+      items:tip_split_items(
+        employee_id,
+        amount,
+        employee:employees(name)
+      )
+    `)
+    .eq('restaurant_id', restaurantId)
+    .gte('split_date', startDateStr)
+    .lte('split_date', endDateStr)
+    .order('split_date', { ascending: false });
+
+  if (status_filter !== 'all') {
+    query = query.eq('status', status_filter);
+  }
+
+  const { data: splits, error } = await query;
+  if (error) throw new Error(`Failed to fetch tip splits: ${error.message}`);
+
+  const allSplits = splits || [];
+
+  // Calculate summary by status
+  const byStatus: Record<string, { count: number; total: number }> = {
+    draft: { count: 0, total: 0 },
+    approved: { count: 0, total: 0 },
+    archived: { count: 0, total: 0 },
+  };
+
+  // Aggregate employee earnings
+  const employeeEarnings: Record<string, { name: string; total: number }> = {};
+
+  for (const split of allSplits) {
+    if (byStatus[split.status]) {
+      byStatus[split.status].count++;
+      byStatus[split.status].total += split.total_amount;
+    }
+    for (const item of split.items || []) {
+      if (!employeeEarnings[item.employee_id]) {
+        employeeEarnings[item.employee_id] = { name: item.employee?.name || 'Unknown', total: 0 };
+      }
+      employeeEarnings[item.employee_id].total += item.amount;
+    }
+  }
+
+  const totalTipsCents = allSplits.reduce((sum: number, s: any) => sum + s.total_amount, 0);
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      total_splits: allSplits.length,
+      total_tips: totalTipsCents / 100,
+      by_status: {
+        draft: { count: byStatus.draft.count, total: byStatus.draft.total / 100 },
+        approved: { count: byStatus.approved.count, total: byStatus.approved.total / 100 },
+        archived: { count: byStatus.archived.count, total: byStatus.archived.total / 100 },
+      },
+      top_earners: Object.entries(employeeEarnings)
+        .map(([id, data]) => ({ employee_id: id, name: data.name, total: data.total / 100 }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 10),
+    },
+  };
+}
+
+/**
+ * Execute get_pending_outflows tool
+ */
+async function executeGetPendingOutflows(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { status_filter = 'all', include_category_breakdown = true } = args;
+  const PENDING_STATUSES = ['pending', 'stale_30', 'stale_60', 'stale_90'];
+
+  // Build query
+  let query = supabase
+    .from('pending_outflows')
+    .select(`
+      *,
+      chart_account:chart_of_accounts!category_id(
+        id,
+        account_name
+      )
+    `)
+    .eq('restaurant_id', restaurantId)
+    .order('issue_date', { ascending: false });
+
+  if (status_filter !== 'all') {
+    query = status_filter === 'pending'
+      ? query.in('status', PENDING_STATUSES)
+      : query.eq('status', status_filter);
+  }
+
+  const { data: outflows, error } = await query;
+  if (error) throw new Error(`Failed to fetch pending outflows: ${error.message}`);
+
+  const allOutflows = outflows || [];
+  const activePending = allOutflows.filter((o: any) => PENDING_STATUSES.includes(o.status));
+
+  // Calculate by status
+  const byStatus: Record<string, { count: number; total: number }> = {};
+  for (const o of allOutflows) {
+    if (!byStatus[o.status]) {
+      byStatus[o.status] = { count: 0, total: 0 };
+    }
+    byStatus[o.status].count++;
+    byStatus[o.status].total += o.amount;
+  }
+
+  // Category breakdown
+  let categoryBreakdown = null;
+  if (include_category_breakdown) {
+    const byCategory: Record<string, { count: number; total: number }> = {};
+    for (const o of activePending) {
+      const categoryName = o.chart_account?.account_name || 'Uncategorized';
+      if (!byCategory[categoryName]) {
+        byCategory[categoryName] = { count: 0, total: 0 };
+      }
+      byCategory[categoryName].count++;
+      byCategory[categoryName].total += o.amount;
+    }
+
+    categoryBreakdown = Object.entries(byCategory)
+      .map(([name, data]) => ({ category: name, count: data.count, total: data.total }))
+      .sort((a, b) => b.total - a.total);
+  }
+
+  const STALE_STATUSES = ['stale_30', 'stale_60', 'stale_90'];
+  const staleItems = allOutflows
+    .filter((o: any) => STALE_STATUSES.includes(o.status))
+    .map((o: any) => ({
+      id: o.id,
+      description: o.description,
+      amount: o.amount,
+      issue_date: o.issue_date,
+      status: o.status,
+      category: o.chart_account?.account_name || 'Uncategorized',
+    }));
+
+  return {
+    ok: true,
+    data: {
+      total_pending: activePending.reduce((sum: number, o: any) => sum + o.amount, 0),
+      pending_count: activePending.length,
+      by_status: byStatus,
+      category_breakdown: categoryBreakdown,
+      stale_items: staleItems,
+    },
+  };
+}
+
+/**
+ * Execute get_operating_costs tool
+ */
+async function executeGetOperatingCosts(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date, include_break_even = true } = args;
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  // Fetch operating costs
+  const { data: costs, error: costsError } = await supabase
+    .from('restaurant_operating_costs')
+    .select('*')
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true)
+    .order('cost_type')
+    .order('display_order');
+
+  if (costsError) throw new Error(`Failed to fetch operating costs: ${costsError.message}`);
+
+  // Group by type
+  const byCostType: Record<string, any[]> = {
+    fixed: [],
+    semi_variable: [],
+    variable: [],
+    custom: [],
+  };
+
+  for (const cost of costs || []) {
+    if (byCostType[cost.cost_type]) {
+      byCostType[cost.cost_type].push({
+        name: cost.name,
+        category: cost.category,
+        monthly_value: cost.monthly_value / 100,
+        percentage_value: cost.percentage_value,
+        entry_type: cost.entry_type,
+      });
+    }
+  }
+
+  // Calculate totals
+  const fixedTotal = byCostType.fixed.reduce((sum, c) => sum + c.monthly_value, 0);
+  const semiVariableTotal = byCostType.semi_variable.reduce((sum, c) => sum + c.monthly_value, 0);
+  const variableTotal = byCostType.variable.reduce((sum, c) => sum + c.monthly_value, 0);
+
+  // Fetch revenue for break-even calculation
+  let breakEvenAnalysis = null;
+  if (include_break_even) {
+    const { data: sales, error: salesError } = await supabase
+      .from('unified_sales')
+      .select('total_price')
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .is('adjustment_type', null)
+      .is('parent_sale_id', null);
+
+    if (!salesError && sales) {
+      const totalRevenue = sales.reduce((sum: number, s: any) => sum + (s.total_price || 0), 0);
+      const totalFixedCosts = fixedTotal + semiVariableTotal;
+      const variableCostPercentage = variableTotal > 0 && totalRevenue > 0
+        ? (variableTotal / totalRevenue) * 100
+        : 25; // Default estimate
+
+      const contributionMargin = 100 - variableCostPercentage;
+      const breakEvenRevenue = contributionMargin > 0
+        ? (totalFixedCosts / (contributionMargin / 100))
+        : 0;
+
+      breakEvenAnalysis = {
+        total_fixed_costs: totalFixedCosts,
+        variable_cost_percentage: variableCostPercentage,
+        contribution_margin_percentage: contributionMargin,
+        break_even_revenue: breakEvenRevenue,
+        current_revenue: totalRevenue,
+        above_break_even: totalRevenue >= breakEvenRevenue,
+        margin_of_safety: totalRevenue > 0 ? ((totalRevenue - breakEvenRevenue) / totalRevenue) * 100 : 0,
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      costs_by_type: {
+        fixed: { items: byCostType.fixed, total: fixedTotal },
+        semi_variable: { items: byCostType.semi_variable, total: semiVariableTotal },
+        variable: { items: byCostType.variable, total: variableTotal },
+        custom: { items: byCostType.custom, total: byCostType.custom.reduce((sum, c) => sum + c.monthly_value, 0) },
+      },
+      total_monthly_costs: fixedTotal + semiVariableTotal + variableTotal,
+      break_even_analysis: breakEvenAnalysis,
+    },
+  };
+}
+
+/**
+ * Execute get_monthly_trends tool
+ */
+async function executeGetMonthlyTrends(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { months_back = 12, include_percentages = true } = args;
+
+  const now = new Date();
+  const startDate = new Date(now.getFullYear(), now.getMonth() - months_back + 1, 1);
+  const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  // Use the RPC function for monthly sales metrics
+  const { data: salesMetrics, error: salesError } = await supabase
+    .rpc('get_monthly_sales_metrics', {
+      p_restaurant_id: restaurantId,
+      p_date_from: startDateStr,
+      p_date_to: endDateStr,
+    });
+
+  if (salesError) {
+    console.warn('RPC not available, using simplified calculation:', salesError);
+  }
+
+  // Fetch food costs by month
+  const { data: foodCosts, error: foodError } = await supabase
+    .from('inventory_transactions')
+    .select('created_at, total_cost')
+    .eq('restaurant_id', restaurantId)
+    .eq('transaction_type', 'usage')
+    .gte('created_at', startDateStr)
+    .lte('created_at', endDateStr + 'T23:59:59.999Z');
+
+  if (foodError) throw new Error(`Failed to fetch food costs: ${foodError.message}`);
+
+  // Group food costs by month
+  const foodCostByMonth: Record<string, number> = {};
+  foodCosts?.forEach((t: any) => {
+    const monthKey = new Date(t.created_at).toISOString().slice(0, 7);
+    foodCostByMonth[monthKey] = (foodCostByMonth[monthKey] || 0) + Math.abs(t.total_cost || 0);
+  });
+
+  // Build monthly trends
+  const months: any[] = [];
+
+  if (salesMetrics?.length) {
+    salesMetrics.forEach((row: any) => {
+      const foodCost = foodCostByMonth[row.period] || 0;
+      const netRevenue = Number(row.gross_revenue) - Number(row.discounts || 0);
+
+      const monthData: any = {
+        period: row.period,
+        gross_revenue: Number(row.gross_revenue),
+        net_revenue: netRevenue,
+        discounts: Number(row.discounts || 0),
+        sales_tax: Number(row.sales_tax || 0),
+        tips: Number(row.tips || 0),
+        food_cost: foodCost,
+      };
+
+      if (include_percentages && netRevenue > 0) {
+        monthData.food_cost_percentage = (foodCost / netRevenue) * 100;
+      }
+
+      months.push(monthData);
+    });
+  } else {
+    // Fallback: generate empty months
+    for (let i = 0; i < months_back; i++) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = monthDate.toISOString().slice(0, 7);
+      months.push({
+        period: monthKey,
+        gross_revenue: 0,
+        net_revenue: 0,
+        food_cost: foodCostByMonth[monthKey] || 0,
+      });
+    }
+  }
+
+  // Sort by period descending
+  months.sort((a, b) => b.period.localeCompare(a.period));
+
+  return {
+    ok: true,
+    data: {
+      months_included: months.length,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      monthly_data: months.slice(0, months_back),
+      summary: {
+        total_revenue: months.reduce((sum, m) => sum + m.net_revenue, 0),
+        total_food_cost: months.reduce((sum, m) => sum + m.food_cost, 0),
+        average_monthly_revenue: months.length > 0
+          ? months.reduce((sum, m) => sum + m.net_revenue, 0) / months.length
+          : 0,
+      },
+    },
+  };
+}
+
+/**
+ * Execute get_expense_health tool
+ */
+async function executeGetExpenseHealth(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date, bank_account_id } = args;
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  // Processing fee detection patterns
+  const processingFeePatterns = [
+    'square fee', 'stripe fee', 'processing fee', 'merchant fee',
+    'card fee', 'payment fee', 'square', 'stripe', 'clover fee', 'toast fee',
+  ];
+
+  // Fetch bank transactions
+  let txQuery = supabase
+    .from('bank_transactions')
+    .select(`
+      amount,
+      description,
+      merchant_name,
+      category_id,
+      is_split,
+      chart_of_accounts!category_id(account_name, account_subtype)
+    `)
+    .eq('restaurant_id', restaurantId)
+    .in('status', ['posted', 'pending'])
+    .gte('transaction_date', startDateStr)
+    .lte('transaction_date', endDateStr);
+
+  if (bank_account_id) {
+    txQuery = txQuery.eq('connected_bank_id', bank_account_id);
+  }
+
+  const { data: transactions, error: txError } = await txQuery;
+
+  if (txError) throw new Error(`Failed to fetch transactions: ${txError.message}`);
+
+  const txns = transactions || [];
+
+  // Calculate metrics
+  const revenue = txns.filter((t: any) => t.amount > 0).reduce((sum: number, t: any) => sum + t.amount, 0);
+
+  const foodCost = Math.abs(
+    txns.filter((t: any) => {
+      if (t.amount >= 0) return false;
+      if (!t.category_id || !t.chart_of_accounts) return false;
+      const subtype = t.chart_of_accounts.account_subtype;
+      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
+      return subtype === 'cost_of_goods_sold' || name.includes('food') || name.includes('inventory');
+    }).reduce((sum: number, t: any) => sum + t.amount, 0)
+  );
+
+  const laborCost = Math.abs(
+    txns.filter((t: any) => {
+      if (t.amount >= 0) return false;
+      if (!t.category_id || !t.chart_of_accounts) return false;
+      const subtype = t.chart_of_accounts.account_subtype;
+      const name = (t.chart_of_accounts.account_name || '').toLowerCase();
+      return subtype === 'payroll' || name.includes('payroll') || name.includes('labor');
+    }).reduce((sum: number, t: any) => sum + t.amount, 0)
+  );
+
+  const processingFees = Math.abs(
+    txns.filter((t: any) => {
+      if (t.amount >= 0) return false;
+      const desc = ((t.description || '') + ' ' + (t.merchant_name || '')).toLowerCase();
+      return processingFeePatterns.some(pattern => desc.includes(pattern));
+    }).reduce((sum: number, t: any) => sum + t.amount, 0)
+  );
+
+  const outflows = txns.filter((t: any) => t.amount < 0);
+  const totalOutflows = Math.abs(outflows.reduce((sum: number, t: any) => sum + t.amount, 0));
+  const uncategorizedSpend = Math.abs(
+    outflows.filter((t: any) => !t.category_id && !t.is_split).reduce((sum: number, t: any) => sum + t.amount, 0)
+  );
+
+  // Calculate percentages
+  const foodCostPercentage = revenue > 0 ? (foodCost / revenue) * 100 : 0;
+  const laborPercentage = revenue > 0 ? (laborCost / revenue) * 100 : 0;
+  const primeCostPercentage = revenue > 0 ? ((foodCost + laborCost) / revenue) * 100 : 0;
+  const processingFeePercentage = revenue > 0 ? (processingFees / revenue) * 100 : 0;
+  const uncategorizedPercentage = totalOutflows > 0 ? (uncategorizedSpend / totalOutflows) * 100 : 0;
+
+  // Get current bank balance
+  const { data: balances, error: balError } = await supabase
+    .from('bank_account_balances')
+    .select('current_balance, connected_banks!inner(restaurant_id)')
+    .eq('connected_banks.restaurant_id', restaurantId)
+    .eq('is_active', true);
+
+  const totalCashBalance = (balances || []).reduce((sum: number, b: any) => sum + Number(b.current_balance), 0);
+  const cashCoverageBeforePayroll = laborCost > 0 ? totalCashBalance / laborCost : 0;
+
+  // Determine status
+  const getStatus = (value: number, good: number, caution: number) => {
+    if (value <= good) return 'good';
+    if (value <= caution) return 'caution';
+    return 'high';
+  };
+
+  // Build alerts
+  const alerts: string[] = [];
+  if (primeCostPercentage > 65) {
+    alerts.push(`Prime cost is ${primeCostPercentage.toFixed(1)}% - above the 65% warning threshold`);
+  }
+  if (uncategorizedPercentage > 10) {
+    alerts.push(`${uncategorizedPercentage.toFixed(1)}% of spending is uncategorized`);
+  }
+  if (cashCoverageBeforePayroll < 1.5) {
+    alerts.push(`Cash coverage before payroll is only ${cashCoverageBeforePayroll.toFixed(1)}x`);
+  }
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      metrics: {
+        food_cost: {
+          amount: foodCost,
+          percentage: foodCostPercentage,
+          target: { min: 28, max: 32 },
+          status: getStatus(foodCostPercentage, 32, 35),
+        },
+        labor_cost: {
+          amount: laborCost,
+          percentage: laborPercentage,
+          target: { min: 25, max: 30 },
+          status: getStatus(laborPercentage, 30, 35),
+        },
+        prime_cost: {
+          amount: foodCost + laborCost,
+          percentage: primeCostPercentage,
+          target: { min: 55, max: 60 },
+          status: getStatus(primeCostPercentage, 60, 65),
+        },
+        processing_fees: {
+          amount: processingFees,
+          percentage: processingFeePercentage,
+          target: 3.2,
+          status: getStatus(processingFeePercentage, 3.2, 4.0),
+        },
+        uncategorized_spend: {
+          amount: uncategorizedSpend,
+          percentage: uncategorizedPercentage,
+          target: 5,
+          status: getStatus(uncategorizedPercentage, 5, 10),
+        },
+        cash_coverage: {
+          multiplier: cashCoverageBeforePayroll,
+          current_balance: totalCashBalance,
+          status: cashCoverageBeforePayroll >= 2 ? 'good' : cashCoverageBeforePayroll >= 1.5 ? 'caution' : 'critical',
+        },
+      },
+      revenue: revenue,
+      alerts: alerts,
+    },
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -1766,6 +2707,30 @@ serve(async (req) => {
         break;
       case 'generate_report':
         result = await executeGenerateReport(args, restaurant_id, supabase);
+        break;
+      case 'get_labor_costs':
+        result = await executeGetLaborCosts(args, restaurant_id, supabase);
+        break;
+      case 'get_schedule_overview':
+        result = await executeGetScheduleOverview(args, restaurant_id, supabase);
+        break;
+      case 'get_payroll_summary':
+        result = await executeGetPayrollSummary(args, restaurant_id, supabase);
+        break;
+      case 'get_tip_summary':
+        result = await executeGetTipSummary(args, restaurant_id, supabase);
+        break;
+      case 'get_pending_outflows':
+        result = await executeGetPendingOutflows(args, restaurant_id, supabase);
+        break;
+      case 'get_operating_costs':
+        result = await executeGetOperatingCosts(args, restaurant_id, supabase);
+        break;
+      case 'get_monthly_trends':
+        result = await executeGetMonthlyTrends(args, restaurant_id, supabase);
+        break;
+      case 'get_expense_health':
+        result = await executeGetExpenseHealth(args, restaurant_id, supabase);
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);

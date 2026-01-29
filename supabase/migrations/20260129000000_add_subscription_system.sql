@@ -361,6 +361,9 @@ All other capabilities are role-based only.
 This function MUST stay in sync with ROLE_CAPABILITIES in TypeScript.';
 
 -- 6. Update create_restaurant_with_owner to set up trial for new restaurants
+-- First, drop the old 4-parameter version if it exists (original migration had no timezone param)
+DROP FUNCTION IF EXISTS public.create_restaurant_with_owner(text, text, text, text);
+
 CREATE OR REPLACE FUNCTION public.create_restaurant_with_owner(
   restaurant_name text,
   restaurant_address text DEFAULT NULL::text,
@@ -416,7 +419,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.create_restaurant_with_owner IS
+COMMENT ON FUNCTION public.create_restaurant_with_owner(text, text, text, text, text) IS
 'Create a new restaurant and link it to the current user as owner.
 New restaurants start with a 14-day Growth tier trial.
 Includes deduplication and concurrency protection.';

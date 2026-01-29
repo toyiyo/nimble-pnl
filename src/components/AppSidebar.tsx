@@ -40,13 +40,26 @@ import {
   Calculator,
   Building2,
   Target,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useSubscription } from '@/hooks/useSubscription';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { SUBSCRIPTION_FEATURES } from '@/lib/subscriptionPlans';
+
+/**
+ * Map paths to subscription feature keys for Pro badge display
+ */
+const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = {
+  '/financial-intelligence': 'financial_intelligence',
+  '/scheduling': 'scheduling',
+  '/receipt-import': 'inventory_automation',
+};
 
 // Navigation structure
 const navigationGroups = [
@@ -235,6 +248,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
+  const { hasFeature } = useSubscription();
 
   // Get navigation based on user role
   const role = selectedRestaurant?.role;
@@ -332,6 +346,10 @@ export function AppSidebar() {
                           {group.items.map((item) => {
                             const Icon = item.icon;
                             const isActive = isActivePath(item.path);
+                            const featureKey = FEATURE_GATED_PATHS[item.path];
+                            const needsUpgrade = featureKey && !hasFeature(featureKey);
+                            const requiredTier = featureKey ? SUBSCRIPTION_FEATURES[featureKey].requiredTier : null;
+
                             return (
                               <SidebarMenuItem key={item.path}>
                                 <SidebarMenuButton
@@ -344,7 +362,16 @@ export function AppSidebar() {
                                   }
                                 >
                                   <Icon className="h-4 w-4" />
-                                  <span>{item.label}</span>
+                                  <span className="flex-1">{item.label}</span>
+                                  {needsUpgrade && requiredTier && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="ml-auto text-[9px] px-1 py-0 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 capitalize"
+                                    >
+                                      <Sparkles className="h-2 w-2 mr-0.5" />
+                                      {requiredTier}
+                                    </Badge>
+                                  )}
                                 </SidebarMenuButton>
                               </SidebarMenuItem>
                             );

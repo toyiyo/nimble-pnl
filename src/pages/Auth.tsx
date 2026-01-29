@@ -20,7 +20,6 @@ const Auth = () => {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [ssoRequired, setSSORequired] = useState<any>(null);
-  const [showSSORedirect, setShowSSORedirect] = useState(false);
   const { signIn, signUp, user } = useAuth();
   const { checkSSORequired, initiateSSO } = useSSO();
   const { toast } = useToast();
@@ -28,22 +27,20 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      navigate('/');
+      // Check if user has seen the welcome modal
+      const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
+      if (!hasSeenWelcome) {
+        navigate('/?welcome=true');
+      } else {
+        navigate('/');
+      }
     }
   }, [user, navigate]);
 
   useEffect(() => {
     // Check for SSO requirement when email changes
-    if (email) {
-      const ssoConfig = checkSSORequired(email);
-      setSSORequired(ssoConfig);
-      if (ssoConfig) {
-        setShowSSORedirect(true);
-      }
-    } else {
-      setSSORequired(null);
-      setShowSSORedirect(false);
-    }
+    const ssoConfig = email ? checkSSORequired(email) : null;
+    setSSORequired(ssoConfig);
   }, [email, checkSSORequired]);
 
   const handleSSORedirect = async () => {
@@ -187,7 +184,7 @@ const Auth = () => {
             </TabsList>
             
             <TabsContent value="signin">
-              {ssoRequired && showSSORedirect && (
+              {ssoRequired && (
                 <Alert className="mb-4">
                   <Shield className="h-4 w-4" />
                   <AlertDescription>
@@ -255,7 +252,7 @@ const Auth = () => {
             </TabsContent>
             
             <TabsContent value="signup">
-              {ssoRequired && showSSORedirect && (
+              {ssoRequired && (
                 <Alert className="mb-4">
                   <Shield className="h-4 w-4" />
                   <AlertDescription>

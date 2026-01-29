@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +33,7 @@ import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
+import { WelcomeModal } from '@/components/subscription';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 // PredictableExpensesCard removed - needs more transaction history to be useful
@@ -79,6 +80,32 @@ const Index = () => {
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Welcome modal state
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  // Check for welcome flag in URL on mount
+  useEffect(() => {
+    if (!user) return;
+
+    const welcomeFlag = searchParams.get('welcome');
+    const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
+
+    if (welcomeFlag === 'true' && !hasSeenWelcome) {
+      setShowWelcome(true);
+      // Clean up URL param
+      searchParams.delete('welcome');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, user]);
+
+  function handleWelcomeClose(): void {
+    setShowWelcome(false);
+    if (user) {
+      localStorage.setItem(`hasSeenWelcome_${user.id}`, 'true');
+    }
+  }
 
   // Collapsible section states
   const [metricsOpen, setMetricsOpen] = useState(true);
@@ -486,6 +513,9 @@ const Index = () => {
 
   return (
     <>
+      {/* Welcome Modal for first-time users */}
+      <WelcomeModal open={showWelcome} onClose={handleWelcomeClose} />
+
       {!selectedRestaurant ? (
         <div className="space-y-8 animate-fade-in">
           <div className="text-center space-y-4">

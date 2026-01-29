@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical, ChefHat } from 'lucide-react';
+import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical, ChefHat, Lock, Sparkles } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -15,9 +15,11 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChat } from '@/hooks/useAiChat';
 import { useAiChatSessions } from '@/hooks/useAiChatSessions';
 import { useAiChatMessages } from '@/hooks/useAiChatMessages';
+import { useSubscription } from '@/hooks/useSubscription';
 import { ChatMessage } from '@/components/ChatMessage';
 import { AiChatConversationList } from './AiChatConversationList';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
@@ -32,7 +34,10 @@ export function AiChatPanel() {
   const { isOpen, isMinimized, currentSessionId, closeChat, minimizeChat, switchSession, clearCurrentSession } =
     useAiChatContext();
   const { selectedRestaurant } = useRestaurantContext();
+  const { hasFeature } = useSubscription();
+  const navigate = useNavigate();
   const restaurantId = selectedRestaurant?.restaurant_id || '';
+  const hasAiAccess = hasFeature('ai_assistant');
 
   const [input, setInput] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
@@ -288,8 +293,30 @@ export function AiChatPanel() {
           </div>
         </div>
 
-        {/* No restaurant selected */}
-        {!restaurantId ? (
+        {/* Subscription gate - Pro tier required */}
+        {!hasAiAccess ? (
+          <div className="flex-1 flex items-center justify-center p-8 text-center">
+            <div>
+              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-amber-500/20 to-amber-500/10 flex items-center justify-center mb-4">
+                <Lock className="h-8 w-8 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Pro Feature</h3>
+              <p className="text-muted-foreground text-sm mb-4">
+                Chef AI Assistant is available on the Pro plan.
+              </p>
+              <Button
+                onClick={() => {
+                  closeChat();
+                  navigate('/settings?tab=subscription');
+                }}
+                className="gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Upgrade to Pro
+              </Button>
+            </div>
+          </div>
+        ) : !restaurantId ? (
           <div className="flex-1 flex items-center justify-center p-8 text-center">
             <div>
               <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mb-4">

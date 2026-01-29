@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurants } from '@/hooks/useRestaurants';
@@ -8,19 +9,28 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { MetricIcon } from '@/components/MetricIcon';
 import { SecuritySettings } from '@/components/SecuritySettings';
 import { NotificationSettings } from '@/components/NotificationSettings';
+import { SubscriptionPlans, TrialBanner } from '@/components/subscription';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Save, RotateCcw, AlertCircle } from 'lucide-react';
+import { Settings, Save, RotateCcw, AlertCircle, CreditCard } from 'lucide-react';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, restaurants, setSelectedRestaurant, loading: restaurantLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { updateRestaurant } = useRestaurants();
   const { toast } = useToast();
+
+  // Tab state from URL
+  const activeTab = searchParams.get('tab') || 'general';
+  const setActiveTab = (tab: string) => {
+    setSearchParams({ tab });
+  };
 
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -137,9 +147,13 @@ export default function RestaurantSettings() {
   }
 
   const canEdit = selectedRestaurant.role === 'owner' || selectedRestaurant.role === 'manager';
+  const isOwner = selectedRestaurant.role === 'owner';
 
   return (
     <div className="w-full px-4 py-8">
+      {/* Trial/Subscription Status Banner */}
+      {isOwner && <TrialBanner />}
+
       {/* Hero Section with Gradient */}
       <Card className="mb-6 bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
         <CardContent className="pt-6">
@@ -171,154 +185,189 @@ export default function RestaurantSettings() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Basic Information
-          </CardTitle>
-          <CardDescription>
-            {canEdit 
-              ? "Update your restaurant's basic information" 
-              : "You don't have permission to edit these settings"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="name" className="font-medium">
-              Restaurant Name <span className="text-destructive" aria-label="required">*</span>
-            </Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={!canEdit}
-              placeholder="Enter restaurant name"
-              className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-              aria-required="true"
-              aria-describedby={!canEdit ? "name-readonly" : undefined}
-            />
-            {!canEdit && (
-              <p id="name-readonly" className="text-xs text-muted-foreground">
-                Contact an owner or manager to change this field
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="address" className="font-medium">Address</Label>
-            <Input
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              disabled={!canEdit}
-              placeholder="123 Main St, City, State"
-              className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-              aria-describedby="address-help"
-            />
-            <p id="address-help" className="text-xs text-muted-foreground">
-              Physical location of your restaurant
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="phone" className="font-medium">Phone</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={!canEdit}
-              placeholder="(555) 123-4567"
-              className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-              aria-describedby="phone-help"
-            />
-            <p id="phone-help" className="text-xs text-muted-foreground">
-              Primary contact number
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cuisine" className="font-medium">Cuisine Type</Label>
-            <Input
-              id="cuisine"
-              value={cuisineType}
-              onChange={(e) => setCuisineType(e.target.value)}
-              disabled={!canEdit}
-              placeholder="e.g., Italian, Mexican, Asian Fusion"
-              className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-              aria-describedby="cuisine-help"
-            />
-            <p id="cuisine-help" className="text-xs text-muted-foreground">
-              Type of cuisine served
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="timezone" className="font-medium">
-              Timezone <span className="text-destructive" aria-label="required">*</span>
-            </Label>
-            <TimezoneSelector
-              value={timezone}
-              onValueChange={setTimezone}
-              disabled={!canEdit}
-            />
-            <p id="timezone-help" className="text-xs text-muted-foreground">
-              Used for reports and inventory tracking. Browser timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
-            </p>
-          </div>
-
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="general">
+            <Settings className="h-4 w-4 mr-2" />
+            General
+          </TabsTrigger>
+          {isOwner && (
+            <TabsTrigger value="subscription">
+              <CreditCard className="h-4 w-4 mr-2" />
+              Subscription
+            </TabsTrigger>
+          )}
           {canEdit && (
-            <div 
-              className="flex justify-end gap-3 pt-4 border-t" 
-              role="group" 
-              aria-label="Form actions"
-            >
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setName(selectedRestaurant.restaurant.name);
-                  setAddress(selectedRestaurant.restaurant.address || '');
-                  setPhone(selectedRestaurant.restaurant.phone || '');
-                  setCuisineType(selectedRestaurant.restaurant.cuisine_type || '');
-                  setTimezone(selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-                }}
-                disabled={saving || !hasChanges}
-                className="transition-all duration-200 hover:bg-accent"
-                aria-label="Reset form to original values"
-              >
-                <RotateCcw className="h-4 w-4 mr-2" aria-hidden="true" />
-                Reset
-              </Button>
-              <Button 
-                onClick={handleSave} 
-                disabled={saving || !name || !hasChanges}
-                className="transition-all duration-200"
-                aria-label={saving ? "Saving changes" : "Save changes"}
-              >
-                <Save className="h-4 w-4 mr-2" aria-hidden="true" />
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </div>
+            <TabsTrigger value="notifications">
+              Notifications
+            </TabsTrigger>
           )}
+          <TabsTrigger value="security">
+            Security
+          </TabsTrigger>
+        </TabsList>
 
-          {/* Status announcement for screen readers */}
-          {saving && (
-            <div role="status" aria-live="polite" className="sr-only">
-              Saving restaurant settings...
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {/* General Settings Tab */}
+        <TabsContent value="general">
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Basic Information
+              </CardTitle>
+              <CardDescription>
+                {canEdit
+                  ? "Update your restaurant's basic information"
+                  : "You don't have permission to edit these settings"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="font-medium">
+                  Restaurant Name <span className="text-destructive" aria-label="required">*</span>
+                </Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="Enter restaurant name"
+                  className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+                  aria-required="true"
+                  aria-describedby={!canEdit ? "name-readonly" : undefined}
+                />
+                {!canEdit && (
+                  <p id="name-readonly" className="text-xs text-muted-foreground">
+                    Contact an owner or manager to change this field
+                  </p>
+                )}
+              </div>
 
-      {/* Notification Settings */}
-      {canEdit && (
-        <div className="mt-6">
-          <NotificationSettings restaurantId={selectedRestaurant.restaurant_id} />
-        </div>
-      )}
+              <div className="space-y-2">
+                <Label htmlFor="address" className="font-medium">Address</Label>
+                <Input
+                  id="address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="123 Main St, City, State"
+                  className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+                  aria-describedby="address-help"
+                />
+                <p id="address-help" className="text-xs text-muted-foreground">
+                  Physical location of your restaurant
+                </p>
+              </div>
 
-      {/* Security Settings */}
-      <SecuritySettings />
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="font-medium">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="(555) 123-4567"
+                  className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+                  aria-describedby="phone-help"
+                />
+                <p id="phone-help" className="text-xs text-muted-foreground">
+                  Primary contact number
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cuisine" className="font-medium">Cuisine Type</Label>
+                <Input
+                  id="cuisine"
+                  value={cuisineType}
+                  onChange={(e) => setCuisineType(e.target.value)}
+                  disabled={!canEdit}
+                  placeholder="e.g., Italian, Mexican, Asian Fusion"
+                  className="transition-all duration-200 focus:ring-2 focus:ring-primary/20"
+                  aria-describedby="cuisine-help"
+                />
+                <p id="cuisine-help" className="text-xs text-muted-foreground">
+                  Type of cuisine served
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="timezone" className="font-medium">
+                  Timezone <span className="text-destructive" aria-label="required">*</span>
+                </Label>
+                <TimezoneSelector
+                  value={timezone}
+                  onValueChange={setTimezone}
+                  disabled={!canEdit}
+                />
+                <p id="timezone-help" className="text-xs text-muted-foreground">
+                  Used for reports and inventory tracking. Browser timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                </p>
+              </div>
+
+              {canEdit && (
+                <div
+                  className="flex justify-end gap-3 pt-4 border-t"
+                  role="group"
+                  aria-label="Form actions"
+                >
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setName(selectedRestaurant.restaurant.name);
+                      setAddress(selectedRestaurant.restaurant.address || '');
+                      setPhone(selectedRestaurant.restaurant.phone || '');
+                      setCuisineType(selectedRestaurant.restaurant.cuisine_type || '');
+                      setTimezone(selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+                    }}
+                    disabled={saving || !hasChanges}
+                    className="transition-all duration-200 hover:bg-accent"
+                    aria-label="Reset form to original values"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" aria-hidden="true" />
+                    Reset
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving || !name || !hasChanges}
+                    className="transition-all duration-200"
+                    aria-label={saving ? "Saving changes" : "Save changes"}
+                  >
+                    <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
+
+              {/* Status announcement for screen readers */}
+              {saving && (
+                <div role="status" aria-live="polite" className="sr-only">
+                  Saving restaurant settings...
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Subscription Tab - Only for owners */}
+        {isOwner && (
+          <TabsContent value="subscription">
+            <SubscriptionPlans />
+          </TabsContent>
+        )}
+
+        {/* Notification Settings Tab */}
+        {canEdit && (
+          <TabsContent value="notifications">
+            <NotificationSettings restaurantId={selectedRestaurant.restaurant_id} />
+          </TabsContent>
+        )}
+
+        {/* Security Settings Tab */}
+        <TabsContent value="security">
+          <SecuritySettings />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

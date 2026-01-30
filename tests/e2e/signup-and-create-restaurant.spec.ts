@@ -68,7 +68,10 @@ test.describe('Signup and Create Restaurant Flow', () => {
 
     // Step 5.5: Handle Welcome Modal if it appears (shows pricing plans for new users)
     // The modal shows "Welcome to EasyShiftHQ" with a "Get Started" button
-    await page.getByRole('button', { name: 'Get Started', exact: true }).click({ timeout: 5000 });
+    const getStartedButton = page.getByRole('button', { name: 'Get Started', exact: true });
+    if (await getStartedButton.isVisible().catch(() => false)) {
+      await getStartedButton.click();
+    }
 
     // Step 6: Verify we're on the main app (should show restaurant selector or empty state)
     // For a new user with no restaurants, should see the "Add Restaurant" button

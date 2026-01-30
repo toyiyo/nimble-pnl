@@ -121,6 +121,17 @@ serve(async (req) => {
       throw new Error("Restaurant not found");
     }
 
+    if (
+      restaurant.stripe_subscription_customer_id &&
+      restaurant.subscription_status &&
+      ["active", "trialing", "past_due"].includes(restaurant.subscription_status)
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Subscription already active. Use billing portal." }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Count owner's restaurants for volume discount
     const { data: ownerRestaurants, error: countError } = await supabaseAdmin
       .from("user_restaurants")
@@ -245,8 +256,32 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[SUBSCRIPTION-CHECKOUT] Error:", errorMessage);
 
+    // Return user-safe error messages - avoid exposing internal details
+    const userSafeErrors: Record<string, string> = {
+      "No authorization header provided": "Authentication required",
+      "User not authenticated": "Authentication required",
+      "Restaurant ID is required": "Restaurant ID is required",
+      "Invalid tier. Must be: starter, growth, or pro": "Invalid subscription tier selected",
+      "Invalid period. Must be: monthly or annual": "Invalid billing period selected",
+      "Only restaurant owners can manage subscriptions": "Only restaurant owners can manage subscriptions",
+      "Restaurant not found": "Restaurant not found",
+      "Stripe secret key not configured": "Billing service is temporarily unavailable",
+    };
+
+    // Check if error message starts with known prefixes
+    let safeMessage = userSafeErrors[errorMessage];
+    if (!safeMessage) {
+      if (errorMessage.startsWith("Price not found for tier:")) {
+        safeMessage = "Selected plan is not available";
+      } else if (errorMessage.startsWith("Database error:")) {
+        safeMessage = "A database error occurred";
+      } else {
+        safeMessage = "An error occurred while creating checkout session";
+      }
+    }
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: safeMessage }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,

@@ -26,12 +26,16 @@ export function PricingCard({
   volumeDiscount,
 }: PricingCardProps) {
   const price = plan.price[period];
-  const monthlyEquivalent = period === 'annual' ? Math.round(price / 12) : price;
-
   const hasDiscount = volumeDiscount && volumeDiscount.percent > 0;
   const discountedPrice = hasDiscount
     ? Math.round(price * (1 - volumeDiscount.percent / 100))
     : price;
+
+  // Use discounted price for display
+  const displayPrice = discountedPrice;
+  const displayMonthlyEquivalent = period === 'annual'
+    ? Math.round(displayPrice / 12)
+    : displayPrice;
 
   return (
     <Card
@@ -57,12 +61,12 @@ export function PricingCard({
       <CardContent className="flex-1">
         <div className="text-center mb-6">
           <div className="flex items-baseline justify-center gap-1">
-            <span className="text-4xl font-bold">{formatPrice(monthlyEquivalent)}</span>
+            <span className="text-4xl font-bold">{formatPrice(displayMonthlyEquivalent)}</span>
             <span className="text-muted-foreground">/mo</span>
           </div>
           {period === 'annual' && (
             <p className="text-sm text-muted-foreground mt-1">
-              Billed {formatPrice(price)}/year
+              Billed {formatPrice(displayPrice)}/year
             </p>
           )}
           {hasDiscount && (

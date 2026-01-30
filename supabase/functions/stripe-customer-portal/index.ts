@@ -115,8 +115,21 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[CUSTOMER-PORTAL] Error:", errorMessage);
 
+    // Return user-safe error messages - avoid exposing internal details
+    const userSafeErrors: Record<string, string> = {
+      "No authorization header provided": "Authentication required",
+      "User not authenticated": "Authentication required",
+      "Restaurant ID is required": "Restaurant ID is required",
+      "Only restaurant owners can access billing portal": "Only restaurant owners can access billing portal",
+      "Restaurant not found": "Restaurant not found",
+      "No billing account found. Please subscribe to a plan first.": "No billing account found. Please subscribe to a plan first.",
+      "Stripe secret key not configured": "Billing service is temporarily unavailable",
+    };
+
+    const safeMessage = userSafeErrors[errorMessage] || "An error occurred while accessing the billing portal";
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: safeMessage }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,

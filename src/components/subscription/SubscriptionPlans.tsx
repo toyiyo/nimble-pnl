@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -11,6 +11,8 @@ import {
   SubscriptionTier,
   SubscriptionPeriod,
 } from '@/lib/subscriptionPlans';
+
+const TIERS: SubscriptionTier[] = ['starter', 'growth', 'pro'];
 
 export function SubscriptionPlans() {
   const {
@@ -25,11 +27,19 @@ export function SubscriptionPlans() {
     subscription?.period || 'monthly'
   );
 
-  const handleSelectPlan = (tier: SubscriptionTier) => {
-    createCheckout({ tier, period });
-  };
+  // Sync period with subscription when it changes (e.g., switching restaurants)
+  useEffect(() => {
+    if (subscription?.period) {
+      setPeriod(subscription.period);
+    }
+  }, [subscription?.period]);
 
-  const tiers: SubscriptionTier[] = ['starter', 'growth', 'pro'];
+  const handleSelectPlan = useCallback(
+    (tier: SubscriptionTier) => {
+      createCheckout({ tier, period });
+    },
+    [createCheckout, period]
+  );
 
   return (
     <div className="space-y-6">
@@ -80,7 +90,7 @@ export function SubscriptionPlans() {
 
       {/* Pricing Cards */}
       <div className="grid gap-6 md:grid-cols-3">
-        {tiers.map((tier) => (
+        {TIERS.map((tier) => (
           <PricingCard
             key={tier}
             plan={SUBSCRIPTION_PLANS[tier]}

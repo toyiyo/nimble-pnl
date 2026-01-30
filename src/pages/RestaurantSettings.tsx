@@ -149,6 +149,30 @@ export default function RestaurantSettings() {
   const canEdit = selectedRestaurant.role === 'owner' || selectedRestaurant.role === 'manager';
   const isOwner = selectedRestaurant.role === 'owner';
 
+  // Compute allowed tabs based on user role
+  const allowedTabs = useMemo(() => {
+    return [
+      'general',
+      ...(isOwner ? ['subscription'] : []),
+      ...(canEdit ? ['notifications'] : []),
+      'security',
+    ];
+  }, [isOwner, canEdit]);
+
+  // Normalize activeTab if it's not in allowedTabs
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [activeTab, allowedTabs, setActiveTab]);
+
+  // Compute grid columns class based on visible tab count
+  const gridColsClass = allowedTabs.length === 4
+    ? 'grid-cols-4'
+    : allowedTabs.length === 3
+    ? 'grid-cols-3'
+    : 'grid-cols-2';
+
   return (
     <div className="w-full px-4 py-8">
       {/* Trial/Subscription Status Banner */}
@@ -186,7 +210,7 @@ export default function RestaurantSettings() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className={`grid w-full ${gridColsClass}`}>
           <TabsTrigger value="general">
             <Settings className="h-4 w-4 mr-2" />
             General

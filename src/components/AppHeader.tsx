@@ -102,6 +102,7 @@ function BillingPreview({
   const newPricing = calculatePrice(tier, period, currentCount + 1);
   const currentDiscount = getVolumeDiscountPercent(currentCount);
   const newDiscount = getVolumeDiscountPercent(currentCount + 1);
+  const periodLabel = period === 'annual' ? 'yr' : 'mo';
 
   // Find next volume discount milestone
   const getNextMilestone = (count: number): { threshold: number; percent: number } | null => {
@@ -122,13 +123,13 @@ function BillingPreview({
           <span className="text-muted-foreground">
             Current ({currentCount} location{currentCount !== 1 ? 's' : ''}):
           </span>
-          <span className="font-medium">{formatPrice(currentPricing.totalPrice)}/mo</span>
+          <span className="font-medium">{formatPrice(currentPricing.totalPrice)}/{periodLabel}</span>
         </div>
         <div className="flex justify-between items-center text-sm">
           <span className="text-muted-foreground">
             After adding this location:
           </span>
-          <span className="font-semibold text-foreground">{formatPrice(newPricing.totalPrice)}/mo</span>
+          <span className="font-semibold text-foreground">{formatPrice(newPricing.totalPrice)}/{periodLabel}</span>
         </div>
 
         {/* Volume discount progress */}
@@ -253,14 +254,16 @@ export const AppHeader = () => {
             <div className="flex items-center gap-3">
               {/* Trial Countdown Badge */}
               {isTrialing && trialDaysRemaining !== null && (
-                <Badge
+                <Button
                   variant="outline"
-                  className={`cursor-pointer transition-colors ${getTrialBadgeStyles(trialDaysRemaining)}`}
+                  size="sm"
+                  className={`transition-colors ${getTrialBadgeStyles(trialDaysRemaining)}`}
                   onClick={() => navigate('/settings?tab=subscription')}
+                  aria-label="Open subscription settings"
                 >
                   <Clock className="mr-1.5 h-3 w-3" />
                   {trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} left
-                </Badge>
+                </Button>
               )}
               <UserProfileDropdown />
             </div>

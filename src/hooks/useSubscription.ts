@@ -202,8 +202,9 @@ export function useSubscription() {
     },
     onSuccess: (data) => {
       if (data.url) {
-        // Open Stripe Customer Portal in new tab
-        window.open(data.url, '_blank');
+        // Open Stripe Customer Portal in new tab with security features
+        const newWindow = window.open(data.url, '_blank', 'noopener,noreferrer');
+        if (newWindow) newWindow.opener = null;
       }
     },
     onError: (error: Error) => {

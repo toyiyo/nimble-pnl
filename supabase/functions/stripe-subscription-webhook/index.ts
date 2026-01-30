@@ -2,6 +2,15 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
+const PRICE_ID_TO_TIER: Record<string, "starter" | "growth" | "pro"> = {
+  [Deno.env.get("STRIPE_PRICE_STARTER_MONTHLY") ?? "price_1SuxQuD9w6YUNUOUNUnCmY30"]: "starter",
+  [Deno.env.get("STRIPE_PRICE_STARTER_ANNUAL") ?? "price_1SuxQuD9w6YUNUOUbTEYjtba"]: "starter",
+  [Deno.env.get("STRIPE_PRICE_GROWTH_MONTHLY") ?? "price_1SuxQvD9w6YUNUOUpgwOabhZ"]: "growth",
+  [Deno.env.get("STRIPE_PRICE_GROWTH_ANNUAL") ?? "price_1SuxQvD9w6YUNUOUvdeYY3LS"]: "growth",
+  [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") ?? "price_1SuxQwD9w6YUNUOU68X5KKWV"]: "pro",
+  [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") ?? "price_1SuxQwD9w6YUNUOUQU80UHw2"]: "pro",
+};
+
 // No CORS headers needed for webhooks - they come from Stripe servers
 serve(async (req) => {
   console.log("[SUBSCRIPTION-WEBHOOK] Received webhook request");
@@ -29,13 +38,15 @@ serve(async (req) => {
     const body = await req.text();
     let event: Stripe.Event;
 
-    try {
-      // Use constructEventAsync for Deno runtime (SubtleCrypto requires async)
-      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error("[SUBSCRIPTION-WEBHOOK] Signature verification failed:", errorMessage);
-      return new Response(`Webhook signature verification failed: ${errorMessage}`, { status: 400 });
+
+      try {
+        // Use constructEventAsync for Deno runtime (SubtleCrypto requires async)
+        event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error("[SUBSCRIPTION-WEBHOOK] Signature verification failed:", errorMessage);
+        return new Response(`Webhook signature verification failed: ${errorMessage}`, { status: 400 });
+      
     }
 
     console.log("[SUBSCRIPTION-WEBHOOK] Event received:", event.type, event.id);
@@ -71,9 +82,7 @@ serve(async (req) => {
             stripe_subscription_id: subscriptionId,
             stripe_subscription_customer_id: session.customer as string,
             subscription_tier: tier,
-            subscription_status: 'active',
             subscription_period: session.metadata?.period || 'monthly',
-            trial_ends_at: null, // Clear trial since they're now paying
           })
           .eq("id", restaurantId);
 
@@ -147,13 +156,13 @@ serve(async (req) => {
         let tier = subscription.metadata?.tier;
         if (!tier && subscription.items.data[0]) {
           const priceId = subscription.items.data[0].price.id;
-          // Map price IDs to tiers
-          if (priceId.includes('starter') || priceId === 'price_1SuxQuD9w6YUNUOUNUnCmY30' || priceId === 'price_1SuxQuD9w6YUNUOUbTEYjtba') {
-            tier = 'starter';
-          } else if (priceId.includes('growth') || priceId === 'price_1SuxQvD9w6YUNUOUpgwOabhZ' || priceId === 'price_1SuxQvD9w6YUNUOUvdeYY3LS') {
-            tier = 'growth';
-          } else if (priceId.includes('pro') || priceId === 'price_1SuxQwD9w6YUNUOU68X5KKWV' || priceId === 'price_1SuxQwD9w6YUNUOUQU80UHw2') {
-            tier = 'pro';
+          tier = PRICE_ID_TO_TIER[priceId];
+
+          // Fallback to substring detection for legacy test IDs
+          if (!tier) {
+            if (priceId.includes("starter")) tier = "starter";
+            else if (priceId.includes("growth")) tier = "growth";
+            else if (priceId.includes("pro")) tier = "pro";
           }
         }
 
@@ -180,6 +189,13 @@ serve(async (req) => {
         // Set subscription end date
         if (subscription.current_period_end) {
           updateData.subscription_ends_at = new Date(subscription.current_period_end * 1000).toISOString();
+        }
+
+        // Preserve or clear trial end date based on status
+        if (subscription.status === "trialing" && subscription.trial_end) {
+          updateData.trial_ends_at = new Date(subscription.trial_end * 1000).toISOString();
+        } else if (subscriptionStatus === "active") {
+          updateData.trial_ends_at = null;
         }
 
         // Clear grandfathering if they're now paying
@@ -302,7 +318,8 @@ serve(async (req) => {
 
     // Still return 200 to prevent Stripe from retrying
     // Errors should be logged and handled separately
-    return new Response(JSON.stringify({ received: true, error: errorMessage }), {
+    // Don't expose internal error details in response
+    return new Response(JSON.stringify({ received: true }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

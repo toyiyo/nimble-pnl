@@ -6,14 +6,14 @@ import { cn } from '@/lib/utils';
 import { SubscriptionPlan, SubscriptionPeriod, formatPrice } from '@/lib/subscriptionPlans';
 
 interface PricingCardProps {
-  plan: SubscriptionPlan;
-  period: SubscriptionPeriod;
-  isCurrentPlan?: boolean;
-  onSelect: () => void;
-  isLoading?: boolean;
-  volumeDiscount?: {
-    percent: number;
-    locationCount: number;
+  readonly plan: SubscriptionPlan;
+  readonly period: SubscriptionPeriod;
+  readonly isCurrentPlan?: boolean;
+  readonly onSelect: () => void;
+  readonly isLoading?: boolean;
+  readonly volumeDiscount?: {
+    readonly percent: number;
+    readonly locationCount: number;
   };
 }
 
@@ -77,8 +77,8 @@ export function PricingCard({
         </div>
 
         <ul className="space-y-2">
-          {plan.features.map((feature, idx) => (
-            <li key={idx} className="flex items-start gap-2">
+          {plan.features.map((feature) => (
+            <li key={`${plan.id}-${feature}`} className="flex items-start gap-2">
               <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
               <span className="text-sm">{feature}</span>
             </li>

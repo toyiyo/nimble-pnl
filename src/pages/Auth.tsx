@@ -29,10 +29,10 @@ const Auth = () => {
     if (user) {
       // Check if user has seen the welcome modal
       const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
-      if (!hasSeenWelcome) {
-        navigate('/?welcome=true');
-      } else {
+      if (hasSeenWelcome) {
         navigate('/');
+      } else {
+        navigate('/?welcome=true');
       }
     }
   }, [user, navigate]);

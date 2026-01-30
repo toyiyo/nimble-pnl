@@ -22,12 +22,10 @@ import { Button } from '@/components/ui/button';
 import {
   Plus,
   Building2,
-  CalendarCheck,
   Clock,
   Info,
   Sparkles,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
 import { calculatePrice, formatPrice, getVolumeDiscountPercent } from '@/lib/subscriptionPlans';
@@ -56,12 +54,12 @@ function VolumeDiscountProgress({
   currentDiscount,
   nextMilestone,
   restaurantsUntilMilestone,
-}: {
+}: Readonly<{
   newDiscount: number;
   currentDiscount: number;
   nextMilestone: { threshold: number; percent: number } | null;
   restaurantsUntilMilestone: number;
-}): React.ReactElement | null {
+}>): React.ReactElement | null {
   // Unlocking a new discount tier
   if (newDiscount > currentDiscount) {
     return (
@@ -78,7 +76,7 @@ function VolumeDiscountProgress({
   if (nextMilestone && restaurantsUntilMilestone > 0) {
     return (
       <div className="text-xs text-muted-foreground pt-1">
-        {restaurantsUntilMilestone} more location{restaurantsUntilMilestone !== 1 ? 's' : ''} until {nextMilestone.percent}% volume discount
+        {restaurantsUntilMilestone} more location{restaurantsUntilMilestone === 1 ? '' : 's'} until {nextMilestone.percent}% volume discount
       </div>
     );
   }
@@ -93,11 +91,11 @@ function BillingPreview({
   currentCount,
   tier,
   period,
-}: {
+}: Readonly<{
   currentCount: number;
   tier: 'starter' | 'growth' | 'pro';
   period: 'monthly' | 'annual';
-}) {
+}>) {
   const currentPricing = calculatePrice(tier, period, currentCount);
   const newPricing = calculatePrice(tier, period, currentCount + 1);
   const currentDiscount = getVolumeDiscountPercent(currentCount);
@@ -121,7 +119,7 @@ function BillingPreview({
       <AlertDescription className="space-y-2">
         <div className="flex justify-between items-center text-sm">
           <span className="text-muted-foreground">
-            Current ({currentCount} location{currentCount !== 1 ? 's' : ''}):
+            Current ({currentCount} location{currentCount === 1 ? '' : 's'}):
           </span>
           <span className="font-medium">{formatPrice(currentPricing.totalPrice)}/{periodLabel}</span>
         </div>
@@ -262,7 +260,7 @@ export const AppHeader = () => {
                   aria-label="Open subscription settings"
                 >
                   <Clock className="mr-1.5 h-3 w-3" />
-                  {trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} left
+                  {trialDaysRemaining} day{trialDaysRemaining === 1 ? '' : 's'} left
                 </Button>
               )}
               <UserProfileDropdown />

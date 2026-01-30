@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +27,6 @@ export interface SubscriptionInfo {
 export function useSubscription() {
   const { selectedRestaurant, restaurants } = useRestaurantContext();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   // Extract subscription info from selected restaurant
   const subscription: SubscriptionInfo | null = useMemo(() => {
@@ -166,7 +165,7 @@ export function useSubscription() {
     onSuccess: (data) => {
       if (data.url) {
         // Redirect to Stripe Checkout
-        window.location.href = data.url;
+        globalThis.location.href = data.url;
       }
     },
     onError: (error: Error) => {
@@ -203,7 +202,7 @@ export function useSubscription() {
     onSuccess: (data) => {
       if (data.url) {
         // Open Stripe Customer Portal in new tab with security features
-        const newWindow = window.open(data.url, '_blank', 'noopener,noreferrer');
+        const newWindow = globalThis.open?.(data.url, '_blank', 'noopener,noreferrer');
         if (newWindow) newWindow.opener = null;
       }
     },

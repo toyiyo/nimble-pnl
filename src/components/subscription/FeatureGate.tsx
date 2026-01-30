@@ -13,15 +13,15 @@ import {
 
 interface FeatureGateProps {
   /** The feature key to check access for */
-  featureKey: keyof typeof SUBSCRIPTION_FEATURES;
+  readonly featureKey: keyof typeof SUBSCRIPTION_FEATURES;
   /** Content to render if user has access */
-  children: ReactNode;
+  readonly children: ReactNode;
   /** Optional custom fallback to render if user doesn't have access */
-  fallback?: ReactNode;
+  readonly fallback?: ReactNode;
   /** If true, renders nothing instead of upgrade prompt when access denied */
-  silent?: boolean;
+  readonly silent?: boolean;
   /** Compact mode - smaller upsell card */
-  compact?: boolean;
+  readonly compact?: boolean;
 }
 
 /**
@@ -41,7 +41,7 @@ export function FeatureGate({
   silent,
   compact,
 }: FeatureGateProps) {
-  const { hasFeature, effectiveTier, subscription } = useSubscription();
+  const { hasFeature, effectiveTier } = useSubscription();
   const navigate = useNavigate();
 
   const hasAccess = hasFeature(featureKey);
@@ -118,8 +118,8 @@ export function FeatureGate({
               What you get
             </h4>
             <ul className="space-y-2">
-              {benefits.map((benefit, idx) => (
-                <li key={idx} className="flex items-start gap-3">
+              {benefits.map((benefit) => (
+                <li key={`${featureKey}-${benefit}`} className="flex items-start gap-3">
                   <div className="p-1 rounded-full bg-green-500/10 mt-0.5">
                     <Check className="h-3 w-3 text-green-600" />
                   </div>

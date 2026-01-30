@@ -85,7 +85,10 @@ export function SubscriptionStatus() {
       return `${trialDaysRemaining} days left in trial`;
     }
     if (isGrandfathered && grandfatheredDaysRemaining !== null) {
-      return `Pro features until ${new Date(subscription.grandfatheredUntil!).toLocaleDateString()}`;
+      const endDate = subscription.grandfatheredUntil
+        ? new Date(subscription.grandfatheredUntil).toLocaleDateString()
+        : '';
+      return `Pro features until ${endDate}`;
     }
     if (isPastDue) {
       return 'Payment failed - please update your payment method';

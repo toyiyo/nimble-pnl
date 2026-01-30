@@ -210,34 +210,37 @@ const StepCard = ({ step, onClick, isLocked }: { step: OnboardingStep; onClick: 
     }
   };
 
+  const backgroundClass = step.isCompleted
+    ? 'bg-muted/30 border-transparent hover:bg-muted/50'
+    : isLocked
+    ? 'bg-card hover:border-amber-500/50 hover:shadow-sm border-amber-200/50'
+    : 'bg-card hover:border-primary/50 hover:shadow-sm';
+
+  const iconColorClass = step.isCompleted
+    ? 'text-primary'
+    : isLocked
+    ? 'text-amber-500'
+    : 'text-muted-foreground group-hover:text-primary';
+
+  const icon = step.isCompleted ? (
+    <CheckCircle2 className="h-5 w-5" />
+  ) : isLocked ? (
+    <Lock className="h-5 w-5" />
+  ) : (
+    <Circle className="h-5 w-5" />
+  );
+
   return (
     <button
       type="button"
       onClick={handleClick}
       className={`
         group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full
-        ${step.isCompleted
-          ? 'bg-muted/30 border-transparent hover:bg-muted/50'
-          : isLocked
-          ? 'bg-card hover:border-amber-500/50 hover:shadow-sm border-amber-200/50'
-          : 'bg-card hover:border-primary/50 hover:shadow-sm'
-        }
+        ${backgroundClass}
       `}
     >
-      <div className={`mt-0.5 rounded-full p-0.5 ${
-        step.isCompleted
-          ? 'text-primary'
-          : isLocked
-          ? 'text-amber-500'
-          : 'text-muted-foreground group-hover:text-primary'
-      }`}>
-        {step.isCompleted ? (
-          <CheckCircle2 className="h-5 w-5" />
-        ) : isLocked ? (
-          <Lock className="h-5 w-5" />
-        ) : (
-          <Circle className="h-5 w-5" />
-        )}
+      <div className={`mt-0.5 rounded-full p-0.5 ${iconColorClass}`}>
+        {icon}
       </div>
 
       <div className="flex-1 space-y-1">

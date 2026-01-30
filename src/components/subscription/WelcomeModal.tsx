@@ -5,8 +5,8 @@ import { Check, Sparkles, Clock } from 'lucide-react';
 import { SUBSCRIPTION_PLANS, SubscriptionTier, formatPrice } from '@/lib/subscriptionPlans';
 
 interface WelcomeModalProps {
-  open: boolean;
-  onClose: () => void;
+  readonly open: boolean;
+  readonly onClose: () => void;
 }
 
 const TIER_ORDER: SubscriptionTier[] = ['starter', 'growth', 'pro'];
@@ -82,17 +82,17 @@ export function WelcomeModal({ open, onClose }: WelcomeModalProps) {
                   <p className="text-xs text-muted-foreground mt-1">
                     per restaurant, billed monthly
                   </p>
-                </div>
+              </div>
 
-                {/* Highlights */}
-                <ul className="mt-4 space-y-2">
-                  {plan.highlights.map((highlight, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                      <span className="text-sm">{highlight}</span>
-                    </li>
-                  ))}
-                </ul>
+              {/* Highlights */}
+              <ul className="mt-4 space-y-2">
+                {plan.highlights.map((highlight) => (
+                  <li key={`${tier}-highlight-${highlight}`} className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">{highlight}</span>
+                  </li>
+                ))}
+              </ul>
 
                 {/* Full Features Preview */}
                 <details className="mt-4">
@@ -100,8 +100,8 @@ export function WelcomeModal({ open, onClose }: WelcomeModalProps) {
                     See all {plan.features.length} features
                   </summary>
                   <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    {plan.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start gap-1.5">
+                    {plan.features.map((feature) => (
+                      <li key={`${tier}-feature-${feature}`} className="flex items-start gap-1.5">
                         <Check className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
                         <span>{feature}</span>
                       </li>

@@ -100,6 +100,33 @@ export default function RestaurantSettings() {
     );
   }, [selectedRestaurant, name, address, phone, cuisineType, timezone]);
 
+  const canEdit = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
+  const isOwner = selectedRestaurant?.role === 'owner';
+
+  // Compute allowed tabs based on user role
+  const allowedTabs = useMemo(() => {
+    return [
+      'general',
+      ...(isOwner ? ['subscription'] : []),
+      ...(canEdit ? ['notifications'] : []),
+      'security',
+    ];
+  }, [isOwner, canEdit]);
+
+  // Normalize activeTab if it's not in allowedTabs
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [activeTab, allowedTabs, setActiveTab]);
+
+  // Compute grid columns class based on visible tab count
+  const gridColsClass = allowedTabs.length === 4
+    ? 'grid-cols-4'
+    : allowedTabs.length === 3
+    ? 'grid-cols-3'
+    : 'grid-cols-2';
+
   if (!user) {
     return (
       <div className="w-full px-4 py-8">
@@ -145,33 +172,6 @@ export default function RestaurantSettings() {
       </div>
     );
   }
-
-  const canEdit = selectedRestaurant.role === 'owner' || selectedRestaurant.role === 'manager';
-  const isOwner = selectedRestaurant.role === 'owner';
-
-  // Compute allowed tabs based on user role
-  const allowedTabs = useMemo(() => {
-    return [
-      'general',
-      ...(isOwner ? ['subscription'] : []),
-      ...(canEdit ? ['notifications'] : []),
-      'security',
-    ];
-  }, [isOwner, canEdit]);
-
-  // Normalize activeTab if it's not in allowedTabs
-  useEffect(() => {
-    if (!allowedTabs.includes(activeTab)) {
-      setActiveTab(allowedTabs[0]);
-    }
-  }, [activeTab, allowedTabs, setActiveTab]);
-
-  // Compute grid columns class based on visible tab count
-  const gridColsClass = allowedTabs.length === 4
-    ? 'grid-cols-4'
-    : allowedTabs.length === 3
-    ? 'grid-cols-3'
-    : 'grid-cols-2';
 
   return (
     <div className="w-full px-4 py-8">

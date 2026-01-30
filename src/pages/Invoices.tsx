@@ -88,15 +88,19 @@ export default function Invoices() {
     }
   };
 
-  return (
-    <FeatureGate featureKey="invoicing">
-      {loading ? (
+  const renderContent = () => {
+    if (loading) {
+      return (
         <div className="space-y-4">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-64 w-full" />
         </div>
-      ) : customers.length === 0 ? (
-        // Show initial setup message when no customers exist
+      );
+    }
+
+    if (customers.length === 0) {
+      // Show initial setup message when no customers exist
+      return (
         <div className="space-y-6">
           <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
             <CardHeader>
@@ -148,8 +152,12 @@ export default function Invoices() {
             </AlertDescription>
           </Alert>
         </div>
-      ) : !connectedAccount ? (
-        // Show payment processing setup if not configured
+      );
+    }
+
+    if (!connectedAccount) {
+      // Show payment processing setup if not configured
+      return (
         <div className="space-y-6">
           <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
             <CardHeader>
@@ -189,8 +197,12 @@ export default function Invoices() {
             </CardContent>
           </Card>
         </div>
-      ) : !isReadyForInvoicing ? (
-        // Show onboarding incomplete message
+      );
+    }
+
+    if (!isReadyForInvoicing) {
+      // Show onboarding incomplete message
+      return (
         <div className="space-y-6">
           <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
             <CardHeader>
@@ -224,136 +236,144 @@ export default function Invoices() {
             </AlertDescription>
           </Alert>
         </div>
-      ) : (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices for your customers</CardDescription>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices for your customers</CardDescription>
+                </div>
               </div>
-            </div>
-            <Button onClick={() => navigate('/invoices/new')}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Invoice
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search invoices..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              variant={statusFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('all')}
-            >
-              All
-            </Button>
-            <Button
-              variant={statusFilter === 'draft' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('draft')}
-            >
-              Draft
-            </Button>
-            <Button
-              variant={statusFilter === 'open' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('open')}
-            >
-              Open
-            </Button>
-            <Button
-              variant={statusFilter === 'paid' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('paid')}
-            >
-              Paid
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Invoice List */}
-      {filteredInvoices.length === 0 ? (
-        <Card className="bg-gradient-to-br from-muted/50 to-transparent">
-          <CardContent className="py-12 text-center">
-            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No invoices found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchTerm || statusFilter !== 'all'
-                ? "Try a different search or filter"
-                : "Get started by creating your first invoice"}
-            </p>
-            {!searchTerm && statusFilter === 'all' && (
               <Button onClick={() => navigate('/invoices/new')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create Invoice
               </Button>
-            )}
-          </CardContent>
+            </div>
+          </CardHeader>
         </Card>
-      ) : (
+
+        {/* Filters */}
         <Card>
-          <CardContent className="p-0">
-            <div className="divide-y">
-              {filteredInvoices.map((invoice) => (
-                <button
-                  type="button"
-                  key={invoice.id}
-                  className="w-full text-left p-4 hover:bg-muted/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  onClick={() => navigate(`/invoices/${invoice.id}`)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-semibold">
-                          {invoice.invoice_number || "Draft"}
-                        </span>
-                        {getStatusBadge(invoice.status)}
-                      </div>
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <div>{invoice.customers?.name}</div>
-                        <div>Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "Not set"}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold">
-                        {formatCurrency(invoice.total / 100)}
-                      </div>
-                      {invoice.status === 'paid' && invoice.paid_at && (
-                        <div className="text-xs text-muted-foreground">
-                          Paid {new Date(invoice.paid_at).toLocaleDateString()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
+          <CardContent className="pt-6 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search invoices..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={statusFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('all')}
+              >
+                All
+              </Button>
+              <Button
+                variant={statusFilter === 'draft' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('draft')}
+              >
+                Draft
+              </Button>
+              <Button
+                variant={statusFilter === 'open' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('open')}
+              >
+                Open
+              </Button>
+              <Button
+                variant={statusFilter === 'paid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('paid')}
+              >
+                Paid
+              </Button>
             </div>
           </CardContent>
         </Card>
-      )}
-    </div>
-      )}
+
+        {/* Invoice List */}
+        {filteredInvoices.length === 0 ? (
+          <Card className="bg-gradient-to-br from-muted/50 to-transparent">
+            <CardContent className="py-12 text-center">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No invoices found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchTerm || statusFilter !== 'all'
+                  ? "Try a different search or filter"
+                  : "Get started by creating your first invoice"}
+              </p>
+              {!searchTerm && statusFilter === 'all' && (
+                <Button onClick={() => navigate('/invoices/new')}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {filteredInvoices.map((invoice) => (
+                  <button
+                    type="button"
+                    key={invoice.id}
+                    className="w-full text-left p-4 hover:bg-muted/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => navigate(`/invoices/${invoice.id}`)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="font-semibold">
+                            {invoice.invoice_number || "Draft"}
+                          </span>
+                          {getStatusBadge(invoice.status)}
+                        </div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <div>{invoice.customers?.name}</div>
+                          <div>Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "Not set"}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-semibold">
+                          {formatCurrency(invoice.total / 100)}
+                        </div>
+                        {invoice.status === 'paid' && invoice.paid_at && (
+                          <div className="text-xs text-muted-foreground">
+                            Paid {new Date(invoice.paid_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <FeatureGate featureKey="invoicing">
+      {renderContent()}
     </FeatureGate>
   );
 }

@@ -81,7 +81,7 @@ export function SubscriptionPlans() {
               htmlFor="billing-toggle"
               className={period === 'annual' ? 'font-semibold' : 'text-muted-foreground'}
             >
-              Annual
+              Annual{' '}
               <span className="ml-1 text-xs text-primary">(Save 17%)</span>
             </Label>
           </div>

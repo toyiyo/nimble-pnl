@@ -219,10 +219,11 @@ serve(async (req) => {
       console.log("[SUBSCRIPTION-CHECKOUT] Applied volume discount coupon:", couponId);
     }
 
-    // If upgrading from trial, add trial_end to immediately charge
-    if (restaurant.subscription_status === 'trialing') {
-      checkoutParams.subscription_data!.trial_end = 'now';
-    }
+    // Note: We don't set trial_end here. Our trial is tracked locally in the database,
+    // not via Stripe's trial system. Checkout will create a subscription that bills
+    // immediately, which is correct for both:
+    // - Users upgrading during trial (they chose to pay early)
+    // - Users subscribing after trial ended (they need to pay to continue)
 
     // Create checkout session
     const session = await stripe.checkout.sessions.create(checkoutParams);

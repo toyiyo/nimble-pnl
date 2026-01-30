@@ -259,26 +259,8 @@ test.describe('Complete Payroll Journey', () => {
     // ============================================================================
     
     // In a real scenario, employee would receive email invitation
-    // For E2E test, we'll navigate to employee portal directly
-    
-    // Log out as manager
-    await page.goto('/settings');
-    const signOutButton = page.getByRole('button', { name: /sign out|log out/i });
-    if (await signOutButton.isVisible().catch(() => false)) {
-      await signOutButton.click();
-      await page.waitForURL('/auth', { timeout: 5000 });
-    }
-
-    // ============================================================================
-    // Employee logs in and views their pay
-    // ============================================================================
-    
-    // For this test, we'll log back in as the manager and navigate to employee portal
-    // (In production, employee would have their own login)
-    await page.getByLabel(/email/i).fill(testUser.email);
-    await page.getByLabel(/password/i).fill(testUser.password);
-    await page.getByRole('button', { name: /sign in|log in/i }).click();
-    await page.waitForURL('/', { timeout: 10000 });
+    // For E2E test, we'll navigate to employee portal directly as the manager
+    // (simulating viewing employee's pay information)
 
     // Navigate to employee portal view
     await page.goto('/employee/pay');

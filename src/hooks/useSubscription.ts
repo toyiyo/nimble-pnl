@@ -160,12 +160,28 @@ export function useSubscription() {
         throw new Error(error.message || 'Failed to create checkout session');
       }
 
-      return data as { success: boolean; sessionId: string; url: string };
+      return data as {
+        success: boolean;
+        sessionId?: string;
+        url: string;
+        redirect?: 'portal' | 'checkout';
+        message?: string;
+      };
     },
     onSuccess: (data) => {
       if (data.url) {
-        // Redirect to Stripe Checkout
-        globalThis.location.href = data.url;
+        if (data.redirect === 'portal') {
+          // User has active subscription - open portal for upgrades/changes
+          toast({
+            title: 'Manage Subscription',
+            description: data.message || 'Opening billing portal to manage your subscription',
+          });
+          // Open portal in same tab since they're trying to upgrade
+          globalThis.location.href = data.url;
+        } else {
+          // New subscription - redirect to Stripe Checkout
+          globalThis.location.href = data.url;
+        }
       }
     },
     onError: (error: Error) => {

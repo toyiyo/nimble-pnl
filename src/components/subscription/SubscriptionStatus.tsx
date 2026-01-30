@@ -97,7 +97,7 @@ export function SubscriptionStatus() {
       return 'Access limited to Starter features';
     }
     if (isActive && subscription.subscriptionEndsAt) {
-      return `Renews ${new Date(subscription.subscriptionEndsAt).toLocaleDateString()}`;
+      return `Current period ends ${new Date(subscription.subscriptionEndsAt).toLocaleDateString()}`;
     }
     return null;
   };

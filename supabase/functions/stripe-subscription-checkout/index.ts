@@ -121,14 +121,29 @@ serve(async (req) => {
       throw new Error("Restaurant not found");
     }
 
+    // If user has an active subscription, redirect to billing portal for upgrades/changes
     if (
       restaurant.stripe_subscription_customer_id &&
       restaurant.subscription_status &&
       ["active", "trialing", "past_due"].includes(restaurant.subscription_status)
     ) {
+      console.log("[SUBSCRIPTION-CHECKOUT] Active subscription found, creating billing portal session");
+
+      // Create billing portal session for the existing customer
+      const origin = req.headers.get("origin") || "https://app.easyshifthq.com";
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: restaurant.stripe_subscription_customer_id,
+        return_url: `${origin}/settings?tab=subscription`,
+      });
+
       return new Response(
-        JSON.stringify({ error: "Subscription already active. Use billing portal." }),
-        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          success: true,
+          redirect: "portal",
+          url: portalSession.url,
+          message: "Redirecting to billing portal to manage your subscription",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

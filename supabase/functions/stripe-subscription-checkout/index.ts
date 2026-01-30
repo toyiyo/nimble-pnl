@@ -113,7 +113,7 @@ serve(async (req) => {
     // Get restaurant details
     const { data: restaurant, error: restaurantError } = await supabaseAdmin
       .from("restaurants")
-      .select("id, name, stripe_subscription_customer_id, subscription_status")
+      .select("id, name, stripe_subscription_customer_id, stripe_subscription_id, subscription_status")
       .eq("id", restaurantId)
       .single();
 
@@ -121,11 +121,15 @@ serve(async (req) => {
       throw new Error("Restaurant not found");
     }
 
-    // If user has an active subscription, redirect to billing portal for upgrades/changes
+    // If user has an ACTUAL Stripe subscription, redirect to billing portal for upgrades/changes
+    // Note: We check for stripe_subscription_id (not just customer_id) because:
+    // - Customer ID is created when checkout starts (even if not completed)
+    // - Subscription ID only exists after successful checkout
+    // Note: We exclude 'trialing' because our trial is local, not a Stripe subscription trial
     if (
-      restaurant.stripe_subscription_customer_id &&
+      restaurant.stripe_subscription_id &&
       restaurant.subscription_status &&
-      ["active", "trialing", "past_due"].includes(restaurant.subscription_status)
+      ["active", "past_due"].includes(restaurant.subscription_status)
     ) {
       console.log("[SUBSCRIPTION-CHECKOUT] Active subscription found, creating billing portal session");
 

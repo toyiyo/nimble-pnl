@@ -27,7 +27,7 @@ export function TrialBanner() {
         <AlertDescription className="flex items-center justify-between">
           <span>
             <strong>{trialDaysRemaining}</strong> day
-            {trialDaysRemaining === 1 ? '' : 's'} left in your Growth trial
+            {trialDaysRemaining === 1 ? '' : 's'} left in your Pro trial
           </span>
           <Button
             variant={isUrgent ? 'default' : 'outline'}

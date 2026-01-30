@@ -63,7 +63,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    await processSubscriptionEvent(event, supabaseAdmin);
+    await processSubscriptionEvent(event, supabaseAdmin, stripe);
 
     // Always return 200 to acknowledge receipt
     return new Response(JSON.stringify({ received: true }), {

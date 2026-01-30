@@ -1,6 +1,128 @@
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
+// Volume discount coupon IDs (same as in checkout function)
+const VOLUME_COUPONS: Record<number, string> = {
+  5: Deno.env.get("STRIPE_COUPON_VOLUME_5") || "ioj9O2Vq",   // 5% off (3-5 locations)
+  10: Deno.env.get("STRIPE_COUPON_VOLUME_10") || "DfEkpy0n", // 10% off (6-10 locations)
+  15: Deno.env.get("STRIPE_COUPON_VOLUME_15") || "XlP3zupA", // 15% off (11+ locations)
+};
+
+/**
+ * Determines the appropriate volume discount percentage based on location count
+ */
+function getVolumeDiscountPercent(locationCount: number): number {
+  if (locationCount >= 11) return 15;
+  if (locationCount >= 6) return 10;
+  if (locationCount >= 3) return 5;
+  return 0;
+}
+
+/**
+ * Syncs volume discounts across all subscriptions for an owner.
+ * Called when a new subscription is created to ensure all restaurants get the same discount.
+ */
+async function syncVolumeDiscountsForOwner(
+  userId: string,
+  supabaseAdmin: SupabaseClient,
+  stripe: Stripe
+): Promise<void> {
+  console.log("[SUBSCRIPTION-WEBHOOK] Syncing volume discounts for owner:", userId);
+
+  // Get all restaurants owned by this user with active subscriptions
+  const { data: ownerRestaurants, error: fetchError } = await supabaseAdmin
+    .from("user_restaurants")
+    .select(`
+      restaurant_id,
+      restaurants!inner (
+        id,
+        name,
+        stripe_subscription_id,
+        subscription_status
+      )
+    `)
+    .eq("user_id", userId)
+    .eq("role", "owner");
+
+  if (fetchError) {
+    console.error("[SUBSCRIPTION-WEBHOOK] Failed to fetch owner restaurants:", fetchError);
+    return;
+  }
+
+  if (!ownerRestaurants || ownerRestaurants.length === 0) {
+    console.log("[SUBSCRIPTION-WEBHOOK] No restaurants found for owner");
+    return;
+  }
+
+  const locationCount = ownerRestaurants.length;
+  const discountPercent = getVolumeDiscountPercent(locationCount);
+  const couponId = discountPercent > 0 ? VOLUME_COUPONS[discountPercent] : null;
+
+  console.log("[SUBSCRIPTION-WEBHOOK] Owner has", locationCount, "locations, discount:", discountPercent + "%");
+
+  // Get all active subscriptions that need updating
+  const activeSubscriptions = ownerRestaurants
+    .filter((r) => {
+      const restaurant = r.restaurants as unknown as {
+        stripe_subscription_id: string | null;
+        subscription_status: string | null;
+      };
+      return (
+        restaurant.stripe_subscription_id &&
+        restaurant.subscription_status &&
+        ["active", "trialing"].includes(restaurant.subscription_status)
+      );
+    })
+    .map((r) => {
+      const restaurant = r.restaurants as unknown as {
+        id: string;
+        name: string;
+        stripe_subscription_id: string;
+      };
+      return {
+        subscriptionId: restaurant.stripe_subscription_id,
+        restaurantName: restaurant.name,
+      };
+    });
+
+  console.log("[SUBSCRIPTION-WEBHOOK] Found", activeSubscriptions.length, "active subscriptions to update");
+
+  // Update each subscription with the appropriate coupon
+  for (const sub of activeSubscriptions) {
+    try {
+      // Get current subscription to check existing discount
+      const subscription = await stripe.subscriptions.retrieve(sub.subscriptionId);
+
+      // Check if coupon already matches
+      const currentCouponId = subscription.discount?.coupon?.id;
+
+      if (couponId && currentCouponId === couponId) {
+        console.log(`[SUBSCRIPTION-WEBHOOK] Subscription ${sub.subscriptionId} already has correct coupon`);
+        continue;
+      }
+
+      if (couponId) {
+        // Apply or update coupon
+        await stripe.subscriptions.update(sub.subscriptionId, {
+          coupon: couponId,
+        });
+        console.log(`[SUBSCRIPTION-WEBHOOK] Applied ${discountPercent}% discount to ${sub.restaurantName} (${sub.subscriptionId})`);
+      } else if (currentCouponId && Object.values(VOLUME_COUPONS).includes(currentCouponId)) {
+        // Remove volume discount coupon if they dropped below threshold
+        // Only remove if it's one of our volume coupons (not a promo code)
+        await stripe.subscriptions.deleteDiscount(sub.subscriptionId);
+        console.log(`[SUBSCRIPTION-WEBHOOK] Removed volume discount from ${sub.restaurantName} (${sub.subscriptionId})`);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[SUBSCRIPTION-WEBHOOK] Failed to update subscription ${sub.subscriptionId}:`, errorMsg);
+      // Continue with other subscriptions even if one fails
+    }
+  }
+
+  console.log("[SUBSCRIPTION-WEBHOOK] Volume discount sync completed");
+}
+
 // Build price-to-tier mapping from env vars (with production fallbacks)
 const priceIdMapping = {
   starterMonthly: Deno.env.get("STRIPE_PRICE_STARTER_MONTHLY") ?? "price_1SuxQuD9w6YUNUOUNUnCmY30",
@@ -22,13 +144,18 @@ export const PRICE_ID_TO_TIER: Record<string, "starter" | "growth" | "pro"> = {
   [priceIdMapping.proAnnual]: "pro",
 };
 
-export async function processSubscriptionEvent(event: Stripe.Event, supabaseAdmin: SupabaseClient) {
+export async function processSubscriptionEvent(
+  event: Stripe.Event,
+  supabaseAdmin: SupabaseClient,
+  stripe: Stripe
+) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       console.log("[SUBSCRIPTION-WEBHOOK] Checkout completed:", session.id);
 
       const restaurantId = session.metadata?.restaurant_id;
+      const userId = session.metadata?.user_id;
       const tier = session.metadata?.tier;
 
       if (!restaurantId || !tier) {
@@ -52,6 +179,18 @@ export async function processSubscriptionEvent(event: Stripe.Event, supabaseAdmi
         console.error("[SUBSCRIPTION-WEBHOOK] Failed to update restaurant:", updateError);
       } else {
         console.log("[SUBSCRIPTION-WEBHOOK] Restaurant updated with subscription:", restaurantId);
+
+        // Sync volume discounts across all owner's subscriptions
+        // This ensures all restaurants get the same discount when crossing thresholds
+        if (userId) {
+          try {
+            await syncVolumeDiscountsForOwner(userId, supabaseAdmin, stripe);
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error("[SUBSCRIPTION-WEBHOOK] Volume discount sync failed:", errorMsg);
+            // Don't fail the whole webhook for this - it's not critical
+          }
+        }
       }
       return;
     }
@@ -214,6 +353,17 @@ export async function processSubscriptionEvent(event: Stripe.Event, supabaseAdmi
           console.error("[SUBSCRIPTION-WEBHOOK] Failed to update canceled subscription:", updateError);
         } else {
           console.log("[SUBSCRIPTION-WEBHOOK] Restaurant subscription canceled:", restaurant.id);
+
+          // Sync volume discounts - may need to reduce discount tier for remaining restaurants
+          const userId = subscription.metadata?.user_id;
+          if (userId) {
+            try {
+              await syncVolumeDiscountsForOwner(userId, supabaseAdmin, stripe);
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              console.error("[SUBSCRIPTION-WEBHOOK] Volume discount sync failed:", errorMsg);
+            }
+          }
         }
       }
       return;

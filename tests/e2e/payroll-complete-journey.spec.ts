@@ -1,11 +1,12 @@
 import { test, expect, Page } from '@playwright/test';
+import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
 
 /**
  * E2E Tests for Complete Payroll Journey
- * 
+ *
  * Tests the full user journey from creating employees through viewing
  * payroll data in dashboard, reports, and employee portals.
- * 
+ *
  * Covers:
  * - Hourly employees with time punches
  * - Salaried employees with daily allocations
@@ -15,105 +16,6 @@ import { test, expect, Page } from '@playwright/test';
  * - Employee self-service portal
  * - Reports with labor costs
  */
-
-// Generate unique test data
-const generateTestUser = () => {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 8);
-  return {
-    email: `payroll-journey-${timestamp}-${random}@test.com`,
-    password: 'TestPassword123!',
-    fullName: `Journey Test User ${timestamp}`,
-    restaurantName: `Journey Restaurant ${timestamp}`,
-  };
-};
-
-/**
- * Helper to sign up and create restaurant
- */
-async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof generateTestUser>) {
-  await page.goto('/auth');
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-  await page.reload();
-  await page.waitForURL(/\/auth/);
-
-  // If still authenticated, sign out and return to auth
-  const signOutButton = page.getByRole('button', { name: /sign out/i });
-  if (await signOutButton.isVisible().catch(() => false)) {
-    await signOutButton.click();
-    await page.waitForURL(/\/auth/);
-  }
-  
-  if (page.url().endsWith('/')) {
-    const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-    if (await signInLink.isVisible().catch(() => false)) {
-      await signInLink.click();
-      await page.waitForURL('/auth');
-    }
-  }
-
-  const signupTab = page.getByRole('tab', { name: /sign up/i });
-  if (await signupTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await signupTab.click();
-  } else {
-    const signupTrigger = page.getByRole('button', { name: /sign up|create account|get started/i }).first();
-    const signupLink = page.getByRole('link', { name: /sign up|create account|get started/i }).first();
-    if (await signupTrigger.isVisible().catch(() => false)) {
-      await signupTrigger.click();
-    } else if (await signupLink.isVisible().catch(() => false)) {
-      await signupLink.click();
-    }
-  }
-
-  await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
-
-  await page.getByLabel(/email/i).first().fill(testUser.email);
-  await page.getByLabel(/full name/i).fill(testUser.fullName);
-  await page.getByLabel(/password/i).first().fill(testUser.password);
-
-  await page.getByRole('button', { name: /sign up|create account/i }).click();
-  await page.waitForURL('/', { timeout: 15000 });
-
-  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
-  await addRestaurantButton.click();
-
-  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
-  await expect(dialog).toBeVisible();
-
-  await dialog.getByLabel(/restaurant name/i).fill(testUser.restaurantName);
-  await dialog.getByLabel(/address/i).fill('123 Test Street');
-  await dialog.getByLabel(/phone/i).fill('555-TEST-123');
-
-  const cuisineSelect = dialog.getByRole('combobox').filter({ hasText: /select cuisine type/i });
-  if (await cuisineSelect.isVisible().catch(() => false)) {
-    await cuisineSelect.click();
-    await page.getByRole('option', { name: /american/i }).click();
-  }
-
-  await dialog.getByRole('button', { name: /create|add|save/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
-
-  // Close onboarding drawer if it appears (it defaults to open for new restaurants)
-  // This prevents it from obscuring elements in tests
-  try {
-    const onboardingDrawer = page.locator('[role="dialog"]').filter({ hasText: /getting started/i });
-    if (await onboardingDrawer.isVisible({ timeout: 4000 })) {
-      const closeButton = onboardingDrawer.getByRole('button', { name: /close/i });
-      if (await closeButton.isVisible()) {
-        await closeButton.click();
-        await expect(onboardingDrawer).not.toBeVisible();
-      } else {
-        await page.keyboard.press('Escape');
-      }
-    }
-  } catch (e) {
-    console.log('Onboarding drawer handling skipped or failed', e);
-  }
-}
 
 test.describe('Complete Payroll Journey', () => {
   let testUser: ReturnType<typeof generateTestUser>;

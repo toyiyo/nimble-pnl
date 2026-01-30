@@ -60,10 +60,10 @@ export function useSubscription() {
       return 'starter'; // Grace period expired
     }
 
-    // Trialing = Growth until expiry
+    // Trialing = Pro until expiry (users get full access during trial)
     if (status === 'trialing') {
       if (!trialEndsAt || new Date(trialEndsAt) > new Date()) {
-        return 'growth';
+        return 'pro';
       }
       return null; // Trial expired
     }

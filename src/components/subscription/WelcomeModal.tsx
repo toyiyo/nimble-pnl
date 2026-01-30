@@ -30,7 +30,7 @@ export function WelcomeModal({ open, onClose }: WelcomeModalProps) {
               className="px-4 py-2 text-base bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 border-emerald-200"
             >
               <Clock className="mr-2 h-4 w-4" />
-              You're starting with Growth features FREE for 14 days
+              You're starting with Pro features FREE for 14 days
             </Badge>
           </div>
 
@@ -48,7 +48,7 @@ export function WelcomeModal({ open, onClose }: WelcomeModalProps) {
         <div className="grid md:grid-cols-3 gap-4 mt-6">
           {TIER_ORDER.map((tier) => {
             const plan = SUBSCRIPTION_PLANS[tier];
-            const isTrialPlan = tier === 'growth';
+            const isTrialPlan = tier === 'pro';
 
             return (
               <div

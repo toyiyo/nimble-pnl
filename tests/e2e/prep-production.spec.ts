@@ -1,53 +1,12 @@
 import { test, expect, Page } from '@playwright/test';
-
-type TestUser = {
-  email: string;
-  password: string;
-  fullName: string;
-  restaurantName: string;
-};
-
-const generateTestUser = (): TestUser => {
-  const stamp = Date.now();
-  const rand = Math.random().toString(36).slice(2, 6);
-  return {
-    email: `prep-${stamp}-${rand}@example.com`,
-    password: 'TestPassword123!',
-    fullName: `Prep User ${stamp}`,
-    restaurantName: `Prep Resto ${stamp}`,
-  };
-};
+import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
 
 test.describe('Prep Production E2E Flow', () => {
   test('should complete full prep production workflow with cost calculations', async ({ page }) => {
     const user = generateTestUser();
 
     // Step 1: Sign up and create restaurant
-    await page.goto('/');
-    await page.waitForURL(/\/(auth)?$/);
-
-    if (page.url().endsWith('/')) {
-      const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-      if (await signInLink.isVisible()) {
-        await signInLink.click();
-        await page.waitForURL('/auth');
-      }
-    }
-
-    await page.getByRole('tab', { name: /sign up/i }).click();
-    await page.getByLabel(/email/i).first().fill(user.email);
-    await page.getByLabel(/full name/i).fill(user.fullName);
-    await page.getByLabel(/password/i).first().fill(user.password);
-    await page.getByRole('button', { name: /sign up|create account/i }).click();
-    await page.waitForURL('/');
-
-    const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-    await addRestaurantButton.click();
-
-    const dialog = page.getByRole('dialog');
-    await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
-    await dialog.getByRole('button', { name: /create restaurant/i }).click();
-    await expect(page.getByRole('main').getByText(user.restaurantName)).toBeVisible({ timeout: 2000 });
+    await signUpAndCreateRestaurant(page, user);
 
     // Select the restaurant on the main page
 

@@ -107,6 +107,7 @@ describe('useSubscription Hook', () => {
         period: 'monthly',
         trialEndsAt: null,
         subscriptionEndsAt: null,
+        cancelAt: null,
         grandfatheredUntil: null,
         stripeCustomerId: 'cus_test123',
         stripeSubscriptionId: 'sub_test123',

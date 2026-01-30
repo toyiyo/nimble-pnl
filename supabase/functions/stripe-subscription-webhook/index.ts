@@ -31,7 +31,19 @@ serve(async (req) => {
     let event: Stripe.Event;
 
     // Allow bypassing signature check for local testing with "test_local" signature
+    // SAFEGUARD: Only allow in non-production environments
+    const isLocalEnv = Deno.env.get("SUPABASE_URL")?.includes("localhost") ||
+                       Deno.env.get("SUPABASE_URL")?.includes("127.0.0.1") ||
+                       Deno.env.get("DENO_ENV") === "development";
 
+    if (signature === "test_local" && isLocalEnv) {
+      console.log("[SUBSCRIPTION-WEBHOOK] Bypassing signature check for local testing");
+      event = JSON.parse(body) as Stripe.Event;
+    } else if (signature === "test_local") {
+      // Reject test_local in production
+      console.error("[SUBSCRIPTION-WEBHOOK] test_local signature rejected in production");
+      return new Response("Invalid signature", { status: 400 });
+    } else {
       try {
         // Use constructEventAsync for Deno runtime (SubtleCrypto requires async)
         event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
@@ -40,6 +52,7 @@ serve(async (req) => {
         console.error("[SUBSCRIPTION-WEBHOOK] Signature verification failed:", errorMessage);
         return new Response(`Webhook signature verification failed: ${errorMessage}`, { status: 400 });
       }
+    }
     
 
     console.log("[SUBSCRIPTION-WEBHOOK] Event received:", event.type, event.id);

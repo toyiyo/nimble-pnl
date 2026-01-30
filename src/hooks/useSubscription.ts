@@ -19,6 +19,7 @@ export interface SubscriptionInfo {
   period: SubscriptionPeriod;
   trialEndsAt: string | null;
   subscriptionEndsAt: string | null;
+  cancelAt: string | null; // When subscription is scheduled to cancel (cancel_at_period_end)
   grandfatheredUntil: string | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
@@ -39,6 +40,7 @@ export function useSubscription() {
       period: (r.subscription_period || 'monthly') as SubscriptionPeriod,
       trialEndsAt: r.trial_ends_at || null,
       subscriptionEndsAt: r.subscription_ends_at || null,
+      cancelAt: (r as Record<string, unknown>).subscription_cancel_at as string | null ?? null,
       grandfatheredUntil: r.grandfathered_until || null,
       stripeCustomerId: r.stripe_subscription_customer_id || null,
       stripeSubscriptionId: r.stripe_subscription_id || null,
@@ -86,6 +88,16 @@ export function useSubscription() {
   const isPastDue = subscription?.status === 'past_due';
   const isCanceled = subscription?.status === 'canceled';
   const isActive = subscription?.status === 'active';
+
+  // Check if subscription is scheduled to cancel (but still active)
+  const isCanceling = Boolean(isActive && subscription?.cancelAt);
+
+  // Days until cancellation
+  const cancelingDaysRemaining = useMemo(() => {
+    if (!isCanceling || !subscription?.cancelAt) return null;
+    const diff = new Date(subscription.cancelAt).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }, [isCanceling, subscription?.cancelAt]);
 
   // Trial days remaining
   const trialDaysRemaining = useMemo(() => {
@@ -250,10 +262,12 @@ export function useSubscription() {
     isPastDue,
     isCanceled,
     isActive,
+    isCanceling, // Subscription is active but scheduled to cancel
 
     // Time remaining
     trialDaysRemaining,
     grandfatheredDaysRemaining,
+    cancelingDaysRemaining, // Days until scheduled cancellation
 
     // Feature access
     hasFeature,

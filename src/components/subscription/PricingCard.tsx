@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Sparkles } from 'lucide-react';
+import { Check, CheckCircle2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SubscriptionPlan, SubscriptionPeriod, formatPrice } from '@/lib/subscriptionPlans';
 
@@ -41,10 +41,20 @@ export function PricingCard({
     <Card
       className={cn(
         'relative flex flex-col',
-        plan.recommended && 'border-primary shadow-lg ring-2 ring-primary/20'
+        isCurrentPlan
+          ? 'border-green-500 bg-green-50/50 dark:bg-green-950/20 ring-2 ring-green-500/30'
+          : plan.recommended && 'border-primary shadow-lg ring-2 ring-primary/20'
       )}
     >
-      {plan.recommended && (
+      {/* Current Plan badge takes priority over Recommended */}
+      {isCurrentPlan ? (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+          <Badge className="bg-green-600 text-white hover:bg-green-600">
+            <CheckCircle2 className="mr-1 h-3 w-3" />
+            Current Plan
+          </Badge>
+        </div>
+      ) : plan.recommended && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
           <Badge className="bg-primary text-primary-foreground">
             <Sparkles className="mr-1 h-3 w-3" />
@@ -88,8 +98,13 @@ export function PricingCard({
 
       <CardFooter>
         {isCurrentPlan ? (
-          <Button variant="outline" className="w-full" disabled>
-            Current Plan
+          <Button
+            variant="outline"
+            className="w-full border-green-500 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 hover:bg-green-100 dark:hover:bg-green-950/50"
+            disabled
+          >
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Your Current Plan
           </Button>
         ) : (
           <Button

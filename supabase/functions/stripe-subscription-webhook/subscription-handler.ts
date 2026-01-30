@@ -161,6 +161,16 @@ export async function processSubscriptionEvent(event: Stripe.Event, supabaseAdmi
       if (subscription.current_period_end) {
         updateData.subscription_ends_at = new Date(subscription.current_period_end * 1000).toISOString();
       }
+
+      // Track scheduled cancellation (cancel_at_period_end)
+      if (subscription.cancel_at_period_end && subscription.cancel_at) {
+        updateData.subscription_cancel_at = new Date(subscription.cancel_at * 1000).toISOString();
+        console.log("[SUBSCRIPTION-WEBHOOK] Subscription scheduled to cancel at:", updateData.subscription_cancel_at);
+      } else {
+        // Clear scheduled cancellation (user reactivated or never had one)
+        updateData.subscription_cancel_at = null;
+      }
+
       if (subscription.status === "trialing" && subscription.trial_end) {
         updateData.trial_ends_at = new Date(subscription.trial_end * 1000).toISOString();
       } else if (subscriptionStatus === "active") {

@@ -53,12 +53,20 @@ import type { LucideIcon } from 'lucide-react';
 import { SUBSCRIPTION_FEATURES } from '@/lib/subscriptionPlans';
 
 /**
- * Map paths to subscription feature keys for Pro badge display
+ * Map paths to subscription feature keys for tier badge display
+ * Growth = AI-powered features, Pro = Stripe-powered features
  */
 const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = {
+  // Growth tier (AI features)
   '/financial-intelligence': 'financial_intelligence',
   '/scheduling': 'scheduling',
   '/receipt-import': 'inventory_automation',
+  // Pro tier (Stripe features)
+  '/banking': 'banking',
+  '/invoices': 'invoicing',
+  '/expenses': 'expenses',
+  '/assets': 'assets',
+  '/payroll': 'payroll',
 };
 
 // Navigation structure
@@ -301,19 +309,29 @@ export function AppSidebar() {
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const isActive = isActivePath(item.path);
+                  const featureKey = FEATURE_GATED_PATHS[item.path];
+                  const needsUpgrade = featureKey && !hasFeature(featureKey);
+                  const requiredTier = featureKey ? SUBSCRIPTION_FEATURES[featureKey].requiredTier : null;
                   return (
                     <SidebarMenuItem key={item.path}>
                       <SidebarMenuButton
                         onClick={() => navigate(item.path)}
                         isActive={isActive}
-                        tooltip={item.label}
-                        className={`flex items-center justify-center !px-0 ${
+                        tooltip={needsUpgrade ? `${item.label} (${requiredTier} tier)` : item.label}
+                        className={`flex items-center justify-center !px-0 relative ${
                           isActive
                             ? 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all duration-200'
                             : 'hover:bg-sidebar-accent transition-all duration-200'
                         }`}
                       >
                         <Icon className="h-5 w-5" />
+                        {needsUpgrade && (
+                          <span
+                            className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${
+                              requiredTier === 'pro' ? 'bg-purple-500' : 'bg-amber-500'
+                            }`}
+                          />
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
@@ -366,7 +384,11 @@ export function AppSidebar() {
                                   {needsUpgrade && requiredTier && (
                                     <Badge
                                       variant="secondary"
-                                      className="ml-auto text-[9px] px-1 py-0 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 capitalize"
+                                      className={`ml-auto text-[9px] px-1 py-0 capitalize ${
+                                        requiredTier === 'pro'
+                                          ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                                      }`}
                                     >
                                       <Sparkles className="h-2 w-2 mr-0.5" />
                                       {requiredTier}

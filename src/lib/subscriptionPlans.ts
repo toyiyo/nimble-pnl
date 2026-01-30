@@ -3,8 +3,12 @@
  *
  * Defines the three tiers of EasyShiftHQ subscriptions:
  * - Starter: Basic P&L and inventory ($99/mo)
- * - Growth: Advanced operations & automation ($199/mo)
- * - Pro: Full suite with AI ($299/mo)
+ * - Growth: AI-powered automation & intelligence ($199/mo)
+ * - Pro: Full suite with Stripe integrations ($299/mo)
+ *
+ * Gating Philosophy:
+ * - Growth = Features that use AI (OCR, categorization, alerts, intelligence)
+ * - Pro = Features that use Stripe (invoicing, banking, expenses, payroll)
  */
 
 export type SubscriptionTier = 'starter' | 'growth' | 'pro';
@@ -37,21 +41,21 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionTier, SubscriptionPlan> = {
       'Daily P&L Dashboard',
       'Basic Inventory Tracking',
       'Labor Cost Tracking',
-      'POS Integration',
-      'Bank Transaction Sync',
+      'POS Integration (Square, Toast, Clover)',
+      'Recipe Management',
       'Multi-User Access',
       'Email Support',
     ],
     highlights: [
       'Know if you made money today',
       'Track your biggest expenses',
-      'Connect your POS and bank',
+      'Connect your POS system',
     ],
   },
   growth: {
     id: 'growth',
     name: 'Growth',
-    description: 'Advanced operations and automation for expanding restaurants',
+    description: 'AI-powered automation and intelligence for growing restaurants',
     price: {
       monthly: 199,
       annual: 1990,
@@ -60,24 +64,23 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionTier, SubscriptionPlan> = {
       'Everything in Starter',
       'Financial Intelligence Dashboard',
       'Inventory Automation (OCR)',
-      'Recipe & Menu Profitability',
+      'Recipe & Menu Profitability Analytics',
       'Employee Scheduling',
       'AI Alerts & Anomaly Detection',
-      'Multi-Location Dashboard',
-      'Accounting Integrations',
+      'AI Transaction Categorization',
       'Priority Support',
     ],
     highlights: [
-      'Automate invoice processing',
+      'Scan invoices with AI',
+      'Get predictive alerts',
       'Schedule your team efficiently',
-      'Get AI-powered insights',
     ],
     recommended: true,
   },
   pro: {
     id: 'pro',
     name: 'Pro',
-    description: 'Full suite for restaurant enterprises with AI-powered insights',
+    description: 'Complete financial operations with Stripe-powered integrations',
     price: {
       monthly: 299,
       annual: 2990,
@@ -85,18 +88,18 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionTier, SubscriptionPlan> = {
     features: [
       'Everything in Growth',
       'AI Assistant',
-      'Custom Analytics & Reporting',
-      'Unlimited Locations',
-      'Full Payroll Integration',
-      'AP Automation',
-      'API Access',
-      'Dedicated Account Manager',
+      'Bank Account Connections',
+      'Automated Transaction Sync',
+      'Customer Invoicing',
+      'Expense Management',
+      'Asset & Equipment Tracking',
+      'Payroll Reports & Export',
       'VIP Support',
     ],
     highlights: [
-      'AI-powered virtual analyst',
-      'Unlimited scale',
-      'White-glove support',
+      'Connect your bank accounts',
+      'Send professional invoices',
+      'Track all your assets',
     ],
   },
 };
@@ -166,43 +169,150 @@ export function formatPrice(cents: number): string {
 
 /**
  * Feature keys that are subscription-gated
+ *
+ * Gating Rules:
+ * - Growth tier: Features powered by AI (OCR, categorization, intelligence, alerts)
+ * - Pro tier: Features powered by Stripe (banking, invoicing, expenses, payroll)
  */
 export const SUBSCRIPTION_FEATURES = {
-  ai_assistant: {
-    key: 'ai_assistant',
-    name: 'AI Assistant',
-    requiredTier: 'pro' as SubscriptionTier,
-    description: 'AI-powered insights and recommendations',
-  },
+  // ============================================
+  // GROWTH TIER - AI-Powered Features
+  // ============================================
   financial_intelligence: {
     key: 'financial_intelligence',
-    name: 'Financial Intelligence',
+    name: 'Financial Intelligence Dashboard',
     requiredTier: 'growth' as SubscriptionTier,
-    description: 'Advanced P&L analysis and break-even insights',
+    description: 'AI-powered P&L analysis, cash flow forecasting, and break-even insights',
+    benefits: [
+      'Cash flow predictions and forecasting',
+      'AI-powered spending analysis',
+      'Break-even analysis and profit forecasting',
+    ],
   },
   inventory_automation: {
     key: 'inventory_automation',
-    name: 'Inventory Automation',
+    name: 'Inventory Automation (OCR)',
     requiredTier: 'growth' as SubscriptionTier,
-    description: 'OCR invoice scanning and automated updates',
+    description: 'AI-powered invoice scanning and automated inventory updates',
+    benefits: [
+      'Scan receipts and invoices with AI',
+      'Auto-extract items, quantities, and prices',
+      'Reduce manual data entry by 90%',
+    ],
   },
   scheduling: {
     key: 'scheduling',
     name: 'Employee Scheduling',
     requiredTier: 'growth' as SubscriptionTier,
-    description: 'Drag-and-drop scheduling and labor forecasting',
+    description: 'Visual scheduling with conflict detection and labor forecasting',
+    benefits: [
+      'Drag-and-drop schedule builder',
+      'Automatic conflict detection',
+      'Labor cost forecasting by shift',
+    ],
   },
   ai_alerts: {
     key: 'ai_alerts',
-    name: 'AI Alerts',
+    name: 'AI Alerts & Anomaly Detection',
     requiredTier: 'growth' as SubscriptionTier,
-    description: 'Smart alerts for variances and anomalies',
+    description: 'Smart alerts for inventory, spending, and operational anomalies',
+    benefits: [
+      'Predictive stockout warnings',
+      'Anomaly detection for unusual spending',
+      'Supplier reliability tracking',
+    ],
   },
-  multi_location_dashboard: {
-    key: 'multi_location_dashboard',
-    name: 'Multi-Location Dashboard',
+  recipe_profitability: {
+    key: 'recipe_profitability',
+    name: 'Recipe & Menu Profitability',
     requiredTier: 'growth' as SubscriptionTier,
-    description: 'Consolidated view across all locations',
+    description: 'AI-driven analytics on recipe costs and menu performance',
+    benefits: [
+      'Profit margin analysis for every menu item',
+      'Identify most and least profitable dishes',
+      'Pricing optimization recommendations',
+    ],
+  },
+  ai_categorization: {
+    key: 'ai_categorization',
+    name: 'AI Transaction Categorization',
+    requiredTier: 'growth' as SubscriptionTier,
+    description: 'Automatic categorization of transactions using AI',
+    benefits: [
+      'One-click categorization with AI suggestions',
+      'Learn from your categorization patterns',
+      'Bulk categorize transactions instantly',
+    ],
+  },
+
+  // ============================================
+  // PRO TIER - Stripe-Powered Features
+  // ============================================
+  ai_assistant: {
+    key: 'ai_assistant',
+    name: 'AI Assistant',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'Conversational AI assistant for your restaurant data',
+    benefits: [
+      'Ask questions about your restaurant data',
+      'Get instant insights and recommendations',
+      'Natural language queries for reports',
+    ],
+  },
+  banking: {
+    key: 'banking',
+    name: 'Bank Account Connections',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'Connect your bank accounts for automatic transaction sync',
+    benefits: [
+      'Securely connect bank accounts via Stripe',
+      'Automatic daily transaction sync',
+      'Real-time balance tracking',
+    ],
+  },
+  invoicing: {
+    key: 'invoicing',
+    name: 'Customer Invoicing',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'Create and send professional invoices to customers',
+    benefits: [
+      'Professional invoice templates',
+      'Online payment collection',
+      'Automatic payment reminders',
+    ],
+  },
+  expenses: {
+    key: 'expenses',
+    name: 'Expense Management',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'Track bills, pending payments, and manage cash outflows',
+    benefits: [
+      'Track pending bills and payments',
+      'Match expenses to bank transactions',
+      'Payment status tracking',
+    ],
+  },
+  assets: {
+    key: 'assets',
+    name: 'Asset & Equipment Tracking',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'Track equipment, furniture, and other business assets',
+    benefits: [
+      'Equipment and asset inventory',
+      'Automatic depreciation calculations',
+      'Maintenance and disposal tracking',
+    ],
+  },
+  payroll: {
+    key: 'payroll',
+    name: 'Payroll Reports',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'Calculate wages, overtime, and tips from time punches',
+    benefits: [
+      'Automatic overtime calculations (1.5× over 40 hrs)',
+      'Tip aggregation by employee',
+      'Export to CSV for ADP, Gusto, etc.',
+    ],
   },
 } as const;
 

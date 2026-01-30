@@ -13,6 +13,7 @@ import { ReconciliationReport } from "@/components/banking/ReconciliationReport"
 import { BankConnectionCard } from "@/components/BankConnectionCard";
 import { MetricIcon } from "@/components/MetricIcon";
 import { Link, useLocation } from "react-router-dom";
+import { FeatureGate } from "@/components/subscription";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -304,9 +305,10 @@ export default function Banking() {
     : { title: 'No excluded transactions', subtitle: 'Duplicate or personal transactions will appear here' };
 
   return (
+    <FeatureGate featureKey="banking">
     <div className="min-h-screen bg-background">
-      <PageHeader 
-        icon={Building2} 
+      <PageHeader
+        icon={Building2}
         title="Banking"
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -793,5 +795,6 @@ export default function Banking() {
         </>
       )}
     </div>
+    </FeatureGate>
   );
 }

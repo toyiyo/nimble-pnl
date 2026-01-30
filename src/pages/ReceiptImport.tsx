@@ -11,6 +11,7 @@ import { ArrowLeft, FileText, Clock, CheckCircle, AlertCircle, Receipt } from 'l
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { MetricIcon } from '@/components/MetricIcon';
+import { FeatureGate } from '@/components/subscription';
 
 export const ReceiptImport = () => {
   const [activeReceiptId, setActiveReceiptId] = useState<string | null>(null);
@@ -72,9 +73,9 @@ export const ReceiptImport = () => {
             <p className="text-muted-foreground">Upload receipts and automatically import items to inventory</p>
           </div>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={() => navigate('/inventory')} 
+        <Button
+          variant="outline"
+          onClick={() => navigate('/inventory')}
           className="flex items-center gap-2"
           aria-label="Navigate back to inventory page"
         >
@@ -83,6 +84,7 @@ export const ReceiptImport = () => {
         </Button>
       </div>
 
+      <FeatureGate featureKey="inventory_automation">
       {!activeReceiptId ? (
         <Tabs defaultValue="upload" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
@@ -179,9 +181,9 @@ export const ReceiptImport = () => {
         </Tabs>
       ) : (
         <div className="space-y-4">
-          <Button 
-            variant="outline" 
-            onClick={() => setActiveReceiptId(null)} 
+          <Button
+            variant="outline"
+            onClick={() => setActiveReceiptId(null)}
             className="flex items-center gap-2"
             aria-label="Navigate back to receipt list"
           >
@@ -191,6 +193,7 @@ export const ReceiptImport = () => {
           <ReceiptMappingReview receiptId={activeReceiptId} onImportComplete={handleImportComplete} />
         </div>
       )}
+      </FeatureGate>
     </div>
   );
 };

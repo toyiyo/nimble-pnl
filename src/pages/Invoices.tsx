@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { FeatureGate } from "@/components/subscription";
 
 export default function Invoices() {
   const { selectedRestaurant } = useRestaurantContext();
@@ -87,58 +88,132 @@ export default function Invoices() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  // Show initial setup message when no customers exist
-  if (customers.length === 0) {
-    return (
-      <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+  return (
+    <FeatureGate featureKey="invoicing">
+      {loading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : customers.length === 0 ? (
+        // Show initial setup message when no customers exist
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-        </Card>
+            </CardHeader>
+          </Card>
 
-        <Alert>
-          <Users className="h-4 w-4" />
-          <AlertTitle>Get Started with Invoicing</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              To create invoices, you first need to add customers to your directory.
-              Once you have customers, you can create professional invoices with payment collection.
-            </p>
-            <div className="flex gap-3 flex-col md:flex-row">
-              <Button onClick={() => navigate('/customers')} className="flex-1">
-                <Users className="h-4 w-4 mr-2" />
-                Add Customers
-              </Button>
-              {!connectedAccount && (
-                <Button 
-                  onClick={() => createAccount('express')} 
-                  disabled={isCreatingAccount}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  {isCreatingAccount ? "Setting up..." : "Set up Payments"}
+          <Alert>
+            <Users className="h-4 w-4" />
+            <AlertTitle>Get Started with Invoicing</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                To create invoices, you first need to add customers to your directory.
+                Once you have customers, you can create professional invoices with payment collection.
+              </p>
+              <div className="flex gap-3 flex-col md:flex-row">
+                <Button onClick={() => navigate('/customers')} className="flex-1">
+                  <Users className="h-4 w-4 mr-2" />
+                  Add Customers
                 </Button>
+                {!connectedAccount && (
+                  <Button
+                    onClick={() => createAccount('express')}
+                    disabled={isCreatingAccount}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {isCreatingAccount ? "Setting up..." : "Set up Payments"}
+                  </Button>
+                )}
+              </div>
+              {connectedAccount && !isReadyForInvoicing && (
+                <StripeEmbeddedOnboarding
+                  restaurantId={selectedRestaurant?.restaurant_id || null}
+                  onCompleted={() => {
+                    queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
+                    queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
+                  }}
+                />
               )}
-            </div>
-            {connectedAccount && !isReadyForInvoicing && (
+            </AlertDescription>
+          </Alert>
+        </div>
+      ) : !connectedAccount ? (
+        // Show payment processing setup if not configured
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Payment Processing Setup Required</AlertTitle>
+            <AlertDescription>
+              To create invoices and accept payments, you need to set up payment processing.
+              This allows your customers to pay by credit card or US bank account (ACH).
+            </AlertDescription>
+          </Alert>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <h3 className="text-lg font-semibold">Get Started with Payment Processing</h3>
+                <p className="text-muted-foreground">
+                  Set up secure payment processing to accept payments directly from your customers.
+                  Funds will be deposited into your bank account.
+                </p>
+                <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
+                  {isCreatingAccount ? "Setting up..." : "Set Up Payment Processing"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : !isReadyForInvoicing ? (
+        // Show onboarding incomplete message
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Complete Account Onboarding</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                Your payment processing account was created but onboarding wasn't completed.
+                Please finish the setup process to start creating invoices.
+              </p>
               <StripeEmbeddedOnboarding
                 restaurantId={selectedRestaurant?.restaurant_id || null}
                 onCompleted={() => {
@@ -146,98 +221,10 @@ export default function Invoices() {
                   queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
                 }}
               />
-            )}
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  // Show payment processing setup if not configured
-  if (!connectedAccount) {
-    return (
-      <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Payment Processing Setup Required</AlertTitle>
-          <AlertDescription>
-            To create invoices and accept payments, you need to set up payment processing.
-            This allows your customers to pay by credit card or US bank account (ACH).
-          </AlertDescription>
-        </Alert>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <h3 className="text-lg font-semibold">Get Started with Payment Processing</h3>
-              <p className="text-muted-foreground">
-                Set up secure payment processing to accept payments directly from your customers.
-                Funds will be deposited into your bank account.
-              </p>
-              <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
-                {isCreatingAccount ? "Setting up..." : "Set Up Payment Processing"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Show onboarding incomplete message
-  if (!isReadyForInvoicing && connectedAccount) {
-    return (
-      <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Complete Account Onboarding</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              Your payment processing account was created but onboarding wasn't completed.
-              Please finish the setup process to start creating invoices.
-            </p>
-            <StripeEmbeddedOnboarding
-              restaurantId={selectedRestaurant?.restaurant_id || null}
-              onCompleted={() => {
-                queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
-                queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
-              }}
-            />
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  return (
+            </AlertDescription>
+          </Alert>
+        </div>
+      ) : (
     <div className="space-y-6">
       {/* Header */}
       <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
@@ -366,5 +353,7 @@ export default function Invoices() {
         </Card>
       )}
     </div>
+      )}
+    </FeatureGate>
   );
 }

@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
+import { FeatureGate } from '@/components/subscription';
 import { useShifts, useDeleteShift } from '@/hooks/useShifts';
 import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
@@ -376,6 +377,7 @@ const Scheduling = () => {
   }
 
   return (
+    <FeatureGate featureKey="scheduling">
     <div className="space-y-6">
       {/* Header */}
       <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
@@ -904,6 +906,7 @@ const Scheduling = () => {
         positionFilter={positionFilter}
       />
     </div>
+    </FeatureGate>
   );
 };
 

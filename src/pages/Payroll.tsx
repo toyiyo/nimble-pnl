@@ -13,6 +13,7 @@ import {
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePayroll } from '@/hooks/usePayroll';
 import { useEmployees } from '@/hooks/useEmployees';
+import { FeatureGate } from '@/components/subscription';
 import {
   formatCurrency,
   formatHours,
@@ -246,6 +247,7 @@ const Payroll = () => {
   }
 
   return (
+    <FeatureGate featureKey="payroll">
     <div className="space-y-6 p-6">
       {/* Header */}
       <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
@@ -671,6 +673,7 @@ const Payroll = () => {
         />
       )}
     </div>
+    </FeatureGate>
   );
 };
 

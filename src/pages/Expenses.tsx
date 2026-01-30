@@ -10,6 +10,7 @@ import { Wallet, TrendingUp, CheckCircle2 } from "lucide-react";
 import type { PendingOutflow } from "@/types/pending-outflows";
 import { MetricIcon } from "@/components/MetricIcon";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { FeatureGate } from "@/components/subscription";
 
 export default function Expenses() {
   const [showAddExpenseSheet, setShowAddExpenseSheet] = useState(false);
@@ -33,9 +34,10 @@ export default function Expenses() {
   const bookBalance = totalBalance - totalExpenses;
 
   return (
+    <FeatureGate featureKey="expenses">
     <div className="min-h-screen bg-background">
-      <PageHeader 
-        icon={Wallet} 
+      <PageHeader
+        icon={Wallet}
         title="Expenses"
       />
 
@@ -108,5 +110,6 @@ export default function Expenses() {
         </>
       )}
     </div>
+    </FeatureGate>
   );
 }

@@ -137,30 +137,14 @@ export function useAssetImport(): UseAssetImportReturn {
           restaurantId: document.restaurantId,
         };
       } else {
-        // Image/PDF extraction
+        // Image/PDF extraction - convert both to base64 to avoid localhost issues in edge functions
         const isPDF = fileBlob.type === 'application/pdf';
-        let dataToSend: string;
-
-        if (isPDF) {
-          // Generate signed URL for PDF
-          const { data: signedUrlData, error: signedUrlError } = await supabase
-            .storage
-            .from('asset-images')
-            .createSignedUrl(document.filePath, 3600);
-
-          if (signedUrlError || !signedUrlData?.signedUrl) {
-            throw new Error('Failed to generate signed URL for PDF');
-          }
-
-          dataToSend = signedUrlData.signedUrl;
-        } else {
-          // Convert image to base64
-          dataToSend = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(fileBlob);
-          });
-        }
+        const dataToSend = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(fileBlob);
+        });
 
         requestBody = {
           documentId: document.id,

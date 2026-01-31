@@ -1,10 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Select,
@@ -15,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle,
   ChevronDown,
   ChevronUp,
@@ -23,6 +22,11 @@ import {
   Sparkles,
   Trash2,
   X,
+  DollarSign,
+  Calendar,
+  Clock,
+  Hash,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAssetImport } from '@/hooks/useAssetImport';
 import { DEFAULT_ASSET_CATEGORIES, formatAssetCurrency } from '@/types/assets';
@@ -105,20 +109,20 @@ export function AssetImportReview({
   const getConfidenceBadge = (score: number) => {
     if (score >= 0.85) {
       return (
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] font-medium">
           High
         </Badge>
       );
     }
     if (score >= 0.6) {
       return (
-        <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-xs">
+        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 text-[10px] font-medium">
           Medium
         </Badge>
       );
     }
     return (
-      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
+      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800 text-[10px] font-medium">
         Low
       </Badge>
     );
@@ -128,8 +132,8 @@ export function AssetImportReview({
     switch (item.importStatus) {
       case 'imported':
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
-            <CheckCircle className="h-3 w-3 mr-1" />
+          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800 text-[10px] font-medium gap-1">
+            <CheckCircle2 className="h-3 w-3" />
             Imported
           </Badge>
         );
@@ -138,8 +142,8 @@ export function AssetImportReview({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs">
-                  <AlertCircle className="h-3 w-3 mr-1" />
+                <Badge className="bg-red-100 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800 text-[10px] font-medium gap-1 cursor-help">
+                  <AlertCircle className="h-3 w-3" />
                   Error
                 </Badge>
               </TooltipTrigger>
@@ -151,22 +155,23 @@ export function AssetImportReview({
         );
       case 'importing':
         return (
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+          <Badge className="bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800 text-[10px] font-medium gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
             Importing
           </Badge>
         );
       default:
         if (item.purchaseCost <= 0) {
           return (
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
-              <AlertCircle className="h-3 w-3 mr-1" />
+            <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800 text-[10px] font-medium gap-1">
+              <AlertTriangle className="h-3 w-3" />
               Needs price
             </Badge>
           );
         }
         return (
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-[10px] font-medium gap-1 text-slate-600 dark:text-slate-400">
+            <CheckCircle className="h-3 w-3" />
             Ready
           </Badge>
         );
@@ -174,48 +179,109 @@ export function AssetImportReview({
   };
 
   const getRowBackground = (item: AssetLineItem) => {
-    if (item.importStatus === 'imported') return 'bg-green-50/50 dark:bg-green-900/10';
-    if (item.importStatus === 'error') return 'bg-red-50/50 dark:bg-red-900/10';
-    if (item.importStatus === 'pending' && item.purchaseCost <= 0) return 'bg-amber-50/50 dark:bg-amber-900/10';
-    return '';
+    if (item.importStatus === 'imported') return 'bg-emerald-50/60 dark:bg-emerald-950/20 border-l-2 border-l-emerald-500';
+    if (item.importStatus === 'error') return 'bg-red-50/60 dark:bg-red-950/20 border-l-2 border-l-red-500';
+    if (item.importStatus === 'pending' && item.purchaseCost <= 0) return 'bg-amber-50/60 dark:bg-amber-950/20 border-l-2 border-l-amber-500';
+    return 'border-l-2 border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50';
   };
 
   return (
-    <Card className="w-full max-w-full overflow-hidden">
-      <CardHeader className="pb-4 px-4 sm:px-6">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <Package className="h-5 w-5 flex-shrink-0" />
-              <span className="truncate">Review Extracted Assets</span>
-            </CardTitle>
-            <CardDescription className="text-sm">
-              {stats.total} asset{stats.total !== 1 ? 's' : ''} • {formatAssetCurrency(stats.totalCost)}
-            </CardDescription>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onCancel} aria-label="Close" className="flex-shrink-0">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {isImporting && importProgress && (
-          <div className="mt-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Importing assets...</span>
-              <span>{importProgress.current} of {importProgress.total}</span>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/20">
+              <Package className="h-5 w-5 text-white" />
             </div>
-            <Progress value={(importProgress.current / importProgress.total) * 100} className="h-2" />
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Review Extracted Assets
+            </h2>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 ml-[52px]">
+            {stats.total} asset{stats.total !== 1 ? 's' : ''} found • {formatAssetCurrency(stats.totalCost)} total
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onCancel}
+          aria-label="Close"
+          className="flex-shrink-0 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Import Progress */}
+      {isImporting && importProgress && (
+        <div className="rounded-xl p-4 border-2 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-3 mb-3">
+            <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+            <div className="flex-1">
+              <div className="flex justify-between text-sm font-medium">
+                <span className="text-blue-700 dark:text-blue-300">Importing assets...</span>
+                <span className="text-blue-600 dark:text-blue-400">{importProgress.current} of {importProgress.total}</span>
+              </div>
+            </div>
+          </div>
+          <Progress value={(importProgress.current / importProgress.total) * 100} className="h-2" />
+        </div>
+      )}
+
+      {/* Stats Bar */}
+      <div className="flex flex-wrap gap-2">
+        {stats.readyToImport > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+            <CheckCircle className="h-3.5 w-3.5" />
+            {stats.readyToImport} ready
           </div>
         )}
-      </CardHeader>
+        {stats.needsPrice > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 text-xs font-medium">
+            <DollarSign className="h-3.5 w-3.5" />
+            {stats.needsPrice} need price
+          </div>
+        )}
+        {stats.imported > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {stats.imported} imported
+          </div>
+        )}
+        {stats.errored > 0 && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 text-xs font-medium">
+            <AlertCircle className="h-3.5 w-3.5" />
+            {stats.errored} failed
+          </div>
+        )}
+      </div>
 
-      <CardContent className="p-0">
+      {/* Needs Price Warning */}
+      {stats.needsPrice > 0 && (
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+          <div className="p-1 rounded bg-amber-200 dark:bg-amber-900">
+            <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              {stats.needsPrice} item{stats.needsPrice !== 1 ? 's need' : ' needs'} a price
+            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
+              Enter a cost greater than $0 or remove the row to continue
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Items List */}
+      <div className="border rounded-xl overflow-hidden bg-white dark:bg-slate-900">
         {/* Mobile card view */}
-        <div className="block sm:hidden divide-y">
+        <div className="block sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
           {items.map(item => {
             const isExpanded = expandedItems.has(item.id);
             return (
-              <div key={item.id} className={`p-4 ${getRowBackground(item)}`}>
+              <div key={item.id} className={`p-4 transition-colors ${getRowBackground(item)}`}>
                 {/* Main row - always visible */}
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0 space-y-2">
@@ -223,7 +289,7 @@ export function AssetImportReview({
                       value={item.parsedName}
                       onChange={e => handleUpdateItem(item.id, { parsedName: e.target.value })}
                       disabled={item.importStatus !== 'pending' || isImporting}
-                      className="h-9 text-sm font-medium"
+                      className="h-9 text-sm font-medium bg-white dark:bg-slate-800"
                       placeholder="Asset name"
                     />
                     <div className="flex items-center gap-2 flex-wrap">
@@ -232,8 +298,8 @@ export function AssetImportReview({
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className="relative w-24">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                    <div className="relative w-28">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
                       <Input
                         type="number"
                         step="0.01"
@@ -242,9 +308,9 @@ export function AssetImportReview({
                         onChange={e => handleUpdateItem(item.id, { purchaseCost: parseFloat(e.target.value) || 0 })}
                         disabled={item.importStatus !== 'pending' || isImporting}
                         placeholder="0.00"
-                        className={`h-9 text-sm text-right pl-6 ${
+                        className={`h-9 text-sm text-right pl-7 bg-white dark:bg-slate-800 ${
                           item.importStatus === 'pending' && item.purchaseCost <= 0
-                            ? 'border-amber-400 focus:border-amber-500'
+                            ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
                             : ''
                         }`}
                       />
@@ -253,7 +319,7 @@ export function AssetImportReview({
                       variant="ghost"
                       size="sm"
                       onClick={() => toggleExpanded(item.id)}
-                      className="h-7 px-2 text-xs text-muted-foreground"
+                      className="h-7 px-2 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                     >
                       {isExpanded ? (
                         <>Less <ChevronUp className="h-3 w-3 ml-1" /></>
@@ -266,10 +332,13 @@ export function AssetImportReview({
 
                 {/* Expanded details */}
                 {isExpanded && (
-                  <div className="mt-3 pt-3 border-t space-y-3">
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Category</label>
+                        <label className="flex items-center gap-1.5 text-xs text-slate-500 mb-1.5">
+                          <Package className="h-3 w-3" />
+                          Category
+                        </label>
                         <Select
                           value={item.category}
                           onValueChange={value => {
@@ -281,7 +350,7 @@ export function AssetImportReview({
                           }}
                           disabled={item.importStatus !== 'pending' || isImporting}
                         >
-                          <SelectTrigger className="h-9 text-sm">
+                          <SelectTrigger className="h-9 text-sm bg-white dark:bg-slate-800">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -292,29 +361,35 @@ export function AssetImportReview({
                         </Select>
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Purchase Date</label>
+                        <label className="flex items-center gap-1.5 text-xs text-slate-500 mb-1.5">
+                          <Calendar className="h-3 w-3" />
+                          Purchase Date
+                        </label>
                         <Input
                           type="date"
                           value={item.purchaseDate}
                           onChange={e => handleUpdateItem(item.id, { purchaseDate: e.target.value })}
                           disabled={item.importStatus !== 'pending' || isImporting}
-                          className="h-9 text-sm"
+                          className="h-9 text-sm bg-white dark:bg-slate-800"
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-muted-foreground mb-1 block">Useful Life</label>
-                        <div className="flex items-center gap-1">
+                        <label className="flex items-center gap-1.5 text-xs text-slate-500 mb-1.5">
+                          <Clock className="h-3 w-3" />
+                          Useful Life
+                        </label>
+                        <div className="flex items-center gap-1.5">
                           <Input
                             type="number"
                             min="1"
                             value={item.usefulLifeMonths}
                             onChange={e => handleUpdateItem(item.id, { usefulLifeMonths: parseInt(e.target.value) || 60 })}
                             disabled={item.importStatus !== 'pending' || isImporting}
-                            className="h-9 text-sm"
+                            className="h-9 text-sm bg-white dark:bg-slate-800"
                           />
-                          <span className="text-xs text-muted-foreground">mo</span>
+                          <span className="text-xs text-slate-500 whitespace-nowrap">months</span>
                         </div>
                       </div>
                       <div className="flex items-end">
@@ -323,21 +398,24 @@ export function AssetImportReview({
                           size="sm"
                           onClick={() => handleRemoveItem(item.id)}
                           disabled={item.importStatus !== 'pending' || isImporting}
-                          className="w-full h-9 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="w-full h-9 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 border-red-200 dark:border-red-800"
                         >
-                          <Trash2 className="h-4 w-4 mr-1" />
+                          <Trash2 className="h-4 w-4 mr-1.5" />
                           Remove
                         </Button>
                       </div>
                     </div>
                     {item.serialNumber && (
-                      <p className="text-xs text-muted-foreground">S/N: {item.serialNumber}</p>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 rounded">
+                        <Hash className="h-3 w-3" />
+                        S/N: <span className="font-mono text-slate-700 dark:text-slate-300">{item.serialNumber}</span>
+                      </div>
                     )}
                     {item.category !== item.suggestedCategory && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <div className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/30 px-2 py-1.5 rounded">
                         <Sparkles className="h-3 w-3" />
                         AI suggested: {item.suggestedCategory}
-                      </p>
+                      </div>
                     )}
                   </div>
                 )}
@@ -349,35 +427,35 @@ export function AssetImportReview({
         {/* Desktop table view */}
         <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">Asset Name</th>
-                <th className="text-left p-3 font-medium">Category</th>
-                <th className="text-left p-3 font-medium hidden lg:table-cell">Date</th>
-                <th className="text-right p-3 font-medium">Cost</th>
-                <th className="text-right p-3 font-medium hidden md:table-cell">Life</th>
-                <th className="text-center p-3 font-medium hidden lg:table-cell">Confidence</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-right p-3 font-medium w-12"></th>
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
+                <th className="text-left px-4 py-3 font-medium text-slate-600 dark:text-slate-400">Asset Name</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600 dark:text-slate-400">Category</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600 dark:text-slate-400 hidden lg:table-cell">Date</th>
+                <th className="text-right px-4 py-3 font-medium text-slate-600 dark:text-slate-400">Cost</th>
+                <th className="text-right px-4 py-3 font-medium text-slate-600 dark:text-slate-400 hidden md:table-cell">Life</th>
+                <th className="text-center px-4 py-3 font-medium text-slate-600 dark:text-slate-400 hidden lg:table-cell">Confidence</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600 dark:text-slate-400">Status</th>
+                <th className="w-12"></th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {items.map(item => (
-                <tr key={item.id} className={getRowBackground(item)}>
-                  <td className="p-3">
+                <tr key={item.id} className={`transition-colors ${getRowBackground(item)}`}>
+                  <td className="px-4 py-3">
                     <div className="space-y-1">
                       <Input
                         value={item.parsedName}
                         onChange={e => handleUpdateItem(item.id, { parsedName: e.target.value })}
                         disabled={item.importStatus !== 'pending' || isImporting}
-                        className="h-8 text-sm font-medium min-w-[150px]"
+                        className="h-8 text-sm font-medium min-w-[160px] bg-white dark:bg-slate-800"
                       />
                       {item.serialNumber && (
-                        <span className="text-xs text-muted-foreground">S/N: {item.serialNumber}</span>
+                        <span className="text-[11px] text-slate-500 font-mono">S/N: {item.serialNumber}</span>
                       )}
                     </div>
                   </td>
-                  <td className="p-3">
+                  <td className="px-4 py-3">
                     <Select
                       value={item.category}
                       onValueChange={value => {
@@ -389,7 +467,7 @@ export function AssetImportReview({
                       }}
                       disabled={item.importStatus !== 'pending' || isImporting}
                     >
-                      <SelectTrigger className="h-8 text-sm min-w-[120px]">
+                      <SelectTrigger className="h-8 text-sm min-w-[130px] bg-white dark:bg-slate-800">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -399,18 +477,18 @@ export function AssetImportReview({
                       </SelectContent>
                     </Select>
                   </td>
-                  <td className="p-3 hidden lg:table-cell">
+                  <td className="px-4 py-3 hidden lg:table-cell">
                     <Input
                       type="date"
                       value={item.purchaseDate}
                       onChange={e => handleUpdateItem(item.id, { purchaseDate: e.target.value })}
                       disabled={item.importStatus !== 'pending' || isImporting}
-                      className="h-8 text-sm w-[130px]"
+                      className="h-8 text-sm w-[135px] bg-white dark:bg-slate-800"
                     />
                   </td>
-                  <td className="p-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <span className="text-muted-foreground">$</span>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className="text-slate-400">$</span>
                       <Input
                         type="number"
                         step="0.01"
@@ -419,9 +497,9 @@ export function AssetImportReview({
                         onChange={e => handleUpdateItem(item.id, { purchaseCost: parseFloat(e.target.value) || 0 })}
                         disabled={item.importStatus !== 'pending' || isImporting}
                         placeholder="0.00"
-                        className={`h-8 text-sm text-right w-24 ${
+                        className={`h-8 text-sm text-right w-24 bg-white dark:bg-slate-800 ${
                           item.importStatus === 'pending' && item.purchaseCost <= 0
-                            ? 'border-amber-400 focus:border-amber-500'
+                            ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
                             : ''
                         }`}
                       />
@@ -429,7 +507,9 @@ export function AssetImportReview({
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                              <div className="p-0.5 rounded bg-amber-100 dark:bg-amber-900/50">
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                              </div>
                             </TooltipTrigger>
                             <TooltipContent>Enter a cost {'>'} $0 to import</TooltipContent>
                           </Tooltip>
@@ -437,33 +517,33 @@ export function AssetImportReview({
                       )}
                     </div>
                   </td>
-                  <td className="p-3 text-right hidden md:table-cell">
-                    <div className="flex items-center gap-1 justify-end">
+                  <td className="px-4 py-3 text-right hidden md:table-cell">
+                    <div className="flex items-center gap-1.5 justify-end">
                       <Input
                         type="number"
                         min="1"
                         value={item.usefulLifeMonths}
                         onChange={e => handleUpdateItem(item.id, { usefulLifeMonths: parseInt(e.target.value) || 60 })}
                         disabled={item.importStatus !== 'pending' || isImporting}
-                        className="h-8 text-sm text-right w-16"
+                        className="h-8 text-sm text-right w-16 bg-white dark:bg-slate-800"
                       />
-                      <span className="text-xs text-muted-foreground">mo</span>
+                      <span className="text-xs text-slate-500">mo</span>
                     </div>
                   </td>
-                  <td className="p-3 text-center hidden lg:table-cell">
+                  <td className="px-4 py-3 text-center hidden lg:table-cell">
                     {getConfidenceBadge(item.confidenceScore)}
                   </td>
-                  <td className="p-3">
+                  <td className="px-4 py-3">
                     {getStatusBadge(item)}
                   </td>
-                  <td className="p-3 text-right">
+                  <td className="px-4 py-3 text-right">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleRemoveItem(item.id)}
                       disabled={item.importStatus !== 'pending' || isImporting}
                       aria-label="Remove asset"
-                      className="h-8 w-8"
+                      className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -475,59 +555,44 @@ export function AssetImportReview({
         </div>
 
         {items.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No assets to import</p>
+          <div className="text-center py-16">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
+              <Package className="h-8 w-8 text-slate-400" />
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 font-medium">No assets to import</p>
+            <p className="text-sm text-slate-500 mt-1">Upload a document to get started</p>
           </div>
         )}
-      </CardContent>
+      </div>
 
-      <Separator />
-
-      <CardFooter className="flex flex-col gap-3 p-4 sm:px-6">
-        {stats.needsPrice > 0 && (
-          <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm">
-            <span className="text-amber-700 dark:text-amber-300 font-medium">
-              {stats.needsPrice} item{stats.needsPrice !== 1 ? 's need' : ' needs'} a price
-            </span>
-            <span className="text-amber-600 dark:text-amber-400 ml-1 hidden sm:inline">
-              — Enter a cost {'>'} $0 or remove the row to import
-            </span>
-          </div>
-        )}
-
-        {/* Mobile: stack vertically */}
-        <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
-            {stats.readyToImport > 0 && (
-              <span className="text-green-600">{stats.readyToImport} ready</span>
-            )}
-            {stats.needsPrice > 0 && (
-              <span className="text-amber-600">{stats.needsPrice} need price</span>
-            )}
-            {stats.imported > 0 && (
-              <span className="text-green-600">{stats.imported} imported</span>
-            )}
-            {stats.errored > 0 && (
-              <span className="text-red-600">{stats.errored} failed</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Button variant="outline" onClick={onCancel} disabled={isImporting} className="flex-1 sm:flex-initial">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleImport}
-              disabled={isImporting || stats.readyToImport === 0}
-              className="flex-1 sm:flex-initial"
-            >
-              {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      {/* Footer Actions */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-2">
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={isImporting}
+          className="sm:w-auto"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleImport}
+          disabled={isImporting || stats.readyToImport === 0}
+          className="sm:w-auto bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg shadow-blue-500/20"
+        >
+          {isImporting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Importing...
+            </>
+          ) : (
+            <>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
               Import {stats.readyToImport} Asset{stats.readyToImport !== 1 ? 's' : ''}
-            </Button>
-          </div>
-        </div>
-      </CardFooter>
-    </Card>
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
   );
 }

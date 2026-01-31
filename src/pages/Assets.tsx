@@ -47,12 +47,12 @@ import { FeatureGate } from '@/components/subscription';
 type StatusFilter = AssetStatus | 'all';
 
 interface MetricCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ElementType;
-  description?: string;
-  trend?: 'positive' | 'warning' | 'neutral';
-  className?: string;
+  readonly title: string;
+  readonly value: string | number;
+  readonly icon: React.ElementType;
+  readonly description?: string;
+  readonly trend?: 'positive' | 'warning' | 'neutral';
+  readonly className?: string;
 }
 
 function MetricCard({
@@ -62,7 +62,7 @@ function MetricCard({
   description,
   trend = 'neutral',
   className = '',
-}: MetricCardProps) {
+}: Readonly<MetricCardProps>) {
   const iconBgColors = {
     positive: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400',
     warning: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400',
@@ -394,7 +394,14 @@ export default function Assets() {
       />
 
       {/* Asset Import Dialog */}
-      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+        setIsImportDialogOpen(open);
+        if (!open) {
+          // Reset import state when dialog closes
+          setImportedItems([]);
+          setImportDocumentFile(undefined);
+        }
+      }}>
         <DialogContent className="max-w-6xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Import Assets</DialogTitle>

@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { logAICall, type AICallMetadata } from "../_shared/braintrust.ts";
+import { logAICall } from "../_shared/braintrust.ts";
 
 interface AssetDocumentRequest {
   documentId: string;
@@ -403,6 +403,38 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Authentication required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Server configuration error" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid or expired authentication" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 401 }
+      );
+    }
+
     const { documentId, imageData, isPDF, textContent, fileName, restaurantId }: AssetDocumentRequest = await req.json();
 
     // Validate: need either imageData OR textContent
@@ -417,6 +449,30 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: "Either image data or text content is required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    // Verify user has access to this restaurant
+    // Check both restaurant_staff membership and restaurant ownership
+    const { data: membership } = await supabase
+      .from("restaurant_staff")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+
+    const { data: ownership } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("id", restaurantId)
+      .eq("owner_id", user.id)
+      .maybeSingle();
+
+    if (!membership && !ownership) {
+      console.error(`Access denied: user ${user.id} has no access to restaurant ${restaurantId}`);
+      return new Response(
+        JSON.stringify({ success: false, error: "Access denied to this restaurant" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 }
       );
     }
 
@@ -446,11 +502,43 @@ serve(async (req) => {
       if (isProcessingPDF && !imageData!.startsWith("data:application/pdf;base64,")) {
         console.log("📄 PDF URL detected, converting to base64...");
 
+        // Validate URL before fetching
+        let pdfUrl: URL;
+        try {
+          pdfUrl = new URL(imageData!);
+        } catch {
+          return new Response(
+            JSON.stringify({ success: false, error: "Invalid PDF URL format" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+          );
+        }
+
+        // Only allow HTTPS URLs (except localhost for development)
+        const isLocalhost = pdfUrl.hostname === "localhost" || pdfUrl.hostname === "127.0.0.1";
+        if (pdfUrl.protocol !== "https:" && !isLocalhost) {
+          return new Response(
+            JSON.stringify({ success: false, error: "PDF URL must use HTTPS" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+          );
+        }
+
+        // Block internal/private IP ranges (except localhost for development)
+        const blockedHosts = ["169.254.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+                             "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+                             "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+                             "192.168.", "0.0.0.0"];
+        if (blockedHosts.some(prefix => pdfUrl.hostname.startsWith(prefix))) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Invalid PDF URL - internal addresses not allowed" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+          );
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000);
 
         try {
-          const pdfResponse = await fetch(imageData!, { signal: controller.signal });
+          const pdfResponse = await fetch(pdfUrl.toString(), { signal: controller.signal });
           clearTimeout(timeoutId);
 
           if (!pdfResponse.ok) throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
@@ -600,11 +688,27 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("Error in process-asset-document:", error);
+
+    // Sanitize error message to avoid leaking internal details
+    let userMessage = "An unexpected error occurred while processing the document.";
+    if (error instanceof Error) {
+      // Only expose safe error messages to the client
+      const safePatterns = [
+        /timeout/i,
+        /too large/i,
+        /invalid.*format/i,
+        /parsing failed/i,
+        /no assets found/i,
+      ];
+      if (safePatterns.some(pattern => pattern.test(error.message))) {
+        userMessage = error.message;
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: false,
-        error: "An unexpected error occurred",
-        details: error instanceof Error ? error.message : String(error),
+        error: userMessage,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );

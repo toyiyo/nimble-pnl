@@ -33,10 +33,10 @@ import { DEFAULT_ASSET_CATEGORIES, formatAssetCurrency } from '@/types/assets';
 import type { AssetLineItem } from '@/types/assetImport';
 
 interface AssetImportReviewProps {
-  initialItems: AssetLineItem[];
-  documentFile?: File;
-  onImportComplete: () => void;
-  onCancel: () => void;
+  readonly initialItems: AssetLineItem[];
+  readonly documentFile?: File;
+  readonly onImportComplete: () => void;
+  readonly onCancel: () => void;
 }
 
 export function AssetImportReview({
@@ -44,7 +44,7 @@ export function AssetImportReview({
   documentFile,
   onImportComplete,
   onCancel,
-}: AssetImportReviewProps) {
+}: Readonly<AssetImportReviewProps>) {
   const [items, setItems] = useState<AssetLineItem[]>(initialItems);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
@@ -402,10 +402,21 @@ export function AssetImportReview({
                       </div>
                     )}
                     {item.category !== item.suggestedCategory && (
-                      <div className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/30 px-2 py-1.5 rounded">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cat = DEFAULT_ASSET_CATEGORIES.find(c => c.name === item.suggestedCategory);
+                          handleUpdateItem(item.id, {
+                            category: item.suggestedCategory,
+                            usefulLifeMonths: cat?.default_useful_life_months || item.usefulLifeMonths,
+                          });
+                        }}
+                        disabled={item.importStatus !== 'pending' || isImporting}
+                        className="flex items-center gap-1.5 text-xs text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/30 px-2 py-1.5 rounded hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         <Sparkles className="h-3 w-3" />
-                        AI suggested: {item.suggestedCategory}
-                      </div>
+                        Use AI suggestion: {item.suggestedCategory}
+                      </button>
                     )}
                   </div>
                 )}

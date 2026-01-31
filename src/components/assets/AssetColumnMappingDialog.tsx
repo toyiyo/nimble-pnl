@@ -70,7 +70,7 @@ function getConfidenceStyles(confidence: ConfidenceLevel) {
   }
 }
 
-function ConfidenceIndicator({ confidence }: { confidence: ConfidenceLevel }) {
+function ConfidenceIndicator({ confidence }: Readonly<{ confidence: ConfidenceLevel }>) {
   const styles = getConfidenceStyles(confidence);
   const Icon = styles.icon;
 
@@ -89,12 +89,11 @@ function ConfidenceIndicator({ confidence }: { confidence: ConfidenceLevel }) {
 }
 
 interface AssetColumnMappingDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  csvHeaders: string[];
-  sampleData: Record<string, string>[];
-  suggestedMappings: AssetColumnMapping[];
-  onConfirm: (mappings: AssetColumnMapping[]) => void;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly sampleData: Record<string, string>[];
+  readonly suggestedMappings: AssetColumnMapping[];
+  readonly onConfirm: (mappings: AssetColumnMapping[]) => void;
 }
 
 export function AssetColumnMappingDialog({
@@ -103,7 +102,7 @@ export function AssetColumnMappingDialog({
   sampleData,
   suggestedMappings,
   onConfirm,
-}: AssetColumnMappingDialogProps): JSX.Element {
+}: Readonly<AssetColumnMappingDialogProps>): JSX.Element {
   const [mappings, setMappings] = useState<AssetColumnMapping[]>(suggestedMappings);
 
   useEffect(() => {
@@ -114,10 +113,11 @@ export function AssetColumnMappingDialog({
     setMappings(prev =>
       prev.map(m => {
         if (m.csvColumn === csvColumn) {
+          const newConfidence: ConfidenceLevel = targetField ? 'high' : 'none';
           return {
             ...m,
             targetField,
-            confidence: targetField ? 'high' as ConfidenceLevel : 'none' as ConfidenceLevel,
+            confidence: newConfidence,
           };
         }
         return m;
@@ -199,8 +199,8 @@ export function AssetColumnMappingDialog({
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-red-700 dark:text-red-300">
-                  {validation.errors.map((error, idx) => (
-                    <p key={idx}>{error}</p>
+                  {validation.errors.map((error) => (
+                    <p key={error}>{error}</p>
                   ))}
                 </div>
               </div>
@@ -212,8 +212,8 @@ export function AssetColumnMappingDialog({
               <div className="flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-amber-700 dark:text-amber-300">
-                  {validation.warnings.map((warning, idx) => (
-                    <p key={idx}>{warning}</p>
+                  {validation.warnings.map((warning) => (
+                    <p key={warning}>{warning}</p>
                   ))}
                 </div>
               </div>
@@ -226,7 +226,7 @@ export function AssetColumnMappingDialog({
               const sampleValues = sampleData
                 .slice(0, 3)
                 .map(row => row[mapping.csvColumn])
-                .filter(v => v && v.trim());
+                .filter(v => v?.trim());
 
               const selectedField = ASSET_TARGET_FIELDS.find(
                 f => f.value === mapping.targetField
@@ -310,9 +310,9 @@ export function AssetColumnMappingDialog({
                             Preview
                           </span>
                           <div className="flex flex-wrap gap-1.5">
-                            {sampleValues.map((value, idx) => (
+                            {sampleValues.map((value) => (
                               <Badge
-                                key={idx}
+                                key={`${mapping.csvColumn}-${value}`}
                                 variant="outline"
                                 className="font-mono text-[11px] bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 max-w-[200px] truncate"
                               >

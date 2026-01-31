@@ -63,7 +63,7 @@ export function useAssetImport(): UseAssetImportReturn {
       const fileExt = file.name.split('.').pop();
       const sanitizedBaseName = file.name
         .replace(`.${fileExt}`, '')
-        .replace(/[^a-zA-Z0-9_-]/g, '_');
+        .replaceAll(/[^a-zA-Z0-9_-]/g, '_');
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/asset-imports/${finalFileName}`;
 
@@ -394,7 +394,7 @@ export function useAssetImport(): UseAssetImportReturn {
         const fileExt = documentFile.name.split('.').pop();
         const sanitizedBaseName = documentFile.name
           .replace(`.${fileExt}`, '')
-          .replace(/[^a-zA-Z0-9_-]/g, '_');
+          .replaceAll(/[^a-zA-Z0-9_-]/g, '_');
         const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
         documentStoragePath = `${selectedRestaurant.restaurant_id}/assets/imports/${finalFileName}`;
 
@@ -447,7 +447,7 @@ export function useAssetImport(): UseAssetImportReturn {
 
         // Attach document as photo if we have it
         if (documentStoragePath && asset) {
-          await supabase
+          const { error: photoError } = await supabase
             .from('asset_photos')
             .insert({
               asset_id: asset.id,
@@ -458,6 +458,11 @@ export function useAssetImport(): UseAssetImportReturn {
               mime_type: documentFile?.type || 'application/octet-stream',
               is_primary: true,
             });
+
+          if (photoError) {
+            console.error('Failed to attach document to asset:', photoError);
+            // Don't fail the import for photo attachment errors
+          }
         }
 
         result.importedCount++;

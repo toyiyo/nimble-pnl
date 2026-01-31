@@ -1,7 +1,7 @@
 // Types for Asset Import feature
 // Allows users to upload invoices/receipts/CSVs to bulk create assets
 
-import { DEFAULT_ASSET_CATEGORIES, getDefaultUsefulLife } from './assets';
+import { getDefaultUsefulLife } from './assets';
 
 /** Line item extracted from an asset purchase document */
 export interface AssetLineItem {
@@ -224,6 +224,15 @@ export function createAssetLineItem(
 }
 
 /**
+ * Parse salvage value from CSV row value
+ */
+function parseSalvageValue(value: string | number | undefined): number {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  return Number.parseFloat(String(value).replaceAll(/[^0-9.-]/g, '')) || 0;
+}
+
+/**
  * Parse a CSV row into an AssetLineItem
  */
 export function parseCSVRowToLineItem(row: AssetCSVRow): AssetLineItem {
@@ -231,36 +240,40 @@ export function parseCSVRowToLineItem(row: AssetCSVRow): AssetLineItem {
   const suggestion = suggestCategoryFromName(name);
   const category = row.category?.trim() || suggestion.category;
   const usefulLife = row.useful_life_months
-    ? parseInt(String(row.useful_life_months), 10)
+    ? Number.parseInt(String(row.useful_life_months), 10)
     : getDefaultUsefulLife(category);
 
-  return {
+  const item: AssetLineItem = {
     id: crypto.randomUUID(),
     rawText: name,
     parsedName: name,
     parsedDescription: row.description?.trim(),
     purchaseCost: typeof row.purchase_cost === 'number'
       ? row.purchase_cost
-      : parseFloat(String(row.purchase_cost).replace(/[^0-9.-]/g, '')) || 0,
+      : Number.parseFloat(String(row.purchase_cost).replaceAll(/[^0-9.-]/g, '')) || 0,
     purchaseDate: row.purchase_date?.trim() || new Date().toISOString().split('T')[0],
     serialNumber: row.serial_number?.trim(),
     suggestedCategory: category,
     suggestedUsefulLifeMonths: usefulLife,
-    suggestedSalvageValue: row.salvage_value
-      ? (typeof row.salvage_value === 'number'
-        ? row.salvage_value
-        : parseFloat(String(row.salvage_value).replace(/[^0-9.-]/g, '')) || 0)
-      : 0,
+    suggestedSalvageValue: parseSalvageValue(row.salvage_value),
     confidenceScore: row.category ? 0.95 : suggestion.confidence,
     // User-editable defaults
     category,
     usefulLifeMonths: usefulLife,
-    salvageValue: row.salvage_value
-      ? (typeof row.salvage_value === 'number'
-        ? row.salvage_value
-        : parseFloat(String(row.salvage_value).replace(/[^0-9.-]/g, '')) || 0)
-      : 0,
+    salvageValue: parseSalvageValue(row.salvage_value),
     description: row.description?.trim(),
     importStatus: 'pending'
   };
+
+  // Add location if provided (stored as locationId, but CSV provides location name)
+  // Note: locationId mapping to actual location record should be done during import
+  if (row.location?.trim()) {
+    // Store location name in description if no locationId mapping available
+    // The import process should resolve this to an actual locationId
+    item.description = item.description
+      ? `${item.description} | Location: ${row.location.trim()}`
+      : `Location: ${row.location.trim()}`;
+  }
+
+  return item;
 }

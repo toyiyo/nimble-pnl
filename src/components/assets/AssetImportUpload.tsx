@@ -25,10 +25,10 @@ import type { AssetColumnMapping } from '@/utils/assetColumnMapping';
 import * as XLSX from 'xlsx';
 
 interface AssetImportUploadProps {
-  onDocumentProcessed: (lineItems: AssetLineItem[], documentFile?: File) => void;
+  readonly onDocumentProcessed: (lineItems: AssetLineItem[], documentFile?: File) => void;
 }
 
-export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProps) {
+export function AssetImportUpload({ onDocumentProcessed }: Readonly<AssetImportUploadProps>) {
   const [processingStep, setProcessingStep] = useState<'idle' | 'upload' | 'process' | 'complete'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -478,7 +478,6 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
           setShowMappingDialog(open);
           if (!open) { resetCsvState(); resetFileInputs(); setProcessingStep('idle'); }
         }}
-        csvHeaders={csvHeaders}
         sampleData={csvSampleData}
         suggestedMappings={suggestedMappings}
         onConfirm={handleMappingConfirm}

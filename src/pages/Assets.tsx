@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -10,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Package,
   Plus,
@@ -19,6 +26,7 @@ import {
   TrendingDown,
   Calculator,
   Boxes,
+  Upload,
 } from 'lucide-react';
 import { useAssets } from '@/hooks/useAssets';
 import { useAssetsPendingDepreciation } from '@/hooks/useAssetDepreciation';
@@ -27,9 +35,12 @@ import {
   AssetDialog,
   AssetDepreciationSheet,
   AssetDisposeDialog,
+  AssetImportUpload,
+  AssetImportReview,
 } from '@/components/assets';
 import type { Asset, AssetFormData, AssetStatus, AssetWithDetails } from '@/types/assets';
 import { formatAssetCurrency, DEFAULT_ASSET_CATEGORIES } from '@/types/assets';
+import type { AssetLineItem } from '@/types/assetImport';
 import { FeatureGate } from '@/components/subscription';
 
 type StatusFilter = AssetStatus | 'all';
@@ -73,6 +84,11 @@ export default function Assets() {
   const [depreciationAsset, setDepreciationAsset] = useState<AssetWithDetails | null>(null);
   const [isDisposeOpen, setIsDisposeOpen] = useState(false);
   const [disposeAsset, setDisposeAsset] = useState<AssetWithDetails | null>(null);
+
+  // Import states
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importedItems, setImportedItems] = useState<AssetLineItem[]>([]);
+  const [importDocumentFile, setImportDocumentFile] = useState<File | undefined>(undefined);
 
   const {
     assets,
@@ -144,6 +160,25 @@ export default function Assets() {
     setDisposeAsset(null);
   };
 
+  // Import handlers
+  const handleDocumentProcessed = useCallback((items: AssetLineItem[], documentFile?: File) => {
+    setImportedItems(items);
+    setImportDocumentFile(documentFile);
+  }, []);
+
+  const handleImportComplete = useCallback(() => {
+    setIsImportDialogOpen(false);
+    setImportedItems([]);
+    setImportDocumentFile(undefined);
+    refetch();
+  }, [refetch]);
+
+  const handleImportCancel = useCallback(() => {
+    setIsImportDialogOpen(false);
+    setImportedItems([]);
+    setImportDocumentFile(undefined);
+  }, []);
+
   return (
     <FeatureGate featureKey="assets">
     <div className="space-y-6">
@@ -159,16 +194,26 @@ export default function Assets() {
               Track fixed assets, depreciation, and equipment across your restaurant.
             </p>
           </div>
-          <Button
-            onClick={() => {
-              setSelectedAsset(null);
-              setIsDialogOpen(true);
-            }}
-            className="bg-white text-blue-600 hover:bg-blue-50"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Asset
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsImportDialogOpen(true)}
+              className="bg-white/10 text-white border-white/20 hover:bg-white/20"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Import Assets
+            </Button>
+            <Button
+              onClick={() => {
+                setSelectedAsset(null);
+                setIsDialogOpen(true);
+              }}
+              className="bg-white text-blue-600 hover:bg-blue-50"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Asset
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -317,6 +362,28 @@ export default function Assets() {
         onDispose={handleConfirmDispose}
         isDisposing={isDisposing}
       />
+
+      {/* Asset Import Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import Assets</DialogTitle>
+            <DialogDescription>
+              Upload an invoice, receipt, or CSV to bulk import assets
+            </DialogDescription>
+          </DialogHeader>
+          {importedItems.length === 0 ? (
+            <AssetImportUpload onDocumentProcessed={handleDocumentProcessed} />
+          ) : (
+            <AssetImportReview
+              initialItems={importedItems}
+              documentFile={importDocumentFile}
+              onImportComplete={handleImportComplete}
+              onCancel={handleImportCancel}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
     </FeatureGate>
   );

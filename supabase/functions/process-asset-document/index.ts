@@ -413,20 +413,21 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!supabaseUrl || !supabaseServiceKey) {
       return new Response(
         JSON.stringify({ success: false, error: "Server configuration error" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Use service role client to verify auth and check access (bypasses RLS)
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Verify user token
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
     if (authError || !user) {
       return new Response(
@@ -452,24 +453,16 @@ serve(async (req) => {
       );
     }
 
-    // Verify user has access to this restaurant
-    // Check both restaurant_staff membership and restaurant ownership
-    const { data: membership } = await supabase
-      .from("restaurant_staff")
-      .select("id")
+    // Verify user has access to this restaurant via user_restaurants table
+    const { data: userRestaurant, error: accessError } = await supabaseAdmin
+      .from("user_restaurants")
+      .select("id, role")
       .eq("user_id", user.id)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
 
-    const { data: ownership } = await supabase
-      .from("restaurants")
-      .select("id")
-      .eq("id", restaurantId)
-      .eq("owner_id", user.id)
-      .maybeSingle();
-
-    if (!membership && !ownership) {
-      console.error(`Access denied: user ${user.id} has no access to restaurant ${restaurantId}`);
+    if (accessError || !userRestaurant) {
+      console.error(`Access denied: user ${user.id} has no access to restaurant ${restaurantId}`, accessError);
       return new Response(
         JSON.stringify({ success: false, error: "Access denied to this restaurant" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 }

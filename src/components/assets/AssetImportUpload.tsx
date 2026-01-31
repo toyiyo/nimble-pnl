@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,8 +7,12 @@ import { Progress } from '@/components/ui/progress';
 import { useAssetImport } from '@/hooks/useAssetImport';
 import { Upload, FileText, FileSpreadsheet, Download, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getCSVTemplateHeader, getCSVTemplateSampleRow } from '@/types/assetImport';
+import { getCSVTemplateHeader, getCSVTemplateSampleRow, suggestCategoryFromName } from '@/types/assetImport';
+import { getDefaultUsefulLife } from '@/types/assets';
 import type { AssetLineItem } from '@/types/assetImport';
+import { AssetColumnMappingDialog } from './AssetColumnMappingDialog';
+import { suggestAssetColumnMappings, parseCSVLine } from '@/utils/assetColumnMapping';
+import type { AssetColumnMapping } from '@/utils/assetColumnMapping';
 
 interface AssetImportUploadProps {
   onDocumentProcessed: (lineItems: AssetLineItem[], documentFile?: File) => void;
@@ -18,16 +22,166 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
   const [processingStep, setProcessingStep] = useState<'idle' | 'upload' | 'process' | 'complete'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // CSV mapping dialog state
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvSampleData, setCsvSampleData] = useState<Record<string, string>[]>([]);
+  const [csvAllRows, setCsvAllRows] = useState<Record<string, string>[]>([]);
+  const [suggestedMappings, setSuggestedMappings] = useState<AssetColumnMapping[]>([]);
+  const [pendingCsvFile, setPendingCsvFile] = useState<File | null>(null);
+
   const {
     uploadDocument,
     processDocument,
-    parseCSV,
     lineItems,
     isUploading,
     isProcessing,
   } = useAssetImport();
 
   const { toast } = useToast();
+
+  /** Reset all CSV-related state */
+  const resetCsvState = useCallback(() => {
+    setPendingCsvFile(null);
+    setCsvHeaders([]);
+    setCsvSampleData([]);
+    setCsvAllRows([]);
+    setSuggestedMappings([]);
+  }, []);
+
+  /**
+   * Parse CSV file and extract headers and sample data for mapping
+   */
+  const parseCSVForMapping = useCallback((file: File): Promise<{
+    headers: string[];
+    sampleData: Record<string, string>[];
+    allRows: Record<string, string>[];
+  }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const lines = text.split('\n').filter(line => line.trim());
+
+          if (lines.length < 2) {
+            throw new Error('CSV must have a header row and at least one data row');
+          }
+
+          // Parse header
+          const headers = parseCSVLine(lines[0]).map(h => h.trim());
+
+          // Parse all data rows
+          const allRows: Record<string, string>[] = [];
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i]);
+            const row: Record<string, string> = {};
+            headers.forEach((header, index) => {
+              row[header] = values[index]?.trim() || '';
+            });
+            allRows.push(row);
+          }
+
+          // Sample data for preview (first 5 rows)
+          const sampleData = allRows.slice(0, 5);
+
+          resolve({ headers, sampleData, allRows });
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+
+      reader.readAsText(file);
+    });
+  }, []);
+
+  /**
+   * Convert mapped CSV data to AssetLineItems
+   */
+  const convertMappedCSVToLineItems = useCallback((
+    rows: Record<string, string>[],
+    mappings: AssetColumnMapping[]
+  ): AssetLineItem[] => {
+    const items: AssetLineItem[] = [];
+
+    // Create a lookup from target field to CSV column
+    const fieldToColumn: Record<string, string> = {};
+    mappings.forEach(m => {
+      if (m.targetField && m.targetField !== 'ignore') {
+        fieldToColumn[m.targetField] = m.csvColumn;
+      }
+    });
+
+    rows.forEach((row, index) => {
+      // Get required values
+      const nameColumn = fieldToColumn['name'];
+      const dateColumn = fieldToColumn['purchase_date'];
+      const costColumn = fieldToColumn['purchase_cost'];
+
+      const name = nameColumn ? row[nameColumn]?.trim() : '';
+      const purchaseDate = dateColumn ? row[dateColumn]?.trim() : '';
+      const purchaseCostStr = costColumn ? row[costColumn]?.trim() : '';
+
+      // Skip rows without required data
+      if (!name || !purchaseDate || !purchaseCostStr) {
+        console.warn(`Skipping row ${index + 1}: missing required fields`);
+        return;
+      }
+
+      // Parse purchase cost (handle currency symbols)
+      const purchaseCost = parseFloat(purchaseCostStr.replace(/[^0-9.-]/g, '')) || 0;
+
+      // Get optional values
+      const categoryColumn = fieldToColumn['category'];
+      const csvCategory = categoryColumn ? row[categoryColumn]?.trim() : '';
+      const suggestion = suggestCategoryFromName(name);
+      const category = csvCategory || suggestion.category;
+
+      const usefulLifeColumn = fieldToColumn['useful_life_months'];
+      const usefulLifeStr = usefulLifeColumn ? row[usefulLifeColumn]?.trim() : '';
+      const usefulLifeMonths = usefulLifeStr
+        ? parseInt(usefulLifeStr, 10)
+        : getDefaultUsefulLife(category);
+
+      const salvageColumn = fieldToColumn['salvage_value'];
+      const salvageStr = salvageColumn ? row[salvageColumn]?.trim() : '';
+      const salvageValue = salvageStr
+        ? parseFloat(salvageStr.replace(/[^0-9.-]/g, '')) || 0
+        : 0;
+
+      const serialColumn = fieldToColumn['serial_number'];
+      const serialNumber = serialColumn ? row[serialColumn]?.trim() : undefined;
+
+      const descColumn = fieldToColumn['description'];
+      const description = descColumn ? row[descColumn]?.trim() : undefined;
+
+      items.push({
+        id: crypto.randomUUID(),
+        rawText: name,
+        parsedName: name,
+        parsedDescription: description,
+        purchaseCost,
+        purchaseDate,
+        serialNumber,
+        suggestedCategory: category,
+        suggestedUsefulLifeMonths: usefulLifeMonths,
+        suggestedSalvageValue: salvageValue,
+        confidenceScore: csvCategory ? 0.95 : suggestion.confidence,
+        category,
+        usefulLifeMonths,
+        salvageValue,
+        description,
+        importStatus: 'pending',
+      });
+    });
+
+    return items;
+  }, []);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -37,12 +191,27 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
 
     // Check if it's a CSV file
     if (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv') {
-      setProcessingStep('process');
       try {
-        const items = await parseCSV(file);
-        setProcessingStep('complete');
-        onDocumentProcessed(items, undefined); // No document to attach for CSV
-      } catch {
+        // Parse CSV for column mapping
+        const { headers, sampleData, allRows } = await parseCSVForMapping(file);
+
+        // Generate suggested mappings
+        const mappings = suggestAssetColumnMappings(headers, sampleData);
+
+        // Show mapping dialog for user to review/confirm mappings
+        setCsvHeaders(headers);
+        setCsvSampleData(sampleData);
+        setCsvAllRows(allRows);
+        setSuggestedMappings(mappings);
+        setPendingCsvFile(file);
+        setShowMappingDialog(true);
+      } catch (error) {
+        console.error('Error parsing CSV:', error);
+        toast({
+          title: 'CSV parsing failed',
+          description: error instanceof Error ? error.message : 'Failed to parse CSV file',
+          variant: 'destructive',
+        });
         setProcessingStep('idle');
       }
       return;
@@ -68,12 +237,58 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     setProcessingStep('complete');
     // Note: For PDF/image, onDocumentProcessed is called via useEffect below
     // because lineItems are updated async by the hook after processDocument completes
-  }, [uploadDocument, processDocument, parseCSV, onDocumentProcessed]);
+  }, [uploadDocument, processDocument, parseCSVForMapping, toast]);
 
-  // Watch for line items to notify parent when processing completes for PDF/images
-  // (CSV processing calls onDocumentProcessed directly since items are returned inline)
-  React.useEffect(() => {
-    if (processingStep === 'complete' && lineItems.length > 0 && selectedFile && !selectedFile.name.toLowerCase().endsWith('.csv')) {
+  /**
+   * Handle confirmed column mappings from dialog
+   */
+  const handleMappingConfirm = useCallback((mappings: AssetColumnMapping[]) => {
+    setShowMappingDialog(false);
+
+    if (csvAllRows.length === 0) {
+      toast({
+        title: 'Error',
+        description: 'No CSV data found. Please try uploading again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setProcessingStep('process');
+
+    try {
+      const items = convertMappedCSVToLineItems(csvAllRows, mappings);
+
+      if (items.length === 0) {
+        throw new Error('No valid asset rows found in CSV');
+      }
+
+      setProcessingStep('complete');
+
+      toast({
+        title: 'CSV parsed',
+        description: `Found ${items.length} asset${items.length !== 1 ? 's' : ''} in file`,
+      });
+
+      onDocumentProcessed(items, undefined); // No document to attach for CSV
+    } catch (error) {
+      console.error('Error processing CSV:', error);
+      toast({
+        title: 'CSV processing failed',
+        description: error instanceof Error ? error.message : 'Failed to process CSV file',
+        variant: 'destructive',
+      });
+      setProcessingStep('idle');
+    }
+
+    resetCsvState();
+  }, [csvAllRows, convertMappedCSVToLineItems, onDocumentProcessed, toast, resetCsvState]);
+
+  // Notify parent when PDF/image processing completes
+  // CSV processing calls onDocumentProcessed directly since items are returned inline
+  useEffect(() => {
+    const isNonCsvFile = selectedFile && !selectedFile.name.toLowerCase().endsWith('.csv');
+    if (processingStep === 'complete' && lineItems.length > 0 && isNonCsvFile) {
       onDocumentProcessed(lineItems, selectedFile);
     }
   }, [processingStep, lineItems, selectedFile, onDocumentProcessed]);
@@ -257,6 +472,22 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
           </ul>
         </div>
       </CardContent>
+
+      {/* Column Mapping Dialog for CSV */}
+      <AssetColumnMappingDialog
+        open={showMappingDialog}
+        onOpenChange={(open) => {
+          setShowMappingDialog(open);
+          if (!open) {
+            resetCsvState();
+            setProcessingStep('idle');
+          }
+        }}
+        csvHeaders={csvHeaders}
+        sampleData={csvSampleData}
+        suggestedMappings={suggestedMappings}
+        onConfirm={handleMappingConfirm}
+      />
     </Card>
   );
 }

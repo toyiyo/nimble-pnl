@@ -395,23 +395,25 @@ export default function Assets() {
 
       {/* Asset Import Dialog */}
       <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col p-0">
           <DialogHeader className="sr-only">
             <DialogTitle>Import Assets</DialogTitle>
             <DialogDescription>
               Upload an invoice, receipt, or CSV to bulk import assets
             </DialogDescription>
           </DialogHeader>
-          {importedItems.length === 0 ? (
-            <AssetImportUpload onDocumentProcessed={handleDocumentProcessed} />
-          ) : (
-            <AssetImportReview
-              initialItems={importedItems}
-              documentFile={importDocumentFile}
-              onImportComplete={handleImportComplete}
-              onCancel={handleImportCancel}
-            />
-          )}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            {importedItems.length === 0 ? (
+              <AssetImportUpload onDocumentProcessed={handleDocumentProcessed} />
+            ) : (
+              <AssetImportReview
+                initialItems={importedItems}
+                documentFile={importDocumentFile}
+                onImportComplete={handleImportComplete}
+                onCancel={handleImportCancel}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

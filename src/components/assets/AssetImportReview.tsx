@@ -57,8 +57,11 @@ export function AssetImportReview({
     const imported = items.filter(i => i.importStatus === 'imported').length;
     const errored = items.filter(i => i.importStatus === 'error').length;
     const totalCost = items.reduce((sum, i) => sum + i.purchaseCost, 0);
+    // Items with $0 cost need a price before import (DB requires > 0)
+    const needsPrice = items.filter(i => i.importStatus === 'pending' && i.purchaseCost <= 0).length;
+    const readyToImport = items.filter(i => i.importStatus === 'pending' && i.purchaseCost > 0).length;
 
-    return { pending, imported, errored, totalCost, total: items.length };
+    return { pending, imported, errored, totalCost, total: items.length, needsPrice, readyToImport };
   }, [items]);
 
   const handleUpdateItem = useCallback((id: string, updates: Partial<AssetLineItem>) => {
@@ -70,7 +73,8 @@ export function AssetImportReview({
   }, []);
 
   const handleImport = useCallback(async () => {
-    const pendingItems = items.filter(i => i.importStatus === 'pending');
+    // Only import items with a valid price (> 0)
+    const pendingItems = items.filter(i => i.importStatus === 'pending' && i.purchaseCost > 0);
     if (pendingItems.length === 0) return;
 
     const result = await bulkImportAssets(pendingItems, documentFile);
@@ -189,6 +193,8 @@ export function AssetImportReview({
                       ? 'bg-green-50/50 dark:bg-green-900/10'
                       : item.importStatus === 'error'
                       ? 'bg-red-50/50 dark:bg-red-900/10'
+                      : item.importStatus === 'pending' && item.purchaseCost <= 0
+                      ? 'bg-amber-50/50 dark:bg-amber-900/10'
                       : ''
                   }
                 >
@@ -260,19 +266,37 @@ export function AssetImportReview({
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={item.purchaseCost}
-                      onChange={e =>
-                        handleUpdateItem(item.id, {
-                          purchaseCost: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      disabled={item.importStatus !== 'pending' || isImporting}
-                      className="h-8 text-sm text-right"
-                    />
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.purchaseCost}
+                        onChange={e =>
+                          handleUpdateItem(item.id, {
+                            purchaseCost: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        disabled={item.importStatus !== 'pending' || isImporting}
+                        className={`h-8 text-sm text-right ${
+                          item.importStatus === 'pending' && item.purchaseCost <= 0
+                            ? 'border-amber-400 focus:border-amber-500 focus:ring-amber-500'
+                            : ''
+                        }`}
+                      />
+                      {item.importStatus === 'pending' && item.purchaseCost <= 0 && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertCircle className="absolute -right-5 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Enter a cost {'>'} $0 to import this asset
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center gap-1 justify-end">
@@ -341,30 +365,45 @@ export function AssetImportReview({
 
       <Separator />
 
-      <CardFooter className="flex items-center justify-between py-4">
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          {stats.pending > 0 && (
-            <span>{stats.pending} pending</span>
-          )}
-          {stats.imported > 0 && (
-            <span className="text-green-600">{stats.imported} imported</span>
-          )}
-          {stats.errored > 0 && (
-            <span className="text-red-600">{stats.errored} failed</span>
-          )}
-        </div>
+      <CardFooter className="flex flex-col gap-3 py-4">
+        {stats.needsPrice > 0 && (
+          <div className="w-full bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm">
+            <span className="text-amber-700 dark:text-amber-300 font-medium">
+              {stats.needsPrice} item{stats.needsPrice !== 1 ? 's need' : ' needs'} a price
+            </span>
+            <span className="text-amber-600 dark:text-amber-400 ml-1">
+              — Enter a cost {'>'} $0 or remove the row to import
+            </span>
+          </div>
+        )}
+        <div className="w-full flex items-center justify-between">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            {stats.readyToImport > 0 && (
+              <span className="text-green-600">{stats.readyToImport} ready</span>
+            )}
+            {stats.needsPrice > 0 && (
+              <span className="text-amber-600">{stats.needsPrice} need price</span>
+            )}
+            {stats.imported > 0 && (
+              <span className="text-green-600">{stats.imported} imported</span>
+            )}
+            {stats.errored > 0 && (
+              <span className="text-red-600">{stats.errored} failed</span>
+            )}
+          </div>
 
-        <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={onCancel} disabled={isImporting}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleImport}
-            disabled={isImporting || stats.pending === 0}
-          >
-            {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Import {stats.pending} Asset{stats.pending !== 1 ? 's' : ''}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={onCancel} disabled={isImporting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={isImporting || stats.readyToImport === 0}
+            >
+              {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Import {stats.readyToImport} Asset{stats.readyToImport !== 1 ? 's' : ''}
+            </Button>
+          </div>
         </div>
       </CardFooter>
     </Card>

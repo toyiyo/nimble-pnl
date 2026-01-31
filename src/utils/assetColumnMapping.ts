@@ -63,8 +63,8 @@ const ASSET_FIELD_PATTERNS: Record<string, KeywordPattern> = {
     weight: 9,
   },
   purchase_cost: {
-    keywords: ['purchase cost', 'cost', 'price', 'amount', 'purchase price', 'acquisition cost', 'value'],
-    aliases: ['purchase_cost', 'purchase_price', 'original_cost', 'acquisition_cost'],
+    keywords: ['purchase cost', 'cost', 'price', 'amount', 'purchase price', 'acquisition cost', 'value', 'total', 'line total', 'extended'],
+    aliases: ['purchase_cost', 'purchase_price', 'original_cost', 'acquisition_cost', 'line_total', 'ext_price', 'extended_price', 'unit_price'],
     weight: 9,
   },
   salvage_value: {

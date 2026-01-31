@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import type { AssetLineItem } from '@/types/assetImport';
 import { AssetColumnMappingDialog } from './AssetColumnMappingDialog';
 import { suggestAssetColumnMappings, parseCSVLine } from '@/utils/assetColumnMapping';
 import type { AssetColumnMapping } from '@/utils/assetColumnMapping';
+import * as XLSX from 'xlsx';
 
 interface AssetImportUploadProps {
   onDocumentProcessed: (lineItems: AssetLineItem[], documentFile?: File) => void;
@@ -21,6 +22,10 @@ interface AssetImportUploadProps {
 export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProps) {
   const [processingStep, setProcessingStep] = useState<'idle' | 'upload' | 'process' | 'complete'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  // File input refs - needed to reset value so same file can be re-selected
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   // CSV mapping dialog state
   const [showMappingDialog, setShowMappingDialog] = useState(false);
@@ -47,6 +52,16 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     setCsvSampleData([]);
     setCsvAllRows([]);
     setSuggestedMappings([]);
+  }, []);
+
+  /** Reset file inputs so the same file can be re-selected */
+  const resetFileInputs = useCallback(() => {
+    if (documentInputRef.current) {
+      documentInputRef.current.value = '';
+    }
+    if (csvInputRef.current) {
+      csvInputRef.current.value = '';
+    }
   }, []);
 
   /**
@@ -101,6 +116,80 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
   }, []);
 
   /**
+   * Parse Excel file (.xls, .xlsx) and extract headers and data for mapping
+   */
+  const parseExcelForMapping = useCallback(async (file: File): Promise<{
+    headers: string[];
+    sampleData: Record<string, string>[];
+    allRows: Record<string, string>[];
+  }> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+    // Use first sheet
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    // Convert to JSON with header row
+    const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      header: 1,
+      defval: ''
+    }) as string[][];
+
+    if (jsonData.length < 2) {
+      throw new Error('Excel file must have a header row and at least one data row');
+    }
+
+    // First row is headers
+    const headers = jsonData[0].map(h => String(h).trim());
+
+    // Convert remaining rows to objects
+    const allRows: Record<string, string>[] = [];
+    for (let i = 1; i < jsonData.length; i++) {
+      const rowData = jsonData[i];
+      const row: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        const value = rowData[index];
+        row[header] = value !== undefined ? String(value).trim() : '';
+      });
+      allRows.push(row);
+    }
+
+    // Sample data for preview (first 5 rows)
+    const sampleData = allRows.slice(0, 5);
+
+    return { headers, sampleData, allRows };
+  }, []);
+
+  /**
+   * Check if file is a spreadsheet (CSV or Excel)
+   */
+  const isSpreadsheetFile = useCallback((file: File): boolean => {
+    const name = file.name.toLowerCase();
+    return (
+      name.endsWith('.csv') ||
+      name.endsWith('.xls') ||
+      name.endsWith('.xlsx') ||
+      file.type === 'text/csv' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+  }, []);
+
+  /**
+   * Check if file is an Excel file
+   */
+  const isExcelFile = useCallback((file: File): boolean => {
+    const name = file.name.toLowerCase();
+    return (
+      name.endsWith('.xls') ||
+      name.endsWith('.xlsx') ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+  }, []);
+
+  /**
    * Convert mapped CSV data to AssetLineItems
    */
   const convertMappedCSVToLineItems = useCallback((
@@ -117,24 +206,45 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
       }
     });
 
+    // Debug: log the mapping and first row
+    console.log('Field to column mapping:', fieldToColumn);
+    console.log('First row keys:', rows[0] ? Object.keys(rows[0]) : 'no rows');
+    console.log('First row values:', rows[0]);
+
     rows.forEach((row, index) => {
-      // Get required values
+      // Get column mappings
       const nameColumn = fieldToColumn['name'];
       const dateColumn = fieldToColumn['purchase_date'];
       const costColumn = fieldToColumn['purchase_cost'];
 
       const name = nameColumn ? row[nameColumn]?.trim() : '';
-      const purchaseDate = dateColumn ? row[dateColumn]?.trim() : '';
+      const purchaseDateStr = dateColumn ? row[dateColumn]?.trim() : '';
       const purchaseCostStr = costColumn ? row[costColumn]?.trim() : '';
 
-      // Skip rows without required data
-      if (!name || !purchaseDate || !purchaseCostStr) {
-        console.warn(`Skipping row ${index + 1}: missing required fields`);
+      // Debug: log values for first few rows
+      if (index < 3) {
+        console.log(`Row ${index + 1}:`, {
+          nameColumn, name,
+          dateColumn, purchaseDate: purchaseDateStr,
+          costColumn, purchaseCostStr,
+          rawCostValue: costColumn ? row[costColumn] : 'no column',
+          allValues: row
+        });
+      }
+
+      // Only name is truly required - skip empty/summary rows
+      if (!name) {
+        console.warn(`Skipping row ${index + 1}: no name`);
         return;
       }
 
-      // Parse purchase cost (handle currency symbols)
-      const purchaseCost = parseFloat(purchaseCostStr.replace(/[^0-9.-]/g, '')) || 0;
+      // Parse purchase cost (handle currency symbols, default to 0 for bundle items)
+      const purchaseCost = purchaseCostStr
+        ? Number.parseFloat(purchaseCostStr.replaceAll(/[^0-9.-]/g, '')) || 0
+        : 0;
+
+      // Use provided date or default to today
+      const purchaseDate = purchaseDateStr || new Date().toISOString().split('T')[0];
 
       // Get optional values
       const categoryColumn = fieldToColumn['category'];
@@ -189,11 +299,19 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
 
     setSelectedFile(file);
 
-    // Check if it's a CSV file
-    if (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv') {
+    // Check if it's a spreadsheet file (CSV or Excel)
+    if (isSpreadsheetFile(file)) {
       try {
-        // Parse CSV for column mapping
-        const { headers, sampleData, allRows } = await parseCSVForMapping(file);
+        // Parse spreadsheet for column mapping
+        let parsed: { headers: string[]; sampleData: Record<string, string>[]; allRows: Record<string, string>[] };
+
+        if (isExcelFile(file)) {
+          parsed = await parseExcelForMapping(file);
+        } else {
+          parsed = await parseCSVForMapping(file);
+        }
+
+        const { headers, sampleData, allRows } = parsed;
 
         // Generate suggested mappings
         const mappings = suggestAssetColumnMappings(headers, sampleData);
@@ -206,13 +324,14 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
         setPendingCsvFile(file);
         setShowMappingDialog(true);
       } catch (error) {
-        console.error('Error parsing CSV:', error);
+        console.error('Error parsing spreadsheet:', error);
         toast({
-          title: 'CSV parsing failed',
-          description: error instanceof Error ? error.message : 'Failed to parse CSV file',
+          title: 'Spreadsheet parsing failed',
+          description: error instanceof Error ? error.message : 'Failed to parse file',
           variant: 'destructive',
         });
         setProcessingStep('idle');
+        resetFileInputs();
       }
       return;
     }
@@ -223,6 +342,7 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     const document = await uploadDocument(file);
     if (!document) {
       setProcessingStep('idle');
+      resetFileInputs();
       return;
     }
 
@@ -231,13 +351,14 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     const success = await processDocument(document, file);
     if (!success) {
       setProcessingStep('idle');
+      resetFileInputs();
       return;
     }
 
     setProcessingStep('complete');
     // Note: For PDF/image, onDocumentProcessed is called via useEffect below
     // because lineItems are updated async by the hook after processDocument completes
-  }, [uploadDocument, processDocument, parseCSVForMapping, toast]);
+  }, [uploadDocument, processDocument, parseCSVForMapping, parseExcelForMapping, isSpreadsheetFile, isExcelFile, toast, resetFileInputs]);
 
   /**
    * Handle confirmed column mappings from dialog
@@ -282,7 +403,8 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     }
 
     resetCsvState();
-  }, [csvAllRows, convertMappedCSVToLineItems, onDocumentProcessed, toast, resetCsvState]);
+    resetFileInputs();
+  }, [csvAllRows, convertMappedCSVToLineItems, onDocumentProcessed, toast, resetCsvState, resetFileInputs]);
 
   // Notify parent when PDF/image processing completes
   // CSV processing calls onDocumentProcessed directly since items are returned inline
@@ -369,6 +491,7 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
               Upload Invoice or Receipt
             </Label>
             <Input
+              ref={documentInputRef}
               id="asset-document"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
@@ -392,17 +515,18 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
             </div>
           </div>
 
-          {/* CSV upload */}
+          {/* Spreadsheet upload (CSV/Excel) */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <FileSpreadsheet className="h-4 w-4" />
-              Upload CSV File
+              Upload Spreadsheet
             </Label>
             <div className="flex gap-2">
               <Input
-                id="asset-csv"
+                ref={csvInputRef}
+                id="asset-spreadsheet"
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={handleFileUpload}
                 disabled={isProcessingActive}
                 className="cursor-pointer flex-1"
@@ -419,13 +543,13 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Required columns: name, purchase_date, purchase_cost.
+              CSV or Excel (.xls, .xlsx). Required: name column. Price defaults to $0 if empty.
               <button
                 onClick={handleDownloadTemplate}
                 className="ml-1 text-primary hover:underline"
                 disabled={isProcessingActive}
               >
-                Download template
+                Download CSV template
               </button>
             </p>
           </div>
@@ -467,8 +591,9 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
           </h4>
           <ul className="text-xs text-muted-foreground space-y-1">
             <li>• <strong>Invoices & Receipts:</strong> PDF, JPG, PNG (up to 10MB) - AI extracts asset details</li>
-            <li>• <strong>Asset Lists:</strong> CSV with columns for name, purchase date, cost, and more</li>
+            <li>• <strong>Asset Lists:</strong> CSV or Excel (.xls, .xlsx) - map columns to asset fields</li>
             <li>• <strong>Equipment Schedules:</strong> PDF asset schedules or depreciation reports</li>
+            <li>• <strong>Bundle quotes:</strong> Items with $0 price can be imported and edited before saving</li>
           </ul>
         </div>
       </CardContent>
@@ -480,6 +605,7 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
           setShowMappingDialog(open);
           if (!open) {
             resetCsvState();
+            resetFileInputs();
             setProcessingStep('idle');
           }
         }}

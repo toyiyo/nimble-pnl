@@ -19,17 +19,132 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { 
-  Plus, 
-  Building2, 
-  CalendarCheck, 
+import {
+  Plus,
+  Building2,
+  Clock,
+  Info,
+  Sparkles,
 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TimezoneSelector } from '@/components/TimezoneSelector';
+import { calculatePrice, formatPrice, getVolumeDiscountPercent } from '@/lib/subscriptionPlans';
 import { UserProfileDropdown } from '@/components/UserProfileDropdown';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useSubscription } from '@/hooks/useSubscription';
+
+/**
+ * Get styles for trial countdown badge based on days remaining
+ */
+function getTrialBadgeStyles(daysRemaining: number): string {
+  if (daysRemaining <= 3) {
+    return 'border-red-500 text-red-600 hover:bg-red-50 dark:hover:bg-red-950';
+  }
+  if (daysRemaining <= 7) {
+    return 'border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950';
+  }
+  return 'border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950';
+}
+
+/**
+ * Volume discount progress indicator
+ */
+function VolumeDiscountProgress({
+  newDiscount,
+  currentDiscount,
+  nextMilestone,
+  restaurantsUntilMilestone,
+}: Readonly<{
+  newDiscount: number;
+  currentDiscount: number;
+  nextMilestone: { threshold: number; percent: number } | null;
+  restaurantsUntilMilestone: number;
+}>): React.ReactElement | null {
+  // Unlocking a new discount tier
+  if (newDiscount > currentDiscount) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 pt-1">
+        <Sparkles className="h-3 w-3" />
+        <span>
+          You'll unlock a {newDiscount}% volume discount with this location!
+        </span>
+      </div>
+    );
+  }
+
+  // Show progress to next milestone
+  if (nextMilestone && restaurantsUntilMilestone > 0) {
+    return (
+      <div className="text-xs text-muted-foreground pt-1">
+        {restaurantsUntilMilestone} more location{restaurantsUntilMilestone === 1 ? '' : 's'} until {nextMilestone.percent}% volume discount
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Billing preview shown when adding restaurants
+ */
+function BillingPreview({
+  currentCount,
+  tier,
+  period,
+}: Readonly<{
+  currentCount: number;
+  tier: 'starter' | 'growth' | 'pro';
+  period: 'monthly' | 'annual';
+}>) {
+  const currentPricing = calculatePrice(tier, period, currentCount);
+  const newPricing = calculatePrice(tier, period, currentCount + 1);
+  const currentDiscount = getVolumeDiscountPercent(currentCount);
+  const newDiscount = getVolumeDiscountPercent(currentCount + 1);
+  const periodLabel = period === 'annual' ? 'yr' : 'mo';
+
+  // Find next volume discount milestone
+  const getNextMilestone = (count: number): { threshold: number; percent: number } | null => {
+    if (count < 3) return { threshold: 3, percent: 5 };
+    if (count < 6) return { threshold: 6, percent: 10 };
+    if (count < 11) return { threshold: 11, percent: 15 };
+    return null;
+  };
+
+  const nextMilestone = getNextMilestone(currentCount + 1);
+  const restaurantsUntilMilestone = nextMilestone ? nextMilestone.threshold - (currentCount + 1) : 0;
+
+  return (
+    <Alert className="bg-muted/50 border-muted-foreground/20">
+      <Info className="h-4 w-4" />
+      <AlertDescription className="space-y-2">
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-muted-foreground">
+            Current ({currentCount} location{currentCount === 1 ? '' : 's'}):
+          </span>
+          <span className="font-medium">{formatPrice(currentPricing.totalPrice)}/{periodLabel}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-muted-foreground">
+            After adding this location:
+          </span>
+          <span className="font-semibold text-foreground">{formatPrice(newPricing.totalPrice)}/{periodLabel}</span>
+        </div>
+
+        {/* Volume discount progress */}
+        <VolumeDiscountProgress
+          newDiscount={newDiscount}
+          currentDiscount={currentDiscount}
+          nextMilestone={nextMilestone}
+          restaurantsUntilMilestone={restaurantsUntilMilestone}
+        />
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 export const AppHeader = () => {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, createRestaurant, canCreateRestaurant } = useRestaurantContext();
+  const { isTrialing, trialDaysRemaining, effectiveTier, subscription } = useSubscription();
   const navigate = useNavigate();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -133,8 +248,21 @@ export const AppHeader = () => {
               </Select>
             </div>
 
-            {/* Right: User Profile */}
-            <div className="flex items-center">
+            {/* Right: Trial Countdown + User Profile */}
+            <div className="flex items-center gap-3">
+              {/* Trial Countdown Badge */}
+              {isTrialing && trialDaysRemaining !== null && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`transition-colors ${getTrialBadgeStyles(trialDaysRemaining)}`}
+                  onClick={() => navigate('/settings?tab=subscription')}
+                  aria-label="Open subscription settings"
+                >
+                  <Clock className="mr-1.5 h-3 w-3" />
+                  {trialDaysRemaining} day{trialDaysRemaining === 1 ? '' : 's'} left
+                </Button>
+              )}
               <UserProfileDropdown />
             </div>
           </div>
@@ -213,6 +341,16 @@ export const AppHeader = () => {
                 </div>
               </div>
             </div>
+
+            {/* Billing Preview for existing owners */}
+            {restaurants.length > 0 && effectiveTier && (
+              <BillingPreview
+                currentCount={restaurants.length}
+                tier={effectiveTier}
+                period={subscription?.period || 'monthly'}
+              />
+            )}
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>
                 Cancel

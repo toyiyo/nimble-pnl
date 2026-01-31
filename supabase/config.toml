@@ -195,3 +195,12 @@ verify_jwt = false
 
 [functions.toast-fetch-locations]
 verify_jwt = false
+
+[functions.stripe-subscription-checkout]
+verify_jwt = true
+
+[functions.stripe-subscription-webhook]
+verify_jwt = false
+
+[functions.stripe-customer-portal]
+verify_jwt = true

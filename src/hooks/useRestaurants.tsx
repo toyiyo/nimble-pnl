@@ -13,6 +13,15 @@ export interface Restaurant {
   timezone?: string;
   created_at: string;
   updated_at: string;
+  // Subscription fields
+  subscription_tier?: 'starter' | 'growth' | 'pro';
+  subscription_status?: 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered';
+  subscription_period?: 'monthly' | 'annual';
+  stripe_subscription_customer_id?: string;
+  stripe_subscription_id?: string;
+  trial_ends_at?: string;
+  subscription_ends_at?: string;
+  grandfathered_until?: string;
 }
 
 export interface UserRestaurant {

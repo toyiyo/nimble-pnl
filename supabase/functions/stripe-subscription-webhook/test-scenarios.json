@@ -1,0 +1,598 @@
+{
+  "_description": "Test scenarios for Stripe subscription webhooks. Use with: curl -X POST http://localhost:54321/functions/v1/stripe-subscription-webhook -H 'stripe-signature: test_local' -H 'Content-Type: application/json' -d @scenario.json",
+  "_test_data": {
+    "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+    "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+    "customer_id": "cus_Tsqvg2fLyfEUDa",
+    "subscription_id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+    "prices": {
+      "starter_monthly": { "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx", "amount": 9900, "product": "prod_TsqrnKm6j8Uux4" },
+      "growth_monthly": { "id": "price_1SvIgSD9w6YUNUOU7hK3mNqW", "amount": 19900, "product": "prod_Tt4qA1B2C3D4E5" },
+      "pro_monthly": { "id": "price_1SvIhUD9w6YUNUOUk0qBMvjx", "amount": 29900, "product": "prod_Tt4rN2UnsQOxy5" }
+    }
+  },
+
+  "scenarios": {
+    "1_new_subscription_checkout_completed": {
+      "_description": "User completes checkout for Starter plan - first subscription",
+      "id": "evt_test_checkout_001",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1769790000,
+      "livemode": false,
+      "type": "checkout.session.completed",
+      "data": {
+        "object": {
+          "id": "cs_test_a1b2c3d4e5f6g7h8i9j0",
+          "object": "checkout.session",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "subscription": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "mode": "subscription",
+          "status": "complete",
+          "payment_status": "paid",
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          }
+        }
+      }
+    },
+
+    "2_new_subscription_created": {
+      "_description": "Subscription created after checkout - confirms subscription is active",
+      "id": "evt_test_sub_created_001",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1769790001,
+      "livemode": false,
+      "type": "customer.subscription.created",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_Tsr9m33XfZxtZs",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 9900,
+                  "currency": "usd",
+                  "product": "prod_TsqrnKm6j8Uux4",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    "3_upgrade_starter_to_growth": {
+      "_description": "User upgrades from Starter ($99) to Growth ($199) via billing portal",
+      "id": "evt_test_upgrade_to_growth",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1769876400,
+      "livemode": false,
+      "type": "customer.subscription.updated",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_NewGrowthItem",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1SvIgSD9w6YUNUOU7hK3mNqW",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 19900,
+                  "currency": "usd",
+                  "product": "prod_Tt4qA1B2C3D4E5",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        "previous_attributes": {
+          "items": {
+            "data": [
+              {
+                "price": {
+                  "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx",
+                  "unit_amount": 9900,
+                  "product": "prod_TsqrnKm6j8Uux4"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    "4_upgrade_growth_to_pro": {
+      "_description": "User upgrades from Growth ($199) to Pro ($299) via billing portal",
+      "id": "evt_test_upgrade_to_pro",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1769962800,
+      "livemode": false,
+      "type": "customer.subscription.updated",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_NewProItem",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1SvIhUD9w6YUNUOUk0qBMvjx",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 29900,
+                  "currency": "usd",
+                  "product": "prod_Tt4rN2UnsQOxy5",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        "previous_attributes": {
+          "items": {
+            "data": [
+              {
+                "price": {
+                  "id": "price_1SvIgSD9w6YUNUOU7hK3mNqW",
+                  "unit_amount": 19900,
+                  "product": "prod_Tt4qA1B2C3D4E5"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    "5_downgrade_pro_to_starter": {
+      "_description": "User downgrades from Pro ($299) to Starter ($99) via billing portal",
+      "id": "evt_test_downgrade_to_starter",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1770049200,
+      "livemode": false,
+      "type": "customer.subscription.updated",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "pro",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_BackToStarter",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 9900,
+                  "currency": "usd",
+                  "product": "prod_TsqrnKm6j8Uux4",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        "previous_attributes": {
+          "items": {
+            "data": [
+              {
+                "price": {
+                  "id": "price_1SvIhUD9w6YUNUOUk0qBMvjx",
+                  "unit_amount": 29900,
+                  "product": "prod_Tt4rN2UnsQOxy5"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    "6_cancel_scheduled": {
+      "_description": "User cancels subscription - will end at period end (not immediate)",
+      "id": "evt_test_cancel_scheduled",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1770135600,
+      "livemode": false,
+      "type": "customer.subscription.updated",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "cancel_at": 1772468400,
+          "cancel_at_period_end": true,
+          "canceled_at": 1770135600,
+          "cancellation_details": {
+            "comment": "Switching to competitor",
+            "feedback": "too_expensive",
+            "reason": "cancellation_requested"
+          },
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_Tsr9m33XfZxtZs",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 9900,
+                  "currency": "usd",
+                  "product": "prod_TsqrnKm6j8Uux4",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        "previous_attributes": {
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "cancellation_details": {
+            "comment": null,
+            "feedback": null,
+            "reason": null
+          }
+        }
+      }
+    },
+
+    "7_reactivate_before_cancel_completes": {
+      "_description": "User changes mind and reactivates subscription before period ends",
+      "id": "evt_test_reactivate",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1770222000,
+      "livemode": false,
+      "type": "customer.subscription.updated",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "cancellation_details": {
+            "comment": null,
+            "feedback": null,
+            "reason": null
+          },
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_Tsr9m33XfZxtZs",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 9900,
+                  "currency": "usd",
+                  "product": "prod_TsqrnKm6j8Uux4",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        },
+        "previous_attributes": {
+          "cancel_at": 1772468400,
+          "cancel_at_period_end": true,
+          "canceled_at": 1770135600,
+          "cancellation_details": {
+            "comment": "Switching to competitor",
+            "feedback": "too_expensive",
+            "reason": "cancellation_requested"
+          }
+        }
+      }
+    },
+
+    "8_subscription_deleted": {
+      "_description": "Subscription fully canceled/ended (after period end or immediate cancel)",
+      "id": "evt_test_sub_deleted",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1772468400,
+      "livemode": false,
+      "type": "customer.subscription.deleted",
+      "data": {
+        "object": {
+          "id": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "canceled",
+          "current_period_start": 1769790000,
+          "current_period_end": 1772468400,
+          "ended_at": 1772468400,
+          "cancel_at": 1772468400,
+          "cancel_at_period_end": true,
+          "canceled_at": 1770135600,
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "starter",
+            "period": "monthly"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_Tsr9m33XfZxtZs",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_1Sv59bD9w6YUNUOU4f0lvUDx",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 9900,
+                  "currency": "usd",
+                  "product": "prod_TsqrnKm6j8Uux4",
+                  "recurring": {
+                    "interval": "month",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    "9_resubscribe_after_cancellation": {
+      "_description": "User comes back after cancellation and subscribes again (new subscription)",
+      "id": "evt_test_resubscribe_checkout",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1773072000,
+      "livemode": false,
+      "type": "checkout.session.completed",
+      "data": {
+        "object": {
+          "id": "cs_test_resubscribe_xyz",
+          "object": "checkout.session",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "subscription": "sub_NewAfterCancel123",
+          "mode": "subscription",
+          "status": "complete",
+          "payment_status": "paid",
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "growth",
+            "period": "monthly"
+          }
+        }
+      }
+    },
+
+    "10_payment_failed": {
+      "_description": "Payment fails on renewal - subscription goes past_due",
+      "id": "evt_test_payment_failed",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1772468400,
+      "livemode": false,
+      "type": "invoice.payment_failed",
+      "data": {
+        "object": {
+          "id": "in_1TestInvoiceFailed",
+          "object": "invoice",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "subscription": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "status": "open",
+          "paid": false,
+          "attempt_count": 1,
+          "amount_due": 9900,
+          "amount_paid": 0,
+          "currency": "usd",
+          "billing_reason": "subscription_cycle"
+        }
+      }
+    },
+
+    "11_payment_succeeded_after_failure": {
+      "_description": "Payment succeeds after previous failure - subscription back to active",
+      "id": "evt_test_payment_succeeded",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1772554800,
+      "livemode": false,
+      "type": "invoice.payment_succeeded",
+      "data": {
+        "object": {
+          "id": "in_1TestInvoiceSuccess",
+          "object": "invoice",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "subscription": "sub_1Sv5RDD9w6YUNUOUzsr1KrKl",
+          "status": "paid",
+          "paid": true,
+          "attempt_count": 2,
+          "amount_due": 9900,
+          "amount_paid": 9900,
+          "currency": "usd",
+          "billing_reason": "subscription_cycle"
+        }
+      }
+    },
+
+    "12_annual_subscription": {
+      "_description": "User subscribes to annual Growth plan",
+      "id": "evt_test_annual_checkout",
+      "object": "event",
+      "api_version": "2025-08-27.basil",
+      "created": 1773158400,
+      "livemode": false,
+      "type": "customer.subscription.created",
+      "data": {
+        "object": {
+          "id": "sub_AnnualGrowth123",
+          "object": "subscription",
+          "customer": "cus_Tsqvg2fLyfEUDa",
+          "status": "active",
+          "current_period_start": 1773158400,
+          "current_period_end": 1804694400,
+          "cancel_at": null,
+          "cancel_at_period_end": false,
+          "canceled_at": null,
+          "metadata": {
+            "restaurant_id": "b8e32fff-af18-407f-9e2f-3fef821963a1",
+            "user_id": "e5a79c34-d8a4-41f4-9992-4ce0b32ce722",
+            "tier": "growth",
+            "period": "annual"
+          },
+          "items": {
+            "object": "list",
+            "data": [
+              {
+                "id": "si_AnnualGrowthItem",
+                "object": "subscription_item",
+                "price": {
+                  "id": "price_annual_growth_test",
+                  "object": "price",
+                  "active": true,
+                  "unit_amount": 199000,
+                  "currency": "usd",
+                  "product": "prod_Tt4qA1B2C3D4E5",
+                  "recurring": {
+                    "interval": "year",
+                    "interval_count": 1
+                  }
+                },
+                "quantity": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

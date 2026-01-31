@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical, ChefHat } from 'lucide-react';
+import { Minus, X, Send, Loader2, XCircle, PanelLeftClose, PanelLeft, GripVertical, ChefHat, Lock, Sparkles } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -15,9 +15,11 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChat } from '@/hooks/useAiChat';
 import { useAiChatSessions } from '@/hooks/useAiChatSessions';
 import { useAiChatMessages } from '@/hooks/useAiChatMessages';
+import { useSubscription } from '@/hooks/useSubscription';
 import { ChatMessage } from '@/components/ChatMessage';
 import { AiChatConversationList } from './AiChatConversationList';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 900;
@@ -32,7 +34,10 @@ export function AiChatPanel() {
   const { isOpen, isMinimized, currentSessionId, closeChat, minimizeChat, switchSession, clearCurrentSession } =
     useAiChatContext();
   const { selectedRestaurant } = useRestaurantContext();
+  const { hasFeature } = useSubscription();
+  const navigate = useNavigate();
   const restaurantId = selectedRestaurant?.restaurant_id || '';
+  const hasAiAccess = hasFeature('ai_assistant');
 
   const [input, setInput] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
@@ -222,86 +227,10 @@ export function AiChatPanel() {
     { label: 'Sales Summary', prompt: 'Summarize sales for this week' },
   ];
 
-  return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && closeChat()} modal={false}>
-      <SheetContent
-        side="right"
-        hideCloseButton
-        className={cn(
-          'p-0 border-l shadow-2xl bg-background/98 backdrop-blur-sm',
-          'supports-[backdrop-filter]:bg-background/95',
-          'flex flex-col'
-        )}
-        style={{ width: `${panelWidth}px`, maxWidth: '100vw' }}
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={() => minimizeChat()}
-      >
-        {/* Resize handle */}
-        <div
-          onMouseDown={handleResizeStart}
-          className={cn(
-            'absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-50',
-            'hover:bg-primary/20 active:bg-primary/30 transition-colors',
-            'group flex items-center justify-center',
-            isResizing && 'bg-primary/30'
-          )}
-        >
-          <div className="absolute left-0 w-4 h-full" /> {/* Larger hit area */}
-          <GripVertical className="h-4 w-4 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity -ml-1.5" />
-        </div>
-        {/* Header - Clean minimal design */}
-        <div className="flex items-center justify-between px-3 py-2.5 border-b">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={() => setShowSidebar(!showSidebar)}
-              aria-label={showSidebar ? 'Hide conversations' : 'Show conversations'}
-            >
-              {showSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
-            </Button>
-            <div className="p-1.5 rounded-md bg-gradient-to-br from-primary to-primary/70">
-              <ChefHat className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <SheetTitle className="text-sm font-medium">Chef Assistant</SheetTitle>
-          </div>
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={minimizeChat}
-              aria-label="Minimize chat"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={closeChat}
-              aria-label="Close chat"
-            >
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* No restaurant selected */}
-        {!restaurantId ? (
-          <div className="flex-1 flex items-center justify-center p-8 text-center">
-            <div>
-              <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mb-4">
-                <ChefHat className="h-8 w-8 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No Restaurant Selected</h3>
-              <p className="text-muted-foreground text-sm">
-                Please select a restaurant to use the Chef Assistant.
-              </p>
-            </div>
-          </div>
-        ) : (
+  const renderContent = () => {
+    if (hasAiAccess) {
+      if (restaurantId) {
+        return (
           <div className="flex flex-1 min-h-0">
             {/* Sidebar - Conversation List (hidden by default, toggled) */}
             {showSidebar && (
@@ -411,7 +340,117 @@ export function AiChatPanel() {
               </div>
             </div>
           </div>
+        );
+      }
+
+      return (
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
+          <div>
+            <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mb-4">
+              <ChefHat className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">No Restaurant Selected</h3>
+            <p className="text-muted-foreground text-sm">
+              Please select a restaurant to use the Chef Assistant.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 text-center">
+        <div>
+          <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-amber-500/20 to-amber-500/10 flex items-center justify-center mb-4">
+            <Lock className="h-8 w-8 text-amber-600" />
+          </div>
+          <h3 className="text-lg font-semibold mb-2">Pro Feature</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            Chef AI Assistant is available on the Pro plan.
+          </p>
+          <Button
+            onClick={() => {
+              closeChat();
+              navigate('/settings?tab=subscription');
+            }}
+            className="gap-2"
+          >
+            <Sparkles className="h-4 w-4" />
+            Upgrade to Pro
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Sheet open={isOpen} onOpenChange={(open) => !open && closeChat()} modal={false}>
+      <SheetContent
+        side="right"
+        hideCloseButton
+        className={cn(
+          'p-0 border-l shadow-2xl bg-background/98 backdrop-blur-sm',
+          'supports-[backdrop-filter]:bg-background/95',
+          'flex flex-col'
         )}
+        style={{ width: `${panelWidth}px`, maxWidth: '100vw' }}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={() => minimizeChat()}
+      >
+        {/* Resize handle */}
+        <div
+          onMouseDown={handleResizeStart}
+          className={cn(
+            'absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-50',
+            'hover:bg-primary/20 active:bg-primary/30 transition-colors',
+            'group flex items-center justify-center',
+            isResizing && 'bg-primary/30'
+          )}
+        >
+          <div className="absolute left-0 w-4 h-full" /> {/* Larger hit area */}
+          <GripVertical className="h-4 w-4 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity -ml-1.5" />
+        </div>
+        {/* Header - Clean minimal design */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowSidebar(!showSidebar)}
+              aria-label={showSidebar ? 'Hide conversations' : 'Show conversations'}
+            >
+              {showSidebar ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+            </Button>
+            <div className="p-1.5 rounded-md bg-gradient-to-br from-primary to-primary/70">
+              <ChefHat className="h-4 w-4 text-primary-foreground" />
+            </div>
+            <SheetTitle className="text-sm font-medium">Chef Assistant</SheetTitle>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={minimizeChat}
+              aria-label="Minimize chat"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={closeChat}
+              aria-label="Close chat"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Subscription gate - Pro tier required */}
+        {renderContent()}
       </SheetContent>
     </Sheet>
   );

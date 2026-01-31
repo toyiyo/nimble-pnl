@@ -11,6 +11,7 @@
 - [Large Data Import Pattern](#large-data-import-pattern)
 - [AI & Machine Learning](#ai--machine-learning)
 - [Invoicing & Payments](#invoicing--payments)
+- [Subscription Billing](#subscription-billing)
 - [Supabase Usage Patterns](#supabase-usage-patterns)
 - [Edge Functions Architecture](#edge-functions-architecture)
 - [Security Best Practices](#security-best-practices)
@@ -1120,6 +1121,205 @@ All tables enforce restaurant-level isolation:
 
 ---
 
+## 💳 Subscription Billing
+
+### Overview
+
+EasyShiftHQ uses **Stripe Billing** for subscription management with three tiers:
+- **Starter** ($99/mo): Basic P&L and inventory
+- **Growth** ($199/mo): Advanced operations & automation
+- **Pro** ($299/mo): Full suite with AI
+
+New signups get a **14-day Growth trial**. Volume discounts apply for multi-location restaurants.
+
+### Subscription Tiers & Features
+
+| Feature | Starter | Growth | Pro |
+|---------|---------|--------|-----|
+| Daily P&L Dashboard | ✅ | ✅ | ✅ |
+| Basic Inventory | ✅ | ✅ | ✅ |
+| POS Integration | ✅ | ✅ | ✅ |
+| Financial Intelligence | ❌ | ✅ | ✅ |
+| Inventory Automation (OCR) | ❌ | ✅ | ✅ |
+| Employee Scheduling | ❌ | ✅ | ✅ |
+| AI Assistant | ❌ | ❌ | ✅ |
+
+### Volume Discounts
+
+| Locations | Discount |
+|-----------|----------|
+| 1-2 | 0% |
+| 3-5 | 5% |
+| 6-10 | 10% |
+| 11+ | 15% |
+
+### Environment Variables
+
+**Required for Edge Functions** (set via `supabase secrets set`):
+
+```bash
+# Core Stripe keys
+STRIPE_SECRET_KEY=sk_test_...              # Stripe secret key
+
+# Webhook secret (required for production)
+STRIPE_SUBSCRIPTION_WEBHOOK_SECRET=whsec_... # From Stripe Dashboard or CLI
+```
+
+**Optional overrides** (defaults are hardcoded for production):
+
+```bash
+# Price IDs (override for test mode)
+STRIPE_PRICE_STARTER_MONTHLY=price_test_...
+STRIPE_PRICE_STARTER_ANNUAL=price_test_...
+STRIPE_PRICE_GROWTH_MONTHLY=price_test_...
+STRIPE_PRICE_GROWTH_ANNUAL=price_test_...
+STRIPE_PRICE_PRO_MONTHLY=price_test_...
+STRIPE_PRICE_PRO_ANNUAL=price_test_...
+
+# Volume discount coupon IDs
+STRIPE_COUPON_VOLUME_5=coupon_id     # 5% discount (3-5 locations)
+STRIPE_COUPON_VOLUME_10=coupon_id    # 10% discount (6-10 locations)
+STRIPE_COUPON_VOLUME_15=coupon_id    # 15% discount (11+ locations)
+```
+
+### Edge Functions
+
+#### 1. `stripe-subscription-checkout`
+
+Creates Stripe Checkout session for subscription purchase.
+
+- **Input**: `{ restaurantId, tier, period }`
+- **Output**: `{ success, sessionId, url }`
+- **Flow**:
+  1. Verify user is restaurant owner
+  2. Get or create Stripe customer
+  3. Count owner's restaurants for volume discount
+  4. Create checkout session with appropriate price and coupon
+  5. Return checkout URL
+
+#### 2. `stripe-subscription-webhook`
+
+Handles subscription lifecycle events from Stripe.
+
+- **Events**:
+  - `checkout.session.completed` - Initial subscription created
+  - `customer.subscription.created/updated` - Subscription changes
+  - `customer.subscription.deleted` - Cancellation
+  - `invoice.payment_succeeded` - Payment recovered
+  - `invoice.payment_failed` - Payment failed
+- **Security**: Verifies webhook signature
+- **Updates**: Restaurant's `subscription_tier`, `subscription_status`, `subscription_ends_at`
+
+#### 3. `stripe-customer-portal`
+
+Opens Stripe Customer Portal for self-service billing management.
+
+- **Input**: `{ restaurantId }`
+- **Output**: `{ success, url }`
+- **Features**: Update payment method, view invoices, cancel subscription
+
+### Database Schema
+
+The `restaurants` table stores subscription state:
+
+```sql
+-- Subscription fields on restaurants table
+subscription_tier: 'starter' | 'growth' | 'pro'
+subscription_status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered'
+subscription_period: 'monthly' | 'annual'
+trial_ends_at: timestamp
+subscription_ends_at: timestamp
+grandfathered_until: timestamp
+stripe_subscription_id: text
+stripe_subscription_customer_id: text
+```
+
+### Frontend Hook
+
+**Hook**: `useSubscription.tsx`
+
+```typescript
+const {
+  // Current state
+  effectiveTier,          // Computed tier (handles trials/grandfathering)
+  subscription,           // Raw subscription info
+
+  // Status checks
+  isTrialing,
+  isActive,
+  isPastDue,
+  isCanceled,
+  isGrandfathered,
+
+  // Time remaining
+  trialDaysRemaining,
+  grandfatheredDaysRemaining,
+
+  // Feature access
+  hasFeature,             // (featureKey) => boolean
+  needsUpgrade,           // (featureKey) => boolean
+
+  // Volume discount
+  volumeDiscount,
+  ownedRestaurantCount,
+
+  // Actions
+  createCheckout,         // Start checkout flow
+  openPortal,             // Open billing portal
+} = useSubscription();
+```
+
+### Local Testing
+
+1. **Start Stripe CLI to forward webhooks:**
+   ```bash
+   stripe listen --forward-to localhost:54321/functions/v1/stripe-subscription-webhook
+   ```
+   Copy the `whsec_...` secret it provides.
+
+2. **Set secrets for local Supabase:**
+   ```bash
+   supabase secrets set STRIPE_SECRET_KEY=sk_test_...
+   supabase secrets set STRIPE_SUBSCRIPTION_WEBHOOK_SECRET=whsec_...
+   ```
+
+3. **Test checkout flow:**
+   - Navigate to Settings > Subscription
+   - Select a plan and click Subscribe
+   - Use Stripe test card: `4242 4242 4242 4242`
+
+4. **Test UI without Stripe:**
+   - UI components read subscription state from database
+   - Manually update `restaurants.subscription_tier` and `subscription_status` to test different states
+
+### Best Practices
+
+✅ **DO:**
+- Verify webhook signatures
+- Use `effectiveTier` for feature gating (handles trials/grandfathering)
+- Show trial countdown prominently
+- Provide clear upgrade paths for locked features
+- Test all subscription states (trialing, active, past_due, canceled)
+
+❌ **DON'T:**
+- Trust client-side subscription checks for security (enforce in RLS/Edge Functions)
+- Skip webhook signature verification
+- Hardcode price IDs in frontend (use backend)
+- Block users completely on past_due (grace period)
+
+### UI Components
+
+The subscription journey includes these touchpoints:
+
+1. **Welcome Modal** (`WelcomeModal.tsx`) - Post-signup pricing overview
+2. **Trial Badge** (`AppHeader.tsx`) - Countdown in header
+3. **Sidebar Badges** (`AppSidebar.tsx`) - Pro badges on locked features
+4. **Onboarding Drawer** (`OnboardingDrawer.tsx`) - Subscription-aware setup steps
+5. **Billing Preview** (`AppHeader.tsx`) - Shows cost when adding restaurants
+6. **Subscription Settings** (`/settings?tab=subscription`) - Full billing management
+
+---
+
 ## 💾 Supabase Usage Patterns
 
 ### Query Patterns
@@ -2120,7 +2320,7 @@ test('useSquareSalesAdapter fetches sales', async () => {
 
 ---
 
-**Last Updated**: 2026-01-27
+**Last Updated**: 2026-01-29
 
 **Maintainers**: Development Team
 

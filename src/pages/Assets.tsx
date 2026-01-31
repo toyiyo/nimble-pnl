@@ -30,6 +30,7 @@ import {
 } from '@/components/assets';
 import type { Asset, AssetFormData, AssetStatus, AssetWithDetails } from '@/types/assets';
 import { formatAssetCurrency, DEFAULT_ASSET_CATEGORIES } from '@/types/assets';
+import { FeatureGate } from '@/components/subscription';
 
 type StatusFilter = AssetStatus | 'all';
 
@@ -144,6 +145,7 @@ export default function Assets() {
   };
 
   return (
+    <FeatureGate featureKey="assets">
     <div className="space-y-6">
       {/* Hero Section */}
       <div className="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-6 text-white">
@@ -316,5 +318,6 @@ export default function Assets() {
         isDisposing={isDisposing}
       />
     </div>
+    </FeatureGate>
   );
 }

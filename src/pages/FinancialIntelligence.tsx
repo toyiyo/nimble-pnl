@@ -5,6 +5,7 @@ import { BankingIntelligenceDashboard } from '@/components/banking/BankingIntell
 import { BankAccountFilter } from '@/components/banking/BankAccountFilter';
 import { useConnectedBanks } from '@/hooks/useConnectedBanks';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { FeatureGate } from '@/components/subscription';
 import { Brain } from 'lucide-react';
 import { startOfMonth, endOfDay } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,32 +28,34 @@ export default function FinancialIntelligence() {
 
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader 
+      <PageHeader
         icon={Brain}
         title="Financial Intelligence"
         subtitle="Deep insights from your banking data"
       />
-      
+
       <div className="w-full px-4 py-8 space-y-6">
-        <PeriodSelector 
-          selectedPeriod={selectedPeriod} 
-          onPeriodChange={setSelectedPeriod} 
-        />
-
-        {banksLoading ? (
-          <Skeleton className="h-24" />
-        ) : connectedBanks.length > 0 ? (
-          <BankAccountFilter
-            selectedBankAccount={selectedBankAccount}
-            onBankAccountChange={setSelectedBankAccount}
-            connectedBanks={connectedBanks}
+        <FeatureGate featureKey="financial_intelligence">
+          <PeriodSelector
+            selectedPeriod={selectedPeriod}
+            onPeriodChange={setSelectedPeriod}
           />
-        ) : null}
 
-        <BankingIntelligenceDashboard 
-          selectedPeriod={selectedPeriod} 
-          selectedBankAccount={selectedBankAccount}
-        />
+          {banksLoading ? (
+            <Skeleton className="h-24" />
+          ) : connectedBanks.length > 0 ? (
+            <BankAccountFilter
+              selectedBankAccount={selectedBankAccount}
+              onBankAccountChange={setSelectedBankAccount}
+              connectedBanks={connectedBanks}
+            />
+          ) : null}
+
+          <BankingIntelligenceDashboard
+            selectedPeriod={selectedPeriod}
+            selectedBankAccount={selectedBankAccount}
+          />
+        </FeatureGate>
       </div>
     </div>
   );

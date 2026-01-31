@@ -1,56 +1,12 @@
 import { test, expect, Page } from '@playwright/test';
 import { format, subDays } from 'date-fns';
-import { exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
 interface WindowWithHelpers extends Window {
   __getAuthUser: () => Promise<{ id: string } | null>;
   __getRestaurantId: (userId: string) => Promise<string | null>;
   __insertEmployees: (rows: unknown[], restaurantId: string) => Promise<unknown[]>;
   __checkApprovedSplits: (restaurantId: string) => Promise<boolean>;
-}
-
-const generateTestUser = () => {
-  const ts = Date.now();
-  const random = Math.random().toString(36).slice(2, 6);
-  return {
-    email: `tips-complete-${ts}-${random}@test.com`,
-    password: 'TestPassword123!',
-    fullName: `Tips Complete User ${ts}`,
-    restaurantName: `Tips Complete Restaurant ${ts}`,
-  };
-};
-
-async function signUpAndCreateRestaurant(page: Page, user: ReturnType<typeof generateTestUser>) {
-  await page.goto('/auth');
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-  await page.reload();
-  await page.waitForURL(/\/auth/);
-
-  const signupTab = page.getByRole('tab', { name: /sign up/i });
-  await expect(signupTab).toBeVisible({ timeout: 10000 });
-  await signupTab.click();
-
-  await expect(page.getByLabel(/full name/i)).toBeVisible({ timeout: 10000 });
-  await page.getByLabel(/email/i).first().fill(user.email);
-  await page.getByLabel(/full name/i).fill(user.fullName);
-  await page.getByLabel(/password/i).first().fill(user.password);
-  await page.getByRole('button', { name: /sign up|create account/i }).click();
-  await page.waitForURL('/', { timeout: 15000 });
-
-  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
-  await addRestaurantButton.click();
-
-  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
-  await dialog.getByLabel(/address/i).fill('123 Main St');
-  await dialog.getByLabel(/phone/i).fill('555-123-4567');
-  await dialog.getByRole('button', { name: /create|add|save/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
 }
 
 async function createEmployeesWithAuth(page: Page, employees: Array<{name: string, email: string, position: string}>) {

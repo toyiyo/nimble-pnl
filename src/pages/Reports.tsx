@@ -12,6 +12,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeIntelligenceReport } from '@/components/RecipeIntelligenceReport';
 import { ConsumptionIntelligenceReport } from '@/components/ConsumptionIntelligenceReport';
 import { AlertsIntelligenceReport } from '@/components/AlertsIntelligenceReport';
+import { FeatureGate } from '@/components/subscription';
 import { ReconciliationVarianceReport } from '@/components/ReconciliationVarianceReport';
 import { PnLIntelligenceReport } from '@/components/PnLIntelligenceReport';
 import { DetailedPnLBreakdown } from '@/components/DetailedPnLBreakdown';
@@ -156,11 +157,13 @@ export default function Reports() {
       </TabsContent>
 
       <TabsContent value="profitability" className="space-y-6">
-        <RecipeIntelligenceReport 
-          restaurantId={selectedRestaurant.restaurant_id}
-          dateFrom={selectedPeriod.from}
-          dateTo={selectedPeriod.to}
-        />
+        <FeatureGate featureKey="recipe_profitability">
+          <RecipeIntelligenceReport
+            restaurantId={selectedRestaurant.restaurant_id}
+            dateFrom={selectedPeriod.from}
+            dateTo={selectedPeriod.to}
+          />
+        </FeatureGate>
       </TabsContent>
 
       <TabsContent value="consumption" className="space-y-6">
@@ -172,9 +175,11 @@ export default function Reports() {
       </TabsContent>
 
       <TabsContent value="alerts" className="space-y-6">
-        <AlertsIntelligenceReport 
-          restaurantId={selectedRestaurant.restaurant_id}
-        />
+        <FeatureGate featureKey="ai_alerts">
+          <AlertsIntelligenceReport
+            restaurantId={selectedRestaurant.restaurant_id}
+          />
+        </FeatureGate>
       </TabsContent>
 
       <TabsContent value="variance" className="space-y-6">

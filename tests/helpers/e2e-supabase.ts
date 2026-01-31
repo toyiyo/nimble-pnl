@@ -595,6 +595,25 @@ export async function exposeSupabaseHelpers(page: Page) {
       return { role, restaurantId };
     };
 
+    // Helper to set subscription tier on a restaurant (for E2E testing)
+    (window as any).__setSubscriptionTier = async (
+      restaurantId: string,
+      tier: 'starter' | 'growth' | 'pro' = 'pro',
+      status: 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered' = 'active'
+    ) => {
+      const { error } = await supabase
+        .from('restaurants')
+        .update({
+          subscription_tier: tier,
+          subscription_status: status,
+        })
+        .eq('id', restaurantId);
+
+      if (error) {
+        throw new Error(`Failed to set subscription tier: ${error.message}`);
+      }
+    };
+
     (window as any).__supabaseHelpersReady = true;
   };
 
@@ -626,7 +645,7 @@ export async function signUpAndCreateRestaurant(
   user: { email: string; password: string; fullName: string; restaurantName: string }
 ) {
   const { expect } = await import('@playwright/test');
-  
+
   await page.goto('/auth');
   await page.evaluate(() => {
     localStorage.clear();
@@ -634,6 +653,9 @@ export async function signUpAndCreateRestaurant(
   });
   await page.reload();
   await page.waitForURL(/\/auth/);
+
+  // Expose Supabase helpers now that we're on the app (Vite serving)
+  await exposeSupabaseHelpers(page);
 
   const signupTab = page.getByRole('tab', { name: /sign up/i });
   await expect(signupTab).toBeVisible({ timeout: 10000 });
@@ -645,6 +667,9 @@ export async function signUpAndCreateRestaurant(
   await page.getByLabel(/password/i).first().fill(user.password);
   await page.getByRole('button', { name: /sign up|create account/i }).click();
   await page.waitForURL('/', { timeout: 15000 });
+
+  // Handle Welcome Modal (shows pricing plans for new users)
+  await page.getByRole('button', { name: 'Get Started', exact: true }).click({ timeout: 5000 });
 
   const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
   await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
@@ -673,5 +698,18 @@ export async function signUpAndCreateRestaurant(
     }
   } catch (e) {
     console.log('Onboarding drawer handling skipped or failed', e);
+  }
+
+  // Set subscription tier to Pro so E2E tests can access all features
+  try {
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    if (restaurantId) {
+      await page.evaluate(
+        (restId) => (window as any).__setSubscriptionTier(restId, 'pro', 'active'),
+        restaurantId
+      );
+    }
+  } catch (e) {
+    console.log('Failed to set subscription tier to Pro:', e);
   }
 }

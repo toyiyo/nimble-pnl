@@ -6,8 +6,10 @@ import { logAICall, type AICallMetadata } from "../_shared/braintrust.ts";
 
 interface AssetDocumentRequest {
   documentId: string;
-  imageData: string; // base64 encoded image OR URL for PDF
+  imageData?: string; // base64 encoded image OR URL for PDF
   isPDF?: boolean;
+  textContent?: string; // Raw text content for CSV/XML/text files
+  fileName?: string; // Original filename for context
   restaurantId: string;
 }
 
@@ -99,6 +101,69 @@ CRITICAL RULES:
 - Use 0 for salvageValue unless there's a clear reason for residual value
 - Match category as closely as possible; use "Other" only as last resort`;
 
+// Text-specific extraction prompt for CSV/XML/text files
+const TEXT_EXTRACTION_PROMPT = `ANALYSIS TARGET: This text data contains equipment or fixed asset information for a restaurant.
+The data may be in CSV, XML, or other structured/semi-structured format.
+
+EXTRACTION RULES:
+1. Parse the data structure (CSV columns, XML elements, etc.) to understand the format
+2. Extract ALL line items that represent equipment, furniture, vehicles, or other fixed assets
+3. Focus on items that would be capitalized (typically $500+), but include all line items found
+4. Handle unusual formats - columns may have non-standard names
+5. If prices are missing for some items (bundle pricing), still extract them with purchaseCost: 0
+
+FOR EACH ASSET EXTRACT:
+- **rawText**: The original row/element text (max 100 chars)
+- **parsedName**: Clean, standardized equipment name (e.g., "Commercial Walk-in Refrigerator")
+- **parsedDescription**: Additional details if available (brand, model, specs)
+- **purchaseCost**: Price for this item (numeric, 0 if not specified)
+- **purchaseDate**: Date if found (YYYY-MM-DD format)
+- **serialNumber**: Serial number if available
+- **suggestedCategory**: Best match from these categories:
+  ${DEFAULT_ASSET_CATEGORIES.map(c => c.name).join(', ')}
+- **suggestedUsefulLifeMonths**: Based on category (see defaults below)
+- **suggestedSalvageValue**: Typically 0-10% of purchase cost (0 for most restaurant equipment)
+- **confidenceScore**: How confident you are in extraction (0.0-1.0)
+
+CATEGORY → USEFUL LIFE MAPPING:
+${DEFAULT_ASSET_CATEGORIES.map(c => `- ${c.name}: ${c.defaultUsefulLifeMonths} months`).join('\n')}
+
+CONFIDENCE SCORING:
+- 0.90-1.0: Clear structure, all fields present
+- 0.75-0.89: Most fields clear, some inference needed
+- 0.60-0.74: Unusual format but parseable
+- 0.40-0.59: Ambiguous structure, significant interpretation
+- 0.20-0.39: Very unclear, major uncertainty
+
+RESPONSE FORMAT (JSON ONLY - NO MARKDOWN, NO EXTRA TEXT):
+{
+  "success": true,
+  "vendor": "Supplier/vendor name if found",
+  "purchaseDate": "YYYY-MM-DD if found",
+  "totalAmount": 12345.67,
+  "lineItems": [
+    {
+      "rawText": "original text from data",
+      "parsedName": "Commercial Refrigerator",
+      "parsedDescription": "True Manufacturing 2-door",
+      "purchaseCost": 5499.99,
+      "purchaseDate": "2024-01-15",
+      "serialNumber": "TM-12345",
+      "suggestedCategory": "Kitchen Equipment",
+      "suggestedUsefulLifeMonths": 84,
+      "suggestedSalvageValue": 0,
+      "confidenceScore": 0.95
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Return ONLY valid JSON, no markdown code blocks
+- Extract ALL line items (don't summarize or skip)
+- Items with $0 cost are OK - user will add prices later
+- If date is missing, omit purchaseDate field
+- Match category as closely as possible; use "Other" only as last resort`;
+
 // Model configurations (same as process-receipt for consistency)
 const MODELS = [
   {
@@ -137,10 +202,36 @@ const MODEL_TOKEN_LIMITS: Record<string, number> = {
 
 const DEFAULT_MAX_TOKENS = 8192;
 
-function buildRequestBody(modelId: string, systemPrompt: string, isPDF: boolean, mediaData: string): Record<string, unknown> {
+interface BuildRequestOptions {
+  modelId: string;
+  systemPrompt: string;
+  isPDF: boolean;
+  mediaData?: string;
+  textContent?: string;
+  fileName?: string;
+}
+
+function buildRequestBody(options: BuildRequestOptions): Record<string, unknown> {
+  const { modelId, systemPrompt, isPDF, mediaData, textContent, fileName } = options;
   const modelMaxLimit = MODEL_TOKEN_LIMITS[modelId] || DEFAULT_MAX_TOKENS;
   const clampedMaxTokens = Math.min(16000, modelMaxLimit);
 
+  // Text-based extraction (CSV, XML, etc.)
+  if (textContent) {
+    const prompt = `${TEXT_EXTRACTION_PROMPT}\n\n--- FILE: ${fileName || 'data.txt'} ---\n${textContent}\n--- END FILE ---`;
+    return {
+      model: modelId,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: clampedMaxTokens,
+      temperature: 0.1,
+      stream: true,
+    };
+  }
+
+  // Image/PDF-based extraction
   const requestBody: Record<string, unknown> = {
     model: modelId,
     messages: [
@@ -235,20 +326,32 @@ function repairTruncatedJSON(jsonContent: string): string {
   return repaired;
 }
 
-async function callModel(
-  modelConfig: typeof MODELS[0],
-  isPDF: boolean,
-  mediaData: string,
-  openRouterApiKey: string,
-  restaurantId: string
-): Promise<Response | null> {
+interface CallModelOptions {
+  modelConfig: typeof MODELS[0];
+  isPDF: boolean;
+  mediaData?: string;
+  textContent?: string;
+  fileName?: string;
+  openRouterApiKey: string;
+  restaurantId: string;
+}
+
+async function callModel(options: CallModelOptions): Promise<Response | null> {
+  const { modelConfig, isPDF, mediaData, textContent, fileName, openRouterApiKey, restaurantId } = options;
   let retryCount = 0;
 
   while (retryCount < modelConfig.maxRetries) {
     try {
       console.log(`🔄 ${modelConfig.name} attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
 
-      const requestBody = buildRequestBody(modelConfig.id, modelConfig.systemPrompt, isPDF, mediaData);
+      const requestBody = buildRequestBody({
+        modelId: modelConfig.id,
+        systemPrompt: modelConfig.systemPrompt,
+        isPDF,
+        mediaData,
+        textContent,
+        fileName,
+      });
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -300,14 +403,24 @@ serve(async (req) => {
   }
 
   try {
-    const { documentId, imageData, isPDF, restaurantId }: AssetDocumentRequest = await req.json();
+    const { documentId, imageData, isPDF, textContent, fileName, restaurantId }: AssetDocumentRequest = await req.json();
 
-    if (!documentId || !imageData || !restaurantId) {
+    // Validate: need either imageData OR textContent
+    if (!documentId || !restaurantId) {
       return new Response(
-        JSON.stringify({ success: false, error: "Document ID, image data, and restaurant ID are required" }),
+        JSON.stringify({ success: false, error: "Document ID and restaurant ID are required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
+
+    if (!imageData && !textContent) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Either image data or text content is required" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    const isTextExtraction = !!textContent;
 
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
     if (!openRouterApiKey) {
@@ -318,46 +431,53 @@ serve(async (req) => {
     }
 
     console.log("📦 Processing asset document with multi-model fallback...");
-    console.log("📸 Document type:", isPDF ? "PDF" : "Image", "size:", imageData.length, "chars");
 
-    // Handle PDF URL conversion to base64
     let pdfBase64Data = imageData;
     const isProcessingPDF = isPDF || false;
 
-    if (isProcessingPDF && !imageData.startsWith("data:application/pdf;base64,")) {
-      console.log("📄 PDF URL detected, converting to base64...");
+    if (isTextExtraction) {
+      // Text-based extraction (CSV, XML, etc.)
+      console.log("📄 Text extraction mode, file:", fileName, "size:", textContent!.length, "chars");
+    } else {
+      // Image/PDF extraction
+      console.log("📸 Document type:", isPDF ? "PDF" : "Image", "size:", imageData!.length, "chars");
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      // Handle PDF URL conversion to base64
+      if (isProcessingPDF && !imageData!.startsWith("data:application/pdf;base64,")) {
+        console.log("📄 PDF URL detected, converting to base64...");
 
-      try {
-        const pdfResponse = await fetch(imageData, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-        if (!pdfResponse.ok) throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
+        try {
+          const pdfResponse = await fetch(imageData!, { signal: controller.signal });
+          clearTimeout(timeoutId);
 
-        const pdfBlob = await pdfResponse.arrayBuffer();
-        const uint8Array = new Uint8Array(pdfBlob);
-        const chunkSize = 32768;
-        let binaryString = "";
+          if (!pdfResponse.ok) throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
 
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-          binaryString += String.fromCharCode(...chunk);
+          const pdfBlob = await pdfResponse.arrayBuffer();
+          const uint8Array = new Uint8Array(pdfBlob);
+          const chunkSize = 32768;
+          let binaryString = "";
+
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+            binaryString += String.fromCharCode(...chunk);
+          }
+
+          const base64 = btoa(binaryString);
+          pdfBase64Data = `data:application/pdf;base64,${base64}`;
+          console.log("✅ PDF converted to base64, size:", base64.length);
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          if (fetchError instanceof Error && fetchError.name === "AbortError") {
+            return new Response(
+              JSON.stringify({ success: false, error: "PDF download timeout (>20s)" }),
+              { status: 408, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          throw fetchError;
         }
-
-        const base64 = btoa(binaryString);
-        pdfBase64Data = `data:application/pdf;base64,${base64}`;
-        console.log("✅ PDF converted to base64, size:", base64.length);
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        if (fetchError instanceof Error && fetchError.name === "AbortError") {
-          return new Response(
-            JSON.stringify({ success: false, error: "PDF download timeout (>20s)" }),
-            { status: 408, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        throw fetchError;
       }
     }
 
@@ -366,7 +486,15 @@ serve(async (req) => {
 
     for (const modelConfig of MODELS) {
       console.log(`🚀 Trying ${modelConfig.name}...`);
-      const response = await callModel(modelConfig, isProcessingPDF, pdfBase64Data, openRouterApiKey, restaurantId);
+      const response = await callModel({
+        modelConfig,
+        isPDF: isProcessingPDF,
+        mediaData: isTextExtraction ? undefined : pdfBase64Data,
+        textContent: isTextExtraction ? textContent : undefined,
+        fileName,
+        openRouterApiKey,
+        restaurantId,
+      });
 
       if (response) {
         finalResponse = response;
@@ -430,9 +558,10 @@ serve(async (req) => {
       }
 
       // Validate and normalize line items
+      // Allow $0 costs for bundle pricing - user can add prices in review
       parsedData.lineItems = parsedData.lineItems.filter((item) => {
-        if (!item.parsedName || !item.purchaseCost) {
-          console.warn("Skipping item missing required fields:", item);
+        if (!item.parsedName) {
+          console.warn("Skipping item missing name:", item);
           return false;
         }
         return true;

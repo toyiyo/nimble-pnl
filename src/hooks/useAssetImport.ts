@@ -24,7 +24,7 @@ export interface UseAssetImportReturn {
 
   // Actions
   uploadDocument: (file: File) => Promise<AssetImportDocument | null>;
-  processDocument: (document: AssetImportDocument, file: Blob) => Promise<boolean>;
+  processDocument: (document: AssetImportDocument, file: Blob, textContent?: string) => Promise<boolean>;
   parseCSV: (file: File) => Promise<AssetLineItem[]>;
   updateLineItem: (id: string, updates: Partial<AssetLineItem>) => void;
   removeLineItem: (id: string) => void;
@@ -109,39 +109,65 @@ export function useAssetImport(): UseAssetImportReturn {
 
   /**
    * Process a document with AI to extract assets
+   * @param document - The document metadata
+   * @param fileBlob - The file blob (for image/PDF)
+   * @param textContent - Optional text content for CSV/XML/text-based extraction
    */
   const processDocument = useCallback(async (
     document: AssetImportDocument,
-    fileBlob: Blob
+    fileBlob: Blob,
+    textContent?: string
   ): Promise<boolean> => {
     setIsProcessing(true);
     setCurrentDocument({ ...document, status: 'processing' });
 
     try {
-      console.log('Processing asset document:', document.fileName, 'type:', fileBlob.type);
+      const isTextExtraction = !!textContent;
+      console.log('Processing asset document:', document.fileName,
+        isTextExtraction ? '(text extraction)' : `type: ${fileBlob.type}`);
 
-      const isPDF = fileBlob.type === 'application/pdf';
-      let dataToSend: string;
+      let requestBody: Record<string, unknown>;
 
-      if (isPDF) {
-        // Generate signed URL for PDF
-        const { data: signedUrlData, error: signedUrlError } = await supabase
-          .storage
-          .from('asset-images')
-          .createSignedUrl(document.filePath, 3600);
+      if (isTextExtraction) {
+        // Text-based extraction (CSV, XML, etc.)
+        requestBody = {
+          documentId: document.id,
+          textContent,
+          fileName: document.fileName,
+          restaurantId: document.restaurantId,
+        };
+      } else {
+        // Image/PDF extraction
+        const isPDF = fileBlob.type === 'application/pdf';
+        let dataToSend: string;
 
-        if (signedUrlError || !signedUrlData?.signedUrl) {
-          throw new Error('Failed to generate signed URL for PDF');
+        if (isPDF) {
+          // Generate signed URL for PDF
+          const { data: signedUrlData, error: signedUrlError } = await supabase
+            .storage
+            .from('asset-images')
+            .createSignedUrl(document.filePath, 3600);
+
+          if (signedUrlError || !signedUrlData?.signedUrl) {
+            throw new Error('Failed to generate signed URL for PDF');
+          }
+
+          dataToSend = signedUrlData.signedUrl;
+        } else {
+          // Convert image to base64
+          dataToSend = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(fileBlob);
+          });
         }
 
-        dataToSend = signedUrlData.signedUrl;
-      } else {
-        // Convert image to base64
-        dataToSend = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(fileBlob);
-        });
+        requestBody = {
+          documentId: document.id,
+          imageData: dataToSend,
+          isPDF,
+          restaurantId: document.restaurantId,
+        };
       }
 
       // Call the edge function with timeout
@@ -150,12 +176,7 @@ export function useAssetImport(): UseAssetImportReturn {
 
       try {
         const { data, error } = await supabase.functions.invoke('process-asset-document', {
-          body: {
-            documentId: document.id,
-            imageData: dataToSend,
-            isPDF,
-            restaurantId: document.restaurantId,
-          },
+          body: requestBody,
           // @ts-expect-error - signal option is supported but not in types yet
           signal: controller.signal,
         });

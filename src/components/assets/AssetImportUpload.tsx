@@ -1,16 +1,25 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useAssetImport } from '@/hooks/useAssetImport';
-import { Upload, FileText, FileSpreadsheet, Download, Package } from 'lucide-react';
+import {
+  Upload,
+  FileText,
+  FileSpreadsheet,
+  Download,
+  CheckCircle2,
+  Loader2,
+  FileImage,
+  FileCode,
+  ArrowUpFromLine
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCSVTemplateHeader, getCSVTemplateSampleRow, suggestCategoryFromName } from '@/types/assetImport';
 import { getDefaultUsefulLife } from '@/types/assets';
 import type { AssetLineItem } from '@/types/assetImport';
 import { AssetColumnMappingDialog } from './AssetColumnMappingDialog';
+import { AssetImportMethodDialog, type ImportMethod } from './AssetImportMethodDialog';
 import { suggestAssetColumnMappings, parseCSVLine } from '@/utils/assetColumnMapping';
 import type { AssetColumnMapping } from '@/utils/assetColumnMapping';
 import * as XLSX from 'xlsx';
@@ -22,8 +31,9 @@ interface AssetImportUploadProps {
 export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProps) {
   const [processingStep, setProcessingStep] = useState<'idle' | 'upload' | 'process' | 'complete'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
 
-  // File input refs - needed to reset value so same file can be re-selected
+  // File input refs
   const documentInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,6 +45,10 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
   const [suggestedMappings, setSuggestedMappings] = useState<AssetColumnMapping[]>([]);
   const [pendingCsvFile, setPendingCsvFile] = useState<File | null>(null);
 
+  // Import method choice dialog state
+  const [showMethodDialog, setShowMethodDialog] = useState(false);
+  const [pendingTextFile, setPendingTextFile] = useState<File | null>(null);
+
   const {
     uploadDocument,
     processDocument,
@@ -45,7 +59,6 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
 
   const { toast } = useToast();
 
-  /** Reset all CSV-related state */
   const resetCsvState = useCallback(() => {
     setPendingCsvFile(null);
     setCsvHeaders([]);
@@ -54,19 +67,11 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     setSuggestedMappings([]);
   }, []);
 
-  /** Reset file inputs so the same file can be re-selected */
   const resetFileInputs = useCallback(() => {
-    if (documentInputRef.current) {
-      documentInputRef.current.value = '';
-    }
-    if (csvInputRef.current) {
-      csvInputRef.current.value = '';
-    }
+    if (documentInputRef.current) documentInputRef.current.value = '';
+    if (csvInputRef.current) csvInputRef.current.value = '';
   }, []);
 
-  /**
-   * Parse CSV file and extract headers and sample data for mapping
-   */
   const parseCSVForMapping = useCallback((file: File): Promise<{
     headers: string[];
     sampleData: Record<string, string>[];
@@ -74,20 +79,12 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
   }> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-
       reader.onload = (e) => {
         try {
           const text = e.target?.result as string;
           const lines = text.split('\n').filter(line => line.trim());
-
-          if (lines.length < 2) {
-            throw new Error('CSV must have a header row and at least one data row');
-          }
-
-          // Parse header
+          if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
           const headers = parseCSVLine(lines[0]).map(h => h.trim());
-
-          // Parse all data rows
           const allRows: Record<string, string>[] = [];
           for (let i = 1; i < lines.length; i++) {
             const values = parseCSVLine(lines[i]);
@@ -97,53 +94,24 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
             });
             allRows.push(row);
           }
-
-          // Sample data for preview (first 5 rows)
-          const sampleData = allRows.slice(0, 5);
-
-          resolve({ headers, sampleData, allRows });
+          resolve({ headers, sampleData: allRows.slice(0, 5), allRows });
         } catch (error) {
           reject(error);
         }
       };
-
-      reader.onerror = () => {
-        reject(new Error('Failed to read file'));
-      };
-
+      reader.onerror = () => reject(new Error('Failed to read file'));
       reader.readAsText(file);
     });
   }, []);
 
-  /**
-   * Parse Excel file (.xls, .xlsx) and extract headers and data for mapping
-   */
-  const parseExcelForMapping = useCallback(async (file: File): Promise<{
-    headers: string[];
-    sampleData: Record<string, string>[];
-    allRows: Record<string, string>[];
-  }> => {
+  const parseExcelForMapping = useCallback(async (file: File) => {
     const arrayBuffer = await file.arrayBuffer();
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
-    // Use first sheet
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-
-    // Convert to JSON with header row
-    const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      header: 1,
-      defval: ''
-    }) as string[][];
-
-    if (jsonData.length < 2) {
-      throw new Error('Excel file must have a header row and at least one data row');
-    }
-
-    // First row is headers
+    const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1, defval: '' }) as string[][];
+    if (jsonData.length < 2) throw new Error('Excel file must have a header row and at least one data row');
     const headers = jsonData[0].map(h => String(h).trim());
-
-    // Convert remaining rows to objects
     const allRows: Record<string, string>[] = [];
     for (let i = 1; i < jsonData.length; i++) {
       const rowData = jsonData[i];
@@ -154,130 +122,93 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
       });
       allRows.push(row);
     }
-
-    // Sample data for preview (first 5 rows)
-    const sampleData = allRows.slice(0, 5);
-
-    return { headers, sampleData, allRows };
+    return { headers, sampleData: allRows.slice(0, 5), allRows };
   }, []);
 
-  /**
-   * Check if file is a spreadsheet (CSV or Excel)
-   */
-  const isSpreadsheetFile = useCallback((file: File): boolean => {
+  const isTextBasedFile = useCallback((file: File): boolean => {
     const name = file.name.toLowerCase();
-    return (
-      name.endsWith('.csv') ||
-      name.endsWith('.xls') ||
-      name.endsWith('.xlsx') ||
-      file.type === 'text/csv' ||
-      file.type === 'application/vnd.ms-excel' ||
-      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
+    return name.endsWith('.csv') || name.endsWith('.xls') || name.endsWith('.xlsx') ||
+           name.endsWith('.xml') || name.endsWith('.txt') ||
+           file.type === 'text/csv' || file.type === 'text/xml' || file.type === 'application/xml' ||
+           file.type === 'application/vnd.ms-excel' ||
+           file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   }, []);
 
-  /**
-   * Check if file is an Excel file
-   */
+  const canUseColumnMapping = useCallback((file: File): boolean => {
+    const name = file.name.toLowerCase();
+    return name.endsWith('.csv') || name.endsWith('.xls') || name.endsWith('.xlsx') ||
+           file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' ||
+           file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  }, []);
+
   const isExcelFile = useCallback((file: File): boolean => {
     const name = file.name.toLowerCase();
-    return (
-      name.endsWith('.xls') ||
-      name.endsWith('.xlsx') ||
-      file.type === 'application/vnd.ms-excel' ||
-      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
+    return name.endsWith('.xls') || name.endsWith('.xlsx') ||
+           file.type === 'application/vnd.ms-excel' ||
+           file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   }, []);
 
-  /**
-   * Convert mapped CSV data to AssetLineItems
-   */
-  const convertMappedCSVToLineItems = useCallback((
-    rows: Record<string, string>[],
-    mappings: AssetColumnMapping[]
-  ): AssetLineItem[] => {
-    const items: AssetLineItem[] = [];
-
-    // Create a lookup from target field to CSV column
-    const fieldToColumn: Record<string, string> = {};
-    mappings.forEach(m => {
-      if (m.targetField && m.targetField !== 'ignore') {
-        fieldToColumn[m.targetField] = m.csvColumn;
-      }
+  const readFileAsText = useCallback(async (file: File): Promise<string> => {
+    if (isExcelFile(file)) {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      return XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
     });
+  }, [isExcelFile]);
 
-    // Debug: log the mapping and first row
-    console.log('Field to column mapping:', fieldToColumn);
-    console.log('First row keys:', rows[0] ? Object.keys(rows[0]) : 'no rows');
-    console.log('First row values:', rows[0]);
+  const handleAITextExtraction = useCallback(async (file: File) => {
+    setProcessingStep('upload');
+    setSelectedFile(file);
+    try {
+      const textContent = await readFileAsText(file);
+      const document = await uploadDocument(file);
+      if (!document) throw new Error('Failed to create document entry');
+      setProcessingStep('process');
+      const success = await processDocument(document, file, textContent);
+      if (!success) throw new Error('AI extraction failed');
+      setProcessingStep('complete');
+    } catch (error) {
+      console.error('AI text extraction error:', error);
+      toast({ title: 'AI extraction failed', description: error instanceof Error ? error.message : 'Failed to extract assets', variant: 'destructive' });
+      setProcessingStep('idle');
+      resetFileInputs();
+    }
+  }, [readFileAsText, uploadDocument, processDocument, toast, resetFileInputs]);
 
-    rows.forEach((row, index) => {
-      // Get column mappings
-      const nameColumn = fieldToColumn['name'];
-      const dateColumn = fieldToColumn['purchase_date'];
-      const costColumn = fieldToColumn['purchase_cost'];
+  const convertMappedCSVToLineItems = useCallback((rows: Record<string, string>[], mappings: AssetColumnMapping[]): AssetLineItem[] => {
+    const items: AssetLineItem[] = [];
+    const fieldToColumn: Record<string, string> = {};
+    mappings.forEach(m => { if (m.targetField && m.targetField !== 'ignore') fieldToColumn[m.targetField] = m.csvColumn; });
 
-      const name = nameColumn ? row[nameColumn]?.trim() : '';
-      const purchaseDateStr = dateColumn ? row[dateColumn]?.trim() : '';
-      const purchaseCostStr = costColumn ? row[costColumn]?.trim() : '';
-
-      // Debug: log values for first few rows
-      if (index < 3) {
-        console.log(`Row ${index + 1}:`, {
-          nameColumn, name,
-          dateColumn, purchaseDate: purchaseDateStr,
-          costColumn, purchaseCostStr,
-          rawCostValue: costColumn ? row[costColumn] : 'no column',
-          allValues: row
-        });
-      }
-
-      // Only name is truly required - skip empty/summary rows
-      if (!name) {
-        console.warn(`Skipping row ${index + 1}: no name`);
-        return;
-      }
-
-      // Parse purchase cost (handle currency symbols, default to 0 for bundle items)
-      const purchaseCost = purchaseCostStr
-        ? Number.parseFloat(purchaseCostStr.replaceAll(/[^0-9.-]/g, '')) || 0
-        : 0;
-
-      // Use provided date or default to today
+    rows.forEach((row) => {
+      const name = fieldToColumn['name'] ? row[fieldToColumn['name']]?.trim() : '';
+      if (!name) return;
+      const purchaseCostStr = fieldToColumn['purchase_cost'] ? row[fieldToColumn['purchase_cost']]?.trim() : '';
+      const purchaseCost = purchaseCostStr ? Number.parseFloat(purchaseCostStr.replaceAll(/[^0-9.-]/g, '')) || 0 : 0;
+      const purchaseDateStr = fieldToColumn['purchase_date'] ? row[fieldToColumn['purchase_date']]?.trim() : '';
       const purchaseDate = purchaseDateStr || new Date().toISOString().split('T')[0];
-
-      // Get optional values
-      const categoryColumn = fieldToColumn['category'];
-      const csvCategory = categoryColumn ? row[categoryColumn]?.trim() : '';
+      const csvCategory = fieldToColumn['category'] ? row[fieldToColumn['category']]?.trim() : '';
       const suggestion = suggestCategoryFromName(name);
       const category = csvCategory || suggestion.category;
-
-      const usefulLifeColumn = fieldToColumn['useful_life_months'];
-      const usefulLifeStr = usefulLifeColumn ? row[usefulLifeColumn]?.trim() : '';
-      const usefulLifeMonths = usefulLifeStr
-        ? parseInt(usefulLifeStr, 10)
-        : getDefaultUsefulLife(category);
-
-      const salvageColumn = fieldToColumn['salvage_value'];
-      const salvageStr = salvageColumn ? row[salvageColumn]?.trim() : '';
-      const salvageValue = salvageStr
-        ? parseFloat(salvageStr.replace(/[^0-9.-]/g, '')) || 0
-        : 0;
-
-      const serialColumn = fieldToColumn['serial_number'];
-      const serialNumber = serialColumn ? row[serialColumn]?.trim() : undefined;
-
-      const descColumn = fieldToColumn['description'];
-      const description = descColumn ? row[descColumn]?.trim() : undefined;
+      const usefulLifeStr = fieldToColumn['useful_life_months'] ? row[fieldToColumn['useful_life_months']]?.trim() : '';
+      const usefulLifeMonths = usefulLifeStr ? parseInt(usefulLifeStr, 10) : getDefaultUsefulLife(category);
+      const salvageStr = fieldToColumn['salvage_value'] ? row[fieldToColumn['salvage_value']]?.trim() : '';
+      const salvageValue = salvageStr ? parseFloat(salvageStr.replace(/[^0-9.-]/g, '')) || 0 : 0;
 
       items.push({
         id: crypto.randomUUID(),
         rawText: name,
         parsedName: name,
-        parsedDescription: description,
+        parsedDescription: fieldToColumn['description'] ? row[fieldToColumn['description']]?.trim() : undefined,
         purchaseCost,
         purchaseDate,
-        serialNumber,
+        serialNumber: fieldToColumn['serial_number'] ? row[fieldToColumn['serial_number']]?.trim() : undefined,
         suggestedCategory: category,
         suggestedUsefulLifeMonths: usefulLifeMonths,
         suggestedSalvageValue: salvageValue,
@@ -285,142 +216,97 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
         category,
         usefulLifeMonths,
         salvageValue,
-        description,
+        description: fieldToColumn['description'] ? row[fieldToColumn['description']]?.trim() : undefined,
         importStatus: 'pending',
       });
     });
-
     return items;
   }, []);
 
+  const processFile = useCallback(async (file: File) => {
+    setSelectedFile(file);
+    if (isTextBasedFile(file)) {
+      if (canUseColumnMapping(file)) {
+        setPendingTextFile(file);
+        setShowMethodDialog(true);
+      } else {
+        await handleAITextExtraction(file);
+      }
+      return;
+    }
+    setProcessingStep('upload');
+    const document = await uploadDocument(file);
+    if (!document) { setProcessingStep('idle'); resetFileInputs(); return; }
+    setProcessingStep('process');
+    const success = await processDocument(document, file);
+    if (!success) { setProcessingStep('idle'); resetFileInputs(); return; }
+    setProcessingStep('complete');
+  }, [uploadDocument, processDocument, isTextBasedFile, canUseColumnMapping, handleAITextExtraction, resetFileInputs]);
+
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (file) await processFile(file);
+  }, [processFile]);
 
-    setSelectedFile(file);
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await processFile(file);
+  }, [processFile]);
 
-    // Check if it's a spreadsheet file (CSV or Excel)
-    if (isSpreadsheetFile(file)) {
+  const handleMethodSelect = useCallback(async (method: ImportMethod) => {
+    setShowMethodDialog(false);
+    if (!pendingTextFile) { toast({ title: 'Error', description: 'No file selected.', variant: 'destructive' }); return; }
+    const file = pendingTextFile;
+    setPendingTextFile(null);
+    if (method === 'ai') {
+      await handleAITextExtraction(file);
+    } else {
       try {
-        // Parse spreadsheet for column mapping
-        let parsed: { headers: string[]; sampleData: Record<string, string>[]; allRows: Record<string, string>[] };
-
-        if (isExcelFile(file)) {
-          parsed = await parseExcelForMapping(file);
-        } else {
-          parsed = await parseCSVForMapping(file);
-        }
-
-        const { headers, sampleData, allRows } = parsed;
-
-        // Generate suggested mappings
-        const mappings = suggestAssetColumnMappings(headers, sampleData);
-
-        // Show mapping dialog for user to review/confirm mappings
-        setCsvHeaders(headers);
-        setCsvSampleData(sampleData);
-        setCsvAllRows(allRows);
+        const parsed = isExcelFile(file) ? await parseExcelForMapping(file) : await parseCSVForMapping(file);
+        const mappings = suggestAssetColumnMappings(parsed.headers, parsed.sampleData);
+        setCsvHeaders(parsed.headers);
+        setCsvSampleData(parsed.sampleData);
+        setCsvAllRows(parsed.allRows);
         setSuggestedMappings(mappings);
         setPendingCsvFile(file);
         setShowMappingDialog(true);
       } catch (error) {
-        console.error('Error parsing spreadsheet:', error);
-        toast({
-          title: 'Spreadsheet parsing failed',
-          description: error instanceof Error ? error.message : 'Failed to parse file',
-          variant: 'destructive',
-        });
+        toast({ title: 'Parsing failed', description: error instanceof Error ? error.message : 'Failed to parse file', variant: 'destructive' });
         setProcessingStep('idle');
         resetFileInputs();
       }
-      return;
     }
+  }, [pendingTextFile, handleAITextExtraction, isExcelFile, parseExcelForMapping, parseCSVForMapping, toast, resetFileInputs]);
 
-    // For images and PDFs, use the full upload + AI process flow
-    setProcessingStep('upload');
-
-    const document = await uploadDocument(file);
-    if (!document) {
-      setProcessingStep('idle');
-      resetFileInputs();
-      return;
-    }
-
-    setProcessingStep('process');
-
-    const success = await processDocument(document, file);
-    if (!success) {
-      setProcessingStep('idle');
-      resetFileInputs();
-      return;
-    }
-
-    setProcessingStep('complete');
-    // Note: For PDF/image, onDocumentProcessed is called via useEffect below
-    // because lineItems are updated async by the hook after processDocument completes
-  }, [uploadDocument, processDocument, parseCSVForMapping, parseExcelForMapping, isSpreadsheetFile, isExcelFile, toast, resetFileInputs]);
-
-  /**
-   * Handle confirmed column mappings from dialog
-   */
   const handleMappingConfirm = useCallback((mappings: AssetColumnMapping[]) => {
     setShowMappingDialog(false);
-
-    if (csvAllRows.length === 0) {
-      toast({
-        title: 'Error',
-        description: 'No CSV data found. Please try uploading again.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
+    if (csvAllRows.length === 0) { toast({ title: 'Error', description: 'No data found.', variant: 'destructive' }); return; }
     setProcessingStep('process');
-
     try {
       const items = convertMappedCSVToLineItems(csvAllRows, mappings);
-
-      if (items.length === 0) {
-        throw new Error('No valid asset rows found in CSV');
-      }
-
+      if (items.length === 0) throw new Error('No valid rows found');
       setProcessingStep('complete');
-
-      toast({
-        title: 'CSV parsed',
-        description: `Found ${items.length} asset${items.length !== 1 ? 's' : ''} in file`,
-      });
-
-      onDocumentProcessed(items, undefined); // No document to attach for CSV
+      toast({ title: 'File processed', description: `Found ${items.length} asset${items.length !== 1 ? 's' : ''}` });
+      onDocumentProcessed(items, undefined);
     } catch (error) {
-      console.error('Error processing CSV:', error);
-      toast({
-        title: 'CSV processing failed',
-        description: error instanceof Error ? error.message : 'Failed to process CSV file',
-        variant: 'destructive',
-      });
+      toast({ title: 'Processing failed', description: error instanceof Error ? error.message : 'Failed to process file', variant: 'destructive' });
       setProcessingStep('idle');
     }
-
     resetCsvState();
     resetFileInputs();
   }, [csvAllRows, convertMappedCSVToLineItems, onDocumentProcessed, toast, resetCsvState, resetFileInputs]);
 
-  // Notify parent when PDF/image processing completes
-  // CSV processing calls onDocumentProcessed directly since items are returned inline
   useEffect(() => {
-    const isNonCsvFile = selectedFile && !selectedFile.name.toLowerCase().endsWith('.csv');
-    if (processingStep === 'complete' && lineItems.length > 0 && isNonCsvFile) {
+    const isColumnMappingFlow = showMappingDialog || csvAllRows.length > 0;
+    if (processingStep === 'complete' && lineItems.length > 0 && selectedFile && !isColumnMappingFlow) {
       onDocumentProcessed(lineItems, selectedFile);
     }
-  }, [processingStep, lineItems, selectedFile, onDocumentProcessed]);
+  }, [processingStep, lineItems, selectedFile, showMappingDialog, csvAllRows, onDocumentProcessed]);
 
   const handleDownloadTemplate = useCallback(() => {
-    const csvContent = [
-      getCSVTemplateHeader(),
-      getCSVTemplateSampleRow(),
-    ].join('\n');
-
+    const csvContent = [getCSVTemplateHeader(), getCSVTemplateSampleRow()].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -428,192 +314,175 @@ export function AssetImportUpload({ onDocumentProcessed }: AssetImportUploadProp
     link.download = 'asset-import-template.csv';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     URL.revokeObjectURL(url);
-
-    toast({
-      title: 'Template downloaded',
-      description: 'Fill in your assets and upload the completed CSV',
-    });
+    toast({ title: 'Template downloaded', description: 'Fill in your assets and upload' });
   }, [toast]);
-
-  const getProgressValue = () => {
-    switch (processingStep) {
-      case 'idle': return 0;
-      case 'upload': return isUploading ? 40 : 20;
-      case 'process': return isProcessing ? 70 : 50;
-      case 'complete': return 100;
-      default: return 0;
-    }
-  };
-
-  const getProgressText = () => {
-    switch (processingStep) {
-      case 'idle': return 'Ready to upload';
-      case 'upload': return isUploading ? 'Uploading document...' : 'Preparing upload...';
-      case 'process': return isProcessing ? 'AI is extracting assets...' : 'Starting AI extraction...';
-      case 'complete': return 'Extraction complete!';
-      default: return 'Ready';
-    }
-  };
 
   const isProcessingActive = isUploading || isProcessing;
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Package className="h-5 w-5" />
-          Import Assets
-        </CardTitle>
-        <CardDescription>
-          Upload an invoice, receipt, or CSV file to automatically extract and import assets
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Progress indicator */}
-        {processingStep !== 'idle' && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>{getProgressText()}</span>
-              <span>{getProgressValue()}%</span>
-            </div>
-            <Progress value={getProgressValue()} className="w-full" />
+    <div className="space-y-6">
+      {/* Processing Status */}
+      {processingStep !== 'idle' && (
+        <div className={`rounded-xl p-4 border-2 transition-all ${
+          processingStep === 'complete'
+            ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+            : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
+        }`}>
+          <div className="flex items-center gap-3 mb-3">
+            {processingStep === 'complete' ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            ) : (
+              <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+            )}
+            <span className="font-medium text-sm">
+              {processingStep === 'upload' && 'Uploading document...'}
+              {processingStep === 'process' && 'AI is extracting assets...'}
+              {processingStep === 'complete' && 'Extraction complete!'}
+            </span>
           </div>
-        )}
+          <Progress
+            value={processingStep === 'upload' ? 35 : processingStep === 'process' ? 70 : 100}
+            className="h-1.5"
+          />
+        </div>
+      )}
 
-        {/* File upload options */}
-        <div className="grid gap-4">
-          {/* Invoice/Receipt upload */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Upload Invoice or Receipt
-            </Label>
-            <Input
-              ref={documentInputRef}
-              id="asset-document"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
-              onChange={handleFileUpload}
-              disabled={isProcessingActive}
-              className="cursor-pointer"
-            />
-            <p className="text-xs text-muted-foreground">
-              AI will extract equipment and asset details from the document
+      {/* Main Drop Zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+        className={`relative rounded-xl border-2 border-dashed transition-all duration-200 ${
+          dragActive
+            ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/30 scale-[1.01]'
+            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+        } ${isProcessingActive ? 'pointer-events-none opacity-60' : ''}`}
+      >
+        <div className="p-8 sm:p-10">
+          <div className="text-center">
+            {/* Icon cluster */}
+            <div className="relative inline-flex items-center justify-center mb-5">
+              <div className="absolute -left-4 -top-1 p-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 rotate-[-8deg] shadow-sm">
+                <FileCode className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div className="p-4 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/20">
+                <ArrowUpFromLine className="h-7 w-7 text-white" />
+              </div>
+              <div className="absolute -right-4 -bottom-1 p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 rotate-[8deg] shadow-sm">
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            </div>
+
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1">
+              Drop files here or click to upload
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+              Invoices, receipts, CSV, Excel, or XML files
             </p>
-          </div>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                or import from spreadsheet
-              </span>
-            </div>
-          </div>
+            {/* Upload buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <div className="relative">
+                <Input
+                  ref={documentInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
+                  onChange={handleFileUpload}
+                  disabled={isProcessingActive}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  aria-label="Upload invoice or receipt"
+                />
+                <Button variant="default" className="pointer-events-none">
+                  <FileImage className="h-4 w-4 mr-2" />
+                  Invoice / Receipt
+                </Button>
+              </div>
 
-          {/* Spreadsheet upload (CSV/Excel) */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4" />
-              Upload Spreadsheet
-            </Label>
-            <div className="flex gap-2">
-              <Input
-                ref={csvInputRef}
-                id="asset-spreadsheet"
-                type="file"
-                accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                onChange={handleFileUpload}
-                disabled={isProcessingActive}
-                className="cursor-pointer flex-1"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={handleDownloadTemplate}
-                disabled={isProcessingActive}
-                title="Download CSV template"
-                aria-label="Download CSV template"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
+              <div className="relative">
+                <Input
+                  ref={csvInputRef}
+                  type="file"
+                  accept=".csv,.xls,.xlsx,.xml,text/csv,text/xml,application/xml,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  onChange={handleFileUpload}
+                  disabled={isProcessingActive}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  aria-label="Upload spreadsheet or data file"
+                />
+                <Button variant="outline" className="pointer-events-none">
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Spreadsheet
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              CSV or Excel (.xls, .xlsx). Required: name column. Price defaults to $0 if empty.
-              <button
-                onClick={handleDownloadTemplate}
-                className="ml-1 text-primary hover:underline"
-                disabled={isProcessingActive}
-              >
-                Download CSV template
-              </button>
-            </p>
           </div>
         </div>
+      </div>
 
-        {/* Processing status */}
-        {isProcessingActive && (
-          <div className="bg-muted p-4 rounded-lg">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              <span className="text-sm font-medium">
-                {isUploading && 'Uploading your document...'}
-                {isProcessing && 'AI is extracting assets from your document...'}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              This may take up to 60 seconds for large documents
-            </p>
+      {/* File Type Info */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+          <div className="p-1.5 rounded bg-orange-100 dark:bg-orange-900/30">
+            <FileText className="h-4 w-4 text-orange-600 dark:text-orange-400" />
           </div>
-        )}
-
-        {processingStep === 'complete' && (
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-              <div className="w-2 h-2 bg-green-500 rounded-full" />
-              <span className="text-sm font-medium">Document processed successfully!</span>
-            </div>
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-              Review the extracted assets before importing
-            </p>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Documents</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">PDF, JPG, PNG</p>
           </div>
-        )}
-
-        {/* Help section */}
-        <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-          <h4 className="text-sm font-medium flex items-center gap-2">
-            <Upload className="h-4 w-4" />
-            Supported Documents
-          </h4>
-          <ul className="text-xs text-muted-foreground space-y-1">
-            <li>• <strong>Invoices & Receipts:</strong> PDF, JPG, PNG (up to 10MB) - AI extracts asset details</li>
-            <li>• <strong>Asset Lists:</strong> CSV or Excel (.xls, .xlsx) - map columns to asset fields</li>
-            <li>• <strong>Equipment Schedules:</strong> PDF asset schedules or depreciation reports</li>
-            <li>• <strong>Bundle quotes:</strong> Items with $0 price can be imported and edited before saving</li>
-          </ul>
         </div>
-      </CardContent>
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+          <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Spreadsheets</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">CSV, XLS, XLSX</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+          <div className="p-1.5 rounded bg-violet-100 dark:bg-violet-900/30">
+            <FileCode className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Data Files</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">XML, TXT</p>
+          </div>
+        </div>
+      </div>
 
-      {/* Column Mapping Dialog for CSV */}
+      {/* Template Download */}
+      <div className="flex items-center justify-between p-4 rounded-lg border bg-slate-50/50 dark:bg-slate-800/30">
+        <div className="flex items-center gap-3">
+          <Download className="h-5 w-5 text-slate-400" />
+          <div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Need a template?</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Download our CSV format</p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleDownloadTemplate} disabled={isProcessingActive}>
+          Download Template
+        </Button>
+      </div>
+
+      {/* Dialogs */}
+      <AssetImportMethodDialog
+        open={showMethodDialog}
+        onClose={() => { setShowMethodDialog(false); setPendingTextFile(null); resetFileInputs(); }}
+        onSelectMethod={handleMethodSelect}
+        fileName={pendingTextFile?.name || ''}
+      />
       <AssetColumnMappingDialog
         open={showMappingDialog}
         onOpenChange={(open) => {
           setShowMappingDialog(open);
-          if (!open) {
-            resetCsvState();
-            resetFileInputs();
-            setProcessingStep('idle');
-          }
+          if (!open) { resetCsvState(); resetFileInputs(); setProcessingStep('idle'); }
         }}
         csvHeaders={csvHeaders}
         sampleData={csvSampleData}
         suggestedMappings={suggestedMappings}
         onConfirm={handleMappingConfirm}
       />
-    </Card>
+    </div>
   );
 }

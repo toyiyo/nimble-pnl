@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,11 +26,14 @@ export default function RestaurantSettings() {
   const { updateRestaurant } = useRestaurants();
   const { toast } = useToast();
 
-  // Tab state from URL
+  // Tab state from URL - memoize setActiveTab to prevent unnecessary re-renders
   const activeTab = searchParams.get('tab') || 'general';
-  const setActiveTab = (tab: string) => {
-    setSearchParams({ tab });
-  };
+  const setActiveTab = useCallback(
+    (tab: string) => {
+      setSearchParams({ tab });
+    },
+    [setSearchParams]
+  );
 
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');

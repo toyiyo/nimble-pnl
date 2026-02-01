@@ -27,6 +27,15 @@ function createSupabaseMock() {
   };
 }
 
+// Minimal stripe mock
+function createStripeMock() {
+  return {
+    subscriptions: {
+      retrieve: async () => ({} as Stripe.Subscription),
+    },
+  } as unknown as Stripe;
+}
+
 Deno.test("processSubscriptionEvent handles cancellation update payload", async () => {
   const supabaseMock = createSupabaseMock();
 
@@ -70,7 +79,7 @@ Deno.test("processSubscriptionEvent handles cancellation update payload", async 
     },
   } as unknown as Stripe.Event;
 
-  await processSubscriptionEvent(event, supabaseMock as any);
+  await processSubscriptionEvent(event, supabaseMock as any, createStripeMock());
 
   assertEquals(supabaseMock.calls.length, 1);
   const call = supabaseMock.calls[0];

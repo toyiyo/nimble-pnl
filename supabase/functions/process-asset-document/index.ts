@@ -394,7 +394,7 @@ async function callModel(options: CallModelOptions): Promise<Response | null> {
           'process-asset-document:success',
           { model: modelConfig.id, isPDF },
           { status: 'success' },
-          { model: modelConfig.id, provider: "openrouter", restaurant_id: restaurantId, edge_function: 'process-asset-document', success: true, status_code: 200 },
+          { model: modelConfig.id, provider: "openrouter", restaurant_id: restaurantId, edge_function: 'process-asset-document', success: true, status_code: 200, stream: false, attempt: retryCount + 1 },
           null
         );
         return response;

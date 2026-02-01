@@ -230,10 +230,12 @@ export type Database = {
           notes: string | null
           purchase_cost: number
           purchase_date: string
+          quantity: number
           restaurant_id: string
           salvage_value: number
           serial_number: string | null
           status: Database["public"]["Enums"]["asset_status_enum"]
+          unit_cost: number
           updated_at: string
           useful_life_months: number
         }
@@ -255,10 +257,12 @@ export type Database = {
           notes?: string | null
           purchase_cost: number
           purchase_date: string
+          quantity?: number
           restaurant_id: string
           salvage_value?: number
           serial_number?: string | null
           status?: Database["public"]["Enums"]["asset_status_enum"]
+          unit_cost: number
           updated_at?: string
           useful_life_months: number
         }
@@ -280,10 +284,12 @@ export type Database = {
           notes?: string | null
           purchase_cost?: number
           purchase_date?: string
+          quantity?: number
           restaurant_id?: string
           salvage_value?: number
           serial_number?: string | null
           status?: Database["public"]["Enums"]["asset_status_enum"]
+          unit_cost?: number
           updated_at?: string
           useful_life_months?: number
         }
@@ -7599,6 +7605,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: number
       }
+      bulk_delete_bank_transactions: {
+        Args: { p_restaurant_id: string; p_transaction_ids: string[] }
+        Returns: Json
+      }
       bulk_process_historical_sales: {
         Args: {
           p_end_date: string
@@ -7834,6 +7844,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      delete_bank_transaction: {
+        Args: { p_restaurant_id: string; p_transaction_id: string }
+        Returns: Json
       }
       dmetaphone: { Args: { "": string }; Returns: string }
       dmetaphone_alt: { Args: { "": string }; Returns: string }
@@ -8176,6 +8190,14 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       soundex: { Args: { "": string }; Returns: string }
+      split_asset: {
+        Args: {
+          p_asset_id: string
+          p_restaurant_id: string
+          p_split_quantity: number
+        }
+        Returns: string
+      }
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }
         Returns: Json

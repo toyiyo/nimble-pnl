@@ -1728,14 +1728,26 @@ export const Inventory: React.FC = () => {
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                   {lowStockProducts.map((product) => (
-                     <Card key={product.id} className="border-destructive">
+                   {lowStockProducts.map((product) => {
+                     // Find the full product data for the edit dialog
+                     const fullProduct = products.find(p => p.id === product.id);
+                     return (
+                     <Card
+                       key={product.id}
+                       className="border-destructive cursor-pointer hover:shadow-md transition-shadow"
+                       onClick={() => {
+                         if (fullProduct) {
+                           setSelectedProduct(fullProduct);
+                           setShowUpdateDialog(true);
+                         }
+                       }}
+                     >
                        <CardHeader>
                          <div className="flex items-start gap-3">
                            {product.image_url && (
                              <div className="flex-shrink-0">
-                               <img 
-                                 src={product.image_url} 
+                               <img
+                                 src={product.image_url}
                                  alt={product.name}
                                  className="w-16 h-16 object-cover rounded-lg border"
                                />
@@ -1795,13 +1807,20 @@ export const Inventory: React.FC = () => {
                                 </div>
                              </>
                            )}
-                           <Button className="w-full mt-4" size="sm">
+                           <Button
+                             className="w-full mt-4"
+                             size="sm"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               navigate('/purchase-orders/new', { state: { preselectedProductId: product.id } });
+                             }}
+                           >
                              Reorder Now
                            </Button>
                          </div>
                        </CardContent>
                     </Card>
-                  ))}
+                  );})}
                 </div>
               )}
             </div>

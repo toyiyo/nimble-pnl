@@ -540,12 +540,28 @@ serve(async (req) => {
     try {
       const startTime = Date.now();
       console.log("📥 Fetching PDF from signed URL...");
-      
+
+      // Fix Docker networking: replace localhost/127.0.0.1 with host.docker.internal
+      // Edge functions run in Docker and can't reach the host via localhost
+      let fetchUrl = pdfUrl;
+      try {
+        const url = new URL(pdfUrl);
+        if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+          url.hostname = 'host.docker.internal';
+          fetchUrl = url.toString();
+          if (Deno.env.get('DEBUG') === 'true') {
+            console.log("🔄 Replaced localhost with host.docker.internal for Docker networking");
+          }
+        }
+      } catch {
+        // Keep original pdfUrl if it isn't a valid absolute URL
+      }
+
       // Set up abort controller with timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      const pdfResponse = await fetch(pdfUrl, { signal: controller.signal });
+      const pdfResponse = await fetch(fetchUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!pdfResponse.ok) {

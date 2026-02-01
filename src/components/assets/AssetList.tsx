@@ -36,7 +36,6 @@ import {
   Image,
   Calculator,
   MapPin,
-  Calendar,
 } from 'lucide-react';
 import type { AssetWithDetails, AssetStatus } from '@/types/assets';
 import { formatAssetCurrency } from '@/types/assets';
@@ -152,7 +151,16 @@ export function AssetList({
                   <Badge variant="outline">{asset.category}</Badge>
                 </TableCell>
                 <TableCell className="text-right font-mono">
-                  {formatAssetCurrency(asset.purchase_cost)}
+                  {asset.quantity > 1 ? (
+                    <div className="flex flex-col items-end">
+                      <span>{formatAssetCurrency(asset.purchase_cost)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {asset.quantity} × {formatAssetCurrency(asset.unit_cost)}
+                      </span>
+                    </div>
+                  ) : (
+                    formatAssetCurrency(asset.purchase_cost)
+                  )}
                 </TableCell>
                 <TableCell className="text-right font-mono">
                   {formatAssetCurrency(asset.net_book_value)}

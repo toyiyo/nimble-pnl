@@ -62,10 +62,20 @@ const ASSET_FIELD_PATTERNS: Record<string, KeywordPattern> = {
     aliases: ['purchase_date', 'acquired_date', 'acquisition_date', 'bought'],
     weight: 9,
   },
-  purchase_cost: {
-    keywords: ['purchase cost', 'cost', 'price', 'amount', 'purchase price', 'acquisition cost', 'value', 'total', 'line total', 'extended'],
-    aliases: ['purchase_cost', 'purchase_price', 'original_cost', 'acquisition_cost', 'line_total', 'ext_price', 'extended_price', 'unit_price'],
+  quantity: {
+    keywords: ['quantity', 'qty', 'count', 'units', 'number', 'num'],
+    aliases: ['qty', 'quantity', 'unit_count', 'num_units'],
+    weight: 8,
+  },
+  unit_cost: {
+    keywords: ['unit cost', 'unit price', 'price each', 'cost each', 'per unit', 'each'],
+    aliases: ['unit_cost', 'unit_price', 'price_each', 'cost_per_unit'],
     weight: 9,
+  },
+  purchase_cost: {
+    keywords: ['purchase cost', 'total cost', 'total price', 'amount', 'total', 'line total', 'extended', 'ext'],
+    aliases: ['purchase_cost', 'purchase_price', 'original_cost', 'acquisition_cost', 'line_total', 'ext_price', 'extended_price', 'total_cost', 'total_amount'],
+    weight: 8,
   },
   salvage_value: {
     keywords: ['salvage value', 'salvage', 'residual value', 'residual', 'scrap value'],
@@ -272,9 +282,11 @@ export function validateAssetMappings(mappings: AssetColumnMapping[]): {
     errors.push('Purchase Date field is required - please map a column to Purchase Date');
   }
 
+  // Either unit_cost or purchase_cost is required
+  const hasUnitCost = mappings.some(m => m.targetField === 'unit_cost');
   const hasPurchaseCost = mappings.some(m => m.targetField === 'purchase_cost');
-  if (!hasPurchaseCost) {
-    errors.push('Purchase Cost field is required - please map a column to Purchase Cost');
+  if (!hasUnitCost && !hasPurchaseCost) {
+    errors.push('Either Unit Cost or Total Cost field is required - please map a column to one of them');
   }
 
   // Warnings for optional but recommended fields
@@ -286,6 +298,11 @@ export function validateAssetMappings(mappings: AssetColumnMapping[]): {
   const hasUsefulLife = mappings.some(m => m.targetField === 'useful_life_months');
   if (!hasUsefulLife) {
     warnings.push('No Useful Life column mapped - depreciation will use category defaults');
+  }
+
+  const hasQuantity = mappings.some(m => m.targetField === 'quantity');
+  if (!hasQuantity) {
+    warnings.push('No Quantity column mapped - assets will default to quantity of 1');
   }
 
   return {
@@ -302,7 +319,9 @@ export const ASSET_TARGET_FIELDS = [
   { value: 'name', label: 'Asset Name', required: true },
   { value: 'category', label: 'Category', required: false },
   { value: 'purchase_date', label: 'Purchase Date', required: true },
-  { value: 'purchase_cost', label: 'Purchase Cost', required: true },
+  { value: 'quantity', label: 'Quantity', required: false },
+  { value: 'unit_cost', label: 'Unit Cost', required: false },
+  { value: 'purchase_cost', label: 'Total Cost', required: false },
   { value: 'salvage_value', label: 'Salvage Value', required: false },
   { value: 'useful_life_months', label: 'Useful Life (Months)', required: false },
   { value: 'serial_number', label: 'Serial Number', required: false },

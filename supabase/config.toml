@@ -204,3 +204,9 @@ verify_jwt = false
 
 [functions.stripe-customer-portal]
 verify_jwt = true
+
+[functions.process-bank-statement]
+verify_jwt = true
+
+[functions.process-asset-document]
+verify_jwt = true

@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { BulkActionPanel } from './BulkActionPanel';
-import { SearchableAccountSelector } from '../banking/SearchableAccountSelector';
+
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+
+import { BulkActionPanel } from './BulkActionPanel';
+import { SearchableAccountSelector } from '../banking/SearchableAccountSelector';
+
 import { formatBulkCount } from '@/utils/bulkEditUtils';
 
 interface BulkCategorizePanelProps {
@@ -13,7 +16,7 @@ interface BulkCategorizePanelProps {
   readonly onApply: (categoryId: string, overrideExisting: boolean) => void;
   readonly isApplying?: boolean;
   readonly itemType: 'transaction' | 'sale';
-  readonly accountTypes: Array<'asset' | 'liability' | 'equity' | 'revenue' | 'expense'>;
+  readonly accountTypes?: Array<'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'cogs'>;
   readonly helpText?: string;
 }
 

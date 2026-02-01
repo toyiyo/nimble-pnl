@@ -56,50 +56,46 @@ export function useBulkCategorizeTransactions() {
   });
 }
 
-interface BulkExcludeParams {
+interface BulkDeleteParams {
   transactionIds: string[];
-  reason: string;
   restaurantId: string;
 }
 
 /**
- * Hook for bulk excluding bank transactions from P&L
+ * Hook for bulk deleting bank transactions
+ * Used when transactions from shared bank accounts don't belong to this restaurant
  */
-export function useBulkExcludeTransactions() {
+export function useBulkDeleteTransactions() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ transactionIds, reason, restaurantId }: BulkExcludeParams) => {
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .update({
-          is_excluded: true,
-          excluded_reason: reason,
-        })
-        .in('id', transactionIds)
-        .eq('restaurant_id', restaurantId)
-        .select();
+    mutationFn: async ({ transactionIds, restaurantId }: BulkDeleteParams) => {
+      const { data, error } = await supabase.rpc('bulk_delete_bank_transactions', {
+        p_transaction_ids: transactionIds,
+        p_restaurant_id: restaurantId,
+      });
 
       if (error) throw error;
-      return data;
+
+      const result = data as { success: boolean; error?: string; deleted_count?: number };
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete transactions');
+      }
+
+      return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      
-      toast.success(`${variables.transactionIds.length} transactions excluded`, {
-        description: 'Transactions will not appear in P&L',
-        duration: 10000,
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            toast.info('Undo feature coming soon');
-          },
-        },
+
+      toast.success(`${result.deleted_count || variables.transactionIds.length} transactions deleted`, {
+        description: 'Transactions have been permanently removed',
       });
     },
     onError: (error) => {
-      console.error('Error bulk excluding transactions:', error);
-      toast.error('Failed to exclude transactions');
+      console.error('Error bulk deleting transactions:', error);
+      toast.error('Failed to delete transactions', {
+        description: error instanceof Error ? error.message : 'Please try again',
+      });
     },
   });
 }

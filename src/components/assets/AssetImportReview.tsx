@@ -55,11 +55,12 @@ export function AssetImportReview({
     const pending = items.filter(i => i.importStatus === 'pending').length;
     const imported = items.filter(i => i.importStatus === 'imported').length;
     const errored = items.filter(i => i.importStatus === 'error').length;
-    const totalCost = items.reduce((sum, i) => sum + i.purchaseCost, 0);
-    const needsPrice = items.filter(i => i.importStatus === 'pending' && i.purchaseCost <= 0).length;
-    const readyToImport = items.filter(i => i.importStatus === 'pending' && i.purchaseCost > 0).length;
+    const totalCost = items.reduce((sum, i) => sum + (i.unitCost * (i.quantity || 1)), 0);
+    const totalUnits = items.reduce((sum, i) => sum + (i.quantity || 1), 0);
+    const needsPrice = items.filter(i => i.importStatus === 'pending' && i.unitCost <= 0).length;
+    const readyToImport = items.filter(i => i.importStatus === 'pending' && i.unitCost > 0).length;
 
-    return { pending, imported, errored, totalCost, total: items.length, needsPrice, readyToImport };
+    return { pending, imported, errored, totalCost, totalUnits, total: items.length, needsPrice, readyToImport };
   }, [items]);
 
   const handleUpdateItem = useCallback((id: string, updates: Partial<AssetLineItem>) => {
@@ -83,7 +84,7 @@ export function AssetImportReview({
   }, []);
 
   const handleImport = useCallback(async () => {
-    const pendingItems = items.filter(i => i.importStatus === 'pending' && i.purchaseCost > 0);
+    const pendingItems = items.filter(i => i.importStatus === 'pending' && i.unitCost > 0);
     if (pendingItems.length === 0) return;
 
     const result = await bulkImportAssets(pendingItems, documentFile);
@@ -161,7 +162,7 @@ export function AssetImportReview({
           </Badge>
         );
       default:
-        if (item.purchaseCost <= 0) {
+        if (item.unitCost <= 0) {
           return (
             <Badge className="bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800 text-[10px] font-medium gap-1">
               <AlertTriangle className="h-3 w-3" />
@@ -181,7 +182,7 @@ export function AssetImportReview({
   const getRowBackground = (item: AssetLineItem) => {
     if (item.importStatus === 'imported') return 'bg-emerald-50/60 dark:bg-emerald-950/20 border-l-2 border-l-emerald-500';
     if (item.importStatus === 'error') return 'bg-red-50/60 dark:bg-red-950/20 border-l-2 border-l-red-500';
-    if (item.importStatus === 'pending' && item.purchaseCost <= 0) return 'bg-amber-50/60 dark:bg-amber-950/20 border-l-2 border-l-amber-500';
+    if (item.importStatus === 'pending' && item.unitCost <= 0) return 'bg-amber-50/60 dark:bg-amber-950/20 border-l-2 border-l-amber-500';
     return 'border-l-2 border-l-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50';
   };
 
@@ -288,23 +289,55 @@ export function AssetImportReview({
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className="relative w-28">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                    <div className="flex items-center gap-2">
                       <Input
                         type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.purchaseCost || ''}
-                        onChange={e => handleUpdateItem(item.id, { purchaseCost: parseFloat(e.target.value) || 0 })}
+                        min="1"
+                        step="1"
+                        value={item.quantity || 1}
+                        onChange={e => {
+                          const qty = parseInt(e.target.value) || 1;
+                          handleUpdateItem(item.id, {
+                            quantity: qty,
+                            purchaseCost: item.unitCost * qty,
+                          });
+                        }}
                         disabled={item.importStatus !== 'pending' || isImporting}
-                        placeholder="0.00"
-                        className={`h-9 text-sm text-right pl-7 bg-white dark:bg-slate-800 ${
-                          item.importStatus === 'pending' && item.purchaseCost <= 0
-                            ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
-                            : ''
-                        }`}
+                        className="h-9 text-sm text-center w-14 bg-white dark:bg-slate-800"
+                        placeholder="Qty"
+                        aria-label="Quantity"
                       />
+                      <span className="text-slate-400 text-sm">×</span>
+                      <div className="relative w-24">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.unitCost || ''}
+                          onChange={e => {
+                            const cost = parseFloat(e.target.value) || 0;
+                            handleUpdateItem(item.id, {
+                              unitCost: cost,
+                              purchaseCost: cost * (item.quantity || 1),
+                            });
+                          }}
+                          disabled={item.importStatus !== 'pending' || isImporting}
+                          placeholder="0.00"
+                          aria-label="Unit cost"
+                          className={`h-9 text-sm text-right pl-7 bg-white dark:bg-slate-800 ${
+                            item.importStatus === 'pending' && item.unitCost <= 0
+                              ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
+                              : ''
+                          }`}
+                        />
+                      </div>
                     </div>
+                    {(item.quantity || 1) > 1 && item.unitCost > 0 && (
+                      <span className="text-xs text-slate-500">
+                        Total: {formatAssetCurrency(item.unitCost * (item.quantity || 1))}
+                      </span>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -433,7 +466,8 @@ export function AssetImportReview({
                 <th className="text-left px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Asset Name</th>
                 <th className="text-left px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Category</th>
                 <th className="text-left px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide hidden lg:table-cell">Date</th>
-                <th className="text-right px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Cost</th>
+                <th className="text-center px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide w-16">Qty</th>
+                <th className="text-right px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Unit Cost</th>
                 <th className="text-right px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide hidden md:table-cell">Life</th>
                 <th className="text-center px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide hidden xl:table-cell">Conf.</th>
                 <th className="text-left px-3 py-2 font-medium text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
@@ -482,34 +516,66 @@ export function AssetImportReview({
                       className="h-7 text-sm w-[130px] bg-white dark:bg-slate-800"
                     />
                   </td>
+                  <td className="px-3 py-1.5 text-center">
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={item.quantity || 1}
+                      onChange={e => {
+                        const qty = parseInt(e.target.value) || 1;
+                        handleUpdateItem(item.id, {
+                          quantity: qty,
+                          purchaseCost: item.unitCost * qty,
+                        });
+                      }}
+                      disabled={item.importStatus !== 'pending' || isImporting}
+                      className="h-7 text-sm text-center w-14 bg-white dark:bg-slate-800"
+                      aria-label="Quantity"
+                    />
+                  </td>
                   <td className="px-3 py-1.5 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <span className="text-slate-400 text-xs">$</span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.purchaseCost || ''}
-                        onChange={e => handleUpdateItem(item.id, { purchaseCost: parseFloat(e.target.value) || 0 })}
-                        disabled={item.importStatus !== 'pending' || isImporting}
-                        placeholder="0.00"
-                        className={`h-7 text-sm text-right w-20 bg-white dark:bg-slate-800 ${
-                          item.importStatus === 'pending' && item.purchaseCost <= 0
-                            ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
-                            : ''
-                        }`}
-                      />
-                      {item.importStatus === 'pending' && item.purchaseCost <= 0 && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="p-0.5 rounded bg-amber-100 dark:bg-amber-900/50">
-                                <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>Enter a cost {'>'} $0 to import</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-400 text-xs">$</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.unitCost || ''}
+                          onChange={e => {
+                            const cost = parseFloat(e.target.value) || 0;
+                            handleUpdateItem(item.id, {
+                              unitCost: cost,
+                              purchaseCost: cost * (item.quantity || 1),
+                            });
+                          }}
+                          disabled={item.importStatus !== 'pending' || isImporting}
+                          placeholder="0.00"
+                          aria-label="Unit cost"
+                          className={`h-7 text-sm text-right w-20 bg-white dark:bg-slate-800 ${
+                            item.importStatus === 'pending' && item.unitCost <= 0
+                              ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
+                              : ''
+                          }`}
+                        />
+                        {item.importStatus === 'pending' && item.unitCost <= 0 && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="p-0.5 rounded bg-amber-100 dark:bg-amber-900/50">
+                                  <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>Enter a unit cost {'>'} $0 to import</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      {(item.quantity || 1) > 1 && item.unitCost > 0 && (
+                        <span className="text-[10px] text-slate-500">
+                          Total: {formatAssetCurrency(item.unitCost * (item.quantity || 1))}
+                        </span>
                       )}
                     </div>
                   </td>

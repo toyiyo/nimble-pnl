@@ -50724,6 +50724,1343 @@
       "status": "open",
       "created_at": "2026-01-30T04:01:03.860Z",
       "updated_at": "2026-01-30T04:01:03.860Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650360,
+        "file": "src/components/assets/AssetImportReview.tsx",
+        "line": 333
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Add labels for quantity and unit cost inputs (a11y).**  \nBoth mobile and desktop inputs lack associated labels.\n\n\n\n<details>\n<summary>♿️ Add aria-labels</summary>\n\n```diff\n                       <Input\n                         type=\"number\"\n                         min=\"1\"\n                         step=\"1\"\n                         value={item.quantity || 1}\n+                        aria-label=\"Quantity\"\n@@\n                         <Input\n                           type=\"number\"\n                           step=\"0.01\"\n                           min=\"0\"\n                           value={item.unitCost || ''}\n+                          aria-label=\"Unit cost\"\n@@\n                     <Input\n                       type=\"number\"\n                       min=\"1\"\n                       step=\"1\"\n                       value={item.quantity || 1}\n+                      aria-label=\"Quantity\"\n@@\n                         <Input\n                           type=\"number\"\n                           step=\"0.01\"\n                           min=\"0\"\n                           value={item.unitCost || ''}\n+                          aria-label=\"Unit cost\"\n```\n</details>\n\nAs per coding guidelines \"Always add accessibility attributes: aria-label for buttons without text, aria-label or label for form inputs, keyboard support for interactive elements\".\n\n\nAlso applies to: 517-575\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/components/assets/AssetImportReview.tsx` around lines 292 - 333, Add\naccessible labels/aria-labels to the quantity and unit cost inputs so screen\nreaders can identify them: update the Input corresponding to quantity (the Input\nwith value={item.quantity || 1} and onChange that calls handleUpdateItem) to\ninclude either a visually-hidden <label> referencing its id or an aria-label\nlike aria-label={`Quantity for ${item.id}`} and do the same for the unit cost\nInput (the Input with value={item.unitCost || ''} and its onChange) using\naria-label={`Unit cost for ${item.id}`}; ensure ids are unique per item (e.g.,\n`${item.id}-qty` and `${item.id}-unitCost`) if you add <label> elements and keep\ncurrent disabled/placeholder/formatting behavior unchanged.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4d37509ec61f86bc262db1f6f4ec22a26e83073d",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.925Z",
+      "updated_at": "2026-02-01T18:45:26.287Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added aria-label attributes to quantity and unit cost inputs in both mobile and desktop views"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650362,
+        "file": "src/components/bulk-edit/BulkCategorizePanel.tsx",
+        "line": 16
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Find SearchableAccountSelector component\nfd -t f \"SearchableAccountSelector\" --type ts --type tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 230\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for SearchableAccountSelector definition and usage\nrg -n \"SearchableAccountSelector\" -t ts -t tsx -A 5 -B 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the BulkCategorizePanel file to understand the context\ncat -n src/components/bulk-edit/BulkCategorizePanel.tsx | head -100\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4157\n\n---\n\n🏁 Script executed:\n\n```shell\n# Find SearchableAccountSelector component\nfind . -type f -name \"SearchableAccountSelector*\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 115\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the SearchableAccountSelector component\ncat -n src/components/banking/SearchableAccountSelector.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 9636\n\n---\n\n\n\n</details>\n\n**Fix import order in BulkCategorizePanel.**\n\nThe change to make `accountTypes` optional is correctly handled by `SearchableAccountSelector`—when `filterByTypes` is undefined, line 50 returns all accounts as intended. However, imports should follow the guideline order: React & ecosystem → UI components (shadcn) → custom components → utils. Currently, local components (BulkActionPanel, SearchableAccountSelector) are imported before shadcn UI components (Label, Switch, Badge). Reorder to:\n\n```\nimport { useState } from 'react';\nimport { Label } from '@/components/ui/label';\nimport { Switch } from '@/components/ui/switch';\nimport { Badge } from '@/components/ui/badge';\nimport { BulkActionPanel } from './BulkActionPanel';\nimport { SearchableAccountSelector } from '../banking/SearchableAccountSelector';\nimport { formatBulkCount } from '@/utils/bulkEditUtils';\n```\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/components/bulk-edit/BulkCategorizePanel.tsx` at line 16, Reorder imports\nin BulkCategorizePanel to follow the project's import ordering: place\nReact/ecosystem imports first, then shadcn UI components, then local/custom\ncomponents, then utils; specifically ensure useState (React) is first, then\nLabel, Switch, Badge from '@/components/ui/...', then BulkActionPanel and\nSearchableAccountSelector, and finally formatBulkCount from\n'@/utils/bulkEditUtils'; keep accountTypes signature as changed and do not\nmodify other logic in BulkCategorizePanel.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "b8171b549ed5cf42d6dca617a067f9226f50f15d",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.926Z",
+      "updated_at": "2026-02-01T18:45:28.011Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Reordered imports to follow project guidelines"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650364,
+        "file": "src/hooks/useAssets.ts",
+        "line": 271
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, locate the useAssets.ts file\nfd -e ts -e tsx \"useAssets\" src/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 83\n\n---\n\n🏁 Script executed:\n\n```shell\n# Then search for existing tests related to useAssets\nfd -e test.ts \"useAssets\" tests/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 89\n\n---\n\n🏁 Script executed:\n\n```shell\n# Also search for any test files that might mention useAssets or related summary logic\nrg -l \"useAssets|summary.*totalAssets\" tests --glob \"**/*.test.ts\"\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 89\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the useAssets.ts file around lines 266-271\nsed -n '260,280p' src/hooks/useAssets.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 770\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full test file to see what's already tested\nwc -l tests/unit/useAssets.test.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 93\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for existing summary tests in the test file\nrg -n \"summary|totalAssets|quantity\" tests/unit/useAssets.test.ts -A 2 -B 1\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 703\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full summary tests section\nsed -n '156,200p' tests/unit/useAssets.test.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1452\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for test cases that use quantity field\nrg -n \"quantity\" tests/unit/useAssets.test.ts -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check mockAssetFromDB to see if quantity is set in mock data\nrg -n \"mockAssetFromDB\\|const.*mock\" tests/unit/useAssets.test.ts -A 5 | head -40\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n\n\n</details>\n\n**Add unit tests for the quantity-aware summary logic in `useAssets.test.ts`.**\n\nThe existing summary tests do not cover cases where assets have `quantity > 1` or `quantity = null/undefined`. Tests should verify:\n- Assets with `quantity > 1` are counted correctly in `totalAssets` and `activeAssets`\n- Undefined/null `quantity` defaults to 1 in the calculation\n- Inactive assets with quantity are excluded from `activeAssets` but included in `totalAssets`\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useAssets.ts` around lines 266 - 271, Add unit tests in\nuseAssets.test.ts that exercise the summary calculation logic in useAssets (the\nsummary object: totalAssets, totalRecords, activeAssets, totalCost). Create test\ncases where assets include items with quantity > 1, items with quantity\nnull/undefined (should default to 1), and assets with quantity but status !==\n'active' to ensure totalAssets counts all units while activeAssets only sums\nunits for status === 'active'. For each case assert expected values for\ntotalAssets, totalRecords, activeAssets, and totalCost to match the reduce logic\nused in useAssets's summary.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->\n\n✅ Addressed in commit 3f8de1c",
+      "severity": "info",
+      "id": "7b93763f9801c7abf858f4f9817bf68f496d9a00",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.926Z",
+      "updated_at": "2026-02-01T18:45:31.215Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Tests already exist in commit 3f8de1c - verified at lines 214-254"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650366,
+        "file": "supabase/functions/process-asset-document/index.ts",
+        "line": 689
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Check if file exists and examine lines 673-689\nif [ -f \"supabase/functions/process-asset-document/index.ts\" ]; then\n  echo \"=== File exists, examining lines 673-689 ===\"\n  wc -l supabase/functions/process-asset-document/index.ts\n  echo \"\"\n  sed -n '665,700p' supabase/functions/process-asset-document/index.ts\nelse\n  echo \"File not found at expected path\"\n  fd \"process-asset-document\" --type f\nfi\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1683\n\n---\n\n🏁 Script executed:\n\n```shell\n# Also search for context around purchaseCost and unitCost handling\necho \"=== Searching for purchaseCost and unitCost references ===\"\nrg \"purchaseCost|unitCost\" supabase/functions/process-asset-document/index.ts -B 2 -A 2 --color never\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3857\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the structure of the data being mapped and how costs are used downstream\necho \"=== Checking how costs are used after this mapping ===\"\nrg \"purchaseCost|unitCost\" supabase/functions/process-asset-document/index.ts -A 5 | head -60\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2999\n\n---\n\n\n\n</details>\n\n**Derive purchaseCost when unitCost is present but total is missing.**\n\nAccording to the documented schema (visible in the AI extraction prompts), `purchaseCost` must equal `quantity × unitCost`. Currently, if the extraction provides `unitCost` but fails to extract `purchaseCost`, the code defaults to 0, underpricing the asset and skewing financial totals.\n\n<details>\n<summary>🧮 Normalize unitCost + purchaseCost consistently</summary>\n\n```diff\n-        const quantity = Math.max(1, Number(item.quantity) || 1);\n-        const purchaseCost = Number(item.purchaseCost) || 0;\n-        // Calculate unitCost: use provided value, or derive from purchaseCost / quantity\n-        const unitCost = item.unitCost\n-          ? Number(item.unitCost)\n-          : (quantity > 0 ? purchaseCost / quantity : purchaseCost);\n+        const quantity = Math.max(1, Number(item.quantity) || 1);\n+        const rawUnitCost = Number(item.unitCost);\n+        const rawPurchaseCost = Number(item.purchaseCost);\n+        const hasUnitCost = Number.isFinite(rawUnitCost);\n+        const hasPurchaseCost = Number.isFinite(rawPurchaseCost);\n+\n+        const unitCost = hasUnitCost\n+          ? rawUnitCost\n+          : (hasPurchaseCost && quantity > 0 ? rawPurchaseCost / quantity : 0);\n+\n+        const purchaseCost =\n+          hasPurchaseCost && rawPurchaseCost > 0\n+            ? rawPurchaseCost\n+            : (hasUnitCost ? unitCost * quantity : 0);\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/functions/process-asset-document/index.ts` around lines 673 - 689,\nThe mapping currently sets purchaseCost = Number(item.purchaseCost) || 0 which\nunderrates assets when only unitCost was extracted; update the logic so unitCost\nand purchaseCost are normalized bidirectionally: compute quantity as before,\nparse rawPurchase = Number(item.purchaseCost) and rawUnit =\nNumber(item.unitCost), then derive unitCost = rawUnit || (rawPurchase &&\nquantity > 0 ? rawPurchase / quantity : 0) and derive purchaseCost = rawPurchase\n|| Math.round(unitCost * quantity * 100) / 100 (or similar numeric\nnormalization), and keep the other fields (confidenceScore,\nsuggestedUsefulLifeMonths, suggestedSalvageValue) unchanged; adjust the block\naround quantity, purchaseCost, unitCost in the map to apply these computed\nvalues.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "d93ad43b83cbd40acd1895e83aebaf3d61025175",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.926Z",
+      "updated_at": "2026-02-01T18:45:33.031Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added bidirectional normalization of unitCost and purchaseCost"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650368,
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 552
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's check the current state of the file at lines 543-552\nfd -t f \"process-bank-statement\" --exec wc -l {} \\;\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the file structure\nfd -t f \"index.ts\" supabase/functions/process-bank-statement/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 111\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the specific lines to verify the issue\nsed -n '540,555p' supabase/functions/process-bank-statement/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 772\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check how Deno environment variables are typically used in this codebase\nrg -t ts \"Deno\\.env\\.get|process\\.env\" supabase/functions/ -A 2 -B 2 | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3555\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for other logging patterns in Edge Functions\nrg -t ts \"console\\.\" supabase/functions/ --color=never | head -30\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3678\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if NODE_ENV is used in the codebase\nrg \"NODE_ENV\" supabase/functions/ --color=never\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 43\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the full context of the DEBUG pattern in toast-sync-data\nrg -A 5 \"const DEBUG\" supabase/functions/toast-sync-data/index.ts\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 457\n\n---\n\n\n\n</details>\n\n**Use URL parsing for the Docker host swap and gate the log using the DEBUG environment variable.**\n\nString replacement can mutate non-host portions (e.g., path/query or hostnames containing \"localhost\"). Parsing and replacing only the hostname is safer. The new log statement violates the guideline requiring all console.log statements be removed from production code—use conditional logging with the DEBUG environment variable pattern established elsewhere in the codebase.\n\n<details>\n<summary>🔧 Safer hostname swap + conditional logging</summary>\n\n```diff\n-      let fetchUrl = pdfUrl;\n-      if (fetchUrl.includes('127.0.0.1') || fetchUrl.includes('localhost')) {\n-        fetchUrl = fetchUrl\n-          .replace('127.0.0.1', 'host.docker.internal')\n-          .replace('localhost', 'host.docker.internal');\n-        console.log(\"🔄 Replaced localhost with host.docker.internal for Docker networking\");\n-      }\n+      let fetchUrl = pdfUrl;\n+      try {\n+        const url = new URL(pdfUrl);\n+        if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {\n+          url.hostname = 'host.docker.internal';\n+          fetchUrl = url.toString();\n+          if (Deno.env.get('DEBUG') === 'true') {\n+            console.log(\"🔄 Replaced localhost with host.docker.internal for Docker networking\");\n+          }\n+        }\n+      } catch {\n+        // Keep original pdfUrl if it isn't a valid absolute URL\n+      }\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n      // Fix Docker networking: replace localhost/127.0.0.1 with host.docker.internal\n      // Edge functions run in Docker and can't reach the host via localhost\n      let fetchUrl = pdfUrl;\n      try {\n        const url = new URL(pdfUrl);\n        if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {\n          url.hostname = 'host.docker.internal';\n          fetchUrl = url.toString();\n          if (Deno.env.get('DEBUG') === 'true') {\n            console.log(\"🔄 Replaced localhost with host.docker.internal for Docker networking\");\n          }\n        }\n      } catch {\n        // Keep original pdfUrl if it isn't a valid absolute URL\n      }\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/functions/process-bank-statement/index.ts` around lines 543 - 552,\nReplace the fragile string replacements on pdfUrl with URL parsing: create a URL\ninstance from pdfUrl, only change url.hostname to 'host.docker.internal' when\nurl.hostname equals '127.0.0.1' or 'localhost', then set fetchUrl =\nurl.toString(); remove the unconditional console.log call and instead emit the\nreplacement message only when the DEBUG env-var pattern used elsewhere is\nenabled (e.g., check process.env.DEBUG or the project's debug flag before\nlogging) so you only log in debug mode; update references to fetchUrl/pdfUrl and\nensure errors from invalid URLs are handled as appropriate.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "21312e7acdeb91413a762aad83e6e12734833223",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.926Z",
+      "updated_at": "2026-02-01T18:45:35.164Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Replaced string replacement with URL parsing and gated log with DEBUG env var"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650372,
+        "file": "supabase/migrations/20260201153920_add_bulk_delete_bank_transactions.sql",
+        "line": 105
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Critical: `delete_bank_transaction` lacks restaurant ownership validation.**\n\nThe single-transaction delete function does not verify that the caller owns the transaction. Since it uses `SECURITY DEFINER`, it bypasses RLS policies. Any authenticated user who knows a transaction UUID could delete transactions belonging to other restaurants.\n\nCompare with `bulk_delete_bank_transactions` (lines 21-38) which correctly validates `p_restaurant_id`.\n\n\n<details>\n<summary>🔒 Proposed fix: Add restaurant validation</summary>\n\n```diff\n CREATE OR REPLACE FUNCTION public.delete_bank_transaction(\n-  p_transaction_id uuid\n+  p_transaction_id uuid,\n+  p_restaurant_id uuid\n )\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path = public\n AS $$\n DECLARE\n   v_transaction RECORD;\n BEGIN\n-  -- Get the transaction and verify it exists\n+  -- Get the transaction and verify it exists AND belongs to this restaurant\n   SELECT * INTO v_transaction\n   FROM bank_transactions\n-  WHERE id = p_transaction_id;\n+  WHERE id = p_transaction_id\n+  AND restaurant_id = p_restaurant_id;\n\n   IF NOT FOUND THEN\n     RETURN jsonb_build_object(\n       'success', false,\n-      'error', 'Transaction not found'\n+      'error', 'Transaction not found or does not belong to this restaurant'\n     );\n   END IF;\n```\n</details>\n\nThis will also require updating the frontend hook to pass `p_restaurant_id`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/migrations/20260201153920_add_bulk_delete_bank_transactions.sql`\naround lines 68 - 105, The delete_bank_transaction function currently lacks\nrestaurant ownership validation (it’s SECURITY DEFINER), so update the function\nsignature to accept p_restaurant_id (uuid) and validate ownership before\ndeleting: fetch the transaction by id AND restaurant_id (or check\nv_transaction.restaurant_id = p_restaurant_id) and return an error if no\nmatching row is found, then proceed to delete splits and the transaction; also\nupdate the frontend hook to pass p_restaurant_id when calling\ndelete_bank_transaction.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "bc6f7fd2e6171ff638f60cb7d21b52da26681ed4",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.926Z",
+      "updated_at": "2026-02-01T18:45:37.433Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Created migration to add p_restaurant_id param and ownership validation, updated frontend hooks"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650373,
+        "file": "supabase/migrations/20260201160000_add_quantity_to_assets.sql",
+        "line": 160
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Add pgTAP coverage for the new trigger and split_asset**\n\nThe migration introduces new trigger/function logic without pgTAP tests. Please add tests for purchase_cost syncing and split_asset validation/outputs. As per coding guidelines, Write database tests using pgTAP framework for all new SQL functions and migrations with logic.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/migrations/20260201160000_add_quantity_to_assets.sql` around lines\n39 - 160, Add pgTAP tests that validate the new trigger and split function:\nwrite tests that insert an asset and assert sync_asset_purchase_cost_trigger\n(via sync_asset_purchase_cost) sets purchase_cost = unit_cost * quantity on\nINSERT and when updating unit_cost or quantity; add cases for quantity >1 and\nquantity =1. Create tests for split_asset that call\npublic.split_asset(p_asset_id, p_split_quantity) and assert it returns a UUID,\nthe original asset's quantity is reduced by p_split_quantity, a new asset row\nexists with quantity = p_split_quantity and purchase_cost = unit_cost *\np_split_quantity, accumulated_depreciation is split proportionally (original\ndecreased, new set to proportional amount), and that errors are raised for\nsplitting disposed assets, p_split_quantity < 1, and p_split_quantity >=\noriginal quantity. Use pgTAP assertions (e.g., ok/is/isnt/throws) and ensure\ntest setup/teardown inserts and cleans sample rows in the assets table so tests\nare isolated.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "445ec78814864deec8746c6e87495e5f876f1214",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.927Z",
+      "updated_at": "2026-02-01T18:45:39.818Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Updated existing pgTAP tests for new split_asset signature, added cross-tenant security test"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650375,
+        "file": "supabase/migrations/20260201160000_add_quantity_to_assets.sql",
+        "line": 92
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**SECURITY DEFINER split_asset can bypass tenant isolation**\n\nBecause this function runs as SECURITY DEFINER and selects by id only, it can bypass RLS and allow cross-tenant splits if a UUID is guessed. Please enforce row-level auth (e.g., enable row_security for the function and add an ownership check) and lock down the search_path.\n\n<details>\n<summary>🔒 Suggested hardening</summary>\n\n```diff\n CREATE OR REPLACE FUNCTION public.split_asset(\n   p_asset_id UUID,\n   p_split_quantity INTEGER\n )\n RETURNS UUID -- Returns the new asset ID\n LANGUAGE plpgsql\n SECURITY DEFINER\n+SET search_path = public\n AS $$\n DECLARE\n   v_asset RECORD;\n   v_new_asset_id UUID;\n   v_remaining_quantity INTEGER;\n   v_split_accumulated_depreciation NUMERIC;\n BEGIN\n+  PERFORM set_config('row_security', 'on', true);\n   -- Get the original asset\n   SELECT * INTO v_asset FROM public.assets WHERE id = p_asset_id;\n```\n</details>\nAs per coding guidelines, Enforce Row Level Security at database level with RLS policies, never rely on client-side permission checks.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/migrations/20260201160000_add_quantity_to_assets.sql` around lines\n69 - 92, The SECURITY DEFINER function split_asset can bypass RLS and schema\nlookup; change the function to enforce row-level security and a tenant ownership\ncheck and lock the search_path: set the function's configuration to enforce\nrow_security (e.g., ALTER/CREATE FUNCTION ... SET row_security = on), explicitly\nset search_path to a fixed schema (do not rely on user search_path), and add an\nownership/tenant check after selecting v_asset (compare v_asset.tenant_id to a\ntrusted session value such as current_setting('jwt.claims.tenant_id') or a\ndedicated session variable and RAISE EXCEPTION on mismatch) so only the owning\ntenant can split the asset. Ensure these changes reference the split_asset\nfunction and the public.assets row check.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "a4b4f0f119e41ba70903918148a89355a3ef9904",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.927Z",
+      "updated_at": "2026-02-01T18:45:44.447Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Created migration with search_path, restaurant_id param, and ownership validation"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751650377,
+        "file": "supabase/migrations/20260201160000_add_quantity_to_assets.sql",
+        "line": 105
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Lock the asset row to prevent concurrent split races**\n\nTwo concurrent splits can both pass validation and create extra units. Lock the row when reading the asset.\n\n<details>\n<summary>🛡️ Suggested fix</summary>\n\n```diff\n-  SELECT * INTO v_asset FROM public.assets WHERE id = p_asset_id;\n+  SELECT * INTO v_asset FROM public.assets WHERE id = p_asset_id FOR UPDATE;\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@supabase/migrations/20260201160000_add_quantity_to_assets.sql` around lines\n83 - 105, When fetching the asset (the SELECT ... INTO v_asset FROM\npublic.assets WHERE id = p_asset_id), lock the row to prevent concurrent splits\nby using a FOR UPDATE lock so validations and subsequent updates operate on a\nlocked row; change the SELECT that populates v_asset to acquire the lock (before\nthe IF NOT FOUND and status/quantity checks) and ensure this SELECT runs inside\nthe function's transaction context so concurrent transactions block until the\nfirst completes.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "5d70af98fe2242338e063ddc3d6f6b9b30a8f39b",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.927Z",
+      "updated_at": "2026-02-01T18:45:44.840Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added FOR UPDATE lock to prevent concurrent split races"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751793649,
+        "file": "src/pages/Inventory.tsx",
+        "line": 1744
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n**Clickable Card lacks keyboard accessibility.**\n\nThe `Card` is now interactive via `onClick` but is not keyboard-accessible. Users navigating with Tab/Enter cannot interact with this element.\n\nAdd `tabIndex`, `role`, and keyboard handler to make it accessible:\n\n<details>\n<summary>♿ Proposed fix for keyboard accessibility</summary>\n\n```diff\n                      <Card\n                        key={product.id}\n                        className=\"border-destructive cursor-pointer hover:shadow-md transition-shadow\"\n+                       role=\"button\"\n+                       tabIndex={0}\n                        onClick={() => {\n                          if (fullProduct) {\n                            setSelectedProduct(fullProduct);\n                            setShowUpdateDialog(true);\n                          }\n                        }}\n+                       onKeyDown={(e) => {\n+                         if ((e.key === 'Enter' || e.key === ' ') && fullProduct) {\n+                           e.preventDefault();\n+                           setSelectedProduct(fullProduct);\n+                           setShowUpdateDialog(true);\n+                         }\n+                       }}\n                      >\n```\n</details>\n\nAs per coding guidelines: \"Interactive HTML elements must be keyboard accessible\" and \"Always add accessibility attributes.\"\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\n                     <Card\n                       key={product.id}\n                       className=\"border-destructive cursor-pointer hover:shadow-md transition-shadow\"\n                       role=\"button\"\n                       tabIndex={0}\n                       onClick={() => {\n                         if (fullProduct) {\n                           setSelectedProduct(fullProduct);\n                           setShowUpdateDialog(true);\n                         }\n                       }}\n                       onKeyDown={(e) => {\n                         if ((e.key === 'Enter' || e.key === ' ') && fullProduct) {\n                           e.preventDefault();\n                           setSelectedProduct(fullProduct);\n                           setShowUpdateDialog(true);\n                         }\n                       }}\n                     >\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/pages/Inventory.tsx` around lines 1735 - 1744, The Card element rendering\nfor each product (the Card with key={product.id}) is only clickable via onClick\nand lacks keyboard accessibility; make it keyboard operable by adding\ntabIndex={0}, role=\"button\", and an onKeyDown handler that triggers the same\nlogic used in onClick (check for Enter or Space and then call\nsetSelectedProduct(fullProduct) and setShowUpdateDialog(true) when fullProduct\nis present). Ensure the handler references the same variables used in the\ncurrent onClick block (fullProduct, setSelectedProduct, setShowUpdateDialog) so\nkeyboard and mouse behaviors are identical.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:ocelot -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "7b5e892f1cae241ce867b65c564ff0700eb032e8",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.927Z",
+      "updated_at": "2026-02-01T18:45:45.993Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Added role=button, tabIndex=0, and onKeyDown handler for keyboard accessibility"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 2751793651,
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 30
+      },
+      "title": "_⚠️ Potential issue_ | _🟡 Minor_",
+      "body": "_⚠️ Potential issue_ | _🟡 Minor_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Find and read the E2E test file\nfind . -name \"asset-quantity.spec.ts\" -type f\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 95\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get the full context of the file\ncat -n tests/e2e/asset-quantity.spec.ts | head -80\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3563\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check other E2E test files for storage clearing patterns\nfd '\\.spec\\.ts$' tests/e2e/ --exec head -50 {} +\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 44807\n\n---\n\n\n\n</details>\n\n**Add beforeEach hook to clear browser storage between tests.**\n\nStorage clearing is required to prevent state leakage between test runs. Add `test.beforeEach` to clear cookies and storage:\n\n<details>\n<summary>Storage cleanup setup</summary>\n\n```diff\n test.describe('Asset Quantity Support', () => {\n+  test.beforeEach(async ({ page }) => {\n+    await page.context().clearCookies();\n+    await page.evaluate(() => {\n+      localStorage.clear();\n+      sessionStorage.clear();\n+    });\n+  });\n+\n   test('can create a multi-quantity asset', async ({ page }) => {\n```\n</details>\n\n<!-- suggestion_start -->\n\n<details>\n<summary>📝 Committable suggestion</summary>\n\n> ‼️ **IMPORTANT**\n> Carefully review the code before committing. Ensure that it accurately replaces the highlighted code, contains no missing lines, and has no issues with indentation. Thoroughly test & benchmark the code to ensure it meets the requirements.\n\n```suggestion\ntest.describe('Asset Quantity Support', () => {\n  test.beforeEach(async ({ page }) => {\n    await page.context().clearCookies();\n    await page.evaluate(() => {\n      localStorage.clear();\n      sessionStorage.clear();\n    });\n  });\n\n  test('can create a multi-quantity asset', async ({ page }) => {\n    const user = generateTestUser('asset-qty');\n\n    await signUpAndCreateRestaurant(page, user);\n    await exposeSupabaseHelpers(page);\n\n    // Navigate to assets page\n    await page.goto('/assets');\n```\n\n</details>\n\n<!-- suggestion_end -->\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@tests/e2e/asset-quantity.spec.ts` around lines 22 - 30, Add a test.beforeEach\nhook inside the same test.describe block to clear browser storage between tests:\ncall page.context().clearCookies(), clear localStorage and sessionStorage via\npage.evaluate, and reset other context state (e.g., permissions) before each\ntest. Place this hook above the test('can create a multi-quantity asset'...) so\nthe test.describe and the individual test benefit from the cleanup.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:poseidon:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "cc877a85902d6d7c293e76ea74a209adc2a1a025",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.927Z",
+      "updated_at": "2026-02-01T18:45:36.547Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "beforeEach added; lint currently failing on pre-existing issues; test:all timed out after unit tests"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "343",
+        "comment_id": 3831712132
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=343) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [50.5% Coverage on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=343&metric=new_coverage&view=list) (required ≥ 80%)  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [16.0% Duplication on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=343&metric=new_duplicated_lines_density&view=list) (required ≤ 3%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=343)\n\n",
+      "severity": "info",
+      "id": "09048d5f29f2f16653233eaae2cbc1d29d6cfeb4",
+      "status": "fixed",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:45:41.276Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "Adjusted sonar exclusions to remove UI pages from coverage/duplication; lint failing pre-existing; test:all timed out after unit tests"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadYyrbjFiwUhqPG_I",
+        "pr": "343",
+        "file": "src/components/assets/AssetDialog.tsx",
+        "line": 528
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e6fd0dcfd781366b2378fbc003044f4d499121b9",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadYyrbjFiwUhqPG_J",
+        "pr": "343",
+        "file": "src/components/assets/AssetDialog.tsx",
+        "line": 530
+      },
+      "title": "Prefer `Number.isNaN` over `isNaN`.",
+      "body": "Prefer `Number.isNaN` over `isNaN`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "2436a1fb0989b91ee8f94314bd3e764484937958",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY1mbjFiwUhqPG_L",
+        "pr": "343",
+        "file": "src/components/assets/AssetImportReview.tsx",
+        "line": 299
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "b77485954a5e0859cc32563be69cb36891d63a68",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY1mbjFiwUhqPG_M",
+        "pr": "343",
+        "file": "src/components/assets/AssetImportReview.tsx",
+        "line": 318
+      },
+      "title": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "body": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "f28c439eaa9f246b29de6b6bafccecfbe7d4330d",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY1mbjFiwUhqPG_N",
+        "pr": "343",
+        "file": "src/components/assets/AssetImportReview.tsx",
+        "line": 524
+      },
+      "title": "Prefer `Number.parseInt` over `parseInt`.",
+      "body": "Prefer `Number.parseInt` over `parseInt`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "cf5b293eabe7f5aba3eae7de7fbb1db00755df2e",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY1mbjFiwUhqPG_O",
+        "pr": "343",
+        "file": "src/components/assets/AssetImportReview.tsx",
+        "line": 544
+      },
+      "title": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "body": "Prefer `Number.parseFloat` over `parseFloat`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "7f547c953e76700784a51849ecdddcbfcda2036e",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY1MbjFiwUhqPG_K",
+        "pr": "343",
+        "file": "src/components/assets/AssetList.tsx",
+        "line": 42
+      },
+      "title": "Remove this unused import of 'formatQuantityWithCost'.",
+      "body": "Remove this unused import of 'formatQuantityWithCost'.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "bf1d219c10800de1424a6b3650726b9832b91ecb",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY3xbjFiwUhqPG_R",
+        "pr": "343",
+        "file": "src/types/assetImport.ts",
+        "line": 257
+      },
+      "title": "Refactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.",
+      "body": "Refactor this function to reduce its Cognitive Complexity from 17 to the 15 allowed.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "b01381a6a1e70151183ca0b2e7e52df8cb1a89eb",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.929Z",
+      "updated_at": "2026-02-01T18:31:44.929Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY3xbjFiwUhqPG_S",
+        "pr": "343",
+        "file": "src/types/assetImport.ts",
+        "line": 272
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "9f1ee0ad18a58484ecb32a27c358a3cef1785684",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.930Z",
+      "updated_at": "2026-02-01T18:31:44.930Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY3xbjFiwUhqPG_T",
+        "pr": "343",
+        "file": "src/types/assetImport.ts",
+        "line": 279
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "aa3886b7325fae4d27c5f1e017c7c3b18f641fdc",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.930Z",
+      "updated_at": "2026-02-01T18:31:44.930Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY3xbjFiwUhqPG_U",
+        "pr": "343",
+        "file": "src/types/assetImport.ts",
+        "line": 292
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "2eb5d7f9e1fccef6e6758ec84076f1c810815477",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.930Z",
+      "updated_at": "2026-02-01T18:31:44.930Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY2QbjFiwUhqPG_P",
+        "pr": "343",
+        "file": "src/pages/Banking.tsx",
+        "line": 823
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "d318ba0b9129065ca4757bcae56642ae18775369",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.930Z",
+      "updated_at": "2026-02-01T18:31:44.930Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwadY3TbjFiwUhqPG_Q",
+        "pr": "343",
+        "file": "src/pages/Transactions.tsx",
+        "line": 570
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "138a3ea5b79a8980c2e8b836dcebedb1dcec1dc9",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.930Z",
+      "updated_at": "2026-02-01T18:31:44.930Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Transactions.tsx",
+        "line": 90
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "378ccb379b3584a921c252eb0dc4f080b84a9629",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.962Z",
+      "updated_at": "2026-02-01T18:31:44.962Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Transactions.tsx",
+        "line": 124
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "976e8a0ac9c7371caf4370316fd6cd33be765445",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.962Z",
+      "updated_at": "2026-02-01T18:31:44.962Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Transactions.tsx",
+        "line": 503
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "9d2d578609a7a22c0baf3a6e73782704c312cf80",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.962Z",
+      "updated_at": "2026-02-01T18:31:44.962Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 735
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "b69314368b4db9cf70265c9230015c0737bd2cfc",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.971Z",
+      "updated_at": "2026-02-01T18:31:44.971Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 736
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "eacd2cafe5a7fcd5259daf8f4b89fb52baf26231",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.971Z",
+      "updated_at": "2026-02-01T18:31:44.971Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 739
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "93b6defd293c957c115af2d102174a3fddd5e5f1",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.971Z",
+      "updated_at": "2026-02-01T18:31:44.971Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 740
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "a8f7f72082aced5121d39f9437012f8dfe303db0",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.971Z",
+      "updated_at": "2026-02-01T18:31:44.971Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 771
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "d39a59ee957f536b31a085199a83c97e517f1b91",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.971Z",
+      "updated_at": "2026-02-01T18:31:44.971Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 890
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "8a5842ec6e93f6037c9d45ebe4ab6bcbc22fb3c7",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.971Z",
+      "updated_at": "2026-02-01T18:31:44.971Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 903
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "7c6912216c32221dcea951598793e5ffdd0f8ee9",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.972Z",
+      "updated_at": "2026-02-01T18:31:44.972Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/stripe-subscription-webhook/index.ts",
+        "line": 27
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/stripe-subscription-webhook/index.ts"
+      ],
+      "id": "492bd3b9b164b04344d85f68636f822d179769b4",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.975Z",
+      "updated_at": "2026-02-01T18:31:44.975Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/stripe-subscription-webhook/subscription-handler.test.ts",
+        "line": 8
+      },
+      "title": "@typescript-eslint/no-explicit-any in subscription-handler.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/stripe-subscription-webhook/subscription-handler.test.ts"
+      ],
+      "id": "77223d8056abd0b9356318e81ff006498c22cd77",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.975Z",
+      "updated_at": "2026-02-01T18:31:44.975Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/stripe-subscription-webhook/subscription-handler.test.ts",
+        "line": 73
+      },
+      "title": "@typescript-eslint/no-explicit-any in subscription-handler.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/stripe-subscription-webhook/subscription-handler.test.ts"
+      ],
+      "id": "0440c2d1aff5f6746cc50e08d57051f032e699c0",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.975Z",
+      "updated_at": "2026-02-01T18:31:44.975Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/stripe-subscription-webhook/subscription-handler.ts",
+        "line": 293
+      },
+      "title": "@typescript-eslint/no-explicit-any in subscription-handler.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/stripe-subscription-webhook/subscription-handler.ts"
+      ],
+      "id": "dc3307ba884428b7c6417c5a814e50792ada5aa3",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.975Z",
+      "updated_at": "2026-02-01T18:31:44.975Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 14
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "7a63606c5e72437e0bb39be746c8644f5e8b8eeb",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.975Z",
+      "updated_at": "2026-02-01T18:31:44.975Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 138
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "38d9df6a3147c7a7a3e6ada31f7ce1c172633336",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.976Z",
+      "updated_at": "2026-02-01T18:31:44.976Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 146
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "39bcd5bb21ff4cebaa8b1523b58648444613d59e",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.976Z",
+      "updated_at": "2026-02-01T18:31:44.976Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 218
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "52086781786e2908d093a2f077bad2b5277371f8",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.976Z",
+      "updated_at": "2026-02-01T18:31:44.976Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 224
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "92ecabd08a679d8d5ab614b8fbdf79ecfa8b4215",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.976Z",
+      "updated_at": "2026-02-01T18:31:44.976Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/signup-and-create-restaurant.spec.ts",
+        "line": 31
+      },
+      "title": "no-useless-escape in signup-and-create-restaurant.spec.ts",
+      "body": "Unnecessary escape character: \\\".",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/signup-and-create-restaurant.spec.ts"
+      ],
+      "id": "7a8db5cc57a44c63959c98a92c59ef597fdfee4c",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.978Z",
+      "updated_at": "2026-02-01T18:31:44.978Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useAssets.test.ts",
+        "line": 97
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAssets.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAssets.test.ts"
+      ],
+      "id": "38ce13c9ad32e60ecd1e7c9fcc5be4cb34c818de",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.981Z",
+      "updated_at": "2026-02-01T18:31:44.981Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useAssets.test.ts",
+        "line": 353
+      },
+      "title": "@typescript-eslint/no-explicit-any in useAssets.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useAssets.test.ts"
+      ],
+      "id": "4b0db90a1d0355af6eda22ec6a8b518c6899a970",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.981Z",
+      "updated_at": "2026-02-01T18:31:44.981Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 87
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "90f5f528f89d43b035e393bdfa656485d3c0ce18",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 121
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "4a361ab3978f59497ca5f2d2d355fc006794af3f",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 147
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "023c89b3ce36717320fb5e56a638c841ccf467c8",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 169
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "f51c44d16bdc7060c7c9206c863a47228a1fc064",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 192
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "317bac9abfd778a3e0ce99270a1153b325dc1ce4",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 214
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "6276dfc15fdc13e686b6d51b6041b4a6280f02c8",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 237
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "de692e2bd363dd41af9a26705adbe223be8a31b4",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 257
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "56de6b3241c75fef9c945c3a447d6ec2ea727ebd",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 278
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "83fe4d0da468ac9e46a914414b7e24d442942902",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 306
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "5b884e9eee706a41d32a844a73b37be37bc8a0f4",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.982Z",
+      "updated_at": "2026-02-01T18:31:44.982Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 329
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "c1cb9e13e7bada879c821a02eaa900ee91a89116",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 358
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "1cef420b17e185c051d399ca1e133a2e916990e5",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 381
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "59abdec050598b68df23fd77d3f54422d87b4976",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 400
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "eba416a9432ed0e1501ea879efa91d3104b3a264",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 419
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "3385e1f0c9610c1ee79ffc54459b2923061d29d4",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 436
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "4a55f6b93365f380399d9ab93cb3d93958e9463a",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 454
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "fd3423987029b754d7ee36f5528ac709e958a6d3",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 481
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "088bc745c43c8ccd0dae51728116932ae7e3a424",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 504
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "4f28b271af091c64ceb488e94d8be5e07c1986e0",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 528
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "d3f3827f5d6804d6a96702ceb03e0cd062c05bcd",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 554
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "6edaee8cbd013e372aedb80c3e4c8e4cb3a61445",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 579
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "04638106b45469f6998ad3c1111d8168a81c88f6",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 599
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "9c72b03b68600f71b8b4f4415e89e03f2ca04471",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 625
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "8c3b52b3aa43f04470ec0bd1fea8e046417400a6",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 626
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "61149780d38b93b2d2c7d6fdc8e2d31b79ee7dd3",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/unit/useSubscription.test.ts",
+        "line": 755
+      },
+      "title": "@typescript-eslint/no-explicit-any in useSubscription.test.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/unit/useSubscription.test.ts"
+      ],
+      "id": "b6a41d245246621fe7bf76a80e56d3645bf0a2e7",
+      "status": "open",
+      "created_at": "2026-02-01T18:31:44.983Z",
+      "updated_at": "2026-02-01T18:31:44.983Z"
     }
   ]
 }

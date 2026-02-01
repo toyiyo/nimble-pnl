@@ -8,8 +8,6 @@ import type {
   AssetDisposalData,
   AssetStatus,
   AssetWithDetails,
-  calculateNetBookValue,
-  calculateMonthlyDepreciation,
 } from '@/types/assets';
 
 interface UseAssetsOptions {
@@ -102,7 +100,10 @@ export function useAssets(options: UseAssetsOptions = {}) {
           category: data.category,
           serial_number: data.serial_number || null,
           purchase_date: data.purchase_date,
-          purchase_cost: data.purchase_cost,
+          quantity: data.quantity || 1,
+          unit_cost: data.unit_cost,
+          // purchase_cost is synced by DB trigger from unit_cost * quantity
+          purchase_cost: data.unit_cost * (data.quantity || 1),
           salvage_value: data.salvage_value,
           useful_life_months: data.useful_life_months,
           location_id: data.location_id || null,
@@ -139,23 +140,28 @@ export function useAssets(options: UseAssetsOptions = {}) {
   // Update asset mutation
   const updateAsset = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<AssetFormData> }) => {
+      // Build update object, only including fields that are provided
+      const updateData: Record<string, unknown> = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.description !== undefined) updateData.description = data.description;
+      if (data.category !== undefined) updateData.category = data.category;
+      if (data.serial_number !== undefined) updateData.serial_number = data.serial_number;
+      if (data.purchase_date !== undefined) updateData.purchase_date = data.purchase_date;
+      if (data.quantity !== undefined) updateData.quantity = Math.max(1, data.quantity);
+      if (data.unit_cost !== undefined) updateData.unit_cost = data.unit_cost;
+      // Note: purchase_cost is synced by DB trigger based on unit_cost * quantity
+      // If either is updated, the trigger will recalculate purchase_cost
+      if (data.salvage_value !== undefined) updateData.salvage_value = data.salvage_value;
+      if (data.useful_life_months !== undefined) updateData.useful_life_months = data.useful_life_months;
+      if (data.location_id !== undefined) updateData.location_id = data.location_id || null;
+      if (data.asset_account_id !== undefined) updateData.asset_account_id = data.asset_account_id || null;
+      if (data.accumulated_depreciation_account_id !== undefined) updateData.accumulated_depreciation_account_id = data.accumulated_depreciation_account_id || null;
+      if (data.depreciation_expense_account_id !== undefined) updateData.depreciation_expense_account_id = data.depreciation_expense_account_id || null;
+      if (data.notes !== undefined) updateData.notes = data.notes;
+
       const { data: asset, error } = await supabase
         .from('assets')
-        .update({
-          name: data.name,
-          description: data.description,
-          category: data.category,
-          serial_number: data.serial_number,
-          purchase_date: data.purchase_date,
-          purchase_cost: data.purchase_cost,
-          salvage_value: data.salvage_value,
-          useful_life_months: data.useful_life_months,
-          location_id: data.location_id || null,
-          asset_account_id: data.asset_account_id || null,
-          accumulated_depreciation_account_id: data.accumulated_depreciation_account_id || null,
-          depreciation_expense_account_id: data.depreciation_expense_account_id || null,
-          notes: data.notes,
-        })
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
@@ -255,10 +261,11 @@ export function useAssets(options: UseAssetsOptions = {}) {
     return data;
   };
 
-  // Calculate summary statistics
+  // Calculate summary statistics (counting units, not just records)
   const summary = {
-    totalAssets: assets.length,
-    activeAssets: assets.filter((a) => a.status === 'active').length,
+    totalAssets: assets.reduce((sum, a) => sum + (a.quantity || 1), 0), // Count units
+    totalRecords: assets.length, // Count records for reference
+    activeAssets: assets.filter((a) => a.status === 'active').reduce((sum, a) => sum + (a.quantity || 1), 0),
     totalCost: assets.reduce((sum, a) => sum + a.purchase_cost, 0),
     totalNetBookValue: assets.reduce((sum, a) => sum + a.net_book_value, 0),
     totalAccumulatedDepreciation: assets.reduce((sum, a) => sum + a.accumulated_depreciation, 0),

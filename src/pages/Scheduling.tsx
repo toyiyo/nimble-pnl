@@ -67,8 +67,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-const SKELETON_ROWS = ['row-0', 'row-1', 'row-2', 'row-3'];
-const SKELETON_DAYS = ['day-0', 'day-1', 'day-2', 'day-3', 'day-4', 'day-5', 'day-6'];
+export const SKELETON_ROWS = [...new Array(4)].map((_, rowIndex) => `row-${rowIndex}`);
+export const SKELETON_DAYS = [...new Array(7)].map((_, dayIndex) => `day-${dayIndex}`);
 
 export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boolean) => {
   if (hasConflicts) {

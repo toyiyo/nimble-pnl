@@ -52587,9 +52587,12 @@
         "npm run lint"
       ],
       "id": "308dc7e885e2153b9c88d5305f471032af3d6b9d",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-02-01T19:58:31.005Z",
-      "updated_at": "2026-02-01T19:58:31.005Z"
+      "updated_at": "2026-02-01T20:16:36.087Z",
+      "notes": [
+        "npm run lint fails globally (pre-existing 'any' lint errors); Scheduling skeleton fixes applied"
+      ]
     },
     {
       "source": "sonarqube",
@@ -52606,9 +52609,12 @@
         "npm run lint"
       ],
       "id": "4cef0f9d040f0f503ddc9f24f4a18bfc51eedf16",
-      "status": "open",
+      "status": "fixed",
       "created_at": "2026-02-01T19:58:31.005Z",
-      "updated_at": "2026-02-01T19:58:31.005Z"
+      "updated_at": "2026-02-01T20:16:40.014Z",
+      "notes": [
+        "npm run lint fails globally (pre-existing 'any' lint errors); Scheduling skeleton keys no longer use indexes"
+      ]
     },
     {
       "source": "problems",

@@ -40,7 +40,7 @@ export function useSubscription() {
       period: (r.subscription_period || 'monthly') as SubscriptionPeriod,
       trialEndsAt: r.trial_ends_at || null,
       subscriptionEndsAt: r.subscription_ends_at || null,
-      cancelAt: (r as Record<string, unknown>).subscription_cancel_at as string | null ?? null,
+      cancelAt: ((r as unknown) as Record<string, unknown>).subscription_cancel_at as string | null ?? null,
       grandfatheredUntil: r.grandfathered_until || null,
       stripeCustomerId: r.stripe_subscription_customer_id || null,
       stripeSubscriptionId: r.stripe_subscription_id || null,

@@ -364,7 +364,7 @@ export function parseWorkPeriods(punches: TimePunch[]): { periods: WorkPeriod[] 
           periods.push({ startTime: breakStartTime, endTime: punchTime, hours: breakHours, isBreak: true });
 
           if (currentClockIn) {
-            currentClockIn = { ...currentClockIn, punch_time: punch.punch_time };
+            currentClockIn = Object.assign({}, currentClockIn, { punch_time: punch.punch_time });
           }
           currentBreakStart = null;
         }

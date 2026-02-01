@@ -64,7 +64,7 @@ export function useAssetImport(): UseAssetImportReturn {
       const fileExt = file.name.split('.').pop();
       const sanitizedBaseName = file.name
         .replace(`.${fileExt}`, '')
-        .replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/asset-imports/${finalFileName}`;
 
@@ -242,7 +242,7 @@ export function useAssetImport(): UseAssetImportReturn {
           }
 
           // Parse header (use robust CSV parser to handle quoted values)
-          const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replaceAll(/\s+/g, '_'));
+          const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
 
           // Check for required columns
           const missingColumns = REQUIRED_CSV_COLUMNS.filter(col => !header.includes(col));
@@ -402,7 +402,7 @@ export function useAssetImport(): UseAssetImportReturn {
         const fileExt = documentFile.name.split('.').pop();
         const sanitizedBaseName = documentFile.name
           .replace(`.${fileExt}`, '')
-          .replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+          .replace(/[^a-zA-Z0-9_-]/g, '_');
         const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
         documentStoragePath = `${selectedRestaurant.restaurant_id}/assets/imports/${finalFileName}`;
 

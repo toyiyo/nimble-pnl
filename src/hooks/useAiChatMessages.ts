@@ -32,13 +32,13 @@ export function useAiChatMessages(sessionId?: string) {
       if (error) throw error;
 
       // Transform to ChatMessage format
-      return (data || []).map((msg: AiChatMessageDB) => ({
+      return (data || []).map((msg) => ({
         id: msg.id,
-        role: msg.role,
+        role: msg.role as 'user' | 'assistant' | 'system' | 'tool',
         content: msg.content,
-        name: msg.name,
-        tool_call_id: msg.tool_call_id,
-        tool_calls: msg.tool_calls,
+        name: msg.name || '',
+        tool_call_id: msg.tool_call_id || '',
+        tool_calls: ((msg.tool_calls || []) as unknown) as ChatMessage['tool_calls'],
         created_at: msg.created_at,
       }));
     },
@@ -55,17 +55,17 @@ export function useAiChatMessages(sessionId?: string) {
         .from('ai_chat_messages')
         .insert({
           session_id: message.session_id,
-          role: message.role,
+          role: message.role as string,
           content: message.content,
           name: message.name || null,
           tool_call_id: message.tool_call_id || null,
-          tool_calls: message.tool_calls || null,
-        })
+          tool_calls: (message.tool_calls as unknown) || null,
+        } as any)
         .select()
         .single();
 
       if (error) throw error;
-      return data;
+      return data as unknown as AiChatMessageDB;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ai-chat-messages', sessionId] });
@@ -84,12 +84,12 @@ export function useAiChatMessages(sessionId?: string) {
       const { error } = await supabase.from('ai_chat_messages').insert(
         messages.map((msg) => ({
           session_id: msg.session_id,
-          role: msg.role,
+          role: msg.role as string,
           content: msg.content,
           name: msg.name || null,
           tool_call_id: msg.tool_call_id || null,
-          tool_calls: msg.tool_calls || null,
-        }))
+          tool_calls: (msg.tool_calls as unknown) || null,
+        })) as any
       );
 
       if (error) throw error;

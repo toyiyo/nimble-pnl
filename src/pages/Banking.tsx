@@ -32,16 +32,7 @@ import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizeTransactionsPanel } from "@/components/banking/BulkCategorizeTransactionsPanel";
 import { useBulkCategorizeTransactions, useBulkDeleteTransactions, useBulkMarkAsTransfer } from "@/hooks/useBulkTransactionActions";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { BulkDeleteConfirmDialog } from "@/components/bulk-edit/BulkDeleteConfirmDialog";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 
 export default function Banking() {
@@ -817,34 +808,13 @@ export default function Banking() {
       )}
 
       {/* Delete confirmation dialog */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {bulkSelection.selectedCount} transaction{bulkSelection.selectedCount !== 1 ? 's' : ''}?</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>
-                This will <strong>permanently delete</strong> the selected transactions from your records.
-              </p>
-              <p className="text-destructive font-medium">
-                This action cannot be undone. The transactions can only be recovered by re-syncing from your bank.
-              </p>
-              <p className="text-muted-foreground text-sm">
-                Use this when transactions don't belong to this restaurant (e.g., from a shared bank account).
-              </p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkDelete.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkDeleteConfirm}
-              disabled={bulkDelete.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {bulkDelete.isPending ? 'Deleting...' : 'Delete Permanently'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BulkDeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        selectedCount={bulkSelection.selectedCount}
+        onConfirm={handleBulkDeleteConfirm}
+        isDeleting={bulkDelete.isPending}
+      />
     </div>
     </FeatureGate>
   );

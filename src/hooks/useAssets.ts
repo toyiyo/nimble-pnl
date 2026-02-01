@@ -8,8 +8,6 @@ import type {
   AssetDisposalData,
   AssetStatus,
   AssetWithDetails,
-  calculateNetBookValue,
-  calculateMonthlyDepreciation,
 } from '@/types/assets';
 
 interface UseAssetsOptions {

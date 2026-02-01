@@ -36,10 +36,9 @@ import {
   Image,
   Calculator,
   MapPin,
-  Calendar,
 } from 'lucide-react';
 import type { AssetWithDetails, AssetStatus } from '@/types/assets';
-import { formatAssetCurrency, formatQuantityWithCost } from '@/types/assets';
+import { formatAssetCurrency } from '@/types/assets';
 
 interface AssetListProps {
   assets: AssetWithDetails[];

@@ -26,15 +26,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
-  SelectGroup,
   SelectValue,
   SelectTrigger,
   SelectContent,
-  SelectLabel,
   SelectItem,
-  SelectSeparator,
-  SelectScrollUpButton,
-  SelectScrollDownButton,
 } from '@/components/ui/select';
 import { Loader2, ChevronDown, Upload, X, Star, Trash2, ImageIcon } from 'lucide-react';
 import { SearchableLocationSelector } from '@/components/SearchableLocationSelector';

@@ -22,6 +22,8 @@ async function selectRadixOption(page: any, dialog: any, labelPattern: RegExp, o
 test.describe('Asset Quantity Support', () => {
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
+    // Navigate to app first before clearing storage (can't access localStorage on about:blank)
+    await page.goto('/');
     await page.evaluate(() => {
       localStorage.clear();
       sessionStorage.clear();

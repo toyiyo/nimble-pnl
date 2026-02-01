@@ -4476,11 +4476,20 @@ export type Database = {
           capitalize_threshold_cents: number | null
           created_at: string
           cuisine_type: string | null
+          grandfathered_until: string | null
           id: string
           name: string
           phone: string | null
           stripe_customer_id: string | null
+          stripe_subscription_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_cancel_at: string | null
+          subscription_ends_at: string | null
+          subscription_period: string
+          subscription_status: string
+          subscription_tier: string
           timezone: string | null
+          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
@@ -4488,11 +4497,20 @@ export type Database = {
           capitalize_threshold_cents?: number | null
           created_at?: string
           cuisine_type?: string | null
+          grandfathered_until?: string | null
           id?: string
           name: string
           phone?: string | null
           stripe_customer_id?: string | null
+          stripe_subscription_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_cancel_at?: string | null
+          subscription_ends_at?: string | null
+          subscription_period?: string
+          subscription_status?: string
+          subscription_tier?: string
           timezone?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -4500,11 +4518,20 @@ export type Database = {
           capitalize_threshold_cents?: number | null
           created_at?: string
           cuisine_type?: string | null
+          grandfathered_until?: string | null
           id?: string
           name?: string
           phone?: string | null
           stripe_customer_id?: string | null
+          stripe_subscription_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_cancel_at?: string | null
+          subscription_ends_at?: string | null
+          subscription_period?: string
+          subscription_status?: string
+          subscription_tier?: string
           timezone?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -7748,26 +7775,16 @@ export type Database = {
         Args: { p_account_id: string; p_as_of_date?: string }
         Returns: number
       }
-      create_restaurant_with_owner:
-        | {
-            Args: {
-              restaurant_address?: string
-              restaurant_cuisine_type?: string
-              restaurant_name: string
-              restaurant_phone?: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              restaurant_address?: string
-              restaurant_cuisine_type?: string
-              restaurant_name: string
-              restaurant_phone?: string
-              restaurant_timezone?: string
-            }
-            Returns: string
-          }
+      create_restaurant_with_owner: {
+        Args: {
+          restaurant_address?: string
+          restaurant_cuisine_type?: string
+          restaurant_name: string
+          restaurant_phone?: string
+          restaurant_timezone?: string
+        }
+        Returns: string
+      }
       daitch_mokotoff: { Args: { "": string }; Returns: string[] }
       deactivate_employee: {
         Args: {
@@ -7881,6 +7898,10 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: string
       }
+      get_effective_subscription_tier: {
+        Args: { p_restaurant_id: string }
+        Returns: string
+      }
       get_employee_punch_status: {
         Args: { p_employee_id: string }
         Returns: {
@@ -7904,6 +7925,10 @@ export type Database = {
           sales_tax: number
           tips: number
         }[]
+      }
+      get_owner_restaurant_count: {
+        Args: { p_user_id?: string }
+        Returns: number
       }
       get_pass_through_totals: {
         Args: {
@@ -7987,6 +8012,14 @@ export type Database = {
           full_name: string
           id: string
         }[]
+      }
+      get_volume_discount_percent: {
+        Args: { p_location_count: number }
+        Returns: number
+      }
+      has_subscription_feature: {
+        Args: { p_feature: string; p_restaurant_id: string }
+        Returns: boolean
       }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       is_restaurant_owner: {

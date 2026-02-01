@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown, Tags, XCircle, ArrowLeftRight } from 'lucide-react';
+import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown, Tags, Trash2, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
@@ -26,7 +26,17 @@ import type { BankTransactionSort } from '@/types/transactions';
 import { useBulkSelection } from '@/hooks/useBulkSelection';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
 import { BulkCategorizeTransactionsPanel } from '@/components/banking/BulkCategorizeTransactionsPanel';
-import { useBulkCategorizeTransactions, useBulkExcludeTransactions, useBulkMarkAsTransfer } from '@/hooks/useBulkTransactionActions';
+import { useBulkCategorizeTransactions, useBulkDeleteTransactions, useBulkMarkAsTransfer } from '@/hooks/useBulkTransactionActions';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { isMultiSelectKey } from '@/utils/bulkEditUtils';
 
 const Transactions = () => {
@@ -49,8 +59,11 @@ const Transactions = () => {
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizeTransactions();
-  const bulkExclude = useBulkExcludeTransactions();
+  const bulkDelete = useBulkDeleteTransactions();
   const bulkMarkTransfer = useBulkMarkAsTransfer();
+
+  // Delete confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Fetch transactions with server-side pagination & filters
   const {
@@ -152,17 +165,25 @@ const Transactions = () => {
     });
   };
 
-  const handleBulkExclude = () => {
+  const handleBulkDeleteClick = () => {
     if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
-    
-    bulkExclude.mutate({
+    setShowDeleteConfirm(true);
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+
+    bulkDelete.mutate({
       transactionIds: Array.from(bulkSelection.selectedIds),
-      reason: 'Bulk excluded by user',
       restaurantId: selectedRestaurant.restaurant_id,
     }, {
       onSuccess: () => {
+        setShowDeleteConfirm(false);
         bulkSelection.exitSelectionMode();
         refetch();
+      },
+      onSettled: () => {
+        setShowDeleteConfirm(false);
       },
     });
   };
@@ -523,9 +544,9 @@ const Transactions = () => {
                 onClick: handleBulkMarkTransfer,
               },
               {
-                label: 'Exclude',
-                icon: <XCircle className="h-4 w-4" />,
-                onClick: handleBulkExclude,
+                label: 'Delete',
+                icon: <Trash2 className="h-4 w-4" />,
+                onClick: handleBulkDeleteClick,
                 variant: 'destructive',
               },
             ]}
@@ -541,6 +562,36 @@ const Transactions = () => {
           />
         </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {bulkSelection.selectedCount} transaction{bulkSelection.selectedCount !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                This will <strong>permanently delete</strong> the selected transactions from your records.
+              </p>
+              <p className="text-destructive font-medium">
+                This action cannot be undone. The transactions can only be recovered by re-syncing from your bank.
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Use this when transactions don't belong to this restaurant (e.g., from a shared bank account).
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDeleteConfirm}
+              disabled={bulkDelete.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDelete.isPending ? 'Deleting...' : 'Delete Permanently'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -13,7 +13,7 @@ interface BulkCategorizePanelProps {
   readonly onApply: (categoryId: string, overrideExisting: boolean) => void;
   readonly isApplying?: boolean;
   readonly itemType: 'transaction' | 'sale';
-  readonly accountTypes: Array<'asset' | 'liability' | 'equity' | 'revenue' | 'expense'>;
+  readonly accountTypes?: Array<'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'cogs'>;
   readonly helpText?: string;
 }
 

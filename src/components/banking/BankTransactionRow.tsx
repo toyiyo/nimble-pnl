@@ -1,10 +1,20 @@
 import { useState, useMemo } from "react";
-import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from "@/hooks/useBankTransactions";
+import { BankTransaction, useCategorizeTransaction, useDeleteTransaction } from "@/hooks/useBankTransactions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Check, Edit, XCircle, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2 } from "lucide-react";
+import { Check, Edit, Trash2, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2 } from "lucide-react";
 import { TransactionDetailSheet } from "./TransactionDetailSheet";
 import { SplitTransactionDialog } from "./SplitTransactionDialog";
 import { BankAccountInfo } from "./BankAccountInfo";
@@ -44,9 +54,10 @@ export function BankTransactionRow({
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isSplitOpen, setIsSplitOpen] = useState(false);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { selectedRestaurant } = useRestaurantContext();
   const categorize = useCategorizeTransaction();
-  const exclude = useExcludeTransaction();
+  const deleteTransaction = useDeleteTransaction();
   const reconcile = useReconcileTransaction();
   const unreconcile = useUnreconcileTransaction();
   const { formatTransactionDate } = useDateFormat();
@@ -78,10 +89,17 @@ export function BankTransactionRow({
     }
   };
 
-  const handleExclude = () => {
-    exclude.mutate({
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    deleteTransaction.mutate({
       transactionId: transaction.id,
-      reason: 'Excluded by user',
+    }, {
+      onSettled: () => {
+        setShowDeleteConfirm(false);
+      },
     });
   };
 
@@ -291,12 +309,12 @@ export function BankTransactionRow({
                     Create Rule
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={handleExclude}
-                    disabled={exclude.isPending}
+                    onClick={handleDeleteClick}
+                    disabled={deleteTransaction.isPending}
                     className="text-destructive focus:text-destructive"
                   >
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Exclude
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
                   </DropdownMenuItem>
                 </>
               )}
@@ -354,6 +372,35 @@ export function BankTransactionRow({
         defaultTab="bank"
         prefilledRule={getPrefilledRuleData()}
       />
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this transaction?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                This will <strong>permanently delete</strong> this transaction from your records.
+              </p>
+              <p className="text-destructive font-medium">
+                This action cannot be undone. The transaction can only be recovered by re-syncing from your bank.
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Use this when the transaction doesn't belong to this restaurant (e.g., from a shared bank account).
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteTransaction.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleteTransaction.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteTransaction.isPending ? 'Deleting...' : 'Delete Permanently'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

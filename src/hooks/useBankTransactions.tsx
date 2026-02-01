@@ -405,36 +405,39 @@ export function useCategorizeTransaction() {
   });
 }
 
-export function useExcludeTransaction() {
+export function useDeleteTransaction() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async ({
       transactionId,
-      reason,
     }: {
       transactionId: string;
-      reason?: string;
     }) => {
-      const { data, error } = await supabase.rpc('exclude_bank_transaction', {
+      const { data, error } = await supabase.rpc('delete_bank_transaction', {
         p_transaction_id: transactionId,
-        p_reason: reason,
       });
 
       if (error) throw error;
-      return data;
+
+      const result = data as { success: boolean; error?: string };
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete transaction');
+      }
+
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       toast({
-        title: "Transaction excluded",
-        description: "The transaction has been excluded from accounting.",
+        title: "Transaction deleted",
+        description: "The transaction has been permanently removed.",
       });
     },
     onError: (error: Error) => {
       toast({
-        title: "Error excluding transaction",
+        title: "Error deleting transaction",
         description: error.message,
         variant: "destructive",
       });

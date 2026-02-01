@@ -540,12 +540,22 @@ serve(async (req) => {
     try {
       const startTime = Date.now();
       console.log("📥 Fetching PDF from signed URL...");
-      
+
+      // Fix Docker networking: replace localhost/127.0.0.1 with host.docker.internal
+      // Edge functions run in Docker and can't reach the host via localhost
+      let fetchUrl = pdfUrl;
+      if (fetchUrl.includes('127.0.0.1') || fetchUrl.includes('localhost')) {
+        fetchUrl = fetchUrl
+          .replace('127.0.0.1', 'host.docker.internal')
+          .replace('localhost', 'host.docker.internal');
+        console.log("🔄 Replaced localhost with host.docker.internal for Docker networking");
+      }
+
       // Set up abort controller with timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      const pdfResponse = await fetch(pdfUrl, { signal: controller.signal });
+      const pdfResponse = await fetch(fetchUrl, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (!pdfResponse.ok) {

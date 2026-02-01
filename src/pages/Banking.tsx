@@ -22,7 +22,7 @@ import { TransactionFiltersSheet, type TransactionFilters } from "@/components/T
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
 import { useBankStatementImport } from "@/hooks/useBankStatementImport";
-import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload, Tags, XCircle, ArrowLeftRight } from "lucide-react";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload, Tags, XCircle, ArrowLeftRight, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
@@ -31,7 +31,17 @@ import { type BankStatus, type GroupedBank } from "@/utils/financialConnections"
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizeTransactionsPanel } from "@/components/banking/BulkCategorizeTransactionsPanel";
-import { useBulkCategorizeTransactions, useBulkExcludeTransactions, useBulkMarkAsTransfer } from "@/hooks/useBulkTransactionActions";
+import { useBulkCategorizeTransactions, useBulkDeleteTransactions, useBulkMarkAsTransfer } from "@/hooks/useBulkTransactionActions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 
 export default function Banking() {
@@ -77,8 +87,11 @@ export default function Banking() {
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizeTransactions();
-  const bulkExclude = useBulkExcludeTransactions();
+  const bulkDelete = useBulkDeleteTransactions();
   const bulkMarkTransfer = useBulkMarkAsTransfer();
+
+  // Delete confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const {
     transactions: reviewTransactions = [],
@@ -259,16 +272,24 @@ export default function Banking() {
     });
   };
 
-  const handleBulkExclude = () => {
+  const handleBulkDeleteClick = () => {
     if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
-    
-    bulkExclude.mutate({
+    setShowDeleteConfirm(true);
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+
+    bulkDelete.mutate({
       transactionIds: Array.from(bulkSelection.selectedIds),
-      reason: 'Bulk excluded by user',
       restaurantId: selectedRestaurant.restaurant_id,
     }, {
       onSuccess: () => {
+        setShowDeleteConfirm(false);
         bulkSelection.exitSelectionMode();
+      },
+      onSettled: () => {
+        setShowDeleteConfirm(false);
       },
     });
   };
@@ -775,9 +796,9 @@ export default function Banking() {
                   onClick: handleBulkMarkTransfer,
                 },
                 {
-                  label: 'Exclude',
-                  icon: <XCircle className="h-4 w-4" />,
-                  onClick: handleBulkExclude,
+                  label: 'Delete',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  onClick: handleBulkDeleteClick,
                   variant: 'destructive',
                 },
               ]}
@@ -794,6 +815,36 @@ export default function Banking() {
           />
         </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {bulkSelection.selectedCount} transaction{bulkSelection.selectedCount !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                This will <strong>permanently delete</strong> the selected transactions from your records.
+              </p>
+              <p className="text-destructive font-medium">
+                This action cannot be undone. The transactions can only be recovered by re-syncing from your bank.
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Use this when transactions don't belong to this restaurant (e.g., from a shared bank account).
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDeleteConfirm}
+              disabled={bulkDelete.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDelete.isPending ? 'Deleting...' : 'Delete Permanently'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
     </FeatureGate>
   );

@@ -17,7 +17,9 @@ interface ParsedAssetItem {
   rawText: string;
   parsedName: string;
   parsedDescription?: string;
-  purchaseCost: number;
+  quantity?: number; // Number of identical units (default 1)
+  unitCost?: number; // Cost per unit
+  purchaseCost: number; // Total cost for this line item
   purchaseDate?: string;
   serialNumber?: string;
   suggestedCategory: string;
@@ -48,22 +50,30 @@ EXTRACTION RULES:
 1. Extract ALL line items that represent equipment, furniture, vehicles, or other fixed assets
 2. Focus on items that would be capitalized (typically $500+), but include all line items found
 3. Do NOT skip items - extract everything visible
+4. Pay attention to QUANTITY - if multiple identical items are purchased, extract the quantity
 
 FOR EACH ASSET EXTRACT:
 - **rawText**: The exact text from the document for this item (max 100 chars)
 - **parsedName**: Clean, standardized equipment name (e.g., "Commercial Walk-in Refrigerator")
 - **parsedDescription**: Additional details if visible (brand, model, specs)
-- **purchaseCost**: Total price for this item (numeric, no currency symbols)
+- **quantity**: Number of identical units purchased (default 1 if not specified)
+- **unitCost**: Cost per unit (if quantity > 1, calculate from total / quantity)
+- **purchaseCost**: TOTAL price for this line item (quantity × unit cost)
 - **purchaseDate**: Date from invoice/receipt (YYYY-MM-DD format)
-- **serialNumber**: Serial number if visible
+- **serialNumber**: Serial number if visible (usually only for single items)
 - **suggestedCategory**: Best match from these categories:
   ${DEFAULT_ASSET_CATEGORIES.map(c => c.name).join(', ')}
 - **suggestedUsefulLifeMonths**: Based on category (see defaults below)
-- **suggestedSalvageValue**: Typically 0-10% of purchase cost (0 for most restaurant equipment)
+- **suggestedSalvageValue**: Typically 0-10% of TOTAL purchase cost (0 for most restaurant equipment)
 - **confidenceScore**: How confident you are in extraction (0.0-1.0)
 
 CATEGORY → USEFUL LIFE MAPPING:
 ${DEFAULT_ASSET_CATEGORIES.map(c => `- ${c.name}: ${c.defaultUsefulLifeMonths} months`).join('\n')}
+
+QUANTITY EXAMPLES:
+- "2 x Commercial Refrigerator @ $2,500 each" → quantity: 2, unitCost: 2500, purchaseCost: 5000
+- "Chairs (5)" at $200 each → quantity: 5, unitCost: 200, purchaseCost: 1000
+- "Walk-in Freezer" at $8,000 → quantity: 1, unitCost: 8000, purchaseCost: 8000
 
 CONFIDENCE SCORING:
 - 0.90-1.0: Clear text, all fields visible
@@ -83,7 +93,9 @@ RESPONSE FORMAT (JSON ONLY - NO MARKDOWN, NO EXTRA TEXT):
       "rawText": "exact text from document",
       "parsedName": "Commercial Refrigerator",
       "parsedDescription": "True Manufacturing 2-door",
-      "purchaseCost": 5499.99,
+      "quantity": 2,
+      "unitCost": 2749.99,
+      "purchaseCost": 5499.98,
       "purchaseDate": "2024-01-15",
       "serialNumber": "TM-12345",
       "suggestedCategory": "Kitchen Equipment",
@@ -99,7 +111,8 @@ CRITICAL RULES:
 - Extract ALL visible line items (don't summarize or skip)
 - If purchaseDate is missing from line item, use invoice/document date
 - Use 0 for salvageValue unless there's a clear reason for residual value
-- Match category as closely as possible; use "Other" only as last resort`;
+- Match category as closely as possible; use "Other" only as last resort
+- Always include quantity (default 1) and unitCost for every item`;
 
 // Text-specific extraction prompt for CSV/XML/text files
 const TEXT_EXTRACTION_PROMPT = `ANALYSIS TARGET: This text data contains equipment or fixed asset information for a restaurant.
@@ -111,22 +124,30 @@ EXTRACTION RULES:
 3. Focus on items that would be capitalized (typically $500+), but include all line items found
 4. Handle unusual formats - columns may have non-standard names
 5. If prices are missing for some items (bundle pricing), still extract them with purchaseCost: 0
+6. Pay attention to QUANTITY columns - if multiple identical items, extract the quantity
 
 FOR EACH ASSET EXTRACT:
 - **rawText**: The original row/element text (max 100 chars)
 - **parsedName**: Clean, standardized equipment name (e.g., "Commercial Walk-in Refrigerator")
 - **parsedDescription**: Additional details if available (brand, model, specs)
-- **purchaseCost**: Price for this item (numeric, 0 if not specified)
+- **quantity**: Number of identical units (default 1 if not specified)
+- **unitCost**: Cost per unit (if quantity > 1, calculate from total / quantity)
+- **purchaseCost**: TOTAL price for this line item (quantity × unit cost, 0 if not specified)
 - **purchaseDate**: Date if found (YYYY-MM-DD format)
 - **serialNumber**: Serial number if available
 - **suggestedCategory**: Best match from these categories:
   ${DEFAULT_ASSET_CATEGORIES.map(c => c.name).join(', ')}
 - **suggestedUsefulLifeMonths**: Based on category (see defaults below)
-- **suggestedSalvageValue**: Typically 0-10% of purchase cost (0 for most restaurant equipment)
+- **suggestedSalvageValue**: Typically 0-10% of TOTAL purchase cost (0 for most restaurant equipment)
 - **confidenceScore**: How confident you are in extraction (0.0-1.0)
 
 CATEGORY → USEFUL LIFE MAPPING:
 ${DEFAULT_ASSET_CATEGORIES.map(c => `- ${c.name}: ${c.defaultUsefulLifeMonths} months`).join('\n')}
+
+QUANTITY EXAMPLES:
+- Row with "qty: 2, item: Refrigerator, unit_price: $2,500" → quantity: 2, unitCost: 2500, purchaseCost: 5000
+- Row with "5 Chairs @ $200 each" → quantity: 5, unitCost: 200, purchaseCost: 1000
+- Row with "Walk-in Freezer, $8,000" → quantity: 1, unitCost: 8000, purchaseCost: 8000
 
 CONFIDENCE SCORING:
 - 0.90-1.0: Clear structure, all fields present
@@ -146,7 +167,9 @@ RESPONSE FORMAT (JSON ONLY - NO MARKDOWN, NO EXTRA TEXT):
       "rawText": "original text from data",
       "parsedName": "Commercial Refrigerator",
       "parsedDescription": "True Manufacturing 2-door",
-      "purchaseCost": 5499.99,
+      "quantity": 2,
+      "unitCost": 2749.99,
+      "purchaseCost": 5499.98,
       "purchaseDate": "2024-01-15",
       "serialNumber": "TM-12345",
       "suggestedCategory": "Kitchen Equipment",
@@ -162,7 +185,8 @@ CRITICAL RULES:
 - Extract ALL line items (don't summarize or skip)
 - Items with $0 cost are OK - user will add prices later
 - If date is missing, omit purchaseDate field
-- Match category as closely as possible; use "Other" only as last resort`;
+- Match category as closely as possible; use "Other" only as last resort
+- Always include quantity (default 1) and unitCost for every item`;
 
 // Model configurations (same as process-receipt for consistency)
 const MODELS = [
@@ -646,13 +670,32 @@ serve(async (req) => {
           return false;
         }
         return true;
-      }).map((item) => ({
-        ...item,
-        purchaseCost: Number(item.purchaseCost) || 0,
-        confidenceScore: Math.max(0, Math.min(1, item.confidenceScore || 0.7)),
-        suggestedUsefulLifeMonths: item.suggestedUsefulLifeMonths || getUsefulLifeForCategory(item.suggestedCategory),
-        suggestedSalvageValue: item.suggestedSalvageValue || 0,
-      }));
+      }).map((item) => {
+        const quantity = Math.max(1, Number(item.quantity) || 1);
+        const rawUnitCost = Number(item.unitCost);
+        const rawPurchaseCost = Number(item.purchaseCost);
+        const hasUnitCost = Number.isFinite(rawUnitCost) && rawUnitCost > 0;
+        const hasPurchaseCost = Number.isFinite(rawPurchaseCost) && rawPurchaseCost > 0;
+
+        // Normalize unitCost and purchaseCost bidirectionally
+        const unitCost = hasUnitCost
+          ? rawUnitCost
+          : (hasPurchaseCost && quantity > 0 ? rawPurchaseCost / quantity : 0);
+
+        const purchaseCost = hasPurchaseCost
+          ? rawPurchaseCost
+          : (hasUnitCost ? rawUnitCost * quantity : 0);
+
+        return {
+          ...item,
+          quantity,
+          unitCost,
+          purchaseCost,
+          confidenceScore: Math.max(0, Math.min(1, item.confidenceScore || 0.7)),
+          suggestedUsefulLifeMonths: item.suggestedUsefulLifeMonths || getUsefulLifeForCategory(item.suggestedCategory),
+          suggestedSalvageValue: item.suggestedSalvageValue || 0,
+        };
+      });
 
       console.log(`✅ Parsed ${parsedData.lineItems.length} assets`);
 

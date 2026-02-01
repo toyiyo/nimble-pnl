@@ -11,6 +11,7 @@ import type {
   AssetCSVRow,
 } from '@/types/assetImport';
 import { createAssetLineItem, parseCSVRowToLineItem, REQUIRED_CSV_COLUMNS } from '@/types/assetImport';
+import { parseCSVLine } from '@/utils/assetColumnMapping';
 
 
 export interface UseAssetImportReturn {
@@ -273,6 +274,12 @@ export function useAssetImport(): UseAssetImportReturn {
                 case 'purchase_date':
                   row.purchase_date = value;
                   break;
+                case 'quantity':
+                  row.quantity = value;
+                  break;
+                case 'unit_cost':
+                  row.unit_cost = value;
+                  break;
                 case 'purchase_cost':
                   row.purchase_cost = value;
                   break;
@@ -294,8 +301,9 @@ export function useAssetImport(): UseAssetImportReturn {
               }
             });
 
-            // Skip rows without required data
-            if (!row.name || !row.purchase_date || !row.purchase_cost) {
+            // Skip rows without required data (need name, date, and either unit_cost or purchase_cost)
+            const hasCost = row.unit_cost || row.purchase_cost;
+            if (!row.name || !row.purchase_date || !hasCost) {
               console.warn(`Skipping row ${i + 1}: missing required fields`);
               continue;
             }
@@ -439,7 +447,8 @@ export function useAssetImport(): UseAssetImportReturn {
           category: item.category,
           serial_number: item.serialNumber,
           purchase_date: item.purchaseDate,
-          purchase_cost: item.purchaseCost,
+          quantity: item.quantity || 1,
+          unit_cost: item.unitCost,
           salvage_value: item.salvageValue,
           useful_life_months: item.usefulLifeMonths,
           location_id: item.locationId,
@@ -546,34 +555,3 @@ export function useAssetImport(): UseAssetImportReturn {
   };
 }
 
-/**
- * Parse a CSV line handling quoted values
- */
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote
-        current += '"';
-        i++;
-      } else {
-        // Toggle quote mode
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  result.push(current);
-  return result;
-}

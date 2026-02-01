@@ -26,15 +26,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
-  SelectGroup,
   SelectValue,
   SelectTrigger,
   SelectContent,
-  SelectLabel,
   SelectItem,
-  SelectSeparator,
-  SelectScrollUpButton,
-  SelectScrollDownButton,
 } from '@/components/ui/select';
 import { Loader2, ChevronDown, Upload, X, Star, Trash2, ImageIcon } from 'lucide-react';
 import { SearchableLocationSelector } from '@/components/SearchableLocationSelector';
@@ -97,7 +92,8 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
       category: '',
       serial_number: '',
       purchase_date: new Date().toISOString().split('T')[0],
-      purchase_cost: 0,
+      quantity: 1,
+      unit_cost: 0,
       salvage_value: 0,
       useful_life_months: 60,
       location_id: '',
@@ -229,7 +225,8 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
         category: asset.category,
         serial_number: asset.serial_number || '',
         purchase_date: asset.purchase_date,
-        purchase_cost: asset.purchase_cost,
+        quantity: asset.quantity || 1,
+        unit_cost: asset.unit_cost || asset.purchase_cost, // Fallback for legacy data
         salvage_value: asset.salvage_value,
         useful_life_months: asset.useful_life_months,
         location_id: asset.location_id || '',
@@ -330,12 +327,14 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
   };
 
   const isEditing = !!asset;
-  const purchaseCost = form.watch('purchase_cost');
+  const quantity = form.watch('quantity') || 1;
+  const unitCost = form.watch('unit_cost') || 0;
   const salvageValue = form.watch('salvage_value');
   const usefulLifeMonths = form.watch('useful_life_months');
 
-  // Calculate preview depreciation
-  const depreciableAmount = purchaseCost - salvageValue;
+  // Calculate total purchase cost and preview depreciation
+  const totalPurchaseCost = unitCost * quantity;
+  const depreciableAmount = totalPurchaseCost - salvageValue;
   const monthlyDepreciation = usefulLifeMonths > 0 ? depreciableAmount / usefulLifeMonths : 0;
 
   return (
@@ -505,14 +504,46 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
 
                     <FormField
                       control={form.control}
-                      name="purchase_cost"
+                      name="quantity"
                       rules={{
-                        required: 'Purchase cost is required',
+                        required: 'Quantity is required',
+                        min: { value: 1, message: 'Quantity must be at least 1' },
+                      }}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quantity</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              step="1"
+                              placeholder="1"
+                              {...field}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value);
+                                // Ensure quantity is at least 1, handle NaN and negative values
+                                field.onChange(isNaN(value) || value < 1 ? 1 : value);
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription>Number of identical units</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="unit_cost"
+                      rules={{
+                        required: 'Unit cost is required',
                         min: { value: 0.01, message: 'Cost must be greater than 0' },
                       }}
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Purchase Cost</FormLabel>
+                          <FormLabel>Unit Cost</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
@@ -523,10 +554,22 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
                               onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
                             />
                           </FormControl>
+                          <FormDescription>Cost per unit</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
+                    {/* Show calculated total */}
+                    <div className="space-y-2">
+                      <FormLabel>Total Cost</FormLabel>
+                      <div className="h-10 px-3 py-2 rounded-md border bg-muted text-right font-mono">
+                        {formatAssetCurrency(totalPurchaseCost)}
+                      </div>
+                      <p className="text-[0.8rem] text-muted-foreground">
+                        {quantity > 1 ? `${quantity} × ${formatAssetCurrency(unitCost)}` : 'Unit cost × Quantity'}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -584,7 +627,7 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
                   </div>
 
                   {/* Depreciation Preview */}
-                  {purchaseCost > 0 && (
+                  {totalPurchaseCost > 0 && (
                     <div className="rounded-lg bg-muted p-4 space-y-2">
                       <h4 className="text-sm font-medium">Depreciation Preview</h4>
                       <div className="grid grid-cols-2 gap-4 text-sm">

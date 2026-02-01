@@ -54,6 +54,9 @@ export const RecurringShiftActionDialog = ({
   const isDelete = actionType === 'delete';
   const shiftDate = format(new Date(shift.start_time), 'EEE, MMM d');
   const shiftTime = format(new Date(shift.start_time), 'h:mm a');
+  const actionLabel = isDelete ? 'Delete' : 'Continue';
+  const loadingLabel = isDelete ? 'Deleting...' : 'Updating...';
+  const confirmButtonLabel = isLoading ? loadingLabel : actionLabel;
 
   const handleConfirm = () => {
     onConfirm(selectedScope);
@@ -149,11 +152,7 @@ export const RecurringShiftActionDialog = ({
             disabled={isLoading}
             className={isDelete ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
           >
-            {isLoading ? (
-              isDelete ? 'Deleting...' : 'Updating...'
-            ) : (
-              isDelete ? 'Delete' : 'Continue'
-            )}
+            {confirmButtonLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

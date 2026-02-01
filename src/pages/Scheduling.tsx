@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
 import { FeatureGate } from '@/components/subscription';
-import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries } from '@/hooks/useShifts';
+import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries, useSeriesInfo } from '@/hooks/useShifts';
 import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
@@ -30,7 +30,7 @@ import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
-import { isRecurringShift, getSeriesShifts, countLockedShifts, RecurringActionScope } from '@/utils/recurringShiftHelpers';
+import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { cn } from '@/lib/utils';
 import {
   Calendar,
@@ -67,6 +67,22 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+const SKELETON_ROWS = ['row-0', 'row-1', 'row-2', 'row-3'];
+const SKELETON_DAYS = ['day-0', 'day-1', 'day-2', 'day-3', 'day-4', 'day-5', 'day-6'];
+
+export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boolean) => {
+  if (hasConflicts) {
+    return 'border-l-warning bg-warning/5 hover:bg-warning/10';
+  }
+  if (status === 'confirmed') {
+    return 'border-l-success';
+  }
+  if (status === 'cancelled') {
+    return 'border-l-destructive opacity-60';
+  }
+  return 'border-l-primary/50';
+};
+
 type ShiftCardProps = {
   shift: Shift;
   onEdit: (shift: Shift) => void;
@@ -102,6 +118,7 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
   const shiftStart = parseISO(shift.start_time);
   const shiftEnd = parseISO(shift.end_time);
   const durationHours = (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60);
+  const shiftStatusClass = getShiftStatusClass(shift.status, hasConflicts);
 
   return (
     <TooltipProvider>
@@ -112,13 +129,7 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
               "group relative rounded-lg border-l-4 transition-all duration-200 cursor-pointer",
               "hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5",
               "bg-gradient-to-r from-card to-card/80",
-              hasConflicts
-                ? 'border-l-warning bg-warning/5 hover:bg-warning/10'
-                : shift.status === 'confirmed'
-                ? 'border-l-success'
-                : shift.status === 'cancelled'
-                ? 'border-l-destructive opacity-60'
-                : 'border-l-primary/50'
+              shiftStatusClass
             )}
             onClick={() => onEdit(shift)}
           >
@@ -401,15 +412,11 @@ const Scheduling = () => {
     }
   };
 
-  // Calculate series info for recurring action dialog
-  const recurringDialogSeriesInfo = useMemo(() => {
-    if (!recurringActionDialog.shift) return { seriesCount: 0, lockedCount: 0 };
-    const seriesShifts = getSeriesShifts(recurringActionDialog.shift, shifts);
-    return {
-      seriesCount: seriesShifts.length,
-      lockedCount: countLockedShifts(seriesShifts),
-    };
-  }, [recurringActionDialog.shift, shifts]);
+  // Fetch full series info from server (not limited to current week)
+  const { seriesCount, lockedCount: seriesLockedCount } = useSeriesInfo(
+    recurringActionDialog.shift,
+    restaurantId
+  );
 
   const confirmDeleteShift = () => {
     if (shiftToDelete && restaurantId) {
@@ -556,7 +563,7 @@ const Scheduling = () => {
             )}
             <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              Ready to be scheduled
+              <span>Ready to be scheduled</span>
             </p>
           </CardContent>
         </Card>
@@ -650,7 +657,7 @@ const Scheduling = () => {
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-primary/60" />
-                      Hourly
+                      <span>Hourly</span>
                     </span>
                     <span className="font-medium tabular-nums">
                       ${laborCostBreakdown.hourly.cost.toLocaleString()}
@@ -679,7 +686,7 @@ const Scheduling = () => {
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-accent/60" />
-                        Salary
+                        <span>Salary</span>
                       </span>
                       <span className="font-medium tabular-nums">
                         ${laborCostBreakdown.salary.cost.toLocaleString()}
@@ -691,7 +698,7 @@ const Scheduling = () => {
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-warning/60" />
-                        Contractors
+                        <span>Contractors</span>
                       </span>
                       <span className="font-medium tabular-nums">
                         ${laborCostBreakdown.contractor.cost.toLocaleString()}
@@ -703,7 +710,7 @@ const Scheduling = () => {
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-info/60" />
-                        Daily Rate
+                        <span>Daily Rate</span>
                       </span>
                       <span className="font-medium tabular-nums">
                         ${laborCostBreakdown.daily_rate.cost.toLocaleString()}
@@ -917,11 +924,11 @@ const Scheduling = () => {
         <CardContent className="p-0">
           {employeesLoading || shiftsLoading ? (
             <div className="p-6 space-y-4">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="flex gap-4">
+              {SKELETON_ROWS.map((rowKey) => (
+                <div key={rowKey} className="flex gap-4">
                   <Skeleton className="h-14 w-48 shrink-0" />
-                  {[...Array(7)].map((_, j) => (
-                    <Skeleton key={j} className="h-14 flex-1" />
+                  {SKELETON_DAYS.map((dayKey) => (
+                    <Skeleton key={dayKey} className="h-14 flex-1" />
                   ))}
                 </div>
               ))}
@@ -1313,8 +1320,8 @@ const Scheduling = () => {
         }}
         actionType={recurringActionDialog.actionType}
         shift={recurringActionDialog.shift}
-        seriesCount={recurringDialogSeriesInfo.seriesCount}
-        lockedCount={recurringDialogSeriesInfo.lockedCount}
+        seriesCount={seriesCount}
+        lockedCount={seriesLockedCount}
         onConfirm={handleRecurringActionConfirm}
         isLoading={deleteShiftSeries.isPending || updateShiftSeries.isPending}
       />

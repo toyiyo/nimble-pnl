@@ -7,6 +7,23 @@ import { parseISO } from 'date-fns';
 import { Json } from '@/integrations/supabase/types';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 
+export const buildShiftChangeDescription = (
+  changeCount: number,
+  lockedCount: number,
+  action: 'deleted' | 'updated'
+) => {
+  const shiftLabel = changeCount === 1 ? 'shift' : 'shifts';
+  let description = `${changeCount} ${shiftLabel} ${action}.`;
+
+  if (lockedCount > 0) {
+    const lockedShiftLabel = lockedCount === 1 ? 'locked shift was' : 'locked shifts were';
+    const lockedOutcome = action === 'deleted' ? 'preserved' : 'unchanged';
+    description += ` ${lockedCount} ${lockedShiftLabel} ${lockedOutcome}.`;
+  }
+
+  return description;
+};
+
 export const useShifts = (restaurantId: string | null, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
 
@@ -295,7 +312,8 @@ export const useDeleteShiftSeries = () => {
         const { error } = await supabase
           .from('shifts')
           .delete()
-          .eq('id', shift.id);
+          .eq('id', shift.id)
+          .eq('restaurant_id', restaurantId);
 
         if (error) throw error;
         deletedCount = 1;
@@ -354,24 +372,68 @@ export const useDeleteShiftSeries = () => {
 
       return { deletedCount, lockedCount, restaurantId };
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+    onMutate: async ({ shift, scope, restaurantId }) => {
+      // Cancel any outgoing refetches to prevent overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
-      let description = `${data.deletedCount} shift${data.deletedCount !== 1 ? 's' : ''} deleted.`;
-      if (data.lockedCount > 0) {
-        description += ` ${data.lockedCount} locked shift${data.lockedCount !== 1 ? 's were' : ' was'} preserved.`;
-      }
+      // Snapshot the previous value for all matching queries
+      const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
 
-      toast({
-        title: 'Shifts deleted',
-        description,
-      });
+      // Optimistically update the cache
+      const parentId = getSeriesParentId(shift);
+
+      queryClient.setQueriesData<Shift[]>(
+        { queryKey: ['shifts', restaurantId] },
+        (old) => {
+          if (!old) return old;
+
+          return old.filter((s) => {
+            // Keep locked shifts
+            if (s.locked) return true;
+
+            const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
+            if (!isInSeries) return true;
+
+            if (scope === 'this') {
+              return s.id !== shift.id;
+            } else if (scope === 'following') {
+              return new Date(s.start_time).getTime() < new Date(shift.start_time).getTime();
+            } else {
+              // scope === 'all' - remove all unlocked in series
+              return false;
+            }
+          });
+        }
+      );
+
+      return { previousData };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
       toast({
         title: 'Error deleting shifts',
         description: error.message,
         variant: 'destructive',
+      });
+    },
+    onSettled: (data) => {
+      // Always refetch to ensure server state is synced
+      if (data?.restaurantId) {
+        queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+        queryClient.invalidateQueries({ queryKey: ['series-info'] });
+      }
+    },
+    onSuccess: (data) => {
+      const description = buildShiftChangeDescription(data.deletedCount, data.lockedCount, 'deleted');
+
+      toast({
+        title: 'Shifts deleted',
+        description,
       });
     },
   });
@@ -404,11 +466,14 @@ export const useUpdateShiftSeries = () => {
       let lockedCount = 0;
 
       // Remove employee data from updates if present
-      const { employee, recurrence_pattern, ...shiftUpdates } = updates as Partial<Shift>;
+      const { employee, recurrence_pattern, start_time, end_time, ...shiftUpdates } = updates as Partial<Shift>;
 
-      // Convert recurrence_pattern if present
+      // For 'this' scope, include time changes; for 'following'/'all', exclude them
+      // to prevent collapsing all occurrences to the same timestamp
       const dbUpdates = {
         ...shiftUpdates,
+        ...(scope === 'this' && start_time !== undefined && { start_time }),
+        ...(scope === 'this' && end_time !== undefined && { end_time }),
         ...(recurrence_pattern !== undefined && {
           recurrence_pattern: recurrence_pattern as unknown as Json,
         }),
@@ -430,6 +495,7 @@ export const useUpdateShiftSeries = () => {
             recurrence_pattern: null,
           })
           .eq('id', shift.id)
+          .eq('restaurant_id', restaurantId)
           .select();
 
         if (error) throw error;
@@ -489,25 +555,140 @@ export const useUpdateShiftSeries = () => {
 
       return { updatedCount, lockedCount, restaurantId };
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+    onMutate: async ({ shift, scope, updates, restaurantId }) => {
+      // Cancel any outgoing refetches to prevent overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
-      let description = `${data.updatedCount} shift${data.updatedCount !== 1 ? 's' : ''} updated.`;
-      if (data.lockedCount > 0) {
-        description += ` ${data.lockedCount} locked shift${data.lockedCount !== 1 ? 's were' : ' was'} unchanged.`;
-      }
+      // Snapshot the previous value for all matching queries
+      const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
 
-      toast({
-        title: 'Shifts updated',
-        description,
-      });
+      // Optimistically update the cache
+      const parentId = getSeriesParentId(shift);
+
+      // Prepare the optimistic updates (excluding time changes for non-'this' scopes)
+      const { employee, recurrence_pattern, start_time, end_time, ...shiftUpdates } = updates as Partial<Shift>;
+      const optimisticUpdates = {
+        ...shiftUpdates,
+        ...(scope === 'this' && start_time !== undefined && { start_time }),
+        ...(scope === 'this' && end_time !== undefined && { end_time }),
+      };
+
+      queryClient.setQueriesData<Shift[]>(
+        { queryKey: ['shifts', restaurantId] },
+        (old) => {
+          if (!old) return old;
+
+          return old.map((s) => {
+            // Don't update locked shifts
+            if (s.locked) return s;
+
+            const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
+            if (!isInSeries) return s;
+
+            if (scope === 'this') {
+              if (s.id === shift.id) {
+                return {
+                  ...s,
+                  ...optimisticUpdates,
+                  recurrence_parent_id: null,
+                  is_recurring: false,
+                  recurrence_pattern: null,
+                };
+              }
+              return s;
+            } else if (scope === 'following') {
+              if (new Date(s.start_time).getTime() >= new Date(shift.start_time).getTime()) {
+                return { ...s, ...optimisticUpdates };
+              }
+              return s;
+            } else {
+              // scope === 'all'
+              return { ...s, ...optimisticUpdates };
+            }
+          });
+        }
+      );
+
+      return { previousData };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
       toast({
         title: 'Error updating shifts',
         description: error.message,
         variant: 'destructive',
       });
     },
+    onSettled: (data) => {
+      // Always refetch to ensure server state is synced
+      if (data?.restaurantId) {
+        queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+        queryClient.invalidateQueries({ queryKey: ['series-info'] });
+      }
+    },
+    onSuccess: (data) => {
+      const description = buildShiftChangeDescription(data.updatedCount, data.lockedCount, 'updated');
+
+      toast({
+        title: 'Shifts updated',
+        description,
+      });
+    },
   });
+};
+
+/**
+ * Fetch full series information from the server (not limited to current week)
+ * Used to show accurate counts in the recurring action dialog
+ */
+export const useSeriesInfo = (
+  shift: Shift | null,
+  restaurantId: string | null
+) => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['series-info', shift?.id, restaurantId],
+    queryFn: async () => {
+      if (!shift || !restaurantId) return { seriesCount: 0, lockedCount: 0 };
+
+      const parentId = getSeriesParentId(shift);
+
+      // Fetch total series count
+      const { count: totalCount, error: countError } = await supabase
+        .from('shifts')
+        .select('*', { count: 'exact', head: true })
+        .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+        .eq('restaurant_id', restaurantId);
+
+      if (countError) throw countError;
+
+      // Fetch locked shifts count
+      const { count: lockedCount, error: lockedError } = await supabase
+        .from('shifts')
+        .select('*', { count: 'exact', head: true })
+        .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+        .eq('restaurant_id', restaurantId)
+        .eq('locked', true);
+
+      if (lockedError) throw lockedError;
+
+      return {
+        seriesCount: totalCount || 0,
+        lockedCount: lockedCount || 0,
+      };
+    },
+    enabled: !!shift && !!restaurantId && shift.is_recurring === true,
+    staleTime: 30000,
+  });
+
+  return {
+    seriesCount: data?.seriesCount || 0,
+    lockedCount: data?.lockedCount || 0,
+    loading: isLoading,
+    error,
+  };
 };

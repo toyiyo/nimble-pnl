@@ -52061,6 +52061,809 @@
       "status": "open",
       "created_at": "2026-02-01T18:31:44.983Z",
       "updated_at": "2026-02-01T18:31:44.983Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 2751468821,
+        "file": "src/hooks/useShifts.tsx",
+        "line": 513
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Add tests for the new series hooks.**  \n`useDeleteShiftSeries` / `useUpdateShiftSeries` encode core business rules (scope filtering, locked preservation). Please add unit tests for each scope path and error handling. If you want, I can draft a test scaffold.  \nAs per coding guidelines: src/{lib,utils,hooks}/**/*.{ts,tsx}: Write tests for all new utility functions, custom hooks, and business logic.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useShifts.tsx` around lines 271 - 513, Add unit tests covering\nuseDeleteShiftSeries and useUpdateShiftSeries to validate each scope branch\n('this', 'following', 'all') and error paths; specifically, write tests that\nmock supabase responses (including select with count/head, delete/update\nreturning data and errors), mock getSeriesParentId input scenarios, and assert\nthat deletedCount/updatedCount and lockedCount are reported correctly and that\nqueryClient.invalidateQueries and toast are called with expected messages. For\neach hook, include tests for: locked-shift rejection when scope === 'this'\n(throws), 'following' behavior (counts locked, only modifies unlocked shifts\non/after shift.start_time), 'all' behavior (counts locked, only modifies\nunlocked shifts across series), and Supabase error propagation (mutation rejects\nand shows destructive toast). Use testing utilities to stub\nuseQueryClient/useToast and verify calls to invalidateQueries and toast contents\nfor both success and error flows.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "28199f24943ed65030d82c58ec832f99ecfb9227",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.001Z",
+      "updated_at": "2026-02-01T20:06:55.089Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass - added useShiftsSeries.test.ts"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 2751468824,
+        "file": "src/hooks/useShifts.tsx",
+        "line": 377
+      },
+      "title": "_🛠️ Refactor suggestion_ | _🟠 Major_",
+      "body": "_🛠️ Refactor suggestion_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# Check if file exists and examine the relevant lines\nwc -l src/hooks/useShifts.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the useDeleteShiftSeries implementation\nsed -n '271,377p' src/hooks/useShifts.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 3479\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the broader context - also look at lines 386-512 mentioned in the comment\nwc -l src/hooks/useShifts.tsx\nsed -n '386,512p' src/hooks/useShifts.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 4281\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if other mutations in the codebase implement optimistic updates\nrg -t tsx -t ts \"onMutate\" src/ --context 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for onMutate in TypeScript/TSX files\nrg \"onMutate\" src/ -A 3\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1859\n\n---\n\n🏁 Script executed:\n\n```shell\n# Get a complete example of an optimistic update implementation\nrg -A 20 \"onMutate: async\" src/hooks/useCategorizePosSale.tsx | head -50\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 911\n\n---\n\n\n\n</details>\n\n**Implement optimistic updates for both series mutations.**\n\nBoth `useDeleteShiftSeries` and `useUpdateShiftSeries` are missing optimistic cache updates. Add `onMutate` to cancel pending queries and update the shifts cache immediately, then use `onSettled` to revalidate on both success and error. Follow the pattern in `useCategorizePosSale` (cancel queries, snapshot previous data, optimistically update cache, restore on rollback).\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useShifts.tsx` around lines 271 - 377, The mutation\nuseDeleteShiftSeries (and similarly useUpdateShiftSeries) lacks optimistic\nupdates: add an onMutate handler that cancels pending ['shifts', restaurantId]\nqueries via queryClient.cancelQueries, snapshots previous data with\nqueryClient.getQueryData, computes an optimistic new shifts list (for scope\n'this' remove shift.id, for 'following' and 'all' remove shifts whose id ===\nparentId or recurrence_parent_id === parentId and for 'following' also filter by\nstart_time >= shift.start_time; only remove unlocked shifts), apply it with\nqueryClient.setQueryData, and return the snapshot as context; add onError to\nrollback by restoring the snapshot from context and show the toast error, and\nadd onSettled to invalidateQueries(['shifts', restaurantId]) so the server state\nis refetched—use the same pattern for useUpdateShiftSeries (cancel, snapshot,\nsetQueryData optimistic update, rollback on error, invalidate on settled).\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "3cc79be4ecee3dc1e7883e2d7cba8ba1038b7f31",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.002Z",
+      "updated_at": "2026-02-01T20:06:57.247Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass - implemented optimistic updates for series mutations"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 2751468825,
+        "file": "src/hooks/useShifts.tsx",
+        "line": 301
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n<details>\n<summary>🧩 Analysis chain</summary>\n\n🏁 Script executed:\n\n```shell\n# First, let's examine the useShifts.tsx file around the mentioned lines\nwc -l src/hooks/useShifts.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 88\n\n---\n\n🏁 Script executed:\n\n```shell\n# Read the file around lines 289-301 and 423-434 to see the actual code\ncat -n src/hooks/useShifts.tsx | sed -n '280,310p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1298\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check the other section mentioned (423-434)\ncat -n src/hooks/useShifts.tsx | sed -n '415,445p'\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1369\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check if there are Supabase RLS policies defined\nfind supabase/migrations -name \"*.sql\" -type f | head -20\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 1580\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for RLS policies on shifts table in migrations\nrg -A 10 -B 2 \"ALTER TABLE.*shifts.*ENABLE ROW LEVEL SECURITY\" supabase/migrations/\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2913\n\n---\n\n🏁 Script executed:\n\n```shell\n# Search for CREATE POLICY statements on shifts table\nrg \"CREATE POLICY.*shifts\" supabase/migrations/ -A 5\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 5346\n\n---\n\n🏁 Script executed:\n\n```shell\n# Check how other parts of useShifts.tsx use restaurant_id in Supabase queries\nrg \"restaurant_id\" src/hooks/useShifts.tsx -B 2 -A 2\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 2079\n\n---\n\n🏁 Script executed:\n\n```shell\n# Look for other delete/update operations in the file to see if they use restaurant_id\nrg -A 5 \"\\.delete\\(\\)\" src/hooks/useShifts.tsx\n```\n\nRepository: toyiyo/nimble-pnl\n\nLength of output: 765\n\n---\n\n\n\n</details>\n\n**Add restaurant_id filter to \"this\" scope delete and update operations.**\n\nThe delete and update operations at lines 289–301 and 423–434 filter only by `id`, creating inconsistency with the rest of the function. All other queries in this mutation properly include `.eq('restaurant_id', restaurantId)`. Add this filter to both operations for multi-tenant safety parity.\n\n<details>\n<summary>🛠️ Suggested fix</summary>\n\n```diff\n        const { error } = await supabase\n          .from('shifts')\n          .delete()\n          .eq('id', shift.id)\n+         .eq('restaurant_id', restaurantId);\n```\n\n```diff\n        const { data, error } = await supabase\n          .from('shifts')\n          .update({\n            ...dbUpdates,\n            recurrence_parent_id: null,\n            is_recurring: false,\n            recurrence_pattern: null,\n          })\n          .eq('id', shift.id)\n+         .eq('restaurant_id', restaurantId)\n           .select();\n```\n</details>\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useShifts.tsx` around lines 289 - 301, The delete and update\nbranches inside the useShifts mutation that handle scope === 'this' are only\nfiltering by shift.id (variable shift) and must also include the tenant filter\nusing restaurantId; update the Supabase queries in both the delete block (where\ndeletedCount = 1) and the update block (where changedCount is set) to chain\n.eq('restaurant_id', restaurantId) alongside .eq('id', shift.id) to match the\nother queries and ensure multi-tenant safety.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "886ffcecabdeec5195509ea1750c35228d16f81f",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.002Z",
+      "updated_at": "2026-02-01T20:06:59.165Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass - added restaurant_id filter to this scope operations"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 2751468827,
+        "file": "src/hooks/useShifts.tsx",
+        "line": 487
+      },
+      "title": "_⚠️ Potential issue_ | _🔴 Critical_",
+      "body": "_⚠️ Potential issue_ | _🔴 Critical_\n\n**Series updates will overwrite all occurrences with the same timestamp.**  \nFor `following`/`all`, `dbUpdates` includes the edited shift’s `start_time`/`end_time`, so the bulk update sets identical timestamps for every row and collapses the series. Consider computing per-shift timestamps (preserve each occurrence’s date while applying the new time delta) or disallow changing date/time when scope isn’t `this`.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/hooks/useShifts.tsx` around lines 438 - 487, The bulk-update for scopes\n'following' and 'all' blindly applies dbUpdates (which includes\nstart_time/end_time) to every occurrence, collapsing distinct dates; to fix,\nwhen scope !== 'this' remove start_time and end_time from dbUpdates and instead\neither (a) compute per-shift new timestamps by first selecting the affected rows\n(use the same supabase.query with\nor(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`) and the same gte/eq\nfilters), calculate each row's new start_time/end_time by preserving the\noriginal date and applying the edited shift’s time delta, and update rows\nindividually (or via a server-side RPC) using each row's id, or (b) disallow\nediting start_time/end_time in non-'this' scopes and return a validation error;\nupdate references: dbUpdates, parentId, scope, shiftStartTime,\nlockedCount/updatedCount and the supabase .from('shifts').update calls\naccordingly.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "cf678e0c231744b3ca61deca7ce0818e5b3eae3a",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.002Z",
+      "updated_at": "2026-02-01T20:07:04.339Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass - excluded start_time/end_time from bulk updates for non-this scopes"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 2751468828,
+        "file": "src/pages/Scheduling.tsx",
+        "line": 411
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Series count/locked count are computed from week-limited data.**  \n`getSeriesShifts` uses the currently loaded week, but delete/update operations apply to the full series, so the dialog can under-report how many shifts will be affected. Consider fetching full-series counts (server-side) when the dialog opens or expanding the query to include the entire series.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/pages/Scheduling.tsx` around lines 404 - 411, The computed seriesCount\nand lockedCount in recurringDialogSeriesInfo are derived from the currently\nloaded-week data via getSeriesShifts(shifts), which under-reports impacts\nbecause delete/update operate on the full series; update the logic so when\nrecurringActionDialog opens (recurringActionDialog.shift present) you request or\ncompute full-series counts instead of using the week-limited shifts array —\ne.g., call a server-side endpoint or expand the local query to fetch all shifts\nin the series and then pass that full list to countLockedShifts and to compute\nseriesCount (referencing recurringDialogSeriesInfo, getSeriesShifts,\ncountLockedShifts, and recurringActionDialog.shift) so the dialog shows correct\ntotals.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "af02cf6d30c217cc1d61966828299143fe249c7d",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.002Z",
+      "updated_at": "2026-02-01T20:07:07.700Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass - added useSeriesInfo hook to fetch full series counts from server"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 2751468829,
+        "file": "src/utils/recurringShiftHelpers.ts",
+        "line": 132
+      },
+      "title": "_⚠️ Potential issue_ | _🟠 Major_",
+      "body": "_⚠️ Potential issue_ | _🟠 Major_\n\n**Add unit tests for the new recurring shift helpers.**  \nThis is new business logic (series membership, scope filtering, lock counting) and needs unit coverage. If helpful, I can draft tests under `tests/unit/recurringShiftHelpers.test.ts`.  \nBased on learnings: Applies to src/{lib,utils,hooks}/**/*.{ts,tsx} : Write tests for all new utility functions, custom hooks, and business logic.\n\n<details>\n<summary>🤖 Prompt for AI Agents</summary>\n\n```\nIn `@src/utils/recurringShiftHelpers.ts` around lines 1 - 132, Add unit tests for\nthe recurring shift helpers (isRecurringShift, getSeriesParentId,\nisSeriesParent, getSeriesShifts, getFollowingShifts, getPastShifts,\ncountLockedShifts, getUnlockedShifts, getShiftsForScope, getScopeDescription)\ncovering: series membership (parent vs child), correct parentId resolution,\nordering of series shifts by start_time, \"this\"/\"following\"/\"all\" scope\nselection, date-boundary behavior for following/past helpers, locked shift\ncounting and exclusion via getShiftsForScope (assert both lockedCount and\ntoOperate), and scope description formatting; create tests that build mock Shift\nobjects with recurrence_parent_id, is_recurring, start_time and locked flags to\nexercise each helper and edge cases.\n```\n\n</details>\n\n<!-- fingerprinting:phantom:medusa:eagle -->\n\n<!-- This is an auto-generated comment by CodeRabbit -->",
+      "severity": "info",
+      "id": "4d98b31ce8c86f9ef4347a84e457abfd00c01410",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.002Z",
+      "updated_at": "2026-02-01T20:07:09.356Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "tests pass - added recurringShiftHelpers.test.ts with 39 tests"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 3831252304
+      },
+      "title": "### <span aria-hidden=\"true\">👷</span> Deploy Preview for *easyshifthq* processing.",
+      "body": "### <span aria-hidden=\"true\">👷</span> Deploy Preview for *easyshifthq* processing.\n\n\n|  Name | Link |\n|:-:|------------------------|\n|<span aria-hidden=\"true\">🔨</span> Latest commit | 28fee32de0c02c52499321af34b0b85e0e8ae685 |\n|<span aria-hidden=\"true\">🔍</span> Latest deploy log | https://app.netlify.com/projects/easyshifthq/deploys/697fb018974a410008914fd7 |",
+      "severity": "info",
+      "id": "d0df0e9ca81cf78c49e964bee3566ce39ac56a31",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.003Z",
+      "updated_at": "2026-02-01T20:07:16.446Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "deploy preview - no action required"
+      ]
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "342",
+        "comment_id": 3831260575
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=342) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [0.0% Coverage on New Code](https://sonarcloud.io/component_measures?id=toyiyo_nimble-pnl&pullRequest=342&metric=new_coverage&view=list) (required ≥ 80%)  \n  \n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=342)\n\n",
+      "severity": "info",
+      "id": "e7f4bce1d9b8b7ba1d3fa28b8109f523b58828b6",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.003Z",
+      "updated_at": "2026-02-01T20:07:17.036Z",
+      "tests_to_run": [
+        "npm run lint",
+        "npm test:all"
+      ],
+      "notes": [
+        "coverage improved with 58 new tests"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TrCtYDXugYtPMSF",
+        "pr": "342",
+        "file": "src/components/scheduling/RecurringShiftActionDialog.tsx",
+        "line": 153
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e9023165c238a8cd4112438fd5d28c00dffae075",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:56.692Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TrCtYDXugYtPMSG",
+        "pr": "342",
+        "file": "src/components/scheduling/RecurringShiftActionDialog.tsx",
+        "line": 155
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "6778a229dd0ff2cbf8e404e2c8dbdfcc26062502",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:56.750Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TnetYDXugYtPMSB",
+        "pr": "342",
+        "file": "src/hooks/useShifts.tsx",
+        "line": 360
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e38ccb21b51249b10f7f02e060134235612162d1",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:56.809Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TnetYDXugYtPMSC",
+        "pr": "342",
+        "file": "src/hooks/useShifts.tsx",
+        "line": 362
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "ea9f2c59fa16694877f481c5971331fd7913ec77",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:56.864Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TnetYDXugYtPMSD",
+        "pr": "342",
+        "file": "src/hooks/useShifts.tsx",
+        "line": 495
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "def4a35d1f5517c97ed56c374706ce7e3204fd79",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:56.924Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TnetYDXugYtPMSE",
+        "pr": "342",
+        "file": "src/hooks/useShifts.tsx",
+        "line": 497
+      },
+      "title": "Unexpected negated condition.",
+      "body": "Unexpected negated condition.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "0d32566cb6d826671e40e9ea028021f321945414",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:56.991Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSH",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 117
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "90fc6ef1b65f88c14c281589d2e14583bed0289a",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:57.050Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSI",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 119
+      },
+      "title": "Extract this nested ternary operation into an independent statement.",
+      "body": "Extract this nested ternary operation into an independent statement.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "086c715fe2f9f8130831db01ddc346532630098e",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:57.112Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSJ",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 558
+      },
+      "title": "Ambiguous spacing after previous element span",
+      "body": "Ambiguous spacing after previous element span",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "3aa4d0ac7bea46533ebc3d2bdc1602067dc05583",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.004Z",
+      "updated_at": "2026-02-01T20:07:57.172Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSK",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 652
+      },
+      "title": "Ambiguous spacing after previous element span",
+      "body": "Ambiguous spacing after previous element span",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "4b43adba384684429d3071f7b7343b30777e8731",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T20:07:57.232Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSL",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 681
+      },
+      "title": "Ambiguous spacing after previous element span",
+      "body": "Ambiguous spacing after previous element span",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "69ebcc57c756facaf1e52eaf28d366fe9d66ff4d",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T20:07:57.291Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSM",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 693
+      },
+      "title": "Ambiguous spacing after previous element span",
+      "body": "Ambiguous spacing after previous element span",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "416fa62d99051a14679182d12d1ede5926a917bd",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T20:07:57.346Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSN",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 705
+      },
+      "title": "Ambiguous spacing after previous element span",
+      "body": "Ambiguous spacing after previous element span",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "e08b3ff303eaa634fa19bd7e81456b505992b1b0",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T20:07:57.404Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSO",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 920
+      },
+      "title": "Use `new Array()` instead of `Array()`.",
+      "body": "Use `new Array()` instead of `Array()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "641c0939d662ede8c7eed33fd6ffb0f77144f781",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T20:07:57.461Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSP",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 921
+      },
+      "title": "Do not use Array index in keys",
+      "body": "Do not use Array index in keys",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "c2d826b46f7e2409ded61addb5327ddc83cfa10f",
+      "status": "fixed",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T20:07:57.524Z",
+      "notes": [
+        "tests pass"
+      ]
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSQ",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 923
+      },
+      "title": "Use `new Array()` instead of `Array()`.",
+      "body": "Use `new Array()` instead of `Array()`.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "308dc7e885e2153b9c88d5305f471032af3d6b9d",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T19:58:31.005Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZwZ5TsBtYDXugYtPMSR",
+        "pr": "342",
+        "file": "src/pages/Scheduling.tsx",
+        "line": 924
+      },
+      "title": "Do not use Array index in keys",
+      "body": "Do not use Array index in keys",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "4cef0f9d040f0f503ddc9f24f4a18bfc51eedf16",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.005Z",
+      "updated_at": "2026-02-01T19:58:31.005Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Scheduling.tsx",
+        "line": 97
+      },
+      "title": "react-hooks/exhaustive-deps in Scheduling.tsx",
+      "body": "React Hook useMemo has an unnecessary dependency: 'restaurantTimezone'. Either exclude it or remove the dependency array.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Scheduling.tsx"
+      ],
+      "id": "e3daa7a0e2dab9f9be86970c622519079baaaa9e",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.037Z",
+      "updated_at": "2026-02-01T19:58:31.037Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Transactions.tsx",
+        "line": 81
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "6cc829678213dc0c2915a8a4ebed73234b2efd24",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.037Z",
+      "updated_at": "2026-02-01T19:58:31.037Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Transactions.tsx",
+        "line": 115
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "104c1bf388ee551778eef2f21c839a5e2b340746",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.037Z",
+      "updated_at": "2026-02-01T19:58:31.037Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "src/pages/Transactions.tsx",
+        "line": 494
+      },
+      "title": "@typescript-eslint/no-explicit-any in Transactions.tsx",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/src/pages/Transactions.tsx"
+      ],
+      "id": "3e232886e4cfe663027d13f44c68cb57dbb94485",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.037Z",
+      "updated_at": "2026-02-01T19:58:31.037Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 741
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "3358947e6e4122a591843902786fb8dc4d65b3b4",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 742
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "c4e2fc6d9315ec44a6fd81c7f6bd7b5c82a2b4e7",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 745
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "caaa0da741b7208bf45bcef2260d206ec28c1f9c",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 746
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "8563844333035900f016597411631a267ce8b30f",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 777
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "1d73662f2ef075b7afffa0882d08e2c35fba11d9",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 896
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "b88373fba79f466baf819b5aef1566100f2bdbb8",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "supabase/functions/process-bank-statement/index.ts",
+        "line": 909
+      },
+      "title": "@typescript-eslint/no-explicit-any in index.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/supabase/functions/process-bank-statement/index.ts"
+      ],
+      "id": "091dd9758ec36e4a93a6680af9ecc0717aa8988e",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.047Z",
+      "updated_at": "2026-02-01T19:58:31.047Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 148
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "797d5144ea5dd696088042b170a863e8db89c4a0",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.051Z",
+      "updated_at": "2026-02-01T19:58:31.051Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 156
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "35c92742af2170d4dbc2fd2dd3cf8c113ff3707f",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.051Z",
+      "updated_at": "2026-02-01T19:58:31.051Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 228
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "e9267615badc66b36630fa66d16bd901edad1f53",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.051Z",
+      "updated_at": "2026-02-01T19:58:31.051Z"
+    },
+    {
+      "source": "problems",
+      "origin_ref": {
+        "file": "tests/e2e/asset-quantity.spec.ts",
+        "line": 234
+      },
+      "title": "@typescript-eslint/no-explicit-any in asset-quantity.spec.ts",
+      "body": "Unexpected any. Specify a different type.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint -- /Users/josedelgado/Documents/GitHub/nimble-pnl/tests/e2e/asset-quantity.spec.ts"
+      ],
+      "id": "c89b22946a094e4a30d53fcc09bc31ddc33b6833",
+      "status": "open",
+      "created_at": "2026-02-01T19:58:31.051Z",
+      "updated_at": "2026-02-01T19:58:31.051Z"
     }
   ]
 }

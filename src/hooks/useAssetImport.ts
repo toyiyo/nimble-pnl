@@ -273,6 +273,12 @@ export function useAssetImport(): UseAssetImportReturn {
                 case 'purchase_date':
                   row.purchase_date = value;
                   break;
+                case 'quantity':
+                  row.quantity = value;
+                  break;
+                case 'unit_cost':
+                  row.unit_cost = value;
+                  break;
                 case 'purchase_cost':
                   row.purchase_cost = value;
                   break;
@@ -294,8 +300,9 @@ export function useAssetImport(): UseAssetImportReturn {
               }
             });
 
-            // Skip rows without required data
-            if (!row.name || !row.purchase_date || !row.purchase_cost) {
+            // Skip rows without required data (need name, date, and either unit_cost or purchase_cost)
+            const hasCost = row.unit_cost || row.purchase_cost;
+            if (!row.name || !row.purchase_date || !hasCost) {
               console.warn(`Skipping row ${i + 1}: missing required fields`);
               continue;
             }
@@ -439,7 +446,8 @@ export function useAssetImport(): UseAssetImportReturn {
           category: item.category,
           serial_number: item.serialNumber,
           purchase_date: item.purchaseDate,
-          purchase_cost: item.purchaseCost,
+          quantity: item.quantity || 1,
+          unit_cost: item.unitCost,
           salvage_value: item.salvageValue,
           useful_life_months: item.usefulLifeMonths,
           location_id: item.locationId,

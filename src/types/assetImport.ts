@@ -11,7 +11,9 @@ export interface AssetLineItem {
   rawText: string;
   parsedName: string;
   parsedDescription?: string;
-  purchaseCost: number;
+  quantity: number; // Number of identical units (default 1)
+  unitCost: number; // Cost per unit
+  purchaseCost: number; // Total cost (quantity * unitCost) - kept for display
   purchaseDate: string; // YYYY-MM-DD
   serialNumber?: string;
 
@@ -59,7 +61,9 @@ export interface AssetExtractionResponse {
     rawText: string;
     parsedName: string;
     parsedDescription?: string;
-    purchaseCost: number;
+    quantity?: number; // Number of identical units (default 1)
+    unitCost?: number; // Cost per unit (if quantity provided)
+    purchaseCost: number; // Total cost for this line item
     purchaseDate?: string;
     serialNumber?: string;
     suggestedCategory: string;
@@ -87,7 +91,9 @@ export interface AssetCSVRow {
   name: string;
   category?: string;
   purchase_date: string;
-  purchase_cost: string | number;
+  quantity?: string | number; // Number of identical units
+  unit_cost?: string | number; // Cost per unit
+  purchase_cost?: string | number; // Total cost (legacy support, or if quantity not provided)
   salvage_value?: string | number;
   useful_life_months?: string | number;
   serial_number?: string;
@@ -96,11 +102,14 @@ export interface AssetCSVRow {
 }
 
 /** Required columns for CSV import */
-export const REQUIRED_CSV_COLUMNS = ['name', 'purchase_date', 'purchase_cost'] as const;
+export const REQUIRED_CSV_COLUMNS = ['name', 'purchase_date'] as const;
 
 /** Optional columns for CSV import */
 export const OPTIONAL_CSV_COLUMNS = [
   'category',
+  'quantity',
+  'unit_cost',
+  'purchase_cost',
   'salvage_value',
   'useful_life_months',
   'serial_number',
@@ -123,15 +132,17 @@ export function getCSVTemplateHeader(): string {
  */
 export function getCSVTemplateSampleRow(): string {
   return [
-    'Walk-in Refrigerator',
-    'Kitchen Equipment',
-    '2024-01-15',
-    '5499.99',
-    '500',
-    '84',
-    'REF-12345',
-    'Double-door stainless steel commercial refrigerator',
-    'Kitchen'
+    'Walk-in Refrigerator', // name
+    'Kitchen Equipment', // category
+    '2024-01-15', // purchase_date
+    '2', // quantity
+    '2749.99', // unit_cost
+    '5499.98', // purchase_cost (total)
+    '500', // salvage_value
+    '84', // useful_life_months
+    'REF-12345', // serial_number
+    'Double-door stainless steel commercial refrigerator', // description
+    'Kitchen' // location
   ].join(',');
 }
 
@@ -202,12 +213,20 @@ export function createAssetLineItem(
   const category = extracted.suggestedCategory || suggestion.category;
   const usefulLife = extracted.suggestedUsefulLifeMonths || getDefaultUsefulLife(category);
 
+  // Handle quantity and unit cost
+  const quantity = extracted.quantity || 1;
+  const totalCost = extracted.purchaseCost || 0;
+  // If unitCost provided, use it; otherwise calculate from total / quantity
+  const unitCost = extracted.unitCost || (quantity > 0 ? totalCost / quantity : totalCost);
+
   return {
     id: crypto.randomUUID(),
     rawText: extracted.rawText,
     parsedName: extracted.parsedName,
     parsedDescription: extracted.parsedDescription,
-    purchaseCost: extracted.purchaseCost,
+    quantity,
+    unitCost,
+    purchaseCost: totalCost,
     purchaseDate: extracted.purchaseDate || documentPurchaseDate || new Date().toISOString().split('T')[0],
     serialNumber: extracted.serialNumber,
     suggestedCategory: category,
@@ -243,14 +262,51 @@ export function parseCSVRowToLineItem(row: AssetCSVRow): AssetLineItem {
     ? Number.parseInt(String(row.useful_life_months), 10)
     : getDefaultUsefulLife(category);
 
+  // Parse quantity (default to 1)
+  const quantity = row.quantity
+    ? Number.parseInt(String(row.quantity), 10) || 1
+    : 1;
+
+  // Parse unit_cost if provided
+  const parsedUnitCost = row.unit_cost
+    ? (typeof row.unit_cost === 'number'
+        ? row.unit_cost
+        : Number.parseFloat(String(row.unit_cost).replaceAll(/[^0-9.-]/g, '')) || 0)
+    : null;
+
+  // Parse purchase_cost (total) if provided
+  const parsedPurchaseCost = row.purchase_cost
+    ? (typeof row.purchase_cost === 'number'
+        ? row.purchase_cost
+        : Number.parseFloat(String(row.purchase_cost).replaceAll(/[^0-9.-]/g, '')) || 0)
+    : null;
+
+  // Determine unit_cost and purchase_cost
+  let unitCost: number;
+  let purchaseCost: number;
+
+  if (parsedUnitCost !== null) {
+    // unit_cost provided - use it directly
+    unitCost = parsedUnitCost;
+    purchaseCost = unitCost * quantity;
+  } else if (parsedPurchaseCost !== null) {
+    // Only purchase_cost provided - calculate unit_cost
+    purchaseCost = parsedPurchaseCost;
+    unitCost = quantity > 0 ? purchaseCost / quantity : purchaseCost;
+  } else {
+    // Neither provided
+    unitCost = 0;
+    purchaseCost = 0;
+  }
+
   const item: AssetLineItem = {
     id: crypto.randomUUID(),
     rawText: name,
     parsedName: name,
     parsedDescription: row.description?.trim(),
-    purchaseCost: typeof row.purchase_cost === 'number'
-      ? row.purchase_cost
-      : Number.parseFloat(String(row.purchase_cost).replaceAll(/[^0-9.-]/g, '')) || 0,
+    quantity,
+    unitCost,
+    purchaseCost,
     purchaseDate: row.purchase_date?.trim() || new Date().toISOString().split('T')[0],
     serialNumber: row.serial_number?.trim(),
     suggestedCategory: category,

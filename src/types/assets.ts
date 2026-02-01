@@ -14,7 +14,9 @@ export interface Asset {
 
   // Financial Details
   purchase_date: string; // DATE as ISO string
-  purchase_cost: number;
+  quantity: number; // Number of identical units (default 1)
+  unit_cost: number; // Cost per unit
+  purchase_cost: number; // Total cost (unit_cost * quantity) - synced by DB trigger
   salvage_value: number;
   useful_life_months: number;
 
@@ -89,7 +91,8 @@ export interface AssetFormData {
   category: string;
   serial_number?: string;
   purchase_date: string;
-  purchase_cost: number;
+  quantity: number; // Number of identical units (default 1)
+  unit_cost: number; // Cost per unit
   salvage_value: number;
   useful_life_months: number;
   location_id?: string;
@@ -127,6 +130,14 @@ export interface AssetWithDetails extends Asset {
   location_name?: string;
   primary_photo_url?: string;
   photo_count?: number;
+}
+
+// Helper to format quantity display (e.g., "2 × $20,000")
+export function formatQuantityWithCost(quantity: number, unitCost: number): string {
+  if (quantity === 1) {
+    return formatAssetCurrency(unitCost);
+  }
+  return `${quantity} × ${formatAssetCurrency(unitCost)}`;
 }
 
 // Default categories with useful lives

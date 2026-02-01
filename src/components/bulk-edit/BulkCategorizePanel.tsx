@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { BulkActionPanel } from './BulkActionPanel';
-import { SearchableAccountSelector } from '../banking/SearchableAccountSelector';
+
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+
+import { BulkActionPanel } from './BulkActionPanel';
+import { SearchableAccountSelector } from '../banking/SearchableAccountSelector';
+
 import { formatBulkCount } from '@/utils/bulkEditUtils';
 
 interface BulkCategorizePanelProps {

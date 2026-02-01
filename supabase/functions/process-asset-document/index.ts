@@ -672,11 +672,19 @@ serve(async (req) => {
         return true;
       }).map((item) => {
         const quantity = Math.max(1, Number(item.quantity) || 1);
-        const purchaseCost = Number(item.purchaseCost) || 0;
-        // Calculate unitCost: use provided value, or derive from purchaseCost / quantity
-        const unitCost = item.unitCost
-          ? Number(item.unitCost)
-          : (quantity > 0 ? purchaseCost / quantity : purchaseCost);
+        const rawUnitCost = Number(item.unitCost);
+        const rawPurchaseCost = Number(item.purchaseCost);
+        const hasUnitCost = Number.isFinite(rawUnitCost) && rawUnitCost > 0;
+        const hasPurchaseCost = Number.isFinite(rawPurchaseCost) && rawPurchaseCost > 0;
+
+        // Normalize unitCost and purchaseCost bidirectionally
+        const unitCost = hasUnitCost
+          ? rawUnitCost
+          : (hasPurchaseCost && quantity > 0 ? rawPurchaseCost / quantity : 0);
+
+        const purchaseCost = hasPurchaseCost
+          ? rawPurchaseCost
+          : (hasUnitCost ? rawUnitCost * quantity : 0);
 
         return {
           ...item,

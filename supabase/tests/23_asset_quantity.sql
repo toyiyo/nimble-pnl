@@ -2,7 +2,7 @@
 -- Description: Tests for asset quantity support (quantity, unit_cost, sync trigger, split_asset function)
 
 BEGIN;
-SELECT plan(39);
+SELECT plan(40);
 
 -- Setup: Disable RLS and prepare test data
 SET LOCAL role TO postgres;
@@ -329,19 +329,19 @@ SELECT lives_ok(
 -- TEST CATEGORY 5: split_asset Function
 -- ============================================================
 
--- Test 19: split_asset function exists
+-- Test 19: split_asset function exists (with restaurant_id for security)
 SELECT has_function(
   'public',
   'split_asset',
-  ARRAY['uuid', 'integer'],
-  'split_asset function should exist with correct signature'
+  ARRAY['uuid', 'integer', 'uuid'],
+  'split_asset function should exist with correct signature (includes restaurant_id)'
 );
 
 -- Test 20: split_asset returns UUID
 SELECT function_returns(
   'public',
   'split_asset',
-  ARRAY['uuid', 'integer'],
+  ARRAY['uuid', 'integer', 'uuid'],
   'uuid',
   'split_asset should return UUID'
 );
@@ -378,7 +378,12 @@ DO $$
 DECLARE
   v_new_id UUID;
 BEGIN
-  SELECT split_asset('00000000-0000-0000-0000-000000009020', 2) INTO v_new_id;
+  -- Pass restaurant_id for ownership validation
+  SELECT split_asset(
+    '00000000-0000-0000-0000-000000009020',
+    2,
+    '00000000-0000-0000-0000-000000009001'
+  ) INTO v_new_id;
   -- Store the new ID for later tests
   PERFORM set_config('test.split_asset_id', v_new_id::text, true);
 END;
@@ -440,7 +445,11 @@ UPDATE assets SET status = 'disposed', disposal_date = '2024-12-31' WHERE id = '
 
 SELECT throws_ok(
   $$
-    SELECT split_asset('00000000-0000-0000-0000-000000009020', 1)
+    SELECT split_asset(
+      '00000000-0000-0000-0000-000000009020',
+      1,
+      '00000000-0000-0000-0000-000000009001'
+    )
   $$,
   'P0001', -- raise_exception
   'Cannot split a disposed asset',
@@ -453,7 +462,11 @@ UPDATE assets SET status = 'active', disposal_date = NULL WHERE id = '00000000-0
 -- Test 30: Cannot split more than available quantity
 SELECT throws_ok(
   $$
-    SELECT split_asset('00000000-0000-0000-0000-000000009020', 3)
+    SELECT split_asset(
+      '00000000-0000-0000-0000-000000009020',
+      3,
+      '00000000-0000-0000-0000-000000009001'
+    )
   $$,
   'P0001', -- raise_exception
   NULL,
@@ -463,7 +476,11 @@ SELECT throws_ok(
 -- Test 31: Cannot split with quantity < 1
 SELECT throws_ok(
   $$
-    SELECT split_asset('00000000-0000-0000-0000-000000009020', 0)
+    SELECT split_asset(
+      '00000000-0000-0000-0000-000000009020',
+      0,
+      '00000000-0000-0000-0000-000000009001'
+    )
   $$,
   'P0001', -- raise_exception
   'Split quantity must be at least 1',
@@ -473,11 +490,29 @@ SELECT throws_ok(
 -- Test 32: Cannot split non-existent asset
 SELECT throws_ok(
   $$
-    SELECT split_asset('00000000-0000-0000-0000-000000000000', 1)
+    SELECT split_asset(
+      '00000000-0000-0000-0000-000000000000',
+      1,
+      '00000000-0000-0000-0000-000000009001'
+    )
   $$,
   'P0001', -- raise_exception
   'Asset not found',
   'Should reject non-existent asset'
+);
+
+-- Test 32b: Cannot split asset from different restaurant (security check)
+SELECT throws_ok(
+  $$
+    SELECT split_asset(
+      '00000000-0000-0000-0000-000000009020',
+      1,
+      '00000000-0000-0000-0000-000000000000'  -- Wrong restaurant
+    )
+  $$,
+  'P0001', -- raise_exception
+  'Asset does not belong to this restaurant',
+  'Should reject split when restaurant_id does not match'
 );
 
 -- ============================================================

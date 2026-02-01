@@ -65,14 +65,17 @@ COMMENT ON FUNCTION public.sync_asset_purchase_cost() IS 'Keeps purchase_cost sy
 -- ============================================================================
 -- Function to split an asset record for partial disposal
 -- E.g., 5 chairs -> split off 2 for disposal, keep 3
+-- Includes security hardening: search_path, ownership validation, row locking
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.split_asset(
   p_asset_id UUID,
-  p_split_quantity INTEGER
+  p_split_quantity INTEGER,
+  p_restaurant_id UUID  -- Required for ownership validation
 )
 RETURNS UUID -- Returns the new asset ID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_asset RECORD;
@@ -80,11 +83,16 @@ DECLARE
   v_remaining_quantity INTEGER;
   v_split_accumulated_depreciation NUMERIC;
 BEGIN
-  -- Get the original asset
-  SELECT * INTO v_asset FROM public.assets WHERE id = p_asset_id;
+  -- Get the original asset with FOR UPDATE lock to prevent concurrent splits
+  SELECT * INTO v_asset FROM public.assets WHERE id = p_asset_id FOR UPDATE;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Asset not found';
+  END IF;
+
+  -- Validate restaurant ownership to prevent cross-tenant access
+  IF v_asset.restaurant_id != p_restaurant_id THEN
+    RAISE EXCEPTION 'Asset does not belong to this restaurant';
   END IF;
 
   IF v_asset.status = 'disposed' THEN
@@ -159,4 +167,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.split_asset IS 'Split an asset record for partial disposal. Returns the ID of the new (split-off) asset.';
+-- Grant execute to authenticated users
+GRANT EXECUTE ON FUNCTION public.split_asset(UUID, INTEGER, UUID) TO authenticated;
+
+COMMENT ON FUNCTION public.split_asset IS 'Split an asset record for partial disposal. Returns the ID of the new (split-off) asset. Requires restaurant_id for ownership validation. Uses FOR UPDATE lock to prevent concurrent races.';

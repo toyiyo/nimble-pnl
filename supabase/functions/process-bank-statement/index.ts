@@ -544,11 +544,17 @@ serve(async (req) => {
       // Fix Docker networking: replace localhost/127.0.0.1 with host.docker.internal
       // Edge functions run in Docker and can't reach the host via localhost
       let fetchUrl = pdfUrl;
-      if (fetchUrl.includes('127.0.0.1') || fetchUrl.includes('localhost')) {
-        fetchUrl = fetchUrl
-          .replace('127.0.0.1', 'host.docker.internal')
-          .replace('localhost', 'host.docker.internal');
-        console.log("🔄 Replaced localhost with host.docker.internal for Docker networking");
+      try {
+        const url = new URL(pdfUrl);
+        if (['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+          url.hostname = 'host.docker.internal';
+          fetchUrl = url.toString();
+          if (Deno.env.get('DEBUG') === 'true') {
+            console.log("🔄 Replaced localhost with host.docker.internal for Docker networking");
+          }
+        }
+      } catch {
+        // Keep original pdfUrl if it isn't a valid absolute URL
       }
 
       // Set up abort controller with timeout

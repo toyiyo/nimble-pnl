@@ -305,6 +305,7 @@ export function AssetImportReview({
                         disabled={item.importStatus !== 'pending' || isImporting}
                         className="h-9 text-sm text-center w-14 bg-white dark:bg-slate-800"
                         placeholder="Qty"
+                        aria-label="Quantity"
                       />
                       <span className="text-slate-400 text-sm">×</span>
                       <div className="relative w-24">
@@ -323,6 +324,7 @@ export function AssetImportReview({
                           }}
                           disabled={item.importStatus !== 'pending' || isImporting}
                           placeholder="0.00"
+                          aria-label="Unit cost"
                           className={`h-9 text-sm text-right pl-7 bg-white dark:bg-slate-800 ${
                             item.importStatus === 'pending' && item.unitCost <= 0
                               ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'
@@ -529,6 +531,7 @@ export function AssetImportReview({
                       }}
                       disabled={item.importStatus !== 'pending' || isImporting}
                       className="h-7 text-sm text-center w-14 bg-white dark:bg-slate-800"
+                      aria-label="Quantity"
                     />
                   </td>
                   <td className="px-3 py-1.5 text-right">
@@ -549,6 +552,7 @@ export function AssetImportReview({
                           }}
                           disabled={item.importStatus !== 'pending' || isImporting}
                           placeholder="0.00"
+                          aria-label="Unit cost"
                           className={`h-7 text-sm text-right w-20 bg-white dark:bg-slate-800 ${
                             item.importStatus === 'pending' && item.unitCost <= 0
                               ? 'border-amber-400 ring-1 ring-amber-400/30 focus:border-amber-500 focus:ring-amber-500/30'

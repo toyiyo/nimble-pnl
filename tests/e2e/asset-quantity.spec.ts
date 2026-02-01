@@ -20,6 +20,14 @@ async function selectRadixOption(page: any, dialog: any, labelPattern: RegExp, o
 }
 
 test.describe('Asset Quantity Support', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.context().clearCookies();
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+  });
+
   test('can create a multi-quantity asset', async ({ page }) => {
     const user = generateTestUser('asset-qty');
 

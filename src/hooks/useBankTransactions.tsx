@@ -412,11 +412,14 @@ export function useDeleteTransaction() {
   return useMutation({
     mutationFn: async ({
       transactionId,
+      restaurantId,
     }: {
       transactionId: string;
+      restaurantId: string;
     }) => {
       const { data, error } = await supabase.rpc('delete_bank_transaction', {
         p_transaction_id: transactionId,
+        p_restaurant_id: restaurantId,
       });
 
       if (error) throw error;

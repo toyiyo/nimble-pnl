@@ -67,8 +67,10 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
   };
 
   const handleDeleteConfirm = () => {
+    if (!selectedRestaurant?.restaurant_id) return;
     deleteTransaction.mutate({
       transactionId: transaction.id,
+      restaurantId: selectedRestaurant.restaurant_id,
     }, {
       onSettled: () => {
         setShowDeleteConfirm(false);

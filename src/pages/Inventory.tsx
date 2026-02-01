@@ -1735,8 +1735,17 @@ export const Inventory: React.FC = () => {
                      <Card
                        key={product.id}
                        className="border-destructive cursor-pointer hover:shadow-md transition-shadow"
+                       role="button"
+                       tabIndex={0}
                        onClick={() => {
                          if (fullProduct) {
+                           setSelectedProduct(fullProduct);
+                           setShowUpdateDialog(true);
+                         }
+                       }}
+                       onKeyDown={(e) => {
+                         if ((e.key === 'Enter' || e.key === ' ') && fullProduct) {
+                           e.preventDefault();
                            setSelectedProduct(fullProduct);
                            setShowUpdateDialog(true);
                          }

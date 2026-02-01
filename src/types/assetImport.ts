@@ -248,7 +248,7 @@ export function createAssetLineItem(
 function parseSalvageValue(value: string | number | undefined): number {
   if (!value) return 0;
   if (typeof value === 'number') return value;
-  return Number.parseFloat(String(value).replaceAll(/[^0-9.-]/g, '')) || 0;
+  return Number.parseFloat(String(value).replace(/[^0-9.-]/g, '')) || 0;
 }
 
 /**
@@ -271,14 +271,14 @@ export function parseCSVRowToLineItem(row: AssetCSVRow): AssetLineItem {
   const parsedUnitCost = row.unit_cost
     ? (typeof row.unit_cost === 'number'
         ? row.unit_cost
-        : Number.parseFloat(String(row.unit_cost).replaceAll(/[^0-9.-]/g, '')) || 0)
+        : Number.parseFloat(String(row.unit_cost).replace(/[^0-9.-]/g, '')) || 0)
     : null;
 
   // Parse purchase_cost (total) if provided
   const parsedPurchaseCost = row.purchase_cost
     ? (typeof row.purchase_cost === 'number'
         ? row.purchase_cost
-        : Number.parseFloat(String(row.purchase_cost).replaceAll(/[^0-9.-]/g, '')) || 0)
+        : Number.parseFloat(String(row.purchase_cost).replace(/[^0-9.-]/g, '')) || 0)
     : null;
 
   // Determine unit_cost and purchase_cost

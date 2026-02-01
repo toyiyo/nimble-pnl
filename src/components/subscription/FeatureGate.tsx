@@ -63,7 +63,7 @@ export function FeatureGate({
   const requiredTier = getRequiredTier(featureKey);
   const requiredPlan = SUBSCRIPTION_PLANS[requiredTier];
   const currentPlan = effectiveTier ? SUBSCRIPTION_PLANS[effectiveTier] : null;
-  const benefits = 'benefits' in feature ? (feature.benefits as string[]) : [];
+  const benefits = 'benefits' in feature ? ([...feature.benefits] as string[]) : [];
 
   if (compact) {
     return (

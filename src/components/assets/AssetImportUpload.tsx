@@ -109,7 +109,7 @@ export function AssetImportUpload({ onDocumentProcessed }: Readonly<AssetImportU
     const workbook = XLSX.read(arrayBuffer, { type: 'array' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1, defval: '' }) as string[][];
+    const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1, defval: '' }) as unknown as string[][];
     if (jsonData.length < 2) throw new Error('Excel file must have a header row and at least one data row');
     const headers = jsonData[0].map(h => String(h).trim());
     const allRows: Record<string, string>[] = [];
@@ -190,7 +190,7 @@ export function AssetImportUpload({ onDocumentProcessed }: Readonly<AssetImportU
       const name = fieldToColumn['name'] ? row[fieldToColumn['name']]?.trim() : '';
       if (!name) return;
       const purchaseCostStr = fieldToColumn['purchase_cost'] ? row[fieldToColumn['purchase_cost']]?.trim() : '';
-      const purchaseCost = purchaseCostStr ? Number.parseFloat(purchaseCostStr.replaceAll(/[^0-9.-]/g, '')) || 0 : 0;
+      const purchaseCost = purchaseCostStr ? Number.parseFloat(purchaseCostStr.replace(/[^0-9.-]/g, '')) || 0 : 0;
       const purchaseDateStr = fieldToColumn['purchase_date'] ? row[fieldToColumn['purchase_date']]?.trim() : '';
       const purchaseDate = purchaseDateStr || new Date().toISOString().split('T')[0];
       const csvCategory = fieldToColumn['category'] ? row[fieldToColumn['category']]?.trim() : '';
@@ -200,6 +200,14 @@ export function AssetImportUpload({ onDocumentProcessed }: Readonly<AssetImportU
       const usefulLifeMonths = usefulLifeStr ? parseInt(usefulLifeStr, 10) : getDefaultUsefulLife(category);
       const salvageStr = fieldToColumn['salvage_value'] ? row[fieldToColumn['salvage_value']]?.trim() : '';
       const salvageValue = salvageStr ? parseFloat(salvageStr.replace(/[^0-9.-]/g, '')) || 0 : 0;
+      
+      // Parse quantity (default to 1)
+      const quantityStr = fieldToColumn['quantity'] ? row[fieldToColumn['quantity']]?.trim() : '';
+      const quantity = quantityStr ? parseInt(quantityStr, 10) || 1 : 1;
+      
+      // Parse unit_cost if provided, else derive from purchaseCost/quantity
+      const unitCostStr = fieldToColumn['unit_cost'] ? row[fieldToColumn['unit_cost']]?.trim() : '';
+      const unitCost = unitCostStr ? parseFloat(unitCostStr.replace(/[^0-9.-]/g, '')) || (purchaseCost / quantity) : (purchaseCost / quantity);
 
       items.push({
         id: crypto.randomUUID(),
@@ -218,6 +226,8 @@ export function AssetImportUpload({ onDocumentProcessed }: Readonly<AssetImportU
         salvageValue,
         description: fieldToColumn['description'] ? row[fieldToColumn['description']]?.trim() : undefined,
         importStatus: 'pending',
+        quantity,
+        unitCost,
       });
     });
     return items;

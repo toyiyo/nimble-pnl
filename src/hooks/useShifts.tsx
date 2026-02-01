@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { parseISO } from 'date-fns';
 import { Json } from '@/integrations/supabase/types';
+import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 
 export const useShifts = (restaurantId: string | null, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
@@ -254,6 +255,256 @@ export const useDeleteShift = () => {
     onError: (error: Error) => {
       toast({
         title: 'Error deleting shift',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+/**
+ * Delete multiple shifts in a series based on scope
+ * - 'this': Delete only the specified shift (detach from series)
+ * - 'following': Delete this shift and all future shifts in the series
+ * - 'all': Delete all shifts in the series
+ */
+export const useDeleteShiftSeries = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      shift,
+      scope,
+      restaurantId,
+    }: {
+      shift: Shift;
+      scope: RecurringActionScope;
+      restaurantId: string;
+    }) => {
+      const parentId = getSeriesParentId(shift);
+      let deletedCount = 0;
+      let lockedCount = 0;
+
+      if (scope === 'this') {
+        // Delete only this shift if not locked
+        if (shift.locked) {
+          throw new Error('Cannot delete a locked shift. The schedule has been published.');
+        }
+
+        const { error } = await supabase
+          .from('shifts')
+          .delete()
+          .eq('id', shift.id);
+
+        if (error) throw error;
+        deletedCount = 1;
+      } else if (scope === 'following') {
+        // Delete this shift and all future shifts in the series (unlocked only)
+        const shiftStartTime = shift.start_time;
+
+        // First, count locked shifts for feedback
+        const { count: locked } = await supabase
+          .from('shifts')
+          .select('*', { count: 'exact', head: true })
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .gte('start_time', shiftStartTime)
+          .eq('locked', true)
+          .eq('restaurant_id', restaurantId);
+
+        lockedCount = locked || 0;
+
+        // Delete unlocked shifts >= this shift's start time
+        const { data: deleted, error } = await supabase
+          .from('shifts')
+          .delete()
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .gte('start_time', shiftStartTime)
+          .eq('locked', false)
+          .eq('restaurant_id', restaurantId)
+          .select('id');
+
+        if (error) throw error;
+        deletedCount = deleted?.length || 0;
+      } else if (scope === 'all') {
+        // Delete all shifts in the series (unlocked only)
+
+        // First, count locked shifts for feedback
+        const { count: locked } = await supabase
+          .from('shifts')
+          .select('*', { count: 'exact', head: true })
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .eq('locked', true)
+          .eq('restaurant_id', restaurantId);
+
+        lockedCount = locked || 0;
+
+        // Delete all unlocked shifts in the series
+        const { data: deleted, error } = await supabase
+          .from('shifts')
+          .delete()
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .eq('locked', false)
+          .eq('restaurant_id', restaurantId)
+          .select('id');
+
+        if (error) throw error;
+        deletedCount = deleted?.length || 0;
+      }
+
+      return { deletedCount, lockedCount, restaurantId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+
+      let description = `${data.deletedCount} shift${data.deletedCount !== 1 ? 's' : ''} deleted.`;
+      if (data.lockedCount > 0) {
+        description += ` ${data.lockedCount} locked shift${data.lockedCount !== 1 ? 's were' : ' was'} preserved.`;
+      }
+
+      toast({
+        title: 'Shifts deleted',
+        description,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error deleting shifts',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+/**
+ * Update multiple shifts in a series based on scope
+ * - 'this': Update only the specified shift (detach from series if significant change)
+ * - 'following': Update this shift and all future shifts in the series
+ * - 'all': Update all shifts in the series
+ */
+export const useUpdateShiftSeries = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      shift,
+      scope,
+      updates,
+      restaurantId,
+    }: {
+      shift: Shift;
+      scope: RecurringActionScope;
+      updates: Partial<Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>>;
+      restaurantId: string;
+    }) => {
+      const parentId = getSeriesParentId(shift);
+      let updatedCount = 0;
+      let lockedCount = 0;
+
+      // Remove employee data from updates if present
+      const { employee, recurrence_pattern, ...shiftUpdates } = updates as Partial<Shift>;
+
+      // Convert recurrence_pattern if present
+      const dbUpdates = {
+        ...shiftUpdates,
+        ...(recurrence_pattern !== undefined && {
+          recurrence_pattern: recurrence_pattern as unknown as Json,
+        }),
+      };
+
+      if (scope === 'this') {
+        // Update only this shift if not locked
+        if (shift.locked) {
+          throw new Error('Cannot update a locked shift. The schedule has been published.');
+        }
+
+        // When editing "this only", detach from series
+        const { data, error } = await supabase
+          .from('shifts')
+          .update({
+            ...dbUpdates,
+            recurrence_parent_id: null, // Detach from series
+            is_recurring: false,
+            recurrence_pattern: null,
+          })
+          .eq('id', shift.id)
+          .select();
+
+        if (error) throw error;
+        updatedCount = data?.length || 0;
+      } else if (scope === 'following') {
+        // Update this shift and all future shifts in the series (unlocked only)
+        const shiftStartTime = shift.start_time;
+
+        // First, count locked shifts for feedback
+        const { count: locked } = await supabase
+          .from('shifts')
+          .select('*', { count: 'exact', head: true })
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .gte('start_time', shiftStartTime)
+          .eq('locked', true)
+          .eq('restaurant_id', restaurantId);
+
+        lockedCount = locked || 0;
+
+        // Update unlocked shifts >= this shift's start time
+        const { data: updated, error } = await supabase
+          .from('shifts')
+          .update(dbUpdates)
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .gte('start_time', shiftStartTime)
+          .eq('locked', false)
+          .eq('restaurant_id', restaurantId)
+          .select('id');
+
+        if (error) throw error;
+        updatedCount = updated?.length || 0;
+      } else if (scope === 'all') {
+        // Update all shifts in the series (unlocked only)
+
+        // First, count locked shifts for feedback
+        const { count: locked } = await supabase
+          .from('shifts')
+          .select('*', { count: 'exact', head: true })
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .eq('locked', true)
+          .eq('restaurant_id', restaurantId);
+
+        lockedCount = locked || 0;
+
+        // Update all unlocked shifts in the series
+        const { data: updated, error } = await supabase
+          .from('shifts')
+          .update(dbUpdates)
+          .or(`id.eq.${parentId},recurrence_parent_id.eq.${parentId}`)
+          .eq('locked', false)
+          .eq('restaurant_id', restaurantId)
+          .select('id');
+
+        if (error) throw error;
+        updatedCount = updated?.length || 0;
+      }
+
+      return { updatedCount, lockedCount, restaurantId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+
+      let description = `${data.updatedCount} shift${data.updatedCount !== 1 ? 's' : ''} updated.`;
+      if (data.lockedCount > 0) {
+        description += ` ${data.lockedCount} locked shift${data.lockedCount !== 1 ? 's were' : ' was'} unchanged.`;
+      }
+
+      toast({
+        title: 'Shifts updated',
+        description,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error updating shifts',
         description: error.message,
         variant: 'destructive',
       });

@@ -51,6 +51,9 @@ export const useShifts = (restaurantId: string | null, startDate?: Date, endDate
       // Convert Json to RecurrencePattern
       return data.map(shift => ({
         ...shift,
+        // Ensure optional fields are always present to avoid downstream undefined checks
+        recurrence_parent_id: shift.recurrence_parent_id ?? null,
+        is_recurring: shift.is_recurring ?? false,
         recurrence_pattern: shift.recurrence_pattern as unknown as RecurrencePattern | null,
       })) as Shift[];
     },

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,9 +13,13 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shift } from '@/types/scheduling';
+
+import { AlertTriangle, Calendar, Edit, Repeat, Trash2 } from 'lucide-react';
+
 import { RecurringActionScope, getScopeDescription } from '@/utils/recurringShiftHelpers';
-import { AlertTriangle, Calendar, Repeat, Trash2, Edit } from 'lucide-react';
+
+import { Shift } from '@/types/scheduling';
+
 import { format } from 'date-fns';
 
 export type RecurringActionType = 'edit' | 'delete';
@@ -30,7 +35,32 @@ interface RecurringShiftActionDialogProps {
   isLoading?: boolean;
 }
 
-export const RecurringShiftActionDialog = ({
+interface ScopeOptionProps {
+  value: RecurringActionScope;
+  label: string;
+  shift: Shift;
+  seriesCount: number;
+}
+
+function ScopeOption({ value, label, shift, seriesCount }: ScopeOptionProps): React.ReactElement {
+  const id = `scope-${value}`;
+
+  return (
+    <div className="flex items-start space-x-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
+      <RadioGroupItem value={value} id={id} className="mt-0.5" />
+      <div className="flex-1">
+        <Label htmlFor={id} className="cursor-pointer font-medium">
+          {label}
+        </Label>
+        <p className="text-sm text-muted-foreground">
+          {getScopeDescription(value, shift, seriesCount)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function RecurringShiftActionDialog({
   open,
   onOpenChange,
   actionType,
@@ -39,10 +69,9 @@ export const RecurringShiftActionDialog = ({
   lockedCount,
   onConfirm,
   isLoading = false,
-}: RecurringShiftActionDialogProps) => {
+}: RecurringShiftActionDialogProps): React.ReactElement | null {
   const [selectedScope, setSelectedScope] = useState<RecurringActionScope>('this');
 
-  // Reset to safest option when dialog opens
   useEffect(() => {
     if (open) {
       setSelectedScope('this');
@@ -54,12 +83,12 @@ export const RecurringShiftActionDialog = ({
   const isDelete = actionType === 'delete';
   const shiftDate = format(new Date(shift.start_time), 'EEE, MMM d');
   const shiftTime = format(new Date(shift.start_time), 'h:mm a');
-  const actionLabel = isDelete ? 'Delete' : 'Continue';
-  const loadingLabel = isDelete ? 'Deleting...' : 'Updating...';
-  const confirmButtonLabel = isLoading ? loadingLabel : actionLabel;
 
-  const handleConfirm = () => {
-    onConfirm(selectedScope);
+  const getButtonLabel = (): string => {
+    if (isLoading) {
+      return isDelete ? 'Deleting...' : 'Updating...';
+    }
+    return isDelete ? 'Delete' : 'Continue';
   };
 
   return (
@@ -74,21 +103,22 @@ export const RecurringShiftActionDialog = ({
             )}
             {isDelete ? 'Delete Recurring Shift' : 'Edit Recurring Shift'}
           </AlertDialogTitle>
-          <AlertDialogDescription className="space-y-3">
-            <div className="flex items-center gap-2 text-foreground">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{shiftDate}</span>
-              <span className="text-muted-foreground">at {shiftTime}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Repeat className="h-4 w-4" />
-              <span>This shift is part of a recurring series ({seriesCount} shifts total)</span>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-foreground">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">{shiftDate}</span>
+                <span className="text-muted-foreground">at {shiftTime}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Repeat className="h-4 w-4" />
+                <span>This shift is part of a recurring series ({seriesCount} shifts total)</span>
+              </div>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="py-4">
-          {/* Locked shifts warning */}
           {lockedCount > 0 && (
             <Alert variant="default" className="mb-4 border-warning/50 bg-warning/10">
               <AlertTriangle className="h-4 w-4 text-warning" />
@@ -104,58 +134,23 @@ export const RecurringShiftActionDialog = ({
             onValueChange={(value) => setSelectedScope(value as RecurringActionScope)}
             className="space-y-3"
           >
-            {/* This shift only */}
-            <div className="flex items-start space-x-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <RadioGroupItem value="this" id="scope-this" className="mt-0.5" />
-              <div className="flex-1">
-                <Label htmlFor="scope-this" className="font-medium cursor-pointer">
-                  This shift only
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {getScopeDescription('this', shift, seriesCount)}
-                </p>
-              </div>
-            </div>
-
-            {/* This and following */}
-            <div className="flex items-start space-x-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <RadioGroupItem value="following" id="scope-following" className="mt-0.5" />
-              <div className="flex-1">
-                <Label htmlFor="scope-following" className="font-medium cursor-pointer">
-                  This and following shifts
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {getScopeDescription('following', shift, seriesCount)}
-                </p>
-              </div>
-            </div>
-
-            {/* All shifts */}
-            <div className="flex items-start space-x-3 rounded-lg border p-3 hover:bg-muted/50 transition-colors">
-              <RadioGroupItem value="all" id="scope-all" className="mt-0.5" />
-              <div className="flex-1">
-                <Label htmlFor="scope-all" className="font-medium cursor-pointer">
-                  All shifts in series
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {getScopeDescription('all', shift, seriesCount)}
-                </p>
-              </div>
-            </div>
+            <ScopeOption value="this" label="This shift only" shift={shift} seriesCount={seriesCount} />
+            <ScopeOption value="following" label="This and following shifts" shift={shift} seriesCount={seriesCount} />
+            <ScopeOption value="all" label="All shifts in series" shift={shift} seriesCount={seriesCount} />
           </RadioGroup>
         </div>
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleConfirm}
+            onClick={() => onConfirm(selectedScope)}
             disabled={isLoading}
             className={isDelete ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
           >
-            {confirmButtonLabel}
+            {getButtonLabel()}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
   );
-};
+}

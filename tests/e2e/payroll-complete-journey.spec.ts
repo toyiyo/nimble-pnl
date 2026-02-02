@@ -32,10 +32,10 @@ test.describe('Complete Payroll Journey', () => {
     // ============================================================================
     
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
     // 1.1: Create hourly employee
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     let dialog = page.getByRole('dialog');
     
     const hourlyEmployee = {
@@ -64,7 +64,7 @@ test.describe('Complete Payroll Journey', () => {
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // 1.2: Create salaried employee
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     dialog = page.getByRole('dialog');
     
     const salaryEmployee = {
@@ -103,7 +103,7 @@ test.describe('Complete Payroll Journey', () => {
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // 1.3: Create contractor
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     dialog = page.getByRole('dialog');
     
     const contractor = {
@@ -217,9 +217,9 @@ test.describe('Complete Payroll Journey', () => {
     // ============================================================================
     
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     const dialog = page.getByRole('dialog');
     
     const employeeEmail = `employee-${Date.now()}@test.com`;
@@ -282,9 +282,9 @@ test.describe('Complete Payroll Journey', () => {
     // ============================================================================
     
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     let dialog = page.getByRole('dialog');
     
     const employeeName = `Termination Test ${Date.now()}`;
@@ -318,7 +318,7 @@ test.describe('Complete Payroll Journey', () => {
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // Create a shift so the employee appears in the schedule table for editing
-    await page.getByRole('button', { name: /create shift/i }).first().click();
+    await page.getByRole('button', { name: /shift/i }).first().click();
     const shiftDialog = page.getByRole('dialog');
     await expect(shiftDialog).toBeVisible();
     const employeeSelect = shiftDialog.getByLabel(/employee/i);
@@ -409,7 +409,7 @@ test.describe('Complete Payroll Journey', () => {
     // ============================================================================
     
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
     // Create hourly, salary, and contractor employees
     const employees = [
@@ -419,7 +419,7 @@ test.describe('Complete Payroll Journey', () => {
     ];
 
     for (const emp of employees) {
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       const dialog = page.getByRole('dialog');
       
       await dialog.getByLabel(/name/i).first().fill(emp.name);

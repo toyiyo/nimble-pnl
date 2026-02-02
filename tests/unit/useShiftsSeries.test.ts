@@ -23,6 +23,7 @@ import { Shift } from '@/types/scheduling';
 // Mock Supabase client
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
+  rpc: vi.fn(),
 }));
 
 // Mock toast
@@ -186,25 +187,35 @@ const setupMockForScope = (
 ) => {
   const deletedIds = Array.from({ length: deletedCount }, (_, i) => ({ id: `deleted-${i}` }));
 
+  // Mock RPC functions for 'following' and 'all' scopes
+  mockSupabase.rpc.mockImplementation((fnName: string) => {
+    if (fnName === 'delete_shift_series') {
+      return Promise.resolve({
+        data: [{ deleted_count: deletedCount, locked_count: lockedCount }],
+        error,
+      });
+    }
+    if (fnName === 'update_shift_series') {
+      return Promise.resolve({
+        data: [{ updated_count: deletedCount, locked_count: lockedCount }],
+        error,
+      });
+    }
+    if (fnName === 'get_shift_series_info') {
+      return Promise.resolve({
+        data: [{ series_count: deletedCount + lockedCount, locked_count: lockedCount }],
+        error,
+      });
+    }
+    return Promise.resolve({ data: null, error: new Error('Unknown RPC function') });
+  });
+
+  // Mock from() for 'this' scope (single shift delete/update)
   mockSupabase.from.mockImplementation(() => ({
     delete: vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           select: vi.fn().mockResolvedValue({ data: deletedIds, error }),
-        }),
-      }),
-      or: vi.fn().mockReturnValue({
-        gte: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockResolvedValue({ data: deletedIds, error }),
-            }),
-          }),
-        }),
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            select: vi.fn().mockResolvedValue({ data: deletedIds, error }),
-          }),
         }),
       }),
     }),
@@ -214,34 +225,10 @@ const setupMockForScope = (
           select: vi.fn().mockResolvedValue({ data: deletedIds, error }),
         }),
       }),
-      or: vi.fn().mockReturnValue({
-        gte: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockResolvedValue({ data: deletedIds, error }),
-            }),
-          }),
-        }),
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            select: vi.fn().mockResolvedValue({ data: deletedIds, error }),
-          }),
-        }),
-      }),
     }),
     select: vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ count: lockedCount, error: null }),
-      }),
-      or: vi.fn().mockReturnValue({
-        gte: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ count: lockedCount, error: null }),
-          }),
-        }),
-        eq: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({ count: lockedCount, error: null }),
-        }),
+        single: vi.fn().mockResolvedValue({ data: { locked: false, is_published: false }, error: null }),
       }),
     }),
   }));
@@ -524,33 +511,18 @@ describe('useUpdateShiftSeries', () => {
     });
 
     it('should NOT include time changes for scope "following"', async () => {
-      let capturedUpdate: Record<string, unknown> | null = null;
+      let capturedParams: Record<string, unknown> | null = null;
 
-      mockSupabase.from.mockImplementation(() => ({
-        select: vi.fn().mockReturnValue({
-          or: vi.fn().mockReturnValue({
-            gte: vi.fn().mockReturnValue({
-              eq: vi.fn().mockReturnValue({
-                eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
-              }),
-            }),
-          }),
-        }),
-        update: vi.fn().mockImplementation((updates: Record<string, unknown>) => {
-          capturedUpdate = updates;
-          return {
-            or: vi.fn().mockReturnValue({
-              gte: vi.fn().mockReturnValue({
-                eq: vi.fn().mockReturnValue({
-                  eq: vi.fn().mockReturnValue({
-                    select: vi.fn().mockResolvedValue({ data: [{ id: 's1' }], error: null }),
-                  }),
-                }),
-              }),
-            }),
-          };
-        }),
-      }));
+      mockSupabase.rpc.mockImplementation((fnName: string, params: Record<string, unknown>) => {
+        if (fnName === 'update_shift_series') {
+          capturedParams = params;
+          return Promise.resolve({
+            data: [{ updated_count: 1, locked_count: 0 }],
+            error: null,
+          });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
 
       const { Wrapper } = createWrapper();
       const { result } = renderHook(() => useUpdateShiftSeries(), { wrapper: Wrapper });
@@ -570,9 +542,11 @@ describe('useUpdateShiftSeries', () => {
         restaurantId: 'rest-123',
       });
 
-      expect(capturedUpdate).toMatchObject({ position: 'Host' });
-      expect(capturedUpdate).not.toHaveProperty('start_time');
-      expect(capturedUpdate).not.toHaveProperty('end_time');
+      expect(capturedParams).not.toBeNull();
+      const p_updates = capturedParams?.p_updates as Record<string, unknown>;
+      expect(p_updates).toMatchObject({ position: 'Host' });
+      expect(p_updates).not.toHaveProperty('start_time');
+      expect(p_updates).not.toHaveProperty('end_time');
     });
   });
 
@@ -646,14 +620,10 @@ describe('useSeriesInfo', () => {
   });
 
   it('should fetch series info for recurring shift', async () => {
-    mockSupabase.from.mockImplementation(() => ({
-      select: vi.fn().mockReturnValue({
-        or: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnThis(),
-        }),
-        eq: vi.fn().mockResolvedValue({ count: 5, error: null }),
-      }),
-    }));
+    mockSupabase.rpc.mockResolvedValue({
+      data: [{ series_count: 5, locked_count: 2 }],
+      error: null,
+    });
 
     const { Wrapper } = createWrapper();
     const shift = createMockShift({ is_recurring: true });
@@ -662,7 +632,9 @@ describe('useSeriesInfo', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.seriesCount).toBeGreaterThanOrEqual(0);
+    expect(result.current.seriesCount).toBe(5);
+    expect(result.current.lockedCount).toBe(2);
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('get_shift_series_info', expect.any(Object));
   });
 
   it('should return zeros for null shift', async () => {
@@ -693,7 +665,7 @@ describe('useSeriesInfo', () => {
 
     expect(result.current.seriesCount).toBe(0);
     expect(result.current.loading).toBe(false);
-    expect(mockSupabase.from).not.toHaveBeenCalled();
+    expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 });
 

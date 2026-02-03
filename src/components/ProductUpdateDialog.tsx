@@ -73,6 +73,7 @@ const updateSchema = z.object({
   par_level_min: z.coerce.number().min(0).optional(),
   par_level_max: z.coerce.number().min(0).optional(),
   reorder_point: z.coerce.number().min(0).optional(),
+  shelf_life_days: z.coerce.number().int().min(0).optional(),
   image_url: z.string().optional(),
 });
 
@@ -167,6 +168,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       par_level_min: product.par_level_min || undefined,
       par_level_max: product.par_level_max || undefined,
       reorder_point: product.reorder_point || undefined,
+      shelf_life_days: product.shelf_life_days || undefined,
       image_url: product.image_url || '',
     },
   });
@@ -194,6 +196,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
         par_level_min: product.par_level_min || undefined,
         par_level_max: product.par_level_max || undefined,
         reorder_point: product.reorder_point || undefined,
+        shelf_life_days: product.shelf_life_days || undefined,
         image_url: product.image_url || '',
       });
       setImageUrl(product.image_url || '');
@@ -349,6 +352,7 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
       par_level_min: data.par_level_min || 0,
       par_level_max: data.par_level_max || 0,
       reorder_point: data.reorder_point || 0,
+      shelf_life_days: data.shelf_life_days || null,
       image_url: imageUrl || data.image_url,
       current_stock: finalStock,
       supplier_id: pendingSupplierId ?? product.supplier_id,
@@ -1244,6 +1248,30 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="shelf_life_days"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Shelf Life (days)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="1"
+                          min="0"
+                          placeholder="e.g., 7"
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        How many days this product stays fresh after opening/preparation
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </CardContent>
             </Card>
 

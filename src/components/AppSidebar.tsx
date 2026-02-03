@@ -36,7 +36,6 @@ import {
   Coins,
   CreditCard,
   Utensils,
-  Boxes,
   Calculator,
   Building2,
   Target,
@@ -93,7 +92,6 @@ const navigationGroups = [
     items: [
       { path: '/recipes', label: 'Recipes', icon: ChefHat },
       { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
-      { path: '/batches', label: 'Batches', icon: Boxes },
       { path: '/inventory', label: 'Inventory', icon: Package },
       { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
       { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
@@ -193,7 +191,6 @@ const collaboratorChefNav: NavGroup[] = [
     items: [
       { path: '/recipes', label: 'Recipes', icon: ChefHat },
       { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
-      { path: '/batches', label: 'Batches', icon: Boxes },
     ],
   },
   {

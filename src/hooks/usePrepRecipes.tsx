@@ -25,6 +25,15 @@ export interface PrepRecipeIngredient {
   };
 }
 
+export interface PrepRecipeProcedureStep {
+  id: string;
+  prep_recipe_id: string;
+  step_number: number;
+  instruction: string;
+  timer_minutes?: number | null;
+  critical_point?: boolean;
+}
+
 export interface PrepRecipe {
   id: string;
   restaurant_id: string;
@@ -35,6 +44,14 @@ export interface PrepRecipe {
   default_yield: number;
   default_yield_unit: IngredientUnit;
   prep_time_minutes?: number | null;
+  // Enhanced fields
+  category?: string;
+  shelf_life_days?: number | null;
+  storage_instructions?: string;
+  oven_temp?: number | null;
+  oven_temp_unit?: 'F' | 'C';
+  equipment_notes?: string;
+  // End enhanced fields
   created_by?: string;
   created_at?: string;
   updated_at?: string;
@@ -46,8 +63,10 @@ export interface PrepRecipe {
     cost_per_unit?: number;
     size_value?: number | null;
     size_unit?: string | null;
+    shelf_life_days?: number | null;
   } | null;
   ingredients?: PrepRecipeIngredient[];
+  procedure_steps?: PrepRecipeProcedureStep[];
 }
 
 export interface CreatePrepRecipeInput {
@@ -58,6 +77,14 @@ export interface CreatePrepRecipeInput {
   default_yield: number;
   default_yield_unit: IngredientUnit;
   prep_time_minutes?: number | null;
+  // Enhanced fields
+  category?: string;
+  shelf_life_days?: number | null;
+  storage_instructions?: string;
+  oven_temp?: number | null;
+  oven_temp_unit?: 'F' | 'C';
+  equipment_notes?: string;
+  // End enhanced fields
   ingredients: Array<{
     product_id: string;
     quantity: number;
@@ -65,10 +92,23 @@ export interface CreatePrepRecipeInput {
     notes?: string;
     sort_order?: number;
   }>;
+  procedure_steps?: Array<{
+    step_number: number;
+    instruction: string;
+    timer_minutes?: number | null;
+    critical_point?: boolean;
+  }>;
 }
 
 export interface UpdatePrepRecipeInput extends Partial<CreatePrepRecipeInput> {
   id: string;
+  procedure_steps?: Array<{
+    id?: string;
+    step_number: number;
+    instruction: string;
+    timer_minutes?: number | null;
+    critical_point?: boolean;
+  }>;
 }
 
 type IngredientPayload = Array<{
@@ -102,11 +142,16 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     try {
       setLoading(true);
       setError(null); // Clear error on retry
-      const { data, error } = await supabase
+
+      // Try with procedure_steps first, fallback to without if table doesn't exist
+      let data;
+      let error;
+
+      ({ data, error } = await supabase
         .from('prep_recipes')
         .select(`
           *,
-          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit),
+          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit, shelf_life_days),
           ingredients:prep_recipe_ingredients(
             id,
             prep_recipe_id,
@@ -116,10 +161,41 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             notes,
             sort_order,
             product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category)
+          ),
+          procedure_steps:prep_recipe_procedure_steps(
+            id,
+            prep_recipe_id,
+            step_number,
+            instruction,
+            timer_minutes,
+            critical_point
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .order('name');
+        .order('name'));
+
+      // If error mentions procedure_steps table, retry without it
+      if (error && (error.message?.includes('prep_recipe_procedure_steps') || error.code === '42P01')) {
+        console.warn('procedure_steps table not found, fetching without it');
+        ({ data, error } = await supabase
+          .from('prep_recipes')
+          .select(`
+            *,
+            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit, shelf_life_days),
+            ingredients:prep_recipe_ingredients(
+              id,
+              prep_recipe_id,
+              product_id,
+              quantity,
+              unit,
+              notes,
+              sort_order,
+              product:products(id, name, cost_per_unit, current_stock, uom_purchase, size_value, size_unit, category)
+            )
+          `)
+          .eq('restaurant_id', restaurantId)
+          .order('name'));
+      }
 
       if (error) throw error;
 
@@ -372,6 +448,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
           default_yield: input.default_yield,
           default_yield_unit: input.default_yield_unit,
           prep_time_minutes: input.prep_time_minutes,
+          category: input.category || 'prep',
+          shelf_life_days: input.shelf_life_days,
+          storage_instructions: input.storage_instructions,
+          oven_temp: input.oven_temp,
+          oven_temp_unit: input.oven_temp_unit,
+          equipment_notes: input.equipment_notes,
           created_by: user.id,
         })
         .select()
@@ -417,6 +499,31 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         }
       }
 
+      // Insert procedure steps if provided
+      if (input.procedure_steps && input.procedure_steps.length > 0) {
+        const stepRows = input.procedure_steps
+          .filter((step) => step.instruction.trim())
+          .map((step) => ({
+            prep_recipe_id: recipe.id,
+            step_number: step.step_number,
+            instruction: step.instruction,
+            timer_minutes: step.timer_minutes,
+            critical_point: step.critical_point || false,
+          }));
+
+        if (stepRows.length > 0) {
+          const { error: stepError } = await supabase
+            .from('prep_recipe_procedure_steps')
+            .insert(stepRows);
+
+          if (stepError) {
+            await supabase.from('prep_recipes').delete().eq('id', recipe.id);
+            await supabase.from('recipes').delete().eq('id', linkedRecipe.id);
+            throw stepError;
+          }
+        }
+      }
+
       toast({
         title: 'Prep recipe created',
         description: `${input.name} saved as a production blueprint`,
@@ -427,7 +534,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         .from('prep_recipes')
         .select(`
           *,
-          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit),
+          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, shelf_life_days),
           ingredients:prep_recipe_ingredients(
             id,
             prep_recipe_id,
@@ -437,6 +544,14 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             notes,
             sort_order,
             product:products(id, name, cost_per_unit, current_stock, uom_purchase, category)
+          ),
+          procedure_steps:prep_recipe_procedure_steps(
+            id,
+            prep_recipe_id,
+            step_number,
+            instruction,
+            timer_minutes,
+            critical_point
           )
         `)
         .eq('id', recipe.id)
@@ -477,7 +592,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     if (!user) return false;
 
     try {
-      const { id, ingredients, ...updates } = input;
+      const { id, ingredients, procedure_steps, ...updates } = input;
       const outputProductId = updates.output_product_id || null;
       const targetRestaurantId = input.restaurant_id || restaurantId;
 
@@ -560,6 +675,36 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
             if (recipeIngredientError) throw recipeIngredientError;
           }
+        }
+      }
+
+      // Handle procedure steps update if provided
+      if (procedure_steps !== undefined) {
+        // Delete existing steps
+        const { error: deleteStepsError } = await supabase
+          .from('prep_recipe_procedure_steps')
+          .delete()
+          .eq('prep_recipe_id', id);
+
+        if (deleteStepsError) throw deleteStepsError;
+
+        // Insert new steps if any
+        const stepRows = (procedure_steps || [])
+          .filter((step) => step.instruction.trim())
+          .map((step) => ({
+            prep_recipe_id: id,
+            step_number: step.step_number,
+            instruction: step.instruction,
+            timer_minutes: step.timer_minutes,
+            critical_point: step.critical_point || false,
+          }));
+
+        if (stepRows.length > 0) {
+          const { error: stepError } = await supabase
+            .from('prep_recipe_procedure_steps')
+            .insert(stepRows);
+
+          if (stepError) throw stepError;
         }
       }
 

@@ -71,10 +71,10 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // Navigate to scheduling
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
       // Click Add Employee button (there may be multiple - use first one in header)
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
 
       // Fill employee form
       const dialog = page.getByRole('dialog');
@@ -114,9 +114,9 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // First create an employee
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       const dialog = page.getByRole('dialog');
       
       await dialog.getByLabel(/name/i).first().fill(employee.name);
@@ -178,10 +178,10 @@ test.describe('Employee Payroll - Happy Paths', () => {
       const employee = generateSalaryEmployee();
 
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
       // Click Add Employee button
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
@@ -221,9 +221,9 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // Create salaried employee
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       const dialog = page.getByRole('dialog');
 
       await dialog.getByLabel(/name/i).first().fill(employee.name);
@@ -262,9 +262,9 @@ test.describe('Employee Payroll - Happy Paths', () => {
       const employee = generateContractorEmployee();
 
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
@@ -304,9 +304,9 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // Create contractor
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 8000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 8000 });
 
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       const dialog = page.getByRole('dialog');
 
       await dialog.getByLabel(/name/i).first().fill(employee.name);
@@ -342,11 +342,11 @@ test.describe('Employee Payroll - Happy Paths', () => {
       // Test that all three types can be created in sequence
 
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
       // 1. Create hourly employee
       const hourlyEmployee = generateHourlyEmployee();
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       let dialog = page.getByRole('dialog');
 
       await dialog.getByLabel(/name/i).first().fill(hourlyEmployee.name);
@@ -357,7 +357,7 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // 2. Create salaried employee
       const salaryEmployee = generateSalaryEmployee();
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       dialog = page.getByRole('dialog');
 
       await dialog.getByLabel(/name/i).first().fill(salaryEmployee.name);
@@ -373,7 +373,7 @@ test.describe('Employee Payroll - Happy Paths', () => {
 
       // 3. Create contractor
       const contractor = generateContractorEmployee();
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       dialog = page.getByRole('dialog');
 
       await dialog.getByLabel(/name/i).first().fill(contractor.name);
@@ -475,9 +475,9 @@ test.describe('Per-Job Contractor Manual Payments', () => {
   test('can create per-job contractor and add manual payment', async ({ page }) => {
     // Step 1: Create a per-job contractor on scheduling page
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 8000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 8000 });
 
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     const employeeDialog = page.getByRole('dialog');
     await expect(employeeDialog).toBeVisible();
 
@@ -537,9 +537,9 @@ test.describe('Per-Job Contractor Manual Payments', () => {
   test('per-job contractor shows indicator that manual payment is needed', async ({ page }) => {
     // Create a per-job contractor
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     const dialog = page.getByRole('dialog');
 
     const contractorName = `PerJob ${Date.now()}`;
@@ -573,9 +573,9 @@ test.describe('Per-Job Contractor Manual Payments', () => {
   test('can view payment history for per-job contractor', async ({ page }) => {
     // Create a per-job contractor
     await page.goto('/scheduling');
-    await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole('button', { name: /add employee/i }).first().click();
+    await page.getByRole('button', { name: /employee/i }).first().click();
     const employeeDialog = page.getByRole('dialog');
 
     const contractorName = `History ${Date.now()}`;
@@ -633,9 +633,9 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       
       // Step 1: Create an hourly employee
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       const dialog = page.getByRole('dialog');
       
       await dialog.getByLabel(/name/i).first().fill(employee.name);
@@ -707,9 +707,9 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       
       // Step 1: Create employee and schedule a shift
       await page.goto('/scheduling');
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
-      await page.getByRole('button', { name: /add employee/i }).first().click();
+      await page.getByRole('button', { name: /employee/i }).first().click();
       const empDialog = page.getByRole('dialog');
       
       await empDialog.getByLabel(/name/i).first().fill(employee.name);
@@ -718,8 +718,24 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       await expect(empDialog).not.toBeVisible({ timeout: 5000 });
 
       // Create a shift for this employee
-      await page.getByRole('button', { name: /create shift/i }).first().click();
+      // Open shift dialog robustly (header or row add button)
       const shiftDialog = page.getByRole('dialog');
+      const openShiftDialog = async () => {
+        // Primary header action
+        const headerShiftBtn = page.getByRole('button', { name: /^shift$/i }).first();
+        if (await headerShiftBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await headerShiftBtn.click();
+        } else {
+          // Fallback: empty/row add button
+          const addBtn = page.getByRole('button', { name: /create first shift|add/i }).first();
+          if (await addBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await addBtn.click();
+          }
+        }
+        await expect(shiftDialog).toBeVisible({ timeout: 8000 });
+      };
+
+      await openShiftDialog();
 
       // Select employee
       const employeeSelect = shiftDialog.getByLabel(/employee/i);
@@ -777,7 +793,7 @@ test.describe('Per-Job Contractor Manual Payments', () => {
 
       // Refresh the page to ensure we're getting fresh data
       await page.reload();
-      await expect(page.getByRole('heading', { name: /scheduling/i })).toBeVisible({ timeout: 10000 });
+      await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
       // Step 3: CRITICAL TEST - Labor cost should still include the inactive employee's shift
       const laborCostAfterText = await laborCostCard.textContent();

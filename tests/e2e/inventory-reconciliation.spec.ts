@@ -44,7 +44,8 @@ async function createProduct(page: Page, product: TestProduct) {
 
   await dialog.getByRole('button', { name: /update product|add product|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 10000 });
-  await expect(page.getByRole('heading', { name: product.name })).toBeVisible({ timeout: 10000 });
+  // The product grid renders the name in multiple cards; assert the first visible instance
+  await expect(page.getByRole('heading', { name: product.name }).first()).toBeVisible({ timeout: 10000 });
 }
 
 async function completeReconciliation(page: Page, product: TestProduct) {
@@ -83,8 +84,8 @@ test('inventory reconciliation updates product stock', async ({ page }) => {
 
   await page.getByRole('tab', { name: /products/i }).click();
 
-  // Confirm stock on the product card reflects the reconciled count
-  await expect(page.getByRole('heading', { name: product.name })).toBeVisible({ timeout: 10000 });
+  // Confirm stock on at least one product card reflects the reconciled count
+  await expect(page.getByRole('heading', { name: product.name }).first()).toBeVisible({ timeout: 10000 });
   await expect(
     page.getByText(new RegExp(`${product.reconciledStock.toFixed(2)}\\s+pieces`, 'i'))
   ).toBeVisible({ timeout: 10000 });

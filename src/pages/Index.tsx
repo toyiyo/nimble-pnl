@@ -84,21 +84,39 @@ const Index = () => {
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
+  const hasExistingSubscription = useMemo(() => {
+    const paidStatuses = new Set(['active', 'past_due', 'grandfathered']);
+    return restaurants.some(({ restaurant }) => {
+      if (!restaurant) return false;
+      const status = restaurant.subscription_status || '';
+      const hasStripeSub = Boolean(restaurant.stripe_subscription_id);
+      return paidStatuses.has(status) || hasStripeSub;
+    });
+  }, [restaurants]);
 
   // Check for welcome flag in URL on mount
   useEffect(() => {
-    if (!user) return;
+    if (!user || restaurantsLoading) return;
 
     const welcomeFlag = searchParams.get('welcome');
     const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
 
-    if (welcomeFlag === 'true' && !hasSeenWelcome) {
+    const shouldShowWelcome =
+      welcomeFlag === 'true' && !hasSeenWelcome && !hasExistingSubscription;
+
+    if (shouldShowWelcome) {
       setShowWelcome(true);
-      // Clean up URL param
+    } else if (!hasSeenWelcome && hasExistingSubscription) {
+      // User already pays for at least one restaurant; skip the trial splash permanently
+      localStorage.setItem(`hasSeenWelcome_${user.id}`, 'true');
+    }
+
+    // Clean up URL param once we've processed it
+    if (welcomeFlag) {
       searchParams.delete('welcome');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, setSearchParams, user]);
+  }, [searchParams, setSearchParams, user, restaurantsLoading, hasExistingSubscription]);
 
   function handleWelcomeClose(): void {
     setShowWelcome(false);

@@ -7849,6 +7849,18 @@ export type Database = {
         Args: { p_restaurant_id: string; p_transaction_id: string }
         Returns: Json
       }
+      delete_shift_series: {
+        Args: {
+          p_from_time?: string
+          p_parent_id: string
+          p_restaurant_id: string
+          p_scope: string
+        }
+        Returns: {
+          deleted_count: number
+          locked_count: number
+        }[]
+      }
       dmetaphone: { Args: { "": string }; Returns: string }
       dmetaphone_alt: { Args: { "": string }; Returns: string }
       exclude_bank_transaction: {
@@ -7975,6 +7987,13 @@ export type Database = {
           is_categorized: boolean
           total_amount: number
           transaction_count: number
+        }[]
+      }
+      get_shift_series_info: {
+        Args: { p_parent_id: string; p_restaurant_id: string }
+        Returns: {
+          locked_count: number
+          series_count: number
         }[]
       }
       get_uncovered_bank_patterns: {
@@ -8284,6 +8303,21 @@ export type Database = {
       update_prep_recipe_ingredients: {
         Args: { p_ingredients?: Json; p_prep_recipe_id: string }
         Returns: undefined
+      }
+      update_shift_series: {
+        Args: {
+          p_end_time_delta?: unknown
+          p_from_time?: string
+          p_parent_id: string
+          p_restaurant_id: string
+          p_scope: string
+          p_start_time_delta?: unknown
+          p_updates: Json
+        }
+        Returns: {
+          locked_count: number
+          updated_count: number
+        }[]
       }
       upsert_product_supplier: {
         Args: {

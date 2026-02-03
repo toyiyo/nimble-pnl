@@ -718,8 +718,24 @@ test.describe('Per-Job Contractor Manual Payments', () => {
       await expect(empDialog).not.toBeVisible({ timeout: 5000 });
 
       // Create a shift for this employee
-      await page.getByRole('button', { name: /shift/i }).first().click();
+      // Open shift dialog robustly (header or row add button)
       const shiftDialog = page.getByRole('dialog');
+      const openShiftDialog = async () => {
+        // Primary header action
+        const headerShiftBtn = page.getByRole('button', { name: /^shift$/i }).first();
+        if (await headerShiftBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await headerShiftBtn.click();
+        } else {
+          // Fallback: empty/row add button
+          const addBtn = page.getByRole('button', { name: /create first shift|add/i }).first();
+          if (await addBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await addBtn.click();
+          }
+        }
+        await expect(shiftDialog).toBeVisible({ timeout: 8000 });
+      };
+
+      await openShiftDialog();
 
       // Select employee
       const employeeSelect = shiftDialog.getByLabel(/employee/i);

@@ -318,9 +318,26 @@ test.describe('Complete Payroll Journey', () => {
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
     // Create a shift so the employee appears in the schedule table for editing
-    await page.getByRole('button', { name: /shift/i }).first().click();
+    // Re-open scheduling explicitly in case prior actions navigated elsewhere
+    await page.goto('/scheduling');
+    await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
+
+    // Open shift dialog with a resilient strategy (header button or fallback add)
     const shiftDialog = page.getByRole('dialog');
-    await expect(shiftDialog).toBeVisible();
+    const openShiftDialog = async () => {
+      const headerShiftBtn = page.getByRole('button', { name: /^shift$/i }).first();
+      if (await headerShiftBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await headerShiftBtn.click();
+      } else {
+        const addBtn = page.getByRole('button', { name: /create first shift|add/i }).first();
+        if (await addBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await addBtn.click();
+        }
+      }
+      await expect(shiftDialog).toBeVisible({ timeout: 8000 });
+    };
+
+    await openShiftDialog();
     const employeeSelect = shiftDialog.getByLabel(/employee/i);
     await employeeSelect.click();
     await page.getByRole('option', { name: employeeName }).click();

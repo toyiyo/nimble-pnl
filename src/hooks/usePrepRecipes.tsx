@@ -418,6 +418,64 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     return outputProductId;
   }, [ensureSupplierIfNeeded, findExistingOutputProduct, createOutputProduct, updateExistingOutputProduct]);
 
+  const insertProcedureSteps = useCallback(async (
+    recipeId: string,
+    procedureSteps: CreatePrepRecipeInput['procedure_steps']
+  ) => {
+    if (!procedureSteps || procedureSteps.length === 0) return;
+
+    const stepRows = procedureSteps
+      .filter((step) => step.instruction.trim())
+      .map((step) => ({
+        prep_recipe_id: recipeId,
+        step_number: step.step_number,
+        instruction: step.instruction,
+        timer_minutes: step.timer_minutes,
+        critical_point: step.critical_point || false,
+      }));
+
+    if (stepRows.length === 0) return;
+
+    const { error: stepError } = await supabase
+      .from('prep_recipe_procedure_steps')
+      .insert(stepRows);
+
+    if (stepError) throw stepError;
+  }, []);
+
+  const insertRecipeIngredients = useCallback(async (
+    prepRecipeId: string,
+    linkedRecipeId: string,
+    ingredientPayload: IngredientPayload
+  ) => {
+    if (ingredientPayload.length === 0) return;
+
+    const ingredientRows = ingredientPayload.map((ing) => ({
+      ...ing,
+      prep_recipe_id: prepRecipeId,
+    }));
+
+    const { error: ingredientError } = await supabase
+      .from('prep_recipe_ingredients')
+      .insert(ingredientRows);
+
+    if (ingredientError) throw ingredientError;
+
+    const recipeIngredientRows = ingredientPayload.map((ing) => ({
+      recipe_id: linkedRecipeId,
+      product_id: ing.product_id,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      notes: ing.notes,
+    }));
+
+    const { error: recipeIngredientError } = await supabase
+      .from('recipe_ingredients')
+      .insert(recipeIngredientRows);
+
+    if (recipeIngredientError) throw recipeIngredientError;
+  }, []);
+
   const createPrepRecipe = useCallback(async (input: CreatePrepRecipeInput) => {
     if (!user) return null;
 
@@ -469,64 +527,14 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         throw error;
       }
 
-      if (ingredientPayload.length) {
-        const ingredientRows = ingredientPayload.map((ing) => ({
-          ...ing,
-          prep_recipe_id: recipe.id,
-        }));
-
-        const { error: ingredientError } = await supabase
-          .from('prep_recipe_ingredients')
-          .insert(ingredientRows);
-
-        if (ingredientError) {
-          await supabase.from('prep_recipes').delete().eq('id', recipe.id);
-          await supabase.from('recipes').delete().eq('id', linkedRecipe.id);
-          throw ingredientError;
-        }
-
-        const recipeIngredientRows = ingredientPayload.map((ing) => ({
-          recipe_id: linkedRecipe.id,
-          product_id: ing.product_id,
-          quantity: ing.quantity,
-          unit: ing.unit,
-          notes: ing.notes,
-        }));
-
-        const { error: recipeIngredientError } = await supabase
-          .from('recipe_ingredients')
-          .insert(recipeIngredientRows);
-
-        if (recipeIngredientError) {
-          await supabase.from('prep_recipes').delete().eq('id', recipe.id);
-          await supabase.from('recipes').delete().eq('id', linkedRecipe.id);
-          throw recipeIngredientError;
-        }
-      }
-
-      // Insert procedure steps if provided
-      if (input.procedure_steps && input.procedure_steps.length > 0) {
-        const stepRows = input.procedure_steps
-          .filter((step) => step.instruction.trim())
-          .map((step) => ({
-            prep_recipe_id: recipe.id,
-            step_number: step.step_number,
-            instruction: step.instruction,
-            timer_minutes: step.timer_minutes,
-            critical_point: step.critical_point || false,
-          }));
-
-        if (stepRows.length > 0) {
-          const { error: stepError } = await supabase
-            .from('prep_recipe_procedure_steps')
-            .insert(stepRows);
-
-          if (stepError) {
-            await supabase.from('prep_recipes').delete().eq('id', recipe.id);
-            await supabase.from('recipes').delete().eq('id', linkedRecipe.id);
-            throw stepError;
-          }
-        }
+      // Insert ingredients and procedure steps, rollback on failure
+      try {
+        await insertRecipeIngredients(recipe.id, linkedRecipe.id, ingredientPayload);
+        await insertProcedureSteps(recipe.id, input.procedure_steps);
+      } catch (insertError) {
+        await supabase.from('prep_recipes').delete().eq('id', recipe.id);
+        await supabase.from('recipes').delete().eq('id', linkedRecipe.id);
+        throw insertError;
       }
 
       toast({
@@ -590,7 +598,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       });
       return null;
     }
-  }, [user, toast, fetchPrepRecipes, buildIngredientPayload, calculateIngredientCostTotal, resolveOutputProduct]);
+  }, [user, toast, fetchPrepRecipes, buildIngredientPayload, calculateIngredientCostTotal, resolveOutputProduct, insertRecipeIngredients, insertProcedureSteps]);
 
   const updatePrepRecipe = useCallback(async (input: UpdatePrepRecipeInput) => {
     if (!user) return false;

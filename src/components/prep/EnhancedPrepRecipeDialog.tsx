@@ -166,8 +166,8 @@ export function EnhancedPrepRecipeDialog({
           notes: ing.notes,
           sort_order: ing.sort_order ?? index,
         })),
-        procedure_steps: (editingRecipe.procedure_steps || []).length > 0
-          ? editingRecipe.procedure_steps!.map((step) => ({
+        procedure_steps: (editingRecipe.procedure_steps ?? []).length > 0
+          ? (editingRecipe.procedure_steps ?? []).map((step) => ({
               id: step.id,
               step_number: step.step_number,
               instruction: step.instruction,
@@ -417,7 +417,7 @@ export function EnhancedPrepRecipeDialog({
                   >
                     <Package className="h-4 w-4" />
                     <span className="hidden sm:inline">Ingredients</span>
-                    {formValues.ingredients.filter(i => i.product_id).length > 0 && (
+                    {formValues.ingredients.some(i => i.product_id) && (
                       <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
                         {formValues.ingredients.filter(i => i.product_id).length}
                       </Badge>
@@ -429,7 +429,7 @@ export function EnhancedPrepRecipeDialog({
                   >
                     <ListOrdered className="h-4 w-4" />
                     <span className="hidden sm:inline">Procedure</span>
-                    {formValues.procedure_steps.filter(s => s.instruction.trim()).length > 0 && (
+                    {formValues.procedure_steps.some(s => s.instruction.trim()) && (
                       <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
                         {formValues.procedure_steps.filter(s => s.instruction.trim()).length}
                       </Badge>

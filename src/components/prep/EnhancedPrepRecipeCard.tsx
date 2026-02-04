@@ -88,7 +88,7 @@ export function EnhancedPrepRecipeCard({
             )}>
               <CategoryIcon className="h-6 w-6 text-white" />
             </div>
-            {recipe.shelf_life_days && (
+            {!!recipe.shelf_life_days && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -161,7 +161,7 @@ export function EnhancedPrepRecipeCard({
               </Badge>
 
               {/* Prep time */}
-              {recipe.prep_time_minutes && (
+              {!!recipe.prep_time_minutes && (
                 <Badge variant="outline" className="gap-1.5">
                   <Clock className="h-3.5 w-3.5" />
                   {recipe.prep_time_minutes} min
@@ -169,7 +169,7 @@ export function EnhancedPrepRecipeCard({
               )}
 
               {/* Oven temp */}
-              {recipe.oven_temp && (
+              {!!recipe.oven_temp && (
                 <Badge variant="outline" className="gap-1.5">
                   <Thermometer className="h-3.5 w-3.5" />
                   {recipe.oven_temp}°{recipe.oven_temp_unit || 'F'}
@@ -289,12 +289,10 @@ export function EnhancedPrepRecipeCardCompact({
       </div>
 
       {/* Content */}
-      <div
-        className="flex-1 min-w-0 cursor-pointer"
+      <button
+        type="button"
+        className="flex-1 min-w-0 cursor-pointer text-left bg-transparent border-none p-0"
         onClick={onEdit}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onEdit?.(); }}
       >
         <div className="flex items-center gap-2">
           <h4 className="font-semibold truncate group-hover:text-primary transition-colors">
@@ -308,14 +306,14 @@ export function EnhancedPrepRecipeCardCompact({
           <span>{recipe.default_yield} {recipe.default_yield_unit}</span>
           <span>•</span>
           <span>{ingredientCount} ingredients</span>
-          {recipe.prep_time_minutes && (
+          {!!recipe.prep_time_minutes && (
             <>
               <span>•</span>
               <span>{recipe.prep_time_minutes} min</span>
             </>
           )}
         </div>
-      </div>
+      </button>
 
       {/* Cost */}
       <div className="text-right shrink-0">

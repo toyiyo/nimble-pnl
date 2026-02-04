@@ -138,8 +138,8 @@ export const useQuickCook = (restaurantId: string | null) => {
             // Create new output product
             const slug = recipe.name
               .toUpperCase()
-              .replace(/[^A-Z0-9]+/g, '-')
-              .replace(/(^-+|-+$)/g, '') || 'PREP';
+              .replaceAll(/[^A-Z0-9]+/g, '-')
+              .replaceAll(/(^-+|-+$)/g, '') || 'PREP';
             const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
             const { data: newProduct, error: productError } = await supabase

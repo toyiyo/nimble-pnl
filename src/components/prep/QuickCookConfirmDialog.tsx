@@ -17,11 +17,11 @@ import { AlertTriangle, CheckCircle2, ChefHat, Package, Minus, Plus } from 'luci
 import { cn } from '@/lib/utils';
 
 interface QuickCookConfirmDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  preview: QuickCookPreview | null;
-  onConfirm: () => void;
-  loading: boolean;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly preview: QuickCookPreview | null;
+  readonly onConfirm: () => void;
+  readonly loading: boolean;
 }
 
 export function QuickCookConfirmDialog({
@@ -30,7 +30,7 @@ export function QuickCookConfirmDialog({
   preview,
   onConfirm,
   loading,
-}: QuickCookConfirmDialogProps) {
+}: Readonly<QuickCookConfirmDialogProps>) {
   const insufficientIngredients = useMemo(() => {
     if (!preview) return [];
     return preview.ingredients_to_deduct.filter((ing) => !ing.is_sufficient);
@@ -67,7 +67,7 @@ export function QuickCookConfirmDialog({
               <AlertDescription className="text-amber-800">
                 <p className="font-medium">Low Stock Warning</p>
                 <p className="text-sm mt-1">
-                  {insufficientIngredients.length} ingredient{insufficientIngredients.length !== 1 ? 's' : ''} below required quantity. Stock will go negative if you proceed.
+                  {insufficientIngredients.length} ingredient{insufficientIngredients.length === 1 ? '' : 's'} below required quantity. Stock will go negative if you proceed.
                 </p>
               </AlertDescription>
             </Alert>
@@ -79,7 +79,7 @@ export function QuickCookConfirmDialog({
               <Minus className="h-4 w-4 text-destructive" />
               <p className="text-sm font-semibold">Will Deduct</p>
               <Badge variant="secondary" className="ml-auto">
-                {preview.ingredients_to_deduct.length} item{preview.ingredients_to_deduct.length !== 1 ? 's' : ''}
+                {preview.ingredients_to_deduct.length} item{preview.ingredients_to_deduct.length === 1 ? '' : 's'}
               </Badge>
             </div>
 

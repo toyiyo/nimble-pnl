@@ -29,19 +29,19 @@ SELECT function_lang_is(
 );
 
 -- Test process_unified_inventory_deduction function exists
--- Current signature: (uuid, text, integer, text, text, text, text) with 3 DEFAULT params
--- has_function only matches required params, so we check for the full 7-param signature
+-- Current signature: (uuid, text, integer, text, text, text, text, text, text) with 5 DEFAULT params
+-- Includes p_transaction_type and p_reason_prefix for production runs (transfer) vs POS (usage)
 SELECT has_function(
     'public',
     'process_unified_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text', 'text', 'text'],
     'process_unified_inventory_deduction function should exist'
 );
 
 SELECT function_returns(
     'public',
     'process_unified_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text', 'text', 'text'],
     'jsonb',
     'process_unified_inventory_deduction should return jsonb'
 );

@@ -58,15 +58,15 @@ SELECT is(
   'Soup output increased by 10 L'
 );
 
--- Ingredient transaction: quantity and total cost
+-- Ingredient transaction: quantity and total cost (transfer, not usage - not COGS until sold)
 SELECT is(
-  (SELECT quantity::numeric FROM inventory_transactions WHERE reference_id LIKE '10000000-0000-0000-0000-000000000030_%' AND product_id = '10000000-0000-0000-0000-000000000010' AND transaction_type = 'usage' LIMIT 1),
+  (SELECT quantity::numeric FROM inventory_transactions WHERE reference_id LIKE '10000000-0000-0000-0000-000000000030_%' AND product_id = '10000000-0000-0000-0000-000000000010' AND transaction_type = 'transfer' LIMIT 1),
   -5::numeric,
   'Ingredient transaction deducts 5 lb'
 );
 
 SELECT is(
-  (SELECT total_cost::numeric FROM inventory_transactions WHERE reference_id LIKE '10000000-0000-0000-0000-000000000030_%' AND product_id = '10000000-0000-0000-0000-000000000010' AND transaction_type = 'usage' LIMIT 1),
+  (SELECT total_cost::numeric FROM inventory_transactions WHERE reference_id LIKE '10000000-0000-0000-0000-000000000030_%' AND product_id = '10000000-0000-0000-0000-000000000010' AND transaction_type = 'transfer' LIMIT 1),
   -24.95::numeric,
   'Ingredient transaction total cost is -$24.95 (5 lb × $4.99)'
 );
@@ -134,7 +134,7 @@ SELECT ok(
 );
 
 SELECT ok(
-  (SELECT quantity::numeric FROM inventory_transactions WHERE reference_id LIKE '10000000-0000-0000-0000-000000000032_%' AND product_id = '10000000-0000-0000-0000-000000000012' AND transaction_type = 'usage' LIMIT 1) BETWEEN -0.11 AND -0.09,
+  (SELECT quantity::numeric FROM inventory_transactions WHERE reference_id LIKE '10000000-0000-0000-0000-000000000032_%' AND product_id = '10000000-0000-0000-0000-000000000012' AND transaction_type = 'transfer' LIMIT 1) BETWEEN -0.11 AND -0.09,
   'Ingredient transaction deducts 0.1 bag (count-to-container conversion)'
 );
 

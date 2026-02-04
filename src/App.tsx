@@ -46,8 +46,7 @@ import EmployeeTimecard from "./pages/EmployeeTimecard";
 import EmployeePay from "./pages/EmployeePay";
 import EmployeeSchedule from "./pages/EmployeeSchedule";
 import EmployeeShiftMarketplace from "./pages/EmployeeShiftMarketplace";
-import PrepRecipes from "./pages/PrepRecipes";
-import Batches from "./pages/Batches";
+import PrepRecipesEnhanced from "./pages/PrepRecipesEnhanced";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
@@ -153,7 +152,6 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
     allowed: [
       '/recipes',
       '/prep-recipes',
-      '/batches',
       '/inventory', // View-only for ingredient context
       '/settings',
     ],
@@ -228,8 +226,7 @@ const App = () => (
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
           <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
-          <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipes /></ProtectedRoute>} />
-          <Route path="/batches" element={<ProtectedRoute><Batches /></ProtectedRoute>} />
+          <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipesEnhanced /></ProtectedRoute>} />
           <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />

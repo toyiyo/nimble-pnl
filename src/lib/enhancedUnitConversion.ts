@@ -3,7 +3,7 @@
 // Exported unit constants to avoid duplication across the codebase
 // Note: 'fl oz' is used for fluid ounces (volume) and 'oz' is used for weight ounces
 export const WEIGHT_UNITS = ['lb', 'kg', 'g', 'oz'];
-export const VOLUME_UNITS = ['fl oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt'];
+export const VOLUME_UNITS = ['fl oz', 'cup', 'tbsp', 'tsp', 'ml', 'L', 'gal', 'qt', 'pint'];
 export const COUNT_UNITS = ['each', 'piece', 'serving', 'unit', 'bottle', 'can', 'box', 'bag', 'case', 'container', 'package', 'dozen', 'jar'];
 
 export interface ProductUnitInfo {
@@ -86,10 +86,11 @@ const STANDARD_CONVERSIONS: { [key: string]: { [key: string]: number } } = {
   'cup': { 'ml': 236.588, 'fl oz': 8, 'tbsp': 16, 'tsp': 48, 'L': 0.236588, 'gal': 1/16, 'qt': 1/4 },
   'tbsp': { 'ml': 14.7868, 'fl oz': 0.5, 'cup': 1/16, 'tsp': 3, 'L': 0.0147868 },
   'tsp': { 'ml': 4.92892, 'fl oz': 1/6, 'tbsp': 1/3, 'cup': 1/48, 'L': 0.00492892 },
-  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'fl oz': 1/29.5735, 'gal': 1/3785.41 },
+  'ml': { 'L': 0.001, 'cup': 1/236.588, 'tbsp': 1/14.7868, 'tsp': 1/4.92892, 'fl oz': 1/29.5735, 'gal': 1/3785.41, 'pint': 1/473.176 },
   'L': { 'ml': 1000, 'cup': 1/0.236588, 'gal': 1/3.78541, 'fl oz': 33.814, 'tbsp': 67.628, 'tsp': 202.884 },
-  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'fl oz': 128, 'ml': 3785.41 },
-  'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353, 'fl oz': 32 },
+  'gal': { 'L': 3.78541, 'qt': 4, 'cup': 16, 'fl oz': 128, 'ml': 3785.41, 'pint': 8 },
+  'qt': { 'gal': 0.25, 'cup': 4, 'L': 0.946353, 'fl oz': 32, 'pint': 2 },
+  'pint': { 'ml': 473.176, 'L': 0.473176, 'cup': 2, 'fl oz': 16, 'gal': 0.125, 'qt': 0.5, 'tbsp': 32, 'tsp': 96 },
 };
 
 // Product-specific conversions (ingredient name -> unit conversions)

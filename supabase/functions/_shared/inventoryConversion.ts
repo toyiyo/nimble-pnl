@@ -29,6 +29,7 @@ export const VOLUME_UNITS: Record<string, number> = {
   'tsp': 4.92892,
   'gal': 3785.41,
   'qt': 946.353,
+  'pint': 473.176,
 };
 
 /**

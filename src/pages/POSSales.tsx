@@ -1112,7 +1112,6 @@ export default function POSSales() {
                     <div
                       ref={salesListRef}
                       className="h-[600px] overflow-auto"
-                      style={{ contain: 'strict' }}
                     >
                       <div
                         style={{

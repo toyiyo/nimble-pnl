@@ -35,13 +35,9 @@ import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
 import { PrepRecipe } from '@/hooks/usePrepRecipes';
 import { Product } from '@/hooks/useProducts';
-import { IngredientUnit } from '@/lib/recipeUnits';
-
-// Combined units from enhanced unit conversion system
-const MEASUREMENT_UNITS = [...WEIGHT_UNITS, ...VOLUME_UNITS, ...COUNT_UNITS] as const;
+import { IngredientUnit, MEASUREMENT_UNITS } from '@/lib/recipeUnits';
 
 // Categories matching the PDF recipe book structure
 const PREP_CATEGORIES = [

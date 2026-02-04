@@ -102,7 +102,7 @@ export function QuickCookConfirmDialog({
                       <div className="min-w-0">
                         <p className="font-medium text-sm truncate">{ing.product_name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Stock: {ing.current_stock.toFixed(2)} {ing.unit}
+                          Stock: {ing.current_stock.toFixed(2)} {ing.stock_unit}
                         </p>
                       </div>
                     </div>

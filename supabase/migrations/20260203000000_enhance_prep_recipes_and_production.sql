@@ -181,7 +181,7 @@ DECLARE
     v_size_unit_lower text;
     v_transaction_type text;
 
-    v_volume_units text[] := ARRAY['fl oz', 'ml', 'l', 'cup', 'tbsp', 'tsp', 'gal', 'qt'];
+    v_volume_units text[] := ARRAY['fl oz', 'ml', 'l', 'cup', 'tbsp', 'tsp', 'gal', 'qt', 'pint'];
     v_weight_units text[] := ARRAY['g', 'kg', 'lb', 'oz'];
     v_container_units text[] := ARRAY['bag', 'box', 'case', 'package', 'container'];
     v_individual_units text[] := ARRAY['each', 'piece', 'unit'];
@@ -296,6 +296,7 @@ BEGIN
                         WHEN 'tsp' THEN v_recipe_in_ml := v_deduction_amount * 4.92892;
                         WHEN 'gal' THEN v_recipe_in_ml := v_deduction_amount * 3785.41;
                         WHEN 'qt' THEN v_recipe_in_ml := v_deduction_amount * 946.353;
+                        WHEN 'pint' THEN v_recipe_in_ml := v_deduction_amount * 473.176;
                         ELSE v_recipe_in_ml := 0;
                     END CASE;
 
@@ -310,6 +311,7 @@ BEGIN
                             WHEN 'cup' THEN v_package_size_ml := v_package_size_ml * 236.588;
                             WHEN 'tbsp' THEN v_package_size_ml := v_package_size_ml * 14.7868;
                             WHEN 'tsp' THEN v_package_size_ml := v_package_size_ml * 4.92892;
+                            WHEN 'pint' THEN v_package_size_ml := v_package_size_ml * 473.176;
                             ELSE NULL;
                         END CASE;
 

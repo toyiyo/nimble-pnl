@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { calculateIngredientsCost } from '@/lib/prepCostCalculation';
 import type { IngredientUnit } from '@/lib/recipeUnits';
 
@@ -21,6 +21,7 @@ interface QuickCookIngredient {
   quantity: number;
   unit: IngredientUnit;
   current_stock: number;
+  stock_unit: string;
   is_sufficient: boolean;
 }
 
@@ -61,25 +62,9 @@ interface MockPrepRecipe {
   shelf_life_days?: number;
 }
 
-// Helper: Generate preview (mirrors useQuickCook.previewQuickCook logic)
+// Helper: Generate preview (mirrors useQuickCook.previewQuickCook logic exactly)
 function generateQuickCookPreview(recipe: MockPrepRecipe) {
   const ingredients = recipe.ingredients || [];
-
-  const ingredientsToDeduct: QuickCookIngredient[] = ingredients.map((ing) => {
-    const currentStock = ing.product?.current_stock ?? 0;
-    const quantity = ing.quantity; // 1X yield
-
-    return {
-      product_id: ing.product_id,
-      product_name: ing.product?.name || 'Unknown',
-      quantity,
-      unit: ing.unit,
-      current_stock: currentStock,
-      is_sufficient: currentStock >= quantity,
-    };
-  });
-
-  const hasInsufficientStock = ingredientsToDeduct.some((ing) => !ing.is_sufficient);
 
   // Calculate total cost using shared cost calculation
   const costResult = calculateIngredientsCost(
@@ -91,6 +76,29 @@ function generateQuickCookPreview(recipe: MockPrepRecipe) {
     }))
   );
 
+  const ingredientsToDeduct: QuickCookIngredient[] = ingredients.map((ing, index) => {
+    const currentStock = ing.product?.current_stock ?? 0;
+    const stockUnit = ing.product?.uom_purchase || ing.unit;
+    const quantity = ing.quantity; // 1X yield
+
+    // Use the same inventory deduction calculation as production
+    // If deduction is 0 but quantity > 0, use quantity (handles missing product case)
+    const costDeduction = costResult.ingredients[index]?.inventoryDeduction ?? 0;
+    const inventoryDeduction = (costDeduction > 0 || quantity === 0) ? costDeduction : quantity;
+
+    return {
+      product_id: ing.product_id,
+      product_name: ing.product?.name || 'Unknown',
+      quantity,
+      unit: ing.unit,
+      current_stock: currentStock,
+      stock_unit: stockUnit,
+      is_sufficient: currentStock >= inventoryDeduction,
+    };
+  });
+
+  const hasInsufficientStock = ingredientsToDeduct.some((ing) => !ing.is_sufficient);
+
   return {
     recipe,
     ingredients_to_deduct: ingredientsToDeduct,
@@ -100,10 +108,12 @@ function generateQuickCookPreview(recipe: MockPrepRecipe) {
     output_product_name: recipe.output_product?.name || recipe.name,
     has_insufficient_stock: hasInsufficientStock,
     total_cost: costResult.totalCost,
-    cost_per_output_unit: recipe.default_yield > 0
-      ? costResult.totalCost / recipe.default_yield
-      : 0,
   };
+}
+
+// Helper to compute cost per output unit (not part of QuickCookPreview interface)
+function computeCostPerOutputUnit(totalCost: number, outputQuantity: number): number {
+  return outputQuantity > 0 ? totalCost / outputQuantity : 0;
 }
 
 // Helper: Generate SKU for auto-created products (mirrors useQuickCook logic)
@@ -181,6 +191,7 @@ describe('Quick Cook - Preview Generation', () => {
         quantity: 2,
         unit: 'can',
         current_stock: 10,
+        stock_unit: 'can',
         is_sufficient: true,
       });
 
@@ -190,6 +201,7 @@ describe('Quick Cook - Preview Generation', () => {
         quantity: 0.25,
         unit: 'lb',
         current_stock: 2,
+        stock_unit: 'lb',
         is_sufficient: true,
       });
 
@@ -199,6 +211,7 @@ describe('Quick Cook - Preview Generation', () => {
         quantity: 1,
         unit: 'oz',
         current_stock: 3,
+        stock_unit: 'oz',
         is_sufficient: true,
       });
     });
@@ -478,7 +491,8 @@ describe('Quick Cook - Preview Generation', () => {
       // Total cost: 2 × $4 = $8
       // Cost per qt: $8 / 4 = $2
       expect(preview.total_cost).toBeCloseTo(8, 2);
-      expect(preview.cost_per_output_unit).toBeCloseTo(2, 2);
+      const costPerUnit = computeCostPerOutputUnit(preview.total_cost, recipe.default_yield);
+      expect(costPerUnit).toBeCloseTo(2, 2);
     });
 
     it('should handle unit conversions in cost calculation', () => {
@@ -733,16 +747,29 @@ describe('Quick Cook - Product Auto-Creation', () => {
     });
 
     it('should generate unique SKUs for same recipe (different timestamps)', () => {
+      // Mock Date.now to return different values for deterministic testing
+      const mockNow = vi.spyOn(Date, 'now');
+
+      // First call returns timestamp that produces one suffix
+      mockNow.mockReturnValueOnce(1706900000000); // Results in suffix based on this timestamp
       const sku1 = generateProductSku('Same Recipe');
 
-      // Wait a tiny bit to ensure different timestamp
-      const start = Date.now();
-      while (Date.now() - start < 10) { /* spin */ }
-
+      // Second call returns different timestamp
+      mockNow.mockReturnValueOnce(1706900001000); // Results in different suffix
       const sku2 = generateProductSku('Same Recipe');
 
+      mockNow.mockRestore();
+
       // The base should be the same, but suffix different
-      expect(sku1).not.toBe(sku2);
+      expect(sku1.slice(0, -5)).toBe(sku2.slice(0, -5)); // Same base prefix
+      expect(sku1).not.toBe(sku2); // Different overall due to timestamp suffix
+    });
+
+    it('should generate SKU with expected timestamp-based suffix format', () => {
+      const sku = generateProductSku('Test Recipe');
+
+      // Verify SKU matches expected pattern: PREP-{SLUG}-{4-char suffix}
+      expect(sku).toMatch(/^PREP-TEST-RECIPE-[A-Z0-9]{4}$/);
     });
   });
 });
@@ -875,7 +902,8 @@ describe('Quick Cook - Inventory Impact Validation', () => {
       // Total cost: 5 lb × $4/lb = $20
       // Cost per unit: $20 / 10 = $2
       expect(preview.total_cost).toBeCloseTo(20, 2);
-      expect(preview.cost_per_output_unit).toBeCloseTo(2, 2);
+      const costPerUnit = computeCostPerOutputUnit(preview.total_cost, recipe.default_yield);
+      expect(costPerUnit).toBeCloseTo(2, 2);
     });
 
     it('should handle complex multi-ingredient cost calculation', () => {
@@ -943,7 +971,8 @@ describe('Quick Cook - Inventory Impact Validation', () => {
       expect(preview.total_cost).toBeGreaterThan(0);
 
       // Cost per qt should be total / 4
-      expect(preview.cost_per_output_unit).toBeCloseTo(preview.total_cost / 4, 2);
+      const costPerUnit = computeCostPerOutputUnit(preview.total_cost, recipe.default_yield);
+      expect(costPerUnit).toBeCloseTo(preview.total_cost / 4, 2);
     });
   });
 });
@@ -1066,11 +1095,12 @@ describe('Quick Cook - Complete Flow Simulation', () => {
 
     // Verify cost is calculated
     expect(preview.total_cost).toBeGreaterThan(0);
-    expect(preview.cost_per_output_unit).toBeGreaterThan(0);
+    const costPerUnit = computeCostPerOutputUnit(preview.total_cost, recipe.default_yield);
+    expect(costPerUnit).toBeGreaterThan(0);
 
     // Verify cost per qt is reasonable (should be a few dollars)
-    expect(preview.cost_per_output_unit).toBeGreaterThan(1);
-    expect(preview.cost_per_output_unit).toBeLessThan(10);
+    expect(costPerUnit).toBeGreaterThan(1);
+    expect(costPerUnit).toBeLessThan(10);
   });
 
   it('should correctly preview a recipe with low stock warning', () => {

@@ -4,16 +4,13 @@
 
 import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from './enhancedUnitConversion';
 
-// Additional units not in enhanced conversion (length units for packaging)
+// Length units for packaging measurements (not in enhanced conversion)
 const LENGTH_UNITS = ['inch', 'cm', 'mm', 'ft', 'meter'] as const;
 
-// Additional volume unit not in enhanced conversion
-const ADDITIONAL_VOLUME_UNITS = ['pint'] as const;
-
+// Note: 'pint' is now included in VOLUME_UNITS from enhancedUnitConversion.ts
 export const MEASUREMENT_UNITS = [
   ...WEIGHT_UNITS,
   ...VOLUME_UNITS,
-  ...ADDITIONAL_VOLUME_UNITS,
   ...COUNT_UNITS,
   ...LENGTH_UNITS,
 ] as const;

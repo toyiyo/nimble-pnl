@@ -4,7 +4,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { PrepRecipe } from './usePrepRecipes';
 import { IngredientUnit } from '@/lib/recipeUnits';
-import { calculateIngredientsCost } from '@/lib/prepCostCalculation';
+import { calculateIngredientsCost, calculateIngredientCost } from '@/lib/prepCostCalculation';
 
 export interface QuickCookIngredient {
   product_id: string;
@@ -12,6 +12,7 @@ export interface QuickCookIngredient {
   quantity: number;
   unit: IngredientUnit;
   current_stock: number;
+  stock_unit: string; // Native unit the product is stored in (uom_purchase)
   is_sufficient: boolean;
 }
 
@@ -59,7 +60,26 @@ export const useQuickCook = (restaurantId: string | null) => {
         // Build preview from existing ingredient data (already fetched with recipe)
         const ingredientsToDeduct: QuickCookIngredient[] = ingredients.map((ing) => {
           const currentStock = ing.product?.current_stock ?? 0;
+          const stockUnit = ing.product?.uom_purchase || ing.unit;
           const quantity = ing.quantity; // 1X yield
+
+          // Calculate inventory deduction in stock units for proper sufficiency check
+          let inventoryDeduction = quantity;
+          try {
+            if (ing.product) {
+              const costResult = calculateIngredientCost({
+                product_id: ing.product_id,
+                quantity,
+                unit: ing.unit,
+                product: ing.product,
+              });
+              // Use converted deduction if valid, otherwise fall back to quantity
+              inventoryDeduction = costResult.inventoryDeduction > 0 ? costResult.inventoryDeduction : quantity;
+            }
+          } catch {
+            // Fall back to 1:1 if conversion fails
+            inventoryDeduction = quantity;
+          }
 
           return {
             product_id: ing.product_id,
@@ -67,7 +87,8 @@ export const useQuickCook = (restaurantId: string | null) => {
             quantity,
             unit: ing.unit,
             current_stock: currentStock,
-            is_sufficient: currentStock >= quantity,
+            stock_unit: stockUnit,
+            is_sufficient: currentStock >= inventoryDeduction,
           };
         });
 
@@ -167,10 +188,19 @@ export const useQuickCook = (restaurantId: string | null) => {
             outputProductId = newProduct.id;
 
             // Link output product to recipe
-            await supabase
+            const { error: linkError } = await supabase
               .from('prep_recipes')
               .update({ output_product_id: outputProductId })
               .eq('id', recipe.id);
+
+            if (linkError) {
+              console.error('Failed to link output product to recipe', {
+                recipeId: recipe.id,
+                outputProductId,
+                error: linkError,
+              });
+              throw new Error(`Failed to link output product to recipe: ${linkError.message}`);
+            }
           }
         }
 

@@ -151,11 +151,11 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       let data;
       let error;
 
-      ({ data, error } = await supabase
+      ({ data, error } = await (supabase
         .from('prep_recipes')
         .select(`
           *,
-          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit, shelf_life_days),
+          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit),
           ingredients:prep_recipe_ingredients(
             id,
             prep_recipe_id,
@@ -176,16 +176,16 @@ export const usePrepRecipes = (restaurantId: string | null) => {
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .order('name'));
+        .order('name') as any));
 
       // If error mentions procedure_steps table, retry without it
       if (error && (error.message?.includes('prep_recipe_procedure_steps') || error.code === '42P01')) {
         console.warn('procedure_steps table not found, fetching without it');
-        ({ data, error } = await supabase
+        ({ data, error } = await (supabase
           .from('prep_recipes')
           .select(`
             *,
-            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit, shelf_life_days),
+            output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, size_value, size_unit),
             ingredients:prep_recipe_ingredients(
               id,
               prep_recipe_id,
@@ -198,7 +198,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
             )
           `)
           .eq('restaurant_id', restaurantId)
-          .order('name'));
+          .order('name') as any));
       }
 
       if (error) throw error;
@@ -444,9 +444,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     if (stepRows.length === 0) return;
 
-    const { error: stepError } = await supabase
-      .from('prep_recipe_procedure_steps')
-      .insert(stepRows);
+    const { error: stepError } = await (supabase
+      .from('prep_recipe_procedure_steps' as any)
+      .insert(stepRows as any) as any);
 
     if (stepError) throw stepError;
   }, []);
@@ -463,9 +463,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       prep_recipe_id: prepRecipeId,
     }));
 
-    const { error: ingredientError } = await supabase
+    const { error: ingredientError } = await (supabase
       .from('prep_recipe_ingredients')
-      .insert(ingredientRows);
+      .insert(ingredientRows as any) as any);
 
     if (ingredientError) throw ingredientError;
 
@@ -477,9 +477,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       notes: ing.notes,
     }));
 
-    const { error: recipeIngredientError } = await supabase
+    const { error: recipeIngredientError } = await (supabase
       .from('recipe_ingredients')
-      .insert(recipeIngredientRows);
+      .insert(recipeIngredientRows as any) as any);
 
     if (recipeIngredientError) throw recipeIngredientError;
   }, []);
@@ -508,7 +508,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
       if (linkedRecipeError) throw linkedRecipeError;
 
-      const { data: recipe, error } = await supabase
+      const { data: recipe, error } = await (supabase
         .from('prep_recipes')
         .insert({
           restaurant_id: input.restaurant_id,
@@ -526,9 +526,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
           oven_temp_unit: input.oven_temp_unit,
           equipment_notes: input.equipment_notes,
           created_by: user.id,
-        })
+        } as any)
         .select()
-        .single();
+        .single() as any);
 
       if (error) {
         await supabase.from('recipes').delete().eq('id', linkedRecipe.id);
@@ -551,11 +551,11 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       });
 
       // Fetch the complete recipe with populated relations
-      const { data: completeRecipe, error: fetchError } = await supabase
+      const { data: completeRecipe, error: fetchError } = await (supabase
         .from('prep_recipes')
         .select(`
           *,
-          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit, shelf_life_days),
+          output_product:products(id, name, current_stock, uom_purchase, cost_per_unit),
           ingredients:prep_recipe_ingredients(
             id,
             prep_recipe_id,
@@ -577,7 +577,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         `)
         .eq('id', recipe.id)
         .eq('restaurant_id', input.restaurant_id)
-        .single();
+        .single() as any);
 
       if (fetchError) throw fetchError;
 
@@ -586,14 +586,14 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         throw new Error('Prep recipe fetch returned no data');
       }
 
-      const normalizedRecipe = {
+      const normalizedRecipe: PrepRecipe = {
         ...completeRecipe,
         default_yield_unit: toIngredientUnit(completeRecipe.default_yield_unit),
-        ingredients: (completeRecipe.ingredients || []).map((ing: RawPrepRecipeIngredient) => ({
+        ingredients: (completeRecipe.ingredients || []).map((ing: any) => ({
           ...ing,
           unit: toIngredientUnit(ing.unit),
         })),
-      } as PrepRecipe;
+      };
 
       await fetchPrepRecipes();
       return normalizedRecipe;
@@ -629,11 +629,11 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
       if (prepRecipeLinkError) throw prepRecipeLinkError;
 
-      const { error } = await supabase
+      const { error } = await (supabase
         .from('prep_recipes')
-        .update({ ...updates, output_product_id: outputProductId })
+        .update({ ...updates, output_product_id: outputProductId } as any)
         .eq('id', id)
-        .eq('restaurant_id', targetRestaurantId);
+        .eq('restaurant_id', targetRestaurantId) as any);
 
       if (error) throw error;
 
@@ -689,9 +689,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
               notes: ing.notes,
             }));
 
-            const { error: recipeIngredientError } = await supabase
+            const { error: recipeIngredientError } = await (supabase
               .from('recipe_ingredients')
-              .insert(recipeIngredientRows);
+              .insert(recipeIngredientRows as any) as any);
 
             if (recipeIngredientError) throw recipeIngredientError;
           }
@@ -701,10 +701,10 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       // Handle procedure steps update if provided
       if (procedure_steps !== undefined) {
         // Delete existing steps
-        const { error: deleteStepsError } = await supabase
-          .from('prep_recipe_procedure_steps')
+        const { error: deleteStepsError } = await (supabase
+          .from('prep_recipe_procedure_steps' as any)
           .delete()
-          .eq('prep_recipe_id', id);
+          .eq('prep_recipe_id', id) as any);
 
         if (deleteStepsError) throw deleteStepsError;
 
@@ -720,9 +720,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
           }));
 
         if (stepRows.length > 0) {
-          const { error: stepError } = await supabase
-            .from('prep_recipe_procedure_steps')
-            .insert(stepRows);
+          const { error: stepError } = await (supabase
+            .from('prep_recipe_procedure_steps' as any)
+            .insert(stepRows as any) as any);
 
           if (stepError) throw stepError;
         }

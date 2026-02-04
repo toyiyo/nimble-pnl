@@ -195,9 +195,9 @@ export const useRecipes = (restaurantId: string | null) => {
             recipe_id: recipe.id,
           }));
 
-          const { error: ingredientsError } = await supabase
+          const { error: ingredientsError } = await (supabase
             .from('recipe_ingredients')
-            .insert(ingredients);
+            .insert(ingredients as any) as any);
 
           if (ingredientsError) throw ingredientsError;
         }
@@ -295,9 +295,9 @@ export const useRecipes = (restaurantId: string | null) => {
           recipe_id: recipeId,
         }));
 
-        const { error: insertError } = await supabase
+        const { error: insertError } = await (supabase
           .from('recipe_ingredients')
-          .insert(ingredientsWithRecipeId);
+          .insert(ingredientsWithRecipeId as any) as any);
 
         if (insertError) throw insertError;
       }

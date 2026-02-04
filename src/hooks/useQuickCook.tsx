@@ -159,8 +159,8 @@ export const useQuickCook = (restaurantId: string | null) => {
             // Create new output product
             const slug = recipe.name
               .toUpperCase()
-              .replaceAll(/[^A-Z0-9]+/g, '-')
-              .replaceAll(/(^-+|-+$)/g, '') || 'PREP';
+              .replace(/[^A-Z0-9]+/g, '-')
+              .replace(/(^-+|-+$)/g, '') || 'PREP';
             const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
             const { data: newProduct, error: productError } = await supabase
@@ -206,7 +206,7 @@ export const useQuickCook = (restaurantId: string | null) => {
         }
 
         // Step 2: Create production run at 1X yield
-        const { data: run, error: runError } = await supabase
+        const { data: run, error: runError } = await (supabase
           .from('production_runs')
           .insert({
             restaurant_id: restaurantId,
@@ -216,9 +216,9 @@ export const useQuickCook = (restaurantId: string | null) => {
             target_yield_unit: recipe.default_yield_unit,
             notes: 'Quick cook (1X)',
             created_by: user.id,
-          })
+          } as any)
           .select()
-          .single();
+          .single() as any);
 
         if (runError) throw runError;
 
@@ -260,9 +260,9 @@ export const useQuickCook = (restaurantId: string | null) => {
               variance_percent: 0,
             }));
 
-            const { error: ingredientError } = await supabase
+            const { error: ingredientError } = await (supabase
               .from('production_run_ingredients')
-              .insert(ingredientRows);
+              .insert(ingredientRows as any) as any);
 
             if (ingredientError) {
               await cleanupOrphanedRun(run.id);
@@ -278,7 +278,7 @@ export const useQuickCook = (restaurantId: string | null) => {
             unit: ing.unit,
           }));
 
-          const { error: completeError } = await supabase.rpc('complete_production_run', {
+          const { error: completeError } = await (supabase.rpc as any)('complete_production_run', {
             p_run_id: run.id,
             p_actual_yield: recipe.default_yield,
             p_actual_yield_unit: recipe.default_yield_unit,

@@ -8,12 +8,13 @@ import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from './enhancedUnitConversio
 const LENGTH_UNITS = ['inch', 'cm', 'mm', 'ft', 'meter'] as const;
 
 // Note: 'pint' is now included in VOLUME_UNITS from enhancedUnitConversion.ts
-export const MEASUREMENT_UNITS = [
+// Using a mutable array for compatibility with zod z.enum()
+export const MEASUREMENT_UNITS: readonly [string, ...string[]] = [
   ...WEIGHT_UNITS,
   ...VOLUME_UNITS,
   ...COUNT_UNITS,
   ...LENGTH_UNITS,
-] as const;
+] as unknown as readonly [string, ...string[]];
 
 export type IngredientUnit = typeof MEASUREMENT_UNITS[number];
 

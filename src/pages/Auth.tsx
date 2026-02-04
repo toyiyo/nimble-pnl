@@ -20,17 +20,20 @@ const Auth = () => {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [ssoRequired, setSSORequired] = useState<any>(null);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const { signIn, signUp, user } = useAuth();
   const { checkSSORequired, initiateSSO } = useSSO();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user) {
+    // Only navigate if user is authenticated AND we're not in the middle of a sign-in operation
+    // This prevents navigation before employee status checks complete
+    if (user && !isSigningIn) {
       // Navigate to home - let Index.tsx handle welcome modal logic
       navigate('/');
     }
-  }, [user, navigate]);
+  }, [user, navigate, isSigningIn]);
 
   useEffect(() => {
     // Check for SSO requirement when email changes
@@ -79,8 +82,11 @@ const Auth = () => {
     }
     
     setLoading(true);
+    setIsSigningIn(true);
 
     const { error } = await signIn(email, password);
+    
+    setIsSigningIn(false);
     
     if (error) {
       toast({
@@ -108,8 +114,11 @@ const Auth = () => {
     }
     
     setLoading(true);
+    setIsSigningIn(true);
 
     const { error } = await signUp(email, password, fullName);
+    
+    setIsSigningIn(false);
     
     if (error) {
       toast({

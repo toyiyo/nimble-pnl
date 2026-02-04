@@ -27,13 +27,8 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      // Check if user has seen the welcome modal
-      const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
-      if (hasSeenWelcome) {
-        navigate('/');
-      } else {
-        navigate('/?welcome=true');
-      }
+      // Navigate to home - let Index.tsx handle welcome modal logic
+      navigate('/');
     }
   }, [user, navigate]);
 

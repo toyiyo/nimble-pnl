@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -80,7 +80,6 @@ const Index = () => {
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const { totalPending: totalPendingOutflows } = usePendingOutflowsSummary();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   // Welcome modal state
   const [showWelcome, setShowWelcome] = useState(false);
@@ -94,29 +93,22 @@ const Index = () => {
     });
   }, [restaurants]);
 
-  // Check for welcome flag in URL on mount
+  // Check if we should show welcome modal on mount
   useEffect(() => {
     if (!user || restaurantsLoading) return;
 
-    const welcomeFlag = searchParams.get('welcome');
     const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
 
-    const shouldShowWelcome =
-      welcomeFlag === 'true' && !hasSeenWelcome && !hasExistingSubscription;
-
-    if (shouldShowWelcome) {
-      setShowWelcome(true);
-    } else if (!hasSeenWelcome && hasExistingSubscription) {
-      // User already pays for at least one restaurant; skip the trial splash permanently
-      localStorage.setItem(`hasSeenWelcome_${user.id}`, 'true');
+    if (!hasSeenWelcome) {
+      if (hasExistingSubscription) {
+        // User already pays for at least one restaurant; skip the trial splash permanently
+        localStorage.setItem(`hasSeenWelcome_${user.id}`, 'true');
+      } else {
+        // New user without subscription - show welcome modal
+        setShowWelcome(true);
+      }
     }
-
-    // Clean up URL param once we've processed it
-    if (welcomeFlag) {
-      searchParams.delete('welcome');
-      setSearchParams(searchParams, { replace: true });
-    }
-  }, [searchParams, setSearchParams, user, restaurantsLoading, hasExistingSubscription]);
+  }, [user, restaurantsLoading, hasExistingSubscription]);
 
   function handleWelcomeClose(): void {
     setShowWelcome(false);

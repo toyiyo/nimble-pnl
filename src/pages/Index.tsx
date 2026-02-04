@@ -96,17 +96,21 @@ const Index = () => {
 
   // Check for welcome flag in URL on mount
   useEffect(() => {
-    if (!user || restaurantsLoading) return;
+    if (!user) return;
 
     const welcomeFlag = searchParams.get('welcome');
     const hasSeenWelcome = localStorage.getItem(`hasSeenWelcome_${user.id}`);
 
+    // Show welcome modal for new users who haven't seen it
+    // We check hasExistingSubscription only if restaurants have loaded
+    const subscriptionCheckReady = !restaurantsLoading;
     const shouldShowWelcome =
-      welcomeFlag === 'true' && !hasSeenWelcome && !hasExistingSubscription;
+      welcomeFlag === 'true' && !hasSeenWelcome &&
+      (!subscriptionCheckReady || !hasExistingSubscription);
 
     if (shouldShowWelcome) {
       setShowWelcome(true);
-    } else if (!hasSeenWelcome && hasExistingSubscription) {
+    } else if (subscriptionCheckReady && !hasSeenWelcome && hasExistingSubscription) {
       // User already pays for at least one restaurant; skip the trial splash permanently
       localStorage.setItem(`hasSeenWelcome_${user.id}`, 'true');
     }

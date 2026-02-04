@@ -71,30 +71,28 @@ export default function PrepRecipesEnhanced() {
   const [quickCookPreview, setQuickCookPreview] = useState<QuickCookPreview | null>(null);
   const [quickCookDialogOpen, setQuickCookDialogOpen] = useState(false);
 
-  // Filter recipes
+  // Filter recipes by category and search term
   const filteredRecipes = useMemo(() => {
-    let result = prepRecipes;
-
-    // Category filter
-    if (selectedCategory !== 'all') {
-      result = result.filter((recipe) => {
-        const recipeCategory = recipe.category || 'prep';
-        return recipeCategory === selectedCategory;
-      });
-    }
-
-    // Search filter
     const term = searchTerm.toLowerCase();
-    if (term) {
-      result = result.filter(
-        (recipe) =>
+
+    return prepRecipes.filter((recipe) => {
+      // Category filter
+      if (selectedCategory !== 'all') {
+        const recipeCategory = recipe.category || 'prep';
+        if (recipeCategory !== selectedCategory) return false;
+      }
+
+      // Search filter
+      if (term) {
+        return (
           recipe.name.toLowerCase().includes(term) ||
           recipe.description?.toLowerCase().includes(term) ||
           recipe.output_product?.name?.toLowerCase().includes(term)
-      );
-    }
+        );
+      }
 
-    return result;
+      return true;
+    });
   }, [prepRecipes, searchTerm, selectedCategory]);
 
   // Validation map
@@ -558,7 +556,6 @@ export default function PrepRecipesEnhanced() {
         onSubmit={handleSaveRecipe}
         products={products}
         editingRecipe={editingRecipe}
-        onEditProduct={setEditingProduct}
       />
 
       {/* Product edit sheet */}

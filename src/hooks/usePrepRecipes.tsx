@@ -120,6 +120,10 @@ type IngredientPayload = Array<{
   sort_order?: number;
 }>;
 
+function getErrorMessage(err: unknown, fallback = 'An unexpected error occurred'): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 type RawPrepRecipeIngredient = Omit<PrepRecipeIngredient, 'unit'> & { unit: string };
 type RawPrepRecipe = Omit<PrepRecipe, 'default_yield_unit' | 'ingredients'> & {
   default_yield_unit: string;
@@ -212,7 +216,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       setPrepRecipes(normalized);
     } catch (err: unknown) {
       console.error('Error fetching prep recipes:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load prep recipes';
+      const errorMessage = getErrorMessage(err, 'Failed to load prep recipes');
       setError(errorMessage);
       toast({
         title: 'Could not load prep recipes',
@@ -313,16 +317,17 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     return null;
   }, [ensureRestaurantSupplier]);
 
-  const findExistingOutputProduct = useCallback(async (restaurantId: string, name: string) => {
-    const { data: existingProducts, error: existingError } = await supabase
+  const findExistingOutputProduct = useCallback(async (restaurantId: string, name: string): Promise<string | null> => {
+    const { data, error } = await supabase
       .from('products')
       .select('id')
       .eq('restaurant_id', restaurantId)
       .ilike('name', name)
-      .limit(1);
+      .limit(1)
+      .maybeSingle();
 
-    if (existingError) throw existingError;
-    return existingProducts && existingProducts.length > 0 ? existingProducts[0].id : null;
+    if (error) throw error;
+    return data?.id ?? null;
   }, []);
 
   const createOutputProduct = useCallback(async (input: CreatePrepRecipeInput, ingredientCostTotal: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
@@ -578,10 +583,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       return normalizedRecipe;
     } catch (err: unknown) {
       console.error('Error creating prep recipe:', err);
-      const description = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Could not create prep recipe',
-        description,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
       return null;
@@ -717,10 +721,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       return true;
     } catch (err: unknown) {
       console.error('Error updating prep recipe:', err);
-      const description = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Could not update prep recipe',
-        description,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
       return false;
@@ -772,10 +775,9 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       return true;
     } catch (err: unknown) {
       console.error('Error deleting prep recipe:', err);
-      const description = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Could not delete prep recipe',
-        description,
+        description: getErrorMessage(err),
         variant: 'destructive',
       });
       return false;

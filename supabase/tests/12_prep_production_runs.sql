@@ -66,11 +66,11 @@ SELECT is(
   'Soup base stock increased by 20 L'
 );
 
--- Assert transactions: two usage deductions, one transfer in
+-- Assert transactions: all transfers (ingredients out, output in) - not COGS until sold
 SELECT is(
-  (SELECT count(*)::bigint FROM inventory_transactions WHERE reference_id LIKE '00000000-0000-0000-0000-000000000031_%' AND transaction_type = 'usage' AND quantity < 0),
+  (SELECT count(*)::bigint FROM inventory_transactions WHERE reference_id LIKE '00000000-0000-0000-0000-000000000031_%' AND transaction_type = 'transfer' AND quantity < 0),
   2::bigint,
-  'Two usage transactions for ingredients'
+  'Two transfer-out transactions for ingredients (not COGS)'
 );
 
 SELECT is(

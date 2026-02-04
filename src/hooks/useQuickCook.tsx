@@ -142,8 +142,6 @@ export const useQuickCook = (restaurantId: string | null) => {
               .replace(/(^-+|-+$)/g, '') || 'PREP';
             const sku = `PREP-${slug}`.slice(0, 24) + `-${Date.now().toString(36).slice(-4).toUpperCase()}`;
 
-            const recipeWithExtras = recipe as PrepRecipe & { shelf_life_days?: number };
-
             const { data: newProduct, error: productError } = await supabase
               .from('products')
               .insert({
@@ -160,7 +158,7 @@ export const useQuickCook = (restaurantId: string | null) => {
                 reorder_point: 0,
                 cost_per_unit: 0,
                 description: 'Auto-created from quick cook',
-                shelf_life_days: recipeWithExtras.shelf_life_days || null,
+                shelf_life_days: recipe.shelf_life_days ?? null,
               })
               .select()
               .single();

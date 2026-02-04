@@ -106,14 +106,14 @@ SELECT is(
   'Quick Cook: Production run actual_total_cost is $15'
 );
 
--- Test 7: Inventory transaction for tomato deduction
+-- Test 7: Inventory transaction for tomato deduction (transfer, not usage - not COGS until sold)
 SELECT is(
   (SELECT COUNT(*) FROM inventory_transactions
    WHERE reference_id LIKE '20000000-0000-0000-0000-000000000030_%'
    AND product_id = '20000000-0000-0000-0000-000000000010'
-   AND transaction_type = 'usage'),
+   AND transaction_type = 'transfer'),
   1::bigint,
-  'Quick Cook: Tomato usage transaction exists'
+  'Quick Cook: Tomato transfer transaction exists (not COGS)'
 );
 
 -- Test 8: Inventory transaction for output addition
@@ -170,7 +170,7 @@ SELECT is(
   (SELECT quantity::numeric FROM inventory_transactions
    WHERE reference_id LIKE '20000000-0000-0000-0000-000000000031_%'
    AND product_id = '20000000-0000-0000-0000-000000000013'
-   AND transaction_type = 'usage'),
+   AND transaction_type = 'transfer'),
   -5::numeric,
   'Quick Cook: Transaction records full -5 deduction (for accounting)'
 );

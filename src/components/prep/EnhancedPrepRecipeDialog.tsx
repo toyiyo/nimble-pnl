@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PrepRecipe } from '@/hooks/usePrepRecipes';
-import { Product } from '@/hooks/useProducts';
-import { IngredientUnit } from '@/lib/recipeUnits';
-import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
 
-// Combined units from enhanced unit conversion system
-const MEASUREMENT_UNITS = [...WEIGHT_UNITS, ...VOLUME_UNITS, ...COUNT_UNITS] as const;
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,6 +35,13 @@ import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from '@/lib/enhancedUnitConversion';
+import { PrepRecipe } from '@/hooks/usePrepRecipes';
+import { Product } from '@/hooks/useProducts';
+import { IngredientUnit } from '@/lib/recipeUnits';
+
+// Combined units from enhanced unit conversion system
+const MEASUREMENT_UNITS = [...WEIGHT_UNITS, ...VOLUME_UNITS, ...COUNT_UNITS] as const;
 
 // Categories matching the PDF recipe book structure
 const PREP_CATEGORIES = [
@@ -105,7 +106,6 @@ interface EnhancedPrepRecipeDialogProps {
   readonly onSubmit: (values: EnhancedPrepRecipeFormValues) => Promise<void>;
   readonly products: Product[];
   readonly editingRecipe?: PrepRecipe | null;
-  readonly onEditProduct?: (product: Product) => void;
 }
 
 const defaultForm: EnhancedPrepRecipeFormValues = {
@@ -135,7 +135,6 @@ export function EnhancedPrepRecipeDialog({
   onSubmit,
   products,
   editingRecipe,
-  onEditProduct,
 }: EnhancedPrepRecipeDialogProps) {
   const [formValues, setFormValues] = useState<EnhancedPrepRecipeFormValues>(defaultForm);
   const [saving, setSaving] = useState(false);

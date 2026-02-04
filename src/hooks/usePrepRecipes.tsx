@@ -356,6 +356,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
         supplier_id: supplierInfo?.supplierId || null,
         supplier_name: supplierInfo?.supplierName || null,
         description: 'Auto-created prep output',
+        shelf_life_days: input.shelf_life_days ?? null,
       })
       .select()
       .single();
@@ -364,7 +365,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     return newProduct?.id || null;
   }, []);
 
-  const updateExistingOutputProduct = useCallback(async (outputProductId: string, restaurantId: string, ingredientCostTotal: number, defaultYield: number, supplierInfo?: { supplierId: string; supplierName: string } | null) => {
+  const updateExistingOutputProduct = useCallback(async (outputProductId: string, restaurantId: string, ingredientCostTotal: number, defaultYield: number, supplierInfo?: { supplierId: string; supplierName: string } | null, shelfLifeDays?: number | null) => {
     if (!restaurantId) {
       throw new Error('Restaurant is required to update output product');
     }
@@ -373,7 +374,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
 
     const { data: currentProduct, error: currentError } = await supabase
       .from('products')
-      .select('cost_per_unit, supplier_id, supplier_name')
+      .select('cost_per_unit, supplier_id, supplier_name, shelf_life_days')
       .eq('id', outputProductId)
       .eq('restaurant_id', restaurantId)
       .single();
@@ -384,6 +385,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       cost_per_unit: number;
       supplier_id: string;
       supplier_name: string;
+      shelf_life_days: number | null;
       updated_at: string;
     }> = {};
     if (costPerUnit > 0 && (!currentProduct?.cost_per_unit || currentProduct.cost_per_unit === 0)) {
@@ -392,6 +394,12 @@ export const usePrepRecipes = (restaurantId: string | null) => {
     if (supplierInfo) {
       if (!currentProduct?.supplier_id) updates.supplier_id = supplierInfo.supplierId;
       if (!currentProduct?.supplier_name) updates.supplier_name = supplierInfo.supplierName;
+    }
+    // Update shelf_life_days if provided and product doesn't have a non-zero value
+    if (shelfLifeDays !== undefined) {
+      if (!currentProduct?.shelf_life_days || currentProduct.shelf_life_days === 0) {
+        updates.shelf_life_days = shelfLifeDays;
+      }
     }
 
     if (Object.keys(updates).length > 0) {
@@ -414,7 +422,7 @@ export const usePrepRecipes = (restaurantId: string | null) => {
       return createOutputProduct(input, ingredientCostTotal, supplierInfo);
     }
 
-    await updateExistingOutputProduct(outputProductId, input.restaurant_id, ingredientCostTotal, input.default_yield, supplierInfo);
+    await updateExistingOutputProduct(outputProductId, input.restaurant_id, ingredientCostTotal, input.default_yield, supplierInfo, input.shelf_life_days);
     return outputProductId;
   }, [ensureSupplierIfNeeded, findExistingOutputProduct, createOutputProduct, updateExistingOutputProduct]);
 

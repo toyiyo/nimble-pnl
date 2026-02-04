@@ -296,7 +296,9 @@ export function EnhancedPrepRecipeDialog({
       });
       onOpenChange(false);
     } catch (err: unknown) {
-      console.error('Error saving prep recipe:', err);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Error saving prep recipe:', err);
+      }
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
       toast({
         title: 'Failed to save recipe',
@@ -1018,12 +1020,14 @@ export function EnhancedPrepRecipeDialog({
                                           step.critical_point && "bg-amber-500 hover:bg-amber-600"
                                         )}
                                         onClick={() => handleProcedureStepChange(index, 'critical_point', !step.critical_point)}
+                                        aria-label={step.critical_point ? 'Unmark step as critical point' : 'Mark step as critical point'}
+                                        aria-pressed={step.critical_point}
                                       >
                                         <AlertCircle className="h-4 w-4" />
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Mark as critical quality point</p>
+                                      <p>{step.critical_point ? 'Unmark as critical point' : 'Mark as critical quality point'}</p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>

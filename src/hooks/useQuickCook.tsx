@@ -187,11 +187,12 @@ export const useQuickCook = (restaurantId: string | null) => {
             if (productError) throw productError;
             outputProductId = newProduct.id;
 
-            // Link output product to recipe
+            // Link output product to recipe (with tenant filter)
             const { error: linkError } = await supabase
               .from('prep_recipes')
               .update({ output_product_id: outputProductId })
-              .eq('id', recipe.id);
+              .eq('id', recipe.id)
+              .eq('restaurant_id', restaurantId);
 
             if (linkError) {
               console.error('Failed to link output product to recipe', {
@@ -221,41 +222,77 @@ export const useQuickCook = (restaurantId: string | null) => {
 
         if (runError) throw runError;
 
+        // Helper to clean up orphaned production run on failure
+        const cleanupOrphanedRun = async (runId: string) => {
+          try {
+            // Delete ingredients first (foreign key constraint)
+            const { error: deleteIngredientsError } = await supabase
+              .from('production_run_ingredients')
+              .delete()
+              .eq('production_run_id', runId);
+            if (deleteIngredientsError) {
+              console.error('Failed to cleanup orphaned production_run_ingredients:', deleteIngredientsError);
+            }
+
+            // Then delete the run itself
+            const { error: deleteRunError } = await supabase
+              .from('production_runs')
+              .delete()
+              .eq('id', runId);
+            if (deleteRunError) {
+              console.error('Failed to cleanup orphaned production_run:', deleteRunError);
+            }
+          } catch (cleanupErr) {
+            console.error('Error during orphaned run cleanup:', cleanupErr);
+          }
+        };
+
         // Step 3: Create production run ingredients
         const ingredients = recipe.ingredients || [];
-        if (ingredients.length > 0) {
-          const ingredientRows = ingredients.map((ing) => ({
-            production_run_id: run.id,
+        try {
+          if (ingredients.length > 0) {
+            const ingredientRows = ingredients.map((ing) => ({
+              production_run_id: run.id,
+              product_id: ing.product_id,
+              expected_quantity: ing.quantity,
+              actual_quantity: ing.quantity,
+              unit: ing.unit,
+              variance_percent: 0,
+            }));
+
+            const { error: ingredientError } = await supabase
+              .from('production_run_ingredients')
+              .insert(ingredientRows);
+
+            if (ingredientError) {
+              await cleanupOrphanedRun(run.id);
+              throw ingredientError;
+            }
+          }
+
+          // Step 4: Complete the production run (this handles all inventory transactions)
+          const ingredientPayload = ingredients.map((ing) => ({
             product_id: ing.product_id,
             expected_quantity: ing.quantity,
             actual_quantity: ing.quantity,
             unit: ing.unit,
-            variance_percent: 0,
           }));
 
-          const { error: ingredientError } = await supabase
-            .from('production_run_ingredients')
-            .insert(ingredientRows);
+          const { error: completeError } = await supabase.rpc('complete_production_run', {
+            p_run_id: run.id,
+            p_actual_yield: recipe.default_yield,
+            p_actual_yield_unit: recipe.default_yield_unit,
+            p_ingredients: ingredientPayload,
+          });
 
-          if (ingredientError) throw ingredientError;
+          if (completeError) {
+            await cleanupOrphanedRun(run.id);
+            throw completeError;
+          }
+        } catch (stepError) {
+          // Re-throw after cleanup was attempted in the specific step
+          throw stepError;
         }
-
-        // Step 4: Complete the production run (this handles all inventory transactions)
-        const ingredientPayload = ingredients.map((ing) => ({
-          product_id: ing.product_id,
-          expected_quantity: ing.quantity,
-          actual_quantity: ing.quantity,
-          unit: ing.unit,
-        }));
-
-        const { error: completeError } = await supabase.rpc('complete_production_run', {
-          p_run_id: run.id,
-          p_actual_yield: recipe.default_yield,
-          p_actual_yield_unit: recipe.default_yield_unit,
-          p_ingredients: ingredientPayload,
-        });
-
-        if (completeError) throw completeError;
 
         toast({
           title: 'Quick cook completed',

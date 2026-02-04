@@ -3,9 +3,27 @@
 BEGIN;
 SELECT plan(6);
 
--- Auth context
+-- Disable RLS for test data setup
+SET LOCAL row_security = off;
+
+-- Auth context (needed for complete_production_run which calls auth.uid())
 SELECT set_config('request.jwt.claims', '{"sub":"20000000-0000-0000-0000-0000000000ab","role":"authenticated"}', true);
-INSERT INTO auth.users (id, email) VALUES ('20000000-0000-0000-0000-0000000000ab', 'idempotency-test@example.com') ON CONFLICT DO NOTHING;
+
+-- Create auth user directly (bypasses RLS with row_security off)
+INSERT INTO auth.users (id, email, instance_id, aud, role, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token)
+VALUES (
+  '20000000-0000-0000-0000-0000000000ab',
+  'idempotency-test@example.com',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated',
+  'authenticated',
+  '',
+  now(),
+  now(),
+  now(),
+  '',
+  ''
+) ON CONFLICT (id) DO NOTHING;
 
 -- Arrange restaurant and access
 INSERT INTO restaurants (id, name) VALUES ('20000000-0000-0000-0000-000000000001', 'Idempotency Test R') ON CONFLICT DO NOTHING;

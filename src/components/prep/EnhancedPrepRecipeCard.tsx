@@ -289,31 +289,55 @@ export function EnhancedPrepRecipeCardCompact({
       </div>
 
       {/* Content */}
-      <button
-        type="button"
-        className="flex-1 min-w-0 cursor-pointer text-left bg-transparent border-none p-0"
-        onClick={onEdit}
-      >
-        <div className="flex items-center gap-2">
-          <h4 className="font-semibold truncate group-hover:text-primary transition-colors">
-            {recipe.name}
-          </h4>
-          {conversionStatus?.hasIssues && (
-            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-          )}
+      {onEdit ? (
+        <button
+          type="button"
+          className="flex-1 min-w-0 cursor-pointer text-left bg-transparent border-none p-0"
+          onClick={onEdit}
+        >
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold truncate group-hover:text-primary transition-colors">
+              {recipe.name}
+            </h4>
+            {conversionStatus?.hasIssues && (
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
+            <span>{recipe.default_yield} {recipe.default_yield_unit}</span>
+            <span>•</span>
+            <span>{ingredientCount} ingredients</span>
+            {!!recipe.prep_time_minutes && (
+              <>
+                <span>•</span>
+                <span>{recipe.prep_time_minutes} min</span>
+              </>
+            )}
+          </div>
+        </button>
+      ) : (
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold truncate">
+              {recipe.name}
+            </h4>
+            {conversionStatus?.hasIssues && (
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            )}
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
+            <span>{recipe.default_yield} {recipe.default_yield_unit}</span>
+            <span>•</span>
+            <span>{ingredientCount} ingredients</span>
+            {!!recipe.prep_time_minutes && (
+              <>
+                <span>•</span>
+                <span>{recipe.prep_time_minutes} min</span>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
-          <span>{recipe.default_yield} {recipe.default_yield_unit}</span>
-          <span>•</span>
-          <span>{ingredientCount} ingredients</span>
-          {!!recipe.prep_time_minutes && (
-            <>
-              <span>•</span>
-              <span>{recipe.prep_time_minutes} min</span>
-            </>
-          )}
-        </div>
-      </button>
+      )}
 
       {/* Cost */}
       <div className="text-right shrink-0">

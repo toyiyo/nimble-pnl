@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,6 +114,9 @@ export default function POSSales() {
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizePosSales();
+
+  // Virtual list ref for performance - only renders visible items
+  const salesListRef = useRef<HTMLDivElement>(null);
 
   const {
     sales,
@@ -335,6 +339,18 @@ export default function POSSales() {
   }, [sales]);
 
   const dateFilteredSales = filteredSales;
+
+  // Virtual list setup - only renders visible items for performance
+  const salesVirtualizer = useVirtualizer({
+    count: dateFilteredSales.length,
+    getScrollElement: () => salesListRef.current,
+    estimateSize: (index) => {
+      const sale = dateFilteredSales[index];
+      // Split sales are taller due to child items display
+      return sale?.is_split && sale?.child_splits?.length ? 200 : 120;
+    },
+    overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
+  });
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -1091,53 +1107,86 @@ export default function POSSales() {
                         </Button>
                       )}
                     </div>
-                    {dateFilteredSales.map((sale, index) => {
-                      // If sale is split, show the SplitSaleView component
-                      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
-                        return (
-                          <div
-                            key={sale.id}
-                            className="animate-fade-in"
-                            style={{ animationDelay: `${index * 50}ms` }}
-                          >
-                            <SplitSaleView
-                              sale={sale}
-                              onEdit={handleEditSale}
-                              onSplit={(s) => setSaleToSplit(s)}
-                              formatCurrency={(amount) => `$${amount.toFixed(2)}`}
-                            />
-                          </div>
-                        );
-                      }
+                    {/* Virtualized list container - only renders visible items */}
+                    <div
+                      ref={salesListRef}
+                      className="h-[600px] overflow-auto"
+                      style={{ contain: 'strict' }}
+                    >
+                      <div
+                        style={{
+                          height: `${salesVirtualizer.getTotalSize()}px`,
+                          width: '100%',
+                          position: 'relative',
+                        }}
+                      >
+                        {salesVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const sale = dateFilteredSales[virtualRow.index];
+                          if (!sale) return null;
 
-                      // Regular sale card (non-split) - using extracted SaleCard component
-                      return (
-                        <SaleCard
-                          key={sale.id}
-                          sale={sale}
-                          recipe={saleRecipeMap.get(sale.id) ?? null}
-                          isSelected={bulkSelection.selectedIds.has(sale.id)}
-                          isSelectionMode={bulkSelection.isSelectionMode}
-                          isEditingCategory={editingCategoryForSale === sale.id}
-                          accounts={accounts}
-                          canEditManualSales={
-                            !!selectedRestaurant &&
-                            (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager")
+                          // If sale is split, show the SplitSaleView component
+                          if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+                            return (
+                              <div
+                                key={sale.id}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                              >
+                                <SplitSaleView
+                                  sale={sale}
+                                  onEdit={handleEditSale}
+                                  onSplit={(s) => setSaleToSplit(s)}
+                                  formatCurrency={(amount) => `$${amount.toFixed(2)}`}
+                                />
+                              </div>
+                            );
                           }
-                          onCardClick={handleCardClick}
-                          onCheckboxChange={handleCheckboxChange}
-                          onEdit={handleEditSale}
-                          onDelete={handleDeleteSale}
-                          onSimulateDeduction={handleSimulateDeduction}
-                          onMapPOSItem={handleMapPOSItem}
-                          onSetEditingCategory={handleSetEditingCategory}
-                          onSplit={handleSplitSale}
-                          onSuggestRule={handleSuggestRuleFromSale}
-                          onCategorize={handleCategorizePosSale}
-                          onNavigateToRecipe={handleNavigateToRecipe}
-                        />
-                      );
-                    })}
+
+                          // Regular sale card (non-split) - using extracted SaleCard component
+                          return (
+                            <div
+                              key={sale.id}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                            >
+                              <SaleCard
+                                sale={sale}
+                                recipe={saleRecipeMap.get(sale.id) ?? null}
+                                isSelected={bulkSelection.selectedIds.has(sale.id)}
+                                isSelectionMode={bulkSelection.isSelectionMode}
+                                isEditingCategory={editingCategoryForSale === sale.id}
+                                accounts={accounts}
+                                canEditManualSales={
+                                  !!selectedRestaurant &&
+                                  (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager")
+                                }
+                                onCardClick={handleCardClick}
+                                onCheckboxChange={handleCheckboxChange}
+                                onEdit={handleEditSale}
+                                onDelete={handleDeleteSale}
+                                onSimulateDeduction={handleSimulateDeduction}
+                                onMapPOSItem={handleMapPOSItem}
+                                onSetEditingCategory={handleSetEditingCategory}
+                                onSplit={handleSplitSale}
+                                onSuggestRule={handleSuggestRuleFromSale}
+                                onCategorize={handleCategorizePosSale}
+                                onNavigateToRecipe={handleNavigateToRecipe}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                     {hasMore && (
                       <div className="flex justify-center pt-2">
                         <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>

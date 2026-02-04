@@ -3338,47 +3338,106 @@ export type Database = {
           },
         ]
       }
+      prep_recipe_procedure_steps: {
+        Row: {
+          created_at: string
+          critical_point: boolean | null
+          id: string
+          instruction: string
+          prep_recipe_id: string
+          step_number: number
+          timer_minutes: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          critical_point?: boolean | null
+          id?: string
+          instruction: string
+          prep_recipe_id: string
+          step_number: number
+          timer_minutes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          critical_point?: boolean | null
+          id?: string
+          instruction?: string
+          prep_recipe_id?: string
+          step_number?: number
+          timer_minutes?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prep_recipe_procedure_steps_prep_recipe_id_fkey"
+            columns: ["prep_recipe_id"]
+            isOneToOne: false
+            referencedRelation: "prep_recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prep_recipes: {
         Row: {
+          category: string | null
           created_at: string
           created_by: string | null
           default_yield: number
           default_yield_unit: Database["public"]["Enums"]["measurement_unit"]
           description: string | null
+          equipment_notes: string | null
           id: string
           name: string
           output_product_id: string | null
+          oven_temp: number | null
+          oven_temp_unit: string | null
           prep_time_minutes: number | null
           recipe_id: string | null
           restaurant_id: string
+          shelf_life_days: number | null
+          storage_instructions: string | null
           updated_at: string
         }
         Insert: {
+          category?: string | null
           created_at?: string
           created_by?: string | null
           default_yield?: number
           default_yield_unit?: Database["public"]["Enums"]["measurement_unit"]
           description?: string | null
+          equipment_notes?: string | null
           id?: string
           name: string
           output_product_id?: string | null
+          oven_temp?: number | null
+          oven_temp_unit?: string | null
           prep_time_minutes?: number | null
           recipe_id?: string | null
           restaurant_id: string
+          shelf_life_days?: number | null
+          storage_instructions?: string | null
           updated_at?: string
         }
         Update: {
+          category?: string | null
           created_at?: string
           created_by?: string | null
           default_yield?: number
           default_yield_unit?: Database["public"]["Enums"]["measurement_unit"]
           description?: string | null
+          equipment_notes?: string | null
           id?: string
           name?: string
           output_product_id?: string | null
+          oven_temp?: number | null
+          oven_temp_unit?: string | null
           prep_time_minutes?: number | null
           recipe_id?: string | null
           restaurant_id?: string
+          shelf_life_days?: number | null
+          storage_instructions?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3691,6 +3750,7 @@ export type Database = {
           restaurant_id: string
           search_vector: unknown
           searchable_text: string | null
+          shelf_life_days: number | null
           size_unit: string | null
           size_value: number | null
           sku: string
@@ -3727,6 +3787,7 @@ export type Database = {
           restaurant_id: string
           search_vector?: unknown
           searchable_text?: string | null
+          shelf_life_days?: number | null
           size_unit?: string | null
           size_value?: number | null
           sku: string
@@ -3763,6 +3824,7 @@ export type Database = {
           restaurant_id?: string
           search_vector?: unknown
           searchable_text?: string | null
+          shelf_life_days?: number | null
           size_unit?: string | null
           size_value?: number | null
           sku?: string
@@ -8112,10 +8174,12 @@ export type Database = {
           p_external_order_id?: string
           p_pos_item_name: string
           p_quantity_sold: number
+          p_reason_prefix?: string
           p_restaurant_id: string
           p_restaurant_timezone?: string
           p_sale_date: string
           p_sale_time?: string
+          p_transaction_type?: string
         }
         Returns: Json
       }

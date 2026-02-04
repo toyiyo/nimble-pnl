@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { POSAdapter, POSIntegrationStatus, POSSystemType, UnifiedSaleItem } from '@/types/pos';
@@ -153,11 +153,11 @@ export const useShift4SalesAdapter = (restaurantId: string | null): POSAdapter =
     };
   }, [isConnected, lastSyncAt, connectionId]);
 
-  return {
-    system: 'shift4',
+  return useMemo(() => ({
+    system: 'shift4' as const,
     isConnected,
     fetchSales,
     syncToUnified,
     getIntegrationStatus,
-  };
+  }), [isConnected, fetchSales, syncToUnified, getIntegrationStatus]);
 };

@@ -44,7 +44,7 @@ export const useSquareIntegration = (restaurantId: string | null) => {
     if (restaurantId) {
       checkConnectionStatus();
     }
-  }, [restaurantId, checkConnectionStatus]);
+  }, [restaurantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const connectSquare = async () => {
     if (!restaurantId) {

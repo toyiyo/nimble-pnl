@@ -54,7 +54,7 @@ export const useToastIntegration = (restaurantId: string | null) => {
     if (restaurantId) {
       checkConnectionStatus();
     }
-  }, [restaurantId, checkConnectionStatus]);
+  }, [restaurantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const connectToast = async () => {
     if (!restaurantId) {

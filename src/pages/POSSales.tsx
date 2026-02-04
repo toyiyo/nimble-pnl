@@ -182,32 +182,10 @@ export default function POSSales() {
     }
   }, [selectedRestaurant?.restaurant_id, syncAllSystems]);
 
-  // Bulk selection handlers - stable references for SaleCard memoization
-  const handleSelectionToggle = useCallback((id: string, event: React.MouseEvent) => {
-    const modifiers = isMultiSelectKey(event);
-
-    if (modifiers.isRange && lastSelectedId) {
-      bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
-    } else if (modifiers.isToggle) {
-      bulkSelection.toggleItem(id);
-    } else {
-      bulkSelection.toggleItem(id);
-    }
-
-    // Always update lastSelectedId to support subsequent range selections
-    setLastSelectedId(id);
-  }, [lastSelectedId, bulkSelection, dateFilteredSales]);
-
   const handleCheckboxChange = useCallback((id: string) => {
     bulkSelection.toggleItem(id);
     setLastSelectedId(id);
   }, [bulkSelection]);
-
-  const handleCardClick = useCallback((id: string, event: React.MouseEvent) => {
-    if (bulkSelection.isSelectionMode) {
-      handleSelectionToggle(id, event);
-    }
-  }, [bulkSelection.isSelectionMode, handleSelectionToggle]);
 
   // Stable handlers for SaleCard - avoids re-renders
   const handleNavigateToRecipe = useCallback((recipeId: string) => {
@@ -339,6 +317,28 @@ export default function POSSales() {
   }, [sales]);
 
   const dateFilteredSales = filteredSales;
+
+  // Bulk selection handlers - must be after dateFilteredSales is defined
+  const handleSelectionToggle = useCallback((id: string, event: React.MouseEvent) => {
+    const modifiers = isMultiSelectKey(event);
+
+    if (modifiers.isRange && lastSelectedId) {
+      bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
+    } else if (modifiers.isToggle) {
+      bulkSelection.toggleItem(id);
+    } else {
+      bulkSelection.toggleItem(id);
+    }
+
+    // Always update lastSelectedId to support subsequent range selections
+    setLastSelectedId(id);
+  }, [lastSelectedId, bulkSelection, dateFilteredSales]);
+
+  const handleCardClick = useCallback((id: string, event: React.MouseEvent) => {
+    if (bulkSelection.isSelectionMode) {
+      handleSelectionToggle(id, event);
+    }
+  }, [bulkSelection.isSelectionMode, handleSelectionToggle]);
 
   // Virtual list setup - only renders visible items for performance
   const salesVirtualizer = useVirtualizer({

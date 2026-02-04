@@ -845,6 +845,7 @@ export default function POSSales() {
         contextDescription={contextDescription}
         highlightToken={highlightToken}
         filtersActive={filtersActive}
+        isLoading={totalsLoading}
       />
 
       {/* AI Categorization Section */}

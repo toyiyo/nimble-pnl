@@ -30,6 +30,7 @@ import { ReconciliationSummary } from '@/components/ReconciliationSummary';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { InventorySettings } from '@/components/InventorySettings';
 import { InventoryValueBadge } from '@/components/InventoryValueBadge';
+import { VirtualizedProductGrid } from '@/components/inventory/VirtualizedProductGrid';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -1524,165 +1525,26 @@ export const Inventory: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                   {filteredProducts.map((product) => (
-                     <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                       <CardHeader>
-                         <div className="flex items-start gap-3">
-                           {product.image_url && (
-                             <div className="flex-shrink-0">
-                               <img 
-                                 src={product.image_url} 
-                                 alt={product.name}
-                                 className="w-16 h-16 object-cover rounded-lg border"
-                               />
-                             </div>
-                           )}
-                             <div className="flex-1 min-w-0">
-                               <div className="flex items-start justify-between gap-2">
-                                 <div className="min-w-0 flex-1">
-                                   <TooltipProvider>
-                                     <Tooltip>
-                                       <TooltipTrigger asChild>
-                                         <CardTitle className="text-lg line-clamp-2 cursor-help leading-snug">
-                                           {product.name}
-                                         </CardTitle>
-                                       </TooltipTrigger>
-                                       <TooltipContent className="max-w-md">
-                                         <p>{product.name}</p>
-                                       </TooltipContent>
-                                     </Tooltip>
-                                   </TooltipProvider>
-                                   <CardDescription className="truncate">SKU: {product.sku}</CardDescription>
-                                 </div>
-                                 <div className="flex-shrink-0 flex flex-wrap items-center gap-1 max-w-[120px] sm:max-w-none">
-                                   {(product.current_stock || 0) <= (product.reorder_point || 0) && (
-                                     <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-                                   )}
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       setSelectedProduct(product);
-                                       setShowUpdateDialog(true);
-                                     }}
-                                     className="h-7 w-7 p-0 flex-shrink-0"
-                                     title="Edit"
-                                   >
-                                     <Edit className="h-3 w-3" />
-                                   </Button>
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       setWasteProduct(product);
-                                       setShowWasteDialog(true);
-                                     }}
-                                     className="h-7 w-7 p-0 flex-shrink-0"
-                                     title="Waste"
-                                   >
-                                     <Trash className="h-3 w-3" />
-                                   </Button>
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       setTransferProduct(product);
-                                       setShowTransferDialog(true);
-                                     }}
-                                     className="h-7 w-7 p-0 flex-shrink-0"
-                                     title="Transfer"
-                                   >
-                                     <ArrowRightLeft className="h-3 w-3" />
-                                   </Button>
-                                   {canDeleteProducts && (
-                                     <Button
-                                       variant="ghost"
-                                       size="sm"
-                                       onClick={(e) => {
-                                         e.stopPropagation();
-                                         handleDeleteProduct(product);
-                                       }}
-                                       className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive"
-                                       title="Delete"
-                                     >
-                                       <Trash2 className="h-3 w-3" />
-                                     </Button>
-                                   )}
-                                 </div>
-                              </div>
-                            </div>
-                         </div>
-                       </CardHeader>
-                      <CardContent
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setShowUpdateDialog(true);
-                        }}
-                      >
-                          <div className="space-y-2">
-                            {product.brand && (
-                              <p className="text-sm text-muted-foreground">Brand: {product.brand}</p>
-                            )}
-                            <div className="flex flex-wrap gap-2">
-                              {product.category && (
-                                <Badge variant="secondary">{product.category}</Badge>
-                              )}
-                            </div>
-                            <div className="flex justify-between items-center">
-                               <span className="text-sm">Stock:</span>
-                               <div className={`font-medium text-right ${
-                                 (product.current_stock || 0) <= (product.reorder_point || 0) 
-                                   ? 'text-destructive' 
-                                   : 'text-foreground'
-                               }`}>
-                                 <span>{Number(product.current_stock || 0).toFixed(2)} {product.uom_purchase || 'units'}</span>
-                               </div>
-                             </div>
-                           {product.cost_per_unit && (
-                             <div className="flex justify-between items-center">
-                               <span className="text-sm">Unit Cost:</span>
-                               <span className="font-medium">${Number(product.cost_per_unit).toFixed(2)}</span>
-                             </div>
-                           )}
-                           {inventoryMetrics.productMetrics[product.id] && (
-                             <>
-                               <div className="flex justify-between items-center">
-                                 <span className="text-sm">Inventory Cost:</span>
-                                 <span className="font-medium text-orange-600">
-                                   ${inventoryMetrics.productMetrics[product.id].inventoryCost.toFixed(2)}
-                                 </span>
-                               </div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-sm">Inventory Value:</span>
-                                  <span className="font-medium text-green-600">
-                                    ${inventoryMetrics.productMetrics[product.id].inventoryValue.toFixed(2)}
-                                  </span>
-                                </div>
-                                <div className="mt-2">
-                                  <InventoryValueBadge
-                                    calculationMethod={inventoryMetrics.productMetrics[product.id].calculationMethod}
-                                    markupUsed={inventoryMetrics.productMetrics[product.id].markupUsed}
-                                    category={product.category}
-                                  />
-                                 </div>
-                              </>
-                            )}
-                            
-                            {/* Recipe Usage with Conversion Warnings */}
-                            <ProductRecipeUsage 
-                              productId={product.id}
-                              restaurantId={selectedRestaurant.restaurant_id}
-                              products={products}
-                            />
-                          </div>
-                       </CardContent>
-                     </Card>
-                   ))}
-                </div>
+                <VirtualizedProductGrid
+                  products={filteredProducts}
+                  inventoryMetrics={inventoryMetrics}
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  allProducts={products}
+                  canDeleteProducts={canDeleteProducts}
+                  onEditProduct={(product) => {
+                    setSelectedProduct(product);
+                    setShowUpdateDialog(true);
+                  }}
+                  onWasteProduct={(product) => {
+                    setWasteProduct(product);
+                    setShowWasteDialog(true);
+                  }}
+                  onTransferProduct={(product) => {
+                    setTransferProduct(product);
+                    setShowTransferDialog(true);
+                  }}
+                  onDeleteProduct={handleDeleteProduct}
+                />
               )}
             </div>
           </TabsContent>

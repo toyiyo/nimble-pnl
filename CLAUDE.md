@@ -212,6 +212,60 @@ Never store bank credentials. Use Stripe for credential storage. Always verify w
 ### AI (OpenRouter)
 Multi-model fallback: free models first (Llama, Gemma), then paid (Gemini, Claude, GPT). AI suggestions stored separately—user must approve before applying.
 
+## Performance Optimization
+
+### List Virtualization
+For lists with 100+ items, use `@tanstack/react-virtual`:
+
+```typescript
+const virtualizer = useVirtualizer({
+  count: items.length,
+  getScrollElement: () => parentRef.current,
+  estimateSize: () => 56,
+  overscan: 10,
+});
+
+// CRITICAL: Use stable ID as key, NOT index
+{virtualizer.getVirtualItems().map((virtualRow) => (
+  <div
+    key={items[virtualRow.index].id}     // ✅ Stable ID
+    data-index={virtualRow.index}         // ✅ Required for measureElement
+    ref={virtualizer.measureElement}      // ✅ Dynamic height
+  >
+    <MemoizedRow item={items[virtualRow.index]} />
+  </div>
+))}
+```
+
+### Memoized Components
+Row components in virtualized lists should:
+- Use `React.memo` with custom comparison
+- Have NO hooks inside—all data passed as props
+- Receive stable callbacks (via `useCallback`)
+- Receive pre-computed display values (via `useMemo`)
+
+```typescript
+export const MemoizedRow = memo(function MemoizedRow(props) {
+  // NO hooks - just render
+}, (prev, next) => {
+  return prev.item.id === next.item.id &&
+         prev.displayValues === next.displayValues;
+});
+```
+
+### Single Dialog Pattern
+Render ONE dialog at list level, not per row:
+```typescript
+const [activeItem, setActiveItem] = useState(null);
+// Single dialog instance
+{activeItem && <Dialog item={activeItem} />}
+```
+
+### Query Optimization
+- Select explicit fields, not `*`
+- Defer heavy data (raw_data, nested joins) until needed
+- Increase page size when virtualized (500 vs 200)
+
 ## Common Hooks
 - `useAuth()` → `{ user, loading, signIn, signOut }`
 - `useRestaurantContext()` → `{ selectedRestaurant }`

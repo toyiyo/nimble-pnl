@@ -1166,6 +1166,195 @@ npm run test -- --run && npm run test:e2e && cd supabase/tests && ./run_tests.sh
 
 ---
 
+## ⚡ Performance Optimization Patterns
+
+### List Virtualization (Large Datasets)
+
+When rendering lists with 100+ items, use virtualization to maintain 60fps scrolling:
+
+```typescript
+import { useRef, useMemo, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+function VirtualizedList({ items }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 56,  // Initial estimate
+    overscan: 10,            // Render 10 extra items above/below viewport
+  });
+
+  return (
+    <div ref={parentRef} className="h-[600px] overflow-auto">
+      <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const item = items[virtualRow.index];
+          return (
+            <div
+              key={item.id}                    // ✅ Use stable ID, NOT virtualRow.index
+              data-index={virtualRow.index}    // ✅ Required for measureElement
+              ref={virtualizer.measureElement} // ✅ Dynamic height measurement
+              style={{
+                position: 'absolute',
+                top: 0,
+                transform: `translateY(${virtualRow.start}px)`,
+                width: '100%',
+              }}
+            >
+              <MemoizedRow item={item} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+```
+
+**Key rules:**
+- ✅ Use `key={item.id}` (stable identifier), NOT `key={virtualRow.index}`
+- ✅ Use `data-index={virtualRow.index}` for virtualization tracking
+- ✅ Use `measureElement` for variable row heights
+- ✅ Use `div` layout, NOT `<table>` (tables don't virtualize well)
+- ❌ NEVER use fixed row heights if content varies (causes white spaces/overlap)
+
+### Memoization for Row Components
+
+```typescript
+import { memo } from 'react';
+
+interface RowProps {
+  item: Item;
+  displayValues: DisplayValues;  // Pre-computed values
+  onAction: (id: string) => void;  // MUST be stable (useCallback)
+}
+
+export const MemoizedRow = memo(function MemoizedRow({
+  item,
+  displayValues,
+  onAction,
+}: RowProps) {
+  // NO hooks inside - all data passed as props
+  return <div>...</div>;
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render when these change
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.status === nextProps.item.status &&
+    prevProps.displayValues === nextProps.displayValues  // By reference
+  );
+});
+```
+
+**Key rules:**
+- ✅ NO hooks inside memoized components
+- ✅ Pre-compute display values in parent (useMemo)
+- ✅ Pass stable callbacks (useCallback)
+- ✅ Custom comparison function for fine-grained control
+
+### Stabilizing Callbacks and Derived Data
+
+```typescript
+// In parent component
+const categorize = useCategorizeTransaction();
+
+// ✅ Pre-compute display values (MUST use useMemo)
+const displayValuesMap = useMemo(() => {
+  const map = new Map<string, DisplayValues>();
+  for (const item of items) {
+    map.set(item.id, {
+      formattedAmount: formatCurrency(item.amount),
+      formattedDate: formatDate(item.date),
+    });
+  }
+  return map;
+}, [items]);  // Only recompute when items change
+
+// ✅ Stable callbacks (MUST use useCallback)
+const handleAction = useCallback((id: string) => {
+  categorize.mutate({ id });
+}, [categorize]);
+
+// Pass to memoized row
+<MemoizedRow
+  item={item}
+  displayValues={displayValuesMap.get(item.id)!}
+  onAction={handleAction}
+/>
+```
+
+### Single Dialog Instance Pattern
+
+```typescript
+// ❌ WRONG - Dialog per row (1000+ dialog instances)
+{items.map(item => (
+  <Row key={item.id} item={item}>
+    <Dialog open={openId === item.id}>...</Dialog>
+  </Row>
+))}
+
+// ✅ CORRECT - Single dialog at list level
+const [activeItem, setActiveItem] = useState<Item | null>(null);
+const [dialogType, setDialogType] = useState<'edit' | 'delete' | null>(null);
+
+// Rows just trigger dialog open
+<MemoizedRow onEdit={() => { setActiveItem(item); setDialogType('edit'); }} />
+
+// Single dialog instance
+{activeItem && dialogType === 'edit' && (
+  <EditDialog item={activeItem} onClose={() => setDialogType(null)} />
+)}
+```
+
+### Query Optimization
+
+```typescript
+// ❌ WRONG - Select everything
+.from('transactions').select('*')
+
+// ✅ CORRECT - Select only needed fields
+.from('transactions').select(`
+  id, date, amount, description, status,
+  category:categories(id, name)
+`)
+
+// ❌ WRONG - Fetch related data always
+.select('*, raw_data, bank_account_balances(*)')
+
+// ✅ CORRECT - Fetch heavy data only when needed (detail view)
+const { data: fullDetails } = useQuery({
+  queryKey: ['transaction-full', id],
+  queryFn: () => fetchFullDetails(id),
+  enabled: !!id && isDetailOpen,  // Only fetch when dialog opens
+});
+```
+
+### Mobile Virtualization Decision
+
+Mobile views with 3-5 visible items generally don't need virtualization:
+- Touch scrolling can feel "jumpy" with virtualization
+- Variable card heights complicate virtualization
+- Pagination/infinite scroll already limits DOM nodes
+
+**Use virtualization on mobile only if:**
+- 500+ items visible in single scroll
+- Scroll performance drops below 30fps
+
+### Performance Checklist
+
+- [ ] Lists with 100+ items use virtualization
+- [ ] Virtualized keys use stable IDs, not indices
+- [ ] Row components are memoized with custom comparison
+- [ ] Callbacks passed to rows use useCallback
+- [ ] Display values pre-computed with useMemo
+- [ ] Single dialog instance pattern (not per-row)
+- [ ] Queries select only needed fields
+- [ ] Heavy data deferred until needed (detail views)
+
+---
+
 ## 📚 Integration Documentation
 
 For detailed integration patterns and best practices, see:

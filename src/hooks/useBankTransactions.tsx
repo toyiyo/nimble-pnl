@@ -9,7 +9,8 @@ import type { BankTransactionSort, TransactionFilters } from "@/types/transactio
 
 export type TransactionStatus = 'for_review' | 'categorized' | 'excluded' | 'reconciled';
 
-export const BANK_TRANSACTIONS_PAGE_SIZE = 200;
+// Increased from 200 - virtualization makes larger pages safe and reduces pagination overhead
+export const BANK_TRANSACTIONS_PAGE_SIZE = 500;
 
 export interface UseBankTransactionsOptions {
   searchTerm?: string;
@@ -24,7 +25,6 @@ export interface BankTransaction {
   id: string;
   restaurant_id: string;
   connected_bank_id: string;
-  stripe_transaction_id: string;
   transaction_date: string;
   posted_date: string | null;
   amount: number;
@@ -42,27 +42,26 @@ export interface BankTransaction {
   is_transfer: boolean;
   transfer_pair_id: string | null;
   excluded_reason: string | null;
-  match_confidence: number | null;
   ai_confidence: 'high' | 'medium' | 'low' | null;
   ai_reasoning: string | null;
   notes: string | null;
-  receipt_id: string | null;
-  expense_invoice_upload_id: string | null;
   created_at: string;
   updated_at: string;
+  // Simplified join - no longer includes bank_account_balances
   connected_bank?: {
     id: string;
     institution_name: string;
-    bank_account_balances: Array<{
-      id: string;
-      account_mask: string | null;
-      account_name: string;
-      stripe_financial_account_id: string | null;
-    }>;
   };
   chart_account?: {
+    id: string;
     account_name: string;
   } | null;
+  // Fields below are NOT fetched in list query (fetch on-demand if needed)
+  // Kept in interface for compatibility with detail views
+  stripe_transaction_id?: string;
+  match_confidence?: number | null;
+  receipt_id?: string | null;
+  expense_invoice_upload_id?: string | null;
   supplier?: {
     id: string;
     name: string;
@@ -72,6 +71,8 @@ export interface BankTransaction {
     raw_file_url: string | null;
     file_name: string | null;
   } | null;
+  // raw_data is excluded from queries for performance
+  raw_data?: Record<string, unknown>;
 }
 
 interface BankTransactionsPage {
@@ -88,28 +89,48 @@ const SORT_COLUMN_MAP: Record<BankTransactionSort, string> = {
   category: 'category_id',
 };
 
+// Optimized query: explicit columns instead of *, removed heavy joins
+// - Excludes raw_data (large JSON blob only needed for debugging)
+// - Excludes bank_account_balances nested join (fetch on-demand if needed)
+// - Excludes supplier join (~5% of transactions have suppliers, fetch on-demand)
+// - Excludes expense_invoice_upload join (rarely used, fetch on-demand)
+// Expected payload reduction: ~60-70%
 const buildBaseQuery = (restaurantId: string) =>
   supabase
     .from('bank_transactions')
     .select(`
-      *,
+      id,
+      restaurant_id,
+      connected_bank_id,
+      transaction_date,
+      posted_date,
+      amount,
+      description,
+      merchant_name,
+      normalized_payee,
+      category_id,
+      suggested_category_id,
+      suggested_payee,
+      supplier_id,
+      status,
+      is_categorized,
+      is_reconciled,
+      is_split,
+      is_transfer,
+      transfer_pair_id,
+      excluded_reason,
+      ai_confidence,
+      ai_reasoning,
+      notes,
+      created_at,
+      updated_at,
       connected_bank:connected_banks(
         id,
-        institution_name,
-        bank_account_balances(id, account_mask, account_name, stripe_financial_account_id, is_active)
+        institution_name
       ),
       chart_account:chart_of_accounts!category_id(
         id,
         account_name
-      ),
-      supplier:suppliers(
-        id,
-        name
-      ),
-      expense_invoice_upload:expense_invoice_uploads(
-        id,
-        raw_file_url,
-        file_name
       )
     `, { count: 'exact' })
     .eq('restaurant_id', restaurantId);

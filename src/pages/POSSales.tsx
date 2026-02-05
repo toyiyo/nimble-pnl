@@ -350,6 +350,9 @@ export default function POSSales() {
     }
   }, [bulkSelection.isSelectionMode, handleSelectionToggle]);
 
+  // Track previous data state for virtualizer reset
+  const prevSalesStateRef = useRef({ length: 0, filters: '' });
+
   // Virtual list setup - only renders visible items for performance
   const salesVirtualizer = useVirtualizer({
     count: dateFilteredSales.length,
@@ -360,9 +363,15 @@ export default function POSSales() {
   });
 
   // Invalidate virtualizer measurements when sales data changes
-  useEffect(() => {
-    salesVirtualizer.measure();
-  }, [dateFilteredSales.length, filtersSignature]);
+  // Using a ref comparison to avoid circular dependency issues
+  if (
+    prevSalesStateRef.current.length !== dateFilteredSales.length ||
+    prevSalesStateRef.current.filters !== filtersSignature
+  ) {
+    prevSalesStateRef.current = { length: dateFilteredSales.length, filters: filtersSignature };
+    // Schedule measurement invalidation after render
+    queueMicrotask(() => salesVirtualizer.measure());
+  }
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {

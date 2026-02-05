@@ -295,6 +295,111 @@ import { Product } from '@/hooks/useProducts';
 import { cn } from '@/lib/utils';
 ```
 
+## UI Styling (Apple/Notion Aesthetic)
+
+Use consistent Apple/Notion-inspired styling across all pages and dialogs. This creates a clean, professional appearance.
+
+### Typography Scale
+```typescript
+// Titles and headings
+className="text-[17px] font-semibold text-foreground"        // Dialog titles
+className="text-[15px] text-muted-foreground"                // Subtitles
+className="text-[14px] font-medium text-foreground"          // Body text, list items
+className="text-[13px] text-muted-foreground"                // Secondary text
+className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider" // Form labels
+className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted"    // Badges, counts
+```
+
+### Dialog Structure
+```typescript
+<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+  {/* Header with icon box */}
+  <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+    <div className="flex items-center gap-3">
+      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+        <Icon className="h-5 w-5 text-foreground" />
+      </div>
+      <div>
+        <DialogTitle className="text-[17px] font-semibold text-foreground">Title</DialogTitle>
+        <p className="text-[13px] text-muted-foreground mt-0.5">Description</p>
+      </div>
+    </div>
+  </DialogHeader>
+  <div className="px-6 py-5 space-y-5">{/* Content */}</div>
+</DialogContent>
+```
+
+### Form Elements
+```typescript
+// Labels (uppercase tracking)
+<Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+  Field Name
+</Label>
+
+// Inputs
+<Input className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border" />
+
+// Selects (same as inputs)
+<Select>
+  <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+```
+
+### Buttons
+```typescript
+// Primary action
+className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+
+// Secondary/ghost
+className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+
+// Destructive
+className="text-destructive hover:text-destructive/80"
+```
+
+### Apple-Style Underline Tabs
+```typescript
+<button
+  onClick={() => setActiveTab('tab1')}
+  className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
+    activeTab === 'tab1' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+  }`}
+>
+  Tab Label
+  {activeTab === 'tab1' && (
+    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+  )}
+</button>
+```
+
+### Cards and Containers
+```typescript
+// List item card
+className="group flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+
+// Form section with header
+<div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+  <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+    <h3 className="text-[13px] font-semibold text-foreground">Section Title</h3>
+  </div>
+  <div className="p-4 space-y-4">{/* Form fields */}</div>
+</div>
+
+// AI suggestion panel
+className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20"
+```
+
+### Switch (Toggle)
+```typescript
+<Switch className="data-[state=checked]:bg-foreground" />
+```
+
+### Common Patterns
+- Use `border-border/40` for subtle borders
+- Use `bg-muted/30` for subtle backgrounds
+- Use `rounded-lg` for inputs/buttons, `rounded-xl` for cards/containers
+- Use `transition-colors` for hover states
+- Use `opacity-0 group-hover:opacity-100` for hover-reveal actions
+
 ## Additional Documentation
 - `docs/ARCHITECTURE.md` - Full architecture guide
 - `docs/INTEGRATIONS.md` - Integration patterns

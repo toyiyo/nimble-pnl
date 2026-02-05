@@ -9,7 +9,7 @@ test.describe('POS Sales Bulk Edit', () => {
 
     // Navigate to POS Sales page
     await page.goto('/pos-sales');
-    await expect(page.getByRole('heading', { name: 'POS Sales', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sales', exact: true })).toBeVisible();
 
     // Create test sales using Supabase helpers
     await exposeSupabaseHelpers(page);
@@ -67,7 +67,7 @@ test.describe('POS Sales Bulk Edit', () => {
 
     // Reload page to see sales
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'POS Sales', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sales', exact: true })).toBeVisible();
 
     // Wait for sales to load - look for the first sale item
     await expect(page.getByText('Test Burger')).toBeVisible({ timeout: 10000 });

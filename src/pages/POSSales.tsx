@@ -356,7 +356,13 @@ export default function POSSales() {
     getScrollElement: () => salesListRef.current,
     estimateSize: () => 100, // Approximate height, virtualizer handles variable heights
     overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
+    getItemKey: (index) => dateFilteredSales[index]?.id ?? index, // Stable keys for items
   });
+
+  // Invalidate virtualizer measurements when sales data changes
+  useEffect(() => {
+    salesVirtualizer.measure();
+  }, [dateFilteredSales.length, filtersSignature]);
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -1190,7 +1196,6 @@ export default function POSSales() {
                 <div className="space-y-0">
                   {/* Virtualized list container - Apple-style clean scrolling */}
                   <div
-                    key={`virtualizer-${filtersSignature}`}
                     ref={salesListRef}
                     className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
                   >

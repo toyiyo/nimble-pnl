@@ -566,7 +566,7 @@ export const EnhancedCategoryRulesDialog = ({
                         aria-label={`Edit rule: ${rule.rule_name}`}
                         className="h-8 w-8 rounded-lg hover:bg-muted/50"
                       >
-                        <Edit2 className="h-4 w-4 text-muted-foreground" />
+                        <Edit2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       </Button>
                       <Button
                         size="icon"
@@ -574,9 +574,9 @@ export const EnhancedCategoryRulesDialog = ({
                         onClick={() => deleteRule.mutate(rule.id)}
                         disabled={deleteRule.isPending}
                         aria-label={`Delete rule: ${rule.rule_name}`}
-                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
+                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-destructive/10 focus-visible:bg-destructive/10"
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>

@@ -153,9 +153,9 @@ export const CategoryRulesDialog = ({ open, onOpenChange }: CategoryRulesDialogP
                         onClick={() => deleteRule.mutate(rule.id)}
                         disabled={deleteRule.isPending}
                         aria-label={`Delete rule${rule.supplier?.name ? `: ${rule.supplier.name}` : ''}`}
-                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
+                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-destructive/10 focus-visible:bg-destructive/10"
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>

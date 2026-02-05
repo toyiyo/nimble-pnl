@@ -291,15 +291,16 @@ export const SaleCard = memo(function SaleCard({
                 onSetEditingCategory(null);
               }}
               className="h-8 px-2"
+              aria-label="Close category selector"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )}
 
-        {/* Action buttons - show on hover (always show for non-categorization actions) */}
+        {/* Action buttons - show on hover or focus */}
         {!isEditingCategory && (
-          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
             {/* Categorize button - only for items without suggestion and not categorized */}
             {!hasSuggestion && !sale.is_categorized && (
               <button
@@ -381,10 +382,18 @@ export const SaleCard = memo(function SaleCard({
   // Custom comparison - only re-render when these specific props change
   return (
     prevProps.sale.id === nextProps.sale.id &&
+    prevProps.sale.itemName === nextProps.sale.itemName &&
+    prevProps.sale.totalPrice === nextProps.sale.totalPrice &&
+    prevProps.sale.quantity === nextProps.sale.quantity &&
+    prevProps.sale.saleDate === nextProps.sale.saleDate &&
+    prevProps.sale.saleTime === nextProps.sale.saleTime &&
+    prevProps.sale.posSystem === nextProps.sale.posSystem &&
     prevProps.sale.is_categorized === nextProps.sale.is_categorized &&
     prevProps.sale.category_id === nextProps.sale.category_id &&
     prevProps.sale.suggested_category_id === nextProps.sale.suggested_category_id &&
     prevProps.sale.is_split === nextProps.sale.is_split &&
+    prevProps.sale.ai_confidence === nextProps.sale.ai_confidence &&
+    prevProps.sale.chart_account?.id === nextProps.sale.chart_account?.id &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isSelectionMode === nextProps.isSelectionMode &&
     prevProps.isEditingCategory === nextProps.isEditingCategory &&

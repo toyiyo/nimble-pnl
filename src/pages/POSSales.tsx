@@ -383,12 +383,12 @@ export default function POSSales() {
     }));
   }, [filteredSales]);
 
-  const handleSimulateDeduction = async (itemName: string, quantity: number) => {
+  const handleSimulateDeduction = useCallback(async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
 
     setSelectedItemForDeduction({ name: itemName, quantity });
     setDeductionDialogOpen(true);
-  };
+  }, [selectedRestaurant?.restaurant_id]);
 
   const handleFileProcessed = (data: ParsedSale[]) => {
     setImportedSalesData(data);
@@ -407,13 +407,13 @@ export default function POSSales() {
     setImportedSalesData(null);
   };
 
-  const handleEditSale = (sale: UnifiedSaleItem) => {
+  const handleEditSale = useCallback((sale: UnifiedSaleItem) => {
     // If the sale is already split, open the split dialog for editing
     if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
       setSaleToSplit(sale);
       return;
     }
-    
+
     // Otherwise, open the regular sale dialog
     setEditingSale({
       id: sale.id,
@@ -425,13 +425,13 @@ export default function POSSales() {
       saleTime: sale.saleTime,
     });
     setShowSaleDialog(true);
-  };
+  }, []);
 
-  const handleDeleteSale = async (saleId: string) => {
+  const handleDeleteSale = useCallback(async (saleId: string) => {
     if (confirm("Are you sure you want to delete this manual sale?")) {
       await deleteManualSale(saleId);
     }
-  };
+  }, [deleteManualSale]);
 
   const handleDialogClose = (open: boolean) => {
     setShowSaleDialog(open);
@@ -440,11 +440,11 @@ export default function POSSales() {
     }
   };
 
-  const handleSuggestRuleFromSale = (sale: UnifiedSaleItem) => {
+  const handleSuggestRuleFromSale = useCallback((sale: UnifiedSaleItem) => {
     if (!sale.category_id) return;
     setSaleForRuleSuggestion(sale);
     setShowRulesDialog(true);
-  };
+  }, []);
 
   const RULE_NAME_MAX_LENGTH = 30;
 
@@ -951,11 +951,12 @@ export default function POSSales() {
             <div className="flex flex-col md:flex-row gap-3">
               {/* Search input - clean Apple style */}
               <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" aria-hidden="true" />
                 <Input
                   placeholder="Search items..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  aria-label="Search items"
                   className="h-9 pl-9 text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border placeholder:text-muted-foreground/50"
                 />
               </div>
@@ -967,15 +968,17 @@ export default function POSSales() {
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
+                    aria-label="Start date"
                     className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
-                <span className="text-muted-foreground/50 text-sm">–</span>
+                <span className="text-muted-foreground/50 text-sm" aria-hidden="true">–</span>
                 <div className="relative">
                   <Input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
+                    aria-label="End date"
                     className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>

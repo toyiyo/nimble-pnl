@@ -51,12 +51,16 @@ export function BankTransactionRow({
   const { isNegative, formattedAmount, suggestedCategory, currentCategory, hasSuggestion } = computed;
   const { categorize, deleteTransaction, reconcile, unreconcile } = mutations;
 
-  // Find the correct account by matching stripe_financial_account_id with raw_data.account
+  // Note: bank_account_balances and raw_data are no longer fetched in list queries for performance
+  // Account mask will only show when full transaction details are loaded (e.g., in detail dialog)
   const transactionAccount = useMemo(() => {
-    const stripeAccountId = (transaction as BankTransaction & { raw_data?: { account?: string } }).raw_data?.account;
-    return transaction.connected_bank?.bank_account_balances?.find(
-      bal => bal.stripe_financial_account_id === stripeAccountId
-    );
+    // If bank_account_balances is available (e.g., from detail query), find the matching account
+    const balances = (transaction.connected_bank as { bank_account_balances?: Array<{ stripe_financial_account_id: string | null; account_mask: string | null }> })?.bank_account_balances;
+    if (!balances) return undefined;
+
+    const rawData = (transaction as { raw_data?: { account?: string } }).raw_data;
+    const stripeAccountId = rawData?.account;
+    return balances.find(bal => bal.stripe_financial_account_id === stripeAccountId);
   }, [transaction]);
 
   const handleRowClick = (event: React.MouseEvent) => {

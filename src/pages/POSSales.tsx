@@ -344,11 +344,7 @@ export default function POSSales() {
   const salesVirtualizer = useVirtualizer({
     count: dateFilteredSales.length,
     getScrollElement: () => salesListRef.current,
-    estimateSize: (index) => {
-      const sale = dateFilteredSales[index];
-      // Split sales are taller due to child items display
-      return sale?.is_split && sale?.child_splits?.length ? 200 : 120;
-    },
+    estimateSize: () => 100, // Approximate height, virtualizer handles variable heights
     overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
   });
 
@@ -1128,7 +1124,9 @@ export default function POSSales() {
                           if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
                             return (
                               <div
-                                key={sale.id}
+                                key={virtualRow.index}
+                                data-index={virtualRow.index}
+                                ref={salesVirtualizer.measureElement}
                                 style={{
                                   position: 'absolute',
                                   top: 0,
@@ -1136,6 +1134,7 @@ export default function POSSales() {
                                   width: '100%',
                                   transform: `translateY(${virtualRow.start}px)`,
                                 }}
+                                className="pb-3"
                               >
                                 <SplitSaleView
                                   sale={sale}
@@ -1150,7 +1149,9 @@ export default function POSSales() {
                           // Regular sale card (non-split) - using extracted SaleCard component
                           return (
                             <div
-                              key={sale.id}
+                              key={virtualRow.index}
+                              data-index={virtualRow.index}
+                              ref={salesVirtualizer.measureElement}
                               style={{
                                 position: 'absolute',
                                 top: 0,
@@ -1158,6 +1159,7 @@ export default function POSSales() {
                                 width: '100%',
                                 transform: `translateY(${virtualRow.start}px)`,
                               }}
+                              className="pb-3"
                             >
                               <SaleCard
                                 sale={sale}

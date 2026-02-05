@@ -169,6 +169,90 @@ export const MyComponent = ({ prop1, prop2 }: Props) => {
 
 ## 🎨 Design Patterns
 
+### Apple/Notion UI Aesthetic
+
+Use consistent Apple/Notion-inspired styling for a clean, professional appearance:
+
+#### Typography Scale
+```typescript
+text-[17px] font-semibold  // Dialog titles
+text-[15px]                // Subtitles
+text-[14px] font-medium    // Body text, list items
+text-[13px]                // Secondary text
+text-[12px] font-medium text-muted-foreground uppercase tracking-wider  // Form labels
+text-[11px]                // Small badges
+```
+
+#### Dialog Headers (Icon Box Pattern)
+```typescript
+<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+  <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+    <div className="flex items-center gap-3">
+      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+        <Icon className="h-5 w-5 text-foreground" />
+      </div>
+      <div>
+        <DialogTitle className="text-[17px] font-semibold">Title</DialogTitle>
+        <p className="text-[13px] text-muted-foreground mt-0.5">Description</p>
+      </div>
+    </div>
+  </DialogHeader>
+</DialogContent>
+```
+
+#### Form Inputs
+```typescript
+// Labels (ALWAYS uppercase tracking)
+<Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+  Field Name
+</Label>
+
+// Inputs
+<Input className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg" />
+```
+
+#### Buttons
+```typescript
+// Primary
+className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+
+// Ghost/Secondary
+className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+```
+
+#### Apple-Style Underline Tabs
+```typescript
+<button
+  className={`relative px-0 py-3 mr-6 text-[14px] font-medium ${
+    isActive ? 'text-foreground' : 'text-muted-foreground'
+  }`}
+>
+  Tab Label
+  {isActive && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
+</button>
+```
+
+#### Cards & Containers
+```typescript
+// List card with hover state
+className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+
+// Form section with header
+<div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+  <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+    <h3 className="text-[13px] font-semibold">Section Title</h3>
+  </div>
+  <div className="p-4 space-y-4">{/* Content */}</div>
+</div>
+```
+
+#### Common Patterns
+- `border-border/40` for subtle borders
+- `bg-muted/30` for subtle backgrounds
+- `rounded-lg` for inputs/buttons, `rounded-xl` for cards
+- `opacity-0 group-hover:opacity-100` for hover-reveal actions
+- `Switch className="data-[state=checked]:bg-foreground"` for dark toggles
+
 ### 1. Headers
 ```typescript
 <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">

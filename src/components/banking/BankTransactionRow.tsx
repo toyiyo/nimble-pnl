@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { BankTransaction } from "@/hooks/useBankTransactions";
-import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +25,19 @@ interface BankTransactionRowProps {
   isSelected?: boolean;
   onSelectionToggle?: (id: string, event: React.MouseEvent) => void;
 }
+
+// Column widths - must match BankTransactionList header
+const COLUMN_WIDTHS = {
+  checkbox: 'w-[50px]',
+  date: 'w-[110px]',
+  description: 'flex-1 min-w-[180px]',
+  payee: 'w-[120px] hidden md:block',
+  bankAccount: 'w-[140px] hidden lg:block',
+  amount: 'w-[100px] text-right',
+  category: 'w-[140px] hidden lg:block',
+  reason: 'w-[120px] hidden lg:block',
+  actions: 'w-[60px] text-right',
+};
 
 export function BankTransactionRow({
   transaction,
@@ -71,9 +83,11 @@ export function BankTransactionRow({
 
   return (
     <>
-      <TableRow
+      {/* Div-based row for virtualization compatibility */}
+      <div
         data-testid="bank-transaction-row"
         className={`
+          flex items-center gap-2 px-4 py-3 border-b text-sm
           ${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}
           ${isSelected ? 'bg-primary/10 border-l-4 border-l-primary' : ''}
           ${isSelectionMode ? 'cursor-pointer' : ''}
@@ -82,49 +96,54 @@ export function BankTransactionRow({
       >
         {/* Checkbox column (only in selection mode) */}
         {isSelectionMode && (
-          <TableCell className="w-[50px]" onClick={(e) => e.stopPropagation()}>
+          <div className={COLUMN_WIDTHS.checkbox} onClick={(e) => e.stopPropagation()}>
             <Checkbox
               checked={isSelected}
               onCheckedChange={() => onSelectionToggle?.(transaction.id, {} as React.MouseEvent)}
               aria-label={`Select transaction ${transaction.description}`}
             />
-          </TableCell>
+          </div>
         )}
 
-        <TableCell className="font-medium">
+        {/* Date column */}
+        <div className={`${COLUMN_WIDTHS.date} font-medium`}>
           {formatTransactionDate(transaction.transaction_date, 'MMM dd, yyyy')}
-        </TableCell>
+        </div>
 
-        <TableCell>
+        {/* Description column */}
+        <div className={COLUMN_WIDTHS.description}>
           <div className="flex flex-col">
-            <span className="font-medium">{transaction.description}</span>
+            <span className="font-medium truncate">{transaction.description}</span>
             <TransactionBadges
               isTransfer={transaction.is_transfer}
               isSplit={transaction.is_split}
               className="mt-1"
             />
           </div>
-        </TableCell>
+        </div>
 
-        <TableCell className="hidden md:table-cell">
+        {/* Payee column */}
+        <div className={COLUMN_WIDTHS.payee}>
           <div className="flex flex-col gap-1">
-            <span>{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
+            <span className="truncate">{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
             {transaction.supplier && (
               <TransactionBadges supplierName={transaction.supplier.name} />
             )}
           </div>
-        </TableCell>
+        </div>
 
-        <TableCell className="hidden lg:table-cell">
+        {/* Bank Account column */}
+        <div className={COLUMN_WIDTHS.bankAccount}>
           <BankAccountInfo
             institutionName={transaction.connected_bank?.institution_name}
             accountMask={transactionAccount?.account_mask}
             showIcon={false}
             layout="stacked"
           />
-        </TableCell>
+        </div>
 
-        <TableCell className="text-right">
+        {/* Amount column */}
+        <div className={COLUMN_WIDTHS.amount}>
           <div className="flex items-center justify-end gap-2">
             <span className={isNegative ? "text-destructive" : "text-success"}>
               {isNegative ? '-' : '+'}{formattedAmount}
@@ -133,10 +152,11 @@ export function BankTransactionRow({
               <CheckCircle2 className="h-4 w-4 text-success" />
             )}
           </div>
-        </TableCell>
+        </div>
 
+        {/* Category column (for_review status) */}
         {status === 'for_review' && (
-          <TableCell className="hidden lg:table-cell">
+          <div className={COLUMN_WIDTHS.category}>
             {transaction.is_categorized && currentCategory ? (
               <Badge
                 variant="outline"
@@ -163,11 +183,12 @@ export function BankTransactionRow({
             ) : (
               <span className="text-muted-foreground text-sm">Uncategorized</span>
             )}
-          </TableCell>
+          </div>
         )}
 
+        {/* Category column (categorized status) */}
         {status === 'categorized' && (
-          <TableCell className="hidden lg:table-cell">
+          <div className={COLUMN_WIDTHS.category}>
             {transaction.is_split ? (
               <Badge variant="secondary" className="bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200">
                 <Split className="h-3 w-3 mr-1" />
@@ -183,18 +204,20 @@ export function BankTransactionRow({
             ) : (
               <span className="text-muted-foreground text-sm">—</span>
             )}
-          </TableCell>
+          </div>
         )}
 
+        {/* Reason column (excluded status) */}
         {status === 'excluded' && (
-          <TableCell className="hidden lg:table-cell">
+          <div className={COLUMN_WIDTHS.reason}>
             <span className="text-sm text-muted-foreground">
               {transaction.excluded_reason || 'Excluded'}
             </span>
-          </TableCell>
+          </div>
         )}
 
-        <TableCell className="text-right">
+        {/* Actions column */}
+        <div className={COLUMN_WIDTHS.actions}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
@@ -268,8 +291,8 @@ export function BankTransactionRow({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        </TableCell>
-      </TableRow>
+        </div>
+      </div>
 
       <TransactionDialogs
         transaction={transaction}

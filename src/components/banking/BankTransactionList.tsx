@@ -1,7 +1,8 @@
+import { useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { BankTransaction } from "@/hooks/useBankTransactions";
 import { BankTransactionRow } from "./BankTransactionRow";
 import { BankTransactionCard } from "./BankTransactionCard";
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -18,9 +19,22 @@ interface BankTransactionListProps {
   onClearSelection?: () => void;
 }
 
-export function BankTransactionList({ 
-  transactions, 
-  status, 
+// Column widths for consistent layout (matches original table)
+const COLUMN_WIDTHS = {
+  checkbox: 'w-[50px]',
+  date: 'w-[110px]',
+  description: 'flex-1 min-w-[180px]',
+  payee: 'w-[120px] hidden md:block',
+  bankAccount: 'w-[140px] hidden lg:block',
+  amount: 'w-[100px] text-right',
+  category: 'w-[140px] hidden lg:block',
+  reason: 'w-[120px] hidden lg:block',
+  actions: 'w-[60px] text-right',
+};
+
+export function BankTransactionList({
+  transactions,
+  status,
   accounts,
   isSelectionMode = false,
   selectedIds = new Set(),
@@ -29,9 +43,19 @@ export function BankTransactionList({
   onClearSelection,
 }: BankTransactionListProps) {
   const isMobile = useIsMobile();
-  
+  const parentRef = useRef<HTMLDivElement>(null);
+
   const allSelected = transactions.length > 0 && transactions.every(t => selectedIds.has(t.id));
   const someSelected = transactions.some(t => selectedIds.has(t.id)) && !allSelected;
+
+  // Virtual list setup - only renders visible items for performance
+  // Using measureElement for dynamic row heights (handles variable content)
+  const virtualizer = useVirtualizer({
+    count: transactions.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 56, // Initial estimate; measureElement corrects it
+    overscan: 10, // Render extra items above/below for smooth scrolling
+  });
 
   const handleSelectAll = () => {
     if (allSelected && onClearSelection) {
@@ -41,7 +65,7 @@ export function BankTransactionList({
     }
   };
 
-  // Mobile card view
+  // Mobile card view - not virtualized (typically fewer visible items)
   if (isMobile) {
     return (
       <div className="space-y-3 px-4">
@@ -57,47 +81,73 @@ export function BankTransactionList({
     );
   }
 
-  // Desktop table view
+  // Desktop virtualized view
   return (
-    <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-      <Table className="min-w-[700px] max-w-full">
-        <TableHeader>
-          <TableRow>
-            {/* Checkbox column header (only in selection mode) */}
-            {isSelectionMode && (
-              <TableHead className="w-[50px]">
-                <Checkbox
-                  checked={someSelected ? "indeterminate" : allSelected}
-                  onCheckedChange={handleSelectAll}
-                  aria-label="Select all transactions"
-                />
-              </TableHead>
-            )}
-            <TableHead className="w-[110px] whitespace-nowrap">Date</TableHead>
-            <TableHead className="min-w-[180px]">Description</TableHead>
-            <TableHead className="w-[120px] whitespace-nowrap hidden md:table-cell">Payee</TableHead>
-            <TableHead className="w-[140px] whitespace-nowrap hidden lg:table-cell">Bank Account</TableHead>
-            <TableHead className="w-[100px] text-right whitespace-nowrap">Amount</TableHead>
-            {status === 'for_review' && <TableHead className="w-[140px] hidden lg:table-cell">Category</TableHead>}
-            {status === 'categorized' && <TableHead className="w-[140px] hidden lg:table-cell">Category</TableHead>}
-            {status === 'excluded' && <TableHead className="w-[120px] hidden lg:table-cell">Reason</TableHead>}
-            <TableHead className="w-[60px] text-right whitespace-nowrap">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {transactions.map((transaction) => (
-            <BankTransactionRow
-              key={transaction.id}
-              transaction={transaction}
-              status={status}
-              accounts={accounts}
-              isSelectionMode={isSelectionMode}
-              isSelected={selectedIds.has(transaction.id)}
-              onSelectionToggle={onSelectionToggle}
+    <div className="w-full overflow-hidden">
+      {/* Header row - fixed, not virtualized */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50 font-medium text-sm text-muted-foreground">
+        {isSelectionMode && (
+          <div className={COLUMN_WIDTHS.checkbox}>
+            <Checkbox
+              checked={someSelected ? "indeterminate" : allSelected}
+              onCheckedChange={handleSelectAll}
+              aria-label="Select all transactions"
             />
-          ))}
-        </TableBody>
-      </Table>
+          </div>
+        )}
+        <div className={COLUMN_WIDTHS.date}>Date</div>
+        <div className={COLUMN_WIDTHS.description}>Description</div>
+        <div className={COLUMN_WIDTHS.payee}>Payee</div>
+        <div className={COLUMN_WIDTHS.bankAccount}>Bank Account</div>
+        <div className={COLUMN_WIDTHS.amount}>Amount</div>
+        {status === 'for_review' && <div className={COLUMN_WIDTHS.category}>Category</div>}
+        {status === 'categorized' && <div className={COLUMN_WIDTHS.category}>Category</div>}
+        {status === 'excluded' && <div className={COLUMN_WIDTHS.reason}>Reason</div>}
+        <div className={COLUMN_WIDTHS.actions}>Actions</div>
+      </div>
+
+      {/* Virtualized rows container */}
+      <div
+        ref={parentRef}
+        className="h-[600px] overflow-auto"
+      >
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const transaction = transactions[virtualRow.index];
+            if (!transaction) return null;
+
+            return (
+              <div
+                key={virtualRow.index}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <BankTransactionRow
+                  transaction={transaction}
+                  status={status}
+                  accounts={accounts}
+                  isSelectionMode={isSelectionMode}
+                  isSelected={selectedIds.has(transaction.id)}
+                  onSelectionToggle={onSelectionToggle}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

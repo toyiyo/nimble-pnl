@@ -70,6 +70,7 @@ export default function POSSales() {
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
+  const [categorizationFilter, setCategorizationFilter] = useState<'all' | 'uncategorized' | 'pending-review' | 'categorized'>('all');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -273,7 +274,16 @@ export default function POSSales() {
     } else if (recipeFilter === 'without-recipe') {
       filtered = filtered.filter((sale) => !hasRecipeMapping(sale.itemName, recipeByItemName));
     }
-    
+
+    // Apply categorization filter
+    if (categorizationFilter === 'uncategorized') {
+      filtered = filtered.filter((sale) => !sale.is_categorized && !sale.suggested_category_id);
+    } else if (categorizationFilter === 'pending-review') {
+      filtered = filtered.filter((sale) => sale.suggested_category_id && !sale.is_categorized);
+    } else if (categorizationFilter === 'categorized') {
+      filtered = filtered.filter((sale) => sale.is_categorized);
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       let comparison = 0;
@@ -300,7 +310,7 @@ export default function POSSales() {
     });
     
     return filtered;
-  }, [sales, searchTerm, startDate, endDate, recipeFilter, recipeByItemName, sortBy, sortDirection]);
+  }, [sales, searchTerm, startDate, endDate, recipeFilter, categorizationFilter, recipeByItemName, sortBy, sortDirection]);
 
   // Get sales with AI suggestions
   const suggestedSales = useMemo(() => {
@@ -464,11 +474,12 @@ export default function POSSales() {
         endDate,
         searchTerm,
         recipeFilter,
+        categorizationFilter,
         selectedView,
         sortBy,
         sortDirection,
       }),
-    [startDate, endDate, searchTerm, recipeFilter, selectedView, sortBy, sortDirection],
+    [startDate, endDate, searchTerm, recipeFilter, categorizationFilter, selectedView, sortBy, sortDirection],
   );
 
   const filterSignatureRef = useRef<string | null>(null);
@@ -591,10 +602,11 @@ export default function POSSales() {
   }), [serverTotals, unmappedCount]);
 
   const activeFiltersCount = [
-    searchTerm, 
-    startDate, 
+    searchTerm,
+    startDate,
     endDate,
     recipeFilter !== 'all' ? 'recipe' : '',
+    categorizationFilter !== 'all' ? 'categorization' : '',
     sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
   ].filter(Boolean).length;
 
@@ -758,72 +770,78 @@ export default function POSSales() {
   }
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      {/* Hero Section with Gradient */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-pink-500/10 p-6 md:p-8 animate-fade-in">
-        <div className="relative z-10">
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-            <div className="space-y-2">
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight">POS Sales</h1>
-              <p className="text-base md:text-lg text-muted-foreground">
-                Unified sales data from all connected POS systems
-              </p>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/50 backdrop-blur-sm border">
-                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm font-medium">{selectedRestaurant.restaurant.name}</span>
-              </div>
+    <div className="space-y-8 md:space-y-10 max-w-[1400px] mx-auto">
+      {/* Apple/Notion-inspired Header */}
+      <header className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-[2rem] md:text-[2.5rem] font-semibold tracking-tight text-foreground">
+                Sales
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-muted text-muted-foreground">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                {selectedRestaurant.restaurant.name}
+              </span>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+            <p className="text-[15px] text-muted-foreground">
+              Track and categorize sales from all your POS systems
+            </p>
+          </div>
+
+          {/* Action buttons - Apple style */}
+          <div className="flex items-center gap-2">
+            {hasAnyConnectedSystem() && (
               <Button
-                variant="outline"
-                onClick={() => setShowRulesDialog(true)}
-                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
+                variant="ghost"
+                size="sm"
+                onClick={handleSyncSales}
+                disabled={isSyncing}
+                className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
               >
-                <Settings2 className="h-4 w-4" />
-                <span className="hidden sm:inline">Categorization Rules</span>
-                <span className="sm:hidden">Rules</span>
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+                {isSyncing ? "Syncing" : "Sync"}
               </Button>
-              <Button
-                onClick={() => {
-                  setActiveTab("manual");
-                  setEditingSale(null);
-                  setShowSaleDialog(true);
-                }}
-                className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 transition-all duration-300"
-              >
-                <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Record Manual Sale</span>
-                <span className="sm:hidden">Manual Sale</span>
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setActiveTab("import")}
-                className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
-              >
-                <UploadIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">Upload File</span>
-                <span className="sm:hidden">Upload</span>
-              </Button>
-              {hasAnyConnectedSystem() && (
-                <Button
-                  variant="outline"
-                  onClick={handleSyncSales}
-                  disabled={isSyncing}
-                  className="flex items-center gap-2 hover:bg-background/80 transition-all duration-300"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
-                  {isSyncing ? "Syncing..." : "Sync Sales"}
-                </Button>
-              )}
-              <ExportDropdown
-                onExportCSV={handleExportCSV}
-                onExportPDF={handleExportPDF}
-                isExporting={isExporting}
-              />
-            </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowRulesDialog(true)}
+              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+              Rules
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setActiveTab("import")}
+              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <UploadIcon className="h-3.5 w-3.5 mr-1.5" />
+              Import
+            </Button>
+            <ExportDropdown
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              isExporting={isExporting}
+            />
+            <div className="w-px h-5 bg-border mx-1" />
+            <Button
+              onClick={() => {
+                setActiveTab("manual");
+                setEditingSale(null);
+                setShowSaleDialog(true);
+              }}
+              size="sm"
+              className="h-8 px-3 text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 rounded-lg transition-colors shadow-sm"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              Add Sale
+            </Button>
           </div>
         </div>
-      </div>
+      </header>
 
       {/* Dashboard Metrics */}
       <POSSalesDashboard
@@ -908,248 +926,286 @@ export default function POSSales() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "manual" | "import")} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="manual">View Sales</TabsTrigger>
-          <TabsTrigger value="import">Import from File</TabsTrigger>
-        </TabsList>
+        {/* Apple/Notion-style minimal tab bar */}
+        <div className="flex items-center justify-between border-b border-border/40 mb-6">
+          <TabsList className="h-auto p-0 bg-transparent border-0 gap-0">
+            <TabsTrigger
+              value="manual"
+              className="relative px-0 py-3 mr-6 text-[14px] font-medium text-muted-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none bg-transparent border-0 rounded-none after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-foreground after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+            >
+              View Sales
+            </TabsTrigger>
+            <TabsTrigger
+              value="import"
+              className="relative px-0 py-3 text-[14px] font-medium text-muted-foreground data-[state=active]:text-foreground data-[state=active]:shadow-none bg-transparent border-0 rounded-none after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-foreground after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
+            >
+              Import from File
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="manual" className="space-y-6">
-          <div className="grid gap-4 md:gap-6">
-            <Card className="border-none shadow-md">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg md:text-xl">Filters & Search</CardTitle>
-                  {activeFiltersCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                      setSearchTerm("");
-                      setStartDate("");
-                      setEndDate("");
-                      setRecipeFilter('all');
-                      setSortBy('date');
-                      setSortDirection('desc');
-                    }}
-                    className="text-xs"
+        <TabsContent value="manual" className="space-y-6 mt-0">
+          {/* Apple/Notion-style filter bar */}
+          <div className="space-y-4">
+            {/* Search and date row */}
+            <div className="flex flex-col md:flex-row gap-3">
+              {/* Search input - clean Apple style */}
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" />
+                <Input
+                  placeholder="Search items..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-9 pl-9 text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border placeholder:text-muted-foreground/50"
+                />
+              </div>
+
+              {/* Date range - compact */}
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="h-9 w-[130px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  />
+                </div>
+                <span className="text-muted-foreground/50 text-sm">–</span>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="h-9 w-[130px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  />
+                </div>
+              </div>
+
+              {/* Clear filters */}
+              {activeFiltersCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setStartDate("");
+                    setEndDate("");
+                    setRecipeFilter('all');
+                    setCategorizationFilter('all');
+                    setSortBy('date');
+                    setSortDirection('desc');
+                  }}
+                  className="h-9 px-3 text-[13px] text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {/* Filter pills row - Notion style segmented controls */}
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Categorization filter - NEW FILTER */}
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Status</span>
+                <div className="inline-flex rounded-lg bg-muted/50 p-0.5">
+                  {[
+                    { value: 'all', label: 'All' },
+                    { value: 'uncategorized', label: 'Uncategorized', count: uncategorizedSalesCount },
+                    { value: 'pending-review', label: 'Pending Review', count: suggestedSales.length },
+                    { value: 'categorized', label: 'Categorized' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setCategorizationFilter(option.value as typeof categorizationFilter)}
+                      className={`px-3 py-1.5 text-[13px] font-medium rounded-md transition-all ${
+                        categorizationFilter === option.value
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {option.label}
+                      {option.count !== undefined && option.count > 0 && (
+                        <span className={`ml-1.5 text-[11px] ${
+                          categorizationFilter === option.value ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                        }`}>
+                          {option.count}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-5 w-px bg-border/60 hidden md:block" />
+
+              {/* Recipe filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Recipe</span>
+                <div className="inline-flex rounded-lg bg-muted/50 p-0.5">
+                  {[
+                    { value: 'all', label: 'All' },
+                    { value: 'with-recipe', label: 'Mapped' },
+                    { value: 'without-recipe', label: 'Unmapped' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setRecipeFilter(option.value as typeof recipeFilter)}
+                      className={`px-3 py-1.5 text-[13px] font-medium rounded-md transition-all ${
+                        recipeFilter === option.value
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-5 w-px bg-border/60 hidden md:block" />
+
+              {/* View mode */}
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">View</span>
+                <div className="inline-flex rounded-lg bg-muted/50 p-0.5">
+                  <button
+                    onClick={() => setSelectedView("sales")}
+                    className={`px-3 py-1.5 text-[13px] font-medium rounded-md transition-all ${
+                      selectedView === "sales"
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
                   >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear {activeFiltersCount} filter{activeFiltersCount !== 1 ? 's' : ''}
-                  </Button>
-                  )}
+                    Individual
+                  </button>
+                  <button
+                    onClick={() => setSelectedView("grouped")}
+                    className={`px-3 py-1.5 text-[13px] font-medium rounded-md transition-all ${
+                      selectedView === "grouped"
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Grouped
+                  </button>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Search Items</label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by item name..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-                    />
-                  </div>
-                </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Start Date</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">End Date</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-primary/20"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Recipe Filter</label>
-                  <Select value={recipeFilter} onValueChange={(value: 'all' | 'with-recipe' | 'without-recipe') => setRecipeFilter(value)}>
-                    <SelectTrigger className="border-border/50 hover:border-primary/50 transition-colors">
-                      <ChefHat className="w-4 h-4 mr-2" />
-                      <SelectValue placeholder="Filter by recipe..." />
-                    </SelectTrigger>
-                    <SelectContent className="z-50 bg-background">
-                      <SelectItem value="all">All Items</SelectItem>
-                      <SelectItem value="with-recipe">With Recipe</SelectItem>
-                      <SelectItem value="without-recipe">Without Recipe</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Sort By</label>
-                  <div className="flex gap-2">
-                    <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
-                      <SelectTrigger className="w-[160px] border-border/50 hover:border-primary/50 transition-colors">
-                        <ArrowUpDown className="w-4 h-4 mr-2" />
-                        <SelectValue placeholder="Sort by..." />
-                      </SelectTrigger>
-                      <SelectContent className="z-50 bg-background">
-                        <SelectItem value="date">Date</SelectItem>
-                        <SelectItem value="name">Item Name</SelectItem>
-                        <SelectItem value="quantity">Quantity</SelectItem>
-                        <SelectItem value="amount">Amount</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-                      className="transition-all hover:scale-105 duration-200"
-                      title={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
-                      aria-label={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
-                    >
-                      <ArrowUpDown className={`w-4 h-4 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">View Mode</label>
-                  <div className="inline-flex rounded-lg border p-1 bg-muted/50">
-                    <Button
-                      variant={selectedView === "sales" ? "default" : "ghost"}
-                      onClick={() => setSelectedView("sales")}
-                      size="sm"
-                      className={`rounded-md transition-all duration-200 ${
-                        selectedView === "sales" 
-                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" 
-                          : "hover:bg-background/80"
-                      }`}
-                    >
-                      Individual Sales
-                    </Button>
-                    <Button
-                      variant={selectedView === "grouped" ? "default" : "ghost"}
-                      onClick={() => setSelectedView("grouped")}
-                      size="sm"
-                      className={`rounded-md transition-all duration-200 ${
-                        selectedView === "grouped" 
-                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-sm" 
-                          : "hover:bg-background/80"
-                      }`}
-                    >
-                      Grouped by Item
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              {/* Sort controls */}
+              <div className="flex items-center gap-2 ml-auto">
+                <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
+                  <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
+                    <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-50 bg-background">
+                    <SelectItem value="date">Date</SelectItem>
+                    <SelectItem value="name">Item Name</SelectItem>
+                    <SelectItem value="quantity">Quantity</SelectItem>
+                    <SelectItem value="amount">Amount</SelectItem>
+                  </SelectContent>
+                </Select>
+                <button
+                  onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/50 transition-colors"
+                  title={sortDirection === 'desc' ? 'Descending' : 'Ascending'}
+                  aria-label={sortDirection === 'desc' ? 'Descending order' : 'Ascending order'}
+                >
+                  <ArrowUpDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+            </div>
           </div>
 
           {loading ? (
-            <Card className="border-none shadow-md">
-              <CardContent className="py-12">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                  <div className="text-center text-muted-foreground">Loading sales data...</div>
-                </div>
-              </CardContent>
-            </Card>
+            /* Apple-style loading state */
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
+              <p className="mt-4 text-[13px] text-muted-foreground">Loading sales...</p>
+            </div>
           ) : selectedView === "sales" ? (
-            <Card className="border-none shadow-md">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Sales Transactions</CardTitle>
+            <div className="space-y-4">
+              {/* Results header bar */}
+              <div className="flex items-center justify-between">
+                <p className="text-[13px] text-muted-foreground">
+                  {filteredSales.length === sales.length ? (
+                    <>{sales.length.toLocaleString()} sales</>
+                  ) : (
+                    <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} sales</>
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  {hasMore && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={loadMoreSales}
+                      disabled={loadingMore}
+                      className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      {loadingMore ? "Loading..." : "Load more"}
+                    </Button>
+                  )}
                   {dateFilteredSales.length > 0 && (
                     <Button
-                      variant={bulkSelection.isSelectionMode ? "default" : "outline"}
+                      variant={bulkSelection.isSelectionMode ? "default" : "ghost"}
                       size="sm"
                       onClick={bulkSelection.toggleSelectionMode}
+                      className={`h-8 px-3 text-[13px] font-medium rounded-lg ${
+                        bulkSelection.isSelectionMode
+                          ? 'bg-foreground text-background'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      }`}
                     >
                       {bulkSelection.isSelectionMode ? 'Done' : 'Select'}
                     </Button>
                   )}
                 </div>
-              </CardHeader>
-              <CardContent>
-                {!hasAnyConnectedSystem() ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p className="mb-2">No POS systems connected.</p>
-                    <p>Connect to Square or record manual sales to get started.</p>
+              </div>
+
+              {/* Sales content */}
+              {!hasAnyConnectedSystem() ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <AlertTriangle className="w-6 h-6 text-muted-foreground/50" />
                   </div>
-                ) : dateFilteredSales.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No sales found for the selected date range.
+                  <p className="text-[15px] font-medium text-foreground mb-1">No POS systems connected</p>
+                  <p className="text-[13px] text-muted-foreground">Connect to Square, Toast, or record manual sales to get started.</p>
+                </div>
+              ) : dateFilteredSales.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Search className="w-6 h-6 text-muted-foreground/50" />
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <span>
-                        Loaded {sales.length} record{sales.length === 1 ? '' : 's'}
-                        {filteredSales.length !== sales.length ? ` • ${filteredSales.length} match filters` : ''}
-                      </span>
-                      {hasMore && (
-                        <Button variant="outline" size="sm" onClick={loadMoreSales} disabled={loadingMore}>
-                          {loadingMore ? "Loading..." : "Load more sales"}
-                        </Button>
-                      )}
-                    </div>
-                    {/* Virtualized list container - only renders visible items */}
+                  <p className="text-[15px] font-medium text-foreground mb-1">No sales found</p>
+                  <p className="text-[13px] text-muted-foreground">Try adjusting your filters or date range.</p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {/* Virtualized list container - Apple-style clean scrolling */}
+                  <div
+                    ref={salesListRef}
+                    className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
+                  >
                     <div
-                      ref={salesListRef}
-                      className="h-[600px] overflow-auto"
+                      style={{
+                        height: `${salesVirtualizer.getTotalSize()}px`,
+                        width: '100%',
+                        position: 'relative',
+                      }}
                     >
-                      <div
-                        style={{
-                          height: `${salesVirtualizer.getTotalSize()}px`,
-                          width: '100%',
-                          position: 'relative',
-                        }}
-                      >
-                        {salesVirtualizer.getVirtualItems().map((virtualRow) => {
-                          const sale = dateFilteredSales[virtualRow.index];
-                          if (!sale) return null;
+                      {salesVirtualizer.getVirtualItems().map((virtualRow) => {
+                        const sale = dateFilteredSales[virtualRow.index];
+                        if (!sale) return null;
 
-                          // If sale is split, show the SplitSaleView component
-                          if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
-                            return (
-                              <div
-                                key={virtualRow.index}
-                                data-index={virtualRow.index}
-                                ref={salesVirtualizer.measureElement}
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: '100%',
-                                  transform: `translateY(${virtualRow.start}px)`,
-                                }}
-                                className="pb-3"
-                              >
-                                <SplitSaleView
-                                  sale={sale}
-                                  onEdit={handleEditSale}
-                                  onSplit={(s) => setSaleToSplit(s)}
-                                  formatCurrency={(amount) => `$${amount.toFixed(2)}`}
-                                />
-                              </div>
-                            );
-                          }
-
-                          // Regular sale card (non-split) - using extracted SaleCard component
+                        // If sale is split, show the SplitSaleView component
+                        if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
                           return (
                             <div
-                              key={virtualRow.index}
+                              key={sale.id}
                               data-index={virtualRow.index}
                               ref={salesVirtualizer.measureElement}
                               style={{
@@ -1159,181 +1215,192 @@ export default function POSSales() {
                                 width: '100%',
                                 transform: `translateY(${virtualRow.start}px)`,
                               }}
-                              className="pb-3"
                             >
-                              <SaleCard
+                              <SplitSaleView
                                 sale={sale}
-                                recipe={saleRecipeMap.get(sale.id) ?? null}
-                                isSelected={bulkSelection.selectedIds.has(sale.id)}
-                                isSelectionMode={bulkSelection.isSelectionMode}
-                                isEditingCategory={editingCategoryForSale === sale.id}
-                                accounts={accounts}
-                                canEditManualSales={
-                                  !!selectedRestaurant &&
-                                  (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager")
-                                }
-                                onCardClick={handleCardClick}
-                                onCheckboxChange={handleCheckboxChange}
                                 onEdit={handleEditSale}
-                                onDelete={handleDeleteSale}
-                                onSimulateDeduction={handleSimulateDeduction}
-                                onMapPOSItem={handleMapPOSItem}
-                                onSetEditingCategory={handleSetEditingCategory}
-                                onSplit={handleSplitSale}
-                                onSuggestRule={handleSuggestRuleFromSale}
-                                onCategorize={handleCategorizePosSale}
-                                onNavigateToRecipe={handleNavigateToRecipe}
+                                onSplit={(s) => setSaleToSplit(s)}
+                                formatCurrency={(amount) => `$${amount.toFixed(2)}`}
                               />
                             </div>
                           );
-                        })}
-                      </div>
-                    </div>
-                    {hasMore && (
-                      <div className="flex justify-center pt-2">
-                        <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>
-                          {loadingMore ? "Loading..." : "Load more sales"}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-none shadow-md">
-              <CardHeader>
-                <CardTitle className="text-lg md:text-xl">Sales Summary by Item</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {groupedSales.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">No sales data available.</div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2 flex items-center justify-between text-sm text-muted-foreground">
-                      <span>
-                        Loaded {sales.length} record{sales.length === 1 ? '' : 's'}
-                        {groupedSales.length !== sales.length ? ` • ${groupedSales.length} grouped items` : ''}
-                      </span>
-                      {hasMore && (
-                        <Button variant="outline" size="sm" onClick={loadMoreSales} disabled={loadingMore}>
-                          {loadingMore ? "Loading..." : "Load more sales"}
-                        </Button>
-                      )}
-                    </div>
-                    {groupedSales.map(
-                      (item: {
-                        item_name: string;
-                        total_quantity: number;
-                        sale_count: number;
-                        total_revenue: number;
-                      }, index: number) => {
-                        const maxRevenue = Math.max(...groupedSales.map((g: any) => g.total_revenue));
-                        const revenuePercentage = (item.total_revenue / maxRevenue) * 100;
-                        
+                        }
+
+                        // Regular sale card (non-split) - using extracted SaleCard component
                         return (
-                          <Card 
-                            key={item.item_name} 
-                            className="border-l-4 border-l-primary hover:shadow-lg transition-all duration-300 animate-fade-in"
-                            style={{ animationDelay: `${index * 50}ms` }}
+                          <div
+                            key={sale.id}
+                            data-index={virtualRow.index}
+                            ref={salesVirtualizer.measureElement}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              transform: `translateY(${virtualRow.start}px)`,
+                            }}
                           >
-                            <CardContent className="p-5 space-y-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1">
-                                  <h3 className="font-semibold text-base mb-1 line-clamp-2">{item.item_name}</h3>
-                                  {(() => {
-                                    const recipe = getRecipeForItem(item.item_name, recipeByItemName);
-                                    if (recipe) {
-                                      return (
-                                        <Badge
-                                          variant="outline"
-                                          className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
-                                          onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
-                                        >
-                                          {!recipe.hasIngredients && (
-                                            <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
-                                          )}
-                                          <ExternalLink className="h-3 w-3 mr-1" />
-                                          {recipe.name}
-                                          {recipe.profitMargin != null && (
-                                            <span className="ml-1 font-semibold">
-                                              ({recipe.profitMargin.toFixed(0)}%)
-                                            </span>
-                                          )}
-                                        </Badge>
-                                      );
-                                    }
-                                    return (
-                                      <Badge
-                                        variant="destructive"
-                                        className="cursor-pointer hover:scale-105 transition-transform animate-pulse text-xs"
-                                        onClick={() => handleMapPOSItem(item.item_name)}
-                                      >
-                                        No Recipe
-                                      </Badge>
-                                    );
-                                  })()}
-                                </div>
-                                <Badge 
-                                  variant="secondary"
-                                  className="text-lg font-bold px-3 py-1 bg-gradient-to-br from-blue-500/10 to-cyan-500/10"
-                                >
-                                  ${item.total_revenue.toFixed(2)}
-                                </Badge>
-                              </div>
-
-                              {/* Progress bar for revenue */}
-                              <div className="space-y-1">
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                  <span>vs Top Seller (${maxRevenue.toFixed(2)})</span>
-                                  <span className="font-medium">{revenuePercentage.toFixed(0)}%</span>
-                                </div>
-                                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
-                                    style={{ width: `${revenuePercentage}%` }}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="text-center p-3 rounded-lg bg-muted/50">
-                                  <p className="text-2xl font-bold">{item.total_quantity}</p>
-                                  <p className="text-xs text-muted-foreground">Total Qty</p>
-                                </div>
-                                <div className="text-center p-3 rounded-lg bg-muted/50">
-                                  <p className="text-2xl font-bold">{item.sale_count}</p>
-                                  <p className="text-xs text-muted-foreground">Sales Count</p>
-                                </div>
-                              </div>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                                className="w-full hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
-                              >
-                                Check Recipe Impact
-                              </Button>
-                              <p className="text-xs text-muted-foreground text-center">
-                                Shows total impact - some sales may already be processed
-                              </p>
-                            </CardContent>
-                          </Card>
+                            <SaleCard
+                              sale={sale}
+                              recipe={saleRecipeMap.get(sale.id) ?? null}
+                              isSelected={bulkSelection.selectedIds.has(sale.id)}
+                              isSelectionMode={bulkSelection.isSelectionMode}
+                              isEditingCategory={editingCategoryForSale === sale.id}
+                              accounts={accounts}
+                              canEditManualSales={
+                                !!selectedRestaurant &&
+                                (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager")
+                              }
+                              onCardClick={handleCardClick}
+                              onCheckboxChange={handleCheckboxChange}
+                              onEdit={handleEditSale}
+                              onDelete={handleDeleteSale}
+                              onSimulateDeduction={handleSimulateDeduction}
+                              onMapPOSItem={handleMapPOSItem}
+                              onSetEditingCategory={handleSetEditingCategory}
+                              onSplit={handleSplitSale}
+                              onSuggestRule={handleSuggestRuleFromSale}
+                              onCategorize={handleCategorizePosSale}
+                              onNavigateToRecipe={handleNavigateToRecipe}
+                            />
+                          </div>
                         );
-                      },
-                    )}
-                    {hasMore && (
-                      <div className="md:col-span-2 flex justify-center">
-                        <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>
-                          {loadingMore ? "Loading..." : "Load more sales"}
-                        </Button>
-                      </div>
-                    )}
+                      })}
+                    </div>
                   </div>
+                  {hasMore && (
+                    <div className="flex justify-center py-4 border-t border-border/40">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={loadMoreSales}
+                        disabled={loadingMore}
+                        className="h-8 px-4 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        {loadingMore ? "Loading..." : "Load more sales"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Grouped view - Apple-style cards */
+            <div className="space-y-4">
+              {/* Results header */}
+              <div className="flex items-center justify-between">
+                <p className="text-[13px] text-muted-foreground">
+                  {groupedSales.length.toLocaleString()} items
+                </p>
+                {hasMore && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={loadMoreSales}
+                    disabled={loadingMore}
+                    className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    {loadingMore ? "Loading..." : "Load more"}
+                  </Button>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+
+              {groupedSales.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Search className="w-6 h-6 text-muted-foreground/50" />
+                  </div>
+                  <p className="text-[15px] font-medium text-foreground mb-1">No items found</p>
+                  <p className="text-[13px] text-muted-foreground">Try adjusting your filters.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {groupedSales.map(
+                    (item: {
+                      item_name: string;
+                      total_quantity: number;
+                      sale_count: number;
+                      total_revenue: number;
+                    }) => {
+                      const maxRevenue = Math.max(...groupedSales.map((g: { total_revenue: number }) => g.total_revenue));
+                      const revenuePercentage = maxRevenue > 0 ? (item.total_revenue / maxRevenue) * 100 : 0;
+
+                      return (
+                        <div
+                          key={item.item_name}
+                          className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-[14px] font-medium text-foreground truncate">{item.item_name}</h3>
+                              {(() => {
+                                const recipe = getRecipeForItem(item.item_name, recipeByItemName);
+                                if (recipe) {
+                                  return (
+                                    <button
+                                      onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
+                                      className="inline-flex items-center gap-1 mt-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                      {!recipe.hasIngredients && (
+                                        <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                      )}
+                                      <ExternalLink className="h-3 w-3" />
+                                      {recipe.name}
+                                      {recipe.profitMargin != null && (
+                                        <span className="font-medium">({recipe.profitMargin.toFixed(0)}%)</span>
+                                      )}
+                                    </button>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    onClick={() => handleMapPOSItem(item.item_name)}
+                                    className="inline-flex items-center gap-1 mt-1 text-[12px] text-destructive hover:text-destructive/80 transition-colors"
+                                  >
+                                    No Recipe
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                            <span className="text-[18px] font-semibold text-foreground tabular-nums">
+                              ${item.total_revenue.toFixed(2)}
+                            </span>
+                          </div>
+
+                          {/* Revenue progress bar - subtle */}
+                          <div className="mb-3">
+                            <div className="h-1 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-foreground/20 rounded-full transition-all duration-500"
+                                style={{ width: `${revenuePercentage}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Stats row */}
+                          <div className="flex items-center gap-4 text-[13px]">
+                            <div>
+                              <span className="font-medium text-foreground">{item.total_quantity}</span>
+                              <span className="text-muted-foreground ml-1">qty</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-foreground">{item.sale_count}</span>
+                              <span className="text-muted-foreground ml-1">sales</span>
+                            </div>
+                            <button
+                              onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
+                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              Check impact
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </TabsContent>
 

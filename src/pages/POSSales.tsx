@@ -967,7 +967,7 @@ export default function POSSales() {
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="h-9 w-[130px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
                 <span className="text-muted-foreground/50 text-sm">–</span>
@@ -976,7 +976,7 @@ export default function POSSales() {
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="h-9 w-[130px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
               </div>
@@ -1187,6 +1187,7 @@ export default function POSSales() {
                 <div className="space-y-0">
                   {/* Virtualized list container - Apple-style clean scrolling */}
                   <div
+                    key={`virtualizer-${filtersSignature}`}
                     ref={salesListRef}
                     className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
                   >

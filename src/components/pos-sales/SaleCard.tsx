@@ -257,16 +257,6 @@ export const SaleCard = memo(function SaleCard({
             >
               Edit
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSuggestRule(sale);
-              }}
-              className="text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-              title="Create rule"
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-            </button>
           </div>
         )}
 
@@ -307,10 +297,11 @@ export const SaleCard = memo(function SaleCard({
           </div>
         )}
 
-        {/* Action buttons - show on hover or when not categorized */}
-        {!hasSuggestion && !isEditingCategory && (
+        {/* Action buttons - show on hover (always show for non-categorization actions) */}
+        {!isEditingCategory && (
           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {!sale.is_categorized && (
+            {/* Categorize button - only for items without suggestion and not categorized */}
+            {!hasSuggestion && !sale.is_categorized && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -321,6 +312,7 @@ export const SaleCard = memo(function SaleCard({
                 Categorize
               </button>
             )}
+            {/* Split - always available for non-split items */}
             {!sale.is_split && (
               <button
                 onClick={(e) => {
@@ -333,6 +325,7 @@ export const SaleCard = memo(function SaleCard({
                 Split
               </button>
             )}
+            {/* Check impact - always available */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -342,6 +335,21 @@ export const SaleCard = memo(function SaleCard({
             >
               Check impact
             </button>
+            {/* Create rule - for categorized items */}
+            {sale.is_categorized && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSuggestRule(sale);
+                }}
+                className="inline-flex items-center text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                title="Create rule"
+              >
+                <Settings2 className="h-3 w-3 mr-1" />
+                Create rule
+              </button>
+            )}
+            {/* Edit/Delete - for manual sales only */}
             {isManualSale && canEditManualSales && (
               <>
                 <button

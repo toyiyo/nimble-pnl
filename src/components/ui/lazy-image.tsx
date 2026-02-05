@@ -26,7 +26,11 @@ interface LazyImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
 }
 
 /**
- * Transforms a Supabase storage URL with width and quality parameters
+ * Transforms a Supabase storage URL to use the image transform API.
+ *
+ * Supabase Image Transforms require the /render/image/ endpoint:
+ * FROM: https://xxx.supabase.co/storage/v1/object/public/bucket/path.jpg
+ * TO:   https://xxx.supabase.co/storage/v1/render/image/public/bucket/path.jpg?width=128&quality=75
  */
 function transformSupabaseUrl(
   url: string,
@@ -36,9 +40,16 @@ function transformSupabaseUrl(
   if (!url || !width) return url;
 
   // Check if this is a Supabase storage URL
-  if (!url.includes('supabase') && !url.includes('storage')) {
+  if (!url.includes('supabase.co/storage')) {
     return url;
   }
+
+  // Convert object URL to render/image URL for transforms
+  // /storage/v1/object/public/ -> /storage/v1/render/image/public/
+  let transformedUrl = url.replace(
+    '/storage/v1/object/public/',
+    '/storage/v1/render/image/public/'
+  );
 
   // Build transform parameters
   const params = new URLSearchParams();
@@ -46,8 +57,8 @@ function transformSupabaseUrl(
   if (quality) params.set('quality', String(quality));
 
   // Append to URL
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}${params.toString()}`;
+  const separator = transformedUrl.includes('?') ? '&' : '?';
+  return `${transformedUrl}${separator}${params.toString()}`;
 }
 
 /**

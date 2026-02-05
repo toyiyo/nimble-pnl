@@ -73,37 +73,13 @@ export const LazyImage: React.FC<LazyImageProps> = ({
   onError,
   ...imgProps
 }) => {
-  const [isInView, setIsInView] = useState(false);
+  // Start with isInView true - in virtualized contexts, the component
+  // is only mounted when visible, so we should load immediately.
+  // The Intersection Observer is kept as a fallback for non-virtualized use.
+  const [isInView, setIsInView] = useState(true);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Set up Intersection Observer
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsInView(true);
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      {
-        rootMargin,
-        threshold: 0,
-      }
-    );
-
-    observer.observe(container);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [rootMargin]);
 
   // Transform URL for optimized delivery
   const transformedSrc = transformSupabaseUrl(src, transformWidth, transformQuality);

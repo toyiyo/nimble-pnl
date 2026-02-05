@@ -1,14 +1,16 @@
 import React, { useRef, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, Edit, Trash, Trash2, ArrowRightLeft } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertTriangle, Edit, Trash, Trash2, ArrowRightLeft, ChefHat } from 'lucide-react';
 import { LazyImage } from '@/components/ui/lazy-image';
 import { InventoryValueBadge } from '@/components/InventoryValueBadge';
-import { ProductRecipeUsage } from '@/components/ProductRecipeUsage';
 import { Product } from '@/hooks/useProducts';
+import { ProductRecipeMap } from '@/hooks/useAllProductRecipes';
 import { cn } from '@/lib/utils';
 
 interface ProductMetrics {
@@ -22,11 +24,22 @@ interface InventoryMetrics {
   productMetrics: Record<string, ProductMetrics>;
 }
 
+interface RecipeIngredient {
+  id: string;
+  recipe_id: string;
+  quantity: number;
+  unit: string;
+  recipe: {
+    id: string;
+    name: string;
+    pos_item_name: string | null;
+  };
+}
+
 interface VirtualizedProductGridProps {
   products: Product[];
   inventoryMetrics: InventoryMetrics;
-  restaurantId: string;
-  allProducts: Product[];
+  recipesByProduct: ProductRecipeMap;
   canDeleteProducts: boolean;
   onEditProduct: (product: Product) => void;
   onWasteProduct: (product: Product) => void;
@@ -70,8 +83,7 @@ function useColumnCount() {
 const ProductCard: React.FC<{
   product: Product;
   metrics?: ProductMetrics;
-  restaurantId: string;
-  allProducts: Product[];
+  recipes?: RecipeIngredient[];
   canDelete: boolean;
   onEdit: () => void;
   onWaste: () => void;
@@ -80,8 +92,7 @@ const ProductCard: React.FC<{
 }> = ({
   product,
   metrics,
-  restaurantId,
-  allProducts,
+  recipes,
   canDelete,
   onEdit,
   onWaste,
@@ -238,11 +249,39 @@ const ProductCard: React.FC<{
               </div>
             </>
           )}
-          <ProductRecipeUsage
-            productId={product.id}
-            restaurantId={restaurantId}
-            products={allProducts}
-          />
+          {/* Recipe Usage - pre-fetched data, no API calls */}
+          {recipes && recipes.length > 0 && (
+            <Alert variant="default" className="mt-3 py-2 px-3">
+              <div className="flex items-start gap-2">
+                <ChefHat className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0 space-y-1">
+                  <AlertDescription className="text-xs">
+                    <div className="font-medium mb-1">
+                      Used in {recipes.length} recipe{recipes.length !== 1 ? 's' : ''}:
+                    </div>
+                    <div className="space-y-1">
+                      {recipes.map((ri) => (
+                        <div key={ri.id} className="flex items-center gap-2 flex-wrap">
+                          <Link
+                            to={`/recipes?recipeId=${ri.recipe.id}`}
+                            className="text-primary hover:underline font-medium touch-manipulation min-h-[44px] flex items-center"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {ri.recipe.name}
+                          </Link>
+                          {ri.recipe.pos_item_name && (
+                            <Badge variant="outline" className="text-xs">
+                              {ri.recipe.pos_item_name}
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </AlertDescription>
+                </div>
+              </div>
+            </Alert>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -258,8 +297,7 @@ const ProductCard: React.FC<{
 export const VirtualizedProductGrid: React.FC<VirtualizedProductGridProps> = ({
   products,
   inventoryMetrics,
-  restaurantId,
-  allProducts,
+  recipesByProduct,
   canDeleteProducts,
   onEditProduct,
   onWasteProduct,
@@ -320,8 +358,7 @@ export const VirtualizedProductGrid: React.FC<VirtualizedProductGridProps> = ({
                   key={product.id}
                   product={product}
                   metrics={inventoryMetrics.productMetrics[product.id]}
-                  restaurantId={restaurantId}
-                  allProducts={allProducts}
+                  recipes={recipesByProduct[product.id]}
                   canDelete={canDeleteProducts}
                   onEdit={() => onEditProduct(product)}
                   onWaste={() => onWasteProduct(product)}

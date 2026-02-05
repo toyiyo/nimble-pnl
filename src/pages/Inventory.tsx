@@ -37,6 +37,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
+import { useAllProductRecipes } from '@/hooks/useAllProductRecipes';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
@@ -58,6 +59,7 @@ export const Inventory: React.FC = () => {
   const { updateProductStockWithAudit } = useInventoryAudit();
   const inventoryMetrics = useInventoryMetrics(selectedRestaurant?.restaurant_id || null, products);
   const { lowStockItems: lowStockProducts, exportLowStockCSV } = useInventoryAlerts(selectedRestaurant?.restaurant_id || null);
+  const { recipesByProduct } = useAllProductRecipes(selectedRestaurant?.restaurant_id || null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
@@ -1528,8 +1530,7 @@ export const Inventory: React.FC = () => {
                 <VirtualizedProductGrid
                   products={filteredProducts}
                   inventoryMetrics={inventoryMetrics}
-                  restaurantId={selectedRestaurant.restaurant_id}
-                  allProducts={products}
+                  recipesByProduct={recipesByProduct}
                   canDeleteProducts={canDeleteProducts}
                   onEditProduct={(product) => {
                     setSelectedProduct(product);

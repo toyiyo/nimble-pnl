@@ -84,16 +84,63 @@ export const LazyImage: React.FC<LazyImageProps> = ({
   onError,
   ...imgProps
 }) => {
-  // Start with isInView true - in virtualized contexts, the component
-  // is only mounted when visible, so we should load immediately.
-  // The Intersection Observer is kept as a fallback for non-virtualized use.
-  const [isInView, setIsInView] = useState(true);
+  // Check if IntersectionObserver is available (SSR-safe)
+  // If not available, default to showing image immediately
+  const hasIntersectionObserver =
+    typeof window !== 'undefined' && 'IntersectionObserver' in window;
+
+  // In virtualized contexts, components are only mounted when visible,
+  // so we can start with isInView true. For non-virtualized contexts,
+  // the IntersectionObserver will handle visibility detection.
+  const [isInView, setIsInView] = useState(!hasIntersectionObserver);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Transform URL for optimized delivery
   const transformedSrc = transformSupabaseUrl(src, transformWidth, transformQuality);
+
+  // Reset load/error state when src changes
+  useEffect(() => {
+    setIsLoaded(false);
+    setHasError(false);
+    // Re-evaluate intersection for new image if observer is available
+    if (hasIntersectionObserver && containerRef.current) {
+      setIsInView(false);
+    }
+  }, [src, transformedSrc, hasIntersectionObserver]);
+
+  // Set up Intersection Observer for lazy loading
+  useEffect(() => {
+    if (!hasIntersectionObserver) {
+      setIsInView(true);
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      {
+        rootMargin,
+        threshold: 0,
+      }
+    );
+
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [rootMargin, hasIntersectionObserver, transformedSrc]);
 
   const handleLoad = () => {
     setIsLoaded(true);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, DollarSign, Package, AlertCircle, Clock, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
 
@@ -26,7 +27,17 @@ interface POSSalesDashboardProps {
   contextDescription: string;
   highlightToken: number;
   filtersActive: boolean;
+  isLoading?: boolean;
 }
+
+// Skeleton gradients for loading state (matching real metrics)
+const skeletonGradients = [
+  "from-blue-500/10 to-cyan-500/10",
+  "from-green-500/10 to-emerald-500/10",
+  "from-red-500/10 to-rose-500/10",
+  "from-amber-500/10 to-orange-500/10",
+  "from-purple-500/10 to-pink-500/10",
+];
 
 export const POSSalesDashboard = ({
   totalSales,
@@ -43,6 +54,7 @@ export const POSSalesDashboard = ({
   contextDescription,
   highlightToken,
   filtersActive,
+  isLoading = false,
 }: POSSalesDashboardProps) => {
   const [valueWashActive, setValueWashActive] = useState(false);
   const showFilteredContext = filtersActive || contextCueVisible || cuePinned;
@@ -106,39 +118,57 @@ export const POSSalesDashboard = ({
             showFilteredContext ? "mt-6" : "mt-0"
           }`}
         >
-        {metrics.map((metric, index) => (
-          <Card
-            key={index}
-            className={`bg-gradient-to-br ${metric.gradient} border-none shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 animate-fade-in ${
-              contextCueVisible ? "shadow-lg translate-y-1" : ""
-            }`}
-            style={{ animationDelay: `${index * 100}ms` }}
-          >
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground">{metric.label}</p>
-                  {showFilteredContext && (
-                    <p className="text-[11px] font-light text-muted-foreground/80">Filtered totals</p>
-                  )}
-                  <p
-                    className={`text-2xl font-bold tracking-tight ${
-                      valueWashActive ? "cue-value-wash" : ""
-                    }`}
-                  >
-                    {metric.value}
-                  </p>
-                  {metric.trend && (
-                    <p className="text-xs text-muted-foreground">{metric.trend}</p>
-                  )}
-                </div>
-                <div className="rounded-lg bg-background/50 p-2.5">
-                  {metric.icon}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {isLoading
+          ? skeletonGradients.map((gradient, index) => (
+              <Card
+                key={gradient}
+                className={`bg-gradient-to-br ${gradient} border-none shadow-sm animate-fade-in`}
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-24 bg-muted-foreground/20" />
+                      <Skeleton className="h-8 w-32 bg-muted-foreground/20" />
+                    </div>
+                    <Skeleton className="h-10 w-10 rounded-lg bg-muted-foreground/20" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          : metrics.map((metric, index) => (
+              <Card
+                key={index}
+                className={`bg-gradient-to-br ${metric.gradient} border-none shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 animate-fade-in ${
+                  contextCueVisible ? "shadow-lg translate-y-1" : ""
+                }`}
+                style={{ animationDelay: `${index * 100}ms` }}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">{metric.label}</p>
+                      {showFilteredContext && (
+                        <p className="text-[11px] font-light text-muted-foreground/80">Filtered totals</p>
+                      )}
+                      <p
+                        className={`text-2xl font-bold tracking-tight ${
+                          valueWashActive ? "cue-value-wash" : ""
+                        }`}
+                      >
+                        {metric.value}
+                      </p>
+                      {metric.trend && (
+                        <p className="text-xs text-muted-foreground">{metric.trend}</p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-background/50 p-2.5">
+                      {metric.icon}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
         </div>
       </div>
       {cuePinned && (

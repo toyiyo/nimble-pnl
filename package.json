@@ -68,6 +68,7 @@
     "@stripe/stripe-js": "^8.1.0",
     "@supabase/supabase-js": "^2.57.4",
     "@tanstack/react-query": "^5.83.0",
+    "@tanstack/react-virtual": "^3.13.18",
     "@types/papaparse": "^5.3.16",
     "@vercel/analytics": "^1.5.0",
     "@vercel/speed-insights": "^1.2.0",

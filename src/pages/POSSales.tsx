@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Plus, Search, Calendar, RefreshCw, Upload as UploadIcon, X, ArrowUpDown, Sparkles, Check, Split, Settings2, ExternalLink, AlertTriangle, ChefHat, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,7 @@ import { useCategorizePosSale } from "@/hooks/useCategorizePosSale";
 import { useSplitPosSale } from "@/hooks/useSplitPosSale";
 import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
 import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
+import { SaleCard, RecipeInfo } from "@/components/pos-sales/SaleCard";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
 import { useNavigate } from "react-router-dom";
@@ -113,6 +115,9 @@ export default function POSSales() {
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizePosSales();
 
+  // Virtual list ref for performance - only renders visible items
+  const salesListRef = useRef<HTMLDivElement>(null);
+
   const {
     sales,
     loading,
@@ -149,44 +154,59 @@ export default function POSSales() {
     return createRecipeByItemNameMap(recipes);
   }, [recipes]);
 
-  const handleMapPOSItem = (itemName: string) => {
+  // Pre-compute recipe info for each sale to avoid lookups during render
+  // This is passed to SaleCard for optimal memoization
+  const saleRecipeMap = useMemo(() => {
+    const map = new Map<string, RecipeInfo | null>();
+    for (const sale of sales) {
+      const recipe = getRecipeForItem(sale.itemName, recipeByItemName);
+      map.set(sale.id, recipe ? {
+        id: recipe.id,
+        name: recipe.name,
+        hasIngredients: recipe.hasIngredients,
+        profitMargin: recipe.profitMargin,
+      } : null);
+    }
+    return map;
+  }, [sales, recipeByItemName]);
+
+  const handleMapPOSItem = useCallback((itemName: string) => {
     setSelectedPOSItemForMapping(itemName);
     setMapPOSItemDialogOpen(true);
-  };
+  }, []);
 
-  const handleMappingComplete = async () => {
+  const handleMappingComplete = useCallback(async () => {
     // Refresh sales data to update unmapped items
     if (selectedRestaurant?.restaurant_id) {
       await syncAllSystems();
     }
-  };
+  }, [selectedRestaurant?.restaurant_id, syncAllSystems]);
 
-  // Bulk selection handlers
-  const handleSelectionToggle = (id: string, event: React.MouseEvent) => {
-    const modifiers = isMultiSelectKey(event);
-    
-    if (modifiers.isRange && lastSelectedId) {
-      bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
-    } else if (modifiers.isToggle) {
-      bulkSelection.toggleItem(id);
-    } else {
-      bulkSelection.toggleItem(id);
-    }
-    
-    // Always update lastSelectedId to support subsequent range selections
-    setLastSelectedId(id);
-  };
-
-  const handleCheckboxChange = (id: string) => {
+  const handleCheckboxChange = useCallback((id: string) => {
     bulkSelection.toggleItem(id);
     setLastSelectedId(id);
-  };
+  }, [bulkSelection]);
 
-  const handleCardClick = (id: string, event: React.MouseEvent) => {
-    if (bulkSelection.isSelectionMode) {
-      handleSelectionToggle(id, event);
-    }
-  };
+  // Stable handlers for SaleCard - avoids re-renders
+  const handleNavigateToRecipe = useCallback((recipeId: string) => {
+    navigate(`/recipes?recipeId=${recipeId}`);
+  }, [navigate]);
+
+  const handleSetEditingCategory = useCallback((id: string | null) => {
+    setEditingCategoryForSale(id);
+  }, []);
+
+  const handleCategorizePosSale = useCallback((params: {
+    saleId: string;
+    categoryId: string;
+    accountInfo?: { account_name: string; account_code: string }
+  }) => {
+    categorizePosSale(params);
+  }, [categorizePosSale]);
+
+  const handleSplitSale = useCallback((sale: UnifiedSaleItem) => {
+    setSaleToSplit(sale);
+  }, []);
 
   const handleBulkCategorize = (categoryId: string, overrideExisting: boolean) => {
     if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
@@ -297,6 +317,36 @@ export default function POSSales() {
   }, [sales]);
 
   const dateFilteredSales = filteredSales;
+
+  // Bulk selection handlers - must be after dateFilteredSales is defined
+  const handleSelectionToggle = useCallback((id: string, event: React.MouseEvent) => {
+    const modifiers = isMultiSelectKey(event);
+
+    if (modifiers.isRange && lastSelectedId) {
+      bulkSelection.selectRange(dateFilteredSales, lastSelectedId, id);
+    } else if (modifiers.isToggle) {
+      bulkSelection.toggleItem(id);
+    } else {
+      bulkSelection.toggleItem(id);
+    }
+
+    // Always update lastSelectedId to support subsequent range selections
+    setLastSelectedId(id);
+  }, [lastSelectedId, bulkSelection, dateFilteredSales]);
+
+  const handleCardClick = useCallback((id: string, event: React.MouseEvent) => {
+    if (bulkSelection.isSelectionMode) {
+      handleSelectionToggle(id, event);
+    }
+  }, [bulkSelection.isSelectionMode, handleSelectionToggle]);
+
+  // Virtual list setup - only renders visible items for performance
+  const salesVirtualizer = useVirtualizer({
+    count: dateFilteredSales.length,
+    getScrollElement: () => salesListRef.current,
+    estimateSize: () => 100, // Approximate height, virtualizer handles variable heights
+    overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
+  });
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -791,6 +841,7 @@ export default function POSSales() {
         contextDescription={contextDescription}
         highlightToken={highlightToken}
         filtersActive={filtersActive}
+        isLoading={totalsLoading}
       />
 
       {/* AI Categorization Section */}
@@ -1053,326 +1104,91 @@ export default function POSSales() {
                         </Button>
                       )}
                     </div>
-                    {dateFilteredSales.map((sale, index) => {
-                      // If sale is split, show the SplitSaleView component
-                      if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
-                        return (
-                          <div
-                            key={sale.id}
-                            className="animate-fade-in"
-                            style={{ animationDelay: `${index * 50}ms` }}
-                          >
-                            <SplitSaleView
-                              sale={sale}
-                              onEdit={handleEditSale}
-                              onSplit={(s) => setSaleToSplit(s)}
-                              formatCurrency={(amount) => `$${amount.toFixed(2)}`}
-                            />
-                          </div>
-                        );
-                      }
+                    {/* Virtualized list container - only renders visible items */}
+                    <div
+                      ref={salesListRef}
+                      className="h-[600px] overflow-auto"
+                    >
+                      <div
+                        style={{
+                          height: `${salesVirtualizer.getTotalSize()}px`,
+                          width: '100%',
+                          position: 'relative',
+                        }}
+                      >
+                        {salesVirtualizer.getVirtualItems().map((virtualRow) => {
+                          const sale = dateFilteredSales[virtualRow.index];
+                          if (!sale) return null;
 
-                      // Regular sale card (non-split)
-                      const posSystemColors: Record<string, string> = {
-                        "Square": "border-l-blue-500",
-                        "Clover": "border-l-green-500",
-                        "Toast": "border-l-orange-500",
-                        "manual": "border-l-purple-500",
-                        "manual_upload": "border-l-purple-500",
-                      };
-                      
-                      // Map 'lighthouse' to 'shift4-pos' for icon
-                      let integrationId = sale.posSystem.toLowerCase().replace("_", "-") + "-pos";
-                      if (integrationId === "lighthouse-pos") integrationId = "shift4-pos";
-                      
-                      const isSelected = bulkSelection.selectedIds.has(sale.id);
-                      
-                      return (
-                        <div
-                          key={sale.id}
-                          className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border-l-4 ${
-                            posSystemColors[sale.posSystem] || "border-l-gray-500"
-                          } rounded-lg bg-gradient-to-r from-background to-muted/30 hover:shadow-md hover:scale-[1.01] transition-all duration-300 gap-3 animate-fade-in ${
-                            isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
-                          } ${bulkSelection.isSelectionMode ? 'cursor-pointer' : ''}`}
-                          style={{ 
-                            animationDelay: `${index * 50}ms`,
-                            backgroundColor: index % 2 === 0 ? undefined : 'hsl(var(--muted) / 0.3)'
-                          }}
-                          onClick={(e) => handleCardClick(sale.id, e)}
-                          onKeyDown={(e) => {
-                            if (bulkSelection.isSelectionMode && (e.key === 'Enter' || e.key === ' ')) {
-                              e.preventDefault();
-                              handleCardClick(sale.id, e as unknown as React.MouseEvent);
-                            }
-                          }}
-                          role={bulkSelection.isSelectionMode ? "button" : undefined}
-                          tabIndex={bulkSelection.isSelectionMode ? 0 : undefined}
-                          aria-pressed={bulkSelection.isSelectionMode ? isSelected : undefined}
-                        >
-                          {/* Checkbox for selection mode */}
-                          {bulkSelection.isSelectionMode && (
-                            <div 
-                              className="flex items-start sm:items-center" 
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => e.stopPropagation()}
+                          // If sale is split, show the SplitSaleView component
+                          if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
+                            return (
+                              <div
+                                key={virtualRow.index}
+                                data-index={virtualRow.index}
+                                ref={salesVirtualizer.measureElement}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                                className="pb-3"
+                              >
+                                <SplitSaleView
+                                  sale={sale}
+                                  onEdit={handleEditSale}
+                                  onSplit={(s) => setSaleToSplit(s)}
+                                  formatCurrency={(amount) => `$${amount.toFixed(2)}`}
+                                />
+                              </div>
+                            );
+                          }
+
+                          // Regular sale card (non-split) - using extracted SaleCard component
+                          return (
+                            <div
+                              key={virtualRow.index}
+                              data-index={virtualRow.index}
+                              ref={salesVirtualizer.measureElement}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                transform: `translateY(${virtualRow.start}px)`,
+                              }}
+                              className="pb-3"
                             >
-                              <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => handleCheckboxChange(sale.id)}
-                                aria-label={`Select ${sale.itemName}`}
-                              />
-                            </div>
-                          )}
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <IntegrationLogo
-                                integrationId={integrationId}
-                                size={20}
-                              />
-                              <h3 className="font-semibold text-base truncate">{sale.itemName}</h3>
-                              <Badge variant="secondary" className="text-xs font-medium">
-                                Qty: {sale.quantity}
-                              </Badge>
-                              {sale.totalPrice && (
-                                <Badge variant="outline" className="text-xs font-semibold bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
-                                  ${sale.totalPrice.toFixed(2)}
-                                </Badge>
-                              )}
-                              <Badge variant="outline" className="text-xs">
-                                {sale.posSystem}
-                              </Badge>
-                              {(() => {
-                                const recipe = getRecipeForItem(sale.itemName, recipeByItemName);
-                                if (recipe) {
-                                  return (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs cursor-pointer hover:scale-105 transition-all bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
-                                      onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
-                                    >
-                                      {!recipe.hasIngredients && (
-                                        <AlertTriangle className="h-3 w-3 mr-1 text-amber-500" />
-                                      )}
-                                      <ExternalLink className="h-3 w-3 mr-1" />
-                                      {recipe.name}
-                                      {recipe.profitMargin != null && (
-                                        <span className="ml-1 font-semibold">
-                                          ({recipe.profitMargin.toFixed(0)}%)
-                                        </span>
-                                      )}
-                                    </Badge>
-                                  );
+                              <SaleCard
+                                sale={sale}
+                                recipe={saleRecipeMap.get(sale.id) ?? null}
+                                isSelected={bulkSelection.selectedIds.has(sale.id)}
+                                isSelectionMode={bulkSelection.isSelectionMode}
+                                isEditingCategory={editingCategoryForSale === sale.id}
+                                accounts={accounts}
+                                canEditManualSales={
+                                  !!selectedRestaurant &&
+                                  (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager")
                                 }
-                                return (
-                                  <Badge
-                                    variant="destructive"
-                                    className="text-xs cursor-pointer hover:scale-105 transition-transform animate-pulse"
-                                    onClick={() => handleMapPOSItem(sale.itemName)}
-                                  >
-                                    No Recipe
-                                  </Badge>
-                                );
-                              })()}
-                              {sale.suggested_category_id && !sale.is_categorized && (
-                                <Badge variant="outline" className="bg-accent/10 text-accent-foreground border-accent/30">
-                                  <Sparkles className="h-3 w-3 mr-1" />
-                                  AI Suggested
-                                </Badge>
-                              )}
-                              {sale.is_categorized && sale.chart_account && (
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                                    {sale.chart_account.account_code} - {sale.chart_account.account_name}
-                                  </Badge>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 px-2 text-xs"
-                                    onClick={() => setEditingCategoryForSale(sale.id)}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 px-2 text-xs"
-                                    onClick={() => handleSuggestRuleFromSale(sale)}
-                                    title="Create a rule based on this sale"
-                                  >
-                                    <Settings2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              )}
-                              {/* Show Split button for all sales (categorized or not) */}
-                              {!sale.is_split && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 px-2 text-xs"
-                                  onClick={() => setSaleToSplit(sale)}
-                                >
-                                  <Split className="h-3 w-3 mr-1" />
-                                  Split
-                                </Button>
-                              )}
-                              {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
-                                <Badge 
-                                  variant="outline"
-                                  className={
-                                    sale.ai_confidence === 'high' 
-                                      ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30'
-                                      : sale.ai_confidence === 'medium'
-                                      ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30'
-                                      : 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30'
-                                  }
-                                >
-                                  {sale.ai_confidence}
-                                </Badge>
-                              )}
-                              {!sale.is_categorized && !sale.suggested_category_id && editingCategoryForSale !== sale.id && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-6 px-2 text-xs border-primary/50 hover:bg-primary/10"
-                                  onClick={() => setEditingCategoryForSale(sale.id)}
-                                >
-                                  Categorize
-                                </Button>
-                              )}
+                                onCardClick={handleCardClick}
+                                onCheckboxChange={handleCheckboxChange}
+                                onEdit={handleEditSale}
+                                onDelete={handleDeleteSale}
+                                onSimulateDeduction={handleSimulateDeduction}
+                                onMapPOSItem={handleMapPOSItem}
+                                onSetEditingCategory={handleSetEditingCategory}
+                                onSplit={handleSplitSale}
+                                onSuggestRule={handleSuggestRuleFromSale}
+                                onCategorize={handleCategorizePosSale}
+                                onNavigateToRecipe={handleNavigateToRecipe}
+                              />
                             </div>
-                            <div className="text-sm text-muted-foreground">
-                              {(() => {
-                                const [year, month, day] = sale.saleDate.split("-").map(Number);
-                                const localDate = new Date(year, month - 1, day);
-                                return format(localDate, "MMM d, yyyy");
-                              })()}
-                              {sale.saleTime && ` at ${sale.saleTime}`}
-                              {sale.externalOrderId && (
-                                <>
-                                  <br className="sm:hidden" />
-                                  <span className="hidden sm:inline"> • </span>
-                                  <span className="font-mono text-xs break-all max-w-full">Order: {sale.externalOrderId}</span>
-                                </>
-                              )}
-                            </div>
-                            {sale.suggested_category_id && !sale.is_categorized && sale.chart_account && (
-                              <div className="mt-2 p-2 bg-accent/5 border border-accent/20 rounded-md">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                  <div className="text-xs text-muted-foreground flex-1">
-                                    <span className="font-medium text-foreground">AI Suggestion:</span> {sale.chart_account.account_name} ({sale.chart_account.account_code})
-                                    {sale.ai_reasoning && <div className="mt-1 text-xs">{sale.ai_reasoning}</div>}
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      className="text-xs h-7 px-2"
-                                     onClick={() => categorizePosSale({ 
-                                       saleId: sale.id, 
-                                       categoryId: sale.suggested_category_id!,
-                                       accountInfo: {
-                                         account_name: sale.chart_account.account_name,
-                                         account_code: sale.chart_account.account_code,
-                                       }
-                                     })}
-                                    >
-                                      <Check className="h-3 w-3 mr-1" />
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="text-xs h-7 px-2"
-                                      onClick={() => setSaleToSplit(sale)}
-                                    >
-                                      <Split className="h-3 w-3 mr-1" />
-                                      Split
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="text-xs h-7 px-2"
-                                      onClick={() => setEditingCategoryForSale(sale.id)}
-                                    >
-                                      <X className="h-3 w-3 mr-1" />
-                                      Change
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            {editingCategoryForSale === sale.id && (
-                              <div className="mt-2 p-2 bg-muted/50 border border-border rounded-md">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex-1">
-                                     <SearchableAccountSelector
-                                       value={sale.category_id || sale.suggested_category_id || ""}
-                                       onValueChange={(categoryId) => {
-                                         const selectedAccount = accounts.find(acc => acc.id === categoryId);
-                                         categorizePosSale({ 
-                                           saleId: sale.id, 
-                                           categoryId,
-                                           accountInfo: selectedAccount ? {
-                                             account_name: selectedAccount.account_name,
-                                             account_code: selectedAccount.account_code,
-                                           } : undefined
-                                         });
-                                         setEditingCategoryForSale(null);
-                                       }}
-                                       placeholder="Select category"
-                                       filterByTypes={['revenue', 'liability']}
-                                       autoOpen
-                                     />
-                                  </div>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setEditingCategoryForSale(null)}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(sale.posSystem === "manual" || sale.posSystem === "manual_upload") &&
-                              selectedRestaurant &&
-                              (selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager") && (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEditSale(sale)}
-                                    className="text-xs hover:bg-blue-500/10 hover:border-blue-500/50 transition-all duration-200"
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleDeleteSale(sale.id)}
-                                    className="text-xs text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-all duration-200"
-                                  >
-                                    Delete
-                                  </Button>
-                                </>
-                              )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSimulateDeduction(sale.itemName, sale.quantity)}
-                              className="w-full sm:w-auto text-xs hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
-                            >
-                              <span className="hidden sm:inline">Simulate Impact</span>
-                              <span className="sm:hidden">Impact</span>
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          );
+                        })}
+                      </div>
+                    </div>
                     {hasMore && (
                       <div className="flex justify-center pt-2">
                         <Button variant="outline" onClick={loadMoreSales} disabled={loadingMore}>

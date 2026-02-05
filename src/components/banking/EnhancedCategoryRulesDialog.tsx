@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check, Split, AlertTriangle } from "lucide-react";
+import { Trash2, Plus, Settings2, Edit2, Save, X, Sparkles, Check, Split, AlertTriangle, Zap } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCategorizationRulesV2,
@@ -26,9 +26,7 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableSupplierSelector } from "@/components/SearchableSupplierSelector";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { SplitCategoryInput } from "@/components/banking/SplitCategoryInput";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAISuggestRules, type SuggestedRule } from "@/hooks/useAISuggestRules";
 
 interface EnhancedCategoryRulesDialogProps {
@@ -78,8 +76,8 @@ const emptyFormData: RuleFormData = {
   autoApply: false,
 };
 
-export const EnhancedCategoryRulesDialog = ({ 
-  open, 
+export const EnhancedCategoryRulesDialog = ({
+  open,
   onOpenChange,
   defaultTab = 'bank',
   prefilledRule
@@ -93,7 +91,7 @@ export const EnhancedCategoryRulesDialog = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const appliesTo: AppliesTo = activeTab === 'bank' ? 'bank_transactions' : 'pos_sales';
-  
+
   const { data: rules, isLoading } = useCategorizationRulesV2(appliesTo);
   const { suppliers, createSupplier } = useSuppliers();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
@@ -151,7 +149,7 @@ export const EnhancedCategoryRulesDialog = ({
         toast.error("Split rules must have at least 2 categories");
         return;
       }
-      
+
       // Validate all splits have category_id
       if (formData.splitCategories.some(s => !s.category_id)) {
         toast.error("All splits must have a category selected");
@@ -175,11 +173,11 @@ export const EnhancedCategoryRulesDialog = ({
     }
 
     // Validate that at least one pattern is set
-    const hasPattern = formData.descriptionPattern || 
-                      formData.supplierId || 
-                      formData.amountMin || 
-                      formData.amountMax || 
-                      formData.posCategory || 
+    const hasPattern = formData.descriptionPattern ||
+                      formData.supplierId ||
+                      formData.amountMin ||
+                      formData.amountMax ||
+                      formData.posCategory ||
                       formData.itemNamePattern;
 
     if (!hasPattern) {
@@ -191,13 +189,13 @@ export const EnhancedCategoryRulesDialog = ({
     const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
     const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
     const isGenericPattern = descPattern && genericTerms.includes(descPattern);
-    
+
     if (isGenericPattern) {
       // Generic pattern - check if we have other specificity
-      const hasOtherSpecificity = formData.supplierId || 
-                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) || 
+      const hasOtherSpecificity = formData.supplierId ||
+                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
                                   (formData.amountMax && parseFloat(formData.amountMax) > 0);
-      
+
       if (!hasOtherSpecificity) {
         toast.error(`"${formData.descriptionPattern}" is too generic. Add a supplier or amount range to make this rule more specific.`);
         return;
@@ -236,13 +234,13 @@ export const EnhancedCategoryRulesDialog = ({
 
   const handleEditRule = (rule: CategorizationRule) => {
     setEditingRuleId(rule.id);
-    
+
     // Determine split type from split categories
     let splitType: 'percentage' | 'amount' = 'percentage';
     if (rule.split_categories && rule.split_categories.length > 0) {
       splitType = rule.split_categories[0].percentage !== undefined ? 'percentage' : 'amount';
     }
-    
+
     setFormData({
       ruleName: rule.rule_name,
       appliesTo: rule.applies_to,
@@ -263,7 +261,7 @@ export const EnhancedCategoryRulesDialog = ({
       autoApply: rule.auto_apply,
     });
     setShowNewRule(true);
-    
+
     // Scroll to the form smoothly after a short delay to ensure it's rendered
     setTimeout(() => {
       const formElement = document.getElementById('rule-form');
@@ -282,7 +280,7 @@ export const EnhancedCategoryRulesDialog = ({
         toast.error("Split rules must have at least 2 categories");
         return;
       }
-      
+
       if (formData.splitCategories.some(s => !s.category_id)) {
         toast.error("All splits must have a category selected");
         return;
@@ -343,7 +341,7 @@ export const EnhancedCategoryRulesDialog = ({
 
   const handleApplyRules = async () => {
     if (!selectedRestaurant?.restaurant_id) return;
-    await applyRules.mutateAsync({ 
+    await applyRules.mutateAsync({
       restaurantId: selectedRestaurant.restaurant_id,
       applyTo: appliesTo
     });
@@ -351,7 +349,7 @@ export const EnhancedCategoryRulesDialog = ({
 
   const renderRuleConditions = (rule: CategorizationRule) => {
     const conditions: string[] = [];
-    
+
     if (rule.supplier_id && rule.supplier) {
       conditions.push(`Supplier: ${rule.supplier.name}`);
     }
@@ -372,43 +370,82 @@ export const EnhancedCategoryRulesDialog = ({
     if (rule.transaction_type && rule.transaction_type !== 'any') {
       conditions.push(`Type: ${rule.transaction_type}`);
     }
-    
-    return conditions.length > 0 ? conditions.join(' • ') : 'No conditions';
+
+    return conditions.length > 0 ? conditions.join(' · ') : 'No conditions';
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5" />
-            Categorization Rules
-          </DialogTitle>
-          <DialogDescription>
-            Set up automatic categorization rules for bank transactions and POS sales. Rules can match on patterns, amounts, suppliers, and more.
-          </DialogDescription>
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto p-0 gap-0 border-border/40">
+        {/* Apple-style header */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Settings2 className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">
+                Categorization Rules
+              </DialogTitle>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
+                Set up automatic categorization rules for bank transactions and POS sales.
+              </p>
+            </div>
+          </div>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'bank' | 'pos')}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="bank">Bank Transactions</TabsTrigger>
-            <TabsTrigger value="pos">POS Sales</TabsTrigger>
-          </TabsList>
+        <div className="px-6 py-5">
+          {/* Apple-style underline tabs */}
+          <div className="flex items-center gap-0 border-b border-border/40 mb-6">
+            <button
+              onClick={() => setActiveTab('bank')}
+              className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
+                activeTab === 'bank'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Bank Transactions
+              {activeTab === 'bank' && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('pos')}
+              className={`relative px-0 py-3 text-[14px] font-medium transition-colors ${
+                activeTab === 'pos'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              POS Sales
+              {activeTab === 'pos' && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+              )}
+            </button>
+          </div>
 
-          <TabsContent value={activeTab} className="space-y-4 mt-4">
-            {/* Action Buttons - Always visible */}
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h3 className="text-sm font-medium">
-                {rules && rules.length > 0 ? 'Active Rules' : 'Categorization Rules'}
-              </h3>
+          <div className="space-y-5">
+            {/* Action bar */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  {rules && rules.length > 0 ? 'Active Rules' : 'Rules'}
+                </span>
+                {rules && rules.length > 0 && (
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                    {rules.length}
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2">
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
                   onClick={() => {
                     if (!selectedRestaurant?.restaurant_id) return;
                     aiSuggestRules.mutate(
-                      { 
+                      {
                         restaurantId: selectedRestaurant.restaurant_id,
                         source: activeTab === 'bank' ? 'bank' : 'pos'
                       },
@@ -416,240 +453,251 @@ export const EnhancedCategoryRulesDialog = ({
                         onSuccess: (data) => {
                           setSuggestedRules(data.rules);
                           setShowSuggestions(true);
-                          toast.success(`Found ${data.rules.length} suggested rules based on ${data.total_analyzed} categorized ${activeTab === 'bank' ? 'transactions' : 'sales'}`);
+                          toast.success(`Found ${data.rules.length} suggested rules`);
                         }
                       }
                     );
                   }}
                   disabled={aiSuggestRules.isPending}
+                  className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg"
                 >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  {aiSuggestRules.isPending ? 'Analyzing...' : 'AI Suggest Rules'}
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  {aiSuggestRules.isPending ? 'Analyzing...' : 'AI Suggest'}
                 </Button>
                 {rules && rules.length > 0 && (
                   <Button
                     size="sm"
-                    variant="outline"
+                    variant="ghost"
                     onClick={handleApplyRules}
                     disabled={applyRules.isPending}
+                    className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg"
                   >
-                    Apply Rules to Existing Records
+                    <Zap className="h-3.5 w-3.5 mr-1.5" />
+                    {applyRules.isPending ? 'Applying...' : 'Apply to existing'}
                   </Button>
                 )}
               </div>
             </div>
 
-            {/* Existing Rules */}
+            {/* Existing Rules List */}
             {isLoading ? (
-              <div className="text-center py-4 text-muted-foreground">Loading rules...</div>
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
+                <p className="mt-3 text-[13px] text-muted-foreground">Loading rules...</p>
+              </div>
             ) : rules && rules.length > 0 ? (
               <div className="space-y-2">
                 {rules.map((rule) => (
-                  <Card
+                  <div
                     key={rule.id}
-                    className={`${!rule.is_active ? 'opacity-60' : ''}`}
+                    className={`group flex items-start justify-between gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors ${
+                      !rule.is_active ? 'opacity-50' : ''
+                    }`}
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <div className="font-medium">{rule.rule_name}</div>
-                            {rule.is_split_rule && (
-                              <Badge variant="default" className="text-xs bg-gradient-to-r from-primary to-accent">
-                                <Split className="h-3 w-3 mr-1" />
-                                Split Rule
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs">
-                              Priority: {rule.priority}
-                            </Badge>
-                            {rule.apply_count > 0 && (
-                              <Badge variant="secondary" className="text-xs">
-                                Applied {rule.apply_count}x
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {renderRuleConditions(rule)}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {rule.is_split_rule && rule.split_categories && rule.split_categories.length > 0 ? (
-                              <div className="text-sm font-medium text-primary">
-                                → Split into {rule.split_categories.length} categories
-                              </div>
-                            ) : (
-                              <div className="text-sm font-medium text-primary">
-                                → {rule.category?.account_code} - {rule.category?.account_name}
-                              </div>
-                            )}
-                            {rule.category && !rule.category.is_active && !rule.is_split_rule && (
-                              <Badge variant="destructive" className="text-xs">
-                                Inactive Category
-                              </Badge>
-                            )}
-                          </div>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[14px] font-medium text-foreground">{rule.rule_name}</p>
+                        {rule.is_split_rule && (
+                          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-medium">
+                            <Split className="h-3 w-3" />
+                            Split
+                          </span>
+                        )}
+                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                          Priority: {rule.priority}
+                        </span>
+                        {rule.apply_count > 0 && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                            {rule.apply_count}x applied
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[12px] text-muted-foreground">
+                        {renderRuleConditions(rule)}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        {rule.is_split_rule && rule.split_categories && rule.split_categories.length > 0 ? (
+                          <p className="text-[13px] font-medium text-foreground">
+                            → Split into {rule.split_categories.length} categories
+                          </p>
+                        ) : (
+                          <p className="text-[13px] font-medium text-foreground">
+                            → {rule.category?.account_code} · {rule.category?.account_name}
+                          </p>
+                        )}
+                        {rule.category && !rule.category.is_active && !rule.is_split_rule && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-destructive/10 text-destructive">
+                            Inactive
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id={`active-${rule.id}`}
+                            checked={rule.is_active}
+                            onCheckedChange={() => handleToggleActive(rule.id, rule.is_active)}
+                            disabled={updateRule.isPending}
+                            className="data-[state=checked]:bg-foreground"
+                          />
+                          <Label htmlFor={`active-${rule.id}`} className="text-[11px] text-muted-foreground">
+                            Active
+                          </Label>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2">
-                              <Label htmlFor={`active-${rule.id}`} className="text-xs">
-                                Active
-                              </Label>
-                              <Switch
-                                id={`active-${rule.id}`}
-                                checked={rule.is_active}
-                                onCheckedChange={() => handleToggleActive(rule.id, rule.is_active)}
-                                disabled={updateRule.isPending}
-                              />
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Label htmlFor={`auto-${rule.id}`} className="text-xs">
-                                Auto-apply
-                              </Label>
-                              <Switch
-                                id={`auto-${rule.id}`}
-                                checked={rule.auto_apply}
-                                onCheckedChange={() => handleToggleAutoApply(rule.id, rule.auto_apply)}
-                                disabled={updateRule.isPending}
-                              />
-                            </div>
-                          </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleEditRule(rule)}
-                            aria-label={`Edit rule: ${rule.rule_name}`}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => deleteRule.mutate(rule.id)}
-                            disabled={deleteRule.isPending}
-                            aria-label={`Delete rule: ${rule.rule_name}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id={`auto-${rule.id}`}
+                            checked={rule.auto_apply}
+                            onCheckedChange={() => handleToggleAutoApply(rule.id, rule.auto_apply)}
+                            disabled={updateRule.isPending}
+                            className="data-[state=checked]:bg-foreground"
+                          />
+                          <Label htmlFor={`auto-${rule.id}`} className="text-[11px] text-muted-foreground">
+                            Auto
+                          </Label>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleEditRule(rule)}
+                        aria-label={`Edit rule: ${rule.rule_name}`}
+                        className="h-8 w-8 rounded-lg hover:bg-muted/50"
+                      >
+                        <Edit2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deleteRule.mutate(rule.id)}
+                        disabled={deleteRule.isPending}
+                        aria-label={`Delete rule: ${rule.rule_name}`}
+                        className="h-8 w-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                No rules configured yet. Create your first rule below.
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <Settings2 className="h-6 w-6 text-muted-foreground/50" />
+                </div>
+                <p className="text-[15px] font-medium text-foreground mb-1">No rules yet</p>
+                <p className="text-[13px] text-muted-foreground">Create your first categorization rule below.</p>
               </div>
             )}
 
             {/* AI Suggested Rules */}
             {showSuggestions && suggestedRules.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    AI Suggested Rules ({suggestedRules.length})
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                      AI Suggestions
+                    </span>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                      {suggestedRules.length}
+                    </span>
+                  </div>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setShowSuggestions(false)}
+                    className="h-7 w-7 p-0 rounded-lg"
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-2 max-h-80 overflow-y-auto">
                   {suggestedRules.map((suggestion, idx) => (
-                    <Card key={idx} className="bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <div className="font-medium">{suggestion.rule_name}</div>
-                              <Badge 
-                                variant={
-                                  suggestion.confidence === 'high' ? 'default' :
-                                  suggestion.confidence === 'medium' ? 'secondary' : 
-                                  'outline'
-                                }
-                                className="text-xs"
-                              >
-                                {suggestion.confidence} confidence
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                {suggestion.historical_matches} matches
-                              </Badge>
-                              {!suggestion.category_id && (
-                                <Badge variant="destructive" className="text-xs">
-                                  Category not found
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {suggestion.reasoning}
-                            </div>
-                            <div className="text-sm font-medium text-primary">
-                              → {suggestion.account_code} - {suggestion.category_name || 'Unknown'}
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                // Directly create the rule from AI suggestion
-                                if (!suggestion.category_id) {
-                                  toast.error(`Cannot create rule: Category "${suggestion.account_code}" not found in chart of accounts`);
-                                  return;
-                                }
-
-                                try {
-                                  await createRule.mutateAsync({
-                                    restaurantId: selectedRestaurant?.restaurant_id || '',
-                                    ruleName: suggestion.rule_name,
-                                    appliesTo: suggestion.applies_to,
-                                    descriptionPattern: suggestion.description_pattern || undefined,
-                                    descriptionMatchType: suggestion.description_pattern ? (suggestion.description_match_type as MatchType) : undefined,
-                                    amountMin: suggestion.amount_min,
-                                    amountMax: suggestion.amount_max,
-                                    supplierId: undefined,
-                                    transactionType: suggestion.transaction_type as TransactionType | undefined,
-                                    posCategory: suggestion.pos_category || undefined,
-                                    itemNamePattern: suggestion.item_name_pattern || undefined,
-                                    itemNameMatchType: suggestion.item_name_pattern ? (suggestion.item_name_match_type as MatchType) : undefined,
-                                    categoryId: suggestion.category_id,
-                                    priority: suggestion.priority || 0,
-                                    autoApply: true, // Default to enabled for AI suggestions
-                                  });
-                                  
-                                  // Remove this suggestion from the list after successful creation
-                                  setSuggestedRules(suggestedRules.filter((_, i) => i !== idx));
-                                  toast.success(`Rule "${suggestion.rule_name}" created successfully`);
-                                } catch (error) {
-                                  toast.error(`Failed to create rule: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                                }
-                              }}
-                              disabled={createRule.isPending || !suggestion.category_id}
-                            >
-                              <Check className="h-4 w-4 mr-2" />
-                              Use This Rule
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                // Remove this suggestion from the list
-                                setSuggestedRules(suggestedRules.filter((_, i) => i !== idx));
-                                toast.success('Suggestion dismissed');
-                              }}
-                              aria-label="Dismiss suggestion"
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
+                    <div
+                      key={idx}
+                      className="flex items-start justify-between gap-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5"
+                    >
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-[14px] font-medium text-foreground">{suggestion.rule_name}</p>
+                          <span className={`text-[11px] px-1.5 py-0.5 rounded-md font-medium ${
+                            suggestion.confidence === 'high'
+                              ? 'bg-green-500/10 text-green-700 dark:text-green-300'
+                              : suggestion.confidence === 'medium'
+                              ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300'
+                              : 'bg-muted text-muted-foreground'
+                          }`}>
+                            {suggestion.confidence}
+                          </span>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                            {suggestion.historical_matches} matches
+                          </span>
+                          {!suggestion.category_id && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-destructive/10 text-destructive">
+                              Category not found
+                            </span>
+                          )}
                         </div>
-                      </CardContent>
-                    </Card>
+                        <p className="text-[12px] text-muted-foreground">{suggestion.reasoning}</p>
+                        <p className="text-[13px] font-medium text-foreground">
+                          → {suggestion.account_code} · {suggestion.category_name || 'Unknown'}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            if (!suggestion.category_id) {
+                              toast.error(`Category "${suggestion.account_code}" not found`);
+                              return;
+                            }
+                            try {
+                              await createRule.mutateAsync({
+                                restaurantId: selectedRestaurant?.restaurant_id || '',
+                                ruleName: suggestion.rule_name,
+                                appliesTo: suggestion.applies_to,
+                                descriptionPattern: suggestion.description_pattern || undefined,
+                                descriptionMatchType: suggestion.description_pattern ? (suggestion.description_match_type as MatchType) : undefined,
+                                amountMin: suggestion.amount_min,
+                                amountMax: suggestion.amount_max,
+                                supplierId: undefined,
+                                transactionType: suggestion.transaction_type as TransactionType | undefined,
+                                posCategory: suggestion.pos_category || undefined,
+                                itemNamePattern: suggestion.item_name_pattern || undefined,
+                                itemNameMatchType: suggestion.item_name_pattern ? (suggestion.item_name_match_type as MatchType) : undefined,
+                                categoryId: suggestion.category_id,
+                                priority: suggestion.priority || 0,
+                                autoApply: true,
+                              });
+                              setSuggestedRules(suggestedRules.filter((_, i) => i !== idx));
+                              toast.success(`Rule created`);
+                            } catch (error) {
+                              toast.error(`Failed to create rule`);
+                            }
+                          }}
+                          disabled={createRule.isPending || !suggestion.category_id}
+                          className="h-8 px-3 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[12px] font-medium"
+                        >
+                          <Check className="h-3.5 w-3.5 mr-1" />
+                          Use
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setSuggestedRules(suggestedRules.filter((_, i) => i !== idx));
+                          }}
+                          className="h-8 px-3 rounded-lg text-[12px] font-medium text-muted-foreground"
+                          aria-label="Dismiss suggestion"
+                        >
+                          <X className="h-3.5 w-3.5 mr-1" />
+                          Skip
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -659,7 +707,7 @@ export const EnhancedCategoryRulesDialog = ({
             {!showNewRule ? (
               <Button
                 variant="outline"
-                className="w-full"
+                className="w-full h-11 rounded-xl border-dashed border-border/60 text-[14px] font-medium text-muted-foreground hover:text-foreground hover:border-border hover:bg-muted/30"
                 onClick={() => {
                   setFormData({ ...emptyFormData, appliesTo });
                   setShowNewRule(true);
@@ -669,267 +717,308 @@ export const EnhancedCategoryRulesDialog = ({
                 Add New Rule
               </Button>
             ) : (
-              <Card id="rule-form" className="bg-muted/50 border-2 border-primary/50 shadow-lg">
-                <CardContent className="p-4 space-y-4">
+              <div id="rule-form" className="rounded-xl border-2 border-primary/30 bg-muted/30 overflow-hidden">
+                {/* Form header */}
+                <div className="px-5 py-4 border-b border-border/40 bg-muted/50">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                       {editingRuleId ? (
-                        <>
-                          <Edit2 className="h-4 w-4 text-primary" />
-                          Edit Rule: {formData.ruleName}
-                        </>
+                        <Edit2 className="h-4 w-4 text-primary" />
                       ) : (
-                        <>
-                          <Plus className="h-4 w-4 text-primary" />
-                          New Categorization Rule
-                        </>
+                        <Plus className="h-4 w-4 text-primary" />
                       )}
-                    </h3>
+                      <h3 className="text-[14px] font-semibold text-foreground">
+                        {editingRuleId ? `Edit Rule: ${formData.ruleName}` : 'New Rule'}
+                      </h3>
+                    </div>
                     {editingRuleId && (
-                      <Badge variant="outline" className="text-xs">
+                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-primary/10 text-primary font-medium">
                         Editing
-                      </Badge>
+                      </span>
                     )}
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <Label>Rule Name</Label>
-                      <Input
-                        placeholder="e.g., Food Supplier - Sysco"
-                        value={formData.ruleName}
-                        onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
-                      />
-                    </div>
+                </div>
 
-                    {activeTab === 'bank' && (
-                      <>
-                        <div className="col-span-2">
-                          <Label>Description Pattern</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="e.g., Sysco, Amazon, etc."
-                              value={formData.descriptionPattern}
-                              onChange={(e) => setFormData({ ...formData, descriptionPattern: e.target.value })}
-                              className="flex-1"
-                            />
-                            <Select
-                              value={formData.descriptionMatchType}
-                              onValueChange={(value) => setFormData({ ...formData, descriptionMatchType: value as MatchType })}
-                            >
-                              <SelectTrigger className="w-[140px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="contains">Contains</SelectItem>
-                                <SelectItem value="exact">Exact</SelectItem>
-                                <SelectItem value="starts_with">Starts with</SelectItem>
-                                <SelectItem value="ends_with">Ends with</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          
-                          {/* Warning for generic or missing patterns */}
-                          {(() => {
-                            const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
-                            const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
-                            const isGeneric = descPattern && genericTerms.includes(descPattern);
-                            const isEmpty = !descPattern;
-                            const hasOtherCriteria = formData.supplierId || 
-                                                    (formData.amountMin && parseFloat(formData.amountMin) > 0) || 
-                                                    (formData.amountMax && parseFloat(formData.amountMax) > 0);
-                            
-                            if ((isEmpty || isGeneric) && !hasOtherCriteria) {
-                              return (
-                                <Alert className="mt-2 bg-amber-500/10 text-amber-700 border-amber-500/20">
-                                  <AlertTriangle className="h-4 w-4" />
-                                  <AlertDescription>
-                                    {isEmpty ? (
-                                      <>Add a specific description pattern, supplier, or amount range to avoid matching too many transactions.</>
-                                    ) : (
-                                      <>"{formData.descriptionPattern}" is too generic. Add a supplier or amount range to make this rule more specific.</>
-                                    )}
-                                  </AlertDescription>
-                                </Alert>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
+                <div className="p-5 space-y-5">
+                  {/* Rule Name */}
+                  <div className="space-y-2">
+                    <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Rule Name
+                    </Label>
+                    <Input
+                      placeholder="e.g., Food Supplier - Sysco"
+                      value={formData.ruleName}
+                      onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
+                      className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    />
+                  </div>
 
-                        <div className="col-span-2">
-                          <Label>Supplier (Optional)</Label>
-                          <SearchableSupplierSelector
-                            value={formData.supplierId}
-                            onValueChange={handleSupplierChange}
-                            suppliers={suppliers || []}
-                            showNewIndicator={true}
+                  {/* Bank-specific fields */}
+                  {activeTab === 'bank' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Description Pattern
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="e.g., Sysco, Amazon, etc."
+                            value={formData.descriptionPattern}
+                            onChange={(e) => setFormData({ ...formData, descriptionPattern: e.target.value })}
+                            className="flex-1 h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                           />
-                        </div>
-
-                        <div>
-                          <Label>Transaction Type</Label>
                           <Select
-                            value={formData.transactionType}
-                            onValueChange={(value) => setFormData({ ...formData, transactionType: value as TransactionType })}
+                            value={formData.descriptionMatchType}
+                            onValueChange={(value) => setFormData({ ...formData, descriptionMatchType: value as MatchType })}
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-background border-border/40 rounded-lg">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="any">Any</SelectItem>
-                              <SelectItem value="debit">Expense (Debit)</SelectItem>
-                              <SelectItem value="credit">Income (Credit)</SelectItem>
+                              <SelectItem value="contains">Contains</SelectItem>
+                              <SelectItem value="exact">Exact</SelectItem>
+                              <SelectItem value="starts_with">Starts with</SelectItem>
+                              <SelectItem value="ends_with">Ends with</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
-                      </>
-                    )}
 
-                    {activeTab === 'pos' && (
-                      <>
-                        <div className="col-span-2">
-                          <Label>Item Name Pattern</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="e.g., Burger, Coffee, etc."
-                              value={formData.itemNamePattern}
-                              onChange={(e) => setFormData({ ...formData, itemNamePattern: e.target.value })}
-                              className="flex-1"
-                            />
-                            <Select
-                              value={formData.itemNameMatchType}
-                              onValueChange={(value) => setFormData({ ...formData, itemNameMatchType: value as MatchType })}
-                            >
-                              <SelectTrigger className="w-[140px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="contains">Contains</SelectItem>
-                                <SelectItem value="exact">Exact</SelectItem>
-                                <SelectItem value="starts_with">Starts with</SelectItem>
-                                <SelectItem value="ends_with">Ends with</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
+                        {/* Warning for generic patterns */}
+                        {(() => {
+                          const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
+                          const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
+                          const isGeneric = descPattern && genericTerms.includes(descPattern);
+                          const isEmpty = !descPattern;
+                          const hasOtherCriteria = formData.supplierId ||
+                                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                                                  (formData.amountMax && parseFloat(formData.amountMax) > 0);
 
-                        <div className="col-span-2">
-                          <Label>POS Category (Optional)</Label>
+                          if ((isEmpty || isGeneric) && !hasOtherCriteria) {
+                            return (
+                              <Alert className="mt-2 bg-amber-500/10 border-amber-500/20 rounded-lg">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                <AlertDescription className="text-[12px] text-amber-700 dark:text-amber-300">
+                                  {isEmpty
+                                    ? "Add a pattern, supplier, or amount range to target specific transactions."
+                                    : `"${formData.descriptionPattern}" is generic. Add more specificity.`
+                                  }
+                                </AlertDescription>
+                              </Alert>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Supplier <span className="font-normal">(Optional)</span>
+                        </Label>
+                        <SearchableSupplierSelector
+                          value={formData.supplierId}
+                          onValueChange={handleSupplierChange}
+                          suppliers={suppliers || []}
+                          showNewIndicator={true}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Transaction Type
+                        </Label>
+                        <Select
+                          value={formData.transactionType}
+                          onValueChange={(value) => setFormData({ ...formData, transactionType: value as TransactionType })}
+                        >
+                          <SelectTrigger className="h-10 text-[14px] bg-background border-border/40 rounded-lg">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="any">Any</SelectItem>
+                            <SelectItem value="debit">Expense (Debit)</SelectItem>
+                            <SelectItem value="credit">Income (Credit)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+
+                  {/* POS-specific fields */}
+                  {activeTab === 'pos' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Item Name Pattern
+                        </Label>
+                        <div className="flex gap-2">
                           <Input
-                            placeholder="e.g., Beverages, Entrees"
-                            value={formData.posCategory}
-                            onChange={(e) => setFormData({ ...formData, posCategory: e.target.value })}
+                            placeholder="e.g., Burger, Coffee, etc."
+                            value={formData.itemNamePattern}
+                            onChange={(e) => setFormData({ ...formData, itemNamePattern: e.target.value })}
+                            className="flex-1 h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                           />
+                          <Select
+                            value={formData.itemNameMatchType}
+                            onValueChange={(value) => setFormData({ ...formData, itemNameMatchType: value as MatchType })}
+                          >
+                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-background border-border/40 rounded-lg">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="contains">Contains</SelectItem>
+                              <SelectItem value="exact">Exact</SelectItem>
+                              <SelectItem value="starts_with">Starts with</SelectItem>
+                              <SelectItem value="ends_with">Ends with</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                      </>
-                    )}
+                      </div>
 
-                    <div>
-                      <Label>Min Amount (Optional)</Label>
+                      <div className="space-y-2">
+                        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          POS Category <span className="font-normal">(Optional)</span>
+                        </Label>
+                        <Input
+                          placeholder="e.g., Beverages, Entrees"
+                          value={formData.posCategory}
+                          onChange={(e) => setFormData({ ...formData, posCategory: e.target.value })}
+                          className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Amount Range */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Min Amount <span className="font-normal">(Optional)</span>
+                      </Label>
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="0.00"
                         value={formData.amountMin}
                         onChange={(e) => setFormData({ ...formData, amountMin: e.target.value })}
+                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
-
-                    <div>
-                      <Label>Max Amount (Optional)</Label>
+                    <div className="space-y-2">
+                      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Max Amount <span className="font-normal">(Optional)</span>
+                      </Label>
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="0.00"
                         value={formData.amountMax}
                         onChange={(e) => setFormData({ ...formData, amountMax: e.target.value })}
+                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
+                  </div>
 
-                    <div className="col-span-2">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Switch
-                          id="is-split-rule"
-                          checked={formData.isSplitRule}
-                          onCheckedChange={(checked) => {
-                            setFormData({ 
-                              ...formData, 
-                              isSplitRule: checked,
-                              splitCategories: checked && formData.splitCategories.length === 0 
-                                ? [
-                                    { category_id: '', percentage: 50, description: '' },
-                                    { category_id: '', percentage: 50, description: '' }
-                                  ]
-                                : formData.splitCategories
-                            });
-                          }}
-                        />
-                        <Label htmlFor="is-split-rule" className="text-sm">
-                          Split rule (categorize into multiple categories)
-                        </Label>
-                      </div>
+                  {/* Split Rule Toggle */}
+                  <div className="flex items-center gap-3 py-3 px-4 rounded-lg bg-muted/50 border border-border/40">
+                    <Switch
+                      id="is-split-rule"
+                      checked={formData.isSplitRule}
+                      onCheckedChange={(checked) => {
+                        setFormData({
+                          ...formData,
+                          isSplitRule: checked,
+                          splitCategories: checked && formData.splitCategories.length === 0
+                            ? [
+                                { category_id: '', percentage: 50, description: '' },
+                                { category_id: '', percentage: 50, description: '' }
+                              ]
+                            : formData.splitCategories
+                        });
+                      }}
+                      className="data-[state=checked]:bg-foreground"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Split className="h-4 w-4 text-muted-foreground" />
+                      <Label htmlFor="is-split-rule" className="text-[13px] text-foreground font-medium cursor-pointer">
+                        Split rule (categorize into multiple categories)
+                      </Label>
                     </div>
+                  </div>
 
-                    {formData.isSplitRule ? (
-                      <div className="col-span-2">
-                        <SplitCategoryInput
-                          splits={formData.splitCategories}
-                          onChange={(splits) => setFormData({ ...formData, splitCategories: splits })}
-                          splitType={formData.splitType}
-                          onSplitTypeChange={(type) => setFormData({ ...formData, splitType: type })}
-                        />
-                      </div>
-                    ) : (
-                      <div className="col-span-2">
-                        <Label>Target Category *</Label>
-                        <SearchableAccountSelector
-                          value={formData.categoryId}
-                          onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
-                          placeholder="Select category..."
-                        />
-                      </div>
-                    )}
+                  {/* Category Selection */}
+                  {formData.isSplitRule ? (
+                    <div className="space-y-2">
+                      <SplitCategoryInput
+                        splits={formData.splitCategories}
+                        onChange={(splits) => setFormData({ ...formData, splitCategories: splits })}
+                        splitType={formData.splitType}
+                        onSplitTypeChange={(type) => setFormData({ ...formData, splitType: type })}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Target Category <span className="text-destructive">*</span>
+                      </Label>
+                      <SearchableAccountSelector
+                        value={formData.categoryId}
+                        onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+                        placeholder="Select category..."
+                      />
+                    </div>
+                  )}
 
-                    <div>
-                      <Label>Priority (higher = first)</Label>
+                  {/* Priority and Auto-apply */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Priority <span className="font-normal">(higher = first)</span>
+                      </Label>
                       <Input
                         type="number"
                         placeholder="0"
                         value={formData.priority}
                         onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        id="new-auto-apply"
-                        checked={formData.autoApply}
-                        onCheckedChange={(checked) => setFormData({ ...formData, autoApply: checked })}
-                      />
-                      <Label htmlFor="new-auto-apply" className="text-sm">
-                        Auto-apply to new records
-                      </Label>
+                    <div className="flex items-end pb-2">
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id="new-auto-apply"
+                          checked={formData.autoApply}
+                          onCheckedChange={(checked) => setFormData({ ...formData, autoApply: checked })}
+                          className="data-[state=checked]:bg-foreground"
+                        />
+                        <Label htmlFor="new-auto-apply" className="text-[13px] text-foreground cursor-pointer">
+                          Auto-apply to new records
+                        </Label>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  {/* Form Actions */}
+                  <div className="flex gap-2 pt-4 border-t border-border/40">
                     {editingRuleId ? (
                       <>
                         <Button
                           onClick={handleSaveEdit}
                           disabled={
-                            (formData.isSplitRule 
+                            (formData.isSplitRule
                               ? formData.splitCategories.length < 2 || formData.splitCategories.some(s => !s.category_id)
                               : !formData.categoryId
                             ) || updateRule.isPending
                           }
+                          className="h-10 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[14px] font-medium"
                         >
                           <Save className="h-4 w-4 mr-2" />
-                          Save Changes
+                          {updateRule.isPending ? 'Saving...' : 'Save Changes'}
                         </Button>
-                        <Button variant="outline" onClick={handleCancelEdit}>
-                          <X className="h-4 w-4 mr-2" />
+                        <Button
+                          variant="ghost"
+                          onClick={handleCancelEdit}
+                          className="h-10 px-4 rounded-lg text-[14px] font-medium text-muted-foreground hover:text-foreground"
+                        >
                           Cancel
                         </Button>
                       </>
@@ -938,26 +1027,31 @@ export const EnhancedCategoryRulesDialog = ({
                         <Button
                           onClick={handleCreateRule}
                           disabled={
-                            (formData.isSplitRule 
+                            (formData.isSplitRule
                               ? formData.splitCategories.length < 2 || formData.splitCategories.some(s => !s.category_id)
                               : !formData.categoryId
                             ) || createRule.isPending
                           }
+                          className="h-10 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[14px] font-medium"
                         >
                           <Plus className="h-4 w-4 mr-2" />
-                          Create Rule
+                          {createRule.isPending ? 'Creating...' : 'Create Rule'}
                         </Button>
-                        <Button variant="outline" onClick={handleCancelEdit}>
+                        <Button
+                          variant="ghost"
+                          onClick={handleCancelEdit}
+                          className="h-10 px-4 rounded-lg text-[14px] font-medium text-muted-foreground hover:text-foreground"
+                        >
                           Cancel
                         </Button>
                       </>
                     )}
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

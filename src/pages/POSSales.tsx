@@ -350,8 +350,8 @@ export default function POSSales() {
     }
   }, [bulkSelection.isSelectionMode, handleSelectionToggle]);
 
-  // Track previous data state for virtualizer reset
-  const prevSalesStateRef = useRef({ length: 0, filters: '' });
+  // Virtual list key - changes when data or filters change to reset measurements
+  const virtualizerKey = `${filtersSignature}-${dateFilteredSales.length}`;
 
   // Virtual list setup - only renders visible items for performance
   const salesVirtualizer = useVirtualizer({
@@ -359,19 +359,7 @@ export default function POSSales() {
     getScrollElement: () => salesListRef.current,
     estimateSize: () => 100, // Approximate height, virtualizer handles variable heights
     overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
-    getItemKey: (index) => dateFilteredSales[index]?.id ?? index, // Stable keys for items
   });
-
-  // Invalidate virtualizer measurements when sales data changes
-  // Using a ref comparison to avoid circular dependency issues
-  if (
-    prevSalesStateRef.current.length !== dateFilteredSales.length ||
-    prevSalesStateRef.current.filters !== filtersSignature
-  ) {
-    prevSalesStateRef.current = { length: dateFilteredSales.length, filters: filtersSignature };
-    // Schedule measurement invalidation after render
-    queueMicrotask(() => salesVirtualizer.measure());
-  }
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -1205,6 +1193,7 @@ export default function POSSales() {
                 <div className="space-y-0">
                   {/* Virtualized list container - Apple-style clean scrolling */}
                   <div
+                    key={virtualizerKey}
                     ref={salesListRef}
                     className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
                   >

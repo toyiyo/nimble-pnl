@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 interface RecipeInfo {
@@ -24,53 +25,50 @@ export interface ProductRecipeMap {
  * Fetches recipe usage for ALL products in a restaurant in a single query.
  * Use this instead of useProductRecipes when displaying many products at once
  * (e.g., in virtualized lists) to avoid N+1 query problems.
+ *
+ * Uses React Query for caching and automatic refetching.
  */
 export function useAllProductRecipes(restaurantId: string | null) {
-  const [data, setData] = useState<RecipeIngredient[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    async function fetchAllProductRecipes() {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['allProductRecipes', restaurantId],
+    queryFn: async () => {
       if (!restaurantId) {
-        setData([]);
-        return;
+        return [];
       }
 
-      setLoading(true);
-      try {
-        const { data: ingredients, error } = await supabase
-          .from('recipe_ingredients')
-          .select(`
+      const { data: ingredients, error } = await supabase
+        .from('recipe_ingredients')
+        .select(`
+          id,
+          product_id,
+          recipe_id,
+          quantity,
+          unit,
+          recipe:recipes!inner (
             id,
-            product_id,
-            recipe_id,
-            quantity,
-            unit,
-            recipe:recipes!inner (
-              id,
-              name,
-              pos_item_name
-            )
-          `)
-          .eq('recipe.restaurant_id', restaurantId)
-          .eq('recipe.is_active', true);
+            name,
+            pos_item_name
+          )
+        `)
+        .eq('recipe.restaurant_id', restaurantId)
+        .eq('recipe.is_active', true);
 
-        if (error) throw error;
-        setData(ingredients || []);
-      } catch (error) {
-        console.error('Error fetching all product recipes:', error);
-        setData([]);
-      } finally {
-        setLoading(false);
+      if (error) {
+        throw error;
       }
-    }
 
-    fetchAllProductRecipes();
-  }, [restaurantId]);
+      return (ingredients || []) as RecipeIngredient[];
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000, // 1 minute - recipe associations don't change frequently
+    refetchOnWindowFocus: false, // Avoid refetching during scroll interactions
+  });
 
   // Group by product_id for easy lookup
   const recipesByProduct = useMemo(() => {
     const map: ProductRecipeMap = {};
+    if (!data) return map;
+
     for (const item of data) {
       if (!map[item.product_id]) {
         map[item.product_id] = [];
@@ -80,5 +78,10 @@ export function useAllProductRecipes(restaurantId: string | null) {
     return map;
   }, [data]);
 
-  return { recipesByProduct, loading };
+  return {
+    recipesByProduct,
+    loading: isLoading,
+    isError,
+    error,
+  };
 }

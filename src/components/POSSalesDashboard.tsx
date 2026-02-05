@@ -121,7 +121,7 @@ export const POSSalesDashboard = ({
         {isLoading
           ? skeletonGradients.map((gradient, index) => (
               <Card
-                key={index}
+                key={gradient}
                 className={`bg-gradient-to-br ${gradient} border-none shadow-sm animate-fade-in`}
                 style={{ animationDelay: `${index * 50}ms` }}
               >

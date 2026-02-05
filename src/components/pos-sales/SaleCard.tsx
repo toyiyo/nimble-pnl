@@ -59,6 +59,12 @@ const posSystemColors: Record<string, string> = {
   "manual_upload": "border-l-purple-500",
 };
 
+const aiConfidenceStyles: Record<string, string> = {
+  high: 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30',
+  medium: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30',
+  low: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30',
+};
+
 function getIntegrationId(posSystem: string): string {
   let integrationId = posSystem.toLowerCase().replace("_", "-") + "-pos";
   if (integrationId === "lighthouse-pos") integrationId = "shift4-pos";
@@ -136,7 +142,7 @@ export const SaleCard = memo(function SaleCard({
           <Badge variant="secondary" className="text-xs font-medium">
             Qty: {sale.quantity}
           </Badge>
-          {sale.totalPrice && (
+          {sale.totalPrice != null && (
             <Badge variant="outline" className="text-xs font-semibold bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
               ${sale.totalPrice.toFixed(2)}
             </Badge>
@@ -239,13 +245,7 @@ export const SaleCard = memo(function SaleCard({
           {sale.ai_confidence && sale.suggested_category_id && !sale.is_categorized && (
             <Badge
               variant="outline"
-              className={
-                sale.ai_confidence === 'high'
-                  ? 'bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30'
-                  : sale.ai_confidence === 'medium'
-                  ? 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border-yellow-500/30'
-                  : 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30'
-              }
+              className={aiConfidenceStyles[sale.ai_confidence] || aiConfidenceStyles.low}
             >
               {sale.ai_confidence}
             </Badge>

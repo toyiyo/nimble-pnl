@@ -24,7 +24,11 @@ export function TransactionSkeleton() {
   );
 }
 
-export function TransactionTableSkeleton({ rowCount = 10 }: { rowCount?: number }) {
+interface TransactionTableSkeletonProps {
+  readonly rowCount?: number;
+}
+
+export function TransactionTableSkeleton({ rowCount = 10 }: TransactionTableSkeletonProps) {
   return (
     <div className="w-full overflow-hidden">
       {/* Header skeleton */}
@@ -40,8 +44,8 @@ export function TransactionTableSkeleton({ rowCount = 10 }: { rowCount?: number 
 
       {/* Row skeletons - matches MemoizedTransactionRow layout */}
       <div className="h-[600px]">
-        {[...Array(rowCount)].map((_, i) => (
-          <div key={i} className="flex items-center gap-2 px-4 py-3 border-b">
+        {Array.from({ length: rowCount }, (_, i) => (
+          <div key={`skeleton-row-${i}`} className="flex items-center gap-2 px-4 py-3 border-b">
             {/* Date */}
             <Skeleton className="h-4 w-[110px]" />
             {/* Description */}

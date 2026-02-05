@@ -42,10 +42,23 @@ const COLUMN_WIDTHS = {
 // Dialog types for single dialog instance pattern
 type DialogType = 'detail' | 'split' | 'delete' | 'rules' | null;
 
+// Helper to generate rule name from merchant
+function generateRuleName(merchantName: string | null | undefined): string {
+  if (!merchantName || merchantName.length < 3) {
+    return 'Transaction categorization rule';
+  }
+  const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire'];
+  const isGeneric = genericTerms.some(term => merchantName.toLowerCase() === term.toLowerCase());
+  if (isGeneric) {
+    return 'Transaction categorization rule';
+  }
+  const truncated = merchantName.length > 30 ? `${merchantName.substring(0, 30)}...` : merchantName;
+  return `Auto-categorize ${truncated}`;
+}
+
 // Pre-compute rule data for a transaction
 function getPrefilledRuleData(transaction: BankTransaction) {
   const merchantName = transaction.merchant_name || transaction.normalized_payee;
-  const description = transaction.description?.trim() || '';
   const isExpense = transaction.amount < 0;
   const amount = Math.abs(transaction.amount);
 
@@ -54,16 +67,15 @@ function getPrefilledRuleData(transaction: BankTransaction) {
     !genericTerms.some(term => merchantName.toLowerCase() === term.toLowerCase());
   const isLikelyRecurring = amount > 0 && amount >= 100 && Number.isInteger(amount * 100);
   const shouldSuggestAmountRange = isLikelyRecurring && !hasSpecificMerchant;
+  const transactionType: 'debit' | 'credit' = isExpense ? 'debit' : 'credit';
 
   return {
-    ruleName: hasSpecificMerchant
-      ? `Auto-categorize ${merchantName.substring(0, 30)}${merchantName.length > 30 ? '...' : ''}`
-      : 'Transaction categorization rule',
+    ruleName: generateRuleName(merchantName),
     appliesTo: 'bank_transactions' as const,
     descriptionPattern: hasSpecificMerchant ? merchantName : '',
     descriptionMatchType: 'contains' as const,
     supplierId: transaction.supplier?.id || '',
-    transactionType: (isExpense ? 'debit' : 'credit') as 'debit' | 'credit',
+    transactionType,
     categoryId: transaction.category_id || transaction.suggested_category_id || '',
     priority: '5',
     autoApply: true,

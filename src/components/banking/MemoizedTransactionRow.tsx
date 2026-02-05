@@ -86,9 +86,18 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
     }
   };
 
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (isSelectionMode && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      onSelectionToggle(transaction.id, {} as React.MouseEvent);
+    }
+  };
+
   return (
     <div
       data-testid="bank-transaction-row"
+      role={isSelectionMode ? 'button' : undefined}
+      tabIndex={isSelectionMode ? 0 : undefined}
       className={`
         flex items-center gap-2 px-4 py-3 border-b text-sm
         ${hasSuggestion ? 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40 border-l-4 border-l-amber-500 dark:border-l-amber-600' : 'hover:bg-muted/50'}
@@ -96,10 +105,12 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
         ${isSelectionMode ? 'cursor-pointer' : ''}
       `}
       onClick={handleRowClick}
+      onKeyDown={handleKeyDown}
+      aria-pressed={isSelectionMode ? isSelected : undefined}
     >
       {/* Checkbox column (only in selection mode) */}
       {isSelectionMode && (
-        <div className={COLUMN_WIDTHS.checkbox} onClick={(e) => e.stopPropagation()}>
+        <div className={COLUMN_WIDTHS.checkbox} onClick={(e) => e.stopPropagation()} role="presentation">
           <Checkbox
             checked={isSelected}
             onCheckedChange={() => onSelectionToggle(transaction.id, {} as React.MouseEvent)}

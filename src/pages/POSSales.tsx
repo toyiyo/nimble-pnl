@@ -350,9 +350,6 @@ export default function POSSales() {
     }
   }, [bulkSelection.isSelectionMode, handleSelectionToggle]);
 
-  // Virtual list key - changes when data or filters change to reset measurements
-  const virtualizerKey = `${filtersSignature}-${dateFilteredSales.length}`;
-
   // Virtual list setup - only renders visible items for performance
   const salesVirtualizer = useVirtualizer({
     count: dateFilteredSales.length,
@@ -1193,7 +1190,6 @@ export default function POSSales() {
                 <div className="space-y-0">
                   {/* Virtualized list container - Apple-style clean scrolling */}
                   <div
-                    key={virtualizerKey}
                     ref={salesListRef}
                     className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
                   >
@@ -1212,7 +1208,7 @@ export default function POSSales() {
                         if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
                           return (
                             <div
-                              key={sale.id}
+                              key={virtualRow.index}
                               data-index={virtualRow.index}
                               ref={salesVirtualizer.measureElement}
                               style={{
@@ -1236,7 +1232,7 @@ export default function POSSales() {
                         // Regular sale card (non-split) - using extracted SaleCard component
                         return (
                           <div
-                            key={sale.id}
+                            key={virtualRow.index}
                             data-index={virtualRow.index}
                             ref={salesVirtualizer.measureElement}
                             style={{

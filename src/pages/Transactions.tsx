@@ -452,11 +452,24 @@ const Transactions = () => {
 
       {/* Transactions - Mobile Card View / Desktop Table */}
       {isLoading || isInitialLoad ? (
-        <div className="space-y-3">
-          <TransactionSkeleton />
-          <TransactionSkeleton />
-          <TransactionSkeleton />
-        </div>
+        isMobile ? (
+          <div className="space-y-3">
+            <TransactionSkeleton />
+            <TransactionSkeleton />
+            <TransactionSkeleton />
+          </div>
+        ) : (
+          <Card className="w-full max-w-full overflow-hidden">
+            <CardContent className="p-0 w-full max-w-full">
+              <BankTransactionList
+                transactions={[]}
+                status="for_review"
+                accounts={accounts}
+                isLoading={true}
+              />
+            </CardContent>
+          </Card>
+        )
       ) : transactions.length === 0 ? (
         <Card>
           <CardContent className="pt-6">

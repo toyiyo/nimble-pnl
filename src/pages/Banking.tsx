@@ -619,15 +619,20 @@ export default function Banking() {
                 </div>
 
                 {isLoadingReview ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="-mx-6">
+                    <BankTransactionList
+                      transactions={[]}
+                      status="for_review"
+                      accounts={accounts}
+                      isLoading={true}
+                    />
                   </div>
                 ) : reviewTransactions.length > 0 ? (
                   <>
                     <div className="-mx-6">
-                      <BankTransactionList 
-                        transactions={reviewTransactions} 
-                        status="for_review" 
+                      <BankTransactionList
+                        transactions={reviewTransactions}
+                        status="for_review"
                         accounts={accounts}
                         isSelectionMode={bulkSelection.isSelectionMode}
                         selectedIds={bulkSelection.selectedIds}
@@ -661,8 +666,13 @@ export default function Banking() {
             <Card>
               <div className="p-6">
                 {isLoadingCategorized ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="-mx-6">
+                    <BankTransactionList
+                      transactions={[]}
+                      status="categorized"
+                      accounts={accounts}
+                      isLoading={true}
+                    />
                   </div>
                 ) : categorizedTransactions.length > 0 ? (
                   <>
@@ -694,8 +704,13 @@ export default function Banking() {
             <Card>
               <div className="p-6">
                 {isLoadingExcluded ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="-mx-6">
+                    <BankTransactionList
+                      transactions={[]}
+                      status="excluded"
+                      accounts={accounts}
+                      isLoading={true}
+                    />
                   </div>
                 ) : excludedTransactions.length > 0 ? (
                   <>

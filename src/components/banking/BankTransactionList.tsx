@@ -4,6 +4,7 @@ import { BankTransaction, useCategorizeTransaction, useDeleteTransaction } from 
 import { MemoizedTransactionRow, TransactionDisplayValues } from "./MemoizedTransactionRow";
 import { BankTransactionCard } from "./BankTransactionCard";
 import { TransactionDialogs } from "./TransactionDialogs";
+import { TransactionTableSkeleton } from "./TransactionSkeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -15,6 +16,8 @@ interface BankTransactionListProps {
   transactions: BankTransaction[];
   status: 'for_review' | 'categorized' | 'excluded';
   accounts: ChartAccount[];
+  // Loading state
+  isLoading?: boolean;
   // Bulk selection props (optional)
   isSelectionMode?: boolean;
   selectedIds?: Set<string>;
@@ -73,6 +76,7 @@ export function BankTransactionList({
   transactions,
   status,
   accounts,
+  isLoading = false,
   isSelectionMode = false,
   selectedIds = new Set(),
   onSelectionToggle,
@@ -188,6 +192,11 @@ export function BankTransactionList({
       onSettled: handleCloseDialog,
     });
   }, [activeTransaction, selectedRestaurant?.restaurant_id, deleteTransaction, handleCloseDialog]);
+
+  // Loading skeleton
+  if (isLoading) {
+    return <TransactionTableSkeleton rowCount={10} />;
+  }
 
   // Mobile card view - not virtualized
   if (isMobile) {

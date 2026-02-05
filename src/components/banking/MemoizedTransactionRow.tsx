@@ -222,7 +222,7 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
       <div className={COLUMN_WIDTHS.actions}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" aria-label="Transaction actions">
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>

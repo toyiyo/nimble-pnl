@@ -261,7 +261,7 @@ export function BankTransactionList({
 
               return (
                 <div
-                  key={virtualRow.index}
+                  key={transaction.id}
                   data-index={virtualRow.index}
                   ref={virtualizer.measureElement}
                   style={{

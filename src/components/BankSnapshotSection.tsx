@@ -81,7 +81,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">Cash</h2>
+        <h2 className="text-[17px] font-semibold text-foreground">Cash</h2>
         <div className="grid grid-cols-3 gap-4">
           <Skeleton className="h-24 rounded-lg" />
           <Skeleton className="h-24 rounded-lg" />
@@ -96,12 +96,12 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
   return (
     <div className="space-y-3">
       {/* Clean header */}
-      <h2 className="text-lg font-semibold text-foreground">Cash</h2>
+      <h2 className="text-[17px] font-semibold text-foreground">Cash</h2>
 
       {/* 3 essential metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Available Cash */}
-        <div className="p-4 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+        <div className="p-4 rounded-xl bg-background border border-border/40 hover:border-border transition-colors">
           <p className="text-sm text-muted-foreground">Available</p>
           <p className="text-2xl font-bold text-foreground">
             {formatCurrency(metrics.availableCash)}
@@ -112,7 +112,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
         </div>
 
         {/* Net Change */}
-        <div className="p-4 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+        <div className="p-4 rounded-xl bg-background border border-border/40 hover:border-border transition-colors">
           <p className="text-sm text-muted-foreground">This Month</p>
           <div className="flex items-center gap-1.5">
             {metrics.netChange >= 0 ? (
@@ -134,7 +134,7 @@ export function BankSnapshotSection({ restaurantId }: BankSnapshotSectionProps) 
         </div>
 
         {/* Runway */}
-        <div className="p-4 rounded-lg bg-card border border-border hover:border-primary/20 transition-colors">
+        <div className="p-4 rounded-xl bg-background border border-border/40 hover:border-border transition-colors">
           <p className="text-sm text-muted-foreground">Runway</p>
           <p className={`text-2xl font-bold ${getRunwayColor(metrics.runway)}`}>
             {formatRunway(metrics.runway)}

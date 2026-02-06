@@ -128,11 +128,14 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
 
   if (!monthlyData || monthlyData.length === 0) {
     return (
-      <Card className="animate-fade-in">
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader>
-          <CardTitle className="text-xl flex items-center gap-2">
-            Monthly Performance
-          </CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-foreground" />
+            </div>
+            <CardTitle className="text-[17px] font-semibold text-foreground">Monthly Performance</CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-center py-12 space-y-3">
@@ -149,12 +152,14 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
   }
 
   return (
-    <Card className="animate-fade-in">
+    <Card className="rounded-xl border border-border/40 bg-background">
       <CardHeader>
-        <CardTitle className="text-base sm:text-xl flex items-center gap-2">
-          <div className="h-1 w-6 sm:w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-          Monthly Performance
-        </CardTitle>
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+            <TrendingUp className="h-4 w-4 text-foreground" />
+          </div>
+          <CardTitle className="text-[17px] font-semibold text-foreground">Monthly Performance</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="px-2 sm:px-6">
         <ScrollArea className="w-full">
@@ -234,7 +239,6 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   return (
                     <Fragment key={month.period}>
                       <tr
-                        key={month.period}
                         className={`border-b border-border/50 hover:bg-muted/50 transition-colors ${
                           index % 2 === 0 ? 'bg-muted/20' : ''
                         } ${isExpanded ? 'bg-primary/5' : ''}`}

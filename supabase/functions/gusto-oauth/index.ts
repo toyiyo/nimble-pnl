@@ -377,7 +377,36 @@ Deno.serve(async (req) => {
       if (!createCompanyResponse.ok) {
         const errorText = await createCompanyResponse.text();
         console.error('[GUSTO-OAUTH] Create company error:', errorText);
-        throw new Error(`Failed to create company: ${errorText}`);
+
+        // Parse Gusto's structured error response for user-friendly messages
+        try {
+          const errorJson = JSON.parse(errorText);
+          const errors = errorJson.errors || [];
+          const einError = errors.find((e: { error_key?: string }) => e.error_key === 'ein');
+          if (einError) {
+            throw new Error(
+              'A company with this EIN is already registered in Gusto. ' +
+              'If you previously started setup, please contact support to link your existing Gusto account.'
+            );
+          }
+          const emailError = errors.find((e: { error_key?: string }) => e.error_key === 'email');
+          if (emailError) {
+            throw new Error(
+              'This email address is already associated with a Gusto account. ' +
+              'Please use a different admin email or connect using the OAuth flow instead.'
+            );
+          }
+          // Surface the first error message if available
+          if (errors.length > 0 && errors[0].message) {
+            throw new Error(errors[0].message);
+          }
+        } catch (parseErr) {
+          // If it's already one of our custom errors, re-throw it
+          if (parseErr instanceof Error && !parseErr.message.startsWith('Unexpected')) {
+            throw parseErr;
+          }
+        }
+        throw new Error('Failed to create company in Gusto. Please try again or contact support.');
       }
 
       const companyData = await createCompanyResponse.json();

@@ -239,7 +239,6 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   return (
                     <Fragment key={month.period}>
                       <tr
-                        key={month.period}
                         className={`border-b border-border/50 hover:bg-muted/50 transition-colors ${
                           index % 2 === 0 ? 'bg-muted/20' : ''
                         } ${isExpanded ? 'bg-primary/5' : ''}`}

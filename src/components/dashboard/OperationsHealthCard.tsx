@@ -88,7 +88,7 @@ export function OperationsHealthCard({
         ))}
       </div>
       {hasWarnings && (
-        <div className="px-5 py-2.5 border-t border-border/40 bg-muted/30">
+        <div className="px-5 py-2.5 border-t border-border/40 bg-muted/50">
           <p className="text-[12px] text-muted-foreground">
             Fix these to keep costs and reports accurate
           </p>

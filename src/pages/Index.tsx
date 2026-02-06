@@ -1105,7 +1105,7 @@ const Index = () => {
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
+                    <DashboardQuickActions />
                   </CollapsibleContent>
                 </div>
               </Collapsible>

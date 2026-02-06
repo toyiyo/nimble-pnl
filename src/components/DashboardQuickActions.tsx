@@ -1,11 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Package, Receipt, ChefHat, TrendingUp, ShoppingCart, Users, Settings, Wallet } from "lucide-react";
 
-interface DashboardQuickActionsProps {
-  restaurantId: string;
-}
-
-export function DashboardQuickActions({ restaurantId }: DashboardQuickActionsProps) {
+export function DashboardQuickActions() {
   const navigate = useNavigate();
 
   const actions = [

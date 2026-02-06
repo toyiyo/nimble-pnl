@@ -97,7 +97,14 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
         <CardContent className="py-12 text-center">
           <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-[14px] font-medium mb-2">No outflows this period</h3>
-          <p className="text-muted-foreground">Connect your bank or upload transactions to see spending insights.</p>
+          <p className="text-[13px] text-muted-foreground mb-4">Connect your bank or upload transactions to see spending insights.</p>
+          <Button
+            size="sm"
+            onClick={() => navigate('/banking')}
+            className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+          >
+            Connect Bank
+          </Button>
         </CardContent>
       </Card>
     );

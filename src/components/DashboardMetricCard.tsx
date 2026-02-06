@@ -10,7 +10,6 @@ interface DashboardMetricCardProps {
   icon: LucideIcon;
   variant?: 'default' | 'success' | 'warning' | 'danger';
   subtitle?: string;
-  sparklineData?: Array<{ value: number }>;
   periodLabel?: string;
 }
 
@@ -21,7 +20,6 @@ export function DashboardMetricCard({
   icon: Icon,
   variant = 'default',
   subtitle,
-  sparklineData,
   periodLabel
 }: DashboardMetricCardProps) {
   const getTrendIcon = () => {

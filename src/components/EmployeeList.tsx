@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle, Send } from 'lucide-react';
 import { useEmployees, EmployeeStatusFilter } from '@/hooks/useEmployees';
+import { useGustoConnection } from '@/hooks/useGustoConnection';
+import { useGustoEmployeeSync } from '@/hooks/useGustoEmployeeSync';
 import { Employee } from '@/types/scheduling';
-import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
@@ -39,6 +41,16 @@ export const EmployeeList = ({
 
   // Fetch employees based on active tab
   const { employees, loading, error } = useEmployees(restaurantId, { status: activeTab });
+
+  // Gusto integration
+  const { connection: gustoConnection } = useGustoConnection(restaurantId);
+  const hasGusto = !!gustoConnection;
+  const gustoSync = useGustoEmployeeSync(hasGusto ? restaurantId : null);
+
+  const handleSendToGusto = useCallback(async (employeeId: string) => {
+    if (!gustoSync) return;
+    await gustoSync.syncEmployees([employeeId]);
+  }, [gustoSync]);
 
   // For showing counts, we need to fetch all separately
   const { employees: allActive } = useEmployees(restaurantId, { status: 'active' });
@@ -144,6 +156,8 @@ export const EmployeeList = ({
                     employee={employee}
                     onEdit={onEmployeeEdit}
                     onDeactivate={onEmployeeDeactivate}
+                    hasGusto={hasGusto}
+                    onSendToGusto={hasGusto ? handleSendToGusto : undefined}
                     variant="active"
                   />
                 ))}
@@ -168,6 +182,7 @@ export const EmployeeList = ({
                     employee={employee}
                     onEdit={onEmployeeEdit}
                     onReactivate={onEmployeeReactivate}
+                    hasGusto={hasGusto}
                     variant="inactive"
                   />
                 ))}
@@ -195,6 +210,8 @@ export const EmployeeList = ({
                     onEdit={onEmployeeEdit}
                     onDeactivate={employee.is_active ? onEmployeeDeactivate : undefined}
                     onReactivate={!employee.is_active ? onEmployeeReactivate : undefined}
+                    hasGusto={hasGusto}
+                    onSendToGusto={hasGusto && employee.is_active ? handleSendToGusto : undefined}
                     variant={employee.is_active ? 'active' : 'inactive'}
                   />
                 ))}
@@ -213,10 +230,12 @@ interface EmployeeCardProps {
   onEdit?: (employee: Employee) => void;
   onDeactivate?: (employee: Employee) => void;
   onReactivate?: (employee: Employee) => void;
+  hasGusto?: boolean;
+  onSendToGusto?: (employeeId: string) => void;
   variant: 'active' | 'inactive';
 }
 
-const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }: EmployeeCardProps) => {
+const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, hasGusto, onSendToGusto, variant }: EmployeeCardProps) => {
   const formatCurrency = (cents: number) => {
     return `$${(cents / 100).toFixed(2)}`;
   };
@@ -284,6 +303,21 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
                   Inactive
                 </Badge>
               )}
+              {hasGusto && variant === 'active' && (
+                !employee.gusto_employee_uuid || employee.gusto_sync_status === 'not_synced' ? (
+                  <Badge variant="outline" className="shrink-0 text-[11px] text-muted-foreground">
+                    Not synced
+                  </Badge>
+                ) : employee.gusto_onboarding_status === 'onboarding_completed' ? (
+                  <Badge variant="outline" className="shrink-0 text-[11px] text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800">
+                    Onboarded
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="shrink-0 text-[11px] text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                    Pending onboarding
+                  </Badge>
+                )
+              )}
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="truncate">{employee.position}</span>
@@ -344,6 +378,45 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Reactivate
               </Button>
+            )}
+            {onSendToGusto && variant === 'active' && !employee.gusto_employee_uuid && (
+              employee.email ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-[13px]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSendToGusto(employee.id);
+                  }}
+                  aria-label={`Send ${employee.name} to Gusto`}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send to Gusto
+                </Button>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-[13px]"
+                          disabled
+                          aria-label={`Send ${employee.name} to Gusto (email required)`}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          Send to Gusto
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Email address required to send to Gusto</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )
             )}
           </div>
         </div>

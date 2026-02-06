@@ -655,7 +655,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Performance Overview</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={metricsOpen ? "Collapse Performance Overview" : "Expand Performance Overview"}>
                         {metricsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
@@ -798,7 +798,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={cashflowOpen ? "Collapse Cashflow" : "Expand Cashflow"}>
                         {cashflowOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
@@ -815,7 +815,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={monthlyOpen ? "Collapse Monthly Performance" : "Expand Monthly Performance"}>
                         {monthlyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
@@ -838,7 +838,7 @@ const Index = () => {
                         </p>
                       </div>
                       <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                        <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={revenueOpen ? "Collapse Revenue Mix" : "Expand Revenue Mix"}>
                           {revenueOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                         </Button>
                       </CollapsibleTrigger>
@@ -884,9 +884,11 @@ const Index = () => {
                           <p className="text-[15px] font-semibold text-destructive">
                             -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross
-                          </p>
+                          {revenueBreakdown.totals.gross_revenue > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross
+                            </p>
+                          )}
                         </div>
                       )}
                       <div className="p-4 rounded-lg bg-muted/50 border border-border/40">
@@ -1005,7 +1007,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Banking</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={bankingOpen ? "Collapse Banking" : "Expand Banking"}>
                         {bankingOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
@@ -1046,7 +1048,7 @@ const Index = () => {
                       <p className="text-[13px] text-muted-foreground mt-0.5">Where your money went</p>
                     </div>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={moneyOutOpen ? "Collapse Expenses" : "Expand Expenses"}>
                         {moneyOutOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
@@ -1074,7 +1076,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Operations Health</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={operationsOpen ? "Collapse Operations Health" : "Expand Operations Health"}>
                         {operationsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
@@ -1097,7 +1099,7 @@ const Index = () => {
                   <div className="flex items-center justify-between">
                     <h2 className="text-[17px] font-semibold text-foreground">Quick Actions</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={quickActionsOpen ? "Collapse Quick Actions" : "Expand Quick Actions"}>
                         {quickActionsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>

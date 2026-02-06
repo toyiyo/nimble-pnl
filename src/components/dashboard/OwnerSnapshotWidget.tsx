@@ -130,7 +130,9 @@ export function OwnerSnapshotWidget({
               <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Margin</p>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  <button type="button" className="inline-flex" aria-label="Margin info">
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="max-w-xs">Net profit as % of revenue. Target: 15%+</p>
@@ -156,7 +158,9 @@ export function OwnerSnapshotWidget({
               <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Runway</p>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  <button type="button" className="inline-flex" aria-label="Runway info">
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="max-w-xs">Days of cash at current burn rate. Target: 60+ days</p>
@@ -174,7 +178,9 @@ export function OwnerSnapshotWidget({
               <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Prime Cost</p>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  <button type="button" className="inline-flex" aria-label="Prime cost info">
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="max-w-xs">Food + Labor costs. Healthy range: 60-65% of sales</p>

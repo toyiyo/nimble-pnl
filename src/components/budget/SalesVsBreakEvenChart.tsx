@@ -60,7 +60,14 @@ export function SalesVsBreakEvenChart({ data, isLoading }: SalesVsBreakEvenChart
   }
 
   if (!data || chartData.length === 0) {
-    return null;
+    return (
+      <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-12 text-center px-5">
+          <p className="text-[14px] font-medium text-foreground">No break-even data yet</p>
+          <p className="text-[13px] text-muted-foreground mt-1">Set up your budget to see daily sales vs break-even.</p>
+        </div>
+      </div>
+    );
   }
 
   const breakEvenValue = data.dailyBreakEven;

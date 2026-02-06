@@ -36,6 +36,7 @@ interface EasyShiftEmployee {
   gusto_sync_status: string;
   is_active: boolean;
   compensation_type: string;
+  hourly_rate: number | null;
 }
 
 Deno.serve(async (req) => {
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
     // Build employee query
     let employeeQuery = supabase
       .from('employees')
-      .select('id, name, email, phone, position, hire_date, gusto_employee_uuid, gusto_sync_status, is_active, compensation_type')
+      .select('id, name, email, phone, position, hire_date, gusto_employee_uuid, gusto_sync_status, is_active, compensation_type, hourly_rate')
       .eq('restaurant_id', restaurantId)
       .eq('is_active', true); // Only sync active employees
 
@@ -208,6 +209,28 @@ Deno.serve(async (req) => {
 
           gustoUuid = gustoEmployee.uuid;
           onboardingStatus = gustoEmployee.onboarding_status;
+
+          // Update the primary job with title and rate if available
+          const primaryJob = gustoEmployee.jobs?.find(j => j.primary) || gustoEmployee.jobs?.[0];
+          if (primaryJob && (employee.position || employee.hourly_rate)) {
+            const jobUpdates: Record<string, string> = {};
+
+            if (employee.position) {
+              jobUpdates.title = employee.position;
+            }
+            if (employee.hourly_rate && employee.hourly_rate > 0) {
+              jobUpdates.rate = employee.hourly_rate.toFixed(2);
+              jobUpdates.payment_unit = 'Hour';
+            }
+
+            try {
+              await gustoClient.updateJob(primaryJob.uuid, primaryJob.version, jobUpdates);
+              console.log(`[GUSTO-SYNC] Updated job for ${employee.name}: title=${employee.position}, rate=${employee.hourly_rate}`);
+            } catch (jobError) {
+              // Log but don't fail the sync - employee was created successfully
+              console.warn(`[GUSTO-SYNC] Failed to update job for ${employee.name}:`, jobError);
+            }
+          }
         }
 
         // Update EasyShiftHQ employee with Gusto info

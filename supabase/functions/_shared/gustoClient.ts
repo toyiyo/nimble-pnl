@@ -183,6 +183,17 @@ export class GustoClient {
   }
 
   // ============================================================================
+  // Job Methods
+  // ============================================================================
+
+  async updateJob(jobUuid: string, version: string, updates: UpdateJobRequest) {
+    return this.request<GustoJob>(`/v1/jobs/${jobUuid}`, {
+      method: 'PUT',
+      body: { ...updates, version } as unknown as Record<string, unknown>,
+    });
+  }
+
+  // ============================================================================
   // Contractor Methods
   // ============================================================================
 
@@ -622,6 +633,12 @@ interface UpdateEmployeeRequest {
   first_name?: string;
   last_name?: string;
   email?: string;
+}
+
+interface UpdateJobRequest {
+  title?: string;
+  rate?: string;
+  payment_unit?: 'Hour' | 'Year' | 'Paycheck' | 'Month';
 }
 
 interface CreateContractorRequest {

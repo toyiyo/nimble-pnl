@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Calendar } from 'lucide-react';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
-import { Badge } from '@/components/ui/badge';
 import { startOfWeek, endOfDay, startOfMonth, startOfQuarter, subDays, format, startOfDay } from 'date-fns';
 
 export type PeriodType = 'today' | 'week' | 'month' | 'quarter' | 'last30' | 'last90' | 'custom';
@@ -59,75 +57,74 @@ export function PeriodSelector({ selectedPeriod, onPeriodChange }: PeriodSelecto
   const getDayCount = () => {
     const from = selectedPeriod.from;
     const to = selectedPeriod.to;
-    
-    // Handle invalid range defensively
+
     if (to < from) return 0;
-    
-    // Create UTC-only dates for calendar day difference
+
     const fromUTC = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
     const toUTC = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
-    
-    // Calculate inclusive day count
+
     const diffDays = Math.floor((toUTC - fromUTC) / (1000 * 60 * 60 * 24));
     return diffDays + 1;
   };
 
   return (
-    <div className="space-y-4 p-6 rounded-2xl bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50 animate-fade-in">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-        <h2 className="text-lg font-semibold">Performance Period</h2>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[17px] font-semibold text-foreground">Performance Period</h2>
+        <span className="text-[12px] text-muted-foreground">
+          {getDayCount()} {getDayCount() === 1 ? 'day' : 'days'}
+        </span>
       </div>
-      
-      <div className="flex flex-wrap gap-2">
+
+      {/* Apple-style underline tabs */}
+      <div className="flex items-center gap-0 border-b border-border/40 overflow-x-auto">
         {periods.map((period) => (
-          <Button
+          <button
             key={period.type}
-            variant={selectedPeriod.type === period.type ? 'default' : 'outline'}
-            size="sm"
             onClick={() => handlePeriodSelect(period)}
-            className="transition-all"
+            className={`relative px-3 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap ${
+              selectedPeriod.type === period.type
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
           >
             {period.label}
-          </Button>
+            {selectedPeriod.type === period.type && (
+              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+            )}
+          </button>
         ))}
-        
+
         {showDatePicker ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3">
             <DateRangePicker
               from={selectedPeriod.type === 'custom' ? selectedPeriod.from : undefined}
               to={selectedPeriod.type === 'custom' ? selectedPeriod.to : undefined}
               onSelect={handleCustomDateRange}
             />
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
               onClick={() => setShowDatePicker(false)}
+              className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
-            </Button>
+            </button>
           </div>
         ) : (
-          <Button
-            variant={selectedPeriod.type === 'custom' ? 'default' : 'outline'}
-            size="sm"
+          <button
             onClick={() => setShowDatePicker(true)}
-            className="transition-all"
+            className={`relative px-3 py-2.5 text-[13px] font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+              selectedPeriod.type === 'custom'
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
           >
-            <Calendar className="h-4 w-4 mr-2" aria-hidden="true" />
-            Custom Range
-          </Button>
+            <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+            Custom
+            {selectedPeriod.type === 'custom' && (
+              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+            )}
+          </button>
         )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <Badge variant="secondary" className="gap-2 px-3 py-1.5">
-          <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-          {selectedPeriod.label}
-        </Badge>
-        <span className="text-muted-foreground">
-          {getDayCount()} {getDayCount() === 1 ? 'day' : 'days'}
-        </span>
       </div>
     </div>
   );

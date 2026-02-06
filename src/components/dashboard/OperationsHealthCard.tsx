@@ -1,6 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { CheckCircle, AlertTriangle } from "lucide-react";
 
 interface ChecklistItem {
   text: string;
@@ -58,47 +57,43 @@ export function OperationsHealthCard({
   const hasWarnings = items.some(item => item.status === "warning");
 
   return (
-    <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-      <CardHeader>
-        <CardTitle className="text-xl flex items-center gap-2">
-          ⚙️ Restaurant Health
-        </CardTitle>
-        <CardDescription>Keep these accurate for reliable reports</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {items.map((item, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-3 rounded-lg bg-background/50 border"
-            >
-              <div className="flex items-center gap-3 flex-1">
-                <span className="text-lg">
-                  {item.status === "good" ? "✅" : "⚠️"}
-                </span>
-                <p className="text-sm">{item.text}</p>
-              </div>
-              {item.action && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => navigate(item.action!.path)}
-                  className="text-xs shrink-0"
-                >
-                  {item.action.label} →
-                </Button>
+    <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+      <div className="px-5 py-3 border-b border-border/40">
+        <h3 className="text-[14px] font-medium text-foreground">Restaurant Health</h3>
+        <p className="text-[12px] text-muted-foreground mt-0.5">Keep these accurate for reliable reports</p>
+      </div>
+      <div className="divide-y divide-border/40">
+        {items.map((item, index) => (
+          <div
+            key={index}
+            className="flex items-center justify-between px-5 py-3"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              {item.status === "good" ? (
+                <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
               )}
+              <p className="text-[14px] text-foreground truncate">{item.text}</p>
             </div>
-          ))}
-        </div>
-        {hasWarnings && (
-          <div className="mt-4 pt-4 border-t border-border/50">
-            <p className="text-xs text-muted-foreground flex items-center gap-2">
-              🧩 Fix these to keep costs and reports accurate
-            </p>
+            {item.action && (
+              <button
+                onClick={() => navigate(item.action!.path)}
+                className="text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors shrink-0 ml-3"
+              >
+                {item.action.label} →
+              </button>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        ))}
+      </div>
+      {hasWarnings && (
+        <div className="px-5 py-2.5 border-t border-border/40 bg-muted/30">
+          <p className="text-[12px] text-muted-foreground">
+            Fix these to keep costs and reports accurate
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

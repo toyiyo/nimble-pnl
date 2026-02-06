@@ -42,7 +42,7 @@ import { GustoEmployeeMappingDialog } from '@/components/employee/GustoEmployeeM
 import { useEmployees } from '@/hooks/useEmployees';
 import { GustoFlowType } from '@/types/gusto';
 
-const GustoPayroll = () => {
+function GustoPayroll() {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const { user } = useAuth();
@@ -80,7 +80,6 @@ const GustoPayroll = () => {
 
   const [activeTab, setActiveTab] = useState<string>('setup');
 
-  // Form state for company creation
   const [companyName, setCompanyName] = useState(selectedRestaurant?.restaurant?.name || '');
   const [adminFirstName, setAdminFirstName] = useState('');
   const [adminLastName, setAdminLastName] = useState('');
@@ -88,7 +87,6 @@ const GustoPayroll = () => {
   const [ein, setEin] = useState('');
   const [contractorOnly, setContractorOnly] = useState(false);
 
-  // Load initial flow when tab changes
   useEffect(() => {
     if (isConnected && !flowLoading) {
       const tabToFlowType: Record<string, GustoFlowType> = {
@@ -107,7 +105,6 @@ const GustoPayroll = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, isConnected]);
 
-  // Handle company creation form submit
   const handleCreateCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!companyName || !adminFirstName || !adminLastName || !adminEmail) {
@@ -123,7 +120,6 @@ const GustoPayroll = () => {
     });
   };
 
-  // Show setup form if not connected
   if (!connectionLoading && !isConnected) {
     return (
       <div className="container mx-auto p-6">
@@ -276,7 +272,6 @@ const GustoPayroll = () => {
     );
   }
 
-  // Loading state
   if (connectionLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -496,6 +491,6 @@ const GustoPayroll = () => {
       )}
     </div>
   );
-};
+}
 
 export default GustoPayroll;

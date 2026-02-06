@@ -57,7 +57,7 @@ import {
 
 type PayPeriodType = 'current_week' | 'last_week' | 'last_2_weeks' | 'custom';
 
-const Payroll = () => {
+function Payroll() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
@@ -69,7 +69,6 @@ const Payroll = () => {
     endOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
   );
 
-  // Calculate date range based on period type
   const getDateRange = () => {
     const today = new Date();
     switch (periodType) {
@@ -97,11 +96,6 @@ const Payroll = () => {
           start: customStartDate,
           end: customEndDate,
         };
-      default:
-        return {
-          start: startOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
-          end: endOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
-        };
     }
   };
 
@@ -120,20 +114,17 @@ const Payroll = () => {
   const { connection: gustoConnection } = useGustoConnection(restaurantId);
   const hasGusto = !!gustoConnection;
 
-  // State for manual payment dialog
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<{
     id: string;
     name: string;
   } | null>(null);
 
-  // Helper to check if an employee is a per-job contractor
   const isEmployeePerJobContractor = (employeeId: string) => {
     const employee = employees.find(e => e.id === employeeId);
     return employee ? isPerJobContractor(employee) : false;
   };
 
-  // Helper to get compensation type badge
   const getCompensationBadge = (emp: EmployeePayroll) => {
     switch (emp.compensationType) {
       case 'salary':
@@ -155,7 +146,6 @@ const Payroll = () => {
     }
   };
 
-  // Helper to format rate display based on compensation type
   const formatRateDisplay = (employee: EmployeePayroll): string => {
     if (employee.compensationType === 'hourly') {
       return formatCurrency(employee.hourlyRate);
@@ -170,7 +160,6 @@ const Payroll = () => {
     return 'Per-Job';
   };
 
-  // Helper to format regular pay based on compensation type
   const formatRegularPayDisplay = (employee: EmployeePayroll): string => {
     if (employee.compensationType === 'hourly') {
       return formatCurrency(employee.regularPay);
@@ -555,12 +544,12 @@ const Payroll = () => {
                         {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {employee.compensationType === 'hourly' && employee.overtimeHours > 0 ? (
-                          <Badge variant="secondary">
-                            {formatHours(employee.overtimeHours)}
-                          </Badge>
-                        ) : (
-                          employee.compensationType === 'hourly' ? '0.00' : '-'
+                        {employee.compensationType !== 'hourly' ? '-' : (
+                          employee.overtimeHours > 0 ? (
+                            <Badge variant="secondary">
+                              {formatHours(employee.overtimeHours)}
+                            </Badge>
+                          ) : '0.00'
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -617,7 +606,7 @@ const Payroll = () => {
                         payrollPeriod.totalGrossPay + payrollPeriod.totalTips
                       )}
                     </TableCell>
-                    <TableCell>{/* Actions column - empty for total row */}</TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>
@@ -691,6 +680,6 @@ const Payroll = () => {
     </div>
     </FeatureGate>
   );
-};
+}
 
 export default Payroll;

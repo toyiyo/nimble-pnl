@@ -1,6 +1,3 @@
-// PayrollGustoProcessor Component
-// Displays payroll summary, review details, and handles Gusto sync + payroll processing
-
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -30,10 +27,6 @@ import { PayrollPeriod, EmployeePayroll, formatCurrency, formatHours } from '@/u
 
 import { supabase } from '@/integrations/supabase/client';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface PayrollGustoProcessorProps {
   restaurantId: string;
   payrollPeriod: PayrollPeriod | null;
@@ -42,10 +35,6 @@ interface PayrollGustoProcessorProps {
 }
 
 type ProcessorState = 'idle' | 'syncing_hours' | 'preparing_payroll' | 'done' | 'error';
-
-// ---------------------------------------------------------------------------
-// Metric Card (internal)
-// ---------------------------------------------------------------------------
 
 function MetricCard({
   icon: Icon,
@@ -71,12 +60,7 @@ function MetricCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Employee Row (internal)
-// ---------------------------------------------------------------------------
-
 function EmployeeRow({ emp }: { emp: EmployeePayroll }) {
-  const totalHours = emp.regularHours + emp.overtimeHours;
   return (
     <tr className="border-b border-border/40 last:border-0">
       <td className="py-2.5 px-3 text-[14px] font-medium text-foreground">
@@ -98,10 +82,6 @@ function EmployeeRow({ emp }: { emp: EmployeePayroll }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
 export function PayrollGustoProcessor({
   restaurantId,
   payrollPeriod,
@@ -120,10 +100,6 @@ export function PayrollGustoProcessor({
     clearFlow,
   } = useGustoFlows(restaurantId);
 
-  // -----------------------------------------------------------------------
-  // Early returns
-  // -----------------------------------------------------------------------
-
   if (!payrollPeriod || payrollPeriod.employees.length === 0) {
     return null;
   }
@@ -131,21 +107,15 @@ export function PayrollGustoProcessor({
   const { employees, totalRegularHours, totalOvertimeHours, totalGrossPay } = payrollPeriod;
   const totalHours = totalRegularHours + totalOvertimeHours;
 
-  // -----------------------------------------------------------------------
-  // Process handler
-  // -----------------------------------------------------------------------
-
   const handleProcess = async () => {
     setState('syncing_hours');
     setErrorMessage(null);
 
     try {
-      // Step 1: Sync time punches to Gusto
       await syncTimePunches(startDate, endDate);
 
-      // Step 2: Prepare payroll via edge function
       setState('preparing_payroll');
-      const { data, error } = await supabase.functions.invoke('gusto-prepare-payroll', {
+      const { error } = await supabase.functions.invoke('gusto-prepare-payroll', {
         body: {
           restaurantId,
           startDate,
@@ -157,7 +127,6 @@ export function PayrollGustoProcessor({
         throw new Error(error.message || 'Failed to prepare payroll');
       }
 
-      // Step 3: Load the Run Payroll flow
       await generateFlowUrl('run_payroll');
 
       setState('done');
@@ -175,21 +144,18 @@ export function PayrollGustoProcessor({
     setErrorMessage(null);
   };
 
-  // -----------------------------------------------------------------------
-  // Derived UI state
-  // -----------------------------------------------------------------------
-
   const isProcessing = state === 'syncing_hours' || state === 'preparing_payroll';
-  const buttonLabel =
-    state === 'syncing_hours'
-      ? 'Syncing Hours...'
-      : state === 'preparing_payroll'
-        ? 'Preparing Payroll...'
-        : 'Sync to Gusto & Process Payroll';
 
-  // -----------------------------------------------------------------------
-  // Render
-  // -----------------------------------------------------------------------
+  function getButtonLabel(): string {
+    switch (state) {
+      case 'syncing_hours':
+        return 'Syncing Hours...';
+      case 'preparing_payroll':
+        return 'Preparing Payroll...';
+      default:
+        return 'Sync to Gusto & Process Payroll';
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -322,7 +288,7 @@ export function PayrollGustoProcessor({
           ) : (
             <Upload className="h-3.5 w-3.5 mr-2" />
           )}
-          {buttonLabel}
+          {getButtonLabel()}
         </Button>
       )}
     </div>

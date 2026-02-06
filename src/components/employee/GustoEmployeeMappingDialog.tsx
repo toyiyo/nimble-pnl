@@ -34,11 +34,11 @@ interface GustoEmployeeMappingDialogProps {
   restaurantId: string;
 }
 
-export const GustoEmployeeMappingDialog = ({
+export function GustoEmployeeMappingDialog({
   open,
   onOpenChange,
   restaurantId,
-}: GustoEmployeeMappingDialogProps) => {
+}: GustoEmployeeMappingDialogProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
@@ -71,8 +71,8 @@ export const GustoEmployeeMappingDialog = ({
 
       if (localError) throw localError;
 
-      const unmatchedLocals = ((locals as unknown as LocalEmployee[]) || []).filter(
-        (l) => !l.gusto_employee_uuid
+      const unmatchedLocals = (locals || []).filter(
+        (l: LocalEmployee) => !l.gusto_employee_uuid
       );
 
       setLocalEmployees(unmatchedLocals);
@@ -97,13 +97,9 @@ export const GustoEmployeeMappingDialog = ({
   const handleConfirm = async () => {
     setSaving(true);
     try {
-      const employeeIdsToPush: string[] = [];
-
-      for (const [localId, action] of unmatchedLocalActions) {
-        if (action === 'push') {
-          employeeIdsToPush.push(localId);
-        }
-      }
+      const employeeIdsToPush = Array.from(unmatchedLocalActions.entries())
+        .filter(([, action]) => action === 'push')
+        .map(([localId]) => localId);
 
       if (employeeIdsToPush.length > 0) {
         const { error: syncError } = await supabase.functions.invoke('gusto-sync-employees', {
@@ -186,12 +182,11 @@ export const GustoEmployeeMappingDialog = ({
                     >
                       <div>
                         <span className="text-[14px] font-medium">{emp.name}</span>
-                        {emp.email && (
+                        {emp.email ? (
                           <span className="text-[13px] text-muted-foreground ml-2">
                             {emp.email}
                           </span>
-                        )}
-                        {!emp.email && (
+                        ) : (
                           <Badge
                             variant="outline"
                             className="ml-2 text-[11px] text-muted-foreground"
@@ -246,4 +241,4 @@ export const GustoEmployeeMappingDialog = ({
       </DialogContent>
     </Dialog>
   );
-};
+}

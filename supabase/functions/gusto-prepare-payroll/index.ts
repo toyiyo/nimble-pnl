@@ -112,7 +112,10 @@ Deno.serve(async (req) => {
       const unprocessedPayrolls = await gustoClient.getUnprocessedPayrolls(connection.company_uuid);
 
       if (unprocessedPayrolls.length === 0) {
-        throw new Error('No unprocessed payrolls found. Create a payroll in Gusto first.');
+        throw new Error(
+          'No unprocessed payrolls found. This usually means your company needs a payroll schedule configured in Gusto. ' +
+          'Go to the Gusto Setup page and complete Company Onboarding to set up your pay schedule.'
+        );
       }
 
       // Use the next upcoming payroll (sorted by check_date)

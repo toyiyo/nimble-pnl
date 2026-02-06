@@ -115,7 +115,7 @@ export function PayrollGustoProcessor({
       await syncTimePunches(startDate, endDate);
 
       setState('preparing_payroll');
-      const { error } = await supabase.functions.invoke('gusto-prepare-payroll', {
+      const { data, error } = await supabase.functions.invoke('gusto-prepare-payroll', {
         body: {
           restaurantId,
           startDate,
@@ -125,6 +125,9 @@ export function PayrollGustoProcessor({
 
       if (error) {
         throw new Error(error.message || 'Failed to prepare payroll');
+      }
+      if (data?.error) {
+        throw new Error(data.error);
       }
 
       await generateFlowUrl('run_payroll');

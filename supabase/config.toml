@@ -109,6 +109,9 @@ verify_jwt = true
 [functions.clover-webhooks]
 verify_jwt = false
 
+[functions.stripe-financial-connections-webhook]
+verify_jwt = false
+
 [functions.stripe-invoice-webhook]
 verify_jwt = false
 

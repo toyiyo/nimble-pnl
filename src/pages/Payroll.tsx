@@ -13,6 +13,8 @@ import {
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePayroll } from '@/hooks/usePayroll';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useGustoConnection } from '@/hooks/useGustoConnection';
+import { PayrollGustoProcessor } from '@/components/payroll/PayrollGustoProcessor';
 import { FeatureGate } from '@/components/subscription';
 import {
   formatCurrency,
@@ -114,7 +116,10 @@ const Payroll = () => {
   } = usePayroll(restaurantId, start, end);
   
   const { employees } = useEmployees(restaurantId);
-  
+
+  const { connection: gustoConnection } = useGustoConnection(restaurantId);
+  const hasGusto = !!gustoConnection;
+
   // State for manual payment dialog
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<{
@@ -461,6 +466,7 @@ const Payroll = () => {
             <CardTitle>Employee Payroll Details</CardTitle>
             <Button
               onClick={handleExportCSV}
+              variant={hasGusto ? 'outline' : 'default'}
               disabled={!payrollPeriod || payrollPeriod.employees.length === 0}
             >
               <Download className="h-4 w-4 mr-2" />
@@ -660,6 +666,16 @@ const Payroll = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Gusto Payroll Processor */}
+      {hasGusto && payrollPeriod && restaurantId && (
+        <PayrollGustoProcessor
+          restaurantId={restaurantId}
+          payrollPeriod={payrollPeriod}
+          startDate={format(start, 'yyyy-MM-dd')}
+          endDate={format(end, 'yyyy-MM-dd')}
+        />
+      )}
 
       {/* Add Manual Payment Dialog */}
       {selectedEmployee && (

@@ -134,10 +134,30 @@ ALTER TABLE public.gusto_connections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gusto_webhook_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gusto_payroll_runs ENABLE ROW LEVEL SECURITY;
 
--- ============================================================================
--- RLS Policies for gusto_connections
--- Only owners and managers can view/manage connections
--- ============================================================================
+-- RLS Policies (idempotent — drop if exists before creating)
+DO $$
+BEGIN
+  -- gusto_connections SELECT policy
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Restaurant owners and managers can view Gusto connections' AND tablename = 'gusto_connections') THEN
+    DROP POLICY "Restaurant owners and managers can view Gusto connections" ON public.gusto_connections;
+  END IF;
+
+  -- gusto_connections ALL policy
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Restaurant owners and managers can manage Gusto connections' AND tablename = 'gusto_connections') THEN
+    DROP POLICY "Restaurant owners and managers can manage Gusto connections" ON public.gusto_connections;
+  END IF;
+
+  -- gusto_webhook_events SELECT policy
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Restaurant owners and managers can view Gusto webhook events' AND tablename = 'gusto_webhook_events') THEN
+    DROP POLICY "Restaurant owners and managers can view Gusto webhook events" ON public.gusto_webhook_events;
+  END IF;
+
+  -- gusto_payroll_runs SELECT policy
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Restaurant owners and managers can view Gusto payroll runs' AND tablename = 'gusto_payroll_runs') THEN
+    DROP POLICY "Restaurant owners and managers can view Gusto payroll runs" ON public.gusto_payroll_runs;
+  END IF;
+END $$;
+
 CREATE POLICY "Restaurant owners and managers can view Gusto connections"
   ON public.gusto_connections FOR SELECT
   USING (
@@ -160,10 +180,6 @@ CREATE POLICY "Restaurant owners and managers can manage Gusto connections"
     )
   );
 
--- ============================================================================
--- RLS Policies for gusto_webhook_events
--- Owners and managers can view webhook events
--- ============================================================================
 CREATE POLICY "Restaurant owners and managers can view Gusto webhook events"
   ON public.gusto_webhook_events FOR SELECT
   USING (
@@ -175,13 +191,6 @@ CREATE POLICY "Restaurant owners and managers can view Gusto webhook events"
     )
   );
 
--- Service role can insert webhook events (bypasses RLS)
--- No INSERT policy needed as webhooks come through Edge Functions with service role
-
--- ============================================================================
--- RLS Policies for gusto_payroll_runs
--- Owners and managers can view payroll runs
--- ============================================================================
 CREATE POLICY "Restaurant owners and managers can view Gusto payroll runs"
   ON public.gusto_payroll_runs FOR SELECT
   USING (
@@ -196,11 +205,13 @@ CREATE POLICY "Restaurant owners and managers can view Gusto payroll runs"
 -- ============================================================================
 -- Triggers for updated_at
 -- ============================================================================
+DROP TRIGGER IF EXISTS update_gusto_connections_updated_at ON public.gusto_connections;
 CREATE TRIGGER update_gusto_connections_updated_at
   BEFORE UPDATE ON public.gusto_connections
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_gusto_payroll_runs_updated_at ON public.gusto_payroll_runs;
 CREATE TRIGGER update_gusto_payroll_runs_updated_at
   BEFORE UPDATE ON public.gusto_payroll_runs
   FOR EACH ROW

@@ -8,7 +8,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Form,
@@ -20,7 +19,6 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { usePOSItems } from '@/hooks/usePOSItems';
 import { useRecipes } from '@/hooks/useRecipes';
@@ -38,7 +36,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Check, ChevronsUpDown, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Check, ChevronsUpDown, CheckCircle2, AlertCircle, Receipt } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Fuse from 'fuse.js';
 
@@ -85,7 +83,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   const { createManualSale, createManualSaleWithAdjustments, updateManualSale } = useUnifiedSales(restaurantId);
   const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
-  
+
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -196,7 +194,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
   const filteredItems = useMemo(() => {
     if (!searchQuery) return searchableItems;
-    
+
     const results = fuse.search(searchQuery);
     return results.map(result => result.item);
   }, [searchQuery, fuse, searchableItems]);
@@ -211,11 +209,11 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   const handleItemSelect = (itemValue: string) => {
     const item = searchableItems.find(i => i.value === itemValue);
     form.setValue('itemName', itemValue);
-    
+
     if (item?.avgPrice) {
       form.setValue('totalPrice', item.avgPrice);
     }
-    
+
     setComboboxOpen(false);
   };
 
@@ -227,7 +225,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     const serviceCharge = form.watch('serviceChargeAmount') || 0;
     const discount = form.watch('discountAmount') || 0;
     const fee = form.watch('feeAmount') || 0;
-    
+
     return revenue + tax + tip + serviceCharge - discount + fee;
   }, [
     form.watch('totalPrice'),
@@ -244,7 +242,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
     const existingItem = searchableItems.find(
       item => item.value.toLowerCase() === newItemName.toLowerCase()
     );
-    
+
     if (existingItem) {
       // Use the existing item's proper casing
       form.setValue('itemName', existingItem.value);
@@ -255,18 +253,18 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       // Create new item with user's input
       form.setValue('itemName', newItemName);
     }
-    
+
     setComboboxOpen(false);
   };
 
   const onSubmit = async (values: SaleFormValues) => {
     let success = false;
-    
+
     // If editing, use the old single-entry method
     if (editingSale) {
       // Convert 'revenue' to null for the adjustmentType
       const adjustmentType = values.adjustmentType === 'revenue' ? null : values.adjustmentType as 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | undefined;
-      
+
       success = await updateManualSale(editingSale.id, {
         itemName: values.itemName,
         quantity: values.quantity,
@@ -278,7 +276,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
       });
     } else {
       // Check if any adjustments are provided
-      const hasAdjustments = 
+      const hasAdjustments =
         (values.taxAmount && values.taxAmount > 0) ||
         (values.tipAmount && values.tipAmount > 0) ||
         (values.serviceChargeAmount && values.serviceChargeAmount > 0) ||
@@ -327,19 +325,35 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{editingSale ? 'Edit Manual Sale' : 'Record Manual Sale'}</DialogTitle>
+      <DialogContent className="sm:max-w-md p-0 gap-0 border-border/40">
+        {/* Apple-style header */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Receipt className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">
+                {editingSale ? 'Edit Manual Sale' : 'Record Manual Sale'}
+              </DialogTitle>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
+                {editingSale ? 'Update the sale details below.' : 'Add a new sale entry manually.'}
+              </p>
+            </div>
+          </div>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
+            {/* Item Name Field */}
             <FormField
               control={form.control}
               name="itemName"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>Item Name *</FormLabel>
+                  <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Item Name
+                  </FormLabel>
                   <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
                     <PopoverTrigger asChild>
                       <FormControl>
@@ -348,69 +362,73 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                           role="combobox"
                           aria-expanded={comboboxOpen}
                           className={cn(
-                            "w-full justify-between font-normal",
+                            "w-full h-10 justify-between font-normal rounded-lg border-border/40 bg-muted/30 hover:bg-muted/50",
                             !field.value && "text-muted-foreground"
                           )}
                         >
                           {field.value ? (
                             <span className="flex items-center gap-2">
                               {selectedItemData?.hasRecipe ? (
-                                <CheckCircle2 className="h-4 w-4 text-success" />
+                                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                               ) : (
-                                <AlertCircle className="h-4 w-4 text-warning" />
+                                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                               )}
-                              {field.value}
+                              <span className="text-[14px]">{field.value}</span>
                             </span>
                           ) : (
-                            "Select or type an item..."
+                            <span className="text-[14px]">Select or type an item...</span>
                           )}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground/50" />
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent 
-                      className="w-[--radix-popover-trigger-width] p-0" 
+                    <PopoverContent
+                      className="w-[--radix-popover-trigger-width] p-0 border-border/40"
                       align="start"
                       sideOffset={4}
                     >
                       <Command shouldFilter={false}>
-                        <CommandInput 
-                          placeholder="Search items..." 
+                        <CommandInput
+                          placeholder="Search items..."
                           value={searchQuery}
                           onValueChange={setSearchQuery}
+                          className="text-[14px]"
                         />
                         <CommandList className="max-h-[300px]">
                           <CommandEmpty>
                             {posLoading || recipesLoading ? (
-                              <div className="p-4 text-center text-sm text-muted-foreground">
-                                Loading items...
+                              <div className="flex flex-col items-center justify-center py-8">
+                                <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
+                                <p className="mt-2 text-[13px] text-muted-foreground">Loading items...</p>
                               </div>
                             ) : searchQuery ? (
                               <div className="p-3 space-y-2">
-                                <p className="text-sm text-muted-foreground text-center">
+                                <p className="text-[13px] text-muted-foreground text-center">
                                   No existing items match "{searchQuery}"
                                 </p>
                                 <Button
                                   type="button"
                                   variant="outline"
                                   size="sm"
-                                  className="w-full justify-start gap-2"
+                                  className="w-full justify-start gap-2 h-9 rounded-lg border-border/40"
                                   onClick={() => handleCreateNewItem(searchQuery)}
                                 >
-                                  <AlertCircle className="h-4 w-4" />
-                                  Create new manual item: <strong>"{searchQuery}"</strong>
+                                  <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                  <span className="text-[13px]">Create: <strong>"{searchQuery}"</strong></span>
                                 </Button>
                               </div>
                             ) : (
-                              <div className="p-4 text-center text-sm text-muted-foreground">
-                                Start typing to search or create a new item
+                              <div className="py-8 text-center">
+                                <p className="text-[13px] text-muted-foreground">
+                                  Start typing to search or create
+                                </p>
                               </div>
                             )}
                           </CommandEmpty>
-                          
+
                           {filteredItems.length > 0 && (
                             <>
-                              <CommandGroup heading="Items with Recipe Mapping">
+                              <CommandGroup heading="Items with Recipe">
                                 {filteredItems
                                   .filter(item => item.hasRecipe)
                                   .map((item) => (
@@ -418,6 +436,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                       key={item.value}
                                       value={item.value}
                                       onSelect={() => handleItemSelect(item.value)}
+                                      className="py-2.5"
                                     >
                                       <Check
                                         className={cn(
@@ -427,16 +446,16 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                             : "opacity-0"
                                         )}
                                       />
-                                      <CheckCircle2 className="mr-2 h-4 w-4 text-success" />
+                                      <CheckCircle2 className="mr-2 h-4 w-4 text-green-600 dark:text-green-400" />
                                       <div className="flex flex-col flex-1">
                                         <div className="flex items-center justify-between gap-2">
-                                          <span>{item.label}</span>
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                          <span className="text-[14px]">{item.label}</span>
+                                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                             {item.source}
                                           </span>
                                         </div>
                                         {item.avgPrice && (
-                                          <span className="text-xs text-muted-foreground">
+                                          <span className="text-[12px] text-muted-foreground">
                                             Avg: ${item.avgPrice.toFixed(2)}
                                           </span>
                                         )}
@@ -444,9 +463,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                     </CommandItem>
                                   ))}
                               </CommandGroup>
-                              
+
                               {filteredItems.some(item => !item.hasRecipe) && (
-                                <CommandGroup heading="Items without Recipe Mapping">
+                                <CommandGroup heading="Items without Recipe">
                                   {filteredItems
                                     .filter(item => !item.hasRecipe)
                                     .map((item) => (
@@ -454,6 +473,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                         key={item.value}
                                         value={item.value}
                                         onSelect={() => handleItemSelect(item.value)}
+                                        className="py-2.5"
                                       >
                                         <Check
                                           className={cn(
@@ -463,10 +483,10 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                                               : "opacity-0"
                                           )}
                                         />
-                                        <AlertCircle className="mr-2 h-4 w-4 text-warning" />
+                                        <AlertCircle className="mr-2 h-4 w-4 text-amber-600 dark:text-amber-400" />
                                         <div className="flex items-center justify-between gap-2 flex-1">
-                                          <span>{item.label}</span>
-                                          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                          <span className="text-[14px]">{item.label}</span>
+                                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                             {item.source}
                                           </span>
                                         </div>
@@ -476,15 +496,15 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                               )}
                             </>
                           )}
-                          
+
                           {searchQuery && (
                             <CommandGroup heading="Create New">
                               <CommandItem
                                 onSelect={() => handleCreateNewItem(searchQuery)}
-                                className="cursor-pointer"
+                                className="cursor-pointer py-2.5"
                               >
                                 <AlertCircle className="mr-2 h-4 w-4 text-muted-foreground" />
-                                <span>Create new item: <strong>"{searchQuery}"</strong></span>
+                                <span className="text-[13px]">Create new: <strong>"{searchQuery}"</strong></span>
                               </CommandItem>
                             </CommandGroup>
                           )}
@@ -493,13 +513,13 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                     </PopoverContent>
                   </Popover>
                   {selectedItemData && !selectedItemData.hasRecipe && (
-                    <FormDescription className="flex items-center gap-1 text-warning">
+                    <FormDescription className="flex items-center gap-1.5 text-[12px] text-amber-600 dark:text-amber-400">
                       <AlertCircle className="h-3 w-3" />
                       No recipe mapping - inventory won't be deducted
                     </FormDescription>
                   )}
                   {selectedItemData?.hasRecipe && (
-                    <FormDescription className="flex items-center gap-1 text-success">
+                    <FormDescription className="flex items-center gap-1.5 text-[12px] text-green-600 dark:text-green-400">
                       <CheckCircle2 className="h-3 w-3" />
                       Recipe mapped - inventory will be deducted
                     </FormDescription>
@@ -509,175 +529,23 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
               )}
             />
 
-            {!editingSale && (
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">Adjustments (Optional)</h3>
-                  <span className="text-xs text-muted-foreground">Add taxes, tips, fees, etc.</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="taxAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Sales Tax</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="tipAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tip</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="serviceChargeAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Service Charge</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="feeAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Platform Fee</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="discountAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Discount</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                {totalCollected > 0 && (
-                  <div className="p-4 bg-muted/50 rounded-lg border">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Total Collected at POS:</span>
-                      <span className="text-lg font-bold text-primary">
-                        ${totalCollected.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {(() => {
-                        const parts = [];
-                        const revenue = form.watch('totalPrice') || 0;
-                        if (revenue > 0) parts.push(`$${revenue.toFixed(2)} revenue`);
-                        
-                        const tax = form.watch('taxAmount') || 0;
-                        if (tax > 0) parts.push(`$${tax.toFixed(2)} tax`);
-                        
-                        const tip = form.watch('tipAmount') || 0;
-                        if (tip > 0) parts.push(`$${tip.toFixed(2)} tip`);
-                        
-                        const serviceCharge = form.watch('serviceChargeAmount') || 0;
-                        if (serviceCharge > 0) parts.push(`$${serviceCharge.toFixed(2)} service charge`);
-                        
-                        const fee = form.watch('feeAmount') || 0;
-                        if (fee > 0) parts.push(`$${fee.toFixed(2)} fee`);
-                        
-                        const discount = form.watch('discountAmount') || 0;
-                        if (discount > 0) parts.push(`-$${discount.toFixed(2)} discount`);
-                        
-                        return parts.join(' + ');
-                      })()}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
+            {/* Quantity and Price Row */}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="quantity"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Quantity *</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Quantity
+                    </FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         min="1"
                         {...field}
                         onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </FormControl>
                     <FormMessage />
@@ -690,7 +558,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                 name="unitPrice"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Unit Price</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Unit Price
+                    </FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -698,7 +568,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                         min="0"
                         placeholder="0.00"
                         {...field}
+                        value={field.value ?? ''}
                         onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </FormControl>
                     <FormMessage />
@@ -707,12 +579,15 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
               />
             </div>
 
+            {/* Total Price */}
             <FormField
               control={form.control}
               name="totalPrice"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Total Price</FormLabel>
+                  <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Total Price
+                  </FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -720,26 +595,35 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                       min="0"
                       placeholder="0.00"
                       {...field}
+                      value={field.value ?? ''}
                       onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </FormControl>
-                  <FormDescription className="text-xs">
-                    Optional - will be calculated from Unit Price × Quantity if not provided
+                  <FormDescription className="text-[11px] text-muted-foreground">
+                    Optional - calculated from Unit Price × Quantity if empty
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
+            {/* Date and Time Row */}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="saleDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sale Date *</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Sale Date
+                    </FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input
+                        type="date"
+                        {...field}
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -751,9 +635,15 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                 name="saleTime"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sale Time</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                      Sale Time
+                    </FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <Input
+                        type="time"
+                        {...field}
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -761,16 +651,190 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
               />
             </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {/* Adjustments Section - Only for new sales */}
+            {!editingSale && (
+              <div className="space-y-4 pt-4 border-t border-border/40">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Adjustments
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">Optional</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="taxAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[12px] font-medium text-foreground">Sales Tax</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            className="h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="tipAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[12px] font-medium text-foreground">Tip</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            className="h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="serviceChargeAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[12px] font-medium text-foreground">Service Charge</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            className="h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="feeAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-[12px] font-medium text-foreground">Platform Fee</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            className="h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="discountAmount"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel className="text-[12px] font-medium text-foreground">Discount</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            className="h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {totalCollected > 0 && (
+                  <div className="p-4 bg-muted/30 rounded-xl border border-border/40">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[13px] font-medium text-muted-foreground">Total Collected at POS</span>
+                      <span className="text-[18px] font-semibold text-foreground tabular-nums">
+                        ${totalCollected.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-[11px] text-muted-foreground">
+                      {(() => {
+                        const parts = [];
+                        const revenue = form.watch('totalPrice') || 0;
+                        if (revenue > 0) parts.push(`$${revenue.toFixed(2)} revenue`);
+
+                        const tax = form.watch('taxAmount') || 0;
+                        if (tax > 0) parts.push(`$${tax.toFixed(2)} tax`);
+
+                        const tip = form.watch('tipAmount') || 0;
+                        if (tip > 0) parts.push(`$${tip.toFixed(2)} tip`);
+
+                        const serviceCharge = form.watch('serviceChargeAmount') || 0;
+                        if (serviceCharge > 0) parts.push(`$${serviceCharge.toFixed(2)} service charge`);
+
+                        const fee = form.watch('feeAmount') || 0;
+                        if (fee > 0) parts.push(`$${fee.toFixed(2)} fee`);
+
+                        const discount = form.watch('discountAmount') || 0;
+                        if (discount > 0) parts.push(`-$${discount.toFixed(2)} discount`);
+
+                        return parts.join(' + ');
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Footer Actions */}
+            <div className="flex gap-2 pt-4 border-t border-border/40">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 h-10 rounded-lg text-[14px] font-medium text-muted-foreground hover:text-foreground"
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting 
-                  ? (editingSale ? 'Updating...' : 'Recording...') 
+              <Button
+                type="submit"
+                disabled={form.formState.isSubmitting}
+                className="flex-1 h-10 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[14px] font-medium"
+              >
+                {form.formState.isSubmitting
+                  ? (editingSale ? 'Updating...' : 'Recording...')
                   : (editingSale ? 'Update Sale' : 'Record Sale')}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
         </Form>
       </DialogContent>

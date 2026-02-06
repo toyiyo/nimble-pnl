@@ -179,7 +179,7 @@ export const useProductionRuns = (restaurantId: string | null) => {
       const targetUnit = input.target_yield_unit ?? input.prep_recipe.default_yield_unit;
       const scale = input.prep_recipe.default_yield > 0 ? targetYield / input.prep_recipe.default_yield : 1;
 
-      const { data: run, error } = await supabase
+      const { data: run, error } = await (supabase
         .from('production_runs')
         .insert({
           restaurant_id: input.restaurant_id,
@@ -190,9 +190,9 @@ export const useProductionRuns = (restaurantId: string | null) => {
           scheduled_for: input.scheduled_for,
           notes: input.notes,
           created_by: user.id,
-        })
+        } as any)
         .select()
-        .single();
+        .single() as any);
 
       if (error) throw error;
 
@@ -207,9 +207,9 @@ export const useProductionRuns = (restaurantId: string | null) => {
           variance_percent: 0,
         }));
 
-        const { error: ingredientError } = await supabase
+        const { error: ingredientError } = await (supabase
           .from('production_run_ingredients')
-          .insert(ingredientRows);
+          .insert(ingredientRows as any) as any);
 
         if (ingredientError) throw ingredientError;
       }
@@ -499,10 +499,10 @@ export const useProductionRuns = (restaurantId: string | null) => {
     actualYield: number,
     ingredientJson: ReturnType<typeof buildIngredientJson>
   ) => {
-    const { error } = await supabase.rpc('complete_production_run', {
+    const { error } = await (supabase.rpc as any)('complete_production_run', {
       p_run_id: payload.runId,
       p_actual_yield: actualYield,
-      p_actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit,
+      p_actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit || 'unit',
       p_ingredients: ingredientJson
     });
 
@@ -517,16 +517,16 @@ export const useProductionRuns = (restaurantId: string | null) => {
     statusToSet: ProductionRunStatus,
     ingredientJson: ReturnType<typeof buildIngredientJson>
   ) => {
-    const { error } = await supabase
+    const { error } = await (supabase
       .from('production_runs')
       .update({
         actual_yield: actualYield,
-        actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit,
+        actual_yield_unit: payload.actual_yield_unit || run?.actual_yield_unit || run?.target_yield_unit || 'unit',
         variance_percent: variance,
         status: statusToSet,
         completed_at: statusToSet === 'completed' ? new Date().toISOString() : run?.completed_at,
-      })
-      .eq('id', payload.runId);
+      } as any)
+      .eq('id', payload.runId) as any);
 
     if (error) throw error;
 
@@ -543,9 +543,9 @@ export const useProductionRuns = (restaurantId: string | null) => {
           : null,
       }));
 
-      const { error: ingredientError } = await supabase
+      const { error: ingredientError } = await (supabase
         .from('production_run_ingredients')
-        .upsert(ingredientRows);
+        .upsert(ingredientRows as any) as any);
 
       if (ingredientError) throw ingredientError;
     }

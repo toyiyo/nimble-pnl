@@ -7,18 +7,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
-import { useCreateShift, useUpdateShift } from '@/hooks/useShifts';
+import { useCreateShift, useUpdateShift, useUpdateShiftSeries } from '@/hooks/useShifts';
+import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Repeat } from 'lucide-react';
 
 interface ShiftDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  shift?: Shift;
+  shift?: Shift & { _editScope?: RecurringActionScope };
   restaurantId: string;
   defaultDate?: Date;
 }
@@ -52,6 +53,10 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
   const { employees } = useEmployees(restaurantId);
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
+  const updateShiftSeries = useUpdateShiftSeries();
+
+  // Get the edit scope if editing a recurring shift
+  const editScope = shift?._editScope;
 
   // Check for time-off and availability conflicts when employee and shift times are selected
   // This provides real-time feedback before the user submits the form
@@ -155,15 +160,33 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     };
 
     if (shift) {
-      updateShift.mutate(
-        { id: shift.id, ...shiftData },
-        {
-          onSuccess: () => {
-            onOpenChange(false);
-            resetForm();
+      // If we have an edit scope (from recurring action dialog), use series update
+      if (editScope && editScope !== 'this') {
+        updateShiftSeries.mutate(
+          {
+            shift,
+            scope: editScope,
+            updates: shiftData,
+            restaurantId,
           },
-        }
-      );
+          {
+            onSuccess: () => {
+              onOpenChange(false);
+              resetForm();
+            },
+          }
+        );
+      } else {
+        updateShift.mutate(
+          { id: shift.id, ...shiftData },
+          {
+            onSuccess: () => {
+              onOpenChange(false);
+              resetForm();
+            },
+          }
+        );
+      }
     } else {
       createShift.mutate(shiftData, {
         onSuccess: () => {
@@ -211,7 +234,15 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{shift ? 'Edit Shift' : 'Create New Shift'}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            {shift ? 'Edit Shift' : 'Create New Shift'}
+            {editScope && editScope !== 'this' && (
+              <span className="inline-flex items-center gap-1 text-xs font-normal bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                <Repeat className="h-3 w-3" />
+                {editScope === 'following' ? 'This & following' : 'All in series'}
+              </span>
+            )}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
@@ -436,9 +467,9 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
             </Button>
             <Button
               type="submit"
-              disabled={createShift.isPending || updateShift.isPending || shift?.locked}
+              disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending || shift?.locked}
             >
-              {createShift.isPending || updateShift.isPending
+              {createShift.isPending || updateShift.isPending || updateShiftSeries.isPending
                 ? 'Saving...'
                 : shift?.locked
                 ? 'Locked'

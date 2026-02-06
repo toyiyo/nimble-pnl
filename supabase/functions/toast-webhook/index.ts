@@ -178,10 +178,10 @@ serve(async (req) => {
           }
 
           const authData = await authResponse.json();
-          accessToken = authData.token.accessToken;
+          accessToken = authData.token.accessToken as string;
           
           // Update token cache
-          const encryptedToken = await encryption.encrypt(accessToken);
+          const encryptedToken = await encryption.encrypt(accessToken!);
           const expiresAt = new Date(Date.now() + (authData.token.expiresIn * 1000));
           
           await supabase.from('toast_connections').update({

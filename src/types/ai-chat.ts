@@ -102,3 +102,31 @@ export interface ToolExecutionResponse {
     details?: unknown;
   };
 }
+
+// Chat Session (Conversation) - persisted in database
+export interface AiChatSession {
+  id: string;
+  restaurant_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  is_archived: boolean;
+}
+
+// Chat Session with preview text (for conversation list)
+export interface AiChatSessionWithPreview extends AiChatSession {
+  preview_text: string;
+}
+
+// Database message format (matches ai_chat_messages table)
+export interface AiChatMessageDB {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  content: string;
+  name?: string;
+  tool_call_id?: string;
+  tool_calls?: ToolCall[];
+  created_at: string;
+}

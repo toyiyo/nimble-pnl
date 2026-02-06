@@ -208,7 +208,7 @@ serve(async (req) => {
       };
 
       // Start the background task without waiting
-      EdgeRuntime.waitUntil(deleteTask());
+      (globalThis as any).EdgeRuntime?.waitUntil?.(deleteTask()) ?? deleteTask();
 
       return new Response(
         JSON.stringify({

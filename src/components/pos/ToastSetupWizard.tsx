@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle, Circle, ExternalLink, Copy, Check } from 'lucide-react';
+import { CheckCircle, Circle, ExternalLink, Loader2, Info } from 'lucide-react';
 import { useToastConnection } from '@/hooks/useToastConnection';
 
 interface ToastSetupWizardProps {
@@ -13,120 +13,74 @@ interface ToastSetupWizardProps {
   onComplete: () => void;
 }
 
-type SetupStep = 'credentials' | 'test' | 'webhook' | 'complete';
+type SetupStep = 'credentials' | 'location' | 'complete';
 
 export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardProps) => {
   const [currentStep, setCurrentStep] = useState<SetupStep>('credentials');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
-  const [restaurantGuid, setRestaurantGuid] = useState('');
-  const [webhookSecret, setWebhookSecret] = useState('');
-  const [testing, setTesting] = useState(false);
-  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
+  const [locationId, setLocationId] = useState('');
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { saveCredentials, testConnection, saveWebhookSecret } = useToastConnection();
-
-  // Use the actual Supabase project URL for Edge Functions
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-  const webhookUrl = `${supabaseUrl}/functions/v1/toast-webhook`;
+  const { saveCredentials, testConnection } = useToastConnection();
 
   const steps: { id: SetupStep; label: string; completed: boolean }[] = [
     { id: 'credentials', label: 'API Credentials', completed: currentStep !== 'credentials' },
-    { id: 'test', label: 'Test Connection', completed: ['webhook', 'complete'].includes(currentStep) },
-    { id: 'webhook', label: 'Webhook Setup', completed: currentStep === 'complete' },
+    { id: 'location', label: 'Select Location', completed: currentStep === 'complete' },
     { id: 'complete', label: 'Complete', completed: false }
   ];
 
-  const handleSaveCredentials = async () => {
-    if (!clientId || !clientSecret || !restaurantGuid) {
+  const handleContinueToLocation = () => {
+    if (!clientId || !clientSecret) {
       toast({
         title: 'Missing information',
-        description: 'Please fill in all credential fields',
+        description: 'Please enter your Client ID and Client Secret',
+        variant: 'destructive'
+      });
+      return;
+    }
+    setCurrentStep('location');
+  };
+
+  const handleSaveLocation = async () => {
+    if (!locationId) {
+      toast({
+        title: 'Missing location',
+        description: 'Please select or enter a location ID',
         variant: 'destructive'
       });
       return;
     }
 
-    setTesting(true);
+    setLoading(true);
     try {
-      await saveCredentials(restaurantId, clientId, clientSecret, restaurantGuid);
-      setCurrentStep('test');
+      await saveCredentials(restaurantId, clientId, clientSecret, locationId);
+
       toast({
         title: 'Credentials saved',
-        description: 'Now testing your connection...'
+        description: 'Testing connection...'
       });
-      
-      // Automatically test connection
-      setTimeout(() => handleTestConnection(), 500);
-    } catch (error: any) {
-      toast({
-        title: 'Error saving credentials',
-        description: error.message,
-        variant: 'destructive'
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
 
-  const handleTestConnection = async () => {
-    setTesting(true);
-    try {
       const result = await testConnection(restaurantId);
       if (result.success) {
         toast({
           title: 'Connection successful!',
           description: `Connected to ${result.restaurantName || 'Toast'}`
         });
-        setCurrentStep('webhook');
+        setCurrentStep('complete');
       } else {
-        throw new Error(result.error || 'Connection test failed');
+        throw new Error(String(result.error) || 'Connection test failed');
       }
-    } catch (error: any) {
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save credentials';
       toast({
-        title: 'Connection test failed',
-        description: error.message,
+        title: 'Error',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
-      setTesting(false);
+      setLoading(false);
     }
-  };
-
-  const handleSaveWebhook = async () => {
-    if (!webhookSecret) {
-      toast({
-        title: 'Missing webhook secret',
-        description: 'Please enter the webhook secret from Toast',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      await saveWebhookSecret(restaurantId, webhookSecret);
-      setCurrentStep('complete');
-      toast({
-        title: 'Setup complete!',
-        description: 'Toast integration is now active'
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Error saving webhook secret',
-        description: error.message,
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const copyWebhookUrl = () => {
-    navigator.clipboard.writeText(webhookUrl);
-    setCopiedWebhookUrl(true);
-    setTimeout(() => setCopiedWebhookUrl(false), 2000);
-    toast({
-      title: 'Copied!',
-      description: 'Webhook URL copied to clipboard'
-    });
   };
 
   return (
@@ -144,8 +98,8 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
             <div key={step.id} className="flex items-center">
               <div className="flex flex-col items-center">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
-                  step.completed 
-                    ? 'bg-primary border-primary text-primary-foreground' 
+                  step.completed
+                    ? 'bg-primary border-primary text-primary-foreground'
                     : currentStep === step.id
                     ? 'border-primary text-primary'
                     : 'border-muted-foreground text-muted-foreground'
@@ -155,7 +109,7 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
                 <span className="text-xs mt-2 text-center">{step.label}</span>
               </div>
               {index < steps.length - 1 && (
-                <div className={`w-24 h-0.5 mx-2 ${
+                <div className={`w-32 h-0.5 mx-2 ${
                   step.completed ? 'bg-primary' : 'bg-muted-foreground'
                 }`} />
               )}
@@ -171,12 +125,11 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
                 <div className="space-y-2">
                   <p className="font-semibold">Before you begin:</p>
                   <ol className="list-decimal list-inside space-y-1 text-sm">
-                    <li>Log in to your <a href="https://www.toasttab.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">Toast Web<ExternalLink className="w-3 h-3" /></a></li>
-                    <li>Navigate to <strong>Integrations → Toast API access</strong></li>
-                    <li>Click <strong>Manage credentials</strong> and then <strong>Create credential</strong></li>
-                    <li>Select scopes: <strong>orders:read</strong> and <strong>menus:read</strong></li>
+                    <li>Log in to your <a href="https://www.toasttab.com/restaurants/admin/api-access/" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">Toast API Access page<ExternalLink className="w-3 h-3" /></a></li>
+                    <li>Click <strong>Create credential</strong> and give it a name (e.g., "EasyShiftHQ")</li>
+                    <li>Select the required API scopes (orders:read, menus:read, restaurants:read)</li>
+                    <li>Select the location(s) this credential will have access to</li>
                     <li>Copy the generated <strong>Client ID</strong> and <strong>Client Secret</strong></li>
-                    <li>Find your <strong>Restaurant GUID</strong> in the Toast Web URL or API documentation</li>
                   </ol>
                 </div>
               </AlertDescription>
@@ -204,136 +157,91 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
                 />
               </div>
 
-              <div>
-                <Label htmlFor="restaurant-guid">Restaurant GUID</Label>
-                <Input
-                  id="restaurant-guid"
-                  value={restaurantGuid}
-                  onChange={(e) => setRestaurantGuid(e.target.value)}
-                  placeholder="Enter your Toast Restaurant GUID"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  This is your unique restaurant identifier in the Toast system
-                </p>
-              </div>
-
-              <Button 
-                onClick={handleSaveCredentials} 
-                disabled={testing || !clientId || !clientSecret || !restaurantGuid}
+              <Button
+                onClick={handleContinueToLocation}
+                disabled={!clientId || !clientSecret}
                 className="w-full"
               >
-                {testing ? 'Saving...' : 'Continue'}
+                Continue
               </Button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Test Connection */}
-        {currentStep === 'test' && (
+        {/* Step 2: Enter Location ID */}
+        {currentStep === 'location' && (
           <div className="space-y-6">
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
+            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               <AlertDescription>
-                Testing your connection to Toast API...
-              </AlertDescription>
-            </Alert>
-            
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-              <p className="mt-4 text-muted-foreground">Validating credentials...</p>
-            </div>
-          </div>
-        )}
+                <p className="font-semibold text-blue-900 dark:text-blue-100">How to find your Restaurant External ID:</p>
 
-        {/* Step 3: Webhook Setup */}
-        {currentStep === 'webhook' && (
-          <div className="space-y-6">
-            <Alert>
-              <AlertDescription>
-                <div className="space-y-2">
-                  <p className="font-semibold">Configure webhooks in Toast:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-sm">
-                    <li>In Toast Web, go to <strong>Integrations → Toast API access</strong></li>
-                    <li>Click <strong>Manage credentials</strong> and find your credential</li>
-                    <li>Click <strong>Configure webhooks</strong></li>
-                    <li>Add a new webhook subscription with this URL:</li>
-                  </ol>
+                <div className="mt-3 p-3 bg-green-100 dark:bg-green-900/50 rounded-md border border-green-200 dark:border-green-800">
+                  <p className="font-medium text-green-900 dark:text-green-100 text-sm">Easiest: Check your email from Toast</p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                    When you created your API credentials, Toast sent an email with the Restaurant GUIDs for all your locations. Search your inbox for "Toast API" or "API credentials".
+                  </p>
                 </div>
-              </AlertDescription>
-            </Alert>
 
-            <div className="space-y-4">
-              <div>
-                <Label>Webhook URL</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={webhookUrl}
-                    readOnly
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={copyWebhookUrl}
-                    aria-label={copiedWebhookUrl ? 'Copied webhook URL' : 'Copy webhook URL'}
-                  >
-                    {copiedWebhookUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </div>
-
-              <Alert>
-                <AlertDescription className="text-sm">
-                  <p className="font-semibold mb-2">Select these event types:</p>
-                  <ul className="list-disc list-inside space-y-1">
-                    <li>Order Created</li>
-                    <li>Order Updated</li>
-                    <li>Order Deleted</li>
-                  </ul>
-                </AlertDescription>
-              </Alert>
-
-              <div>
-                <Label htmlFor="webhook-secret">Webhook Secret</Label>
-                <Input
-                  id="webhook-secret"
-                  type="password"
-                  value={webhookSecret}
-                  onChange={(e) => setWebhookSecret(e.target.value)}
-                  placeholder="Enter the webhook secret provided by Toast"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Copy this from the webhook configuration page in Toast
+                <p className="font-medium text-blue-900 dark:text-blue-100 text-sm mt-3">Alternative: Find it in Toast Portal</p>
+                <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800 dark:text-blue-200 mt-1">
+                  <li>Go to your <a href="https://www.toasttab.com/restaurants/admin/api-access/" target="_blank" rel="noopener noreferrer" className="underline font-medium">Toast API Access page</a></li>
+                  <li>Click on your credential name to view details</li>
+                  <li>Look in the <strong>"Edit Location IDs"</strong> section for the GUID</li>
+                </ol>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+                  Format: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code> (36 characters with dashes)
                 </p>
-              </div>
+              </AlertDescription>
+            </Alert>
 
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setCurrentStep('credentials')}
-                  className="flex-1"
-                >
-                  Back
-                </Button>
-                <Button 
-                  onClick={handleSaveWebhook} 
-                  disabled={!webhookSecret}
-                  className="flex-1"
-                >
-                  Complete Setup
-                </Button>
-              </div>
+            <div>
+              <Label htmlFor="location-id">Restaurant External ID (GUID)</Label>
+              <Input
+                id="location-id"
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+                placeholder="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                36 characters with dashes (e.g., xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStep('credentials')}
+                className="flex-1"
+              >
+                Back
+              </Button>
+              <Button
+                onClick={handleSaveLocation}
+                disabled={loading || !locationId}
+                className="flex-1"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  'Connect'
+                )}
+              </Button>
             </div>
           </div>
         )}
 
-        {/* Step 4: Complete */}
+        {/* Step 3: Complete */}
         {currentStep === 'complete' && (
           <div className="space-y-6 text-center py-8">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-12 h-12 text-green-600" />
+            <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle className="w-12 h-12 text-green-600 dark:text-green-400" />
             </div>
-            
+
             <div>
               <h3 className="text-2xl font-semibold mb-2">Setup Complete!</h3>
               <p className="text-muted-foreground">
@@ -343,12 +251,12 @@ export const ToastSetupWizard = ({ restaurantId, onComplete }: ToastSetupWizardP
 
             <Alert>
               <AlertDescription>
-                <p className="font-semibold mb-2">Next steps:</p>
+                <p className="font-semibold mb-2">How syncing works:</p>
                 <ul className="list-disc list-inside space-y-1 text-sm text-left">
-                  <li>A bulk sync will run nightly at 3 AM to import recent orders</li>
-                  <li>Webhooks will push real-time updates as orders come in</li>
+                  <li>Orders are synced automatically every night at 3 AM</li>
+                  <li>Historical data (last 90 days) will be imported on the first sync</li>
+                  <li>You can trigger a manual sync anytime from the POS settings</li>
                   <li>Order data will appear in your unified sales dashboard</li>
-                  <li>Historical data (last 90 days) will be imported on first sync</li>
                 </ul>
               </AlertDescription>
             </Alert>

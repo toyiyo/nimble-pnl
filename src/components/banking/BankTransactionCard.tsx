@@ -1,19 +1,14 @@
-import { useState } from "react";
-import { BankTransaction, useCategorizeTransaction, useExcludeTransaction } from "@/hooks/useBankTransactions";
+import { BankTransaction } from "@/hooks/useBankTransactions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, XCircle, FileText, Split, CheckCircle2, Sparkles, Settings2 } from "lucide-react";
-import { TransactionDetailSheet } from "./TransactionDetailSheet";
-import { SplitTransactionDialog } from "./SplitTransactionDialog";
+import { Check, Edit, Trash2, FileText, Split, CheckCircle2, Sparkles, Settings2 } from "lucide-react";
 import { BankAccountInfo } from "./BankAccountInfo";
 import { TransactionBadges } from "./TransactionBadges";
+import { TransactionDialogs } from "./TransactionDialogs";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
-import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
-import { useDateFormat } from "@/hooks/useDateFormat";
+import { useBankTransactionActions } from "@/hooks/useBankTransactionActions";
 import { AIConfidenceBadge } from "./AIConfidenceBadge";
-import { EnhancedCategoryRulesDialog } from "./EnhancedCategoryRulesDialog";
 
 interface BankTransactionCardProps {
   transaction: BankTransaction;
@@ -22,84 +17,21 @@ interface BankTransactionCardProps {
 }
 
 export function BankTransactionCard({ transaction, status, accounts }: BankTransactionCardProps) {
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isSplitOpen, setIsSplitOpen] = useState(false);
-  const [showRulesDialog, setShowRulesDialog] = useState(false);
-  const { selectedRestaurant } = useRestaurantContext();
-  const categorize = useCategorizeTransaction();
-  const exclude = useExcludeTransaction();
-  const reconcile = useReconcileTransaction();
-  const unreconcile = useUnreconcileTransaction();
-  const { formatTransactionDate } = useDateFormat();
+  const {
+    state,
+    computed,
+    mutations,
+    formatTransactionDate,
+    handleQuickAccept,
+    handleDeleteClick,
+    handleDeleteConfirm,
+    handleCreateRule,
+    getPrefilledRuleData,
+  } = useBankTransactionActions(transaction, accounts);
 
-  const isNegative = transaction.amount < 0;
-  const formattedAmount = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(Math.abs(transaction.amount));
-
-  const suggestedCategory = accounts?.find(a => a.id === transaction.suggested_category_id);
-  const currentCategory = accounts?.find(a => a.id === transaction.category_id);
-  const hasSuggestion = !transaction.is_categorized && suggestedCategory;
-
-  const handleQuickAccept = () => {
-    if (transaction.suggested_category_id) {
-      categorize.mutate({
-        transactionId: transaction.id,
-        categoryId: transaction.suggested_category_id,
-      });
-    }
-  };
-
-  const handleExclude = () => {
-    exclude.mutate({
-      transactionId: transaction.id,
-      reason: 'Excluded by user',
-    });
-  };
-
-  const handleCreateRule = () => {
-    setShowRulesDialog(true);
-  };
-
-  const getPrefilledRuleData = () => {
-    const merchantName = transaction.merchant_name || transaction.normalized_payee;
-    const description = transaction.description?.trim() || '';
-    const isExpense = transaction.amount < 0;
-    const amount = Math.abs(transaction.amount);
-    
-    // Check if description is too generic to use as pattern
-    const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire'];
-    const isGenericDescription = genericTerms.some(term => 
-      description.toLowerCase() === term.toLowerCase()
-    );
-    
-    // Use merchant name if available and specific (length >= 3)
-    const hasSpecificMerchant = merchantName && merchantName.length >= 3 && 
-      !genericTerms.some(term => merchantName.toLowerCase() === term.toLowerCase());
-    
-    // For recurring amounts (like salaries), suggest amount range
-    const isLikelyRecurring = amount > 0 && amount >= 100 && Number.isInteger(amount * 100);
-    const shouldSuggestAmountRange = isLikelyRecurring && !hasSpecificMerchant;
-    
-    return {
-      ruleName: hasSpecificMerchant 
-        ? `Auto-categorize ${merchantName.substring(0, 30)}${merchantName.length > 30 ? '...' : ''}`
-        : 'Transaction categorization rule',
-      appliesTo: 'bank_transactions' as const,
-      // Only use merchant name if it's specific, not generic description
-      descriptionPattern: hasSpecificMerchant ? merchantName : '',
-      descriptionMatchType: 'contains' as const,
-      supplierId: transaction.supplier?.id || '',
-      transactionType: (isExpense ? 'debit' : 'credit') as 'debit' | 'credit',
-      categoryId: transaction.category_id || transaction.suggested_category_id || '',
-      priority: '5',
-      autoApply: true,
-      // Suggest amount range for recurring payments (±5% tolerance)
-      minAmount: shouldSuggestAmountRange ? (amount * 0.95).toFixed(2) : '',
-      maxAmount: shouldSuggestAmountRange ? (amount * 1.05).toFixed(2) : '',
-    };
-  };
+  const { isDetailOpen, isSplitOpen, showRulesDialog, showDeleteConfirm, setIsDetailOpen, setIsSplitOpen, setShowRulesDialog, setShowDeleteConfirm } = state;
+  const { isNegative, formattedAmount, suggestedCategory, currentCategory, hasSuggestion } = computed;
+  const { categorize, deleteTransaction, reconcile, unreconcile } = mutations;
 
   return (
     <>
@@ -128,7 +60,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
               <span className="text-muted-foreground">Payee:</span>
               <span className="font-medium">{transaction.normalized_payee || transaction.merchant_name || '—'}</span>
             </div>
-            
+
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Bank:</span>
               <BankAccountInfo
@@ -148,7 +80,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
           />
 
           {/* AI Suggestion Section - Prominent */}
-          {hasSuggestion && (
+          {hasSuggestion && suggestedCategory && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-400 dark:border-amber-600 rounded-lg p-3 mb-3">
               <div className="flex items-start gap-2 mb-2">
                 <Sparkles className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -160,7 +92,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
                     Suggested category: <span className="font-semibold">{suggestedCategory.account_name}</span>
                   </div>
                   {transaction.ai_confidence && (
-                    <AIConfidenceBadge 
+                    <AIConfidenceBadge
                       confidence={transaction.ai_confidence}
                       reasoning={transaction.ai_reasoning}
                     />
@@ -256,14 +188,14 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
                   Rule
                 </Button>
                 <Button
-                  onClick={handleExclude}
-                  disabled={exclude.isPending}
+                  onClick={handleDeleteClick}
+                  disabled={deleteTransaction.isPending}
                   size="sm"
                   variant="outline"
                   className="flex-1 text-destructive hover:bg-destructive/10"
                 >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Exclude
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
                 </Button>
               </>
             )}
@@ -330,23 +262,19 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
         </CardContent>
       </Card>
 
-      <TransactionDetailSheet
+      <TransactionDialogs
         transaction={transaction}
-        isOpen={isDetailOpen}
-        onClose={() => setIsDetailOpen(false)}
-      />
-
-      <SplitTransactionDialog
-        transaction={transaction}
-        isOpen={isSplitOpen}
-        onClose={() => setIsSplitOpen(false)}
-      />
-
-      <EnhancedCategoryRulesDialog
-        open={showRulesDialog}
-        onOpenChange={setShowRulesDialog}
-        defaultTab="bank"
+        isDetailOpen={isDetailOpen}
+        onDetailClose={() => setIsDetailOpen(false)}
+        isSplitOpen={isSplitOpen}
+        onSplitClose={() => setIsSplitOpen(false)}
+        showRulesDialog={showRulesDialog}
+        onRulesDialogChange={setShowRulesDialog}
         prefilledRule={getPrefilledRuleData()}
+        showDeleteConfirm={showDeleteConfirm}
+        onDeleteConfirmChange={setShowDeleteConfirm}
+        onDeleteConfirm={handleDeleteConfirm}
+        isDeleting={deleteTransaction.isPending}
       />
     </>
   );

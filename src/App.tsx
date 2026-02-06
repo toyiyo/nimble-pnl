@@ -7,6 +7,9 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { RestaurantProvider, useRestaurantContext } from "@/contexts/RestaurantContext";
+import { AiChatProvider } from "@/contexts/AiChatContext";
+import { AiChatBubble } from "@/components/ai-chat/AiChatBubble";
+import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
 import { AppHeader } from "@/components/AppHeader";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -37,7 +40,6 @@ import FinancialStatements from "./pages/FinancialStatements";
 import Accounting from "./pages/Accounting";
 import Banking from "./pages/Banking";
 import FinancialIntelligence from "./pages/FinancialIntelligence";
-import AiAssistant from "./pages/AiAssistant";
 import Scheduling from "./pages/Scheduling";
 import Employees from "./pages/Employees";
 import EmployeeClock from "./pages/EmployeeClock";
@@ -46,8 +48,7 @@ import EmployeeTimecard from "./pages/EmployeeTimecard";
 import EmployeePay from "./pages/EmployeePay";
 import EmployeeSchedule from "./pages/EmployeeSchedule";
 import EmployeeShiftMarketplace from "./pages/EmployeeShiftMarketplace";
-import PrepRecipes from "./pages/PrepRecipes";
-import Batches from "./pages/Batches";
+import PrepRecipesEnhanced from "./pages/PrepRecipesEnhanced";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
@@ -90,23 +91,30 @@ const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { ch
 
   return (
     <RestaurantProvider>
-      <StaffRoleChecker allowStaff={allowStaff} currentPath={location.pathname}>
-        {noChrome ? (
-          <div className="min-h-screen bg-background">{children}</div>
-        ) : (
-          <SidebarProvider defaultOpen={true}>
-            <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
-              <AppSidebar />
-              <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-                <AppHeader />
-                <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
-                  {children}
-                </main>
-              </div>
-            </div>
-          </SidebarProvider>
-        )}
-      </StaffRoleChecker>
+      <AiChatProvider>
+        <StaffRoleChecker allowStaff={allowStaff} currentPath={location.pathname}>
+          {noChrome ? (
+            <div className="min-h-screen bg-background">{children}</div>
+          ) : (
+            <>
+              <SidebarProvider defaultOpen={true}>
+                <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
+                  <AppSidebar />
+                  <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+                    <AppHeader />
+                    <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
+                      {children}
+                    </main>
+                  </div>
+                </div>
+              </SidebarProvider>
+              {/* Floating AI Chat - only for non-kiosk authenticated pages */}
+              <AiChatBubble />
+              <AiChatPanel />
+            </>
+          )}
+        </StaffRoleChecker>
+      </AiChatProvider>
     </RestaurantProvider>
   );
 };
@@ -146,7 +154,6 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
     allowed: [
       '/recipes',
       '/prep-recipes',
-      '/batches',
       '/inventory', // View-only for ingredient context
       '/settings',
     ],
@@ -221,8 +228,7 @@ const App = () => (
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
           <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
-          <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipes /></ProtectedRoute>} />
-          <Route path="/batches" element={<ProtectedRoute><Batches /></ProtectedRoute>} />
+          <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipesEnhanced /></ProtectedRoute>} />
           <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
@@ -257,7 +263,6 @@ const App = () => (
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
-            <Route path="/ai-assistant" element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />

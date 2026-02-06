@@ -1,12 +1,6 @@
 import { Buffer } from 'buffer';
 import { test, expect, Page } from '@playwright/test';
-
-type TestUser = {
-  email: string;
-  password: string;
-  fullName: string;
-  restaurantName: string;
-};
+import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
 
 type TestProduct = {
   name: string;
@@ -15,20 +9,6 @@ type TestProduct = {
   supplierSku: string;
   costPerUnit: number;
   initialStock: number;
-};
-
-const createTestImageBuffer = () =>
-  Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X8nL8AAAAASUVORK5CYII=', 'base64');
-
-const generateTestUser = (): TestUser => {
-  const timestamp = Date.now();
-  const rand = Math.random().toString(36).slice(2, 6);
-  return {
-    email: `inventory-${timestamp}-${rand}@test.com`,
-    password: 'TestPassword123!',
-    fullName: `Inventory Tester ${timestamp}`,
-    restaurantName: `Inventory Resto ${timestamp}`,
-  };
 };
 
 const generateTestProduct = (): TestProduct => {
@@ -42,40 +22,6 @@ const generateTestProduct = (): TestProduct => {
     initialStock: 3,
   };
 };
-
-async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
-  await page.goto('/');
-  await page.waitForURL(/\/(auth)?$/);
-
-  if (page.url().endsWith('/')) {
-    const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-    if (await signInLink.isVisible()) {
-      await signInLink.click();
-      await page.waitForURL('/auth');
-    }
-  }
-
-  await page.getByRole('tab', { name: /sign up/i }).click();
-  await page.getByLabel(/email/i).first().fill(user.email);
-  await page.getByLabel(/full name/i).fill(user.fullName);
-  await page.getByLabel(/password/i).first().fill(user.password);
-  await page.getByRole('button', { name: /sign up|create account/i }).click();
-
-  await page.waitForURL('/');
-
-  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible();
-  await addRestaurantButton.click();
-
-  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
-  await dialog.getByLabel(/address/i).fill('123 Inventory Street');
-  await dialog.getByLabel(/phone/i).fill('555-987-6543');
-  await dialog.getByRole('button', { name: /create restaurant/i }).click();
-
-  await expect(dialog).not.toBeVisible();
-}
 
 test('user can create a new product with image and supplier in one flow', async ({ page }) => {
   const user = generateTestUser();

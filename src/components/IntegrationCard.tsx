@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const shift4Integration = useShift4Integration(restaurantId);
 
   // Toast-specific integration hook
-  const toastConnection = useToastConnection();
+  const toastConnection = useToastConnection(restaurantId);
 
   // Gusto payroll integration hook
   const gustoIntegration = useGusto(restaurantId);
@@ -63,13 +63,6 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
   const isGustoIntegration = integration.id === 'gusto-payroll';
-  
-  // Check Toast connection status on mount
-  useEffect(() => {
-    if (isToastIntegration && restaurantId) {
-      toastConnection.checkConnectionStatus(restaurantId);
-    }
-  }, [restaurantId, isToastIntegration]);
   
   const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected :
                             isCloverIntegration ? cloverIntegration.isConnected :
@@ -308,10 +301,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             
             {/* Shift4 Sync Component */}
             {isShift4Integration && (
-              <Shift4Sync 
-                restaurantId={restaurantId} 
-                isConnected={actuallyConnected} 
-              />
+              <Shift4Sync restaurantId={restaurantId} />
             )}
             
             {/* Toast Sync Component */}

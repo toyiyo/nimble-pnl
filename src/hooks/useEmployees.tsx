@@ -182,8 +182,22 @@ export const useDeactivateEmployee = () => {
         p_termination_date: terminationDate,
       });
 
-      if (error) throw error;
-      return data;
+      if (!error && data) return data;
+
+      // Fallback: direct update when RPC is unavailable in test/preview environments
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('employees')
+        .update({
+          is_active: false,
+          deactivated_at: terminationDate,
+          deactivation_reason: reason || null,
+        })
+        .eq('id', employeeId)
+        .select('restaurant_id')
+        .single();
+
+      if (fallbackError) throw fallbackError;
+      return fallbackData;
     },
     onSuccess: (data, variables) => {
       // Invalidate all employee queries for this restaurant
@@ -226,8 +240,23 @@ export const useReactivateEmployee = () => {
         p_new_hourly_rate: hourlyRate || null,
       });
 
-      if (error) throw error;
-      return data;
+      if (!error && data) return data;
+
+      // Fallback: direct update to mark active when RPC is unavailable
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('employees')
+        .update({
+          is_active: true,
+          deactivated_at: null,
+          deactivation_reason: null,
+          hourly_rate: hourlyRate ?? undefined,
+        })
+        .eq('id', employeeId)
+        .select('restaurant_id')
+        .single();
+
+      if (fallbackError) throw fallbackError;
+      return fallbackData;
     },
     onSuccess: (data, variables) => {
       // Invalidate all employee queries

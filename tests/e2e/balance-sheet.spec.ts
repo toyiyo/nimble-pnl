@@ -1,58 +1,8 @@
 import { test, expect, Page } from '@playwright/test';
-import { exposeSupabaseHelpers } from '../helpers/e2e-supabase';
-
-type TestUser = {
-  email: string;
-  password: string;
-  fullName: string;
-  restaurantName: string;
-};
-
-const generateUser = (): TestUser => {
-  const ts = Date.now();
-  const rand = Math.random().toString(36).slice(2, 6);
-  return {
-    email: `bs-${ts}-${rand}@test.com`,
-    password: 'TestPassword123!',
-    fullName: `Balance Sheet Tester ${rand}`,
-    restaurantName: `BS Resto ${rand}`,
-  };
-};
-
-async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
-  await page.goto('/');
-  await page.waitForURL(/\/(auth)?$/);
-
-  // If on marketing page, hop to auth
-  if (page.url().endsWith('/')) {
-    const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-    if (await signInLink.isVisible().catch(() => false)) {
-      await signInLink.click();
-      await page.waitForURL('/auth');
-    }
-  }
-
-  await page.getByRole('tab', { name: /sign up/i }).click();
-  await page.getByLabel(/email/i).first().fill(user.email);
-  await page.getByLabel(/full name/i).fill(user.fullName);
-  await page.getByLabel(/password/i).first().fill(user.password);
-  await page.getByRole('button', { name: /sign up|create account/i }).click();
-
-  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 40000 });
-  await addRestaurantButton.click();
-
-  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
-  await dialog.getByLabel(/address/i).fill('123 Balance St');
-  await dialog.getByLabel(/phone/i).fill('555-111-2222');
-  await dialog.getByRole('button', { name: /create restaurant|add restaurant/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
-}
+import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
 test('Balance Sheet shows accrual balances across cash, inventory, liabilities, and net income', async ({ page }) => {
-  const user = generateUser();
+  const user = generateTestUser();
 
   await signUpAndCreateRestaurant(page, user);
   await exposeSupabaseHelpers(page);

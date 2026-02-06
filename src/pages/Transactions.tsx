@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { MetricIcon } from '@/components/MetricIcon';
-import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown, Tags, XCircle, ArrowLeftRight } from 'lucide-react';
+import { Receipt, Search, Download, Filter, TrendingUp, TrendingDown, Wallet, ArrowUpDown, Tags, Trash2, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { TransactionFiltersSheet, type TransactionFilters } from '@/components/TransactionFilters';
 import { useToast } from '@/hooks/use-toast';
@@ -26,7 +26,8 @@ import type { BankTransactionSort } from '@/types/transactions';
 import { useBulkSelection } from '@/hooks/useBulkSelection';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
 import { BulkCategorizeTransactionsPanel } from '@/components/banking/BulkCategorizeTransactionsPanel';
-import { useBulkCategorizeTransactions, useBulkExcludeTransactions, useBulkMarkAsTransfer } from '@/hooks/useBulkTransactionActions';
+import { useBulkCategorizeTransactions, useBulkDeleteTransactions, useBulkMarkAsTransfer } from '@/hooks/useBulkTransactionActions';
+import { BulkDeleteConfirmDialog } from '@/components/bulk-edit/BulkDeleteConfirmDialog';
 import { isMultiSelectKey } from '@/utils/bulkEditUtils';
 
 const Transactions = () => {
@@ -49,8 +50,11 @@ const Transactions = () => {
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizeTransactions();
-  const bulkExclude = useBulkExcludeTransactions();
+  const bulkDelete = useBulkDeleteTransactions();
   const bulkMarkTransfer = useBulkMarkAsTransfer();
+
+  // Delete confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Fetch transactions with server-side pagination & filters
   const {
@@ -152,17 +156,25 @@ const Transactions = () => {
     });
   };
 
-  const handleBulkExclude = () => {
+  const handleBulkDeleteClick = () => {
     if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
-    
-    bulkExclude.mutate({
+    setShowDeleteConfirm(true);
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+
+    bulkDelete.mutate({
       transactionIds: Array.from(bulkSelection.selectedIds),
-      reason: 'Bulk excluded by user',
       restaurantId: selectedRestaurant.restaurant_id,
     }, {
       onSuccess: () => {
+        setShowDeleteConfirm(false);
         bulkSelection.exitSelectionMode();
         refetch();
+      },
+      onSettled: () => {
+        setShowDeleteConfirm(false);
       },
     });
   };
@@ -440,11 +452,24 @@ const Transactions = () => {
 
       {/* Transactions - Mobile Card View / Desktop Table */}
       {isLoading || isInitialLoad ? (
-        <div className="space-y-3">
-          <TransactionSkeleton />
-          <TransactionSkeleton />
-          <TransactionSkeleton />
-        </div>
+        isMobile ? (
+          <div className="space-y-3">
+            <TransactionSkeleton />
+            <TransactionSkeleton />
+            <TransactionSkeleton />
+          </div>
+        ) : (
+          <Card className="w-full max-w-full overflow-hidden">
+            <CardContent className="p-0 w-full max-w-full">
+              <BankTransactionList
+                transactions={[]}
+                status="for_review"
+                accounts={accounts}
+                isLoading={true}
+              />
+            </CardContent>
+          </Card>
+        )
       ) : transactions.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
@@ -523,9 +548,9 @@ const Transactions = () => {
                 onClick: handleBulkMarkTransfer,
               },
               {
-                label: 'Exclude',
-                icon: <XCircle className="h-4 w-4" />,
-                onClick: handleBulkExclude,
+                label: 'Delete',
+                icon: <Trash2 className="h-4 w-4" />,
+                onClick: handleBulkDeleteClick,
                 variant: 'destructive',
               },
             ]}
@@ -541,6 +566,15 @@ const Transactions = () => {
           />
         </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <BulkDeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        selectedCount={bulkSelection.selectedCount}
+        onConfirm={handleBulkDeleteConfirm}
+        isDeleting={bulkDelete.isPending}
+      />
     </div>
   );
 };

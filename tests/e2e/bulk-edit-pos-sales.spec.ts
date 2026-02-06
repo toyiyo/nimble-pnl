@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { exposeSupabaseHelpers, generateTestUser, signUpAndCreateRestaurant } from '../helpers/e2e-supabase';
+import { daysAgo } from '../helpers/dateUtils';
 
 test.describe('POS Sales Bulk Edit', () => {
   test('should enable selection mode and select sales', async ({ page }) => {
@@ -8,27 +9,29 @@ test.describe('POS Sales Bulk Edit', () => {
 
     // Navigate to POS Sales page
     await page.goto('/pos-sales');
-    await expect(page.getByRole('heading', { name: 'POS Sales', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sales', exact: true })).toBeVisible();
 
     // Create test sales using Supabase helpers
     await exposeSupabaseHelpers(page);
-    
-    const sales = await page.evaluate(async () => {
+
+    // Calculate dates in Node.js context before passing to browser
+    const saleDates = [daysAgo(5), daysAgo(3), daysAgo(2)];
+
+    const sales = await page.evaluate(async (dates) => {
       const user = await (window as any).__getAuthUser();
       if (!user?.id) throw new Error('No user session');
 
       const restaurantId = await (window as any).__getRestaurantId(user.id);
       if (!restaurantId) throw new Error('No restaurant');
 
-      // Create test sales
       const salesToCreate = [
         {
           restaurant_id: restaurantId,
           external_order_id: `bulk-pos-${crypto.randomUUID()}`,
           item_name: 'Test Burger',
           quantity: 2,
-          total_price: 20.00,
-          sale_date: new Date().toISOString().split('T')[0],
+          total_price: 20,
+          sale_date: dates[0],
           pos_system: 'manual',
         },
         {
@@ -36,8 +39,8 @@ test.describe('POS Sales Bulk Edit', () => {
           external_order_id: `bulk-pos-${crypto.randomUUID()}`,
           item_name: 'Test Fries',
           quantity: 1,
-          total_price: 5.00,
-          sale_date: new Date().toISOString().split('T')[0],
+          total_price: 5,
+          sale_date: dates[1],
           pos_system: 'manual',
         },
         {
@@ -45,8 +48,8 @@ test.describe('POS Sales Bulk Edit', () => {
           external_order_id: `bulk-pos-${crypto.randomUUID()}`,
           item_name: 'Test Drink',
           quantity: 3,
-          total_price: 9.00,
-          sale_date: new Date().toISOString().split('T')[0],
+          total_price: 9,
+          sale_date: dates[2],
           pos_system: 'manual',
         },
       ];
@@ -58,13 +61,13 @@ test.describe('POS Sales Bulk Edit', () => {
 
       if (error) throw new Error(error.message);
       return data;
-    });
+    }, saleDates);
 
     expect(sales).toHaveLength(3);
 
     // Reload page to see sales
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'POS Sales', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sales', exact: true })).toBeVisible();
 
     // Wait for sales to load - look for the first sale item
     await expect(page.getByText('Test Burger')).toBeVisible({ timeout: 10000 });
@@ -123,8 +126,11 @@ test.describe('POS Sales Bulk Edit', () => {
     
     // Create test sales and a revenue account
     await exposeSupabaseHelpers(page);
-    
-    await page.evaluate(async () => {
+
+    // Calculate dates in Node.js context before passing to browser
+    const saleDates = [daysAgo(2), daysAgo(1)];
+
+    await page.evaluate(async (dates) => {
       const user = await (window as any).__getAuthUser();
       const restaurantId = await (window as any).__getRestaurantId(user.id);
 
@@ -154,7 +160,7 @@ test.describe('POS Sales Bulk Edit', () => {
             item_name: 'Test Item 1',
             quantity: 1,
             total_price: 10.00,
-            sale_date: new Date().toISOString().split('T')[0],
+            sale_date: dates[0],
             pos_system: 'manual',
           },
           {
@@ -163,7 +169,7 @@ test.describe('POS Sales Bulk Edit', () => {
             item_name: 'Test Item 2',
             quantity: 1,
             total_price: 15.00,
-            sale_date: new Date().toISOString().split('T')[0],
+            sale_date: dates[1],
             pos_system: 'manual',
           },
         ])
@@ -172,7 +178,7 @@ test.describe('POS Sales Bulk Edit', () => {
       if (salesError) throw new Error(`Failed to create sales: ${salesError.message}`);
 
       return { account, sales: salesData };
-    });
+    }, saleDates);
 
     await page.reload();
     

@@ -14,6 +14,85 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          name: string | null
+          role: string
+          session_id: string
+          tool_call_id: string | null
+          tool_calls: Json | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          role: string
+          session_id: string
+          tool_call_id?: string | null
+          tool_calls?: Json | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          name?: string | null
+          role?: string
+          session_id?: string
+          tool_call_id?: string | null
+          tool_calls?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_chat_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          is_archived: boolean
+          restaurant_id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          restaurant_id: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          restaurant_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_sessions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       asset_depreciation_schedule: {
         Row: {
           accumulated_after: number
@@ -151,10 +230,12 @@ export type Database = {
           notes: string | null
           purchase_cost: number
           purchase_date: string
+          quantity: number
           restaurant_id: string
           salvage_value: number
           serial_number: string | null
           status: Database["public"]["Enums"]["asset_status_enum"]
+          unit_cost: number
           updated_at: string
           useful_life_months: number
         }
@@ -176,10 +257,12 @@ export type Database = {
           notes?: string | null
           purchase_cost: number
           purchase_date: string
+          quantity?: number
           restaurant_id: string
           salvage_value?: number
           serial_number?: string | null
           status?: Database["public"]["Enums"]["asset_status_enum"]
+          unit_cost: number
           updated_at?: string
           useful_life_months: number
         }
@@ -201,10 +284,12 @@ export type Database = {
           notes?: string | null
           purchase_cost?: number
           purchase_date?: string
+          quantity?: number
           restaurant_id?: string
           salvage_value?: number
           serial_number?: string | null
           status?: Database["public"]["Enums"]["asset_status_enum"]
+          unit_cost?: number
           updated_at?: string
           useful_life_months?: number
         }
@@ -3253,47 +3338,106 @@ export type Database = {
           },
         ]
       }
+      prep_recipe_procedure_steps: {
+        Row: {
+          created_at: string
+          critical_point: boolean | null
+          id: string
+          instruction: string
+          prep_recipe_id: string
+          step_number: number
+          timer_minutes: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          critical_point?: boolean | null
+          id?: string
+          instruction: string
+          prep_recipe_id: string
+          step_number: number
+          timer_minutes?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          critical_point?: boolean | null
+          id?: string
+          instruction?: string
+          prep_recipe_id?: string
+          step_number?: number
+          timer_minutes?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prep_recipe_procedure_steps_prep_recipe_id_fkey"
+            columns: ["prep_recipe_id"]
+            isOneToOne: false
+            referencedRelation: "prep_recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prep_recipes: {
         Row: {
+          category: string | null
           created_at: string
           created_by: string | null
           default_yield: number
           default_yield_unit: Database["public"]["Enums"]["measurement_unit"]
           description: string | null
+          equipment_notes: string | null
           id: string
           name: string
           output_product_id: string | null
+          oven_temp: number | null
+          oven_temp_unit: string | null
           prep_time_minutes: number | null
           recipe_id: string | null
           restaurant_id: string
+          shelf_life_days: number | null
+          storage_instructions: string | null
           updated_at: string
         }
         Insert: {
+          category?: string | null
           created_at?: string
           created_by?: string | null
           default_yield?: number
           default_yield_unit?: Database["public"]["Enums"]["measurement_unit"]
           description?: string | null
+          equipment_notes?: string | null
           id?: string
           name: string
           output_product_id?: string | null
+          oven_temp?: number | null
+          oven_temp_unit?: string | null
           prep_time_minutes?: number | null
           recipe_id?: string | null
           restaurant_id: string
+          shelf_life_days?: number | null
+          storage_instructions?: string | null
           updated_at?: string
         }
         Update: {
+          category?: string | null
           created_at?: string
           created_by?: string | null
           default_yield?: number
           default_yield_unit?: Database["public"]["Enums"]["measurement_unit"]
           description?: string | null
+          equipment_notes?: string | null
           id?: string
           name?: string
           output_product_id?: string | null
+          oven_temp?: number | null
+          oven_temp_unit?: string | null
           prep_time_minutes?: number | null
           recipe_id?: string | null
           restaurant_id?: string
+          shelf_life_days?: number | null
+          storage_instructions?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -3606,6 +3750,7 @@ export type Database = {
           restaurant_id: string
           search_vector: unknown
           searchable_text: string | null
+          shelf_life_days: number | null
           size_unit: string | null
           size_value: number | null
           sku: string
@@ -3642,6 +3787,7 @@ export type Database = {
           restaurant_id: string
           search_vector?: unknown
           searchable_text?: string | null
+          shelf_life_days?: number | null
           size_unit?: string | null
           size_value?: number | null
           sku: string
@@ -3678,6 +3824,7 @@ export type Database = {
           restaurant_id?: string
           search_vector?: unknown
           searchable_text?: string | null
+          shelf_life_days?: number | null
           size_unit?: string | null
           size_value?: number | null
           sku?: string
@@ -4397,11 +4544,20 @@ export type Database = {
           capitalize_threshold_cents: number | null
           created_at: string
           cuisine_type: string | null
+          grandfathered_until: string | null
           id: string
           name: string
           phone: string | null
           stripe_customer_id: string | null
+          stripe_subscription_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_cancel_at: string | null
+          subscription_ends_at: string | null
+          subscription_period: string
+          subscription_status: string
+          subscription_tier: string
           timezone: string | null
+          trial_ends_at: string | null
           updated_at: string
         }
         Insert: {
@@ -4409,11 +4565,20 @@ export type Database = {
           capitalize_threshold_cents?: number | null
           created_at?: string
           cuisine_type?: string | null
+          grandfathered_until?: string | null
           id?: string
           name: string
           phone?: string | null
           stripe_customer_id?: string | null
+          stripe_subscription_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_cancel_at?: string | null
+          subscription_ends_at?: string | null
+          subscription_period?: string
+          subscription_status?: string
+          subscription_tier?: string
           timezone?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -4421,11 +4586,20 @@ export type Database = {
           capitalize_threshold_cents?: number | null
           created_at?: string
           cuisine_type?: string | null
+          grandfathered_until?: string | null
           id?: string
           name?: string
           phone?: string | null
           stripe_customer_id?: string | null
+          stripe_subscription_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_cancel_at?: string | null
+          subscription_ends_at?: string | null
+          subscription_period?: string
+          subscription_status?: string
+          subscription_tier?: string
           timezone?: string | null
+          trial_ends_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -5067,11 +5241,17 @@ export type Database = {
       shift4_connections: {
         Row: {
           connected_at: string
+          connection_status: string | null
           created_at: string
           email: string | null
           environment: string
           id: string
+          initial_sync_done: boolean | null
+          is_active: boolean | null
+          last_error: string | null
+          last_error_at: string | null
           last_sync_at: string | null
+          last_sync_time: string | null
           lighthouse_location_ids: Json | null
           lighthouse_token: string | null
           lighthouse_token_expires_at: string | null
@@ -5079,15 +5259,22 @@ export type Database = {
           password: string | null
           restaurant_id: string
           secret_key: string | null
+          sync_cursor: number | null
           updated_at: string
         }
         Insert: {
           connected_at?: string
+          connection_status?: string | null
           created_at?: string
           email?: string | null
           environment?: string
           id?: string
+          initial_sync_done?: boolean | null
+          is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_sync_at?: string | null
+          last_sync_time?: string | null
           lighthouse_location_ids?: Json | null
           lighthouse_token?: string | null
           lighthouse_token_expires_at?: string | null
@@ -5095,15 +5282,22 @@ export type Database = {
           password?: string | null
           restaurant_id: string
           secret_key?: string | null
+          sync_cursor?: number | null
           updated_at?: string
         }
         Update: {
           connected_at?: string
+          connection_status?: string | null
           created_at?: string
           email?: string | null
           environment?: string
           id?: string
+          initial_sync_done?: boolean | null
+          is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_sync_at?: string | null
+          last_sync_time?: string | null
           lighthouse_location_ids?: Json | null
           lighthouse_token?: string | null
           lighthouse_token_expires_at?: string | null
@@ -5111,6 +5305,7 @@ export type Database = {
           password?: string | null
           restaurant_id?: string
           secret_key?: string | null
+          sync_cursor?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -6510,6 +6705,8 @@ export type Database = {
           last_error_at: string | null
           last_sync_time: string | null
           restaurant_id: string
+          sync_cursor: number | null
+          sync_page: number | null
           toast_restaurant_guid: string
           token_expires_at: string | null
           token_fetched_at: string | null
@@ -6531,6 +6728,8 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id: string
+          sync_cursor?: number | null
+          sync_page?: number | null
           toast_restaurant_guid: string
           token_expires_at?: string | null
           token_fetched_at?: string | null
@@ -6552,6 +6751,8 @@ export type Database = {
           last_error_at?: string | null
           last_sync_time?: string | null
           restaurant_id?: string
+          sync_cursor?: number | null
+          sync_page?: number | null
           toast_restaurant_guid?: string
           token_expires_at?: string | null
           token_fetched_at?: string | null
@@ -6639,7 +6840,7 @@ export type Database = {
           synced_at: string
           toast_item_guid: string
           toast_order_guid: string
-          toast_order_id: string
+          toast_order_id: string | null
           total_price: number | null
           unit_price: number | null
         }
@@ -6655,7 +6856,7 @@ export type Database = {
           synced_at?: string
           toast_item_guid: string
           toast_order_guid: string
-          toast_order_id: string
+          toast_order_id?: string | null
           total_price?: number | null
           unit_price?: number | null
         }
@@ -6671,7 +6872,7 @@ export type Database = {
           synced_at?: string
           toast_item_guid?: string
           toast_order_guid?: string
-          toast_order_id?: string
+          toast_order_id?: string | null
           total_price?: number | null
           unit_price?: number | null
         }
@@ -7462,6 +7663,14 @@ export type Database = {
         }
         Returns: Json
       }
+      archive_old_ai_chat_sessions: {
+        Args: { p_restaurant_id: string; p_user_id: string }
+        Returns: number
+      }
+      bulk_delete_bank_transactions: {
+        Args: { p_restaurant_id: string; p_transaction_ids: string[] }
+        Returns: Json
+      }
       bulk_process_historical_sales: {
         Args: {
           p_end_date: string
@@ -7638,26 +7847,16 @@ export type Database = {
         Args: { p_account_id: string; p_as_of_date?: string }
         Returns: number
       }
-      create_restaurant_with_owner:
-        | {
-            Args: {
-              restaurant_address?: string
-              restaurant_cuisine_type?: string
-              restaurant_name: string
-              restaurant_phone?: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              restaurant_address?: string
-              restaurant_cuisine_type?: string
-              restaurant_name: string
-              restaurant_phone?: string
-              restaurant_timezone?: string
-            }
-            Returns: string
-          }
+      create_restaurant_with_owner: {
+        Args: {
+          restaurant_address?: string
+          restaurant_cuisine_type?: string
+          restaurant_name: string
+          restaurant_phone?: string
+          restaurant_timezone?: string
+        }
+        Returns: string
+      }
       daitch_mokotoff: { Args: { "": string }; Returns: string[] }
       deactivate_employee: {
         Args: {
@@ -7707,6 +7906,22 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      delete_bank_transaction: {
+        Args: { p_restaurant_id: string; p_transaction_id: string }
+        Returns: Json
+      }
+      delete_shift_series: {
+        Args: {
+          p_from_time?: string
+          p_parent_id: string
+          p_restaurant_id: string
+          p_scope: string
+        }
+        Returns: {
+          deleted_count: number
+          locked_count: number
+        }[]
       }
       dmetaphone: { Args: { "": string }; Returns: string }
       dmetaphone_alt: { Args: { "": string }; Returns: string }
@@ -7771,6 +7986,10 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: string
       }
+      get_effective_subscription_tier: {
+        Args: { p_restaurant_id: string }
+        Returns: string
+      }
       get_employee_punch_status: {
         Args: { p_employee_id: string }
         Returns: {
@@ -7794,6 +8013,10 @@ export type Database = {
           sales_tax: number
           tips: number
         }[]
+      }
+      get_owner_restaurant_count: {
+        Args: { p_user_id?: string }
+        Returns: number
       }
       get_pass_through_totals: {
         Args: {
@@ -7826,6 +8049,13 @@ export type Database = {
           is_categorized: boolean
           total_amount: number
           transaction_count: number
+        }[]
+      }
+      get_shift_series_info: {
+        Args: { p_parent_id: string; p_restaurant_id: string }
+        Returns: {
+          locked_count: number
+          series_count: number
         }[]
       }
       get_uncovered_bank_patterns: {
@@ -7877,6 +8107,14 @@ export type Database = {
           full_name: string
           id: string
         }[]
+      }
+      get_volume_discount_percent: {
+        Args: { p_location_count: number }
+        Returns: number
+      }
+      has_subscription_feature: {
+        Args: { p_feature: string; p_restaurant_id: string }
+        Returns: boolean
       }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       is_restaurant_owner: {
@@ -7936,10 +8174,12 @@ export type Database = {
           p_external_order_id?: string
           p_pos_item_name: string
           p_quantity_sold: number
+          p_reason_prefix?: string
           p_restaurant_id: string
           p_restaurant_timezone?: string
           p_sale_date: string
           p_sale_time?: string
+          p_transaction_type?: string
         }
         Returns: Json
       }
@@ -8033,6 +8273,14 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       soundex: { Args: { "": string }; Returns: string }
+      split_asset: {
+        Args: {
+          p_asset_id: string
+          p_restaurant_id: string
+          p_split_quantity: number
+        }
+        Returns: string
+      }
       split_bank_transaction: {
         Args: { p_splits: Json; p_transaction_id: string }
         Returns: Json
@@ -8064,6 +8312,20 @@ export type Database = {
           supplier_name: string
         }[]
       }
+      sync_all_shift4_to_unified_sales: {
+        Args: never
+        Returns: {
+          restaurant_id: string
+          rows_synced: number
+        }[]
+      }
+      sync_all_toast_to_unified_sales: {
+        Args: never
+        Returns: {
+          orders_synced: number
+          restaurant_id: string
+        }[]
+      }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
@@ -8076,10 +8338,16 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
-      sync_toast_to_unified_sales: {
-        Args: { p_restaurant_id: string }
-        Returns: number
-      }
+      sync_toast_to_unified_sales:
+        | { Args: { p_restaurant_id: string }; Returns: number }
+        | {
+            Args: {
+              p_end_date: string
+              p_restaurant_id: string
+              p_start_date: string
+            }
+            Returns: number
+          }
       text_soundex: { Args: { "": string }; Returns: string }
       toast_sync_financial_breakdown: {
         Args: { p_order_guid: string; p_restaurant_id: string }
@@ -8099,6 +8367,21 @@ export type Database = {
       update_prep_recipe_ingredients: {
         Args: { p_ingredients?: Json; p_prep_recipe_id: string }
         Returns: undefined
+      }
+      update_shift_series: {
+        Args: {
+          p_end_time_delta?: unknown
+          p_from_time?: string
+          p_parent_id: string
+          p_restaurant_id: string
+          p_scope: string
+          p_start_time_delta?: unknown
+          p_updates: Json
+        }
+        Returns: {
+          locked_count: number
+          updated_count: number
+        }[]
       }
       upsert_product_supplier: {
         Args: {

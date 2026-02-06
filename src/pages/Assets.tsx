@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -17,8 +24,10 @@ import {
   Search,
   DollarSign,
   TrendingDown,
-  Calculator,
   Boxes,
+  Upload,
+  AlertTriangle,
+  CheckCircle,
 } from 'lucide-react';
 import { useAssets } from '@/hooks/useAssets';
 import { useAssetsPendingDepreciation } from '@/hooks/useAssetDepreciation';
@@ -27,34 +36,54 @@ import {
   AssetDialog,
   AssetDepreciationSheet,
   AssetDisposeDialog,
+  AssetImportUpload,
+  AssetImportReview,
 } from '@/components/assets';
 import type { Asset, AssetFormData, AssetStatus, AssetWithDetails } from '@/types/assets';
 import { formatAssetCurrency, DEFAULT_ASSET_CATEGORIES } from '@/types/assets';
+import type { AssetLineItem } from '@/types/assetImport';
+import { FeatureGate } from '@/components/subscription';
 
 type StatusFilter = AssetStatus | 'all';
+
+interface MetricCardProps {
+  readonly title: string;
+  readonly value: string | number;
+  readonly icon: React.ElementType;
+  readonly description?: string;
+  readonly trend?: 'positive' | 'warning' | 'neutral';
+  readonly className?: string;
+}
 
 function MetricCard({
   title,
   value,
   icon: Icon,
   description,
+  trend = 'neutral',
   className = '',
-}: {
-  title: string;
-  value: string | number;
-  icon: React.ElementType;
-  description?: string;
-  className?: string;
-}) {
+}: Readonly<MetricCardProps>) {
+  const iconBgColors = {
+    positive: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400',
+    warning: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400',
+    neutral: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400',
+  };
+
   return (
-    <Card className={className}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+    <Card className={`overflow-hidden ${className}`}>
+      <CardContent className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400 mb-1 truncate">{title}</p>
+            <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">{value}</p>
+            {description && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate">{description}</p>
+            )}
+          </div>
+          <div className={`p-2 sm:p-2.5 rounded-lg flex-shrink-0 ${iconBgColors[trend]}`}>
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
@@ -72,6 +101,11 @@ export default function Assets() {
   const [depreciationAsset, setDepreciationAsset] = useState<AssetWithDetails | null>(null);
   const [isDisposeOpen, setIsDisposeOpen] = useState(false);
   const [disposeAsset, setDisposeAsset] = useState<AssetWithDetails | null>(null);
+
+  // Import states
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importedItems, setImportedItems] = useState<AssetLineItem[]>([]);
+  const [importDocumentFile, setImportDocumentFile] = useState<File | undefined>(undefined);
 
   const {
     assets,
@@ -102,9 +136,6 @@ export default function Assets() {
     return matchesCategory && matchesSearch;
   });
 
-  // Get unique categories from current assets
-  const usedCategories = [...new Set(assets.map((a) => a.category))];
-
   const handleEdit = (asset: AssetWithDetails) => {
     setSelectedAsset(asset);
     setIsDialogOpen(true);
@@ -113,7 +144,6 @@ export default function Assets() {
   const handleViewPhotos = (asset: AssetWithDetails) => {
     setSelectedAsset(asset);
     setIsDialogOpen(true);
-    // The dialog will open to the photos tab if the asset exists
   };
 
   const handleDepreciate = (asset: AssetWithDetails) => {
@@ -143,98 +173,145 @@ export default function Assets() {
     setDisposeAsset(null);
   };
 
+  // Import handlers
+  const handleDocumentProcessed = useCallback((items: AssetLineItem[], documentFile?: File) => {
+    setImportedItems(items);
+    setImportDocumentFile(documentFile);
+  }, []);
+
+  const handleImportComplete = useCallback(() => {
+    setIsImportDialogOpen(false);
+    setImportedItems([]);
+    setImportDocumentFile(undefined);
+    refetch();
+  }, [refetch]);
+
+  const handleImportCancel = useCallback(() => {
+    setIsImportDialogOpen(false);
+    setImportedItems([]);
+    setImportDocumentFile(undefined);
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <FeatureGate featureKey="assets">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Hero Section */}
-      <div className="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-6 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Package className="h-7 w-7" />
-              Assets & Equipment
-            </h1>
-            <p className="text-blue-100 mt-1">
+      <div className="relative rounded-2xl bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-700 p-5 sm:p-8 text-white overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/3" />
+
+        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-sm">
+                <Package className="h-6 w-6 sm:h-7 sm:w-7" />
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold">Assets & Equipment</h1>
+            </div>
+            <p className="text-blue-100 text-sm sm:text-base max-w-md">
               Track fixed assets, depreciation, and equipment across your restaurant.
             </p>
           </div>
-          <Button
-            onClick={() => {
-              setSelectedAsset(null);
-              setIsDialogOpen(true);
-            }}
-            className="bg-white text-blue-600 hover:bg-blue-50"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Asset
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setIsImportDialogOpen(true)}
+              className="bg-white/10 text-white border-white/20 hover:bg-white/20 backdrop-blur-sm"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Import
+            </Button>
+            <Button
+              onClick={() => {
+                setSelectedAsset(null);
+                setIsDialogOpen(true);
+              }}
+              className="bg-white text-blue-600 hover:bg-blue-50 shadow-lg shadow-blue-900/20"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Asset
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <MetricCard
           title="Total Assets"
           value={summary.totalAssets}
           icon={Boxes}
           description={`${summary.activeAssets} active`}
+          trend="neutral"
         />
         <MetricCard
           title="Total Cost"
           value={formatAssetCurrency(summary.totalCost)}
           icon={DollarSign}
           description="Original purchase value"
+          trend="neutral"
         />
         <MetricCard
           title="Net Book Value"
           value={formatAssetCurrency(summary.totalNetBookValue)}
           icon={TrendingDown}
           description="Current book value"
+          trend="positive"
         />
         <MetricCard
           title="Pending Depreciation"
           value={pendingDepreciationCount}
-          icon={Calculator}
+          icon={pendingDepreciationCount > 0 ? AlertTriangle : CheckCircle}
           description={pendingDepreciationCount > 0 ? 'Assets need depreciation' : 'All caught up'}
-          className={pendingDepreciationCount > 0 ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/20' : ''}
+          trend={pendingDepreciationCount > 0 ? 'warning' : 'positive'}
+          className={pendingDepreciationCount > 0 ? 'ring-1 ring-amber-200 dark:ring-amber-800' : ''}
         />
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Assets</CardTitle>
-          <CardDescription>
-            Manage your equipment, furniture, and other fixed assets.
-          </CardDescription>
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3 px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-lg">Assets</CardTitle>
+              <CardDescription className="text-sm">
+                Manage your equipment, furniture, and other fixed assets.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            {/* Status Tabs */}
-            <Tabs
-              value={statusFilter}
-              onValueChange={(v) => setStatusFilter(v as StatusFilter)}
-            >
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="active">Active</TabsTrigger>
-                <TabsTrigger value="fully_depreciated">Fully Depreciated</TabsTrigger>
-                <TabsTrigger value="disposed">Disposed</TabsTrigger>
-              </TabsList>
-            </Tabs>
+        <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
+          {/* Filter Controls */}
+          <div className="flex flex-col gap-4">
+            {/* Status Tabs - scrollable on mobile */}
+            <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+              <Tabs
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+              >
+                <TabsList className="inline-flex h-9 min-w-max">
+                  <TabsTrigger value="all" className="text-xs sm:text-sm px-2.5 sm:px-3">All</TabsTrigger>
+                  <TabsTrigger value="active" className="text-xs sm:text-sm px-2.5 sm:px-3">Active</TabsTrigger>
+                  <TabsTrigger value="fully_depreciated" className="text-xs sm:text-sm px-2.5 sm:px-3 whitespace-nowrap">Fully Depreciated</TabsTrigger>
+                  <TabsTrigger value="disposed" className="text-xs sm:text-sm px-2.5 sm:px-3">Disposed</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
 
             {/* Search and Category Filter */}
-            <div className="flex gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <div className="relative flex-1 sm:max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   placeholder="Search assets..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 w-[200px]"
+                  className="pl-9 h-10 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700"
                 />
               </div>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-full sm:w-[180px] h-10 bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -253,16 +330,16 @@ export default function Assets() {
           <div className="mt-6">
             {error && (
               <Alert variant="destructive" className="mb-4">
+                <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Error Loading Assets</AlertTitle>
-                <AlertDescription className="flex items-center justify-between">
-                  <span>
+                <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span className="text-sm">
                     {error instanceof Error ? error.message : 'Failed to load assets. Please try again.'}
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => refetch()}
-                    className="ml-4"
                   >
                     Retry
                   </Button>
@@ -315,6 +392,38 @@ export default function Assets() {
         onDispose={handleConfirmDispose}
         isDisposing={isDisposing}
       />
+
+      {/* Asset Import Dialog */}
+      <Dialog open={isImportDialogOpen} onOpenChange={(open) => {
+        setIsImportDialogOpen(open);
+        if (!open) {
+          // Reset import state when dialog closes
+          setImportedItems([]);
+          setImportDocumentFile(undefined);
+        }
+      }}>
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Import Assets</DialogTitle>
+            <DialogDescription>
+              Upload an invoice, receipt, or CSV to bulk import assets
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            {importedItems.length === 0 ? (
+              <AssetImportUpload onDocumentProcessed={handleDocumentProcessed} />
+            ) : (
+              <AssetImportReview
+                initialItems={importedItems}
+                documentFile={importDocumentFile}
+                onImportComplete={handleImportComplete}
+                onCancel={handleImportCancel}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+    </FeatureGate>
   );
 }

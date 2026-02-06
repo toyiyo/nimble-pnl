@@ -68,6 +68,9 @@ export default defineConfig(async ({ mode }) => {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
             'chart-vendor': ['recharts'],
+            // Deduplicate large libraries that were being bundled multiple times
+            'mermaid': ['mermaid'],
+            'date-fns': ['date-fns'],
           },
         },
       },

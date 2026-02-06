@@ -14,6 +14,7 @@ export interface UseAiChatReturn {
   sendMessage: (content: string) => Promise<void>;
   clearMessages: () => void;
   abortStream: () => void;
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 }
 
 export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAiChatReturn {
@@ -513,5 +514,6 @@ export function useAiChat({ restaurantId, onToolCall }: UseAiChatOptions): UseAi
     sendMessage,
     clearMessages,
     abortStream,
+    setMessages,
   };
 }

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from '@/integrations/supabase/types';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { SUBSCRIPTION_FEATURES, SubscriptionTier } from '@/lib/subscriptionPlans';
 
 export interface OnboardingStep {
   id: string;
@@ -12,6 +13,10 @@ export interface OnboardingStep {
   isCompleted: boolean;
   category: 'operations' | 'inventory' | 'finance';
   ctaText?: string;
+  /** Feature key for subscription-gated features */
+  featureKey?: keyof typeof SUBSCRIPTION_FEATURES;
+  /** Required tier for this feature (computed from featureKey) */
+  requiredTier?: SubscriptionTier;
 }
 
 export interface OnboardingStatus {
@@ -66,12 +71,26 @@ const checkTableCount = async (
   return { count: result.count ?? null, error: result.error as Error | null };
 };
 
-export const useOnboardingStatus = (): OnboardingStatus => {
+/**
+ * Extract restaurant ID from the context object.
+ * The context shape varies, so we check multiple possible paths.
+ */
+function getRestaurantId(selectedRestaurant: ReturnType<typeof useRestaurantContext>['selectedRestaurant']): string | null {
+  if (!selectedRestaurant) return null;
+  // Primary path: restaurant_id from user_restaurants join
+  if (selectedRestaurant.restaurant_id) return selectedRestaurant.restaurant_id;
+  // Fallback: nested restaurant object
+  if (selectedRestaurant.restaurant?.id) return selectedRestaurant.restaurant.id;
+  // Last resort: direct id (shouldn't happen in practice)
+  if ('id' in selectedRestaurant && typeof selectedRestaurant.id === 'string') {
+    return selectedRestaurant.id;
+  }
+  return null;
+}
+
+export function useOnboardingStatus(): OnboardingStatus {
   const { selectedRestaurant } = useRestaurantContext();
-  const restaurantId = selectedRestaurant?.restaurant_id
-    ?? selectedRestaurant?.restaurant?.id
-    ?? selectedRestaurant?.id
-    ?? null;
+  const restaurantId = getRestaurantId(selectedRestaurant);
   const isDev = import.meta.env.DEV;
 
   const { data: status, isLoading, error, refetch } = useQuery({
@@ -231,7 +250,8 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       path: '/integrations',
       category: 'operations',
       ctaText: 'Connect POS',
-      isCompleted: status?.hasPos ?? false
+      isCompleted: status?.hasPos ?? false,
+      // Available in Starter - no featureKey
     },
     {
       id: 'collaborators',
@@ -240,7 +260,8 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       path: '/team',
       category: 'operations',
       ctaText: 'Invite Team',
-      isCompleted: status?.hasCollaborators ?? false
+      isCompleted: status?.hasCollaborators ?? false,
+      // Available in Starter - no featureKey
     },
     {
       id: 'employees',
@@ -249,7 +270,9 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       path: '/employees',
       category: 'operations',
       ctaText: 'Add Staff',
-      isCompleted: status?.hasEmployees ?? false
+      isCompleted: status?.hasEmployees ?? false,
+      featureKey: 'scheduling',
+      requiredTier: SUBSCRIPTION_FEATURES.scheduling.requiredTier,
     },
     {
       id: 'recipe',
@@ -258,16 +281,19 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       path: '/recipes',
       category: 'inventory',
       ctaText: 'Create Recipe',
-      isCompleted: status?.hasRecipes ?? false
+      isCompleted: status?.hasRecipes ?? false,
+      // Available in Starter - no featureKey
     },
     {
       id: 'receipt',
       label: 'Upload a Receipt',
-      description: 'Digitize expenses and update prices.',
+      description: 'Auto-scan with OCR to update prices.',
       path: '/receipt-import',
       category: 'inventory',
       ctaText: 'Upload Receipt',
-      isCompleted: status?.hasReceipts ?? false
+      isCompleted: status?.hasReceipts ?? false,
+      featureKey: 'inventory_automation',
+      requiredTier: SUBSCRIPTION_FEATURES.inventory_automation.requiredTier,
     },
     {
       id: 'inventory',
@@ -276,7 +302,8 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       path: '/inventory',
       category: 'inventory',
       ctaText: 'Start Count',
-      isCompleted: status?.hasInventory ?? false
+      isCompleted: status?.hasInventory ?? false,
+      // Available in Starter - no featureKey
     },
     {
       id: 'bank',
@@ -285,8 +312,10 @@ export const useOnboardingStatus = (): OnboardingStatus => {
       path: '/banking',
       category: 'finance',
       ctaText: 'Connect Bank',
-      isCompleted: status?.hasBank ?? false
-    }
+      isCompleted: status?.hasBank ?? false,
+      featureKey: 'financial_intelligence',
+      requiredTier: SUBSCRIPTION_FEATURES.financial_intelligence.requiredTier,
+    },
   ];
 
   const completedCount = steps.filter(s => s.isCompleted).length;

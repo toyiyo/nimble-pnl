@@ -34,3 +34,7 @@ supabase/functions/.env
 stripe
 stripe.tar.gz
 dev-tools/.last_task_id
+.env.local.backup.20260129_163826
+
+# Git worktrees
+.worktrees/

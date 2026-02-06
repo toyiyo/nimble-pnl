@@ -50,6 +50,8 @@ const mockAssetFromDB = {
   category: 'equipment',
   serial_number: null,
   purchase_date: '2024-01-01',
+  quantity: 1,
+  unit_cost: 1000,
   purchase_cost: 1000,
   salvage_value: 0,
   useful_life_months: 60,
@@ -66,6 +68,18 @@ const mockAssetFromDB = {
   created_at: '2024-01-01T00:00:00Z',
   updated_at: '2024-01-01T00:00:00Z',
   inventory_locations: null,
+};
+
+// Mock data for multi-quantity asset
+const mockMultiQuantityAsset = {
+  ...mockAssetFromDB,
+  id: 'asset-multi',
+  name: 'Refrigerator',
+  quantity: 2,
+  unit_cost: 20000,
+  purchase_cost: 40000, // 2 × $20,000
+  salvage_value: 4000,
+  accumulated_depreciation: 2000,
 };
 
 const mockAssetWithDetails = {
@@ -156,8 +170,8 @@ describe('useAssets Hook', () => {
   describe('Summary calculations', () => {
     it('should calculate asset summary correctly', async () => {
       const assetsWithValues = [
-        { ...mockAssetFromDB, purchase_cost: 1000, accumulated_depreciation: 100, status: 'active' },
-        { ...mockAssetFromDB, id: 'asset-2', purchase_cost: 2000, accumulated_depreciation: 200, status: 'active' },
+        { ...mockAssetFromDB, quantity: 1, purchase_cost: 1000, accumulated_depreciation: 100, status: 'active' },
+        { ...mockAssetFromDB, id: 'asset-2', quantity: 1, purchase_cost: 2000, accumulated_depreciation: 200, status: 'active' },
       ];
       mockFromChain.data = assetsWithValues;
 
@@ -169,6 +183,7 @@ describe('useAssets Hook', () => {
         expect(result.current.assets).toHaveLength(2);
         expect(result.current.summary).toEqual({
           totalAssets: 2,
+          totalRecords: 2,
           activeAssets: 2,
           totalCost: 3000,
           totalNetBookValue: 2700,
@@ -187,6 +202,7 @@ describe('useAssets Hook', () => {
       await waitFor(() => {
         expect(result.current.summary).toEqual({
           totalAssets: 0,
+          totalRecords: 0,
           activeAssets: 0,
           totalCost: 0,
           totalNetBookValue: 0,
@@ -194,17 +210,60 @@ describe('useAssets Hook', () => {
         });
       });
     });
+
+    it('should count units (not records) for totalAssets with quantity > 1', async () => {
+      const assetsWithQuantity = [
+        { ...mockAssetFromDB, id: 'asset-1', quantity: 5, unit_cost: 100, purchase_cost: 500, accumulated_depreciation: 50, status: 'active' },
+        { ...mockAssetFromDB, id: 'asset-2', quantity: 3, unit_cost: 200, purchase_cost: 600, accumulated_depreciation: 60, status: 'active' },
+        { ...mockAssetFromDB, id: 'asset-3', quantity: 1, unit_cost: 300, purchase_cost: 300, accumulated_depreciation: 30, status: 'disposed' },
+      ];
+      mockFromChain.data = assetsWithQuantity;
+
+      const { result } = renderHook(() => useAssets(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.assets).toHaveLength(3);
+        expect(result.current.summary).toEqual({
+          totalAssets: 9, // 5 + 3 + 1 = 9 units
+          totalRecords: 3,
+          activeAssets: 8, // 5 + 3 = 8 active units
+          totalCost: 1400, // 500 + 600 + 300
+          totalNetBookValue: 1260, // 1400 - 140
+          totalAccumulatedDepreciation: 140, // 50 + 60 + 30
+        });
+      });
+    });
+
+    it('should default quantity to 1 when not provided', async () => {
+      const assetsWithMissingQuantity = [
+        { ...mockAssetFromDB, id: 'asset-1', quantity: undefined, purchase_cost: 100, accumulated_depreciation: 10, status: 'active' },
+        { ...mockAssetFromDB, id: 'asset-2', quantity: 2, purchase_cost: 200, accumulated_depreciation: 20, status: 'active' },
+      ];
+      mockFromChain.data = assetsWithMissingQuantity;
+
+      const { result } = renderHook(() => useAssets(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.summary.totalAssets).toBe(3); // 1 (default) + 2 = 3
+        expect(result.current.summary.activeAssets).toBe(3);
+      });
+    });
   });
 
   describe('Create mutation', () => {
-    it('should create asset successfully', async () => {
+    it('should create asset successfully with quantity and unit_cost', async () => {
       const newAsset: AssetFormData = {
         name: 'New Asset',
         description: 'New Description',
         category: 'equipment',
         serial_number: 'SN123',
         purchase_date: '2024-01-01',
-        purchase_cost: 500,
+        quantity: 1,
+        unit_cost: 500,
         salvage_value: 50,
         useful_life_months: 60,
         location_id: 'loc-1',
@@ -214,7 +273,7 @@ describe('useAssets Hook', () => {
         notes: 'Test notes',
       };
 
-      mockFromChain.data = { ...mockAssetFromDB, ...newAsset, id: 'new-asset-id' };
+      mockFromChain.data = { ...mockAssetFromDB, ...newAsset, id: 'new-asset-id', purchase_cost: 500 };
 
       const { result } = renderHook(() => useAssets(), {
         wrapper: createWrapper(),
@@ -233,7 +292,9 @@ describe('useAssets Hook', () => {
           category: 'equipment',
           serial_number: 'SN123',
           purchase_date: '2024-01-01',
-          purchase_cost: 500,
+          quantity: 1,
+          unit_cost: 500,
+          purchase_cost: 500, // unit_cost × quantity
           salvage_value: 50,
           useful_life_months: 60,
           location_id: 'loc-1',
@@ -251,12 +312,77 @@ describe('useAssets Hook', () => {
       });
     });
 
+    it('should create multi-quantity asset with correct purchase_cost', async () => {
+      const newAsset: AssetFormData = {
+        name: 'Refrigerators',
+        category: 'Kitchen Equipment',
+        purchase_date: '2024-01-01',
+        quantity: 2,
+        unit_cost: 20000,
+        salvage_value: 4000,
+        useful_life_months: 84,
+      };
+
+      mockFromChain.data = { ...mockAssetFromDB, ...newAsset, id: 'new-asset-id', purchase_cost: 40000 };
+
+      const { result } = renderHook(() => useAssets(), {
+        wrapper: createWrapper(),
+      });
+
+      act(() => {
+        result.current.createAsset(newAsset);
+      });
+
+      await waitFor(() => {
+        expect(mockFromChain.insert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            name: 'Refrigerators',
+            quantity: 2,
+            unit_cost: 20000,
+            purchase_cost: 40000, // 2 × $20,000
+          })
+        );
+      });
+    });
+
+    it('should default quantity to 1 when not provided', async () => {
+      const newAsset: AssetFormData = {
+        name: 'New Asset',
+        category: 'equipment',
+        purchase_date: '2024-01-01',
+        quantity: undefined as any, // Simulate missing quantity
+        unit_cost: 500,
+        salvage_value: 0,
+        useful_life_months: 60,
+      };
+
+      mockFromChain.data = { ...mockAssetFromDB, ...newAsset, id: 'new-asset-id', quantity: 1, purchase_cost: 500 };
+
+      const { result } = renderHook(() => useAssets(), {
+        wrapper: createWrapper(),
+      });
+
+      act(() => {
+        result.current.createAsset(newAsset);
+      });
+
+      await waitFor(() => {
+        expect(mockFromChain.insert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            quantity: 1, // Defaults to 1
+            purchase_cost: 500, // unit_cost × 1
+          })
+        );
+      });
+    });
+
     it('should handle create error', async () => {
       const newAsset: AssetFormData = {
         name: 'New Asset',
         category: 'equipment',
         purchase_date: '2024-01-01',
-        purchase_cost: 500,
+        quantity: 1,
+        unit_cost: 500,
         salvage_value: 0,
         useful_life_months: 60,
       };
@@ -282,10 +408,9 @@ describe('useAssets Hook', () => {
   });
 
   describe('Update mutation', () => {
-    it('should update asset successfully', async () => {
+    it('should update asset name successfully', async () => {
       const updates: Partial<AssetFormData> = {
         name: 'Updated Asset',
-        purchase_cost: 800,
       };
 
       mockFromChain.data = { ...mockAssetFromDB, ...updates };
@@ -302,22 +427,57 @@ describe('useAssets Hook', () => {
         expect(mockSupabase.from).toHaveBeenCalledWith('assets');
         expect(mockFromChain.update).toHaveBeenCalledWith({
           name: 'Updated Asset',
-          description: undefined,
-          category: undefined,
-          serial_number: undefined,
-          purchase_date: undefined,
-          purchase_cost: 800,
-          salvage_value: undefined,
-          useful_life_months: undefined,
-          location_id: null,
-          asset_account_id: null,
-          accumulated_depreciation_account_id: null,
-          depreciation_expense_account_id: null,
-          notes: undefined,
         });
         expect(mockToast.toast).toHaveBeenCalledWith({
           title: 'Asset updated',
           description: 'The asset has been updated successfully.',
+        });
+      });
+    });
+
+    it('should update quantity and unit_cost', async () => {
+      const updates: Partial<AssetFormData> = {
+        quantity: 3,
+        unit_cost: 1500,
+      };
+
+      mockFromChain.data = { ...mockAssetFromDB, ...updates, purchase_cost: 4500 };
+
+      const { result } = renderHook(() => useAssets(), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        result.current.updateAsset({ id: 'asset-1', data: updates });
+      });
+
+      await waitFor(() => {
+        expect(mockFromChain.update).toHaveBeenCalledWith({
+          quantity: 3,
+          unit_cost: 1500,
+          // Note: purchase_cost is synced by DB trigger, not sent in update
+        });
+      });
+    });
+
+    it('should enforce minimum quantity of 1', async () => {
+      const updates: Partial<AssetFormData> = {
+        quantity: 0, // Invalid - should be clamped to 1
+      };
+
+      mockFromChain.data = { ...mockAssetFromDB, quantity: 1 };
+
+      const { result } = renderHook(() => useAssets(), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        result.current.updateAsset({ id: 'asset-1', data: updates });
+      });
+
+      await waitFor(() => {
+        expect(mockFromChain.update).toHaveBeenCalledWith({
+          quantity: 1, // Clamped to minimum
         });
       });
     });

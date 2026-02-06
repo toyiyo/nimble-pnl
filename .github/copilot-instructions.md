@@ -169,6 +169,90 @@ export const MyComponent = ({ prop1, prop2 }: Props) => {
 
 ## 🎨 Design Patterns
 
+### Apple/Notion UI Aesthetic
+
+Use consistent Apple/Notion-inspired styling for a clean, professional appearance:
+
+#### Typography Scale
+```typescript
+text-[17px] font-semibold  // Dialog titles
+text-[15px]                // Subtitles
+text-[14px] font-medium    // Body text, list items
+text-[13px]                // Secondary text
+text-[12px] font-medium text-muted-foreground uppercase tracking-wider  // Form labels
+text-[11px]                // Small badges
+```
+
+#### Dialog Headers (Icon Box Pattern)
+```typescript
+<DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+  <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+    <div className="flex items-center gap-3">
+      <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+        <Icon className="h-5 w-5 text-foreground" />
+      </div>
+      <div>
+        <DialogTitle className="text-[17px] font-semibold">Title</DialogTitle>
+        <p className="text-[13px] text-muted-foreground mt-0.5">Description</p>
+      </div>
+    </div>
+  </DialogHeader>
+</DialogContent>
+```
+
+#### Form Inputs
+```typescript
+// Labels (ALWAYS uppercase tracking)
+<Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+  Field Name
+</Label>
+
+// Inputs
+<Input className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg" />
+```
+
+#### Buttons
+```typescript
+// Primary
+className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+
+// Ghost/Secondary
+className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+```
+
+#### Apple-Style Underline Tabs
+```typescript
+<button
+  className={`relative px-0 py-3 mr-6 text-[14px] font-medium ${
+    isActive ? 'text-foreground' : 'text-muted-foreground'
+  }`}
+>
+  Tab Label
+  {isActive && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />}
+</button>
+```
+
+#### Cards & Containers
+```typescript
+// List card with hover state
+className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+
+// Form section with header
+<div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+  <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+    <h3 className="text-[13px] font-semibold">Section Title</h3>
+  </div>
+  <div className="p-4 space-y-4">{/* Content */}</div>
+</div>
+```
+
+#### Common Patterns
+- `border-border/40` for subtle borders
+- `bg-muted/30` for subtle backgrounds
+- `rounded-lg` for inputs/buttons, `rounded-xl` for cards
+- `opacity-0 group-hover:opacity-100` for hover-reveal actions
+- `Switch className="data-[state=checked]:bg-foreground"` for dark toggles
+
 ### 1. Headers
 ```typescript
 <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
@@ -1163,6 +1247,195 @@ cd supabase/tests && ./run_tests.sh
 # Full CI test suite
 npm run test -- --run && npm run test:e2e && cd supabase/tests && ./run_tests.sh
 ```
+
+---
+
+## ⚡ Performance Optimization Patterns
+
+### List Virtualization (Large Datasets)
+
+When rendering lists with 100+ items, use virtualization to maintain 60fps scrolling:
+
+```typescript
+import { useRef, useMemo, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+
+function VirtualizedList({ items }) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 56,  // Initial estimate
+    overscan: 10,            // Render 10 extra items above/below viewport
+  });
+
+  return (
+    <div ref={parentRef} className="h-[600px] overflow-auto">
+      <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const item = items[virtualRow.index];
+          return (
+            <div
+              key={item.id}                    // ✅ Use stable ID, NOT virtualRow.index
+              data-index={virtualRow.index}    // ✅ Required for measureElement
+              ref={virtualizer.measureElement} // ✅ Dynamic height measurement
+              style={{
+                position: 'absolute',
+                top: 0,
+                transform: `translateY(${virtualRow.start}px)`,
+                width: '100%',
+              }}
+            >
+              <MemoizedRow item={item} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+```
+
+**Key rules:**
+- ✅ Use `key={item.id}` (stable identifier), NOT `key={virtualRow.index}`
+- ✅ Use `data-index={virtualRow.index}` for virtualization tracking
+- ✅ Use `measureElement` for variable row heights
+- ✅ Use `div` layout, NOT `<table>` (tables don't virtualize well)
+- ❌ NEVER use fixed row heights if content varies (causes white spaces/overlap)
+
+### Memoization for Row Components
+
+```typescript
+import { memo } from 'react';
+
+interface RowProps {
+  item: Item;
+  displayValues: DisplayValues;  // Pre-computed values
+  onAction: (id: string) => void;  // MUST be stable (useCallback)
+}
+
+export const MemoizedRow = memo(function MemoizedRow({
+  item,
+  displayValues,
+  onAction,
+}: RowProps) {
+  // NO hooks inside - all data passed as props
+  return <div>...</div>;
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render when these change
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.status === nextProps.item.status &&
+    prevProps.displayValues === nextProps.displayValues  // By reference
+  );
+});
+```
+
+**Key rules:**
+- ✅ NO hooks inside memoized components
+- ✅ Pre-compute display values in parent (useMemo)
+- ✅ Pass stable callbacks (useCallback)
+- ✅ Custom comparison function for fine-grained control
+
+### Stabilizing Callbacks and Derived Data
+
+```typescript
+// In parent component
+const categorize = useCategorizeTransaction();
+
+// ✅ Pre-compute display values (MUST use useMemo)
+const displayValuesMap = useMemo(() => {
+  const map = new Map<string, DisplayValues>();
+  for (const item of items) {
+    map.set(item.id, {
+      formattedAmount: formatCurrency(item.amount),
+      formattedDate: formatDate(item.date),
+    });
+  }
+  return map;
+}, [items]);  // Only recompute when items change
+
+// ✅ Stable callbacks (MUST use useCallback)
+const handleAction = useCallback((id: string) => {
+  categorize.mutate({ id });
+}, [categorize]);
+
+// Pass to memoized row
+<MemoizedRow
+  item={item}
+  displayValues={displayValuesMap.get(item.id)!}
+  onAction={handleAction}
+/>
+```
+
+### Single Dialog Instance Pattern
+
+```typescript
+// ❌ WRONG - Dialog per row (1000+ dialog instances)
+{items.map(item => (
+  <Row key={item.id} item={item}>
+    <Dialog open={openId === item.id}>...</Dialog>
+  </Row>
+))}
+
+// ✅ CORRECT - Single dialog at list level
+const [activeItem, setActiveItem] = useState<Item | null>(null);
+const [dialogType, setDialogType] = useState<'edit' | 'delete' | null>(null);
+
+// Rows just trigger dialog open
+<MemoizedRow onEdit={() => { setActiveItem(item); setDialogType('edit'); }} />
+
+// Single dialog instance
+{activeItem && dialogType === 'edit' && (
+  <EditDialog item={activeItem} onClose={() => setDialogType(null)} />
+)}
+```
+
+### Query Optimization
+
+```typescript
+// ❌ WRONG - Select everything
+.from('transactions').select('*')
+
+// ✅ CORRECT - Select only needed fields
+.from('transactions').select(`
+  id, date, amount, description, status,
+  category:categories(id, name)
+`)
+
+// ❌ WRONG - Fetch related data always
+.select('*, raw_data, bank_account_balances(*)')
+
+// ✅ CORRECT - Fetch heavy data only when needed (detail view)
+const { data: fullDetails } = useQuery({
+  queryKey: ['transaction-full', id],
+  queryFn: () => fetchFullDetails(id),
+  enabled: !!id && isDetailOpen,  // Only fetch when dialog opens
+});
+```
+
+### Mobile Virtualization Decision
+
+Mobile views with 3-5 visible items generally don't need virtualization:
+- Touch scrolling can feel "jumpy" with virtualization
+- Variable card heights complicate virtualization
+- Pagination/infinite scroll already limits DOM nodes
+
+**Use virtualization on mobile only if:**
+- 500+ items visible in single scroll
+- Scroll performance drops below 30fps
+
+### Performance Checklist
+
+- [ ] Lists with 100+ items use virtualization
+- [ ] Virtualized keys use stable IDs, not indices
+- [ ] Row components are memoized with custom comparison
+- [ ] Callbacks passed to rows use useCallback
+- [ ] Display values pre-computed with useMemo
+- [ ] Single dialog instance pattern (not per-row)
+- [ ] Queries select only needed fields
+- [ ] Heavy data deferred until needed (detail views)
 
 ---
 

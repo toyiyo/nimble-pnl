@@ -6,6 +6,42 @@ import { useOnboardingStatus, OnboardingStep } from '@/hooks/useOnboardingStatus
 
 vi.mock('@/hooks/useOnboardingStatus');
 
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: {
+      restaurant_id: 'test-restaurant',
+      restaurant: {
+        subscription_tier: 'pro',
+        subscription_status: 'active',
+      },
+    },
+    restaurants: [],
+  }),
+}));
+
+vi.mock('@/hooks/useSubscription', () => ({
+  useSubscription: () => ({
+    subscription: { tier: 'pro', status: 'active' },
+    effectiveTier: 'pro',
+    hasFeature: () => true,
+    needsUpgrade: () => false,
+    isTrialing: false,
+    isGrandfathered: false,
+    isPastDue: false,
+    isCanceled: false,
+    isActive: true,
+    trialDaysRemaining: null,
+    grandfatheredDaysRemaining: null,
+    volumeDiscount: { percent: 0, locationCount: 1, qualifies: false },
+    ownedRestaurantCount: 1,
+    getPriceInfo: vi.fn(),
+    createCheckout: vi.fn(),
+    isCreatingCheckout: false,
+    openPortal: vi.fn(),
+    isOpeningPortal: false,
+  }),
+}));
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return {

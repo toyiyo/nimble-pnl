@@ -1,16 +1,20 @@
 // Centralized unit definitions for recipes and ingredients
-// Single source of truth for measurement units across the application
+// Derives from enhancedUnitConversion.ts as single source of truth
+// See docs/UNIT_CONVERSIONS.md for full documentation
 
-export const MEASUREMENT_UNITS = [
-  // Weight
-  'g', 'kg', 'oz', 'lb',
-  // Volume
-  'ml', 'L', 'fl oz', 'cup', 'tbsp', 'tsp', 'gal', 'qt', 'pint',
-  // Count / containers
-  'each', 'unit', 'piece', 'serving', 'bottle', 'can', 'bag', 'box', 'case', 'package', 'jar', 'container', 'dozen',
-  // Length (used for some packaging)
-  'inch', 'cm', 'mm', 'ft', 'meter',
-] as const;
+import { WEIGHT_UNITS, VOLUME_UNITS, COUNT_UNITS } from './enhancedUnitConversion';
+
+// Length units for packaging measurements (not in enhanced conversion)
+const LENGTH_UNITS = ['inch', 'cm', 'mm', 'ft', 'meter'] as const;
+
+// Note: 'pint' is now included in VOLUME_UNITS from enhancedUnitConversion.ts
+// Using a mutable array for compatibility with zod z.enum()
+export const MEASUREMENT_UNITS: readonly [string, ...string[]] = [
+  ...WEIGHT_UNITS,
+  ...VOLUME_UNITS,
+  ...COUNT_UNITS,
+  ...LENGTH_UNITS,
+] as unknown as readonly [string, ...string[]];
 
 export type IngredientUnit = typeof MEASUREMENT_UNITS[number];
 

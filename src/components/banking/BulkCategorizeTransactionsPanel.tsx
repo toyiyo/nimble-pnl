@@ -27,7 +27,6 @@ export function BulkCategorizeTransactionsPanel({
       onApply={onApply}
       isApplying={isApplying}
       itemType="transaction"
-      accountTypes={['asset', 'liability', 'equity', 'revenue', 'expense']}
     />
   );
 }

@@ -342,15 +342,20 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Automatically register webhooks for real-time updates
+      // Check webhook status (does NOT auto-create - webhook should be pre-configured)
       const webhookResponse = await supabase.functions.invoke('square-webhook-register', {
-        body: { restaurantId }
+        body: { restaurantId, action: 'status' }
       });
 
       if (webhookResponse.error) {
-        console.error('Error registering webhooks:', webhookResponse.error);
+        console.error('Error checking webhook status:', webhookResponse.error);
       } else {
-        console.log('Webhooks registered successfully for restaurant:', restaurantId);
+        const webhookData = webhookResponse.data;
+        if (webhookData?.matchingWebhook) {
+          console.log('Webhook configured correctly for restaurant:', restaurantId);
+        } else {
+          console.warn('Webhook not configured - run square-webhook-register with action: "create"');
+        }
       }
 
       // Trigger initial data sync

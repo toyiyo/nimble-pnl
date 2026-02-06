@@ -1,18 +1,27 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export type SecurityEventType = 
+export type SecurityEventType =
+  // Toast events
   | 'TOAST_BULK_SYNC_SUCCESS'
   | 'TOAST_BULK_SYNC_FAILED'
   | 'TOAST_WEBHOOK_RECEIVED'
   | 'TOAST_CONNECTION_CREATED'
   | 'TOAST_CONNECTION_UPDATED'
   | 'TOAST_CONNECTION_DELETED'
+  // Square events
   | 'SQUARE_SYNC_SUCCESS'
   | 'SQUARE_SYNC_FAILED'
+  // Clover events
   | 'CLOVER_SYNC_SUCCESS'
   | 'CLOVER_SYNC_FAILED'
+  // Shift4/Lighthouse events
   | 'SHIFT4_SYNC_SUCCESS'
   | 'SHIFT4_SYNC_FAILED'
+  | 'SHIFT4_BULK_SYNC_SUCCESS'
+  | 'SHIFT4_BULK_SYNC_FAILED'
+  | 'SHIFT4_KEY_ACCESSED'
+  | 'LIGHTHOUSE_TOKEN_ACQUIRED'
+  // General events
   | 'API_KEY_CREATED'
   | 'API_KEY_DELETED'
   | 'WEBHOOK_SIGNATURE_INVALID'
@@ -27,9 +36,8 @@ export interface SecurityEventMetadata {
   [key: string]: unknown;
 }
 
-/**
- * Logs a security event to the auth_audit_log table
- */
+const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
 export async function logSecurityEvent(
   supabase: SupabaseClient,
   eventType: SecurityEventType | string,
@@ -40,16 +48,15 @@ export async function logSecurityEvent(
   try {
     const { error } = await supabase.from('auth_audit_log').insert({
       event_type: eventType,
-      user_id: userId || '00000000-0000-0000-0000-000000000000', // System user UUID for automated processes
-      restaurant_id: restaurantId || null,
-      metadata: metadata || null,
+      user_id: userId || SYSTEM_USER_ID,
+      restaurant_id: restaurantId ?? null,
+      metadata: metadata ?? null,
     });
 
     if (error) {
       console.error(`Failed to log security event ${eventType}:`, error.message);
     }
   } catch (err) {
-    // Don't let logging failures break the main flow
     console.error(`Error logging security event ${eventType}:`, err);
   }
 }

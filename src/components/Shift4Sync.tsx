@@ -1,104 +1,178 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { RefreshCw, Download, AlertCircle, CheckCircle2, Zap } from 'lucide-react';
+import { useShift4Integration } from '@/hooks/useShift4Integration';
+import { RefreshCw, AlertCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import {
+  ConnectionStatus,
+  InitialSyncPendingAlert,
+  LastErrorAlert,
+  SyncModeSelector,
+  SyncButton,
+  SyncProgressDisplay,
+  SyncResults,
+  HowSyncingWorksInfo,
+  SHIFT4_CONFIG,
+  type SyncMode,
+} from '@/components/pos/SyncComponents';
 
 interface Shift4SyncProps {
   restaurantId: string;
-  isConnected: boolean;
 }
 
 interface SyncResult {
-  chargesSynced: number;
-  refundsSynced: number;
+  ticketsSynced: number;
   errors: string[];
+  syncComplete: boolean;
+  progress: number;
 }
 
-export const Shift4Sync = ({ restaurantId, isConnected }: Shift4SyncProps) => {
+export function Shift4Sync({ restaurantId }: Shift4SyncProps): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
-  const [syncType, setSyncType] = useState<'initial_sync' | 'daily_sync' | 'hourly_sync'>('initial_sync');
+  const [totalTicketsSynced, setTotalTicketsSynced] = useState(0);
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [syncMode, setSyncMode] = useState<SyncMode>('recent');
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const { toast } = useToast();
+  const { connection, triggerManualSync, checkConnection } = useShift4Integration(restaurantId);
 
-  const handleSync = async (action: 'initial_sync' | 'daily_sync' | 'hourly_sync', dateRange?: { startDate: string; endDate: string }) => {
-    if (!isConnected) {
+  async function executeSyncLoop(options?: { startDate?: string; endDate?: string }): Promise<{
+    totalTickets: number;
+    allErrors: string[];
+    complete: boolean;
+  }> {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
+    const BATCH_DELAY_MS = 500;
+
+    const allErrors: string[] = [];
+    let totalTickets = 0;
+    let complete = false;
+    let consecutiveFailures = 0;
+
+    while (!complete) {
+      try {
+        const data = await triggerManualSync(options);
+
+        if (!data) {
+          break;
+        }
+
+        consecutiveFailures = 0;
+        totalTickets += data.ticketsSynced;
+        setTotalTicketsSynced(totalTickets);
+        setSyncProgress(data.progress || 100);
+
+        if (data.errors && data.errors.length > 0) {
+          allErrors.push(...data.errors);
+        }
+
+        complete = data.syncComplete !== false;
+
+        if (!complete) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        }
+      } catch (error) {
+        consecutiveFailures++;
+        const errorMessage = error instanceof Error ? error.message : 'Request failed';
+
+        console.warn(`Sync request failed (attempt ${consecutiveFailures}/${MAX_RETRIES}):`, errorMessage);
+
+        if (consecutiveFailures >= MAX_RETRIES) {
+          allErrors.push(`Sync interrupted after ${MAX_RETRIES} retries: ${errorMessage}`);
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      }
+    }
+
+    return { totalTickets, allErrors, complete };
+  }
+
+  async function handleSync(): Promise<void> {
+    if (!connection?.is_active) {
       toast({
-        title: "Error",
-        description: "Please connect to Shift4 first",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Please connect to Shift4/Lighthouse first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (syncMode === 'custom' && (!dateRange?.from || !dateRange?.to)) {
+      toast({
+        title: 'Error',
+        description: 'Please select a date range',
+        variant: 'destructive',
       });
       return;
     }
 
     setIsLoading(true);
     setSyncResult(null);
-    setSyncType(action);
+    setTotalTicketsSynced(0);
+    setSyncProgress(0);
 
     try {
-      const { data, error } = await supabase.functions.invoke('shift4-sync-data', {
-        body: {
-          restaurantId,
-          action,
-          ...(dateRange && { dateRange })
-        }
+      const syncOptions = syncMode === 'custom' && dateRange
+        ? { startDate: dateRange.from.toISOString(), endDate: dateRange.to.toISOString() }
+        : undefined;
+
+      const { totalTickets, allErrors } = await executeSyncLoop(syncOptions);
+
+      setSyncResult({
+        ticketsSynced: totalTickets,
+        errors: allErrors,
+        syncComplete: true,
+        progress: 100
       });
 
-      if (error) {
-        throw error;
-      }
+      await checkConnection();
 
-      if (data?.results) {
-        setSyncResult(data.results);
-        
-        const totalSynced = data.results.chargesSynced + data.results.refundsSynced;
-        
-        toast({
-          title: "Sync Complete",
-          description: `Successfully synced ${totalSynced} records from Shift4`,
+      const description = syncMode === 'custom'
+        ? `${totalTickets} tickets synced for ${format(dateRange!.from, 'MMM d')} - ${format(dateRange!.to, 'MMM d, yyyy')}`
+        : `${totalTickets} tickets synced successfully`;
+
+      toast({ title: 'Sync complete', description });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Sync failed';
+      toast({ title: 'Sync failed', description: errorMessage, variant: 'destructive' });
+      console.error('Sync error:', error);
+
+      if (totalTicketsSynced > 0) {
+        setSyncResult({
+          ticketsSynced: totalTicketsSynced,
+          errors: [errorMessage],
+          syncComplete: false,
+          progress: syncProgress
         });
       }
-    } catch (error: any) {
-      console.error('Sync error:', error);
-      toast({
-        title: "Sync Failed",
-        description: error.message || "Failed to sync data from Shift4",
-        variant: "destructive",
-      });
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
-  const handleHistoricalSync = () => {
-    handleSync('initial_sync');
-  };
-
-  const handleDailySync = () => {
-    handleSync('daily_sync');
-  };
-
-  if (!isConnected) {
+  if (!connection?.is_active) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5" />
-            Shift4 Data Sync
+            Shift4/Lighthouse Data Sync
           </CardTitle>
           <CardDescription>
-            Connect to Shift4 to sync your historical data and enable automatic updates
+            Connect to Shift4/Lighthouse to sync your sales data
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Please connect to Shift4 first to enable data synchronization.
+              Please connect to Shift4/Lighthouse first to enable data synchronization.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -106,115 +180,69 @@ export const Shift4Sync = ({ restaurantId, isConnected }: Shift4SyncProps) => {
     );
   }
 
+  const lastSyncTime = connection.last_sync_time ? new Date(connection.last_sync_time) : null;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RefreshCw className="h-5 w-5" />
-          Shift4 Data Sync
+          Shift4/Lighthouse Data Sync
         </CardTitle>
         <CardDescription>
-          Sync your Shift4 payment data to populate P&L calculations
+          Sync your Lighthouse tickets to populate P&L calculations
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Primary Sync Action */}
-        <div className="space-y-4">
-          <div className="text-center">
-            <Button
-              onClick={handleHistoricalSync}
-              disabled={isLoading}
-              className="w-full max-w-xs mx-auto"
-              size="lg"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              {isLoading && syncType === 'initial_sync' ? 'Importing Data...' : 'Sync Last 7 Days'}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-2">
-              Pull the last week of payments from Shift4
-            </p>
-          </div>
+        <ConnectionStatus lastSyncTime={lastSyncTime} config={SHIFT4_CONFIG} />
 
-          {/* Secondary Sync Options */}
-          <div className="grid grid-cols-1 gap-3">
-            <Button
-              onClick={handleDailySync}
-              disabled={isLoading}
-              variant="outline"
-              size="sm"
-            >
-              {isLoading && syncType === 'daily_sync' ? 'Syncing...' : 'Sync Yesterday'}
-            </Button>
-          </div>
-        </div>
+        {!connection.initial_sync_done && (
+          <InitialSyncPendingAlert syncCursor={connection.sync_cursor} config={SHIFT4_CONFIG} />
+        )}
 
-        {/* Loading Progress */}
+        {connection.last_error && (
+          <LastErrorAlert error={connection.last_error} errorAt={connection.last_error_at} />
+        )}
+
+        <SyncModeSelector
+          syncMode={syncMode}
+          onSyncModeChange={setSyncMode}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          initialSyncDone={connection.initial_sync_done}
+          config={SHIFT4_CONFIG}
+        />
+
+        <SyncButton
+          isLoading={isLoading}
+          initialSyncDone={connection.initial_sync_done}
+          syncMode={syncMode}
+          dateRange={dateRange}
+          onSync={handleSync}
+          config={SHIFT4_CONFIG}
+        />
+
         {isLoading && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Syncing data from Shift4...</span>
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            </div>
-            <Progress value={undefined} className="w-full" />
-            <p className="text-xs text-muted-foreground">
-              This may take a few minutes depending on the amount of data
-            </p>
-          </div>
+          <SyncProgressDisplay
+            progress={syncProgress}
+            itemsSynced={totalTicketsSynced}
+            initialSyncDone={connection.initial_sync_done}
+            config={SHIFT4_CONFIG}
+          />
         )}
 
-        {/* Sync Results */}
         {syncResult && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <h4 className="font-medium">Sync Results</h4>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <div className="text-2xl font-bold text-blue-600">{syncResult.chargesSynced}</div>
-                <div className="text-xs text-muted-foreground">Charges</div>
-              </div>
-              
-              <div className="space-y-1">
-                <div className="text-2xl font-bold text-red-600">{syncResult.refundsSynced}</div>
-                <div className="text-xs text-muted-foreground">Refunds</div>
-              </div>
-            </div>
-
-            {/* Errors */}
-            {syncResult.errors && syncResult.errors.length > 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <div className="space-y-1">
-                    <div className="font-medium">Some errors occurred during sync:</div>
-                    {syncResult.errors.map((error, index) => (
-                      <div key={index} className="text-sm">• {error}</div>
-                    ))}
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
+          <SyncResults
+            itemsSynced={syncResult.ticketsSynced}
+            errors={syncResult.errors}
+            config={SHIFT4_CONFIG}
+          />
         )}
 
-        {/* Info */}
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <div className="space-y-2">
-              <div className="font-medium">How it works</div>
-              <div className="text-sm space-y-1">
-                <div><strong>Automatic Updates:</strong> Your P&L updates in real-time via webhooks when Shift4 processes charges</div>
-                <div><strong>Historical Data:</strong> Use the import button to bring in past payment data</div>
-                <div><strong>What's Included:</strong> Payment charges and refunds (Note: Shift4 does not provide line-item details)</div>
-                <div><strong>Limitations:</strong> Tips are only available if using Shift4 Platform Split feature</div>
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
+        <HowSyncingWorksInfo config={SHIFT4_CONFIG} />
       </CardContent>
     </Card>
   );
-};
+}
+
+export { Shift4Sync as default };

@@ -1,8 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
+import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
 /**
  * E2E Tests for Employee Activation/Deactivation
- * 
+ *
  * Test Coverage:
  * 1. Manager can deactivate an active employee
  * 2. Inactive employee cannot log in to their account
@@ -11,22 +12,10 @@ import { test, expect, Page } from '@playwright/test';
  * 5. Manager can reactivate an inactive employee
  * 6. Reactivated employee can log in and use PIN
  * 7. Deactivation preserves historical data (punches, payroll, schedules)
- * 
+ *
  * These tests follow the TDD approach and validate the happy path
  * for employee lifecycle management.
  */
-
-// Generate unique test data
-const generateTestUser = () => {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 8);
-  return {
-    email: `activation-mgr-${timestamp}-${random}@test.com`,
-    password: 'TestPassword123!',
-    fullName: `Activation Manager ${timestamp}`,
-    restaurantName: `Activation Test Restaurant ${timestamp}`,
-  };
-};
 
 const generateEmployee = () => {
   const random = Math.random().toString(36).substring(2, 6);
@@ -39,55 +28,6 @@ const generateEmployee = () => {
     pin: '1234',
   };
 };
-
-/**
- * Helper to sign up a new user and create a restaurant
- */
-async function signUpAndCreateRestaurant(page: Page, testUser: ReturnType<typeof generateTestUser>) {
-  await page.goto('/');
-  await page.waitForURL(/\/(auth)?$/);
-  
-  // If on home page, click sign in
-  if (page.url().endsWith('/')) {
-    const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-    if (await signInLink.isVisible().catch(() => false)) {
-      await signInLink.click();
-      await page.waitForURL('/auth');
-    }
-  }
-
-  // Go to signup tab
-  await expect(page.getByRole('tab', { name: /sign up/i })).toBeVisible({ timeout: 10000 });
-  await page.getByRole('tab', { name: /sign up/i }).click();
-
-  // Fill signup form
-  await page.getByLabel(/email/i).first().fill(testUser.email);
-  await page.getByLabel(/full name/i).fill(testUser.fullName);
-  await page.getByLabel(/password/i).first().fill(testUser.password);
-
-  // Submit signup
-  await page.getByRole('button', { name: /sign up|create account/i }).click();
-
-  // Wait for redirect
-  await page.waitForURL('/', { timeout: 15000 });
-
-  // Create restaurant
-  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 10000 });
-  await addRestaurantButton.click();
-
-  // Fill restaurant creation form
-  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
-  await expect(dialog).toBeVisible();
-
-  await dialog.getByLabel(/restaurant name/i).fill(testUser.restaurantName);
-  await dialog.getByLabel(/address/i).fill('123 Activation Test Street');
-  await dialog.getByLabel(/phone/i).fill('555-ACTIV-ATE');
-
-  // Submit and wait for success
-  await dialog.getByRole('button', { name: /create restaurant|add restaurant/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
-}
 
 /**
  * Helper to create an employee with optional user account

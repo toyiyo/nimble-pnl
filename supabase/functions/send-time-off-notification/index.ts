@@ -45,10 +45,10 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', 
 });
 
 // Use a type alias for the Supabase client that's more permissive
-type SupabaseClient = ReturnType<typeof createClient>;
+type SupabaseClientType = ReturnType<typeof createClient>;
 
 const buildEmails = async (
-  supabase: SupabaseClient,
+  supabase: SupabaseClientType,
   restaurantId: string,
   employeeEmail?: string,
   notifyEmployee?: boolean,
@@ -173,7 +173,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const uniqueEmails = await buildEmails(
-      supabase,
+      supabase as any,
       timeOffRequest.restaurant_id,
       timeOffRequest.employee?.email,
       settings.time_off_notify_employee,

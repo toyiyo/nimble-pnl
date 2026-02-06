@@ -28,9 +28,8 @@ serve(async (req) => {
       throw new Error("Stripe secret key not configured");
     }
 
-    // @ts-expect-error: Using future Stripe API version for embedded components support
     const stripe = new Stripe(stripeKey, {
-      apiVersion: "2025-08-27.basil",
+      apiVersion: "2025-08-27.basil" as any,
     });
 
     const deriveStatuses = (acct: any) => {

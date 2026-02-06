@@ -1,11 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-
-type TestUser = {
-  email: string;
-  password: string;
-  fullName: string;
-  restaurantName: string;
-};
+import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
 
 type TestProduct = {
   name: string;
@@ -13,17 +7,6 @@ type TestProduct = {
   initialStock: number;
   reconciledStock: number;
   costPerUnit: number;
-};
-
-const generateTestUser = (): TestUser => {
-  const timestamp = Date.now();
-  const rand = Math.random().toString(36).slice(2, 6);
-  return {
-    email: `recon-${timestamp}-${rand}@test.com`,
-    password: 'TestPassword123!',
-    fullName: `Recon Tester ${timestamp}`,
-    restaurantName: `Recon Resto ${timestamp}`,
-  };
 };
 
 const generateTestProduct = (): TestProduct => {
@@ -36,40 +19,6 @@ const generateTestProduct = (): TestProduct => {
     costPerUnit: 2.5,
   };
 };
-
-async function signUpAndCreateRestaurant(page: Page, user: TestUser) {
-  await page.goto('/');
-  await page.waitForURL(/\/(auth)?$/);
-
-  // If on marketing page, hop to auth
-  if (page.url().endsWith('/')) {
-    const signInLink = page.getByRole('link', { name: /sign in|log in|get started/i });
-    if (await signInLink.isVisible().catch(() => false)) {
-      await signInLink.click();
-      await page.waitForURL('/auth');
-    }
-  }
-
-  await page.getByRole('tab', { name: /sign up/i }).click();
-  await page.getByLabel(/email/i).first().fill(user.email);
-  await page.getByLabel(/full name/i).fill(user.fullName);
-  await page.getByLabel(/password/i).first().fill(user.password);
-  await page.getByRole('button', { name: /sign up|create account/i }).click();
-
-  await page.waitForURL('/', { timeout: 20000 });
-
-  const addRestaurantButton = page.getByRole('button', { name: /add restaurant/i });
-  await expect(addRestaurantButton).toBeVisible({ timeout: 15000 });
-  await addRestaurantButton.click();
-
-  const dialog = page.getByRole('dialog', { name: /add new restaurant/i });
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel(/restaurant name/i).fill(user.restaurantName);
-  await dialog.getByLabel(/address/i).fill('123 Recon Street');
-  await dialog.getByLabel(/phone/i).fill('555-123-4567');
-  await dialog.getByRole('button', { name: /create restaurant|add restaurant/i }).click();
-  await expect(dialog).not.toBeVisible({ timeout: 5000 });
-}
 
 async function createProduct(page: Page, product: TestProduct) {
   await page.goto('/inventory');
@@ -95,7 +44,8 @@ async function createProduct(page: Page, product: TestProduct) {
 
   await dialog.getByRole('button', { name: /update product|add product|save/i }).click();
   await expect(dialog).not.toBeVisible({ timeout: 10000 });
-  await expect(page.getByRole('heading', { name: product.name })).toBeVisible({ timeout: 10000 });
+  // The product grid renders the name in multiple cards; assert the first visible instance
+  await expect(page.getByRole('heading', { name: product.name }).first()).toBeVisible({ timeout: 10000 });
 }
 
 async function completeReconciliation(page: Page, product: TestProduct) {
@@ -134,8 +84,8 @@ test('inventory reconciliation updates product stock', async ({ page }) => {
 
   await page.getByRole('tab', { name: /products/i }).click();
 
-  // Confirm stock on the product card reflects the reconciled count
-  await expect(page.getByRole('heading', { name: product.name })).toBeVisible({ timeout: 10000 });
+  // Confirm stock on at least one product card reflects the reconciled count
+  await expect(page.getByRole('heading', { name: product.name }).first()).toBeVisible({ timeout: 10000 });
   await expect(
     page.getByText(new RegExp(`${product.reconciledStock.toFixed(2)}\\s+pieces`, 'i'))
   ).toBeVisible({ timeout: 10000 });

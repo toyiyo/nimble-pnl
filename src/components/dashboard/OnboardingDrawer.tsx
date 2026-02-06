@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Sheet, 
+import {
+  Sheet,
   SheetContent,
   SheetTitle,
   SheetDescription,
@@ -12,19 +12,37 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  CheckCircle2, 
-  Circle, 
-  ChevronRight, 
+import {
+  CheckCircle2,
+  Circle,
+  ChevronRight,
   Users,
   UtensilsCrossed,
   Building2,
-  ListTodo
+  ListTodo,
+  Lock,
+  Sparkles,
 } from 'lucide-react';
 import { useOnboardingStatus, OnboardingStep } from '@/hooks/useOnboardingStatus';
+import { useSubscription } from '@/hooks/useSubscription';
+import type { LucideIcon } from 'lucide-react';
+
+interface OnboardingCategory {
+  key: 'operations' | 'inventory' | 'finance';
+  label: string;
+  title: string;
+  Icon: LucideIcon;
+}
+
+const ONBOARDING_CATEGORIES: OnboardingCategory[] = [
+  { key: 'operations', label: 'Operations', title: 'Get to Daily P&L', Icon: Users },
+  { key: 'inventory', label: 'Inventory', title: 'Track Inventory & COGS', Icon: UtensilsCrossed },
+  { key: 'finance', label: 'Finance', title: 'Get Paid & Track Cash', Icon: Building2 },
+];
 
 export const OnboardingDrawer = () => {
   const { steps, completedCount, totalCount, percentage, isLoading, error, refetch } = useOnboardingStatus();
+  const { hasFeature } = useSubscription();
   const [isOpen, setIsOpen] = useState(true);
   const navigate = useNavigate();
 
@@ -151,20 +169,24 @@ export const OnboardingDrawer = () => {
           {/* Steps List */}
           <ScrollArea className="flex-1 px-6 py-6">
             <div className="space-y-6">
-              {[
-                { key: 'operations' as const, label: 'Operations', title: 'Get to Daily P&L', Icon: Users },
-                { key: 'inventory' as const, label: 'Inventory', title: 'Track Inventory & COGS', Icon: UtensilsCrossed },
-                { key: 'finance' as const, label: 'Finance', title: 'Get Paid & Track Cash', Icon: Building2 },
-              ].map(({ key, label, title, Icon }) => (
+              {ONBOARDING_CATEGORIES.map(({ key, label, title, Icon }) => (
                 <div className="space-y-3" key={key}>
                   <h3 className="text-sm font-medium text-foreground/80 flex items-center gap-2">
                     <Badge variant="outline" className="h-5 px-1.5"><Icon className="h-3 w-3 mr-1"/>{label}</Badge>
                     {title}
                   </h3>
                   <div className="grid gap-3">
-                    {steps.filter(s => s.category === key).map(step => (
-                      <StepCard key={step.id} step={step} onClick={() => handleStepClick(step)} />
-                    ))}
+                    {steps.filter(s => s.category === key).map(step => {
+                      const isLocked = step.featureKey ? !hasFeature(step.featureKey) : false;
+                      return (
+                        <StepCard
+                          key={step.id}
+                          step={step}
+                          onClick={() => handleStepClick(step)}
+                          isLocked={isLocked}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -176,35 +198,83 @@ export const OnboardingDrawer = () => {
   );
 };
 
-const StepCard = ({ step, onClick }: { step: OnboardingStep; onClick: () => void }) => {
+const StepCard = ({ step, onClick, isLocked }: { step: OnboardingStep; onClick: () => void; isLocked: boolean }) => {
+  const navigate = useNavigate();
+
+  const handleClick = () => {
+    if (isLocked) {
+      // Navigate to subscription settings for locked features
+      navigate('/settings?tab=subscription');
+    } else {
+      onClick();
+    }
+  };
+
+  const backgroundClass = step.isCompleted
+    ? 'bg-muted/30 border-transparent hover:bg-muted/50'
+    : isLocked
+    ? 'bg-card hover:border-amber-500/50 hover:shadow-sm border-amber-200/50'
+    : 'bg-card hover:border-primary/50 hover:shadow-sm';
+
+  const iconColorClass = step.isCompleted
+    ? 'text-primary'
+    : isLocked
+    ? 'text-amber-500'
+    : 'text-muted-foreground group-hover:text-primary';
+
+  const icon = step.isCompleted ? (
+    <CheckCircle2 className="h-5 w-5" />
+  ) : isLocked ? (
+    <Lock className="h-5 w-5" />
+  ) : (
+    <Circle className="h-5 w-5" />
+  );
+
   return (
-    <button 
+    <button
       type="button"
-      onClick={onClick}
+      onClick={handleClick}
       className={`
         group relative flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer text-left w-full
-        ${step.isCompleted 
-          ? 'bg-muted/30 border-transparent hover:bg-muted/50' 
-          : 'bg-card hover:border-primary/50 hover:shadow-sm'
-        }
+        ${backgroundClass}
       `}
     >
-      <div className={`mt-0.5 rounded-full p-0.5 ${step.isCompleted ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`}>
-        {step.isCompleted ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+      <div className={`mt-0.5 rounded-full p-0.5 ${iconColorClass}`}>
+        {icon}
       </div>
-      
+
       <div className="flex-1 space-y-1">
-        <p className={`text-sm font-medium leading-none ${step.isCompleted ? 'text-muted-foreground line-through decoration-transparent' : 'text-foreground'}`}>
-          {step.label}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className={`text-sm font-medium leading-none ${
+            step.isCompleted
+              ? 'text-muted-foreground line-through decoration-transparent'
+              : 'text-foreground'
+          }`}>
+            {step.label}
+          </p>
+          {isLocked && step.requiredTier && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 capitalize"
+            >
+              <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+              {step.requiredTier}
+            </Badge>
+          )}
+        </div>
         <p className="text-xs text-muted-foreground line-clamp-2">
           {step.description}
         </p>
-        
+
         {!step.isCompleted && (
           <div className="pt-2">
-            <span className="text-xs font-semibold text-primary group-hover:underline inline-flex items-center">
-              {step.ctaText} <ChevronRight className="h-3 w-3 ml-0.5" />
+            <span className={`text-xs font-semibold inline-flex items-center ${
+              isLocked
+                ? 'text-amber-600 group-hover:underline'
+                : 'text-primary group-hover:underline'
+            }`}>
+              {isLocked ? 'Upgrade to Unlock' : step.ctaText}
+              <ChevronRight className="h-3 w-3 ml-0.5" />
             </span>
           </div>
         )}

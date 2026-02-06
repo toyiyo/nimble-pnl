@@ -122,7 +122,7 @@ serve(async (req) => {
           const balanceTx = charge.balance_transaction;
           // Stripe fee is the difference between the charge amount and the net amount
           stripeFeeAmount = balanceTx.fee;
-          stripeFeeDescription = `Stripe processing fee (${balanceTx.fee_details?.map(d => d.description).join(', ') || 'Standard processing'})`;
+          stripeFeeDescription = `Stripe processing fee (${balanceTx.fee_details?.map((d: { description?: string }) => d.description).join(', ') || 'Standard processing'})`;
         }
       }
     }

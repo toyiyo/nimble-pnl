@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { FeatureGate } from "@/components/subscription";
 
 export default function Invoices() {
   const { selectedRestaurant } = useRestaurantContext();
@@ -87,58 +88,144 @@ export default function Invoices() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      );
+    }
 
-  // Show initial setup message when no customers exist
-  if (customers.length === 0) {
-    return (
-      <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+    if (customers.length === 0) {
+      // Show initial setup message when no customers exist
+      return (
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-        </Card>
+            </CardHeader>
+          </Card>
 
-        <Alert>
-          <Users className="h-4 w-4" />
-          <AlertTitle>Get Started with Invoicing</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              To create invoices, you first need to add customers to your directory.
-              Once you have customers, you can create professional invoices with payment collection.
-            </p>
-            <div className="flex gap-3 flex-col md:flex-row">
-              <Button onClick={() => navigate('/customers')} className="flex-1">
-                <Users className="h-4 w-4 mr-2" />
-                Add Customers
-              </Button>
-              {!connectedAccount && (
-                <Button 
-                  onClick={() => createAccount('express')} 
-                  disabled={isCreatingAccount}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  {isCreatingAccount ? "Setting up..." : "Set up Payments"}
+          <Alert>
+            <Users className="h-4 w-4" />
+            <AlertTitle>Get Started with Invoicing</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                To create invoices, you first need to add customers to your directory.
+                Once you have customers, you can create professional invoices with payment collection.
+              </p>
+              <div className="flex gap-3 flex-col md:flex-row">
+                <Button onClick={() => navigate('/customers')} className="flex-1">
+                  <Users className="h-4 w-4 mr-2" />
+                  Add Customers
                 </Button>
+                {!connectedAccount && (
+                  <Button
+                    onClick={() => createAccount('express')}
+                    disabled={isCreatingAccount}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {isCreatingAccount ? "Setting up..." : "Set up Payments"}
+                  </Button>
+                )}
+              </div>
+              {connectedAccount && !isReadyForInvoicing && (
+                <StripeEmbeddedOnboarding
+                  restaurantId={selectedRestaurant?.restaurant_id || null}
+                  onCompleted={() => {
+                    queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
+                    queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
+                  }}
+                />
               )}
-            </div>
-            {connectedAccount && !isReadyForInvoicing && (
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
+
+    if (!connectedAccount) {
+      // Show payment processing setup if not configured
+      return (
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Payment Processing Setup Required</AlertTitle>
+            <AlertDescription>
+              To create invoices and accept payments, you need to set up payment processing.
+              This allows your customers to pay by credit card or US bank account (ACH).
+            </AlertDescription>
+          </Alert>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <h3 className="text-lg font-semibold">Get Started with Payment Processing</h3>
+                <p className="text-muted-foreground">
+                  Set up secure payment processing to accept payments directly from your customers.
+                  Funds will be deposited into your bank account.
+                </p>
+                <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
+                  {isCreatingAccount ? "Setting up..." : "Set Up Payment Processing"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    if (!isReadyForInvoicing) {
+      // Show onboarding incomplete message
+      return (
+        <div className="space-y-6">
+          <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Complete Account Onboarding</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                Your payment processing account was created but onboarding wasn't completed.
+                Please finish the setup process to start creating invoices.
+              </p>
               <StripeEmbeddedOnboarding
                 restaurantId={selectedRestaurant?.restaurant_id || null}
                 onCompleted={() => {
@@ -146,225 +233,147 @@ export default function Invoices() {
                   queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
                 }}
               />
-            )}
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
+            </AlertDescription>
+          </Alert>
+        </div>
+      );
+    }
 
-  // Show payment processing setup if not configured
-  if (!connectedAccount) {
     return (
       <div className="space-y-6">
+        {/* Header */}
         <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
           <CardHeader>
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileText className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
+                <div>
+                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Invoices
+                  </CardTitle>
+                  <CardDescription>Create and manage invoices for your customers</CardDescription>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Payment Processing Setup Required</AlertTitle>
-          <AlertDescription>
-            To create invoices and accept payments, you need to set up payment processing.
-            This allows your customers to pay by credit card or US bank account (ACH).
-          </AlertDescription>
-        </Alert>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <h3 className="text-lg font-semibold">Get Started with Payment Processing</h3>
-              <p className="text-muted-foreground">
-                Set up secure payment processing to accept payments directly from your customers.
-                Funds will be deposited into your bank account.
-              </p>
-              <Button onClick={() => createAccount('express')} disabled={isCreatingAccount}>
-                {isCreatingAccount ? "Setting up..." : "Set Up Payment Processing"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Show onboarding incomplete message
-  if (!isReadyForInvoicing && connectedAccount) {
-    return (
-      <div className="space-y-6">
-        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices with card + ACH payments</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Complete Account Onboarding</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              Your payment processing account was created but onboarding wasn't completed.
-              Please finish the setup process to start creating invoices.
-            </p>
-            <StripeEmbeddedOnboarding
-              restaurantId={selectedRestaurant?.restaurant_id || null}
-              onCompleted={() => {
-                queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', selectedRestaurant?.restaurant_id] });
-                queryClient.invalidateQueries({ queryKey: ['invoices', selectedRestaurant?.restaurant_id] });
-              }}
-            />
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FileText className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
-              <div>
-                <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Invoices
-                </CardTitle>
-                <CardDescription>Create and manage invoices for your customers</CardDescription>
-              </div>
-            </div>
-            <Button onClick={() => navigate('/invoices/new')}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Invoice
-            </Button>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search invoices..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              variant={statusFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('all')}
-            >
-              All
-            </Button>
-            <Button
-              variant={statusFilter === 'draft' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('draft')}
-            >
-              Draft
-            </Button>
-            <Button
-              variant={statusFilter === 'open' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('open')}
-            >
-              Open
-            </Button>
-            <Button
-              variant={statusFilter === 'paid' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter('paid')}
-            >
-              Paid
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Invoice List */}
-      {filteredInvoices.length === 0 ? (
-        <Card className="bg-gradient-to-br from-muted/50 to-transparent">
-          <CardContent className="py-12 text-center">
-            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No invoices found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchTerm || statusFilter !== 'all'
-                ? "Try a different search or filter"
-                : "Get started by creating your first invoice"}
-            </p>
-            {!searchTerm && statusFilter === 'all' && (
               <Button onClick={() => navigate('/invoices/new')}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create Invoice
               </Button>
-            )}
-          </CardContent>
+            </div>
+          </CardHeader>
         </Card>
-      ) : (
+
+        {/* Filters */}
         <Card>
-          <CardContent className="p-0">
-            <div className="divide-y">
-              {filteredInvoices.map((invoice) => (
-                <button
-                  type="button"
-                  key={invoice.id}
-                  className="w-full text-left p-4 hover:bg-muted/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  onClick={() => navigate(`/invoices/${invoice.id}`)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-semibold">
-                          {invoice.invoice_number || "Draft"}
-                        </span>
-                        {getStatusBadge(invoice.status)}
-                      </div>
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <div>{invoice.customers?.name}</div>
-                        <div>Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "Not set"}</div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold">
-                        {formatCurrency(invoice.total / 100)}
-                      </div>
-                      {invoice.status === 'paid' && invoice.paid_at && (
-                        <div className="text-xs text-muted-foreground">
-                          Paid {new Date(invoice.paid_at).toLocaleDateString()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
+          <CardContent className="pt-6 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search invoices..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={statusFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('all')}
+              >
+                All
+              </Button>
+              <Button
+                variant={statusFilter === 'draft' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('draft')}
+              >
+                Draft
+              </Button>
+              <Button
+                variant={statusFilter === 'open' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('open')}
+              >
+                Open
+              </Button>
+              <Button
+                variant={statusFilter === 'paid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setStatusFilter('paid')}
+              >
+                Paid
+              </Button>
             </div>
           </CardContent>
         </Card>
-      )}
-    </div>
+
+        {/* Invoice List */}
+        {filteredInvoices.length === 0 ? (
+          <Card className="bg-gradient-to-br from-muted/50 to-transparent">
+            <CardContent className="py-12 text-center">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No invoices found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchTerm || statusFilter !== 'all'
+                  ? "Try a different search or filter"
+                  : "Get started by creating your first invoice"}
+              </p>
+              {!searchTerm && statusFilter === 'all' && (
+                <Button onClick={() => navigate('/invoices/new')}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Invoice
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {filteredInvoices.map((invoice) => (
+                  <button
+                    type="button"
+                    key={invoice.id}
+                    className="w-full text-left p-4 hover:bg-muted/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => navigate(`/invoices/${invoice.id}`)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="font-semibold">
+                            {invoice.invoice_number || "Draft"}
+                          </span>
+                          {getStatusBadge(invoice.status)}
+                        </div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <div>{invoice.customers?.name}</div>
+                          <div>Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "Not set"}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-semibold">
+                          {formatCurrency(invoice.total / 100)}
+                        </div>
+                        {invoice.status === 'paid' && invoice.paid_at && (
+                          <div className="text-xs text-muted-foreground">
+                            Paid {new Date(invoice.paid_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <FeatureGate featureKey="invoicing">
+      {renderContent()}
+    </FeatureGate>
   );
 }

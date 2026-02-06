@@ -13,6 +13,7 @@ import { ReconciliationReport } from "@/components/banking/ReconciliationReport"
 import { BankConnectionCard } from "@/components/BankConnectionCard";
 import { MetricIcon } from "@/components/MetricIcon";
 import { Link, useLocation } from "react-router-dom";
+import { FeatureGate } from "@/components/subscription";
 import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -21,7 +22,7 @@ import { TransactionFiltersSheet, type TransactionFilters } from "@/components/T
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
 import { useBankStatementImport } from "@/hooks/useBankStatementImport";
-import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload, Tags, XCircle, ArrowLeftRight } from "lucide-react";
+import { Loader2, Building2, Sparkles, CheckCircle2, FileText, Wand2, Plus, Wallet, Search, ArrowUpDown, Filter, Brain, ArrowRight, Upload, Tags, XCircle, ArrowLeftRight, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
@@ -30,7 +31,8 @@ import { type BankStatus, type GroupedBank } from "@/utils/financialConnections"
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizeTransactionsPanel } from "@/components/banking/BulkCategorizeTransactionsPanel";
-import { useBulkCategorizeTransactions, useBulkExcludeTransactions, useBulkMarkAsTransfer } from "@/hooks/useBulkTransactionActions";
+import { useBulkCategorizeTransactions, useBulkDeleteTransactions, useBulkMarkAsTransfer } from "@/hooks/useBulkTransactionActions";
+import { BulkDeleteConfirmDialog } from "@/components/bulk-edit/BulkDeleteConfirmDialog";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 
 export default function Banking() {
@@ -76,8 +78,11 @@ export default function Banking() {
   // Bulk selection hooks
   const bulkSelection = useBulkSelection();
   const bulkCategorize = useBulkCategorizeTransactions();
-  const bulkExclude = useBulkExcludeTransactions();
+  const bulkDelete = useBulkDeleteTransactions();
   const bulkMarkTransfer = useBulkMarkAsTransfer();
+
+  // Delete confirmation dialog state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const {
     transactions: reviewTransactions = [],
@@ -258,16 +263,24 @@ export default function Banking() {
     });
   };
 
-  const handleBulkExclude = () => {
+  const handleBulkDeleteClick = () => {
     if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
-    
-    bulkExclude.mutate({
+    setShowDeleteConfirm(true);
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    if (!selectedRestaurant?.restaurant_id || bulkSelection.selectedCount === 0) return;
+
+    bulkDelete.mutate({
       transactionIds: Array.from(bulkSelection.selectedIds),
-      reason: 'Bulk excluded by user',
       restaurantId: selectedRestaurant.restaurant_id,
     }, {
       onSuccess: () => {
+        setShowDeleteConfirm(false);
         bulkSelection.exitSelectionMode();
+      },
+      onSettled: () => {
+        setShowDeleteConfirm(false);
       },
     });
   };
@@ -304,9 +317,10 @@ export default function Banking() {
     : { title: 'No excluded transactions', subtitle: 'Duplicate or personal transactions will appear here' };
 
   return (
+    <FeatureGate featureKey="banking">
     <div className="min-h-screen bg-background">
-      <PageHeader 
-        icon={Building2} 
+      <PageHeader
+        icon={Building2}
         title="Banking"
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -605,15 +619,20 @@ export default function Banking() {
                 </div>
 
                 {isLoadingReview ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="-mx-6">
+                    <BankTransactionList
+                      transactions={[]}
+                      status="for_review"
+                      accounts={accounts}
+                      isLoading={true}
+                    />
                   </div>
                 ) : reviewTransactions.length > 0 ? (
                   <>
                     <div className="-mx-6">
-                      <BankTransactionList 
-                        transactions={reviewTransactions} 
-                        status="for_review" 
+                      <BankTransactionList
+                        transactions={reviewTransactions}
+                        status="for_review"
                         accounts={accounts}
                         isSelectionMode={bulkSelection.isSelectionMode}
                         selectedIds={bulkSelection.selectedIds}
@@ -647,8 +666,13 @@ export default function Banking() {
             <Card>
               <div className="p-6">
                 {isLoadingCategorized ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="-mx-6">
+                    <BankTransactionList
+                      transactions={[]}
+                      status="categorized"
+                      accounts={accounts}
+                      isLoading={true}
+                    />
                   </div>
                 ) : categorizedTransactions.length > 0 ? (
                   <>
@@ -680,8 +704,13 @@ export default function Banking() {
             <Card>
               <div className="p-6">
                 {isLoadingExcluded ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="-mx-6">
+                    <BankTransactionList
+                      transactions={[]}
+                      status="excluded"
+                      accounts={accounts}
+                      isLoading={true}
+                    />
                   </div>
                 ) : excludedTransactions.length > 0 ? (
                   <>
@@ -773,9 +802,9 @@ export default function Banking() {
                   onClick: handleBulkMarkTransfer,
                 },
                 {
-                  label: 'Exclude',
-                  icon: <XCircle className="h-4 w-4" />,
-                  onClick: handleBulkExclude,
+                  label: 'Delete',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  onClick: handleBulkDeleteClick,
                   variant: 'destructive',
                 },
               ]}
@@ -792,6 +821,16 @@ export default function Banking() {
           />
         </>
       )}
+
+      {/* Delete confirmation dialog */}
+      <BulkDeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        selectedCount={bulkSelection.selectedCount}
+        onConfirm={handleBulkDeleteConfirm}
+        isDeleting={bulkDelete.isPending}
+      />
     </div>
+    </FeatureGate>
   );
 }

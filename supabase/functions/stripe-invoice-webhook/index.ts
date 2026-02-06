@@ -11,8 +11,7 @@ const corsHeaders = {
 const stripeSecret = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const webhookSecret = Deno.env.get("STRIPE_INVOICE_WEBHOOK_SECRET") ?? "";
 
-// @ts-expect-error: using future Stripe API version for embedded support
-const stripe = new Stripe(stripeSecret, { apiVersion: "2025-08-27.basil" });
+const stripe = new Stripe(stripeSecret, { apiVersion: "2025-08-27.basil" as any });
 
 const isInvoiceObject = (obj: unknown): obj is Stripe.Invoice => {
   if (!obj || typeof obj !== "object") return false;

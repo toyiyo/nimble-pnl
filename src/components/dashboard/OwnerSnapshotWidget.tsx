@@ -1,8 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DollarSign, Gauge, Info, Target, TrendingUp, TrendingDown, CheckCircle, AlertTriangle, Minus } from "lucide-react";
+import { Info, Target, TrendingUp, CheckCircle, AlertTriangle, Minus } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const formatCurrency = (value: number, abbreviated = false) => {
@@ -79,7 +77,7 @@ export function OwnerSnapshotWidget({
     return Math.floor(days).toString();
   };
 
-  const getBreakEvenStatusDisplay = (status: 'above' | 'at' | 'below', delta: number) => {
+  const getBreakEvenStatusDisplay = (status: 'above' | 'at' | 'below') => {
     switch (status) {
       case 'above':
         return {
@@ -87,15 +85,13 @@ export function OwnerSnapshotWidget({
           label: 'Above',
           color: 'text-green-600',
           bgColor: 'bg-green-500/10',
-          borderColor: 'border-green-500/20',
         };
       case 'at':
         return {
           icon: Minus,
-          label: 'At',
+          label: 'At break-even',
           color: 'text-orange-500',
           bgColor: 'bg-orange-500/10',
-          borderColor: 'border-orange-500/20',
         };
       case 'below':
         return {
@@ -103,185 +99,155 @@ export function OwnerSnapshotWidget({
           label: 'Below',
           color: 'text-destructive',
           bgColor: 'bg-destructive/10',
-          borderColor: 'border-destructive/20',
         };
     }
   };
 
   return (
     <TooltipProvider>
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Gauge className="h-5 w-5 text-primary" />
-              Owner Snapshot
-            </CardTitle>
-            {lastUpdated && (
-              <Badge variant="outline" className="text-xs">
-                Updated {lastUpdated}
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Core Metrics Row */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {/* Revenue Collected Today */}
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Revenue Today</p>
-              <p className="text-2xl font-bold">{formatCurrency(todaySales)}</p>
-            </div>
+      <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border/40">
+          <h3 className="text-[14px] font-medium text-foreground">Today's Snapshot</h3>
+          {lastUpdated && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
+              {lastUpdated}
+            </span>
+          )}
+        </div>
 
-            {/* Current Profit Margin */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-1">
-                <p className="text-sm text-muted-foreground">Profit Margin</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Net profit as % of revenue. Target: 15%+</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <p className={`text-2xl font-bold ${getProfitMarginColor(profitMargin)}`}>
-                {profitMargin.toFixed(1)}%
-              </p>
-            </div>
-
-            {/* Available Cash */}
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Available Cash</p>
-              <p className="text-2xl font-bold flex items-center gap-1">
-                <DollarSign className="h-4 w-4" />
-                {formatCurrency(availableCash, true)}
-              </p>
-            </div>
-
-            {/* Cash Runway */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-1">
-                <p className="text-sm text-muted-foreground">Runway</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Days of cash at current burn rate. Target: 60+ days</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <p className={`text-2xl font-bold ${getRunwayColor(cashRunway)}`}>
-                {formatRunway(cashRunway)} days
-              </p>
-            </div>
-
-            {/* Prime Cost */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-1">
-                <p className="text-sm text-muted-foreground">Prime Cost</p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="max-w-xs">Food + Labor costs. Healthy range: 60–65% of sales</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <p className={`text-2xl font-bold ${getPrimeCostColor(primeCost)}`}>
-                {primeCost.toFixed(1)}%
-              </p>
-            </div>
+        {/* Core Metrics Row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-px bg-border/40">
+          {/* Revenue Today */}
+          <div className="bg-background p-4">
+            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Revenue</p>
+            <p className="text-[20px] font-semibold text-foreground mt-1">{formatCurrency(todaySales)}</p>
           </div>
 
-          {/* Break-Even Status Section */}
-          <div className="pt-3 border-t border-border/50">
-            <div className="flex items-center gap-2 mb-3">
-              <Target className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium text-muted-foreground">Break-Even Status</span>
+          {/* Profit Margin */}
+          <div className="bg-background p-4">
+            <div className="flex items-center gap-1">
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Margin</p>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  <button type="button" className="inline-flex" aria-label="Margin info">
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="max-w-xs">Are today's sales covering your daily operating costs?</p>
+                  <p className="max-w-xs">Net profit as % of revenue. Target: 15%+</p>
                 </TooltipContent>
               </Tooltip>
             </div>
-            
-            {breakEvenLoading ? (
-              <div className="flex items-center gap-4">
-                <Skeleton className="h-12 w-32" />
-                <Skeleton className="h-12 w-40" />
-                <Skeleton className="h-8 w-24" />
-              </div>
-            ) : !breakEvenData || breakEvenData.dailyBreakEven === 0 ? (
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border/50">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Target className="h-4 w-4 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Set up your daily costs to see break-even analysis</p>
-                  <p className="text-xs text-muted-foreground">Know if today's sales are covering your costs</p>
-                </div>
-                <Link 
-                  to="/budget" 
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  Configure Budget →
-                </Link>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-4">
-                {/* Daily Target */}
-                <div className="space-y-0.5">
-                  <p className="text-xs text-muted-foreground">Daily Target</p>
-                  <p className="text-lg font-semibold">{formatCurrency(breakEvenData.dailyBreakEven)}/day</p>
-                </div>
-                
-                {/* Today's Status */}
-                {(() => {
-                  const statusDisplay = getBreakEvenStatusDisplay(breakEvenData.todayStatus, breakEvenData.todayDelta);
-                  const StatusIcon = statusDisplay.icon;
-                  return (
-                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${statusDisplay.bgColor} border ${statusDisplay.borderColor}`}>
-                      <StatusIcon className={`h-4 w-4 ${statusDisplay.color}`} />
-                      <div className="flex items-baseline gap-1.5">
-                        <span className={`text-sm font-medium ${statusDisplay.color}`}>
-                          {statusDisplay.label}
-                        </span>
-                        <span className={`text-lg font-bold ${statusDisplay.color}`}>
-                          {breakEvenData.todayDelta >= 0 ? '+' : ''}{formatCurrency(breakEvenData.todayDelta)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
-                
-                {/* Historical Summary */}
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>Last {breakEvenData.historyDays} days:</span>
-                  <span className="font-medium text-green-600">{breakEvenData.daysAbove} above</span>
-                  <span>•</span>
-                  <span className="font-medium text-destructive">{breakEvenData.daysBelow} below</span>
-                </div>
-                
-                {/* Link to full details */}
-                <Link 
-                  to="/budget" 
-                  className="ml-auto text-sm font-medium text-primary hover:underline flex items-center gap-1"
-                >
-                  View Details
-                  <TrendingUp className="h-3 w-3" />
-                </Link>
-              </div>
-            )}
+            <p className={`text-[20px] font-semibold mt-1 ${getProfitMarginColor(profitMargin)}`}>
+              {profitMargin.toFixed(1)}%
+            </p>
           </div>
-        </CardContent>
-      </Card>
+
+          {/* Available Cash */}
+          <div className="bg-background p-4">
+            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Cash</p>
+            <p className="text-[20px] font-semibold text-foreground mt-1">
+              {formatCurrency(availableCash, true)}
+            </p>
+          </div>
+
+          {/* Cash Runway */}
+          <div className="bg-background p-4">
+            <div className="flex items-center gap-1">
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Runway</p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="inline-flex" aria-label="Runway info">
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">Days of cash at current burn rate. Target: 60+ days</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className={`text-[20px] font-semibold mt-1 ${getRunwayColor(cashRunway)}`}>
+              {formatRunway(cashRunway)}d
+            </p>
+          </div>
+
+          {/* Prime Cost */}
+          <div className="bg-background p-4">
+            <div className="flex items-center gap-1">
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Prime Cost</p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="inline-flex" aria-label="Prime cost info">
+                    <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">Food + Labor costs. Healthy range: 60-65% of sales</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className={`text-[20px] font-semibold mt-1 ${getPrimeCostColor(primeCost)}`}>
+              {primeCost.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+
+        {/* Break-Even Status Section */}
+        <div className="px-5 py-3 border-t border-border/40">
+          {breakEvenLoading ? (
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-8 w-40" />
+            </div>
+          ) : !breakEvenData || breakEvenData.dailyBreakEven === 0 ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[13px] text-muted-foreground">Set up daily costs for break-even analysis</span>
+              </div>
+              <Link
+                to="/budget"
+                className="text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors"
+              >
+                Configure →
+              </Link>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <Target className="h-3.5 w-3.5" />
+                <span>Break-even: {formatCurrency(breakEvenData.dailyBreakEven)}/day</span>
+              </div>
+
+              {(() => {
+                const statusDisplay = getBreakEvenStatusDisplay(breakEvenData.todayStatus);
+                const StatusIcon = statusDisplay.icon;
+                return (
+                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${statusDisplay.bgColor}`}>
+                    <StatusIcon className={`h-3.5 w-3.5 ${statusDisplay.color}`} />
+                    <span className={`text-[13px] font-medium ${statusDisplay.color}`}>
+                      {breakEvenData.todayDelta >= 0 ? '+' : ''}{formatCurrency(breakEvenData.todayDelta)}
+                    </span>
+                  </div>
+                );
+              })()}
+
+              <span className="text-[12px] text-muted-foreground">
+                Last {breakEvenData.historyDays}d: <span className="font-medium text-green-600">{breakEvenData.daysAbove}</span> above · <span className="font-medium text-destructive">{breakEvenData.daysBelow}</span> below
+              </span>
+
+              <Link
+                to="/budget"
+                className="ml-auto text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors flex items-center gap-1"
+              >
+                Details
+                <TrendingUp className="h-3 w-3" />
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
     </TooltipProvider>
   );
 }

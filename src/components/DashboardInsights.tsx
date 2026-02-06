@@ -1,11 +1,7 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  AlertTriangle, 
-  TrendingUp, 
-  TrendingDown, 
-  Info, 
+import {
+  AlertTriangle,
+  TrendingDown,
+  Info,
   Lightbulb,
   CheckCircle
 } from 'lucide-react';
@@ -36,111 +32,77 @@ export function DashboardInsights({ insights }: DashboardInsightsProps) {
     }
   };
 
-  const getInsightVariant = (type: Insight['type']) => {
-    switch (type) {
-      case 'critical':
-        return 'destructive';
-      case 'warning':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
   const getInsightColor = (type: Insight['type']) => {
     switch (type) {
       case 'critical':
-        return 'text-red-600 dark:text-red-400';
+        return 'text-destructive';
       case 'warning':
-        return 'text-yellow-600 dark:text-yellow-400';
+        return 'text-orange-500';
       case 'success':
-        return 'text-green-600 dark:text-green-400';
+        return 'text-green-600';
       case 'tip':
-        return 'text-blue-600 dark:text-blue-400';
+        return 'text-blue-500';
       default:
         return 'text-muted-foreground';
     }
   };
 
-  // Check if all systems are healthy (no critical or warning alerts)
-  const hasIssues = insights.some(i => i.type === 'critical' || i.type === 'warning');
-  const showAllGood = insights.length === 0 || !hasIssues;
-
-  const getGradientBorder = (type: Insight['type']) => {
+  const getBorderColor = (type: Insight['type']) => {
     switch (type) {
       case 'critical':
-        return 'border-l-red-500 dark:border-l-red-400';
+        return 'border-l-destructive';
       case 'warning':
-        return 'border-l-yellow-500 dark:border-l-yellow-400';
+        return 'border-l-orange-500';
       case 'success':
-        return 'border-l-green-500 dark:border-l-green-400';
+        return 'border-l-green-500';
       case 'tip':
-        return 'border-l-blue-500 dark:border-l-blue-400';
+        return 'border-l-blue-500';
       default:
-        return 'border-l-primary';
+        return 'border-l-border';
     }
   };
 
+  const hasIssues = insights.some(i => i.type === 'critical' || i.type === 'warning');
+  const showAllGood = insights.length === 0 || !hasIssues;
+
   return (
-    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-accent/5 animate-fade-in">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <div className="rounded-lg p-2 bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/30">
-            <Lightbulb className="h-5 w-5 text-white" />
-          </div>
-          Smart Alerts
-        </CardTitle>
-        <CardDescription>
-          Your trusted advisor for restaurant performance
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+      <div className="px-5 py-3 border-b border-border/40 flex items-center gap-2">
+        <Lightbulb className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-[14px] font-medium text-foreground">Smart Alerts</h3>
+      </div>
+      <div className="p-4 space-y-2">
         {showAllGood && (
-          <Alert 
-            variant="default"
-            className="border-l-4 border-l-green-500 dark:border-l-green-400 bg-gradient-to-r from-green-50/50 to-transparent dark:from-green-950/30 animate-fade-in"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-green-100 to-green-50 dark:from-green-900/50 dark:to-green-950/30 text-green-600 dark:text-green-400">
-                <CheckCircle className="h-4 w-4" />
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="font-semibold text-sm text-green-700 dark:text-green-400">
-                  Your restaurant looks healthy!
-                </div>
-                <AlertDescription className="text-xs leading-relaxed text-green-600 dark:text-green-500">
-                  Keep an eye on food cost trends this week as supplier prices shift.
-                </AlertDescription>
-              </div>
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-green-500/5 border-l-2 border-l-green-500">
+            <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
+            <div>
+              <p className="text-[14px] font-medium text-foreground">Restaurant looks healthy</p>
+              <p className="text-[12px] text-muted-foreground">Keep an eye on food cost trends this week.</p>
             </div>
-          </Alert>
+          </div>
         )}
         {insights.map((insight, index) => (
-          <Alert 
-            key={index} 
-            variant={getInsightVariant(insight.type)} 
-            className={`border-l-4 transition-all duration-300 hover:shadow-md animate-fade-in ${getGradientBorder(insight.type)}`}
-            style={{ animationDelay: `${index * 100}ms` }}
+          <div
+            key={index}
+            className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border-l-2 ${getBorderColor(insight.type)}`}
           >
-            <div className="flex items-start gap-3">
-              <div className={`p-2 rounded-lg bg-gradient-to-br from-background to-muted/50 ${getInsightColor(insight.type)}`}>
-                {getInsightIcon(insight.type)}
-              </div>
-              <div className="flex-1 space-y-1">
-                <div className="font-semibold text-sm flex items-center gap-2">
-                  {insight.title}
-                  <Badge variant="outline" className="text-xs font-medium">
-                    {insight.type.toUpperCase()}
-                  </Badge>
-                </div>
-                <AlertDescription className="text-xs leading-relaxed">
-                  {insight.description}
-                </AlertDescription>
-              </div>
+            <div className={`shrink-0 mt-0.5 ${getInsightColor(insight.type)}`}>
+              {getInsightIcon(insight.type)}
             </div>
-          </Alert>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-[14px] font-medium text-foreground">{insight.title}</p>
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium uppercase">
+                  {insight.type}
+                </span>
+              </div>
+              <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
+                {insight.description}
+              </p>
+            </div>
+          </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

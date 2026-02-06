@@ -56,9 +56,12 @@ export const GustoEmployeeMappingDialog = ({
   const fetchData = async () => {
     setLoading(true);
     try {
-      await supabase.functions.invoke('gusto-pull-employees', {
+      const { error: pullError } = await supabase.functions.invoke('gusto-pull-employees', {
         body: { restaurantId, syncMode: 'status_only' },
       });
+      if (pullError) {
+        console.warn('[MappingDialog] Failed to sync status from Gusto:', pullError);
+      }
 
       const { data: locals, error: localError } = await supabase
         .from('employees')

@@ -1,7 +1,7 @@
 // PayrollGustoProcessor Component
 // Displays payroll summary, review details, and handles Gusto sync + payroll processing
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {

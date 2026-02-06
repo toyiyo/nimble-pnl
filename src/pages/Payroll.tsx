@@ -634,6 +634,16 @@ const Payroll = () => {
         </CardContent>
       </Card>
 
+      {/* Gusto Payroll Processor */}
+      {hasGusto && payrollPeriod && restaurantId && (
+        <PayrollGustoProcessor
+          restaurantId={restaurantId}
+          payrollPeriod={payrollPeriod}
+          startDate={format(start, 'yyyy-MM-dd')}
+          endDate={format(end, 'yyyy-MM-dd')}
+        />
+      )}
+
       {/* Info Card */}
       <Card className="bg-muted/50">
         <CardContent className="pt-6">
@@ -666,16 +676,6 @@ const Payroll = () => {
           </div>
         </CardContent>
       </Card>
-
-      {/* Gusto Payroll Processor */}
-      {hasGusto && payrollPeriod && restaurantId && (
-        <PayrollGustoProcessor
-          restaurantId={restaurantId}
-          payrollPeriod={payrollPeriod}
-          startDate={format(start, 'yyyy-MM-dd')}
-          endDate={format(end, 'yyyy-MM-dd')}
-        />
-      )}
 
       {/* Add Manual Payment Dialog */}
       {selectedEmployee && (

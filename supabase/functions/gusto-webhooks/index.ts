@@ -157,12 +157,76 @@ async function processEvent(
     // ============================================================
     // Employee events
     // ============================================================
-    case 'employee.created':
-      console.log('[GUSTO-WEBHOOK] New employee created in Gusto:', event.entity_uuid);
-      // A new employee was created in Gusto (possibly via Gusto Flow)
-      // We could create a corresponding employee in EasyShiftHQ
-      // For now, just log it - the user can manually sync if needed
+    case 'employee.created': {
+      const employeeUuid = event.entity_uuid;
+      if (!employeeUuid || !restaurantId) {
+        console.log('[WEBHOOK] employee.created - missing entity_uuid or restaurant_id, skipping');
+        break;
+      }
+
+      const { data: existingEmployee } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('restaurant_id', restaurantId)
+        .eq('gusto_employee_uuid', employeeUuid)
+        .maybeSingle();
+
+      if (existingEmployee) {
+        console.log(`[WEBHOOK] employee.created - employee ${employeeUuid} already exists locally, skipping`);
+        break;
+      }
+
+      const { data: empConnection } = await supabase
+        .from('gusto_connections')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .single();
+
+      if (!empConnection) {
+        console.log('[WEBHOOK] employee.created - no Gusto connection found');
+        break;
+      }
+
+      try {
+        const gustoConfig = getGustoConfig();
+        const gustoClient = await createGustoClientWithRefresh(
+          empConnection as GustoConnection,
+          gustoConfig,
+          supabase
+        );
+
+        const gustoEmployee = await gustoClient.getEmployee(employeeUuid);
+        const fullName = `${gustoEmployee.first_name} ${gustoEmployee.last_name}`.trim();
+        const primaryJob = gustoEmployee.jobs?.find((j: { primary?: boolean }) => j.primary) || gustoEmployee.jobs?.[0];
+
+        let hourlyRate: number | null = null;
+        if (primaryJob?.payment_unit === 'Hour' && primaryJob.rate) {
+          const parsed = Number.parseFloat(primaryJob.rate);
+          hourlyRate = Number.isNaN(parsed) ? null : parsed;
+        }
+
+        await supabase
+          .from('employees')
+          .insert({
+            restaurant_id: restaurantId,
+            name: fullName,
+            email: gustoEmployee.email,
+            position: primaryJob?.title || 'Employee',
+            hourly_rate: hourlyRate,
+            gusto_employee_uuid: gustoEmployee.uuid,
+            gusto_onboarding_status: gustoEmployee.onboarding_status,
+            gusto_synced_at: new Date().toISOString(),
+            gusto_sync_status: 'synced',
+            status: 'active',
+            is_active: true,
+          });
+
+        console.log(`[WEBHOOK] employee.created - created local employee: ${fullName}`);
+      } catch (err) {
+        console.error(`[WEBHOOK] employee.created - failed to create local employee:`, err);
+      }
       break;
+    }
 
     case 'employee.updated':
       console.log('[GUSTO-WEBHOOK] Employee updated in Gusto:', event.entity_uuid);

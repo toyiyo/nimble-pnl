@@ -179,25 +179,25 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.gusto-create-flow]
-verify_jwt = false
+verify_jwt = true
 
 [functions.gusto-disconnect]
-verify_jwt = false
+verify_jwt = true
 
 [functions.gusto-sync-employees]
-verify_jwt = false
+verify_jwt = true
 
 [functions.gusto-sync-time-punches]
-verify_jwt = false
+verify_jwt = true
 
 [functions.gusto-webhooks]
 verify_jwt = false
 
 [functions.gusto-pull-employees]
-verify_jwt = false
+verify_jwt = true
 
 [functions.gusto-prepare-payroll]
-verify_jwt = false
+verify_jwt = true
 
 [functions.toast-save-credentials]
 verify_jwt = false

@@ -106,9 +106,10 @@ export const GustoEmployeeMappingDialog = ({
       }
 
       if (employeeIdsToPush.length > 0) {
-        await supabase.functions.invoke('gusto-sync-employees', {
+        const { error: syncError } = await supabase.functions.invoke('gusto-sync-employees', {
           body: { restaurantId, employeeIds: employeeIdsToPush, selfOnboarding: true },
         });
+        if (syncError) throw syncError;
       }
 
       await queryClient.invalidateQueries({ queryKey: ['employees'] });

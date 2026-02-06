@@ -293,8 +293,8 @@ export function PayrollGustoProcessor({
             <iframe
               src={flowUrl}
               title="Gusto Run Payroll"
-              className="w-full border-0"
-              style={{ height: '700px' }}
+              className="w-full h-[700px] border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
               allow="clipboard-write"
             />
           </div>

@@ -342,12 +342,13 @@ const GustoPayroll = () => {
             variant="ghost"
             size="sm"
             onClick={() => clearFlow()}
+            aria-label="Refresh Gusto connection"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" aria-label="Disconnect from Gusto">
                 <Unlink className="h-4 w-4" />
               </Button>
             </AlertDialogTrigger>

@@ -42,38 +42,52 @@ Deno.serve(async (req) => {
     const signature = req.headers.get('x-gusto-signature');
     const timestamp = req.headers.get('x-gusto-timestamp');
 
-    if (!signature) {
-      console.warn('[GUSTO-WEBHOOK] No signature header present');
-      // Continue processing but log the warning
-      // In production, you may want to reject unsigned webhooks
+    if (!signature || !timestamp) {
+      console.error('[GUSTO-WEBHOOK] Missing signature or timestamp header');
+      return new Response(JSON.stringify({ error: 'Missing signature' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const webhookSecret = Deno.env.get('GUSTO_WEBHOOK_SECRET');
+    if (!webhookSecret) {
+      console.error('[GUSTO-WEBHOOK] GUSTO_WEBHOOK_SECRET not configured');
+      return new Response(JSON.stringify({ error: 'Webhook secret not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    if (signature && webhookSecret && timestamp) {
-      // Verify HMAC-SHA256 signature
-      // Gusto signs: timestamp + '.' + body
-      const signaturePayload = `${timestamp}.${rawBody}`;
-      const computedSignature = createHmac('sha256', webhookSecret)
-        .update(signaturePayload)
-        .digest('hex');
+    // Reject stale events (replay protection — 5 minute window)
+    const eventAge = Math.abs(Date.now() / 1000 - Number(timestamp));
+    if (eventAge > 300) {
+      console.error('[GUSTO-WEBHOOK] Stale timestamp, age:', eventAge, 'seconds');
+      return new Response(JSON.stringify({ error: 'Stale timestamp' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-      // Gusto signature format: v1=<signature>
-      const expectedSignature = `v1=${computedSignature}`;
+    // Verify HMAC-SHA256 signature
+    // Gusto signs: timestamp + '.' + body
+    const signaturePayload = `${timestamp}.${rawBody}`;
+    const computedSignature = createHmac('sha256', webhookSecret)
+      .update(signaturePayload)
+      .digest('hex');
 
-      if (signature !== expectedSignature) {
-        console.error('[GUSTO-WEBHOOK] Invalid signature');
-        console.error('[GUSTO-WEBHOOK] Received:', signature.substring(0, 20) + '...');
-        console.error('[GUSTO-WEBHOOK] Expected:', expectedSignature.substring(0, 20) + '...');
+    // Gusto signature format: v1=<signature>
+    const expectedSignature = `v1=${computedSignature}`;
 
-        // Log security event for invalid signature
-        await logSecurityEvent(supabase, 'GUSTO_WEBHOOK_INVALID_SIGNATURE', undefined, undefined, {
-          receivedSignature: signature.substring(0, 20),
-        });
-
-        // Continue processing but log the issue
-        // In production, you may want to return 401
-      }
+    if (signature !== expectedSignature) {
+      console.error('[GUSTO-WEBHOOK] Invalid signature');
+      await logSecurityEvent(supabase, 'GUSTO_WEBHOOK_INVALID_SIGNATURE', undefined, undefined, {
+        receivedSignature: signature.substring(0, 20),
+      });
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Parse the webhook payload
@@ -221,7 +235,7 @@ async function processEvent(
             is_active: true,
           });
 
-        console.log(`[WEBHOOK] employee.created - created local employee: ${fullName}`);
+        console.log(`[WEBHOOK] employee.created - created local employee for uuid: ${employeeUuid}`);
       } catch (err) {
         console.error(`[WEBHOOK] employee.created - failed to create local employee:`, err);
       }
@@ -332,15 +346,47 @@ async function upsertPayrollRun(
   payrollUuid: string,
   status: string
 ): Promise<void> {
+  // Try to fetch actual payroll details from Gusto for accurate dates
+  let payPeriodStart: string | null = null;
+  let payPeriodEnd: string | null = null;
+  let checkDate: string | null = null;
+
+  try {
+    const { data: connection } = await supabase
+      .from('gusto_connections')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .single();
+
+    if (connection) {
+      const gustoConfig = getGustoConfig();
+      const gustoClient = await createGustoClientWithRefresh(
+        connection as GustoConnection,
+        gustoConfig,
+        supabase
+      );
+      const payroll = await gustoClient.getPayroll(payrollUuid);
+      if (payroll) {
+        payPeriodStart = payroll.pay_period?.start_date || null;
+        payPeriodEnd = payroll.pay_period?.end_date || null;
+        checkDate = payroll.check_date || null;
+      }
+    }
+  } catch (fetchErr) {
+    console.warn('[GUSTO-WEBHOOK] Could not fetch payroll details, using fallback dates:', fetchErr);
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+
   const { error } = await supabase
     .from('gusto_payroll_runs')
     .upsert({
       restaurant_id: restaurantId,
       gusto_payroll_uuid: payrollUuid,
       status,
-      pay_period_start: new Date().toISOString().split('T')[0], // Placeholder
-      pay_period_end: new Date().toISOString().split('T')[0], // Placeholder
-      check_date: new Date().toISOString().split('T')[0], // Placeholder
+      pay_period_start: payPeriodStart || today,
+      pay_period_end: payPeriodEnd || today,
+      check_date: checkDate || today,
       synced_at: new Date().toISOString(),
     }, {
       onConflict: 'restaurant_id,gusto_payroll_uuid',
@@ -386,9 +432,7 @@ async function syncEmployeeOnboardingStatus(
 
     console.log('[GUSTO-WEBHOOK] Fetched employee from Gusto:', {
       uuid: gustoEmployee.uuid,
-      name: `${gustoEmployee.first_name} ${gustoEmployee.last_name}`,
       onboarding_status: gustoEmployee.onboarding_status,
-      terminated: gustoEmployee.terminated,
     });
 
     // Update the local employee record with the actual onboarding status

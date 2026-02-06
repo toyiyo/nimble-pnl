@@ -47,10 +47,11 @@ export const EmployeeList = ({
   const hasGusto = !!gustoConnection;
   const gustoSync = useGustoEmployeeSync(hasGusto ? restaurantId : null);
 
+  const syncEmployees = gustoSync?.syncEmployees;
   const handleSendToGusto = useCallback(async (employeeId: string) => {
-    if (!gustoSync) return;
-    await gustoSync.syncEmployees([employeeId]);
-  }, [gustoSync]);
+    if (!syncEmployees) return;
+    await syncEmployees([employeeId]);
+  }, [syncEmployees]);
 
   // For showing counts, we need to fetch all separately
   const { employees: allActive } = useEmployees(restaurantId, { status: 'active' });

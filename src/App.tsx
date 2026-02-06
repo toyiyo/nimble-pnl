@@ -50,6 +50,7 @@ import PrepRecipesEnhanced from "./pages/PrepRecipesEnhanced";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
 import Expenses from "./pages/Expenses";
+import PrintChecks from "./pages/PrintChecks";
 import PurchaseOrders from "./pages/PurchaseOrders";
 import PurchaseOrderEditor from "./pages/PurchaseOrderEditor";
 import KioskMode from "./pages/KioskMode";
@@ -126,6 +127,7 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
       '/transactions',
       '/banking',
       '/expenses',
+      '/print-checks',
       '/invoices',
       '/customers',
       '/chart-of-accounts',
@@ -253,6 +255,7 @@ const App = () => (
           <Route path="/stripe-account" element={<ProtectedRoute><StripeAccountManagement /></ProtectedRoute>} />
           <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
           <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
+          <Route path="/print-checks" element={<ProtectedRoute><PrintChecks /></ProtectedRoute>} />
           <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
           <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
           <Route path="/accounting/banks" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />

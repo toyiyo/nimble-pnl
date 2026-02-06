@@ -1,18 +1,26 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+import { Wallet, TrendingUp, CheckCircle2, Printer } from "lucide-react";
+
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
+import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+
 import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflowsList";
 import { AddExpenseSheet } from "@/components/pending-outflows/AddExpenseSheet";
 import { EditExpenseSheet } from "@/components/pending-outflows/EditExpenseSheet";
-import { Wallet, TrendingUp, CheckCircle2 } from "lucide-react";
-import type { PendingOutflow } from "@/types/pending-outflows";
 import { MetricIcon } from "@/components/MetricIcon";
-import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
 import { FeatureGate } from "@/components/subscription";
 
+import type { PendingOutflow } from "@/types/pending-outflows";
+
 export default function Expenses() {
+  const navigate = useNavigate();
   const [showAddExpenseSheet, setShowAddExpenseSheet] = useState(false);
   const [editingExpense, setEditingExpense] = useState<PendingOutflow | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
@@ -39,6 +47,17 @@ export default function Expenses() {
       <PageHeader
         icon={Wallet}
         title="Expenses"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/print-checks')}
+            aria-label="Print checks"
+          >
+            <Printer className="h-4 w-4 mr-2" />
+            Print Checks
+          </Button>
+        }
       />
 
       <div className="w-full px-4 py-8">

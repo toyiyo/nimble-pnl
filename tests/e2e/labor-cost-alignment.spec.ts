@@ -188,11 +188,11 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
     expect(payrollTotal).toBeCloseTo(expectedPayrollTotal, 1);
 
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /performance period/i })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText('Performance Overview')).toBeVisible({ timeout: 20000 });
     await page.getByRole('button', { name: /this month/i }).click();
 
-    const laborCard = page.getByRole('heading', { name: 'Labor Cost (Wages + Payroll)' }).locator('xpath=ancestor::div[contains(@class,"rounded-lg")][1]');
-    const laborValueText = await laborCard.locator('.text-3xl, .text-2xl').first().innerText();
+    const laborCard = page.getByText('Labor Cost (Wages + Payroll)').locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
+    const laborValueText = await laborCard.locator('[class*="text-[22px]"], .text-3xl, .text-2xl').first().innerText();
     const laborValue = parseCurrency(laborValueText);
 
     // The pending value is in the subtitle text like "30.0% of revenue | Pending $1,580 • Actual $0"

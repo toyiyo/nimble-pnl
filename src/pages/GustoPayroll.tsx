@@ -36,7 +36,10 @@ import {
   AlertCircle,
   CheckCircle,
   Building2,
+  ArrowRightLeft,
 } from 'lucide-react';
+import { GustoEmployeeMappingDialog } from '@/components/employee/GustoEmployeeMappingDialog';
+import { useEmployees } from '@/hooks/useEmployees';
 import { GustoFlowType } from '@/types/gusto';
 
 const GustoPayroll = () => {
@@ -68,6 +71,12 @@ const GustoPayroll = () => {
     createGustoCompany,
     isCreatingCompany,
   } = useGusto(restaurantId);
+
+  const { employees } = useEmployees(restaurantId);
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
+  const unmappedCount = employees?.filter(
+    (e) => !e.gusto_employee_uuid && e.email
+  ).length || 0;
 
   const [activeTab, setActiveTab] = useState<string>('setup');
 
@@ -376,6 +385,26 @@ const GustoPayroll = () => {
         </Alert>
       )}
 
+      {/* Unmapped employees banner */}
+      {unmappedCount > 0 && (
+        <Alert className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-800">
+          <ArrowRightLeft className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-[14px]">
+              {unmappedCount} employee{unmappedCount > 1 ? 's' : ''} not linked to Gusto.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMappingDialog(true)}
+              className="text-[13px]"
+            >
+              Map Employees
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Main Content Tabs - Full Width */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <TabsList className="grid w-full grid-cols-5 mb-2">
@@ -456,6 +485,14 @@ const GustoPayroll = () => {
           <p>Last synced: {new Date(connection.last_synced_at).toLocaleString()}</p>
         )}
       </div>
+
+      {showMappingDialog && restaurantId && (
+        <GustoEmployeeMappingDialog
+          open={showMappingDialog}
+          onOpenChange={setShowMappingDialog}
+          restaurantId={restaurantId}
+        />
+      )}
     </div>
   );
 };

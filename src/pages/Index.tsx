@@ -16,10 +16,8 @@ import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
-import { MetricIcon } from '@/components/MetricIcon';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
-import { DashboardMiniChart } from '@/components/DashboardMiniChart';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { DataInputDialog } from '@/components/DataInputDialog';
 import { PeriodSelector, Period } from '@/components/PeriodSelector';
@@ -36,12 +34,12 @@ import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { WelcomeModal } from '@/components/subscription';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
-// PredictableExpensesCard removed - needs more transaction history to be useful
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
+import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import {
-  DollarSign, 
-  TrendingUp, 
+  DollarSign,
+  TrendingUp,
   TrendingDown,
   AlertTriangle,
   Package,
@@ -49,8 +47,6 @@ import {
   ChefHat,
   Clock,
   Target,
-  Activity,
-  Calendar,
   CheckCircle2,
   Sparkles,
   Landmark,
@@ -535,17 +531,17 @@ const Index = () => {
       <WelcomeModal open={showWelcome} onClose={handleWelcomeClose} />
 
       {!selectedRestaurant ? (
-        <div className="space-y-8 animate-fade-in">
-          <div className="text-center space-y-4">
-            <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
-              <Package className="h-12 w-12 text-primary" />
+        <div className="space-y-8">
+          <div className="text-center space-y-4 pt-8">
+            <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+              <Package className="h-6 w-6 text-foreground" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                Welcome to Your Restaurant Dashboard
+              <h1 className="text-[28px] font-semibold tracking-tight text-foreground">
+                Welcome to Your Dashboard
               </h1>
-              <p className="text-muted-foreground text-lg">
-                Select or create a restaurant to get started with intelligent insights
+              <p className="text-[15px] text-muted-foreground mt-1">
+                Select or create a restaurant to get started
               </p>
             </div>
           </div>
@@ -559,66 +555,57 @@ const Index = () => {
           />
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* Enhanced Header */}
-          <div className="flex flex-col gap-6 p-6 rounded-2xl bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50 animate-fade-in">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-2">
-                <h1 className="text-4xl font-bold tracking-tight flex items-center gap-3">
-                  <span className="animate-[wave_1s_ease-in-out_infinite]" style={{ display: 'inline-block', transformOrigin: '70% 70%' }}>
-                    👋
-                  </span>
-                  Welcome back!
+        <div className="space-y-8">
+          {/* Header */}
+          <div className="space-y-5">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div className="space-y-1.5">
+                <h1 className="text-[28px] font-semibold tracking-tight text-foreground">
+                  {selectedRestaurant.restaurant.name}
                 </h1>
-                <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
-                  <span className="font-semibold text-foreground text-lg">
-                    {selectedRestaurant.restaurant.name}
-                  </span>
-                  <div className="h-4 w-px bg-border" />
-                  <Badge variant="outline" className="gap-1.5 px-3 py-1">
-                    <Calendar className="h-3.5 w-3.5" />
-                    {new Date().toLocaleDateString('en-US', { 
-                      weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
-                    })}
-                  </Badge>
-                </div>
+                <p className="text-[14px] text-muted-foreground">
+                  {new Date().toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <DataInputDialog
+                  restaurantId={selectedRestaurant.restaurant_id}
+                  onDataUpdated={() => {
+                    window.location.reload();
+                  }}
+                  className="w-full sm:w-auto"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/banking')}
+                  className="h-9 rounded-lg text-[13px] font-medium border-border/40"
+                >
+                  <Landmark className="h-4 w-4 mr-2" />
+                  Banking
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate('/reports')}
+                  className="h-9 rounded-lg text-[13px] font-medium border-border/40"
+                >
+                  <TrendingUp className="h-4 w-4 mr-2" />
+                  Reports
+                </Button>
+                <Button
+                  onClick={() => navigate('/inventory')}
+                  className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                >
+                  <Package className="h-4 w-4 mr-2" />
+                  Inventory
+                </Button>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <DataInputDialog 
-                restaurantId={selectedRestaurant.restaurant_id}
-                onDataUpdated={() => {
-                  window.location.reload();
-                }}
-                className="w-full sm:w-auto"
-              />
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/banking')} 
-                className="w-full sm:w-auto group hover:border-cyan-500/50 transition-all"
-              >
-                <Landmark className="h-4 w-4 mr-2 group-hover:text-cyan-600 transition-colors" />
-                Banking
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/reports')} 
-                className="w-full sm:w-auto group hover:border-primary/50 transition-all"
-              >
-                <TrendingUp className="h-4 w-4 mr-2 group-hover:text-primary transition-colors" />
-                View Reports
-              </Button>
-              <Button 
-                onClick={() => navigate('/inventory')} 
-                className="w-full sm:w-auto group"
-              >
-                <Package className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
-                Manage Inventory
-              </Button>
-            </div>
+            <div className="h-px bg-border/40" />
           </div>
 
           {todaysLoading || periodLoading || alertsLoading ? (
@@ -648,6 +635,9 @@ const Index = () => {
                 breakEvenLoading={breakEvenLoading}
               />
 
+              {/* Sales vs Break-Even Chart */}
+              <SalesVsBreakEvenChart data={breakEvenData ?? null} isLoading={breakEvenLoading} />
+
               {/* AI Insights */}
               <DashboardInsights insights={insights} />
 
@@ -658,19 +648,15 @@ const Index = () => {
               />
 
               {/* ===== OPERATIONAL METRICS SECTION ===== */}
-              
+
               {/* Key Metrics - Collapsible */}
               <Collapsible open={metricsOpen} onOpenChange={setMetricsOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-primary to-primary/50 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">📈 Performance Overview</h2>
-                    </div>
+                    <h2 className="text-[17px] font-semibold text-foreground">Performance Overview</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {metricsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {metricsOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={metricsOpen ? "Collapse Performance Overview" : "Expand Performance Overview"}>
+                        {metricsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
@@ -759,38 +745,40 @@ const Index = () => {
                     );
                   })()}
                 </div>
-                {/* Simple Context */}
+                {/* Summary Context */}
                 {periodData && (
-                  <div className="mt-4 p-4 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
-                    <p className="text-sm text-foreground">
-                      <span className="font-semibold">
-                        You've earned ${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}
-                      </span>{' '}
-                      after food and labor costs.
-                    </p>
-                    {periodData.net_revenue > 0 && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        That's a {((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100).toFixed(1)}% gross margin
-                        {((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100) >= 15 
-                          ? ' — solid for your concept.' 
-                          : ((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100) >= 10
-                          ? ' — room for improvement.'
-                          : ' — needs attention.'}
+                  <div className="mt-4 rounded-xl border border-border/40 bg-muted/50 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border/40">
+                      <p className="text-[14px] text-foreground">
+                        <span className="font-medium">
+                          ${(periodData.net_revenue - periodData.food_cost - periodData.labor_cost).toFixed(0)}
+                        </span>{' '}
+                        <span className="text-muted-foreground">earned after food and labor costs</span>
+                        {periodData.net_revenue > 0 && (
+                          <span className="text-muted-foreground">
+                            {' '}&middot; {((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100).toFixed(1)}% gross margin
+                            {((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100) >= 15
+                              ? ' — solid'
+                              : ((periodData.net_revenue - periodData.food_cost - periodData.labor_cost) / periodData.net_revenue * 100) >= 10
+                              ? ' — room for improvement'
+                              : ' — needs attention'}
+                          </span>
+                        )}
                       </p>
-                    )}
-                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border border-border/40 bg-background/40 p-3">
-                        <p className="text-xs text-muted-foreground">Pending Payroll (Scheduled)</p>
-                        <p className="text-base font-semibold text-foreground">
+                    </div>
+                    <div className="grid grid-cols-1 gap-px sm:grid-cols-2 bg-border/40">
+                      <div className="bg-background p-3">
+                        <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Pending Payroll</p>
+                        <p className="text-[15px] font-semibold text-foreground mt-0.5">
                           {currencyFormatter.format(periodData.pending_labor_cost)}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
                           {periodData.pending_labor_cost_percentage.toFixed(1)}% of revenue
                         </p>
                       </div>
-                      <div className="rounded-lg border border-border/40 bg-background/40 p-3">
-                        <p className="text-xs text-muted-foreground">Actual Payroll (Paid)</p>
-                        <p className="text-base font-semibold text-foreground">
+                      <div className="bg-background p-3">
+                        <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Actual Payroll</p>
+                        <p className="text-[15px] font-semibold text-foreground mt-0.5">
                           {currencyFormatter.format(periodData.actual_labor_cost)}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
@@ -808,14 +796,10 @@ const Index = () => {
               <Collapsible open={cashflowOpen} onOpenChange={setCashflowOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-teal-500 to-teal-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">💸 Cashflow</h2>
-                    </div>
+                    <h2 className="text-[17px] font-semibold text-foreground">Cashflow</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {cashflowOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {cashflowOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={cashflowOpen ? "Collapse Cashflow" : "Expand Cashflow"}>
+                        {cashflowOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
@@ -829,14 +813,10 @@ const Index = () => {
               <Collapsible open={monthlyOpen} onOpenChange={setMonthlyOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">Monthly Performance</h2>
-                    </div>
+                    <h2 className="text-[17px] font-semibold text-foreground">Monthly Performance</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {monthlyOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {monthlyOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={monthlyOpen ? "Collapse Monthly Performance" : "Expand Monthly Performance"}>
+                        {monthlyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
@@ -851,37 +831,36 @@ const Index = () => {
                 <Collapsible open={revenueOpen} onOpenChange={setRevenueOpen}>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" />
-                        <h2 className="text-2xl font-bold tracking-tight">💰 Where Your Sales Come From</h2>
+                      <div>
+                        <h2 className="text-[17px] font-semibold text-foreground">Revenue Mix</h2>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          What products are driving your sales
+                        </p>
                       </div>
                       <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="sm" className="gap-2">
-                          {revenueOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4" />}
-                          {revenueOpen ? "Collapse" : "Expand"}
+                        <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={revenueOpen ? "Collapse Revenue Mix" : "Expand Revenue Mix"}>
+                          {revenueOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                         </Button>
                       </CollapsibleTrigger>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      This shows what products are driving your sales.
-                    </p>
-                    {/* Header Summary */}
-                    <div className="p-3 rounded-lg bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border border-border/50">
-                      <p className="text-sm text-foreground">
-                        <span className="font-semibold">{revenueBreakdown.categorization_rate.toFixed(0)}% of sales are categorized.</span>{' '}
-                        These totals cover mapped items only.
-                      </p>
+                    {/* Categorization badge */}
+                    <div className="flex items-center">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground font-medium">
+                        {revenueBreakdown.categorization_rate.toFixed(0)}% categorized
+                      </span>
                     </div>
                     <CollapsibleContent>
-                <Card className="bg-gradient-to-br from-emerald-50/50 via-background to-emerald-50/30 dark:from-emerald-950/20 dark:via-background dark:to-emerald-950/10 border-emerald-200 dark:border-emerald-900">
+                <Card className="rounded-xl border border-border/40 bg-background">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <MetricIcon icon={DollarSign} variant="emerald" />
+                        <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+                          <DollarSign className="h-4 w-4 text-foreground" />
+                        </div>
                         <div>
-                          <CardTitle className="text-lg">Revenue by Category</CardTitle>
-                          <CardDescription>
-                            Breakdown by category • {selectedPeriod.label}
+                          <CardTitle className="text-[17px] font-semibold text-foreground">Revenue by Category</CardTitle>
+                          <CardDescription className="text-[13px] text-muted-foreground">
+                            Breakdown by category &middot; {selectedPeriod.label}
                           </CardDescription>
                         </div>
                       </div>
@@ -893,7 +872,7 @@ const Index = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-background/50">
                         <p className="text-sm text-muted-foreground mb-1">Gross Revenue</p>
-                        <p className="text-2xl font-bold text-emerald-600">
+                        <p className="text-[15px] font-semibold text-foreground">
                           ${revenueBreakdown.totals.gross_revenue.toLocaleString()}
                         </p>
                       </div>
@@ -902,17 +881,19 @@ const Index = () => {
                           <p className="text-sm text-muted-foreground mb-1">
                             Discounts & Refunds
                           </p>
-                          <p className="text-2xl font-bold text-red-600">
+                          <p className="text-[15px] font-semibold text-destructive">
                             -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross
-                          </p>
+                          {revenueBreakdown.totals.gross_revenue > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {((revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds) / revenueBreakdown.totals.gross_revenue * 100).toFixed(1)}% of gross
+                            </p>
+                          )}
                         </div>
                       )}
-                      <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-200 dark:border-emerald-800">
-                        <p className="text-sm text-muted-foreground mb-1">Net Revenue</p>
-                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                      <div className="p-4 rounded-lg bg-muted/50 border border-border/40">
+                        <p className="text-[13px] text-muted-foreground mb-1">Net Revenue</p>
+                        <p className="text-[15px] font-semibold text-foreground">
                           ${revenueBreakdown.totals.net_revenue.toLocaleString()}
                         </p>
                       </div>
@@ -921,8 +902,7 @@ const Index = () => {
                     {/* Top Revenue Categories */}
                     {revenueBreakdown.revenue_categories.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                          <div className="h-1 w-6 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" />
+                        <h4 className="text-[13px] font-semibold text-foreground mb-3">
                           Revenue by Category
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -940,7 +920,7 @@ const Index = () => {
                                   {(category.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(0)}%
                                 </Badge>
                               </div>
-                              <p className="text-lg font-bold text-emerald-600">
+                              <p className="text-[14px] font-semibold text-foreground">
                                 ${category.total_amount.toLocaleString()}
                               </p>
                               <p className="text-xs text-muted-foreground">
@@ -956,54 +936,54 @@ const Index = () => {
                     {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0 || revenueBreakdown.totals.other_liabilities > 0) && (
                       <div className="pt-4 border-t">
                         <div className="flex items-center gap-2 mb-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            🧾 Collected but Owed
+                          <h4 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                            Collected but Owed
                           </h4>
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600">
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                             Not Revenue
-                          </Badge>
+                          </span>
                         </div>
                         <p className="text-[10px] text-muted-foreground mb-3">
                           This money was collected at POS but belongs to staff or government agencies.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {revenueBreakdown.totals.sales_tax > 0 && (
-                            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                            <div className="p-3 rounded-lg bg-muted/30 border border-border/40">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">Sales Tax Collected</p>
-                                <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                                <p className="text-[13px] font-medium text-foreground">Sales Tax Collected</p>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                   Liability
-                                </Badge>
+                                </span>
                               </div>
-                              <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                              <p className="text-[15px] font-semibold text-foreground">
                                 ${revenueBreakdown.totals.sales_tax.toLocaleString()}
                               </p>
                             </div>
                           )}
                           {revenueBreakdown.totals.tips > 0 && (
-                            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                            <div className="p-3 rounded-lg bg-muted/30 border border-border/40">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">Tips Collected</p>
-                                <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                                <p className="text-[13px] font-medium text-foreground">Tips Collected</p>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                   Liability
-                                </Badge>
+                                </span>
                               </div>
-                              <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                              <p className="text-[15px] font-semibold text-foreground">
                                 ${revenueBreakdown.totals.tips.toLocaleString()}
                               </p>
                             </div>
                           )}
                           {revenueBreakdown.other_liability_categories.map((category) => (
-                            <div key={category.account_id} className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
+                            <div key={category.account_id} className="p-3 rounded-lg bg-muted/30 border border-border/40">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">{category.account_name}</p>
-                                <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">
+                                <p className="text-[13px] font-medium text-foreground">{category.account_name}</p>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                   Liability
-                                </Badge>
+                                </span>
                               </div>
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                                <p className="text-xl font-bold text-purple-700 dark:text-purple-400">
+                                <span className="text-[11px] font-mono text-muted-foreground">{category.account_code}</span>
+                                <p className="text-[15px] font-semibold text-foreground">
                                   ${category.total_amount.toLocaleString()}
                                 </p>
                               </div>
@@ -1021,78 +1001,65 @@ const Index = () => {
 
               {/* ===== BANKING SECTION ===== */}
 
-              {/* Bank Snapshot Section - NOW COLLAPSIBLE */}
+              {/* Bank Snapshot Section */}
               <Collapsible open={bankingOpen} onOpenChange={setBankingOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-cyan-500 to-cyan-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">🏦 Banking</h2>
-                    </div>
+                    <h2 className="text-[17px] font-semibold text-foreground">Banking</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {bankingOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {bankingOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={bankingOpen ? "Collapse Banking" : "Expand Banking"}>
+                        {bankingOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
                     {!banksLoading && connectedBanks && connectedBanks.length > 0 ? (
-                      <BankSnapshotSection 
+                      <BankSnapshotSection
                         restaurantId={selectedRestaurant.restaurant_id}
                       />
                     ) : !banksLoading && (!connectedBanks || connectedBanks.length === 0) ? (
-                      <Card className="border-dashed border-2 border-cyan-500/30 bg-gradient-to-br from-cyan-500/5 to-transparent">
-                        <CardContent className="py-12 text-center">
-                          <div className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-transparent mb-4">
-                            <Landmark className="h-12 w-12 text-cyan-600" />
-                          </div>
-                          <h3 className="text-lg font-semibold mb-2">Connect Your Bank for Financial Insights</h3>
-                          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                            Get real-time cash flow tracking, spending analysis, and AI-powered financial intelligence by connecting your bank account.
-                          </p>
-                          <Button 
-                            onClick={() => navigate('/banking')} 
-                            className="gap-2"
-                          >
-                            <Landmark className="h-4 w-4" />
-                            Connect Bank Account
-                          </Button>
-                        </CardContent>
-                      </Card>
+                      <div className="rounded-xl border border-dashed border-border/40 p-8 text-center">
+                        <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto mb-3">
+                          <Landmark className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-[15px] font-medium text-foreground mb-1">Connect your bank</h3>
+                        <p className="text-[13px] text-muted-foreground mb-4 max-w-sm mx-auto">
+                          Get cash flow tracking, spending analysis, and financial intelligence.
+                        </p>
+                        <Button
+                          onClick={() => navigate('/banking')}
+                          className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                        >
+                          <Landmark className="h-4 w-4 mr-2" />
+                          Connect Bank Account
+                        </Button>
+                      </div>
                     ) : null}
                   </CollapsibleContent>
                 </div>
               </Collapsible>
 
-              {/* Money Going Out Section - Collapsible */}
+              {/* Expenses Section */}
               <Collapsible open={moneyOutOpen} onOpenChange={setMoneyOutOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-red-500 to-red-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">💸 Where Your Money Went</h2>
+                    <div>
+                      <h2 className="text-[17px] font-semibold text-foreground">Expenses</h2>
+                      <p className="text-[13px] text-muted-foreground mt-0.5">Where your money went</p>
                     </div>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {moneyOutOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {moneyOutOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={moneyOutOpen ? "Collapse Expenses" : "Expand Expenses"}>
+                        {moneyOutOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Track your expenses, vendor payments, and upcoming bills.
-                  </p>
                   <CollapsibleContent>
                     <div className="space-y-6">
-                      {/* Outflow by Category */}
                       <OutflowByCategoryCard
                         startDate={selectedPeriod.from}
                         endDate={selectedPeriod.to}
                         periodLabel={selectedPeriod.label}
                       />
-
-                      {/* Top Vendors */}
                       <TopVendorsCard
                         startDate={selectedPeriod.from}
                         endDate={selectedPeriod.to}
@@ -1103,25 +1070,19 @@ const Index = () => {
                 </div>
               </Collapsible>
 
-              {/* ===== OTHER SECTIONS ===== */}
-
-              {/* Operations Health Card - NOW COLLAPSIBLE */}
+              {/* Operations Health */}
               <Collapsible open={operationsOpen} onOpenChange={setOperationsOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-orange-500 to-orange-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">⚙️ Operations Health</h2>
-                    </div>
+                    <h2 className="text-[17px] font-semibold text-foreground">Operations Health</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {operationsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {operationsOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={operationsOpen ? "Collapse Operations Health" : "Expand Operations Health"}>
+                        {operationsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                      <OperationsHealthCard
+                    <OperationsHealthCard
                       primeCost={periodData?.prime_cost_percentage || 0}
                       primeCostTarget={62}
                       lowInventoryCount={lowStockItems.length}
@@ -1132,23 +1093,19 @@ const Index = () => {
                 </div>
               </Collapsible>
 
-              {/* Quick Actions - NOW COLLAPSIBLE */}
+              {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1 w-8 bg-gradient-to-r from-purple-500 to-purple-600 rounded-full" />
-                      <h2 className="text-2xl font-bold tracking-tight">⚡ Quick Actions</h2>
-                    </div>
+                    <h2 className="text-[17px] font-semibold text-foreground">Quick Actions</h2>
                     <CollapsibleTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        {quickActionsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        {quickActionsOpen ? "Collapse" : "Expand"}
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={quickActionsOpen ? "Collapse Quick Actions" : "Expand Quick Actions"}>
+                        {quickActionsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </Button>
                     </CollapsibleTrigger>
                   </div>
                   <CollapsibleContent>
-                    <DashboardQuickActions restaurantId={selectedRestaurant.restaurant_id} />
+                    <DashboardQuickActions />
                   </CollapsibleContent>
                 </div>
               </Collapsible>

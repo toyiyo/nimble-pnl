@@ -1,6 +1,4 @@
 import { AlertTriangle, TrendingDown, Package, DollarSign } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 
 interface CriticalAlert {
@@ -41,33 +39,31 @@ export function CriticalAlertsBar({ alerts }: CriticalAlertsBarProps) {
     <div className="space-y-2">
       {alerts.map((alert) => {
         const Icon = getAlertIcon(alert.type);
+        const isCritical = alert.severity === "critical";
         return (
-          <Alert
+          <div
             key={alert.id}
-            variant={alert.severity === "critical" ? "destructive" : "default"}
-            className={
-              alert.severity === "critical"
-                ? "border-destructive/50 bg-destructive/10"
-                : "border-orange-500/50 bg-orange-500/10"
-            }
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+              isCritical
+                ? "border-destructive/30 bg-destructive/5"
+                : "border-orange-500/30 bg-orange-500/5"
+            }`}
           >
-            <Icon className="h-4 w-4" aria-hidden="true" />
-            <AlertDescription className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <span className="font-semibold">{alert.title}</span>
-                <span className="text-muted-foreground ml-2">{alert.description}</span>
-              </div>
-              {alert.action && (
-                <button
-                  onClick={() => navigate(alert.action!.path)}
-                  className="text-sm font-medium hover:underline whitespace-nowrap"
-                  aria-label={alert.action!.label}
-                >
-                  {alert.action.label} →
-                </button>
-              )}
-            </AlertDescription>
-          </Alert>
+            <Icon className={`h-4 w-4 shrink-0 ${isCritical ? 'text-destructive' : 'text-orange-500'}`} aria-hidden="true" />
+            <div className="flex-1 min-w-0">
+              <span className="text-[14px] font-medium text-foreground">{alert.title}</span>
+              <span className="text-[13px] text-muted-foreground ml-2">{alert.description}</span>
+            </div>
+            {alert.action && (
+              <button
+                onClick={() => navigate(alert.action!.path)}
+                className="text-[13px] font-medium text-foreground hover:text-foreground/70 transition-colors whitespace-nowrap shrink-0"
+                aria-label={alert.action!.label}
+              >
+                {alert.action.label} →
+              </button>
+            )}
+          </div>
         );
       })}
     </div>

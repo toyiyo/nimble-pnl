@@ -485,15 +485,15 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
 
   if (isLoading) {
     return (
-      <Card className="bg-gradient-to-br from-teal-50/50 via-background to-teal-50/30 dark:from-teal-950/20 dark:via-background dark:to-teal-950/10 border-teal-200 dark:border-teal-900">
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
-              <ArrowRightLeft className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <ArrowRightLeft className="h-4 w-4 text-foreground" />
             </div>
             <div>
-              <CardTitle>Cashflow Visualization</CardTitle>
-              <CardDescription>{selectedPeriod.label}</CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Cashflow Visualization</CardTitle>
+              <CardDescription className="text-[13px] text-muted-foreground">{selectedPeriod.label}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -506,15 +506,15 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
 
   if (!sankeyData || sankeyData.links.length === 0) {
     return (
-      <Card className="bg-gradient-to-br from-teal-50/50 via-background to-teal-50/30 dark:from-teal-950/20 dark:via-background dark:to-teal-950/10 border-teal-200 dark:border-teal-900">
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
-              <ArrowRightLeft className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <ArrowRightLeft className="h-4 w-4 text-foreground" />
             </div>
             <div>
-              <CardTitle>Cashflow Visualization</CardTitle>
-              <CardDescription>{selectedPeriod.label}</CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Cashflow Visualization</CardTitle>
+              <CardDescription className="text-[13px] text-muted-foreground">{selectedPeriod.label}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -534,16 +534,16 @@ export const CashFlowSankeyChart = ({ selectedPeriod }: CashFlowSankeyChartProps
   }
 
   return (
-    <Card className="bg-gradient-to-br from-teal-50/50 via-background to-teal-50/30 dark:from-teal-950/20 dark:via-background dark:to-teal-950/10 border-teal-200 dark:border-teal-900">
+    <Card className="rounded-xl border border-border/40 bg-background">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center">
-              <ArrowRightLeft className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <ArrowRightLeft className="h-4 w-4 text-foreground" />
             </div>
             <div>
-              <CardTitle>Cashflow Visualization</CardTitle>
-              <CardDescription>Money in → Cash Flow → Money out • {selectedPeriod.label}</CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Cashflow Visualization</CardTitle>
+              <CardDescription className="text-[13px] text-muted-foreground">Money in → Cash Flow → Money out &middot; {selectedPeriod.label}</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm">

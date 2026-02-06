@@ -54,7 +54,7 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader className="pb-3">
           <Skeleton className="h-5 w-32" />
         </CardHeader>
@@ -71,9 +71,9 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
 
   if (isError) {
     return (
-      <Card>
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-medium">Top Vendors</CardTitle>
+          <CardTitle className="text-[17px] font-semibold text-foreground">Top Vendors</CardTitle>
         </CardHeader>
         <CardContent className="py-8 text-center">
           <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
@@ -88,9 +88,9 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
 
   if (!data || data.topVendors.length === 0) {
     return (
-      <Card>
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-medium">Top Vendors</CardTitle>
+          <CardTitle className="text-[17px] font-semibold text-foreground">Top Vendors</CardTitle>
         </CardHeader>
         <CardContent className="py-8 text-center">
           <Building2 className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
@@ -105,10 +105,10 @@ export const TopVendorsCard = ({ startDate, endDate, periodLabel }: TopVendorsCa
   };
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40 bg-background">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-medium">Top Vendors</CardTitle>
+          <CardTitle className="text-[17px] font-semibold text-foreground">Top Vendors</CardTitle>
           <span className="text-xs text-muted-foreground">{periodLabel}</span>
         </div>
       </CardHeader>

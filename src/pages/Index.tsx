@@ -16,7 +16,6 @@ import { usePendingOutflowsSummary } from '@/hooks/usePendingOutflows';
 import { useInventoryPurchases } from '@/hooks/useInventoryPurchases';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { DashboardMetricCard } from '@/components/DashboardMetricCard';
-import { MetricIcon } from '@/components/MetricIcon';
 import { DashboardQuickActions } from '@/components/DashboardQuickActions';
 import { DashboardInsights } from '@/components/DashboardInsights';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
@@ -748,7 +747,7 @@ const Index = () => {
                 </div>
                 {/* Summary Context */}
                 {periodData && (
-                  <div className="mt-4 rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                  <div className="mt-4 rounded-xl border border-border/40 bg-muted/50 overflow-hidden">
                     <div className="px-4 py-3 border-b border-border/40">
                       <p className="text-[14px] text-foreground">
                         <span className="font-medium">
@@ -851,15 +850,17 @@ const Index = () => {
                       </span>
                     </div>
                     <CollapsibleContent>
-                <Card className="bg-gradient-to-br from-emerald-50/50 via-background to-emerald-50/30 dark:from-emerald-950/20 dark:via-background dark:to-emerald-950/10 border-emerald-200 dark:border-emerald-900">
+                <Card className="rounded-xl border border-border/40 bg-background">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <MetricIcon icon={DollarSign} variant="emerald" />
+                        <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+                          <DollarSign className="h-4 w-4 text-foreground" />
+                        </div>
                         <div>
-                          <CardTitle className="text-lg">Revenue by Category</CardTitle>
-                          <CardDescription>
-                            Breakdown by category • {selectedPeriod.label}
+                          <CardTitle className="text-[17px] font-semibold text-foreground">Revenue by Category</CardTitle>
+                          <CardDescription className="text-[13px] text-muted-foreground">
+                            Breakdown by category &middot; {selectedPeriod.label}
                           </CardDescription>
                         </div>
                       </div>
@@ -871,7 +872,7 @@ const Index = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-background/50">
                         <p className="text-sm text-muted-foreground mb-1">Gross Revenue</p>
-                        <p className="text-2xl font-bold text-emerald-600">
+                        <p className="text-[15px] font-semibold text-foreground">
                           ${revenueBreakdown.totals.gross_revenue.toLocaleString()}
                         </p>
                       </div>
@@ -880,7 +881,7 @@ const Index = () => {
                           <p className="text-sm text-muted-foreground mb-1">
                             Discounts & Refunds
                           </p>
-                          <p className="text-2xl font-bold text-red-600">
+                          <p className="text-[15px] font-semibold text-destructive">
                             -${(revenueBreakdown.totals.total_discounts + revenueBreakdown.totals.total_refunds).toLocaleString()}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
@@ -888,9 +889,9 @@ const Index = () => {
                           </p>
                         </div>
                       )}
-                      <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-200 dark:border-emerald-800">
-                        <p className="text-sm text-muted-foreground mb-1">Net Revenue</p>
-                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                      <div className="p-4 rounded-lg bg-muted/50 border border-border/40">
+                        <p className="text-[13px] text-muted-foreground mb-1">Net Revenue</p>
+                        <p className="text-[15px] font-semibold text-foreground">
                           ${revenueBreakdown.totals.net_revenue.toLocaleString()}
                         </p>
                       </div>
@@ -899,8 +900,7 @@ const Index = () => {
                     {/* Top Revenue Categories */}
                     {revenueBreakdown.revenue_categories.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                          <div className="h-1 w-6 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full" />
+                        <h4 className="text-[13px] font-semibold text-foreground mb-3">
                           Revenue by Category
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -918,7 +918,7 @@ const Index = () => {
                                   {(category.total_amount / revenueBreakdown.totals.gross_revenue * 100).toFixed(0)}%
                                 </Badge>
                               </div>
-                              <p className="text-lg font-bold text-emerald-600">
+                              <p className="text-[14px] font-semibold text-foreground">
                                 ${category.total_amount.toLocaleString()}
                               </p>
                               <p className="text-xs text-muted-foreground">
@@ -934,54 +934,54 @@ const Index = () => {
                     {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0 || revenueBreakdown.totals.other_liabilities > 0) && (
                       <div className="pt-4 border-t">
                         <div className="flex items-center gap-2 mb-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                            🧾 Collected but Owed
+                          <h4 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                            Collected but Owed
                           </h4>
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-600">
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                             Not Revenue
-                          </Badge>
+                          </span>
                         </div>
                         <p className="text-[10px] text-muted-foreground mb-3">
                           This money was collected at POS but belongs to staff or government agencies.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {revenueBreakdown.totals.sales_tax > 0 && (
-                            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                            <div className="p-3 rounded-lg bg-muted/30 border border-border/40">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">Sales Tax Collected</p>
-                                <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                                <p className="text-[13px] font-medium text-foreground">Sales Tax Collected</p>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                   Liability
-                                </Badge>
+                                </span>
                               </div>
-                              <p className="text-xl font-bold text-amber-700 dark:text-amber-400">
+                              <p className="text-[15px] font-semibold text-foreground">
                                 ${revenueBreakdown.totals.sales_tax.toLocaleString()}
                               </p>
                             </div>
                           )}
                           {revenueBreakdown.totals.tips > 0 && (
-                            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                            <div className="p-3 rounded-lg bg-muted/30 border border-border/40">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">Tips Collected</p>
-                                <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                                <p className="text-[13px] font-medium text-foreground">Tips Collected</p>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                   Liability
-                                </Badge>
+                                </span>
                               </div>
-                              <p className="text-xl font-bold text-blue-700 dark:text-blue-400">
+                              <p className="text-[15px] font-semibold text-foreground">
                                 ${revenueBreakdown.totals.tips.toLocaleString()}
                               </p>
                             </div>
                           )}
                           {revenueBreakdown.other_liability_categories.map((category) => (
-                            <div key={category.account_id} className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
+                            <div key={category.account_id} className="p-3 rounded-lg bg-muted/30 border border-border/40">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium">{category.account_name}</p>
-                                <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">
+                                <p className="text-[13px] font-medium text-foreground">{category.account_name}</p>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                                   Liability
-                                </Badge>
+                                </span>
                               </div>
                               <div className="flex items-center justify-between">
-                                <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                                <p className="text-xl font-bold text-purple-700 dark:text-purple-400">
+                                <span className="text-[11px] font-mono text-muted-foreground">{category.account_code}</span>
+                                <p className="text-[15px] font-semibold text-foreground">
                                   ${category.total_amount.toLocaleString()}
                                 </p>
                               </div>

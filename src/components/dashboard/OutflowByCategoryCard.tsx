@@ -36,7 +36,7 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
 
   if (isLoading) {
     return (
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader>
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-4 w-64 mt-2" />
@@ -50,19 +50,21 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
 
   if (isError) {
     return (
-      <Card className="bg-gradient-to-br from-destructive/5 to-transparent border-destructive/20">
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-destructive" />
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+            </div>
             <div>
-              <CardTitle className="text-2xl">Failed to Load Expense Data</CardTitle>
-              <CardDescription>Cash outflows • {periodLabel}</CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Failed to Load Expense Data</CardTitle>
+              <CardDescription className="text-[13px] text-muted-foreground">Cash outflows &middot; {periodLabel}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="py-12 text-center">
-          <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Unable to load expense categories</h3>
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-[14px] font-medium mb-2">Unable to load expense categories</h3>
           <p className="text-muted-foreground mb-4">
             {error?.message || 'An error occurred while fetching your expense data.'}
           </p>
@@ -80,19 +82,21 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
 
   if (!data || data.categories.length === 0) {
     return (
-      <Card className="bg-gradient-to-br from-muted/50 to-transparent">
+      <Card className="rounded-xl border border-border/40 bg-background">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <DollarSign className="h-6 w-6 text-primary" />
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <DollarSign className="h-4 w-4 text-foreground" />
+            </div>
             <div>
-              <CardTitle className="text-2xl">Where Your Money Went</CardTitle>
-              <CardDescription>Cash outflows • {periodLabel}</CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Where Your Money Went</CardTitle>
+              <CardDescription className="text-[13px] text-muted-foreground">Cash outflows &middot; {periodLabel}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="py-12 text-center">
           <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No outflows this period</h3>
+          <h3 className="text-[14px] font-medium mb-2">No outflows this period</h3>
           <p className="text-muted-foreground">Connect your bank or upload transactions to see spending insights.</p>
         </CardContent>
       </Card>
@@ -118,16 +122,18 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
   };
 
   return (
-    <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+    <Card className="rounded-xl border border-border/40 bg-background">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <DollarSign className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
+            <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center">
+              <DollarSign className="h-4 w-4 text-foreground" />
+            </div>
             <div>
-              <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <CardTitle className="text-[17px] font-semibold text-foreground">
                 Where Your Money Went
               </CardTitle>
-              <CardDescription>Cash outflows • {periodLabel}</CardDescription>
+              <CardDescription className="text-[13px] text-muted-foreground">Cash outflows &middot; {periodLabel}</CardDescription>
             </div>
           </div>
           <div className="text-right">
@@ -147,7 +153,7 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
           <TooltipProvider>
             <UITooltip>
               <TooltipTrigger asChild>
-                <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 cursor-help">
+                <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground cursor-help">
                   <CheckCircle2 className="w-3 h-3 mr-1" />
                   ${data.clearedOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Posted
                 </Badge>
@@ -164,7 +170,7 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
             <TooltipProvider>
               <UITooltip>
                 <TooltipTrigger asChild>
-                  <Badge className="bg-gradient-to-r from-orange-500 to-amber-600 cursor-help">
+                  <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground cursor-help">
                     <Clock className="w-3 h-3 mr-1" />
                     ${data.pendingOutflows.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Pending
                   </Badge>
@@ -294,22 +300,22 @@ export const OutflowByCategoryCard = ({ startDate, endDate, periodLabel }: Outfl
 
         {/* Categorization CTA */}
         {data.uncategorizedPercentage > 5 && (
-          <div className="mt-6 p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 rounded-lg">
+          <div className="mt-6 flex items-center justify-between gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <h4 className="font-semibold text-amber-900 mb-1">
+                <h4 className="text-[13px] font-semibold text-foreground mb-1">
                   Improve Your Expense Tracking
                 </h4>
-                <p className="text-sm text-amber-700 mb-3">
+                <p className="text-[13px] text-muted-foreground mb-3">
                   You have {data.uncategorizedPercentage.toFixed(0)}% uncategorized transactions (${data.uncategorizedAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}). 
                   Categorizing them will give you better insights into your spending.
                 </p>
                 <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     onClick={() => navigate('/banking', { state: { filterUncategorized: true } })}
-                    className="bg-amber-600 hover:bg-amber-700"
+                    className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
                   >
                     <AlertCircle className="h-4 w-4 mr-2" />
                     Categorize Manually

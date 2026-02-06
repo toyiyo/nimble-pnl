@@ -60,8 +60,12 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
   }, [settings, selectedRestaurant]);
 
   const handleSave = async () => {
-    await saveSettings.mutateAsync(form);
-    onOpenChange(false);
+    try {
+      await saveSettings.mutateAsync(form);
+      onOpenChange(false);
+    } catch {
+      // Error toast is handled by the mutation's onError callback
+    }
   };
 
   const update = (field: keyof UpsertCheckSettingsInput, value: string | number) =>
@@ -95,10 +99,11 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
             </div>
             <div className="p-4 space-y-4">
               <div className="space-y-2">
-                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                <Label htmlFor="check-business-name" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                   Business Name
                 </Label>
                 <Input
+                  id="check-business-name"
                   value={form.business_name}
                   onChange={(e) => update('business_name', e.target.value)}
                   className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
@@ -107,20 +112,22 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="check-address-line1" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Address Line 1
                   </Label>
                   <Input
+                    id="check-address-line1"
                     value={form.business_address_line1 ?? ''}
                     onChange={(e) => update('business_address_line1', e.target.value)}
                     className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="check-address-line2" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Address Line 2
                   </Label>
                   <Input
+                    id="check-address-line2"
                     value={form.business_address_line2 ?? ''}
                     onChange={(e) => update('business_address_line2', e.target.value)}
                     placeholder="Suite, unit, etc."
@@ -131,20 +138,22 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="check-city" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     City
                   </Label>
                   <Input
+                    id="check-city"
                     value={form.business_city ?? ''}
                     onChange={(e) => update('business_city', e.target.value)}
                     className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="check-state" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     State
                   </Label>
                   <Input
+                    id="check-state"
                     value={form.business_state ?? ''}
                     onChange={(e) => update('business_state', e.target.value.toUpperCase())}
                     maxLength={2}
@@ -153,10 +162,11 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <Label htmlFor="check-zip" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     ZIP
                   </Label>
                   <Input
+                    id="check-zip"
                     value={form.business_zip ?? ''}
                     onChange={(e) => update('business_zip', e.target.value)}
                     maxLength={10}
@@ -174,10 +184,11 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
               <h3 className="text-[13px] font-semibold text-foreground">Bank Information</h3>
             </div>
             <div className="p-4 space-y-2">
-              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Label htmlFor="check-bank-name" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Bank Name
               </Label>
               <Input
+                id="check-bank-name"
                 value={form.bank_name ?? ''}
                 onChange={(e) => update('bank_name', e.target.value)}
                 placeholder="First National Bank"
@@ -192,14 +203,18 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
               <h3 className="text-[13px] font-semibold text-foreground">Check Numbering</h3>
             </div>
             <div className="p-4 space-y-2">
-              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Label htmlFor="check-next-number" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Next Check Number
               </Label>
               <Input
+                id="check-next-number"
                 type="number"
                 min="1"
                 value={form.next_check_number ?? 1001}
-                onChange={(e) => update('next_check_number', parseInt(e.target.value) || 1001)}
+                onChange={(e) => {
+                  const parsed = parseInt(e.target.value);
+                  update('next_check_number', parsed > 0 ? parsed : 1001);
+                }}
                 className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
               />
               <p className="text-[11px] text-muted-foreground">

@@ -354,6 +354,20 @@ describe('generateCheckPDF', () => {
     expect(pdfOutput).toContain('Chase Bank');
   });
 
+  test('truncates very long amount-in-words to fit check line', () => {
+    // 999,999,999.99 → "Nine Hundred Ninety-Nine Million Nine Hundred Ninety-Nine
+    // Thousand Nine Hundred Ninety-Nine and 99/100" — should exceed the ~5.9" line.
+    const check = makeCheck({ amount: 999999999.99 });
+    const doc = generateCheckPDF(makeSettings(), [check]);
+    const pdfOutput = doc.output();
+
+    // The amount in words should still appear (possibly truncated)
+    // The full text is "Nine Hundred Ninety-Nine Million..." — at minimum the start should be present
+    expect(pdfOutput).toContain('Nine Hundred Ninety-Nine Million');
+    // The PDF should still be valid
+    expect(doc.getNumberOfPages()).toBe(1);
+  });
+
   test('multi-page PDF has correct content per page', () => {
     const checks = [
       makeCheck({ checkNumber: 100, payeeName: 'Vendor A', amount: 500 }),

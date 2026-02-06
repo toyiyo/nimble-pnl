@@ -80,10 +80,29 @@ export function useCheckSettings() {
     },
   });
 
+  const claimCheckNumbers = useMutation({
+    mutationFn: async (count: number = 1) => {
+      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
+
+      const { data, error } = await supabase.rpc('claim_check_numbers', {
+        p_restaurant_id: selectedRestaurant.restaurant_id,
+        p_count: count,
+      });
+
+      if (error) throw error;
+      if (typeof data !== 'number') throw new Error('Failed to claim check numbers');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['check-settings'] });
+    },
+  });
+
   return {
     settings: query.data ?? null,
     isLoading: query.isLoading,
     error: query.error,
     saveSettings,
+    claimCheckNumbers,
   };
 }

@@ -44,7 +44,6 @@ import type { CheckData } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 
 interface CheckRow {
   id: string;
@@ -77,7 +76,7 @@ export default function PrintChecks() {
 function PrintChecksContent() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const { settings, isLoading: settingsLoading } = useCheckSettings();
+  const { settings, isLoading: settingsLoading, claimCheckNumbers } = useCheckSettings();
   const { auditLog, isLoading: auditLoading, logCheckAction } = useCheckAuditLog();
   const { createPendingOutflow } = usePendingOutflowMutations();
   const { suppliers } = useSuppliers();
@@ -127,14 +126,8 @@ function PrintChecksContent() {
     setIsPrinting(true);
 
     try {
-      // Claim check numbers atomically via RPC
-      const { data: startNumber, error: rpcError } = await supabase.rpc(
-        'claim_check_numbers',
-        { p_restaurant_id: selectedRestaurant.restaurant_id, p_count: selectedRows.length },
-      );
-
-      if (rpcError) throw rpcError;
-      if (typeof startNumber !== 'number') throw new Error('Failed to claim check numbers');
+      // Claim check numbers atomically via hook
+      const startNumber = await claimCheckNumbers.mutateAsync(selectedRows.length);
 
       // Build check data
       const checks: CheckData[] = selectedRows.map((row, i) => ({

@@ -119,7 +119,7 @@ BEGIN
 
   RETURN v_start_number;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Check audit log (append-only, immutable)
 CREATE TABLE public.check_audit_log (

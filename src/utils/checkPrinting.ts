@@ -172,7 +172,7 @@ function renderCheckPage(doc: jsPDF, settings: CheckSettings, check: CheckData) 
   // Truncate if too long for the line
   const maxWordsWidth = pageWidth - margin - 1.6 - margin;
   let displayWords = amountInWords;
-  while (doc.getTextWidth(displayWords) > maxWordsWidth * 72 && displayWords.length > 20) {
+  while (doc.getTextWidth(displayWords) > maxWordsWidth && displayWords.length > 20) {
     displayWords = displayWords.slice(0, -1);
   }
   doc.text(displayWords, margin, amountWordsY);

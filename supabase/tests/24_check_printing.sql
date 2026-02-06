@@ -1,6 +1,6 @@
 -- Tests for check printing tables and functions
 BEGIN;
-SELECT plan(16);
+SELECT plan(24);
 
 -- ==========================================
 -- Test check_settings table
@@ -63,6 +63,74 @@ SELECT is(
     true,
     'claim_check_numbers should be SECURITY DEFINER'
 );
+
+-- ==========================================
+-- Behavioral tests: claim_check_numbers validation
+-- ==========================================
+
+-- Input validation fires before the auth check, so these work without auth context.
+
+SELECT throws_ok(
+    $$SELECT claim_check_numbers('00000000-0000-0000-0000-000000000001'::uuid, 0)$$,
+    'Check count must be between 1 and 100',
+    'claim_check_numbers rejects p_count = 0'
+);
+
+SELECT throws_ok(
+    $$SELECT claim_check_numbers('00000000-0000-0000-0000-000000000001'::uuid, -1)$$,
+    'Check count must be between 1 and 100',
+    'claim_check_numbers rejects p_count = -1'
+);
+
+SELECT throws_ok(
+    $$SELECT claim_check_numbers('00000000-0000-0000-0000-000000000001'::uuid, 101)$$,
+    'Check count must be between 1 and 100',
+    'claim_check_numbers rejects p_count = 101'
+);
+
+-- ==========================================
+-- Behavioral tests: check_audit_log action CHECK constraint
+-- ==========================================
+
+-- Temporarily disable RLS to test the CHECK constraint directly
+ALTER TABLE public.check_audit_log DISABLE ROW LEVEL SECURITY;
+
+-- We need a real restaurant for the FK. Use an existing one or create a temp one.
+-- Insert with ON CONFLICT to be idempotent.
+INSERT INTO public.restaurants (id, name)
+VALUES ('00000000-0000-0000-0000-ffffffffffff'::uuid, 'pgTAP Test Restaurant')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+-- Valid action values should succeed
+SELECT lives_ok(
+    $$INSERT INTO public.check_audit_log (restaurant_id, check_number, payee_name, amount, issue_date, action)
+      VALUES ('00000000-0000-0000-0000-ffffffffffff'::uuid, 9999, 'Test Payee', 100.00, CURRENT_DATE, 'printed')$$,
+    'check_audit_log accepts action = printed'
+);
+
+SELECT lives_ok(
+    $$INSERT INTO public.check_audit_log (restaurant_id, check_number, payee_name, amount, issue_date, action)
+      VALUES ('00000000-0000-0000-0000-ffffffffffff'::uuid, 9999, 'Test Payee', 100.00, CURRENT_DATE, 'voided')$$,
+    'check_audit_log accepts action = voided'
+);
+
+SELECT lives_ok(
+    $$INSERT INTO public.check_audit_log (restaurant_id, check_number, payee_name, amount, issue_date, action)
+      VALUES ('00000000-0000-0000-0000-ffffffffffff'::uuid, 9999, 'Test Payee', 100.00, CURRENT_DATE, 'reprinted')$$,
+    'check_audit_log accepts action = reprinted'
+);
+
+-- Invalid action value should fail CHECK constraint
+SELECT throws_ok(
+    $$INSERT INTO public.check_audit_log (restaurant_id, check_number, payee_name, amount, issue_date, action)
+      VALUES ('00000000-0000-0000-0000-ffffffffffff'::uuid, 9999, 'Test Payee', 100.00, CURRENT_DATE, 'deleted')$$,
+    '23514',
+    NULL,
+    'check_audit_log rejects invalid action value'
+);
+
+-- Re-enable RLS
+ALTER TABLE public.check_audit_log ENABLE ROW LEVEL SECURITY;
 
 SELECT * FROM finish();
 ROLLBACK;

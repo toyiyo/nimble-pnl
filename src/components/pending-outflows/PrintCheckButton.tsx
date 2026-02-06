@@ -23,7 +23,6 @@ import {
   numberToWords,
 } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 import type { PendingOutflow } from '@/types/pending-outflows';
@@ -34,7 +33,7 @@ interface PrintCheckButtonProps {
 
 export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const { settings } = useCheckSettings();
+  const { settings, claimCheckNumbers } = useCheckSettings();
   const { logCheckAction } = useCheckAuditLog();
   const { updatePendingOutflow } = usePendingOutflowMutations();
 
@@ -50,15 +49,8 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
     setIsPrinting(true);
     try {
-      // Claim one check number
-      const { data: startNumber, error: rpcError } = await supabase.rpc(
-        'claim_check_numbers',
-        { p_restaurant_id: selectedRestaurant.restaurant_id, p_count: 1 },
-      );
-      if (rpcError) throw rpcError;
-      if (typeof startNumber !== 'number') throw new Error('Failed to claim check number');
-
-      const checkNumber = startNumber;
+      // Claim one check number via hook
+      const checkNumber = await claimCheckNumbers.mutateAsync(1);
 
       // Update the existing pending outflow with check info BEFORE generating PDF
       await updatePendingOutflow.mutateAsync({
@@ -158,10 +150,11 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
             {/* Memo */}
             <div className="space-y-2">
-              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Label htmlFor="print-check-memo" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Memo (optional)
               </Label>
               <Input
+                id="print-check-memo"
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="Purpose of payment"

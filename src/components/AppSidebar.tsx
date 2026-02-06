@@ -65,6 +65,7 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = 
   '/banking': 'banking',
   '/invoices': 'invoicing',
   '/expenses': 'expenses',
+  '/print-checks': 'expenses',
   '/assets': 'assets',
   '/payroll': 'payroll',
 };

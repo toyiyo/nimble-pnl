@@ -46,7 +46,7 @@ export function useCheckAuditLog() {
         .limit(500);
 
       if (error) throw error;
-      return data as CheckAuditEntry[];
+      return data as unknown as CheckAuditEntry[];
     },
     enabled: !!selectedRestaurant?.restaurant_id,
     staleTime: 30_000,
@@ -70,7 +70,7 @@ export function useCheckAuditLog() {
         .single();
 
       if (error) throw error;
-      return data as CheckAuditEntry;
+      return data as unknown as CheckAuditEntry;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['check-audit-log'] });

@@ -54,7 +54,7 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
     } else if (selectedRestaurant) {
       setForm((prev) => ({
         ...prev,
-        business_name: selectedRestaurant.name || '',
+        business_name: selectedRestaurant.restaurant?.name || '',
       }));
     }
   }, [settings, selectedRestaurant]);

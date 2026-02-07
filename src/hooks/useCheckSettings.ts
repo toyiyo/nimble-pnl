@@ -45,7 +45,7 @@ export function useCheckSettings() {
         .maybeSingle();
 
       if (error) throw error;
-      return data as CheckSettings | null;
+      return data as unknown as CheckSettings | null;
     },
     enabled: !!selectedRestaurant?.restaurant_id,
     staleTime: 5 * 60 * 1000, // 5 minutes — settings rarely change
@@ -69,7 +69,7 @@ export function useCheckSettings() {
         .single();
 
       if (error) throw error;
-      return data as CheckSettings;
+      return data as unknown as CheckSettings;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['check-settings'] });
@@ -84,7 +84,7 @@ export function useCheckSettings() {
     mutationFn: async (count: number = 1) => {
       if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
 
-      const { data, error } = await supabase.rpc('claim_check_numbers', {
+      const { data, error } = await (supabase.rpc as any)('claim_check_numbers', {
         p_restaurant_id: selectedRestaurant.restaurant_id,
         p_count: count,
       });

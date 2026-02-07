@@ -242,7 +242,7 @@ const ProductCard: React.FC<{
               </div>
               <div className="mt-2">
                 <InventoryValueBadge
-                  calculationMethod={metrics.calculationMethod}
+                  calculationMethod={metrics.calculationMethod as 'estimated' | 'mixed' | 'recipe-based'}
                   markupUsed={metrics.markupUsed}
                   category={product.category}
                 />

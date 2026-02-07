@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts';
+import { timingSafeEqual } from 'https://deno.land/std@0.177.0/crypto/timing_safe_equal.ts';
 import { logSecurityEvent } from '../_shared/encryption.ts';
 import { createGustoClientWithRefresh, getGustoConfig, GustoConnection } from '../_shared/gustoClient.ts';
 
@@ -62,7 +63,10 @@ Deno.serve(async (req) => {
       .update(rawBody)
       .digest('hex');
 
-    if (signature !== computedSignature) {
+    const encoder = new TextEncoder();
+    const sigBytes = encoder.encode(signature);
+    const computedBytes = encoder.encode(computedSignature);
+    if (sigBytes.length !== computedBytes.length || !timingSafeEqual(sigBytes, computedBytes)) {
       console.error('[GUSTO-WEBHOOK] Invalid signature');
       await logSecurityEvent(supabase, 'GUSTO_WEBHOOK_INVALID_SIGNATURE', undefined, undefined, {
         receivedSignature: signature.substring(0, 20),
@@ -101,7 +105,7 @@ Deno.serve(async (req) => {
       // Still store the event for debugging
     }
 
-    await supabase
+    const { error: eventInsertError } = await supabase
       .from('gusto_webhook_events')
       .insert({
         event_uuid: event.uuid,
@@ -110,6 +114,10 @@ Deno.serve(async (req) => {
         restaurant_id: restaurantId || null,
         raw_payload: event,
       });
+
+    if (eventInsertError) {
+      console.error('[GUSTO-WEBHOOK] Failed to record event:', eventInsertError.message);
+    }
 
     await processEvent(supabase, event, restaurantId);
 
@@ -124,7 +132,7 @@ Deno.serve(async (req) => {
     // Return 200 even on error to prevent Gusto from retrying
     return new Response(JSON.stringify({
       received: true,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: 'Internal processing error',
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -148,6 +156,8 @@ async function getGustoClientForRestaurant(
 
   if (!connection) return null;
 
+  // Called without origin, which defaults to demo. In production, the env vars
+  // (GUSTO_CLIENT_ID, GUSTO_CLIENT_SECRET) point to the production Gusto app.
   const gustoConfig = getGustoConfig();
   return createGustoClientWithRefresh(
     connection as GustoConnection,
@@ -203,7 +213,7 @@ async function processEvent(
           hourlyRate = Number.isNaN(parsed) ? null : parsed;
         }
 
-        await supabase
+        const { error: employeeInsertError } = await supabase
           .from('employees')
           .insert({
             restaurant_id: restaurantId,
@@ -219,7 +229,11 @@ async function processEvent(
             is_active: true,
           });
 
-        console.log(`[WEBHOOK] employee.created - created local employee for uuid: ${employeeUuid}`);
+        if (employeeInsertError) {
+          console.error(`[WEBHOOK] employee.created - failed to insert employee ${employeeUuid}:`, employeeInsertError.message);
+        } else {
+          console.log(`[WEBHOOK] employee.created - created local employee for uuid: ${employeeUuid}`);
+        }
       } catch (err) {
         console.error(`[WEBHOOK] employee.created - failed to create local employee:`, err);
       }

@@ -90,25 +90,17 @@ Deno.serve(async (req) => {
       }
 
       // Verify user has access to this restaurant (owner or manager)
-      // TODO: Re-enable after debugging pgsodium issue locally
-      // The "No suitable key or wrong key type" error occurs when querying user_restaurants locally
-      console.log('[GUSTO-OAUTH] Skipping role check temporarily for debugging');
-      console.log('[GUSTO-OAUTH] User:', user.id, user.email, 'Restaurant:', restaurantId);
-
-      // Uncomment below to re-enable role checking:
-      /*
       const { data: userRestaurant, error: accessError } = await supabase
         .from('user_restaurants')
         .select('role')
         .eq('user_id', user.id)
         .eq('restaurant_id', restaurantId)
         .in('role', ['owner', 'manager'])
-        .maybeSingle();
+        .single();
 
       if (accessError || !userRestaurant) {
-        throw new Error(`Access denied to restaurant`);
+        throw new Error('Access denied to restaurant');
       }
-      */
 
       // Check if already connected
       const { data: existingConnection } = await supabase
@@ -441,7 +433,7 @@ Deno.serve(async (req) => {
       const restUrl = supabaseUrl;
 
       console.log('[GUSTO-OAUTH] Using REST URL:', restUrl);
-      console.log('[GUSTO-OAUTH] Service key prefix:', serviceRoleKey?.substring(0, 50));
+      console.log('[GUSTO-OAUTH] Service role key available:', !!serviceRoleKey);
 
       const insertResponse = await fetch(`${restUrl}/rest/v1/gusto_connections`, {
         method: 'POST',

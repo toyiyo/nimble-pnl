@@ -156,10 +156,14 @@ Deno.serve(async (req) => {
         }
 
         // Mark as pending
-        await supabase
+        const { error: pendingError } = await supabase
           .from('employees')
           .update({ gusto_sync_status: 'pending' })
           .eq('id', employee.id);
+
+        if (pendingError) {
+          console.error(`[GUSTO-SYNC] Failed to mark employee ${employee.name} as pending:`, pendingError.message);
+        }
 
         // Parse name into first/last
         const nameParts = employee.name.trim().split(/\s+/);
@@ -182,7 +186,7 @@ Deno.serve(async (req) => {
             self_onboarding: selfOnboarding,
           };
 
-          console.log(`[GUSTO-SYNC] Creating contractor in Gusto:`, contractorData);
+          console.log(`[GUSTO-SYNC] Creating contractor in Gusto: ${firstName} ${lastName}`);
 
           const gustoContractor = await gustoClient.createContractor(
             connection.company_uuid,
@@ -200,7 +204,7 @@ Deno.serve(async (req) => {
             self_onboarding: selfOnboarding,
           };
 
-          console.log(`[GUSTO-SYNC] Creating employee in Gusto:`, employeeData);
+          console.log(`[GUSTO-SYNC] Creating employee in Gusto: ${firstName} ${lastName}`);
 
           const gustoEmployee = await gustoClient.createEmployee(
             connection.company_uuid,
@@ -234,7 +238,7 @@ Deno.serve(async (req) => {
         }
 
         // Update EasyShiftHQ employee with Gusto info
-        await supabase
+        const { error: syncedError } = await supabase
           .from('employees')
           .update({
             gusto_employee_uuid: gustoUuid,
@@ -243,6 +247,10 @@ Deno.serve(async (req) => {
             gusto_onboarding_status: onboardingStatus,
           })
           .eq('id', employee.id);
+
+        if (syncedError) {
+          console.error(`[GUSTO-SYNC] Failed to mark employee ${employee.name} as synced:`, syncedError.message);
+        }
 
         result.synced++;
         console.log(`[GUSTO-SYNC] Successfully synced employee ${employee.name} -> ${gustoUuid}`);
@@ -257,10 +265,14 @@ Deno.serve(async (req) => {
         console.error(`[GUSTO-SYNC] Error syncing employee ${employee.name}:`, errorMessage);
 
         // Mark as error
-        await supabase
+        const { error: markErrorError } = await supabase
           .from('employees')
           .update({ gusto_sync_status: 'error' })
           .eq('id', employee.id);
+
+        if (markErrorError) {
+          console.error(`[GUSTO-SYNC] Failed to mark employee ${employee.name} as error:`, markErrorError.message);
+        }
 
         result.errors.push({
           employeeId: employee.id,

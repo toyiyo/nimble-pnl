@@ -80,6 +80,14 @@ function GustoPayroll() {
 
   const [activeTab, setActiveTab] = useState<string>('setup');
 
+  const tabToFlowType: Record<string, GustoFlowType> = {
+    payroll: 'run_payroll',
+    employees: 'add_employees',
+    benefits: 'company_onboarding', // Benefits are part of company onboarding
+    taxes: 'federal_tax_setup',
+    setup: 'company_onboarding',
+  };
+
   const [companyName, setCompanyName] = useState(selectedRestaurant?.restaurant?.name || '');
   const [adminFirstName, setAdminFirstName] = useState('');
   const [adminLastName, setAdminLastName] = useState('');
@@ -89,14 +97,6 @@ function GustoPayroll() {
 
   useEffect(() => {
     if (isConnected && !flowLoading) {
-      const tabToFlowType: Record<string, GustoFlowType> = {
-        payroll: 'run_payroll',
-        employees: 'add_employees',
-        benefits: 'company_onboarding', // Benefits are part of company onboarding
-        taxes: 'federal_tax_setup',
-        setup: 'company_onboarding',
-      };
-
       const flowTypeForTab = tabToFlowType[activeTab];
       if (flowTypeForTab && flowType !== flowTypeForTab) {
         openFlow(flowTypeForTab);
@@ -452,7 +452,12 @@ function GustoPayroll() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => openFlow(activeTab as GustoFlowType)}
+                    onClick={() => {
+                      const flowTypeForTab = tabToFlowType[activeTab];
+                      if (flowTypeForTab) {
+                        openFlow(flowTypeForTab);
+                      }
+                    }}
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
                     Try Again

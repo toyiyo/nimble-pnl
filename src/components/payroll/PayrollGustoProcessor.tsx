@@ -116,11 +116,7 @@ export function PayrollGustoProcessor({
 
       setState('preparing_payroll');
       const { data, error } = await supabase.functions.invoke('gusto-prepare-payroll', {
-        body: {
-          restaurantId,
-          startDate,
-          endDate,
-        },
+        body: { restaurantId },
       });
 
       if (error) {

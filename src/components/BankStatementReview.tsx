@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useBankStatementImport, isLineImportable, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
-import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2, AlertCircle, AlertTriangle, X, Plus } from 'lucide-react';
+import { FileText, Check, Edit, Trash2, DollarSign, Calendar, Building2, Loader2, AlertCircle, AlertTriangle, X, Plus, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   Table,
@@ -149,12 +149,27 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
 
   const unimportedLines = lines.filter((line) => !line.is_imported);
   const excludedLines = unimportedLines.filter((line) => line.user_excluded);
+  const duplicateLines = unimportedLines.filter((line) => line.is_potential_duplicate);
   // Use the shared isLineImportable predicate to ensure UI count matches actual import behavior
   const validLines = lines.filter((line) => isLineImportable(line));
   const invalidLines = unimportedLines.filter((line) => !isLineImportable(line) && !line.user_excluded);
 
   return (
     <div className="space-y-6">
+      {/* Duplicate Detection Alert */}
+      {duplicateLines.length > 0 && (
+        <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
+          <Copy className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertDescription className="text-amber-700 dark:text-amber-300">
+            <strong>{duplicateLines.length} potential duplicate{duplicateLines.length !== 1 ? 's' : ''} detected</strong>
+            <p className="mt-1 text-sm">
+              These transactions match existing records by date and amount. High-confidence duplicates have been auto-excluded.
+              You can include them using the actions column if needed.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Validation Warning Alert */}
       {(invalidLines.length > 0 || excludedLines.length > 0) && (
         <Alert variant={invalidLines.length > 0 ? "destructive" : "default"}>
@@ -164,7 +179,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
               <>
                 <strong>{invalidLines.length} transaction{invalidLines.length !== 1 ? 's have' : ' has'} validation errors</strong>
                 <p className="mt-2 text-sm">
-                  These transactions are highlighted in red below. You must edit them to fix the errors before they can be imported. 
+                  These transactions are highlighted in red below. You must edit them to fix the errors before they can be imported.
                   Common issues include missing amounts, invalid dates, or missing descriptions.
                 </p>
               </>
@@ -172,6 +187,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
             {excludedLines.length > 0 && (
               <p className={invalidLines.length > 0 ? "mt-3 text-sm" : "text-sm"}>
                 <strong>{excludedLines.length} transaction{excludedLines.length !== 1 ? 's are' : ' is'} excluded</strong> and will be skipped during import.
+                {duplicateLines.length > 0 && ` (${duplicateLines.length} potential duplicate${duplicateLines.length !== 1 ? 's' : ''} auto-excluded)`}
               </p>
             )}
           </AlertDescription>
@@ -379,24 +395,36 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          {line.is_imported ? (
-                            <Badge variant="outline" className="bg-green-100 text-green-800">
-                              <Check className="w-3 h-3 mr-1" />
-                              Imported
-                            </Badge>
-                          ) : line.user_excluded ? (
-                            <Badge variant="outline" className="bg-gray-100 text-gray-600">
-                              <X className="w-3 h-3 mr-1" />
-                              Excluded
-                            </Badge>
-                          ) : hasError ? (
-                            <Badge variant="destructive" className="gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              Has Errors
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">Pending</Badge>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {line.is_imported ? (
+                              <Badge variant="outline" className="bg-green-100 text-green-800">
+                                <Check className="w-3 h-3 mr-1" />
+                                Imported
+                              </Badge>
+                            ) : line.user_excluded ? (
+                              <Badge variant="outline" className="bg-gray-100 text-gray-600">
+                                <X className="w-3 h-3 mr-1" />
+                                Excluded
+                              </Badge>
+                            ) : hasError ? (
+                              <Badge variant="destructive" className="gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                Has Errors
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary">Pending</Badge>
+                            )}
+                            {line.is_potential_duplicate && (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800 gap-1"
+                                title={`Potential duplicate (${Math.round((line.duplicate_confidence || 0) * 100)}% confidence)`}
+                              >
+                                <Copy className="w-3 h-3" />
+                                Duplicate
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           {!line.is_imported && (

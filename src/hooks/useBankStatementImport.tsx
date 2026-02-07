@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { parseBankAmount, type BankColumnMapping } from '@/utils/bankTransactionColumnMapping';
 
 export interface BankStatementUpload {
   id: string;
@@ -19,6 +20,8 @@ export interface BankStatementUpload {
   total_debits: number | null;
   total_credits: number | null;
   error_message: string | null;
+  source_type: string | null;
+  connected_bank_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +41,9 @@ export interface BankStatementLine {
   has_validation_error: boolean;
   validation_errors: any | null;
   user_excluded: boolean;
+  is_potential_duplicate: boolean;
+  duplicate_transaction_id: string | null;
+  duplicate_confidence: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -418,22 +424,14 @@ export const useBankStatementImport = () => {
         return true;
       }
 
-      // We need a connected_bank_id. Since this is a manual upload, we'll create a 
-      // virtual "Manual Upload" bank connection if it doesn't exist
+      // Determine connected_bank_id: use from upload record (CSV import) or create Manual Upload bank
       let connectedBankId: string;
-      
-      // Check if manual upload bank exists
-      const { data: existingBank } = await supabase
-        .from('connected_banks')
-        .select('id')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
-        .eq('institution_name', 'Manual Upload')
-        .maybeSingle();
+      const isCSVImport = statement.source_type === 'csv' || statement.source_type === 'excel';
 
-      if (existingBank) {
-        connectedBankId = existingBank.id;
+      if (isCSVImport && statement.connected_bank_id) {
+        connectedBankId = statement.connected_bank_id;
 
-        // Check if bank account balance exists, create if missing
+        // Ensure bank account balance entry exists
         const { data: existingBalance } = await supabase
           .from('bank_account_balances')
           .select('id')
@@ -445,7 +443,7 @@ export const useBankStatementImport = () => {
             .from('bank_account_balances')
             .insert({
               connected_bank_id: connectedBankId,
-              account_name: statement.bank_name || 'Manual Upload Account',
+              account_name: statement.bank_name || 'CSV Import Account',
               current_balance: 0,
               currency: 'USD',
               as_of_date: new Date().toISOString(),
@@ -453,36 +451,68 @@ export const useBankStatementImport = () => {
             });
         }
       } else {
-        // Create a virtual bank for manual uploads
-        const { data: newBank, error: bankError } = await supabase
+        // Check if manual upload bank exists
+        const { data: existingBank } = await supabase
           .from('connected_banks')
-          .insert({
-            restaurant_id: selectedRestaurant.restaurant_id,
-            stripe_financial_account_id: `manual_${selectedRestaurant.restaurant_id}`,
-            institution_name: 'Manual Upload',
-            status: 'connected',
-            connected_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
+          .select('id')
+          .eq('restaurant_id', selectedRestaurant.restaurant_id)
+          .eq('institution_name', 'Manual Upload')
+          .maybeSingle();
 
-        if (bankError || !newBank) {
-          throw new Error('Failed to create manual upload bank connection');
+        if (existingBank) {
+          connectedBankId = existingBank.id;
+
+          // Check if bank account balance exists, create if missing
+          const { data: existingBalance } = await supabase
+            .from('bank_account_balances')
+            .select('id')
+            .eq('connected_bank_id', connectedBankId)
+            .maybeSingle();
+
+          if (!existingBalance) {
+            await supabase
+              .from('bank_account_balances')
+              .insert({
+                connected_bank_id: connectedBankId,
+                account_name: statement.bank_name || 'Manual Upload Account',
+                current_balance: 0,
+                currency: 'USD',
+                as_of_date: new Date().toISOString(),
+                is_active: true,
+              });
+          }
+        } else {
+          // Create a virtual bank for manual uploads
+          const { data: newBank, error: bankError } = await supabase
+            .from('connected_banks')
+            .insert({
+              restaurant_id: selectedRestaurant.restaurant_id,
+              stripe_financial_account_id: `manual_${selectedRestaurant.restaurant_id}`,
+              institution_name: 'Manual Upload',
+              status: 'connected',
+              connected_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (bankError || !newBank) {
+            throw new Error('Failed to create manual upload bank connection');
+          }
+
+          connectedBankId = newBank.id;
+
+          // Create a default bank account balance entry for the manual upload
+          await supabase
+            .from('bank_account_balances')
+            .insert({
+              connected_bank_id: connectedBankId,
+              account_name: statement.bank_name || 'Manual Upload Account',
+              current_balance: 0, // Will be updated after transactions are imported
+              currency: 'USD',
+              as_of_date: new Date().toISOString(),
+              is_active: true,
+            });
         }
-
-        connectedBankId = newBank.id;
-
-        // Create a default bank account balance entry for the manual upload
-        await supabase
-          .from('bank_account_balances')
-          .insert({
-            connected_bank_id: connectedBankId,
-            account_name: statement.bank_name || 'Manual Upload Account',
-            current_balance: 0, // Will be updated after transactions are imported
-            currency: 'USD',
-            as_of_date: new Date().toISOString(),
-            is_active: true,
-          });
       }
 
       let importedCount = 0;
@@ -502,17 +532,22 @@ export const useBankStatementImport = () => {
         }
 
         // Create bank transaction
+        const txnSource = isCSVImport ? 'csv_import' : 'manual_upload';
+        const syntheticId = isCSVImport
+          ? `csv_${statementUploadId}_${line.id}`
+          : `manual_${statementUploadId}_${line.id}`;
+
         const { data: newTransaction, error: transactionError } = await supabase
           .from('bank_transactions')
           .insert({
             restaurant_id: selectedRestaurant.restaurant_id,
             connected_bank_id: connectedBankId,
-            stripe_transaction_id: `manual_${statementUploadId}_${line.id}`,
+            stripe_transaction_id: syntheticId,
             transaction_date: line.transaction_date,
             posted_date: line.transaction_date,
             description: line.description,
             amount: line.amount,
-            source: 'manual_upload',
+            source: txnSource,
             statement_upload_id: statementUploadId,
             status: 'posted',
             is_categorized: false,
@@ -581,6 +616,242 @@ export const useBankStatementImport = () => {
     }
   };
 
+  /**
+   * Stage a CSV/Excel file as bank statement lines for review.
+   */
+  const stageCSVStatement = async (
+    file: File,
+    parsedRows: Record<string, string>[],
+    mappings: BankColumnMapping[],
+    selectedBankId: string,
+    bankAccountName?: string
+  ): Promise<string | null> => {
+    if (!selectedRestaurant?.restaurant_id) {
+      toast({
+        title: "Error",
+        description: "Please select a restaurant first",
+        variant: "destructive",
+      });
+      return null;
+    }
+
+    try {
+      const isExcel = /\.xlsx?$/i.test(file.name);
+      const sourceType = isExcel ? 'excel' : 'csv';
+
+      // Create the upload record
+      const { data: uploadData, error: uploadError } = await supabase
+        .from('bank_statement_uploads')
+        .insert({
+          restaurant_id: selectedRestaurant.restaurant_id,
+          file_name: file.name,
+          file_size: file.size,
+          status: 'processed',
+          source_type: sourceType,
+          connected_bank_id: selectedBankId,
+          bank_name: bankAccountName || null,
+        })
+        .select()
+        .single();
+
+      if (uploadError || !uploadData) {
+        throw new Error('Failed to create upload record');
+      }
+
+      const uploadId = uploadData.id;
+
+      // Build mapping lookups
+      const dateCol = mappings.find((m) => m.targetField === 'transactionDate')?.csvColumn;
+      const postedDateCol = mappings.find((m) => m.targetField === 'postedDate')?.csvColumn;
+      const descCol = mappings.find((m) => m.targetField === 'description')?.csvColumn;
+      const amountCol = mappings.find((m) => m.targetField === 'amount')?.csvColumn;
+      const debitCol = mappings.find((m) => m.targetField === 'debitAmount')?.csvColumn;
+      const creditCol = mappings.find((m) => m.targetField === 'creditAmount')?.csvColumn;
+      const balanceCol = mappings.find((m) => m.targetField === 'balance')?.csvColumn;
+
+      // Transform rows
+      const lines: any[] = [];
+      let totalDebits = 0;
+      let totalCredits = 0;
+
+      for (let i = 0; i < parsedRows.length; i++) {
+        const row = parsedRows[i];
+        const errors: Record<string, string> = {};
+
+        // Parse date
+        const rawDate = dateCol ? row[dateCol] : postedDateCol ? row[postedDateCol] : '';
+        const parsedDate = tryParseDate(rawDate || '');
+        if (!parsedDate) {
+          errors.date = `Could not parse date: "${rawDate}"`;
+        }
+
+        // Parse description
+        const description = descCol ? (row[descCol] || '').trim() : '';
+        if (!description) {
+          errors.description = 'Missing description';
+        }
+
+        // Parse amount
+        const amount = parseBankAmount(
+          amountCol ? row[amountCol] : undefined,
+          debitCol ? row[debitCol] : undefined,
+          creditCol ? row[creditCol] : undefined
+        );
+        if (amount === null) {
+          errors.amount = 'Could not parse amount';
+        }
+
+        // Parse balance
+        const rawBalance = balanceCol ? row[balanceCol] : undefined;
+        const balance = rawBalance ? parseBankAmount(rawBalance) : null;
+
+        // Determine transaction type
+        const txnType = amount !== null ? (amount < 0 ? 'debit' : 'credit') : 'unknown';
+
+        // Track totals
+        if (amount !== null) {
+          if (amount < 0) totalDebits += Math.abs(amount);
+          else totalCredits += amount;
+        }
+
+        const hasError = Object.keys(errors).length > 0;
+
+        lines.push({
+          statement_upload_id: uploadId,
+          transaction_date: parsedDate || '1970-01-01', // placeholder for NOT NULL
+          description: description || 'Unknown',
+          amount: amount ?? 0, // placeholder for NOT NULL
+          transaction_type: txnType,
+          balance,
+          line_sequence: i + 1,
+          confidence_score: 1.0,
+          has_validation_error: hasError,
+          validation_errors: hasError ? errors : null,
+          user_excluded: false,
+        });
+      }
+
+      // Batch insert in chunks of 100
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+        const chunk = lines.slice(i, i + CHUNK_SIZE);
+        const { error: insertError } = await supabase
+          .from('bank_statement_lines')
+          .insert(chunk);
+
+        if (insertError) {
+          console.error('Error inserting statement lines chunk:', insertError);
+          throw insertError;
+        }
+      }
+
+      // Update upload with totals
+      await supabase
+        .from('bank_statement_uploads')
+        .update({
+          transaction_count: lines.length,
+          total_debits: totalDebits,
+          total_credits: totalCredits,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', uploadId);
+
+      return uploadId;
+    } catch (error) {
+      console.error('Error staging CSV statement:', error);
+      toast({
+        title: "Error",
+        description: "Failed to stage CSV transactions",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
+  /**
+   * Detect duplicates between staged lines and existing bank transactions.
+   */
+  const detectDuplicates = async (statementUploadId: string): Promise<number> => {
+    if (!selectedRestaurant?.restaurant_id) return 0;
+
+    try {
+      // Get staged lines
+      const { data: stagedLines, error: linesError } = await supabase
+        .from('bank_statement_lines')
+        .select('id, transaction_date, description, amount')
+        .eq('statement_upload_id', statementUploadId)
+        .eq('has_validation_error', false);
+
+      if (linesError || !stagedLines || stagedLines.length === 0) return 0;
+
+      // Get date range
+      const dates = stagedLines
+        .map((l) => l.transaction_date)
+        .filter(Boolean)
+        .sort();
+      if (dates.length === 0) return 0;
+
+      const minDate = dates[0];
+      const maxDate = dates[dates.length - 1];
+
+      // Get existing transactions in the date range
+      const { data: existingTxns, error: txnError } = await supabase
+        .from('bank_transactions')
+        .select('id, transaction_date, description, amount')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .gte('transaction_date', minDate)
+        .lte('transaction_date', maxDate);
+
+      if (txnError || !existingTxns || existingTxns.length === 0) return 0;
+
+      let flaggedCount = 0;
+
+      for (const line of stagedLines) {
+        // Find matches: same date and very close amount
+        const matches = existingTxns.filter((txn) => {
+          const dateMatch = txn.transaction_date === line.transaction_date;
+          const amountDiff = Math.abs((txn.amount || 0) - (line.amount || 0));
+          return dateMatch && amountDiff < 0.01;
+        });
+
+        if (matches.length > 0) {
+          // Pick best match based on description similarity
+          let bestMatch = matches[0];
+          let bestConfidence = 0.7; // Base confidence for date+amount match
+
+          for (const match of matches) {
+            const lineTokens = tokenize(line.description || '');
+            const txnTokens = tokenize(match.description || '');
+            const overlap = tokenOverlap(lineTokens, txnTokens);
+            const confidence = overlap > 0.5 ? 0.95 : 0.7;
+            if (confidence > bestConfidence) {
+              bestConfidence = confidence;
+              bestMatch = match;
+            }
+          }
+
+          // Update the staged line
+          await supabase
+            .from('bank_statement_lines')
+            .update({
+              is_potential_duplicate: true,
+              duplicate_transaction_id: bestMatch.id,
+              duplicate_confidence: bestConfidence,
+              user_excluded: bestConfidence >= 0.9, // Auto-exclude high confidence
+            })
+            .eq('id', line.id);
+
+          flaggedCount++;
+        }
+      }
+
+      return flaggedCount;
+    } catch (error) {
+      console.error('Error detecting duplicates:', error);
+      return 0;
+    }
+  };
+
   const recalculateBankBalance = async (connectedBankId: string) => {
     try {
       // Get all transactions for this bank
@@ -638,8 +909,68 @@ export const useBankStatementImport = () => {
     updateStatementLine,
     toggleLineExclusion,
     importStatementLines,
+    stageCSVStatement,
+    detectDuplicates,
     recalculateBankBalance,
     isUploading,
     isProcessing
   };
 };
+
+// --- Helper functions ---
+
+/** Try multiple date formats and return YYYY-MM-DD or null */
+function tryParseDate(raw: string): string | null {
+  if (!raw || !raw.trim()) return null;
+  const str = raw.trim();
+
+  // ISO format: 2024-01-15 or 2024-01-15T...
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  }
+
+  // MM/DD/YYYY or M/D/YYYY
+  const mdyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (mdyMatch) {
+    const [, m, d, y] = mdyMatch;
+    const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+  }
+
+  // MM/DD/YY or M/D/YY
+  const mdyShortMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$/);
+  if (mdyShortMatch) {
+    const [, m, d, y] = mdyShortMatch;
+    const fullYear = parseInt(y) + (parseInt(y) > 50 ? 1900 : 2000);
+    const date = new Date(fullYear, parseInt(m) - 1, parseInt(d));
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+  }
+
+  // Try native Date parsing as fallback
+  const fallback = new Date(str);
+  if (!isNaN(fallback.getTime())) return fallback.toISOString().split('T')[0];
+
+  return null;
+}
+
+/** Tokenize a string into lowercase words */
+function tokenize(str: string): Set<string> {
+  return new Set(
+    str
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 1)
+  );
+}
+
+/** Calculate overlap ratio between two token sets */
+function tokenOverlap(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let shared = 0;
+  for (const token of a) {
+    if (b.has(token)) shared++;
+  }
+  return shared / Math.min(a.size, b.size);
+}

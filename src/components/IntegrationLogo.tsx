@@ -20,6 +20,7 @@ const logoMap: Record<string, { icon: any; color: string }> = {
   'square-pos': { icon: SimpleIcons.siSquare, color: '#000000' },
   'quickbooks': { icon: SimpleIcons.siQuickbooks, color: '#2CA01C' },
   'sysco': { icon: SimpleIcons.siWebmoney, color: '#0072CE' },
+  'gusto-payroll': { icon: SimpleIcons.siGusto, color: '#F45D48' },
 };
 
 // Emoji fallbacks for logos not available as images or SVG icons
@@ -31,6 +32,7 @@ const emojiMap: Record<string, string> = {
   'when-i-work': '⏰',
   'quickbooks': '💼',
   'sysco': '🚚',
+  'gusto-payroll': '💰',
 };
 
 export const IntegrationLogo = ({ integrationId, size = 24, className = '' }: IntegrationLogoProps) => {

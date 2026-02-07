@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +9,7 @@ import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastConnection } from '@/hooks/useToastConnection';
+import { useGusto } from '@/hooks/useGusto';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
 import { Shift4Sync } from '@/components/Shift4Sync';
@@ -15,7 +17,7 @@ import { ToastSync } from '@/components/ToastSync';
 import { Shift4ConnectDialog } from '@/components/Shift4ConnectDialog';
 import { ToastSetupWizard } from '@/components/pos/ToastSetupWizard';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
-import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
+import { Plug, Settings, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Integration {
@@ -34,38 +36,45 @@ interface IntegrationCardProps {
 }
 
 export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardProps) => {
+  const navigate = useNavigate();
   const [isConnecting, setIsConnecting] = useState(false);
   const [showShift4Dialog, setShowShift4Dialog] = useState(false);
   const [showToastSetup, setShowToastSetup] = useState(false);
   const { toast } = useToast();
-  
+
   // Square-specific integration hook
   const squareIntegration = useSquareIntegration(restaurantId);
-  
+
   // Clover-specific integration hook
   const cloverIntegration = useCloverIntegration(restaurantId);
-  
+
   // Shift4-specific integration hook
   const shift4Integration = useShift4Integration(restaurantId);
-  
+
   // Toast-specific integration hook
   const toastConnection = useToastConnection(restaurantId);
 
-  // Check if this integration is Square, Clover, Shift4, or Toast and if it's connected
+  // Gusto payroll integration hook
+  const gustoIntegration = useGusto(restaurantId);
+
+  // Check if this integration is Square, Clover, Shift4, Toast, or Gusto and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
+  const isGustoIntegration = integration.id === 'gusto-payroll';
   
-  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
+  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected :
                             isCloverIntegration ? cloverIntegration.isConnected :
                             isShift4Integration ? shift4Integration.isConnected :
                             isToastIntegration ? toastConnection.isConnected :
+                            isGustoIntegration ? gustoIntegration.isConnected :
                             integration.connected;
-  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
+  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting :
                              isCloverIntegration ? cloverIntegration.isConnecting :
                              isShift4Integration ? shift4Integration.loading :
                              isToastIntegration ? toastConnection.loading :
+                             isGustoIntegration ? gustoIntegration.isConnecting :
                              isConnecting;
 
   const handleConnect = async () => {
@@ -88,7 +97,12 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       setShowToastSetup(true);
       return;
     }
-    
+
+    if (isGustoIntegration) {
+      await gustoIntegration.connectGusto();
+      return;
+    }
+
     // For other integrations, show coming soon message
     setIsConnecting(true);
     
@@ -141,7 +155,12 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       await toastConnection.disconnectToast(restaurantId);
       return;
     }
-    
+
+    if (isGustoIntegration) {
+      await gustoIntegration.disconnectGusto(false);
+      return;
+    }
+
     toast({
       title: "Disconnected",
       description: `Successfully disconnected from ${integration.name}`,
@@ -250,7 +269,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
           <div className="space-y-4 pt-4 border-t">
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
               <Clock className="h-3 w-3" />
-              {isSquareIntegration && squareIntegration.connection ? 
+              {isSquareIntegration && squareIntegration.connection ?
                 `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
               isCloverIntegration && cloverIntegration.connection ?
                 `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
@@ -258,6 +277,8 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
                 `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}` :
               isToastIntegration && toastConnection.connection ?
                 `Connected: ${new Date(toastConnection.connection.created_at).toLocaleDateString()}` :
+              isGustoIntegration && gustoIntegration.connection ?
+                `Connected: ${new Date(gustoIntegration.connection.connected_at).toLocaleDateString()}` :
                 'Last sync: 2 hours ago'
               }
             </div>
@@ -285,9 +306,29 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             
             {/* Toast Sync Component */}
             {isToastIntegration && (
-              <ToastSync 
+              <ToastSync
                 restaurantId={restaurantId}
               />
+            )}
+
+            {/* Gusto Payroll Actions */}
+            {isGustoIntegration && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {gustoIntegration.connection?.company_name && (
+                    <span className="font-medium">Company: {gustoIntegration.connection.company_name}</span>
+                  )}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => navigate('/payroll/gusto')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open Gusto Payroll
+                </Button>
+              </div>
             )}
           </div>
         )}

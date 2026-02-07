@@ -40,6 +40,7 @@ import {
   Building2,
   Target,
   Sparkles,
+  Printer,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -64,6 +65,7 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = 
   '/banking': 'banking',
   '/invoices': 'invoicing',
   '/expenses': 'expenses',
+  '/print-checks': 'expenses',
   '/assets': 'assets',
   '/payroll': 'payroll',
 };
@@ -108,6 +110,7 @@ const navigationGroups = [
       { path: '/stripe-account', label: 'Financial Account', icon: CreditCard },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },
+      { path: '/print-checks', label: 'Print Checks', icon: Printer },
       { path: '/assets', label: 'Assets & Equipment', icon: Building2 },
       { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
@@ -145,6 +148,7 @@ const collaboratorAccountantNav: NavGroup[] = [
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },
+      { path: '/print-checks', label: 'Print Checks', icon: Printer },
       { path: '/assets', label: 'Assets', icon: Building2 },
       { path: '/invoices', label: 'Invoices', icon: FileText },
       { path: '/customers', label: 'Customers', icon: Users },

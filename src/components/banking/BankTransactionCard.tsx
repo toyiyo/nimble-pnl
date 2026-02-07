@@ -65,7 +65,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
               <span className="text-muted-foreground">Bank:</span>
               <BankAccountInfo
                 institutionName={transaction.connected_bank?.institution_name}
-                accountMask={transaction.connected_bank?.bank_account_balances?.[0]?.account_mask}
+                accountMask={undefined}
                 showIcon={false}
               />
             </div>

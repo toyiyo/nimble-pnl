@@ -5,7 +5,7 @@ import { createGustoClientWithRefresh, getGustoConfig, GustoConnection } from '.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-gusto-signature, x-gusto-timestamp',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-gusto-signature',
 };
 
 interface GustoWebhookEvent {
@@ -36,11 +36,11 @@ Deno.serve(async (req) => {
     const rawBody = await req.text();
 
     // Verify webhook signature
+    // Gusto sends X-Gusto-Signature: HMAC-SHA256 of the raw body using the verification_token
     const signature = req.headers.get('x-gusto-signature');
-    const timestamp = req.headers.get('x-gusto-timestamp');
 
-    if (!signature || !timestamp) {
-      console.error('[GUSTO-WEBHOOK] Missing signature or timestamp header');
+    if (!signature) {
+      console.error('[GUSTO-WEBHOOK] Missing X-Gusto-Signature header');
       return new Response(JSON.stringify({ error: 'Missing signature' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -56,27 +56,13 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Reject stale events (replay protection — 5 minute window)
-    const eventAge = Math.abs(Date.now() / 1000 - Number(timestamp));
-    if (eventAge > 300) {
-      console.error('[GUSTO-WEBHOOK] Stale timestamp, age:', eventAge, 'seconds');
-      return new Response(JSON.stringify({ error: 'Stale timestamp' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     // Verify HMAC-SHA256 signature
-    // Gusto signs: timestamp + '.' + body
-    const signaturePayload = `${timestamp}.${rawBody}`;
+    // Gusto signs the raw body using the verification_token as the secret
     const computedSignature = createHmac('sha256', webhookSecret)
-      .update(signaturePayload)
+      .update(rawBody)
       .digest('hex');
 
-    // Gusto signature format: v1=<signature>
-    const expectedSignature = `v1=${computedSignature}`;
-
-    if (signature !== expectedSignature) {
+    if (signature !== computedSignature) {
       console.error('[GUSTO-WEBHOOK] Invalid signature');
       await logSecurityEvent(supabase, 'GUSTO_WEBHOOK_INVALID_SIGNATURE', undefined, undefined, {
         receivedSignature: signature.substring(0, 20),

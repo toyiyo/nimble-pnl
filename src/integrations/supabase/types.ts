@@ -1115,6 +1115,122 @@ export type Database = {
           },
         ]
       }
+      check_audit_log: {
+        Row: {
+          action: string
+          amount: number
+          check_number: number
+          created_at: string
+          id: string
+          issue_date: string
+          memo: string | null
+          payee_name: string
+          pending_outflow_id: string | null
+          performed_at: string
+          performed_by: string | null
+          restaurant_id: string
+          void_reason: string | null
+        }
+        Insert: {
+          action: string
+          amount: number
+          check_number: number
+          created_at?: string
+          id?: string
+          issue_date: string
+          memo?: string | null
+          payee_name: string
+          pending_outflow_id?: string | null
+          performed_at?: string
+          performed_by?: string | null
+          restaurant_id: string
+          void_reason?: string | null
+        }
+        Update: {
+          action?: string
+          amount?: number
+          check_number?: number
+          created_at?: string
+          id?: string
+          issue_date?: string
+          memo?: string | null
+          payee_name?: string
+          pending_outflow_id?: string | null
+          performed_at?: string
+          performed_by?: string | null
+          restaurant_id?: string
+          void_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "check_audit_log_pending_outflow_id_fkey"
+            columns: ["pending_outflow_id"]
+            isOneToOne: false
+            referencedRelation: "pending_outflows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "check_audit_log_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      check_settings: {
+        Row: {
+          bank_name: string | null
+          business_address_line1: string | null
+          business_address_line2: string | null
+          business_city: string | null
+          business_name: string
+          business_state: string | null
+          business_zip: string | null
+          created_at: string
+          id: string
+          next_check_number: number
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          bank_name?: string | null
+          business_address_line1?: string | null
+          business_address_line2?: string | null
+          business_city?: string | null
+          business_name: string
+          business_state?: string | null
+          business_zip?: string | null
+          created_at?: string
+          id?: string
+          next_check_number?: number
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          bank_name?: string | null
+          business_address_line1?: string | null
+          business_address_line2?: string | null
+          business_city?: string | null
+          business_name?: string
+          business_state?: string | null
+          business_zip?: string | null
+          created_at?: string
+          id?: string
+          next_check_number?: number
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "check_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clover_connections: {
         Row: {
           access_token: string
@@ -7799,6 +7915,10 @@ export type Database = {
           status: string
           time_off_id: string
         }[]
+      }
+      claim_check_numbers: {
+        Args: { p_count?: number; p_restaurant_id: string }
+        Returns: number
       }
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }

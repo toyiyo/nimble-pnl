@@ -671,7 +671,6 @@ const Index = () => {
                     } : undefined}
                     icon={DollarSign}
                     variant={periodData && previousPeriodData && periodData.net_revenue > previousPeriodData.net_revenue ? 'success' : 'default'}
-                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
@@ -687,7 +686,6 @@ const Index = () => {
                         : '0.0';
                       return `${purchasePercent}% of revenue | ${inventoryPurchases.purchaseCount} purchase${inventoryPurchases.purchaseCount !== 1 ? 's' : ''}`;
                     })()}
-                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
@@ -700,7 +698,6 @@ const Index = () => {
                     icon={ShoppingCart}
                     variant={periodData && periodData.food_cost_percentage > 35 ? 'warning' : 'default'}
                     subtitle={periodData ? `${periodData.food_cost_percentage.toFixed(1)}% of revenue | Target: 28-32%` : undefined}
-                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
@@ -715,7 +712,6 @@ const Index = () => {
                     subtitle={periodData
                       ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Pending ${currencyFormatter.format(periodData.pending_labor_cost)} • Actual ${currencyFormatter.format(periodData.actual_labor_cost)}`
                       : undefined}
-                    sparklineData={undefined}
                     periodLabel={selectedPeriod.label}
                   />
                   {/* Profit Card (replaced Prime Cost) */}
@@ -739,7 +735,6 @@ const Index = () => {
                             : 'default'
                         }
                         subtitle={periodData && periodData.net_revenue > 0 ? `${profitMargin.toFixed(1)}% Gross Profit Margin` : undefined}
-                        sparklineData={undefined}
                         periodLabel={selectedPeriod.label}
                       />
                     );

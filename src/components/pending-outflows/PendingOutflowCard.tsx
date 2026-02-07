@@ -24,6 +24,7 @@ import { format } from "date-fns";
 import { CheckCircle2, XCircle, FileText, Calendar, Hash, Trash2, Sparkles, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { PrintCheckButton } from "./PrintCheckButton";
 
 interface PendingOutflowCardProps {
   outflow: PendingOutflow;
@@ -173,6 +174,7 @@ export const PendingOutflowCard = ({ outflow, onEdit }: PendingOutflowCardProps)
 
               {outflow.status === 'pending' || outflow.status.startsWith('stale_') ? (
                 <div className="flex gap-1">
+                  <PrintCheckButton expense={outflow} />
                   {matches && matches.length > 0 && (
                     <Button
                       size="sm"

@@ -24,7 +24,7 @@ SELECT col_default_is(
   'public',
   'bank_statement_uploads',
   'source_type',
-  '''pdf''::text',
+  'pdf',
   'source_type should default to pdf'
 );
 

@@ -660,7 +660,8 @@ export const useBankStatementImport = () => {
       if (dates.length === 0) return 0;
 
       const minDate = dates[0];
-      const maxDate = dates.at(-1)!;
+      const maxDate = dates.at(-1);
+      if (!maxDate) return 0;
 
       // Get existing transactions in the date range
       const { data: existingTxns, error: txnError } = await supabase

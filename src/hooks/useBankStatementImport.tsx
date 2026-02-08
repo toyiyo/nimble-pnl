@@ -39,7 +39,7 @@ export interface BankStatementLine {
   is_imported: boolean;
   imported_transaction_id: string | null;
   has_validation_error: boolean;
-  validation_errors: any | null;
+  validation_errors: Record<string, string> | null;
   user_excluded: boolean;
   is_potential_duplicate: boolean;
   duplicate_transaction_id: string | null;
@@ -229,7 +229,6 @@ export const useBankStatementImport = () => {
         toast({
           title: "Success",
           description: message,
-          variant: data.invalidTransactionCount > 0 ? "default" : "default",
         });
 
         return data;
@@ -321,8 +320,11 @@ export const useBankStatementImport = () => {
     // Validate the updates to clear validation errors if all required fields are present
     const hasAllRequiredFields = updates.transaction_date && updates.description && updates.amount !== null && updates.amount !== undefined;
     
-    const updateData: any = { ...updates };
-    
+    const updateData: typeof updates & {
+      has_validation_error?: boolean;
+      validation_errors?: null;
+    } = { ...updates };
+
     // If all required fields are present and valid, clear validation errors
     if (hasAllRequiredFields) {
       updateData.has_validation_error = false;
@@ -430,89 +432,12 @@ export const useBankStatementImport = () => {
 
       if (isCSVImport && statement.connected_bank_id) {
         connectedBankId = statement.connected_bank_id;
-
-        // Ensure bank account balance entry exists
-        const { data: existingBalance } = await supabase
-          .from('bank_account_balances')
-          .select('id')
-          .eq('connected_bank_id', connectedBankId)
-          .maybeSingle();
-
-        if (!existingBalance) {
-          await supabase
-            .from('bank_account_balances')
-            .insert({
-              connected_bank_id: connectedBankId,
-              account_name: statement.bank_name || 'CSV Import Account',
-              current_balance: 0,
-              currency: 'USD',
-              as_of_date: new Date().toISOString(),
-              is_active: true,
-            });
-        }
+        await ensureBankBalanceExists(connectedBankId, statement.bank_name || 'CSV Import Account');
       } else {
-        // Check if manual upload bank exists
-        const { data: existingBank } = await supabase
-          .from('connected_banks')
-          .select('id')
-          .eq('restaurant_id', selectedRestaurant.restaurant_id)
-          .eq('institution_name', 'Manual Upload')
-          .maybeSingle();
-
-        if (existingBank) {
-          connectedBankId = existingBank.id;
-
-          // Check if bank account balance exists, create if missing
-          const { data: existingBalance } = await supabase
-            .from('bank_account_balances')
-            .select('id')
-            .eq('connected_bank_id', connectedBankId)
-            .maybeSingle();
-
-          if (!existingBalance) {
-            await supabase
-              .from('bank_account_balances')
-              .insert({
-                connected_bank_id: connectedBankId,
-                account_name: statement.bank_name || 'Manual Upload Account',
-                current_balance: 0,
-                currency: 'USD',
-                as_of_date: new Date().toISOString(),
-                is_active: true,
-              });
-          }
-        } else {
-          // Create a virtual bank for manual uploads
-          const { data: newBank, error: bankError } = await supabase
-            .from('connected_banks')
-            .insert({
-              restaurant_id: selectedRestaurant.restaurant_id,
-              stripe_financial_account_id: `manual_${selectedRestaurant.restaurant_id}`,
-              institution_name: 'Manual Upload',
-              status: 'connected',
-              connected_at: new Date().toISOString(),
-            })
-            .select()
-            .single();
-
-          if (bankError || !newBank) {
-            throw new Error('Failed to create manual upload bank connection');
-          }
-
-          connectedBankId = newBank.id;
-
-          // Create a default bank account balance entry for the manual upload
-          await supabase
-            .from('bank_account_balances')
-            .insert({
-              connected_bank_id: connectedBankId,
-              account_name: statement.bank_name || 'Manual Upload Account',
-              current_balance: 0, // Will be updated after transactions are imported
-              currency: 'USD',
-              as_of_date: new Date().toISOString(),
-              is_active: true,
-            });
-        }
+        connectedBankId = await resolveManualUploadBankId(
+          selectedRestaurant.restaurant_id,
+          statement.bank_name || 'Manual Upload Account'
+        );
       }
 
       let importedCount = 0;
@@ -635,6 +560,16 @@ export const useBankStatementImport = () => {
       return null;
     }
 
+    // Guard against __new__ being passed directly
+    if (selectedBankId === '__new__') {
+      toast({
+        title: "Error",
+        description: "Bank account must be created before staging transactions",
+        variant: "destructive",
+      });
+      return null;
+    }
+
     try {
       const isExcel = /\.xlsx?$/i.test(file.name);
       const sourceType = isExcel ? 'excel' : 'csv';
@@ -659,91 +594,24 @@ export const useBankStatementImport = () => {
       }
 
       const uploadId = uploadData.id;
-
-      // Build mapping lookups
-      const dateCol = mappings.find((m) => m.targetField === 'transactionDate')?.csvColumn;
-      const postedDateCol = mappings.find((m) => m.targetField === 'postedDate')?.csvColumn;
-      const descCol = mappings.find((m) => m.targetField === 'description')?.csvColumn;
-      const amountCol = mappings.find((m) => m.targetField === 'amount')?.csvColumn;
-      const debitCol = mappings.find((m) => m.targetField === 'debitAmount')?.csvColumn;
-      const creditCol = mappings.find((m) => m.targetField === 'creditAmount')?.csvColumn;
-      const balanceCol = mappings.find((m) => m.targetField === 'balance')?.csvColumn;
+      const lookups = buildMappingLookups(mappings);
 
       // Transform rows
-      const lines: any[] = [];
+      const lines: StatementLineInsert[] = [];
       let totalDebits = 0;
       let totalCredits = 0;
 
       for (let i = 0; i < parsedRows.length; i++) {
-        const row = parsedRows[i];
-        const errors: Record<string, string> = {};
-
-        // Parse date
-        const rawDate = dateCol ? row[dateCol] : postedDateCol ? row[postedDateCol] : '';
-        const parsedDate = tryParseDate(rawDate || '');
-        if (!parsedDate) {
-          errors.date = `Could not parse date: "${rawDate}"`;
-        }
-
-        // Parse description
-        const description = descCol ? (row[descCol] || '').trim() : '';
-        if (!description) {
-          errors.description = 'Missing description';
-        }
-
-        // Parse amount
-        const amount = parseBankAmount(
-          amountCol ? row[amountCol] : undefined,
-          debitCol ? row[debitCol] : undefined,
-          creditCol ? row[creditCol] : undefined
-        );
-        if (amount === null) {
-          errors.amount = 'Could not parse amount';
-        }
-
-        // Parse balance
-        const rawBalance = balanceCol ? row[balanceCol] : undefined;
-        const balance = rawBalance ? parseBankAmount(rawBalance) : null;
-
-        // Determine transaction type
-        const txnType = amount !== null ? (amount < 0 ? 'debit' : 'credit') : 'unknown';
-
-        // Track totals
+        const { line, amount } = parseCSVRow(parsedRows[i], lookups, uploadId, i);
+        lines.push(line);
         if (amount !== null) {
           if (amount < 0) totalDebits += Math.abs(amount);
           else totalCredits += amount;
         }
-
-        const hasError = Object.keys(errors).length > 0;
-
-        lines.push({
-          statement_upload_id: uploadId,
-          transaction_date: parsedDate || '1970-01-01', // placeholder for NOT NULL
-          description: description || 'Unknown',
-          amount: amount ?? 0, // placeholder for NOT NULL
-          transaction_type: txnType,
-          balance,
-          line_sequence: i + 1,
-          confidence_score: 1.0,
-          has_validation_error: hasError,
-          validation_errors: hasError ? errors : null,
-          user_excluded: false,
-        });
       }
 
       // Batch insert in chunks of 100
-      const CHUNK_SIZE = 100;
-      for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
-        const chunk = lines.slice(i, i + CHUNK_SIZE);
-        const { error: insertError } = await supabase
-          .from('bank_statement_lines')
-          .insert(chunk);
-
-        if (insertError) {
-          console.error('Error inserting statement lines chunk:', insertError);
-          throw insertError;
-        }
-      }
+      await insertLinesInChunks(lines);
 
       // Update upload with totals
       await supabase
@@ -758,7 +626,7 @@ export const useBankStatementImport = () => {
 
       return uploadId;
     } catch (error) {
-      console.error('Error staging CSV statement:', error);
+      if (import.meta.env.DEV) console.error('Error staging CSV statement:', error);
       toast({
         title: "Error",
         description: "Failed to stage CSV transactions",
@@ -788,11 +656,11 @@ export const useBankStatementImport = () => {
       const dates = stagedLines
         .map((l) => l.transaction_date)
         .filter(Boolean)
-        .sort();
+        .sort((a, b) => a.localeCompare(b));
       if (dates.length === 0) return 0;
 
       const minDate = dates[0];
-      const maxDate = dates[dates.length - 1];
+      const maxDate = dates.at(-1)!;
 
       // Get existing transactions in the date range
       const { data: existingTxns, error: txnError } = await supabase
@@ -807,54 +675,31 @@ export const useBankStatementImport = () => {
       let flaggedCount = 0;
 
       for (const line of stagedLines) {
-        // Find matches: same date and very close amount
-        const matches = existingTxns.filter((txn) => {
-          const dateMatch = txn.transaction_date === line.transaction_date;
-          const amountDiff = Math.abs((txn.amount || 0) - (line.amount || 0));
-          return dateMatch && amountDiff < 0.01;
-        });
+        const result = findBestDuplicateMatch(line, existingTxns);
+        if (!result) continue;
 
-        if (matches.length > 0) {
-          // Pick best match based on description similarity
-          let bestMatch = matches[0];
-          let bestConfidence = 0.7; // Base confidence for date+amount match
+        await supabase
+          .from('bank_statement_lines')
+          .update({
+            is_potential_duplicate: true,
+            duplicate_transaction_id: result.match.id,
+            duplicate_confidence: result.confidence,
+            user_excluded: result.confidence >= 0.9,
+          })
+          .eq('id', line.id);
 
-          for (const match of matches) {
-            const lineTokens = tokenize(line.description || '');
-            const txnTokens = tokenize(match.description || '');
-            const overlap = tokenOverlap(lineTokens, txnTokens);
-            const confidence = overlap > 0.5 ? 0.95 : 0.7;
-            if (confidence > bestConfidence) {
-              bestConfidence = confidence;
-              bestMatch = match;
-            }
-          }
-
-          // Update the staged line
-          await supabase
-            .from('bank_statement_lines')
-            .update({
-              is_potential_duplicate: true,
-              duplicate_transaction_id: bestMatch.id,
-              duplicate_confidence: bestConfidence,
-              user_excluded: bestConfidence >= 0.9, // Auto-exclude high confidence
-            })
-            .eq('id', line.id);
-
-          flaggedCount++;
-        }
+        flaggedCount++;
       }
 
       return flaggedCount;
     } catch (error) {
-      console.error('Error detecting duplicates:', error);
+      if (import.meta.env.DEV) console.error('Error detecting duplicates:', error);
       return 0;
     }
   };
 
   const recalculateBankBalance = async (connectedBankId: string) => {
     try {
-      // Get all transactions for this bank
       const { data: allTransactions, error: transError } = await supabase
         .from('bank_transactions')
         .select('amount')
@@ -864,34 +709,15 @@ export const useBankStatementImport = () => {
 
       const totalBalance = allTransactions?.reduce((sum, t) => sum + t.amount, 0) || 0;
 
-      // Update or create the bank account balance
-      const { data: existingBalance } = await supabase
+      // Ensure balance row exists, then update with calculated total
+      await ensureBankBalanceExists(connectedBankId, 'Manual Upload Account');
+      await supabase
         .from('bank_account_balances')
-        .select('id')
-        .eq('connected_bank_id', connectedBankId)
-        .maybeSingle();
-
-      if (existingBalance) {
-        await supabase
-          .from('bank_account_balances')
-          .update({
-            current_balance: totalBalance,
-            as_of_date: new Date().toISOString(),
-          })
-          .eq('connected_bank_id', connectedBankId);
-      } else {
-        // Create balance entry if missing
-        await supabase
-          .from('bank_account_balances')
-          .insert({
-            connected_bank_id: connectedBankId,
-            account_name: 'Manual Upload Account',
-            current_balance: totalBalance,
-            currency: 'USD',
-            as_of_date: new Date().toISOString(),
-            is_active: true,
-          });
-      }
+        .update({
+          current_balance: totalBalance,
+          as_of_date: new Date().toISOString(),
+        })
+        .eq('connected_bank_id', connectedBankId);
 
       return totalBalance;
     } catch (error) {
@@ -917,39 +743,251 @@ export const useBankStatementImport = () => {
   };
 };
 
+// --- Types ---
+
+interface StatementLineInsert {
+  statement_upload_id: string;
+  transaction_date: string;
+  description: string;
+  amount: number;
+  transaction_type: string;
+  balance: number | null;
+  line_sequence: number;
+  confidence_score: number;
+  has_validation_error: boolean;
+  validation_errors: Record<string, string> | null;
+  user_excluded: boolean;
+}
+
+interface MappingLookups {
+  dateCol?: string;
+  postedDateCol?: string;
+  descCol?: string;
+  amountCol?: string;
+  debitCol?: string;
+  creditCol?: string;
+  balanceCol?: string;
+}
+
 // --- Helper functions ---
+
+/** Find or create the "Manual Upload" connected bank and ensure its balance row exists. */
+async function resolveManualUploadBankId(
+  restaurantId: string,
+  accountName: string
+): Promise<string> {
+  const { data: existingBank } = await supabase
+    .from('connected_banks')
+    .select('id')
+    .eq('restaurant_id', restaurantId)
+    .eq('institution_name', 'Manual Upload')
+    .maybeSingle();
+
+  if (existingBank) {
+    await ensureBankBalanceExists(existingBank.id, accountName);
+    return existingBank.id;
+  }
+
+  // Create a virtual bank for manual uploads
+  const { data: newBank, error: bankError } = await supabase
+    .from('connected_banks')
+    .insert({
+      restaurant_id: restaurantId,
+      stripe_financial_account_id: `manual_${restaurantId}`,
+      institution_name: 'Manual Upload',
+      status: 'connected',
+      connected_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (bankError || !newBank) {
+    throw new Error('Failed to create manual upload bank connection');
+  }
+
+  await ensureBankBalanceExists(newBank.id, accountName);
+  return newBank.id;
+}
+
+/** Ensure a bank_account_balances row exists for the given bank. Creates one if missing. */
+async function ensureBankBalanceExists(
+  connectedBankId: string,
+  accountName: string
+): Promise<void> {
+  const { data: existing } = await supabase
+    .from('bank_account_balances')
+    .select('id')
+    .eq('connected_bank_id', connectedBankId)
+    .maybeSingle();
+
+  if (!existing) {
+    await supabase
+      .from('bank_account_balances')
+      .insert({
+        connected_bank_id: connectedBankId,
+        account_name: accountName,
+        current_balance: 0,
+        currency: 'USD',
+        as_of_date: new Date().toISOString(),
+        is_active: true,
+      });
+  }
+}
+
+function buildMappingLookups(mappings: BankColumnMapping[]): MappingLookups {
+  const find = (field: string) => mappings.find((m) => m.targetField === field)?.csvColumn;
+  return {
+    dateCol: find('transactionDate'),
+    postedDateCol: find('postedDate'),
+    descCol: find('description'),
+    amountCol: find('amount'),
+    debitCol: find('debitAmount'),
+    creditCol: find('creditAmount'),
+    balanceCol: find('balance'),
+  };
+}
+
+function parseCSVRow(
+  row: Record<string, string>,
+  lookups: MappingLookups,
+  uploadId: string,
+  index: number
+): { line: StatementLineInsert; amount: number | null } {
+  const errors: Record<string, string> = {};
+
+  const rawDate = (lookups.dateCol && row[lookups.dateCol])
+    || (lookups.postedDateCol && row[lookups.postedDateCol])
+    || '';
+  const parsedDate = tryParseDate(rawDate);
+  if (!parsedDate) errors.date = `Could not parse date: "${rawDate}"`;
+
+  const description = lookups.descCol ? (row[lookups.descCol] || '').trim() : '';
+  if (!description) errors.description = 'Missing description';
+
+  const amount = parseBankAmount(
+    lookups.amountCol ? row[lookups.amountCol] : undefined,
+    lookups.debitCol ? row[lookups.debitCol] : undefined,
+    lookups.creditCol ? row[lookups.creditCol] : undefined
+  );
+  if (amount === null) errors.amount = 'Could not parse amount';
+
+  const rawBalance = lookups.balanceCol ? row[lookups.balanceCol] : undefined;
+  const balance = rawBalance ? parseBankAmount(rawBalance) : null;
+
+  let txnType = 'unknown';
+  if (amount !== null) {
+    txnType = amount < 0 ? 'debit' : 'credit';
+  }
+
+  const hasError = Object.keys(errors).length > 0;
+
+  return {
+    line: {
+      statement_upload_id: uploadId,
+      transaction_date: parsedDate || '1970-01-01',
+      description: description || 'Unknown',
+      amount: amount ?? 0,
+      transaction_type: txnType,
+      balance,
+      line_sequence: index + 1,
+      confidence_score: 1,
+      has_validation_error: hasError,
+      validation_errors: hasError ? errors : null,
+      user_excluded: false,
+    },
+    amount,
+  };
+}
+
+async function insertLinesInChunks(lines: StatementLineInsert[]) {
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+    const chunk = lines.slice(i, i + CHUNK_SIZE);
+    const { error: insertError } = await supabase
+      .from('bank_statement_lines')
+      .insert(chunk);
+
+    if (insertError) {
+      if (import.meta.env.DEV) console.error('Error inserting statement lines chunk:', insertError);
+      throw insertError;
+    }
+  }
+}
+
+function findBestDuplicateMatch(
+  line: { transaction_date: string | null; description: string | null; amount: number | null },
+  existingTxns: Array<{ id: string; transaction_date: string | null; description: string | null; amount: number | null }>
+): { match: (typeof existingTxns)[0]; confidence: number } | null {
+  const matches = existingTxns.filter((txn) => {
+    const dateMatch = txn.transaction_date === line.transaction_date;
+    const amountDiff = Math.abs((txn.amount || 0) - (line.amount || 0));
+    return dateMatch && amountDiff < 0.01;
+  });
+
+  if (matches.length === 0) return null;
+
+  let bestMatch = matches[0];
+  let bestConfidence = 0.7;
+
+  for (const match of matches) {
+    const lineTokens = tokenize(line.description || '');
+    const txnTokens = tokenize(match.description || '');
+    const overlap = tokenOverlap(lineTokens, txnTokens);
+    const confidence = overlap > 0.5 ? 0.95 : 0.7;
+    if (confidence > bestConfidence) {
+      bestConfidence = confidence;
+      bestMatch = match;
+    }
+  }
+
+  return { match: bestMatch, confidence: bestConfidence };
+}
+
+/** Format date components as YYYY-MM-DD (timezone-safe) */
+function formatLocalDate(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
 
 /** Try multiple date formats and return YYYY-MM-DD or null */
 function tryParseDate(raw: string): string | null {
-  if (!raw || !raw.trim()) return null;
+  if (!raw?.trim()) return null;
   const str = raw.trim();
 
   // ISO format: 2024-01-15 or 2024-01-15T...
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    const d = new Date(str);
-    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return formatLocalDate(Number.parseInt(y, 10), Number.parseInt(m, 10), Number.parseInt(d, 10));
   }
 
   // MM/DD/YYYY or M/D/YYYY
-  const mdyMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  const mdyMatch = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(str);
   if (mdyMatch) {
     const [, m, d, y] = mdyMatch;
-    const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+    const month = Number.parseInt(m, 10);
+    const day = Number.parseInt(d, 10);
+    const year = Number.parseInt(y, 10);
+    const date = new Date(year, month - 1, day);
+    if (!Number.isNaN(date.getTime())) return formatLocalDate(year, month, day);
   }
 
   // MM/DD/YY or M/D/YY
-  const mdyShortMatch = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$/);
+  const mdyShortMatch = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$/.exec(str);
   if (mdyShortMatch) {
     const [, m, d, y] = mdyShortMatch;
-    const fullYear = parseInt(y) + (parseInt(y) > 50 ? 1900 : 2000);
-    const date = new Date(fullYear, parseInt(m) - 1, parseInt(d));
-    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+    const shortYear = Number.parseInt(y, 10);
+    const fullYear = shortYear > 50 ? 1900 + shortYear : 2000 + shortYear;
+    const month = Number.parseInt(m, 10);
+    const day = Number.parseInt(d, 10);
+    const date = new Date(fullYear, month - 1, day);
+    if (!Number.isNaN(date.getTime())) return formatLocalDate(fullYear, month, day);
   }
 
   // Try native Date parsing as fallback
   const fallback = new Date(str);
-  if (!isNaN(fallback.getTime())) return fallback.toISOString().split('T')[0];
+  if (!Number.isNaN(fallback.getTime())) {
+    return formatLocalDate(fallback.getFullYear(), fallback.getMonth() + 1, fallback.getDate());
+  }
 
   return null;
 }
@@ -959,7 +997,7 @@ function tokenize(str: string): Set<string> {
   return new Set(
     str
       .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
+      .replaceAll(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
       .filter((w) => w.length > 1)
   );

@@ -3,10 +3,12 @@
  * Uses keyword pattern matching and confidence scoring to auto-detect columns.
  */
 
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'none';
+
 export interface BankColumnMapping {
   csvColumn: string;
   targetField: string | null;
-  confidence: 'high' | 'medium' | 'low' | 'none';
+  confidence: ConfidenceLevel;
 }
 
 export interface BankMappingValidation {
@@ -111,10 +113,17 @@ const FIELD_PATTERNS: Record<string, KeywordPattern> = {
   },
 };
 
+function scoreToConfidence(score: number): ConfidenceLevel {
+  if (score >= 70) return 'high';
+  if (score >= 40) return 'medium';
+  if (score >= 20) return 'low';
+  return 'none';
+}
+
 function calculateConfidence(
   csvColumn: string,
   targetField: string
-): { score: number; confidence: 'high' | 'medium' | 'low' | 'none' } {
+): { score: number; confidence: ConfidenceLevel } {
   const pattern = FIELD_PATTERNS[targetField];
   if (!pattern) return { score: 0, confidence: 'none' };
 
@@ -139,10 +148,7 @@ function calculateConfidence(
     score = pattern.weight * 5;
   }
 
-  const confidence: 'high' | 'medium' | 'low' | 'none' =
-    score >= 70 ? 'high' : score >= 40 ? 'medium' : score >= 20 ? 'low' : 'none';
-
-  return { score, confidence };
+  return { score, confidence: scoreToConfidence(score) };
 }
 
 /**
@@ -160,7 +166,7 @@ export function suggestBankColumnMappings(
     let bestMatch: {
       field: string;
       score: number;
-      confidence: 'high' | 'medium' | 'low' | 'none';
+      confidence: ConfidenceLevel;
     } | null = null;
 
     Object.keys(FIELD_PATTERNS).forEach((targetField) => {
@@ -244,14 +250,15 @@ export function validateBankMappings(mappings: BankColumnMapping[]): BankMapping
 
   // Check for duplicate non-ignore mappings
   const nonIgnoreMappings = mappings.filter(
-    (m) => m.targetField && m.targetField !== 'ignore'
+    (m): m is BankColumnMapping & { targetField: string } =>
+      m.targetField !== null && m.targetField !== 'ignore'
   );
   const seen = new Set<string>();
   for (const m of nonIgnoreMappings) {
-    if (seen.has(m.targetField!)) {
+    if (seen.has(m.targetField)) {
       errors.push(`Duplicate mapping: "${m.targetField}" is mapped to multiple columns`);
     }
-    seen.add(m.targetField!);
+    seen.add(m.targetField);
   }
 
   return {
@@ -261,6 +268,35 @@ export function validateBankMappings(mappings: BankColumnMapping[]): BankMapping
   };
 }
 
+// Account mask patterns: ****1234, ...1234, x1234, ending in 1234
+const ACCOUNT_MASK_PATTERNS = [
+  /\*{2,}(\d{4})/,
+  /\.{3,}(\d{4})/,
+  /[xX]{2,}(\d{4})/,
+  /ending\s+in\s+(\d{4})/i,
+  /account\s+#?\s*\*+\s*(\d{4})/i,
+];
+
+const INSTITUTION_PATTERNS = [
+  { keywords: ['chase', 'jpmorgan'], name: 'Chase' },
+  { keywords: ['bank of america', 'bofa', 'bankofamerica'], name: 'Bank of America' },
+  { keywords: ['wells fargo', 'wellsfargo'], name: 'Wells Fargo' },
+  { keywords: ['citi', 'citibank'], name: 'Citibank' },
+  { keywords: ['capital one', 'capitalone'], name: 'Capital One' },
+  { keywords: ['us bank', 'usbank'], name: 'US Bank' },
+  { keywords: ['pnc'], name: 'PNC Bank' },
+  { keywords: ['td bank', 'tdbank'], name: 'TD Bank' },
+  { keywords: ['american express', 'amex'], name: 'American Express' },
+  { keywords: ['discover'], name: 'Discover' },
+];
+
+const ACCOUNT_TYPE_PATTERNS = [
+  { keywords: ['checking', 'dda'], type: 'checking' },
+  { keywords: ['savings', 'sav'], type: 'savings' },
+  { keywords: ['credit card', 'credit_card', 'cc'], type: 'credit_card' },
+  { keywords: ['money market', 'mma'], type: 'money_market' },
+];
+
 /**
  * Scan raw CSV lines and filename for account information.
  */
@@ -269,59 +305,27 @@ export function detectAccountInfoFromCSV(
   filename: string
 ): DetectedAccountInfo {
   const result: DetectedAccountInfo = {};
-
-  // Check first 10 lines for account info
   const linesToScan = rawLines.slice(0, 10).join('\n');
 
-  // Account mask patterns: ****1234, ...1234, x1234, ending in 1234
-  const maskPatterns = [
-    /\*{2,}(\d{4})/,
-    /\.{3,}(\d{4})/,
-    /[xX]{2,}(\d{4})/,
-    /ending\s+in\s+(\d{4})/i,
-    /account\s+#?\s*\*{0,}\s*(\d{4})/i,
-  ];
-
-  for (const pattern of maskPatterns) {
-    const match = linesToScan.match(pattern) || filename.match(pattern);
+  for (const pattern of ACCOUNT_MASK_PATTERNS) {
+    const match = pattern.exec(linesToScan) || pattern.exec(filename);
     if (match) {
       result.accountMask = match[1];
       break;
     }
   }
 
-  // Institution detection from filename or header lines
-  const institutions = [
-    { patterns: ['chase', 'jpmorgan'], name: 'Chase' },
-    { patterns: ['bank of america', 'bofa', 'bankofamerica'], name: 'Bank of America' },
-    { patterns: ['wells fargo', 'wellsfargo'], name: 'Wells Fargo' },
-    { patterns: ['citi', 'citibank'], name: 'Citibank' },
-    { patterns: ['capital one', 'capitalone'], name: 'Capital One' },
-    { patterns: ['us bank', 'usbank'], name: 'US Bank' },
-    { patterns: ['pnc'], name: 'PNC Bank' },
-    { patterns: ['td bank', 'tdbank'], name: 'TD Bank' },
-    { patterns: ['american express', 'amex'], name: 'American Express' },
-    { patterns: ['discover'], name: 'Discover' },
-  ];
+  const searchText = `${linesToScan} ${filename}`.toLowerCase();
 
-  const searchText = (linesToScan + ' ' + filename).toLowerCase();
-  for (const inst of institutions) {
-    if (inst.patterns.some((p) => searchText.includes(p))) {
+  for (const inst of INSTITUTION_PATTERNS) {
+    if (inst.keywords.some((kw) => searchText.includes(kw))) {
       result.institutionName = inst.name;
       break;
     }
   }
 
-  // Account type detection
-  const typePatterns = [
-    { patterns: ['checking', 'dda'], type: 'checking' },
-    { patterns: ['savings', 'sav'], type: 'savings' },
-    { patterns: ['credit card', 'credit_card', 'cc'], type: 'credit_card' },
-    { patterns: ['money market', 'mma'], type: 'money_market' },
-  ];
-
-  for (const tp of typePatterns) {
-    if (tp.patterns.some((p) => searchText.includes(p))) {
+  for (const tp of ACCOUNT_TYPE_PATTERNS) {
+    if (tp.keywords.some((kw) => searchText.includes(kw))) {
       result.accountType = tp.type;
       break;
     }
@@ -344,7 +348,7 @@ export function parseBankAmount(
   creditValue?: string
 ): number | null {
   // If we have a single amount value, parse it
-  if (value !== undefined && value !== null && value !== '') {
+  if (value != null && value !== '') {
     return parseSingleAmount(value);
   }
 
@@ -383,7 +387,7 @@ function parseSingleAmount(raw: string): number | null {
   }
 
   // Remove currency symbols and whitespace
-  str = str.replace(/[$€£¥₹\s]/g, '');
+  str = str.replaceAll(/[$€£¥₹\s]/g, '');
 
   // Handle explicit negative sign
   if (str.startsWith('-')) {
@@ -392,10 +396,10 @@ function parseSingleAmount(raw: string): number | null {
   }
 
   // Remove comma separators
-  str = str.replace(/,/g, '');
+  str = str.replaceAll(',', '');
 
-  const num = parseFloat(str);
-  if (isNaN(num)) return null;
+  const num = Number.parseFloat(str);
+  if (Number.isNaN(num)) return null;
 
   return isNegative ? -num : num;
 }

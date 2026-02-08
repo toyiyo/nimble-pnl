@@ -1,27 +1,27 @@
 import React, { useState } from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+
+import { FileText } from 'lucide-react';
+
 import { useBankStatementImport } from '@/hooks/useBankStatementImport';
-import { Upload, FileText } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+
 import { BankCSVUpload } from '@/components/BankCSVUpload';
 
-const CSV_EXCEL_EXTENSIONS = ['.csv', '.xlsx', '.xls'];
-const CSV_EXCEL_MIME_TYPES = [
+const CSV_EXCEL_EXTENSIONS = new Set(['.csv', '.xlsx', '.xls']);
+const CSV_EXCEL_MIME_TYPES = new Set([
   'text/csv',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
+]);
 
 function isCSVOrExcel(file: File): boolean {
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
-  return (
-    CSV_EXCEL_EXTENSIONS.includes(ext) ||
-    CSV_EXCEL_MIME_TYPES.includes(file.type)
-  );
+  return CSV_EXCEL_EXTENSIONS.has(ext) || CSV_EXCEL_MIME_TYPES.has(file.type);
 }
 
 interface BankStatementUploadProps {
@@ -37,6 +37,9 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Reset input so re-selecting the same file triggers onChange
+    event.target.value = '';
 
     // Route CSV/Excel files to the CSV upload flow
     if (isCSVOrExcel(file)) {

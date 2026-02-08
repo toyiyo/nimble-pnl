@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -32,8 +32,17 @@ import {
   BANK_TARGET_FIELDS,
   validateBankMappings,
   type BankColumnMapping,
+  type ConfidenceLevel,
   type DetectedAccountInfo,
 } from '@/utils/bankTransactionColumnMapping';
+
+const TABLE_HEAD_CLASS = 'text-[12px] font-medium text-muted-foreground uppercase tracking-wider';
+
+const CONFIDENCE_VARIANT_MAP: Record<Exclude<ConfidenceLevel, 'none'>, 'default' | 'outline' | 'secondary'> = {
+  high: 'default',
+  medium: 'outline',
+  low: 'secondary',
+};
 
 interface ConnectedBank {
   id: string;
@@ -76,18 +85,16 @@ export const BankTransactionColumnMappingDialog: React.FC<
   );
 
   // Update mappings when suggestions change
-  React.useEffect(() => {
+  useEffect(() => {
     setMappings(suggestedMappings);
   }, [suggestedMappings]);
 
   // Auto-select bank based on detected info
-  React.useEffect(() => {
-    if (detectedAccountInfo?.institutionName && connectedBanks.length > 0) {
-      const match = connectedBanks.find(
-        (b) =>
-          b.institution_name
-            .toLowerCase()
-            .includes(detectedAccountInfo.institutionName!.toLowerCase())
+  useEffect(() => {
+    const institutionName = detectedAccountInfo?.institutionName;
+    if (institutionName && connectedBanks.length > 0) {
+      const match = connectedBanks.find((b) =>
+        b.institution_name.toLowerCase().includes(institutionName.toLowerCase())
       );
       if (match) {
         setSelectedBankId(match.id);
@@ -166,7 +173,32 @@ export const BankTransactionColumnMappingDialog: React.FC<
                 </Alert>
               )}
 
-              {!isCreatingNew ? (
+              {isCreatingNew ? (
+                <div className="space-y-2">
+                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                    New Bank Account Name
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newBankName}
+                      onChange={(e) => setNewBankName(e.target.value)}
+                      placeholder="e.g., Chase Checking ****1234"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-10 rounded-lg text-[13px]"
+                      onClick={() => {
+                        setIsCreatingNew(false);
+                        setNewBankName('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -174,7 +206,7 @@ export const BankTransactionColumnMappingDialog: React.FC<
                     </Label>
                     <Select
                       value={selectedBankId}
-                      onValueChange={(v) => setSelectedBankId(v)}
+                      onValueChange={setSelectedBankId}
                     >
                       <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg mt-1.5">
                         <SelectValue placeholder="Choose a bank account..." />
@@ -200,31 +232,6 @@ export const BankTransactionColumnMappingDialog: React.FC<
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    New Bank Account Name
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newBankName}
-                      onChange={(e) => setNewBankName(e.target.value)}
-                      placeholder="e.g., Chase Checking ****1234"
-                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-10 rounded-lg text-[13px]"
-                      onClick={() => {
-                        setIsCreatingNew(false);
-                        setNewBankName('');
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
               )}
             </div>
           </div>
@@ -235,8 +242,8 @@ export const BankTransactionColumnMappingDialog: React.FC<
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 <ul className="list-disc list-inside space-y-1 text-[13px]">
-                  {validation.errors.map((error, idx) => (
-                    <li key={idx}>{error}</li>
+                  {validation.errors.map((error) => (
+                    <li key={error}>{error}</li>
                   ))}
                 </ul>
               </AlertDescription>
@@ -248,8 +255,8 @@ export const BankTransactionColumnMappingDialog: React.FC<
               <Info className="h-4 w-4" />
               <AlertDescription>
                 <ul className="list-disc list-inside space-y-1 text-[13px]">
-                  {validation.warnings.map((warning, idx) => (
-                    <li key={idx}>{warning}</li>
+                  {validation.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
                   ))}
                 </ul>
               </AlertDescription>
@@ -261,16 +268,16 @@ export const BankTransactionColumnMappingDialog: React.FC<
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider w-[180px]">
+                  <TableHead className={cn(TABLE_HEAD_CLASS, 'w-[180px]')}>
                     CSV Column
                   </TableHead>
-                  <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider w-[200px]">
+                  <TableHead className={cn(TABLE_HEAD_CLASS, 'w-[200px]')}>
                     Maps To
                   </TableHead>
-                  <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <TableHead className={TABLE_HEAD_CLASS}>
                     Sample Data
                   </TableHead>
-                  <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider w-[90px]">
+                  <TableHead className={cn(TABLE_HEAD_CLASS, 'w-[90px]')}>
                     Confidence
                   </TableHead>
                 </TableRow>
@@ -280,7 +287,7 @@ export const BankTransactionColumnMappingDialog: React.FC<
                   const sampleValues = sampleData
                     .slice(0, 3)
                     .map((row) => row[mapping.csvColumn])
-                    .filter((v) => v && v.trim());
+                    .filter((v) => v?.trim());
 
                   return (
                     <TableRow key={mapping.csvColumn}>
@@ -324,7 +331,7 @@ export const BankTransactionColumnMappingDialog: React.FC<
                           {sampleValues.length > 0 ? (
                             sampleValues.map((value, idx) => (
                               <Badge
-                                key={idx}
+                                key={`${mapping.csvColumn}-sample-${idx}`}
                                 variant="outline"
                                 className="font-mono text-[11px] bg-muted/30"
                               >
@@ -341,15 +348,13 @@ export const BankTransactionColumnMappingDialog: React.FC<
                         </div>
                       </TableCell>
                       <TableCell>
-                        {mapping.confidence !== 'none' ? (
+                        {mapping.confidence === 'none' ? (
+                          <Badge variant="secondary" className="text-[11px]">
+                            none
+                          </Badge>
+                        ) : (
                           <Badge
-                            variant={
-                              mapping.confidence === 'high'
-                                ? 'default'
-                                : mapping.confidence === 'medium'
-                                  ? 'outline'
-                                  : 'secondary'
-                            }
+                            variant={CONFIDENCE_VARIANT_MAP[mapping.confidence]}
                             className={cn(
                               'text-[11px]',
                               mapping.confidence === 'high' && 'bg-green-500',
@@ -361,10 +366,6 @@ export const BankTransactionColumnMappingDialog: React.FC<
                               <CheckCircle className="w-3 h-3 mr-1" />
                             )}
                             {mapping.confidence}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-[11px]">
-                            none
                           </Badge>
                         )}
                       </TableCell>

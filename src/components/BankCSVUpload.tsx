@@ -64,18 +64,13 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
       .eq('restaurant_id', selectedRestaurant.restaurant_id)
       .eq('status', 'connected');
 
-    setConnectedBanks((data as ConnectedBank[]) || []);
+    setConnectedBanks(data ?? []);
   };
 
   const parseFile = async () => {
-    const isExcel = /\.xlsx?$/i.test(file.name);
-
     try {
-      if (isExcel) {
-        await parseExcel();
-      } else {
-        await parseCSV();
-      }
+      const isExcel = /\.xlsx?$/i.test(file.name);
+      await (isExcel ? parseExcel() : parseCSV());
     } catch (error) {
       console.error('Error parsing file:', error);
       toast({
@@ -130,11 +125,11 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
     // Get raw rows for account detection
-    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as string[][];
+    const rawData = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' });
     const rawLines = rawData.slice(0, 10).map((row) => row.join(','));
 
     // Get data with headers
-    const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, string>[];
+    const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
 
     if (jsonData.length === 0) {
       toast({
@@ -183,12 +178,17 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
 
     // Create new bank if needed
     if (bankId === '__new__' && bankAccountName) {
+      if (!selectedRestaurant?.restaurant_id) {
+        toast({ title: 'Error', description: 'No restaurant selected', variant: 'destructive' });
+        onCancel();
+        return;
+      }
       setStagingMessage('Creating bank account...');
       const { data: newBank, error } = await supabase
         .from('connected_banks')
         .insert({
-          restaurant_id: selectedRestaurant!.restaurant_id,
-          stripe_financial_account_id: `csv_import_${Date.now()}`,
+          restaurant_id: selectedRestaurant.restaurant_id,
+          stripe_financial_account_id: `csv_import_${crypto.randomUUID()}`,
           institution_name: bankAccountName,
           status: 'connected',
           connected_at: new Date().toISOString(),
@@ -225,12 +225,20 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
 
     // Detect duplicates
     setStagingMessage('Checking for duplicates...');
-    const duplicateCount = await detectDuplicates(uploadId);
+    try {
+      const duplicateCount = await detectDuplicates(uploadId);
 
-    if (duplicateCount > 0) {
+      if (duplicateCount > 0) {
+        toast({
+          title: 'Duplicates Found',
+          description: `${duplicateCount} potential duplicate${duplicateCount === 1 ? '' : 's'} detected and auto-excluded. You can review them before importing.`,
+        });
+      }
+    } catch {
       toast({
-        title: 'Duplicates Found',
-        description: `${duplicateCount} potential duplicate${duplicateCount !== 1 ? 's' : ''} detected and auto-excluded. You can review them before importing.`,
+        title: 'Warning',
+        description: 'Could not check for duplicates. Please review transactions carefully.',
+        variant: 'destructive',
       });
     }
 
@@ -243,24 +251,17 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
     onCancel();
   };
 
-  // Parsing/staging states
-  if (step === 'parsing') {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-[14px]">Parsing {file.name}...</span>
-        </div>
-      </div>
-    );
-  }
+  // Parsing/staging loading states share identical layout
+  if (step === 'parsing' || step === 'staging') {
+    const message = step === 'parsing'
+      ? `Parsing ${file.name}...`
+      : stagingMessage || 'Processing...';
 
-  if (step === 'staging') {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="flex items-center gap-3 text-muted-foreground">
+      <div className="flex items-center justify-center p-12" aria-live="polite">
+        <div className="flex items-center gap-3 text-muted-foreground" role="status">
           <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="text-[14px]">{stagingMessage || 'Processing...'}</span>
+          <span className="text-[14px]">{message}</span>
         </div>
       </div>
     );

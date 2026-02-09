@@ -11,11 +11,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { ReactNode } from 'react';
 import { usePOSTips } from '@/hooks/usePOSTips';
 
-// Mock Supabase client
-const mockSupabase = {
+// Mock Supabase client - must use vi.hoisted() to avoid initialization order issues
+const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
   rpc: vi.fn(),
-};
+}));
 
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,

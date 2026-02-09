@@ -21,35 +21,35 @@ ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
 
 -- Create test restaurant
 INSERT INTO restaurants (id, name, address, phone) VALUES
-  ('test-rest-001', 'Test Restaurant', '123 Main St', '555-1234')
+  ('00000000-0000-0000-0000-000000000001'::uuid, 'Test Restaurant', '123 Main St', '555-1234')
 ON CONFLICT (id) DO UPDATE SET name = 'Test Restaurant';
 
 -- Create test user access
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
-  ('00000000-0000-0000-0000-000000000000', 'test-rest-001', 'owner')
+  ('00000000-0000-0000-0000-000000000000'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'owner')
 ON CONFLICT (user_id, restaurant_id) DO NOTHING;
 
 -- Create test chart of accounts entries
 INSERT INTO chart_of_accounts (id, restaurant_id, account_name, account_type, account_subtype) VALUES
-  ('coa-tip-name', 'test-rest-001', 'Tips Revenue', 'revenue', 'sales'),
-  ('coa-tip-subtype', 'test-rest-001', 'Other Income', 'revenue', 'other_income'),
-  ('coa-not-tip', 'test-rest-001', 'Food Sales', 'revenue', 'sales')
+  ('00000000-0000-0000-0000-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Tips Revenue', 'revenue', 'sales'),
+  ('00000000-0000-0000-0000-000000000011'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Other Income', 'revenue', 'other_income'),
+  ('00000000-0000-0000-0000-000000000012'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Food Sales', 'revenue', 'sales')
 ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
 
 -- Create test unified_sales entries
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date) VALUES
-  ('sale-001', 'test-rest-001', 'square', 'order-001', 'Tip Item 1', 1, 50.00, '2024-01-15'),
-  ('sale-002', 'test-rest-001', 'square', 'order-002', 'Tip Item 2', 1, 75.00, '2024-01-15'),
-  ('sale-003', 'test-rest-001', 'toast', 'order-003', 'Tip Item 3', 1, 100.00, '2024-01-16'),
-  ('sale-004', 'test-rest-001', 'square', 'order-004', 'Food Item', 1, 20.00, '2024-01-17')
+  ('00000000-0000-0000-0000-000000000020'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'square', 'order-001', 'Tip Item 1', 1, 50.00, '2024-01-15'),
+  ('00000000-0000-0000-0000-000000000021'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'square', 'order-002', 'Tip Item 2', 1, 75.00, '2024-01-15'),
+  ('00000000-0000-0000-0000-000000000022'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'toast', 'order-003', 'Tip Item 3', 1, 100.00, '2024-01-16'),
+  ('00000000-0000-0000-0000-000000000023'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'square', 'order-004', 'Food Item', 1, 20.00, '2024-01-17')
 ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price;
 
 -- Create test unified_sales_splits - categorize sales as tips
 INSERT INTO unified_sales_splits (sale_id, category_id, amount) VALUES
-  ('sale-001', 'coa-tip-name', 50.00),      -- Matched by account_name 'Tips Revenue'
-  ('sale-002', 'coa-tip-name', 75.00),      -- Matched by account_name 'Tips Revenue'
-  ('sale-003', 'coa-tip-name', 100.00),     -- Matched by account_name 'Tips Revenue'
-  ('sale-004', 'coa-not-tip', 20.00)        -- Not a tip
+  ('00000000-0000-0000-0000-000000000020'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 50.00),      -- Matched by account_name 'Tips Revenue'
+  ('00000000-0000-0000-0000-000000000021'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 75.00),      -- Matched by account_name 'Tips Revenue'
+  ('00000000-0000-0000-0000-000000000022'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 100.00),     -- Matched by account_name 'Tips Revenue'
+  ('00000000-0000-0000-0000-000000000023'::uuid, '00000000-0000-0000-0000-000000000012'::uuid, 20.00)        -- Not a tip
 ON CONFLICT (sale_id, category_id) DO UPDATE SET amount = EXCLUDED.amount;
 
 -- ============================================================
@@ -77,7 +77,7 @@ SELECT function_returns(
 
 SELECT ok(
   (SELECT COUNT(*) FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-17'::DATE
   )) = 2,
@@ -90,7 +90,7 @@ SELECT ok(
 
 SELECT is(
   (SELECT total_amount_cents FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-15'::DATE
   ) WHERE tip_date = '2024-01-15' AND pos_source = 'square'),
@@ -104,7 +104,7 @@ SELECT is(
 
 SELECT is(
   (SELECT transaction_count FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-15'::DATE
   ) WHERE tip_date = '2024-01-15' AND pos_source = 'square'),
@@ -118,7 +118,7 @@ SELECT is(
 
 SELECT is(
   (SELECT COUNT(*) FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-15'::DATE
   ))::INTEGER,
@@ -128,7 +128,7 @@ SELECT is(
 
 SELECT is(
   (SELECT COUNT(*) FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-16'::DATE,
     '2024-01-16'::DATE
   ))::INTEGER,
@@ -142,7 +142,7 @@ SELECT is(
 
 SELECT is(
   (SELECT pos_source FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-15'::DATE
   ) WHERE tip_date = '2024-01-15'),
@@ -152,7 +152,7 @@ SELECT is(
 
 SELECT is(
   (SELECT pos_source FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-16'::DATE,
     '2024-01-16'::DATE
   ) WHERE tip_date = '2024-01-16'),
@@ -166,7 +166,7 @@ SELECT is(
 
 SELECT is(
   (SELECT COUNT(*) FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-20'::DATE,
     '2024-01-25'::DATE
   ))::INTEGER,
@@ -178,16 +178,16 @@ SELECT is(
 -- TEST 8: Authorization check - should fail for non-member
 -- ============================================================
 
--- Create a different user who doesn't have access to test-rest-001
+-- Create a different user who doesn't have access to the test restaurant
 SET LOCAL "request.jwt.claims" TO '{"sub": "99999999-9999-9999-9999-999999999999"}';
 
 SELECT throws_ok(
   $$SELECT * FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-16'::DATE
   )$$,
-  'Access denied: User does not have access to restaurant test-rest-001',
+  'Access denied: User does not have access to restaurant 00000000-0000-0000-0000-000000000001',
   'Should raise error when user does not have access to restaurant'
 );
 
@@ -200,7 +200,7 @@ SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000000
 
 SELECT ok(
   (SELECT tip_date FROM get_pos_tips_by_date(
-    'test-rest-001',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     '2024-01-15'::DATE,
     '2024-01-16'::DATE
   ) LIMIT 1) = '2024-01-16'::DATE,

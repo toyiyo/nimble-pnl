@@ -1,12 +1,28 @@
 import React, { useState } from 'react';
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+
+import { FileText } from 'lucide-react';
+
 import { useBankStatementImport } from '@/hooks/useBankStatementImport';
-import { Upload, FileText } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+
+import { BankCSVUpload } from '@/components/BankCSVUpload';
+
+const CSV_EXCEL_EXTENSIONS = new Set(['.csv', '.xlsx', '.xls']);
+const CSV_EXCEL_MIME_TYPES = new Set([
+  'text/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
+
+function isCSVOrExcel(file: File): boolean {
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+  return CSV_EXCEL_EXTENSIONS.has(ext) || CSV_EXCEL_MIME_TYPES.has(file.type);
+}
 
 interface BankStatementUploadProps {
   onStatementProcessed: (statementId: string) => void;
@@ -14,6 +30,7 @@ interface BankStatementUploadProps {
 
 export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStatementProcessed }) => {
   const [processingStep, setProcessingStep] = useState<'upload' | 'process' | 'complete'>('upload');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   const { uploadBankStatement, processBankStatement, isUploading, isProcessing } = useBankStatementImport();
   const { toast } = useToast();
 
@@ -21,12 +38,22 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Reset input so re-selecting the same file triggers onChange
+    event.target.value = '';
+
+    // Route CSV/Excel files to the CSV upload flow
+    if (isCSVOrExcel(file)) {
+      setCsvFile(file);
+      return;
+    }
+
+    // PDF flow (existing)
     await processStatementFile(file);
   };
 
   const processStatementFile = async (file: File) => {
     setProcessingStep('upload');
-    
+
     // Upload the statement
     const statementData = await uploadBankStatement(file);
     if (!statementData) return;
@@ -38,10 +65,10 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
     if (!processResult) return;
 
     setProcessingStep('complete');
-    
+
     // Notify parent component
     onStatementProcessed(statementData.id);
-    
+
     toast({
       title: "Statement Ready",
       description: "Your bank statement has been processed and is ready for review",
@@ -68,6 +95,33 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
 
   const isProcessingActive = isUploading || isProcessing;
 
+  // CSV/Excel flow
+  if (csvFile) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Import Bank Transactions
+          </CardTitle>
+          <CardDescription>
+            Map columns from your CSV/Excel file to import transactions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BankCSVUpload
+            file={csvFile}
+            onStatementStaged={(statementId) => {
+              setCsvFile(null);
+              onStatementProcessed(statementId);
+            }}
+            onCancel={() => setCsvFile(null)}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
@@ -76,7 +130,7 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
           Upload Bank Statement
         </CardTitle>
         <CardDescription>
-          Upload a PDF bank statement to automatically import transactions to your banking records
+          Upload a bank statement (PDF, CSV, or Excel) to import transactions to your banking records
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -93,17 +147,17 @@ export const BankStatementUpload: React.FC<BankStatementUploadProps> = ({ onStat
 
         {/* File upload */}
         <div className="space-y-2">
-          <Label htmlFor="statement-file">Select Bank Statement PDF</Label>
+          <Label htmlFor="statement-file">Select Bank Statement</Label>
           <Input
             id="statement-file"
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,.csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={handleFileUpload}
             disabled={isProcessingActive}
             className="cursor-pointer"
           />
           <p className="text-sm text-muted-foreground">
-            Supports PDF files only, up to 5MB. For larger files, please split into multiple statements.
+            Supports PDF, CSV, and Excel files. PDFs up to 5MB — for larger files, split into multiple statements.
           </p>
         </div>
 

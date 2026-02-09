@@ -174,21 +174,39 @@ export function useApplyRules() {
 
   return useMutation({
     mutationFn: async (restaurantId: string) => {
-      const { data, error } = await supabase.functions.invoke(
-        'apply-categorization-rules',
-        {
-          body: { restaurantId }
-        }
-      );
+      // Call database RPC directly instead of Edge Function to avoid execution limits
+      // This hook uses the old supplier_categorization_rules table
+      // For new features, use useApplyRulesV2 instead
+      
+      let bankResults = { applied_count: 0, total_count: 0 };
 
-      if (error) throw error;
-      return data;
+      // Only apply rules to bank transactions for the old system
+      const { data: bankData, error: bankError } = await supabase
+        .rpc('apply_rules_to_bank_transactions', {
+          p_restaurant_id: restaurantId,
+          p_batch_limit: 100
+        });
+
+      if (bankError) {
+        throw new Error(`Failed to apply rules to bank transactions: ${bankError.message}`);
+      }
+
+      if (bankData && bankData.length > 0) {
+        bankResults = bankData[0];
+      }
+
+      const message = `Applied rules to ${bankResults.applied_count} of ${bankResults.total_count} bank transactions`;
+
+      return {
+        success: true,
+        message,
+        count: bankResults.applied_count
+      };
     },
     onSuccess: (data) => {
-      const result = data as { message: string; count: number };
       toast({
         title: "Rules applied",
-        description: result?.message || 'Categorization rules applied successfully',
+        description: data.message || 'Categorization rules applied successfully',
       });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });

@@ -329,26 +329,75 @@ export function useApplyRulesV2() {
       applyTo?: 'bank_transactions' | 'pos_sales' | 'both';
       batchLimit?: number;
     }) => {
-      const { data, error } = await supabase.functions.invoke(
-        'apply-categorization-rules',
-        {
-          body: { restaurantId, applyTo, batchLimit }
-        }
-      );
+      // Call database RPC directly instead of Edge Function to avoid execution limits
+      let bankResults = { applied_count: 0, total_count: 0 };
+      let posResults = { applied_count: 0, total_count: 0 };
 
-      if (error) throw error;
-      return data;
+      // Apply rules to bank transactions
+      if (applyTo === 'bank_transactions' || applyTo === 'both') {
+        const { data: bankData, error: bankError } = await (supabase as any)
+          .rpc('apply_rules_to_bank_transactions', {
+            p_restaurant_id: restaurantId,
+            p_batch_limit: batchLimit
+          });
+
+        if (bankError) {
+          throw new Error(`Failed to apply rules to bank transactions: ${bankError.message}`);
+        }
+
+        if (bankData && bankData.length > 0) {
+          bankResults = bankData[0];
+        }
+      }
+
+      // Apply rules to POS sales
+      if (applyTo === 'pos_sales' || applyTo === 'both') {
+        const { data: posData, error: posError } = await (supabase as any)
+          .rpc('apply_rules_to_pos_sales', {
+            p_restaurant_id: restaurantId,
+            p_batch_limit: batchLimit
+          });
+
+        if (posError) {
+          throw new Error(`Failed to apply rules to POS sales: ${posError.message}`);
+        }
+
+        if (posData && posData.length > 0) {
+          posResults = posData[0];
+        }
+      }
+
+      const totalApplied = bankResults.applied_count + posResults.applied_count;
+      const totalProcessed = bankResults.total_count + posResults.total_count;
+
+      let message = '';
+      if (applyTo === 'both') {
+        message = `Applied rules to ${totalApplied} of ${totalProcessed} transactions (${bankResults.applied_count} bank, ${posResults.applied_count} POS)`;
+      } else if (applyTo === 'bank_transactions') {
+        message = `Applied rules to ${bankResults.applied_count} of ${bankResults.total_count} bank transactions`;
+      } else {
+        message = `Applied rules to ${posResults.applied_count} of ${posResults.total_count} POS sales`;
+      }
+
+      return {
+        success: true,
+        message,
+        count: totalApplied,
+        details: {
+          bank: bankResults,
+          pos: posResults
+        }
+      };
     },
     onSuccess: (data, variables) => {
-      const result = data as { message: string; count: number; details?: any };
-      const batchLimit = variables.batchLimit || 100; // Fallback to 100 if not provided
+      const batchLimit = variables.batchLimit || 100;
       
-      let description = result?.message || 'Categorization rules applied successfully';
+      let description = data.message || 'Categorization rules applied successfully';
       
       // Add note if processing was limited
-      if (result?.details) {
-        const bank = result.details.bank;
-        const pos = result.details.pos;
+      if (data.details) {
+        const bank = data.details.bank;
+        const pos = data.details.pos;
         const totalProcessed = (bank?.total_count || 0) + (pos?.total_count || 0);
         
         if (totalProcessed >= batchLimit) {

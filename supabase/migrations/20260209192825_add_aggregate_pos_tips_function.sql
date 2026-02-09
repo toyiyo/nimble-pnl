@@ -20,9 +20,20 @@ RETURNS TABLE (
   pos_source TEXT
 ) 
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 AS $$
 BEGIN
+  -- Authorization check: Verify the caller has access to this restaurant
+  -- RLS policies on unified_sales will enforce this, but we add an explicit check
+  -- to fail fast if the user doesn't have access to the restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+    AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Access denied: User does not have access to restaurant %', p_restaurant_id;
+  END IF;
+
   RETURN QUERY
   SELECT 
     us.sale_date AS tip_date,

@@ -6,16 +6,280 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React, { ReactNode } from 'react';
+import { usePOSTips } from '@/hooks/usePOSTips';
 
-// Mock data types based on the actual interfaces
-interface POSTipData {
-  date: string;
-  totalTipsCents: number;
-  transactionCount: number;
-  source: 'square' | 'clover' | 'toast' | 'shift4' | 'employee_tips' | 'pos';
-}
+// Mock Supabase client
+const mockSupabase = {
+  from: vi.fn(),
+  rpc: vi.fn(),
+};
 
-describe('POS Tips Aggregation', () => {
+vi.mock('@/integrations/supabase/client', () => ({
+  supabase: mockSupabase,
+}));
+
+// Helper to create React Query wrapper
+const createWrapper = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return React.createElement(QueryClientProvider, { client: queryClient }, children);
+  };
+};
+
+describe('usePOSTips Hook - Integration Tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should merge employee tips and POS tips by date correctly', async () => {
+    // Mock employee tips response
+    const mockEmployeeTips = [
+      { recorded_at: '2024-01-15T10:00:00Z', tip_amount: 5000, tip_source: 'cash' },
+      { recorded_at: '2024-01-15T14:00:00Z', tip_amount: 3000, tip_source: 'cash' },
+    ];
+
+    // Mock POS tips response
+    const mockPOSTips = [
+      { tip_date: '2024-01-15', total_amount_cents: 15000, transaction_count: 12, pos_source: 'square' },
+      { tip_date: '2024-01-16', total_amount_cents: 18500, transaction_count: 15, pos_source: 'toast' },
+    ];
+
+    // Setup mock chains
+    const mockSelectChain = {
+      eq: vi.fn().mockReturnThis(),
+      gte: vi.fn().mockReturnThis(),
+      lte: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: mockEmployeeTips, error: null }),
+    };
+
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue(mockSelectChain),
+    });
+
+    mockSupabase.rpc.mockResolvedValue({ data: mockPOSTips, error: null });
+
+    // Render hook
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-16'),
+      { wrapper: createWrapper() }
+    );
+
+    // Wait for data to load
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Assertions
+    expect(result.current.data).toBeDefined();
+    expect(result.current.data).toHaveLength(2);
+
+    // Check 2024-01-15 (merged from employee + POS)
+    const jan15 = result.current.data?.find(d => d.date === '2024-01-15');
+    expect(jan15).toBeDefined();
+    expect(jan15?.totalTipsCents).toBe(23000); // 5000 + 3000 + 15000
+    expect(jan15?.transactionCount).toBe(14); // 2 + 12
+    expect(jan15?.source).toBe('combined'); // Different sources merged
+
+    // Check 2024-01-16 (only POS)
+    const jan16 = result.current.data?.find(d => d.date === '2024-01-16');
+    expect(jan16).toBeDefined();
+    expect(jan16?.totalTipsCents).toBe(18500);
+    expect(jan16?.transactionCount).toBe(15);
+    expect(jan16?.source).toBe('toast');
+  });
+
+  it('should handle empty employee tips gracefully', async () => {
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: [], error: null }),
+      }),
+    });
+
+    mockSupabase.rpc.mockResolvedValue({
+      data: [{ tip_date: '2024-01-15', total_amount_cents: 10000, transaction_count: 5, pos_source: 'square' }],
+      error: null,
+    });
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-15'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data?.[0].totalTipsCents).toBe(10000);
+    expect(result.current.data?.[0].source).toBe('square');
+  });
+
+  it('should handle empty POS tips gracefully', async () => {
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({
+          data: [{ recorded_at: '2024-01-15T10:00:00Z', tip_amount: 5000, tip_source: 'cash' }],
+          error: null,
+        }),
+      }),
+    });
+
+    mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-15'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data?.[0].totalTipsCents).toBe(5000);
+    expect(result.current.data?.[0].source).toBe('cash');
+  });
+
+  it('should handle employee tips error and still return POS tips', async () => {
+    // Employee tips fails
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: null, error: { message: 'Database error' } }),
+      }),
+    });
+
+    // POS tips succeeds
+    mockSupabase.rpc.mockResolvedValue({
+      data: [{ tip_date: '2024-01-15', total_amount_cents: 10000, transaction_count: 5, pos_source: 'square' }],
+      error: null,
+    });
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-15'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Should still have POS data
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data?.[0].totalTipsCents).toBe(10000);
+  });
+
+  it('should handle POS tips error and still return employee tips', async () => {
+    // Employee tips succeeds
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({
+          data: [{ recorded_at: '2024-01-15T10:00:00Z', tip_amount: 5000, tip_source: 'cash' }],
+          error: null,
+        }),
+      }),
+    });
+
+    // POS tips fails
+    mockSupabase.rpc.mockResolvedValue({ data: null, error: { message: 'RPC error' } });
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-15'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // Should still have employee data
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.data?.[0].totalTipsCents).toBe(5000);
+  });
+
+  it('should return empty array when both sources fail', async () => {
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({ data: null, error: { message: 'Error' } }),
+      }),
+    });
+
+    mockSupabase.rpc.mockResolvedValue({ data: null, error: { message: 'Error' } });
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-15'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('should return empty array when restaurantId is null', async () => {
+    const { result } = renderHook(
+      () => usePOSTips(null, '2024-01-15', '2024-01-15'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toEqual([]);
+    // Should not call any Supabase methods
+    expect(mockSupabase.from).not.toHaveBeenCalled();
+    expect(mockSupabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('should preserve source when only one source contributes to a date', async () => {
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        order: vi.fn().mockResolvedValue({
+          data: [{ recorded_at: '2024-01-15T10:00:00Z', tip_amount: 5000, tip_source: 'cash' }],
+          error: null,
+        }),
+      }),
+    });
+
+    mockSupabase.rpc.mockResolvedValue({
+      data: [{ tip_date: '2024-01-16', total_amount_cents: 10000, transaction_count: 5, pos_source: 'square' }],
+      error: null,
+    });
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-16'),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).toHaveLength(2);
+    
+    const jan15 = result.current.data?.find(d => d.date === '2024-01-15');
+    expect(jan15?.source).toBe('cash'); // Only employee tips
+
+    const jan16 = result.current.data?.find(d => d.date === '2024-01-16');
+    expect(jan16?.source).toBe('square'); // Only POS tips
+  });
+});
+
+// Keep existing logic tests for documentation purposes
+describe('POS Tips Aggregation - Logic Tests', () => {
   describe('get_pos_tips_by_date SQL function behavior', () => {
     it('should aggregate tips by date from unified_sales_splits', () => {
       // Mock the expected behavior of the SQL function

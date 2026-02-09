@@ -6,7 +6,7 @@ export interface POSTipData {
   date: string;
   totalTipsCents: number;
   transactionCount: number;
-  source: 'square' | 'clover' | 'toast' | 'shift4' | 'employee_tips' | 'pos';
+  source: 'square' | 'clover' | 'toast' | 'shift4' | 'employee_tips' | 'pos' | 'combined';
 }
 
 /**
@@ -44,7 +44,7 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
       }
 
       // Aggregate tips by date
-      const tipsByDate = new Map<string, { totalTipsCents: number; count: number; source: string }>();
+      const tipsByDate = new Map<string, { totalTipsCents: number; count: number; source: POSTipData['source'] }>();
       
       // Add employee-declared tips
       if (employeeTips && employeeTips.length > 0) {
@@ -55,11 +55,16 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
           if (existing) {
             existing.totalTipsCents += tip.tip_amount || 0;
             existing.count += 1;
+            // If sources differ, mark as combined
+            const tipSource = (tip.tip_source || 'employee_tips') as POSTipData['source'];
+            if (existing.source !== tipSource) {
+              existing.source = 'combined';
+            }
           } else {
             tipsByDate.set(date, {
               totalTipsCents: tip.tip_amount || 0,
               count: 1,
-              source: tip.tip_source || 'employee_tips',
+              source: (tip.tip_source || 'employee_tips') as POSTipData['source'],
             });
           }
         }
@@ -74,11 +79,16 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
           if (existing) {
             existing.totalTipsCents += tip.total_amount_cents || 0;
             existing.count += tip.transaction_count || 0;
+            // If sources differ, mark as combined
+            const tipSource = (tip.pos_source || 'pos') as POSTipData['source'];
+            if (existing.source !== tipSource) {
+              existing.source = 'combined';
+            }
           } else {
             tipsByDate.set(date, {
               totalTipsCents: tip.total_amount_cents || 0,
               count: tip.transaction_count || 0,
-              source: tip.pos_source || 'pos',
+              source: (tip.pos_source || 'pos') as POSTipData['source'],
             });
           }
         }
@@ -91,7 +101,7 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
           date,
           totalTipsCents: value.totalTipsCents,
           transactionCount: value.count,
-          source: value.source as any,
+          source: value.source,
         });
       });
 

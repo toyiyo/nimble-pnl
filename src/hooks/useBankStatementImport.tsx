@@ -701,17 +701,26 @@ export const useBankStatementImport = () => {
 
   const recalculateBankBalance = async (connectedBankId: string) => {
     try {
-      const { data: allTransactions, error: transError } = await supabase
-        .from('bank_transactions')
-        .select('amount')
-        .eq('connected_bank_id', connectedBankId);
+      // Fetch the bank's name and all transactions in parallel
+      const [bankResult, txnResult] = await Promise.all([
+        supabase
+          .from('connected_banks')
+          .select('institution_name')
+          .eq('id', connectedBankId)
+          .single(),
+        supabase
+          .from('bank_transactions')
+          .select('amount')
+          .eq('connected_bank_id', connectedBankId),
+      ]);
 
-      if (transError) throw transError;
+      if (txnResult.error) throw txnResult.error;
 
-      const totalBalance = allTransactions?.reduce((sum, t) => sum + t.amount, 0) || 0;
+      const accountName = bankResult.data?.institution_name || 'Unknown Account';
+      const totalBalance = txnResult.data?.reduce((sum, t) => sum + t.amount, 0) || 0;
 
       // Ensure balance row exists, then update with calculated total
-      await ensureBankBalanceExists(connectedBankId, 'Manual Upload Account');
+      await ensureBankBalanceExists(connectedBankId, accountName);
       await supabase
         .from('bank_account_balances')
         .update({
@@ -748,9 +757,9 @@ export const useBankStatementImport = () => {
 
 interface StatementLineInsert {
   statement_upload_id: string;
-  transaction_date: string;
+  transaction_date: string | null;
   description: string;
-  amount: number;
+  amount: number | null;
   transaction_type: string;
   balance: number | null;
   line_sequence: number;
@@ -885,9 +894,9 @@ function parseCSVRow(
   return {
     line: {
       statement_upload_id: uploadId,
-      transaction_date: parsedDate || '1970-01-01',
+      transaction_date: parsedDate,
       description: description || 'Unknown',
-      amount: amount ?? 0,
+      amount: amount,
       transaction_type: txnType,
       balance,
       line_sequence: index + 1,

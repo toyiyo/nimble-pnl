@@ -1,5 +1,30 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { generateTestUser, signUpAndCreateRestaurant, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+
+// Helper to update a user's role via the database and reload
+async function setUserRole(page: Page, role: string): Promise<void> {
+  await exposeSupabaseHelpers(page);
+  await page.evaluate(
+    async ({ role }) => {
+      const user = await (window as any).__getAuthUser();
+      if (!user?.id) throw new Error('No user session');
+
+      const restaurantId = await (window as any).__getRestaurantId(user.id);
+      if (!restaurantId) throw new Error('No restaurant');
+
+      const { error } = await (window as any).__supabase
+        .from('user_restaurants')
+        .update({ role })
+        .eq('user_id', user.id)
+        .eq('restaurant_id', restaurantId);
+
+      if (error) throw new Error(`Failed to update role: ${error.message}`);
+    },
+    { role }
+  );
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+}
 
 // ============================================================
 // COLLABORATOR ROLE ROUTING AND ACCESS TESTS
@@ -39,51 +64,28 @@ const collaboratorRoles = [
 ];
 
 test.describe('Collaborator Role Routing and Access', () => {
+  test.describe.configure({ mode: 'serial' });
+
   for (const { role, landing, allowed, forbidden } of collaboratorRoles) {
     test(`should redirect ${role} to landing (${landing}) and restrict access`, async ({ page }) => {
       const user = generateTestUser();
       await signUpAndCreateRestaurant(page, user);
 
-      // Update user role to collaborator using database
-      await exposeSupabaseHelpers(page);
-      await page.evaluate(
-        async ({ role }) => {
-          const user = await (window as any).__getAuthUser();
-          if (!user?.id) throw new Error('No user session');
-
-          const restaurantId = await (window as any).__getRestaurantId(user.id);
-          if (!restaurantId) throw new Error('No restaurant');
-
-          // Update the user's role in user_restaurants
-          const { error } = await (window as any).__supabase
-            .from('user_restaurants')
-            .update({ role })
-            .eq('user_id', user.id)
-            .eq('restaurant_id', restaurantId);
-
-          if (error) {
-            throw new Error(`Failed to update role: ${error.message}`);
-          }
-        },
-        { role }
-      );
-
-      // Reload page to apply role change
-      await page.reload();
+      await setUserRole(page, role);
 
       // Should redirect to landing page from dashboard
       await expect(page).toHaveURL(landing, { timeout: 10000 });
 
       // Allowed paths should be accessible
       for (const path of allowed) {
-        await page.goto(path);
+        await page.goto(path, { waitUntil: 'networkidle' });
         // Should stay on the allowed path, not redirect to auth or elsewhere
         await expect(page).toHaveURL(path, { timeout: 5000 });
       }
 
       // Forbidden paths should redirect to landing
       for (const path of forbidden) {
-        await page.goto(path);
+        await page.goto(path, { waitUntil: 'networkidle' });
         // Should redirect to the collaborator's landing page
         await expect(page).toHaveURL(landing, { timeout: 5000 });
       }
@@ -97,6 +99,8 @@ test.describe('Collaborator Role Routing and Access', () => {
 // ============================================================
 
 test.describe('Existing Role Routing - Regression Prevention', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test('owner should have access to dashboard and all routes', async ({ page }) => {
     const user = generateTestUser('owner');
     await signUpAndCreateRestaurant(page, user);
@@ -120,7 +124,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     ];
 
     for (const route of ownerRoutes) {
-      await page.goto(route);
+      await page.goto(route, { waitUntil: 'networkidle' });
       await expect(page).not.toHaveURL('/auth');
       // Owner should stay on the requested route (has full access)
       await expect(page).toHaveURL(route);
@@ -131,24 +135,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const user = generateTestUser('manager');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'manager' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
+    await setUserRole(page, 'manager');
 
     // Manager should stay on dashboard
     await expect(page).toHaveURL('/');
@@ -157,7 +144,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const managerRoutes = ['/', '/team', '/employees', '/transactions', '/inventory', '/recipes', '/scheduling'];
 
     for (const route of managerRoutes) {
-      await page.goto(route);
+      await page.goto(route, { waitUntil: 'networkidle' });
       await expect(page).not.toHaveURL('/auth');
     }
   });
@@ -166,24 +153,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const user = generateTestUser('chef');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'chef' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
+    await setUserRole(page, 'chef');
 
     // Chef (internal) should stay on dashboard
     await expect(page).toHaveURL('/');
@@ -192,7 +162,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const chefRoutes = ['/', '/recipes', '/prep-recipes', '/batches', '/inventory'];
 
     for (const route of chefRoutes) {
-      await page.goto(route);
+      await page.goto(route, { waitUntil: 'networkidle' });
       await expect(page).not.toHaveURL('/auth');
     }
   });
@@ -201,27 +171,10 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const user = generateTestUser('staff');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'staff' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
+    await setUserRole(page, 'staff');
 
     // Staff should be redirected to employee clock
-    await expect(page).toHaveURL('/employee/clock');
+    await expect(page).toHaveURL('/employee/clock', { timeout: 10000 });
 
     // Staff should access employee routes
     const staffAllowed = [
@@ -234,7 +187,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     ];
 
     for (const route of staffAllowed) {
-      await page.goto(route);
+      await page.goto(route, { waitUntil: 'networkidle' });
       await expect(page).not.toHaveURL('/auth');
     }
 
@@ -242,9 +195,9 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const staffForbidden = ['/', '/team', '/payroll', '/banking', '/transactions'];
 
     for (const route of staffForbidden) {
-      await page.goto(route);
+      await page.goto(route, { waitUntil: 'networkidle' });
       // Should redirect to employee clock
-      await expect(page).toHaveURL('/employee/clock');
+      await expect(page).toHaveURL('/employee/clock', { timeout: 5000 });
     }
   });
 
@@ -252,35 +205,18 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const user = generateTestUser('kiosk');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'kiosk' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
+    await setUserRole(page, 'kiosk');
 
     // Kiosk should be redirected to kiosk route
-    await expect(page).toHaveURL('/kiosk');
+    await expect(page).toHaveURL('/kiosk', { timeout: 10000 });
 
     // Kiosk should NOT access any other routes
     const kioskForbidden = ['/', '/team', '/employee/clock', '/settings'];
 
     for (const route of kioskForbidden) {
-      await page.goto(route);
+      await page.goto(route, { waitUntil: 'networkidle' });
       // Should always redirect back to kiosk
-      await expect(page).toHaveURL('/kiosk');
+      await expect(page).toHaveURL('/kiosk', { timeout: 5000 });
     }
   });
 });
@@ -290,29 +226,14 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
 // ============================================================
 
 test.describe('Sidebar Navigation Visibility', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test('collaborator_accountant sees only financial navigation', async ({ page }) => {
     const user = generateTestUser('collab-acct');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'collaborator_accountant' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
-    await expect(page).toHaveURL('/transactions');
+    await setUserRole(page, 'collaborator_accountant');
+    await expect(page).toHaveURL('/transactions', { timeout: 10000 });
 
     // Check sidebar contains financial items
     const sidebar = page.locator('aside[role="navigation"], [data-sidebar]').first();
@@ -332,25 +253,8 @@ test.describe('Sidebar Navigation Visibility', () => {
     const user = generateTestUser('collab-inv');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'collaborator_inventory' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
-    await expect(page).toHaveURL('/inventory');
+    await setUserRole(page, 'collaborator_inventory');
+    await expect(page).toHaveURL('/inventory', { timeout: 10000 });
 
     const sidebar = page.locator('aside[role="navigation"], [data-sidebar]').first();
     await expect(sidebar).toBeVisible();
@@ -368,25 +272,8 @@ test.describe('Sidebar Navigation Visibility', () => {
     const user = generateTestUser('collab-chef');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'collaborator_chef' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
-    await expect(page).toHaveURL('/recipes');
+    await setUserRole(page, 'collaborator_chef');
+    await expect(page).toHaveURL('/recipes', { timeout: 10000 });
 
     const sidebar = page.locator('aside[role="navigation"], [data-sidebar]').first();
     await expect(sidebar).toBeVisible();
@@ -406,16 +293,16 @@ test.describe('Sidebar Navigation Visibility', () => {
 // ============================================================
 
 test.describe('Team Page Access Control', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test('owner can access Team page', async ({ page }) => {
     const user = generateTestUser('owner-team');
     await signUpAndCreateRestaurant(page, user);
 
-    await page.goto('/team');
+    await page.goto('/team', { waitUntil: 'networkidle' });
     await expect(page).toHaveURL('/team');
 
     // Wait for page to load and verify we're on Team page (URL check is sufficient)
-    // The page may have loading states, so just verify we stayed on /team
-    await page.waitForLoadState('networkidle');
     await expect(page).toHaveURL('/team');
   });
 
@@ -423,30 +310,13 @@ test.describe('Team Page Access Control', () => {
     const user = generateTestUser('collab-team');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'collaborator_accountant' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
+    await setUserRole(page, 'collaborator_accountant');
 
     // Try to access team page
-    await page.goto('/team');
+    await page.goto('/team', { waitUntil: 'networkidle' });
 
     // Should be redirected to collaborator landing page, not team
-    await expect(page).toHaveURL('/transactions');
+    await expect(page).toHaveURL('/transactions', { timeout: 5000 });
   });
 });
 
@@ -455,11 +325,13 @@ test.describe('Team Page Access Control', () => {
 // ============================================================
 
 test.describe('Dashboard Access Control', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test('owner lands on dashboard', async ({ page }) => {
     const user = generateTestUser('owner-dash');
     await signUpAndCreateRestaurant(page, user);
 
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'networkidle' });
     await expect(page).toHaveURL('/');
   });
 
@@ -467,29 +339,12 @@ test.describe('Dashboard Access Control', () => {
     const user = generateTestUser('collab-dash');
     await signUpAndCreateRestaurant(page, user);
 
-    await exposeSupabaseHelpers(page);
-    await page.evaluate(async () => {
-      const user = await (window as any).__getAuthUser();
-      if (!user?.id) throw new Error('No user session');
-
-      const restaurantId = await (window as any).__getRestaurantId(user.id);
-      if (!restaurantId) throw new Error('No restaurant');
-
-      const { error } = await (window as any).__supabase
-        .from('user_restaurants')
-        .update({ role: 'collaborator_accountant' })
-        .eq('user_id', user.id)
-        .eq('restaurant_id', restaurantId);
-
-      if (error) throw new Error(`Failed to update role: ${error.message}`);
-    });
-
-    await page.reload();
+    await setUserRole(page, 'collaborator_accountant');
 
     // Try to access dashboard
-    await page.goto('/');
+    await page.goto('/', { waitUntil: 'networkidle' });
 
     // Should be redirected to collaborator landing page
-    await expect(page).toHaveURL('/transactions');
+    await expect(page).toHaveURL('/transactions', { timeout: 5000 });
   });
 });

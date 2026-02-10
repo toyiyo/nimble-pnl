@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useCustomers } from "@/hooks/useCustomers";
-import { useInvoices, type InvoiceLineItem } from "@/hooks/useInvoices";
+import { useInvoices, useInvoice, type InvoiceLineItem } from "@/hooks/useInvoices";
 import { useStripeConnect } from "@/hooks/useStripeConnect";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,10 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, Plus, Trash2, ArrowLeft, CreditCard } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { FileText, Plus, Trash2, ArrowLeft, UserPlus } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { computeProcessingFeeCents } from "@/lib/invoiceUtils";
+import { CustomerFormDialog } from "@/components/invoicing/CustomerFormDialog";
 
 export default function InvoiceForm() {
   type LocalLineItem = InvoiceLineItem & { localId: string };
@@ -31,11 +33,15 @@ export default function InvoiceForm() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { id: editInvoiceId } = useParams<{ id: string }>();
   const { selectedRestaurant } = useRestaurantContext();
   const { customers } = useCustomers(selectedRestaurant?.restaurant_id || null);
-  const { createInvoice, isCreating, createdInvoice } = useInvoices(selectedRestaurant?.restaurant_id || null);
-  const { isReadyForInvoicing, createAccount, isCreatingAccount, openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
-  
+  const { createInvoice, createLocalDraft, updateInvoice, isCreating, isCreatingDraft, isUpdating, createdInvoice, createdDraft } = useInvoices(selectedRestaurant?.restaurant_id || null);
+  const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { data: existingInvoice } = useInvoice(editInvoiceId || null);
+
+  const isEditMode = !!editInvoiceId && !!existingInvoice;
+
   const [customerId, setCustomerId] = useState(searchParams.get("customer") || "");
   const [dueDate, setDueDate] = useState("");
   const [description, setDescription] = useState("");
@@ -45,6 +51,7 @@ export default function InvoiceForm() {
   const [lineItems, setLineItems] = useState<LocalLineItem[]>([
     { localId: makeId(), description: "", quantity: 1, unit_amount: 0 },
   ]);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
 
   // Navigate to invoice detail page when invoice is created
   useEffect(() => {
@@ -53,60 +60,38 @@ export default function InvoiceForm() {
     }
   }, [createdInvoice, navigate]);
 
-  // Check if Stripe Connect is ready for invoicing
-  if (!isReadyForInvoicing) {
-    return (
-      <div className="space-y-6">
-        {/* Header */}
-        <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
-         <CardHeader>
-           <div className="flex items-center justify-between">
-             <div className="flex items-center gap-3">
-                <FileText className="h-6 w-6 text-primary" />
-                <div>
-                  <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                    Create Invoice
-                  </CardTitle>
-                  <CardDescription>Create a new invoice for your customer</CardDescription>
-                </div>
-              </div>
-              <Button variant="outline" onClick={() => navigate('/invoices')}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </div>
-          </CardHeader>
-        </Card>
+  // Navigate to invoice detail page when local draft is created
+  useEffect(() => {
+    if (createdDraft?.invoiceId) {
+      navigate(`/invoices/${createdDraft.invoiceId}`);
+    }
+  }, [createdDraft, navigate]);
 
-        <Alert>
-          <CreditCard className="h-4 w-4" />
-          <AlertTitle>Stripe Connect Setup Required</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>
-              To create and send invoices with payment collection, you need to set up Stripe Connect for your restaurant.
-              This allows your customers to pay by credit card or US bank account (ACH).
-            </p>
-            <div className="flex gap-3">
-              <Button 
-                onClick={() => createAccount('express')} 
-                disabled={isCreatingAccount}
-                className="flex-1"
-              >
-                {isCreatingAccount ? "Setting up..." : "Set up Stripe Connect"}
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => navigate('/invoices')}
-                className="flex-1"
-              >
-                View Invoices
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
+  // Populate form when editing an existing invoice
+  useEffect(() => {
+    if (existingInvoice && editInvoiceId) {
+      setCustomerId(existingInvoice.customer_id);
+      setDueDate(existingInvoice.due_date ? existingInvoice.due_date.split('T')[0] : '');
+      setDescription(existingInvoice.description || '');
+      setFooter(existingInvoice.footer || '');
+      setMemo(existingInvoice.memo || '');
+      setPassFeesToCustomer(existingInvoice.pass_fees_to_customer || false);
+      if (existingInvoice.invoice_line_items?.length) {
+        setLineItems(
+          existingInvoice.invoice_line_items
+            .filter(item => item.description !== 'Processing Fee')
+            .map(item => ({
+              ...item,
+              localId: item.id || makeId(),
+              unit_amount: item.unit_amount / 100, // Convert from cents to dollars
+              quantity: item.quantity,
+              description: item.description,
+            }))
+        );
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingInvoice, editInvoiceId]);
 
   const addLineItem = () => {
     setLineItems([...lineItems, { localId: makeId(), description: "", quantity: 1, unit_amount: 0 }]);
@@ -122,27 +107,19 @@ export default function InvoiceForm() {
     setLineItems(updated);
   };
 
-  const calculateSubtotal = () => {
-    let subtotal = lineItems.reduce((sum, item) => {
-      const quantity = Number(item.quantity) || 0;
-      const unitAmount = Number(item.unit_amount) || 0;
-      return sum + (quantity * unitAmount);
-    }, 0);
+  const subtotalDollars = lineItems.reduce((sum, item) => {
+    const quantity = Number(item.quantity) || 0;
+    const unitAmount = Number(item.unit_amount) || 0;
+    return sum + (quantity * unitAmount);
+  }, 0);
 
-    // Add grossed-up processing fee if passFeesToCustomer is enabled
-    if (passFeesToCustomer) {
-      const baseCents = Math.round(subtotal * 100);
-      const gross = Math.round((baseCents + 30) / (1 - 0.029));
-      const feeCents = Math.max(0, gross - baseCents);
-      subtotal += feeCents / 100;
-    }
-
-    return subtotal;
-  };
+  const baseCents = Math.round(subtotalDollars * 100);
+  const feeCents = passFeesToCustomer ? computeProcessingFeeCents(baseCents) : 0;
+  const totalDollars = subtotalDollars + feeCents / 100;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!customerId) {
       alert("Please select a customer");
       return;
@@ -162,7 +139,7 @@ export default function InvoiceForm() {
         unit_amount: Math.round(Number(item.unit_amount) * 100),
       }));
 
-    createInvoice({
+    const formData = {
       customerId,
       lineItems: itemsInCents,
       dueDate: dueDate || undefined,
@@ -170,10 +147,35 @@ export default function InvoiceForm() {
       footer: footer || undefined,
       memo: memo || undefined,
       passFeesToCustomer,
-    });
+    };
 
-    // Navigation will happen in useEffect when createdInvoice is available
+    if (isEditMode && !existingInvoice.stripe_invoice_id) {
+      // Edit local draft
+      updateInvoice({ invoiceId: existingInvoice.id, ...formData });
+      navigate(`/invoices/${existingInvoice.id}`);
+    } else if (isReadyForInvoicing) {
+      // Create via Stripe
+      createInvoice(formData);
+    } else {
+      // Save as local draft
+      createLocalDraft(formData);
+    }
   };
+
+  const handleCustomerChange = (value: string) => {
+    if (value === '__new__') {
+      setShowCustomerForm(true);
+    } else {
+      setCustomerId(value);
+    }
+  };
+
+  const isBusy = isCreating || isCreatingDraft || isUpdating;
+  const submitLabel = isEditMode
+    ? (isBusy ? 'Saving...' : 'Save Changes')
+    : isReadyForInvoicing
+    ? (isBusy ? 'Creating...' : 'Create Invoice')
+    : (isBusy ? 'Saving...' : 'Save Draft');
 
   return (
     <div className="space-y-6">
@@ -185,9 +187,11 @@ export default function InvoiceForm() {
               <FileText className="h-6 w-6 text-primary" />
               <div>
                 <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                  Create Invoice
+                  {isEditMode ? 'Edit Invoice' : 'Create Invoice'}
                 </CardTitle>
-                <CardDescription>Create a new invoice for your customer</CardDescription>
+                <CardDescription>
+                  {isEditMode ? 'Update this draft invoice' : 'Create a new invoice for your customer'}
+                </CardDescription>
               </div>
             </div>
             <Button variant="outline" onClick={() => navigate('/invoices')}>
@@ -210,11 +214,18 @@ export default function InvoiceForm() {
                 <Label htmlFor="customer">
                   Customer <span className="text-destructive">*</span>
                 </Label>
-                <Select value={customerId} onValueChange={setCustomerId}>
+                <Select value={customerId} onValueChange={handleCustomerChange}>
                   <SelectTrigger id="customer">
                     <SelectValue placeholder="Select a customer" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__new__">
+                      <span className="flex items-center gap-2">
+                        <UserPlus className="h-4 w-4" />
+                        New Customer
+                      </span>
+                    </SelectItem>
+                    <Separator className="my-1" />
                     {customers.map((customer) => (
                       <SelectItem key={customer.id} value={customer.id}>
                         {customer.name}
@@ -298,6 +309,7 @@ export default function InvoiceForm() {
                       variant="outline"
                       size="icon"
                       onClick={() => removeLineItem(index)}
+                      aria-label="Remove line item"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -307,30 +319,9 @@ export default function InvoiceForm() {
             </div>
 
             <div className="mt-6 pt-6 border-t">
-              <div className="space-y-2">
-                {passFeesToCustomer && (
-                  <div className="flex justify-between text-sm text-muted-foreground">
-                    <span>Processing Fee (est.)</span>
-                    <span>
-                      {(() => {
-                        const baseCents = Math.round(
-                          lineItems.reduce((sum, item) => {
-                            const quantity = Number(item.quantity) || 0;
-                            const unitAmount = Number(item.unit_amount) || 0;
-                            return sum + quantity * unitAmount;
-                          }, 0) * 100
-                        );
-                        const gross = Math.round((baseCents + 30) / (1 - 0.029));
-                        const feeCents = Math.max(0, gross - baseCents);
-                        return formatCurrency(feeCents / 100);
-                      })()}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-semibold">
-                  <span>Total:</span>
-                  <span>{formatCurrency(calculateSubtotal())}</span>
-                </div>
+              <div className="flex justify-between text-lg font-semibold">
+                <span>Total:</span>
+                <span>{formatCurrency(totalDollars)}</span>
               </div>
             </div>
           </CardContent>
@@ -364,18 +355,28 @@ export default function InvoiceForm() {
               />
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="passFees"
-                checked={passFeesToCustomer}
-                onCheckedChange={(checked) => setPassFeesToCustomer(checked as boolean)}
-              />
-              <Label htmlFor="passFees" className="text-sm space-y-1">
-                <span>Add processing fee to invoice</span>
-                <span className="text-muted-foreground block text-xs">
-                  Customer will see and pay ~2.9% + $0.30 processing fee on their invoice
-                </span>
-              </Label>
+            {/* Processing Fee Toggle */}
+            <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-[14px] font-medium">Processing Fee</Label>
+                  <p className="text-[13px] text-muted-foreground">
+                    {passFeesToCustomer ? "Customer pays the processing fee" : "You absorb the processing fee"}
+                  </p>
+                </div>
+                <Switch
+                  checked={passFeesToCustomer}
+                  onCheckedChange={setPassFeesToCustomer}
+                  className="data-[state=checked]:bg-foreground"
+                  aria-label="Pass processing fee to customer"
+                />
+              </div>
+              {passFeesToCustomer && subtotalDollars > 0 && (
+                <div className="mt-3 pt-3 border-t border-border/40 flex justify-between text-[13px]">
+                  <span className="text-muted-foreground">Fee added to invoice</span>
+                  <span className="font-medium">{formatCurrency(feeCents / 100)}</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -385,11 +386,18 @@ export default function InvoiceForm() {
           <Button type="button" variant="outline" onClick={() => navigate('/invoices')}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isCreating}>
-            {isCreating ? "Creating..." : "Create Invoice"}
+          <Button type="submit" disabled={isBusy}>
+            {submitLabel}
           </Button>
         </div>
       </form>
+
+      {/* Inline Customer Creation Dialog */}
+      <CustomerFormDialog
+        open={showCustomerForm}
+        onOpenChange={setShowCustomerForm}
+        onCreated={(customer) => setCustomerId(customer.id)}
+      />
     </div>
   );
 }

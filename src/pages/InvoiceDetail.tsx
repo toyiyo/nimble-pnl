@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, useInvoice } from "@/hooks/useInvoices";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InvoicePreviewDialog } from "@/components/invoicing/InvoicePreviewDialog";
 import {
   ArrowLeft,
   FileText,
@@ -20,7 +22,9 @@ import {
   Mail,
   Phone,
   MapPin,
-  RefreshCw
+  RefreshCw,
+  Edit,
+  Eye
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -40,8 +44,18 @@ export default function InvoiceDetail() {
   const { selectedRestaurant } = useRestaurantContext();
   const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
-  const { openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Auto-sync status for open invoices with Stripe ID
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    if (invoice?.status === 'open' && invoice?.stripe_invoice_id && !hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+      syncInvoiceStatusAsync(invoice.id).catch(() => {});
+    }
+  }, [invoice?.id, invoice?.status, invoice?.stripe_invoice_id, syncInvoiceStatusAsync]);
 
   if (isLoading) {
     return (
@@ -157,24 +171,49 @@ export default function InvoiceDetail() {
 
         <div className="flex gap-2">
           {invoice.status === 'draft' && (
-            <Button
-              onClick={handleSendInvoice}
-              disabled={isSending}
-              className="bg-primary hover:bg-primary/90"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {isSending ? 'Sending...' : 'Send Invoice'}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setShowPreview(true)}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Preview
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/invoices/${invoice.id}/edit`)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              {isReadyForInvoicing ? (
+                <Button
+                  onClick={handleSendInvoice}
+                  disabled={isSending}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  {isSending ? 'Sending...' : (invoice.stripe_invoice_id ? 'Send Invoice' : 'Create & Send Invoice')}
+                </Button>
+              ) : (
+                <Button disabled className="bg-primary/50">
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Invoice
+                </Button>
+              )}
+            </>
           )}
 
           {invoice.stripe_invoice_id && (
             <Button
-              variant="outline"
+              variant="ghost"
+              size="icon"
               onClick={handleSyncStatus}
               disabled={isSyncingStatus}
+              className="h-8 w-8"
+              aria-label="Refresh status"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingStatus ? 'animate-spin' : ''}`} />
-              {isSyncingStatus ? 'Syncing...' : 'Sync Status'}
+              <RefreshCw className={`h-4 w-4 ${isSyncingStatus ? 'animate-spin' : ''}`} />
             </Button>
           )}
 
@@ -418,8 +457,33 @@ export default function InvoiceDetail() {
               </AlertDescription>
             </Alert>
           )}
+
+          {invoice.status === 'draft' && !isReadyForInvoicing && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Payment Processing Required</AlertTitle>
+              <AlertDescription className="space-y-3">
+                <p>To send this invoice, set up payment processing first.</p>
+                <Button
+                  size="sm"
+                  onClick={() => createAccount('express')}
+                  disabled={isCreatingAccount}
+                >
+                  {isCreatingAccount ? 'Setting up...' : 'Set up Stripe'}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
       </div>
+
+      {/* Invoice Preview Dialog */}
+      <InvoicePreviewDialog
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        invoice={invoice}
+        restaurant={selectedRestaurant?.restaurant ?? null}
+      />
     </div>
   );
 }

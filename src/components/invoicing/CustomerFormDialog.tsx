@@ -19,11 +19,12 @@ interface CustomerFormDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly customer?: Customer;
+  readonly onCreated?: (customer: Customer) => void;
 }
 
-export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFormDialogProps) {
+export function CustomerFormDialog({ open, onOpenChange, customer, onCreated }: CustomerFormDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const { createCustomer, updateCustomer, isCreating, isUpdating } = useCustomers(selectedRestaurant?.restaurant_id || null);
+  const { createCustomer, createCustomerAsync, updateCustomer, isCreating, isUpdating } = useCustomers(selectedRestaurant?.restaurant_id || null);
   
   const {
     register,
@@ -53,13 +54,22 @@ export function CustomerFormDialog({ open, onOpenChange, customer }: CustomerFor
     }
   }, [customer, reset]);
 
-  const onSubmit = (data: CustomerFormData) => {
+  const onSubmit = async (data: CustomerFormData) => {
     if (customer) {
       updateCustomer({ id: customer.id, ...data });
+      onOpenChange(false);
+    } else if (onCreated) {
+      try {
+        const newCustomer = await createCustomerAsync(data);
+        onCreated(newCustomer);
+        onOpenChange(false);
+      } catch {
+        // Error toast handled by mutation's onError
+      }
     } else {
       createCustomer(data);
+      onOpenChange(false);
     }
-    onOpenChange(false);
   };
 
   return (

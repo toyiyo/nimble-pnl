@@ -12,6 +12,7 @@ vi.mock("react-router-dom", async () => {
   return {
     ...actual,
     useNavigate: () => navigateMock,
+    useParams: () => ({}),
   };
 });
 
@@ -26,8 +27,18 @@ vi.mock("@/hooks/useCustomers", () => ({
 vi.mock("@/hooks/useInvoices", () => ({
   useInvoices: () => ({
     createInvoice: createInvoiceMock,
+    createLocalDraft: vi.fn(),
+    updateInvoice: vi.fn(),
     isCreating: false,
+    isCreatingDraft: false,
+    isUpdating: false,
     createdInvoice: null,
+    createdDraft: null,
+  }),
+  useInvoice: () => ({
+    data: null,
+    isLoading: false,
+    error: null,
   }),
 }));
 
@@ -39,6 +50,10 @@ vi.mock("@/hooks/useStripeConnect", () => ({
     openDashboard: vi.fn(),
     isOpeningDashboard: false,
   }),
+}));
+
+vi.mock("@/components/invoicing/CustomerFormDialog", () => ({
+  CustomerFormDialog: () => null,
 }));
 
 describe("InvoiceForm", () => {
@@ -82,7 +97,7 @@ describe("InvoiceForm", () => {
     fireEvent.change(screen.getByPlaceholderText("Price"), { target: { value: "12.34" } });
 
     // Enable pass-through processing fee
-    fireEvent.click(screen.getByRole("checkbox", { name: /add processing fee/i }));
+    fireEvent.click(screen.getByRole("switch", { name: /pass processing fee to customer/i }));
 
     fireEvent.click(screen.getByRole("button", { name: /create invoice/i }));
 

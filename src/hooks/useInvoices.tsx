@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { computeProcessingFeeCents } from "@/lib/invoiceUtils";
 
 export type InvoiceStatus = 'draft' | 'open' | 'paid' | 'void' | 'uncollectible';
 
@@ -252,6 +253,165 @@ export const useInvoices = (restaurantId: string | null) => {
     },
   });
 
+  // Create local draft (no Stripe)
+  const createLocalDraftMutation = useMutation({
+    mutationFn: async (data: InvoiceFormData) => {
+      if (!restaurantId) throw new Error("No restaurant selected");
+
+      const subtotalCents = data.lineItems.reduce((sum, item) => {
+        return sum + Math.round(Number(item.quantity) * Number(item.unit_amount));
+      }, 0);
+
+      const feeCents = data.passFeesToCustomer ? computeProcessingFeeCents(subtotalCents) : 0;
+      const totalCents = subtotalCents + feeCents;
+
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert({
+          restaurant_id: restaurantId,
+          customer_id: data.customerId,
+          status: 'draft',
+          stripe_invoice_id: null,
+          currency: 'usd',
+          subtotal: subtotalCents,
+          tax: 0,
+          total: totalCents,
+          amount_due: totalCents,
+          amount_paid: 0,
+          amount_remaining: totalCents,
+          due_date: data.dueDate || null,
+          invoice_date: new Date().toISOString().split('T')[0],
+          description: data.description || null,
+          footer: data.footer || null,
+          memo: data.memo || null,
+          pass_fees_to_customer: data.passFeesToCustomer || false,
+        })
+        .select('id')
+        .single();
+
+      if (invoiceError) throw invoiceError;
+
+      // Insert line items
+      const lineItemRows = data.lineItems
+        .filter(item => item.description.trim() !== '')
+        .map(item => ({
+          invoice_id: invoice.id,
+          description: item.description,
+          quantity: Number(item.quantity),
+          unit_amount: Math.round(Number(item.unit_amount)),
+          amount: Math.round(Number(item.quantity) * Number(item.unit_amount)),
+        }));
+
+      // Add processing fee line item if applicable
+      if (data.passFeesToCustomer && feeCents > 0) {
+        lineItemRows.push({
+          invoice_id: invoice.id,
+          description: 'Processing Fee',
+          quantity: 1,
+          unit_amount: feeCents,
+          amount: feeCents,
+        });
+      }
+
+      if (lineItemRows.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('invoice_line_items')
+          .insert(lineItemRows);
+        if (itemsError) throw itemsError;
+      }
+
+      return { invoiceId: invoice.id };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices', restaurantId] });
+      toast({ title: "Draft Saved", description: "The invoice draft has been saved" });
+    },
+    onError: (error) => {
+      console.error('Error creating draft:', error);
+      toast({ title: "Failed to Save Draft", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+    },
+  });
+
+  // Update existing draft invoice
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async (data: InvoiceFormData & { invoiceId: string }) => {
+      if (!restaurantId) throw new Error("No restaurant selected");
+
+      const subtotalCents = data.lineItems.reduce((sum, item) => {
+        return sum + Math.round(Number(item.quantity) * Number(item.unit_amount));
+      }, 0);
+
+      const feeCents = data.passFeesToCustomer ? computeProcessingFeeCents(subtotalCents) : 0;
+      const totalCents = subtotalCents + feeCents;
+
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          customer_id: data.customerId,
+          subtotal: subtotalCents,
+          total: totalCents,
+          amount_due: totalCents,
+          amount_remaining: totalCents,
+          due_date: data.dueDate || null,
+          description: data.description || null,
+          footer: data.footer || null,
+          memo: data.memo || null,
+          pass_fees_to_customer: data.passFeesToCustomer || false,
+        })
+        .eq('id', data.invoiceId)
+        .eq('restaurant_id', restaurantId)
+        .eq('status', 'draft');
+
+      if (updateError) throw updateError;
+
+      // Delete old line items
+      const { error: deleteError } = await supabase
+        .from('invoice_line_items')
+        .delete()
+        .eq('invoice_id', data.invoiceId);
+      if (deleteError) throw deleteError;
+
+      // Insert new line items
+      const lineItemRows = data.lineItems
+        .filter(item => item.description.trim() !== '')
+        .map(item => ({
+          invoice_id: data.invoiceId,
+          description: item.description,
+          quantity: Number(item.quantity),
+          unit_amount: Math.round(Number(item.unit_amount)),
+          amount: Math.round(Number(item.quantity) * Number(item.unit_amount)),
+        }));
+
+      if (data.passFeesToCustomer && feeCents > 0) {
+        lineItemRows.push({
+          invoice_id: data.invoiceId,
+          description: 'Processing Fee',
+          quantity: 1,
+          unit_amount: feeCents,
+          amount: feeCents,
+        });
+      }
+
+      if (lineItemRows.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('invoice_line_items')
+          .insert(lineItemRows);
+        if (itemsError) throw itemsError;
+      }
+
+      return { invoiceId: data.invoiceId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', data.invoiceId] });
+      toast({ title: "Invoice Updated", description: "The draft invoice has been updated" });
+    },
+    onError: (error) => {
+      console.error('Error updating invoice:', error);
+      toast({ title: "Failed to Update Invoice", description: error instanceof Error ? error.message : "An error occurred", variant: "destructive" });
+    },
+  });
+
   // Delete draft invoice
   const deleteInvoiceMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
@@ -290,15 +450,23 @@ export const useInvoices = (restaurantId: string | null) => {
     loading,
     error: queryError,
     createInvoice: createInvoiceMutation.mutate,
+    createLocalDraft: createLocalDraftMutation.mutate,
+    createLocalDraftAsync: createLocalDraftMutation.mutateAsync,
+    updateInvoice: updateInvoiceMutation.mutate,
+    updateInvoiceAsync: updateInvoiceMutation.mutateAsync,
     sendInvoice: sendInvoiceMutation.mutate,
     sendInvoiceAsync: sendInvoiceMutation.mutateAsync,
     syncInvoiceStatus: syncInvoiceStatusMutation.mutate,
     syncInvoiceStatusAsync: syncInvoiceStatusMutation.mutateAsync,
     deleteInvoice: deleteInvoiceMutation.mutate,
+    deleteInvoiceAsync: deleteInvoiceMutation.mutateAsync,
     isCreating: createInvoiceMutation.isPending,
+    isCreatingDraft: createLocalDraftMutation.isPending,
+    isUpdating: updateInvoiceMutation.isPending,
     isSending: sendInvoiceMutation.isPending,
     isSyncingStatus: syncInvoiceStatusMutation.isPending,
     isDeleting: deleteInvoiceMutation.isPending,
     createdInvoice: createInvoiceMutation.data,
+    createdDraft: createLocalDraftMutation.data,
   };
 };

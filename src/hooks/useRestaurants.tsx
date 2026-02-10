@@ -13,6 +13,17 @@ export interface Restaurant {
   timezone?: string;
   created_at: string;
   updated_at: string;
+  // Business info fields
+  legal_name?: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  business_email?: string;
+  ein?: string;
+  entity_type?: 'llc' | 'corporation' | 'sole_proprietor' | 'partnership' | 's_corporation' | 'non_profit';
   // Subscription fields
   subscription_tier?: 'starter' | 'growth' | 'pro';
   subscription_status?: 'trialing' | 'active' | 'past_due' | 'canceled' | 'grandfathered';

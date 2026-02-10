@@ -96,5 +96,5 @@ COMMENT ON FUNCTION get_pos_tips_by_date IS
 'Aggregates POS tips from both categorized (unified_sales_splits) and uncategorized (unified_sales) sources.
 Used by tip pooling system to display POS-imported tips.
 Returns daily totals for:
-1. Categorized tips (splits with account name/subtype containing "tip")
-2. Uncategorized tips (item_type="tip" or adjustment_type="tip")';
+1. Categorized tips (splits with account name/subtype containing ''tip'')
+2. Uncategorized tips (item_type=''tip'' or adjustment_type=''tip'')';

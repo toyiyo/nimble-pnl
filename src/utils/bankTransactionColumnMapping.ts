@@ -35,6 +35,7 @@ export const BANK_TARGET_FIELDS = [
   { value: 'checkNumber', label: 'Check Number', required: false },
   { value: 'referenceNumber', label: 'Reference Number', required: false },
   { value: 'category', label: 'Category', required: false },
+  { value: 'sourceAccount', label: 'Source Account', required: false },
   { value: 'ignore', label: '(Ignore this column)', required: false },
 ] as const;
 
@@ -110,6 +111,12 @@ const FIELD_PATTERNS: Record<string, KeywordPattern> = {
       'category', 'type', 'transaction type',
     ],
     weight: 5,
+  },
+  sourceAccount: {
+    keywords: [
+      'source account', 'account name', 'account number', 'account',
+    ],
+    weight: 7,
   },
 };
 
@@ -288,6 +295,7 @@ const INSTITUTION_PATTERNS = [
   { keywords: ['td bank', 'tdbank'], name: 'TD Bank' },
   { keywords: ['american express', 'amex'], name: 'American Express' },
   { keywords: ['discover'], name: 'Discover' },
+  { keywords: ['mercury'], name: 'Mercury' },
 ];
 
 const ACCOUNT_TYPE_PATTERNS = [
@@ -402,4 +410,269 @@ function parseSingleAmount(raw: string): number | null {
   if (Number.isNaN(num)) return null;
 
   return isNegative ? -num : num;
+}
+
+// --- Multi-account CSV types and functions ---
+
+export interface ExtractedAccountInfo {
+  /** Raw value from the CSV source account column */
+  rawValue: string;
+  /** Parsed last 4 digits of account number */
+  accountMask?: string;
+  /** Detected account type (checking, savings, credit_card, etc.) */
+  accountType?: string;
+  /** Detected institution name */
+  institutionName?: string;
+  /** Number of rows belonging to this account */
+  rowCount: number;
+  /** Indices of rows in the original parsed data */
+  rowIndices: number[];
+}
+
+export interface AccountBankMatch {
+  accountInfo: ExtractedAccountInfo;
+  matchedBank?: { id: string; institution_name: string };
+  confidence: 'high' | 'medium' | 'none';
+  score: number;
+}
+
+export interface TransferPairCandidate {
+  /** Index of the debit row */
+  debitRowIndex: number;
+  /** Index of the credit row */
+  creditRowIndex: number;
+  /** Absolute amount */
+  amount: number;
+  /** Date of the transactions */
+  date: string;
+  /** Source account of the debit side */
+  debitAccount: string;
+  /** Source account of the credit side */
+  creditAccount: string;
+}
+
+/**
+ * Group CSV rows by source account column and extract account info from each.
+ */
+export function extractUniqueAccounts(
+  rows: Record<string, string>[],
+  sourceAccountColumn: string
+): ExtractedAccountInfo[] {
+  const accountMap = new Map<string, { rowIndices: number[] }>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = (rows[i][sourceAccountColumn] || '').trim();
+    if (!raw) continue;
+
+    const existing = accountMap.get(raw);
+    if (existing) {
+      existing.rowIndices.push(i);
+    } else {
+      accountMap.set(raw, { rowIndices: [i] });
+    }
+  }
+
+  const results: ExtractedAccountInfo[] = [];
+
+  for (const [rawValue, { rowIndices }] of accountMap) {
+    const lower = rawValue.toLowerCase();
+
+    // Extract mask
+    let accountMask: string | undefined;
+    for (const pattern of ACCOUNT_MASK_PATTERNS) {
+      const match = pattern.exec(rawValue);
+      if (match) {
+        accountMask = match[1];
+        break;
+      }
+    }
+
+    // Extract institution
+    let institutionName: string | undefined;
+    for (const inst of INSTITUTION_PATTERNS) {
+      if (inst.keywords.some((kw) => lower.includes(kw))) {
+        institutionName = inst.name;
+        break;
+      }
+    }
+
+    // Extract account type
+    let accountType: string | undefined;
+    for (const tp of ACCOUNT_TYPE_PATTERNS) {
+      if (tp.keywords.some((kw) => lower.includes(kw))) {
+        accountType = tp.type;
+        break;
+      }
+    }
+
+    // Also try "credit" as a standalone keyword for credit accounts
+    if (!accountType && lower.includes('credit')) {
+      accountType = 'credit_card';
+    }
+
+    results.push({
+      rawValue,
+      accountMask,
+      accountType,
+      institutionName,
+      rowCount: rowIndices.length,
+      rowIndices,
+    });
+  }
+
+  return results;
+}
+
+interface ConnectedBankWithBalance {
+  id: string;
+  institution_name: string;
+  bank_account_balances?: Array<{
+    account_mask?: string | null;
+    account_type?: string | null;
+  }>;
+}
+
+/**
+ * Score how well an extracted account matches a connected bank.
+ * Returns a match with confidence level.
+ */
+export function matchAccountToBank(
+  accountInfo: ExtractedAccountInfo,
+  connectedBanks: ConnectedBankWithBalance[]
+): AccountBankMatch {
+  let bestMatch: ConnectedBankWithBalance | undefined;
+  let bestScore = 0;
+
+  for (const bank of connectedBanks) {
+    let score = 0;
+    const bankName = bank.institution_name.toLowerCase();
+    const balances = bank.bank_account_balances || [];
+
+    // Institution name match (40 points)
+    if (accountInfo.institutionName) {
+      const instLower = accountInfo.institutionName.toLowerCase();
+      if (bankName.includes(instLower) || instLower.includes(bankName)) {
+        score += 40;
+      }
+    }
+
+    // Account mask match (50 points)
+    if (accountInfo.accountMask) {
+      for (const bal of balances) {
+        if (bal.account_mask && bal.account_mask === accountInfo.accountMask) {
+          score += 50;
+          break;
+        }
+      }
+      // Also check if the bank name contains the mask (e.g., "Mercury Checking ****7138")
+      if (bankName.includes(accountInfo.accountMask)) {
+        score += 50;
+      }
+    }
+
+    // Account type match (10 points)
+    if (accountInfo.accountType) {
+      for (const bal of balances) {
+        if (bal.account_type && bal.account_type === accountInfo.accountType) {
+          score += 10;
+          break;
+        }
+      }
+      // Also check bank name for type keywords
+      if (bankName.includes(accountInfo.accountType.replace('_', ' '))) {
+        score += 10;
+      }
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = bank;
+    }
+  }
+
+  let confidence: 'high' | 'medium' | 'none';
+  if (bestScore >= 50) confidence = 'high';
+  else if (bestScore >= 30) confidence = 'medium';
+  else confidence = 'none';
+
+  return {
+    accountInfo,
+    matchedBank: bestMatch && bestScore > 0
+      ? { id: bestMatch.id, institution_name: bestMatch.institution_name }
+      : undefined,
+    confidence,
+    score: bestScore,
+  };
+}
+
+/**
+ * Detect potential inter-account transfer pairs in multi-account CSV data.
+ * A transfer pair is two rows on the same date with opposite amounts in different accounts.
+ */
+export function detectTransferPairs(
+  rows: Record<string, string>[],
+  sourceAccountCol: string,
+  dateCol: string,
+  amountCol?: string,
+  debitCol?: string,
+  creditCol?: string
+): TransferPairCandidate[] {
+  const pairs: TransferPairCandidate[] = [];
+  const usedIndices = new Set<number>();
+
+  // Build list of parsed row data
+  const parsed: Array<{
+    index: number;
+    account: string;
+    date: string;
+    amount: number;
+  }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const account = (rows[i][sourceAccountCol] || '').trim();
+    const date = (rows[i][dateCol] || '').trim();
+    if (!account || !date) continue;
+
+    const amount = parseBankAmount(
+      amountCol ? rows[i][amountCol] : undefined,
+      debitCol ? rows[i][debitCol] : undefined,
+      creditCol ? rows[i][creditCol] : undefined
+    );
+    if (amount === null || amount === 0) continue;
+
+    parsed.push({ index: i, account, date, amount });
+  }
+
+  // Find matching pairs: same date, opposite amounts, different accounts
+  for (let i = 0; i < parsed.length; i++) {
+    if (usedIndices.has(i)) continue;
+    const row = parsed[i];
+    if (row.amount >= 0) continue; // Start with debit side
+
+    for (let j = 0; j < parsed.length; j++) {
+      if (i === j || usedIndices.has(j)) continue;
+      const other = parsed[j];
+
+      if (
+        other.account !== row.account &&
+        other.date === row.date &&
+        Math.abs(other.amount + row.amount) < 0.01 &&
+        other.amount > 0
+      ) {
+        usedIndices.add(i);
+        usedIndices.add(j);
+        pairs.push({
+          debitRowIndex: row.index,
+          creditRowIndex: other.index,
+          amount: Math.abs(row.amount),
+          date: row.date,
+          debitAccount: row.account,
+          creditAccount: other.account,
+        });
+        break;
+      }
+    }
+  }
+
+  return pairs;
 }

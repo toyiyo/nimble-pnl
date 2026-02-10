@@ -10,17 +10,33 @@ import { useToast } from '@/hooks/use-toast';
 import {
   suggestBankColumnMappings,
   detectAccountInfoFromCSV,
+  extractUniqueAccounts,
+  matchAccountToBank,
+  detectTransferPairs,
   type BankColumnMapping,
   type DetectedAccountInfo,
+  type AccountBankMatch,
+  type TransferPairCandidate,
 } from '@/utils/bankTransactionColumnMapping';
 import { BankTransactionColumnMappingDialog } from '@/components/BankTransactionColumnMappingDialog';
+import {
+  BankAccountAssignmentStep,
+  type AccountAssignment,
+} from '@/components/BankAccountAssignmentStep';
 
-type UploadStep = 'parsing' | 'mapping' | 'staging' | 'complete';
+type UploadStep = 'parsing' | 'mapping' | 'account-assignment' | 'staging' | 'complete';
 
 interface ConnectedBank {
   id: string;
   institution_name: string;
   status: string;
+}
+
+interface ConnectedBankWithBalances extends ConnectedBank {
+  bank_account_balances?: Array<{
+    account_mask?: string | null;
+    account_type?: string | null;
+  }>;
 }
 
 interface BankCSVUploadProps {
@@ -41,11 +57,18 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
   const [suggestedMappings, setSuggestedMappings] = useState<BankColumnMapping[]>([]);
   const [detectedAccountInfo, setDetectedAccountInfo] = useState<DetectedAccountInfo | undefined>();
   const [connectedBanks, setConnectedBanks] = useState<ConnectedBank[]>([]);
+  const [connectedBanksWithBalances, setConnectedBanksWithBalances] = useState<ConnectedBankWithBalances[]>([]);
   const [showMappingDialog, setShowMappingDialog] = useState(false);
   const [stagingMessage, setStagingMessage] = useState('');
 
+  // Multi-account state
+  const [confirmedMappings, setConfirmedMappings] = useState<BankColumnMapping[]>([]);
+  const [accountMatches, setAccountMatches] = useState<AccountBankMatch[]>([]);
+  const [transferPairs, setTransferPairs] = useState<TransferPairCandidate[]>([]);
+  const [showAssignmentDialog, setShowAssignmentDialog] = useState(false);
+
   const { selectedRestaurant } = useRestaurantContext();
-  const { stageCSVStatement, detectDuplicates } = useBankStatementImport();
+  const { stageCSVStatement, detectDuplicates, detectTransfersPostImport } = useBankStatementImport();
   const { toast } = useToast();
 
   // Parse file on mount
@@ -58,13 +81,16 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
   const loadConnectedBanks = async () => {
     if (!selectedRestaurant?.restaurant_id) return;
 
+    // Fetch banks with balance info for matching
     const { data } = await supabase
       .from('connected_banks')
-      .select('id, institution_name, status')
+      .select('id, institution_name, status, bank_account_balances(account_mask, account_type)')
       .eq('restaurant_id', selectedRestaurant.restaurant_id)
       .eq('status', 'connected');
 
-    setConnectedBanks(data ?? []);
+    const banks = (data ?? []) as any as ConnectedBankWithBalances[];
+    setConnectedBanksWithBalances(banks);
+    setConnectedBanks(banks.map((b) => ({ id: b.id, institution_name: b.institution_name, status: b.status })));
   };
 
   const parseFile = async () => {
@@ -169,9 +195,50 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
   const handleMappingConfirm = async (
     mappings: BankColumnMapping[],
     bankId: string,
-    bankAccountName?: string
+    bankAccountName?: string,
+    hasSourceAccount?: boolean
   ) => {
     setShowMappingDialog(false);
+
+    if (hasSourceAccount) {
+      // Multi-account flow: extract accounts and show assignment step
+      setConfirmedMappings(mappings);
+
+      const sourceAccountCol = mappings.find((m) => m.targetField === 'sourceAccount')?.csvColumn;
+      if (!sourceAccountCol) {
+        toast({ title: 'Error', description: 'Source account column not found', variant: 'destructive' });
+        onCancel();
+        return;
+      }
+
+      const accounts = extractUniqueAccounts(parsedRows, sourceAccountCol);
+      const matches = accounts.map((acct) => matchAccountToBank(acct, connectedBanksWithBalances));
+      setAccountMatches(matches);
+
+      // Detect transfer pairs
+      const dateCol = mappings.find((m) => m.targetField === 'transactionDate')?.csvColumn
+        || mappings.find((m) => m.targetField === 'postedDate')?.csvColumn
+        || '';
+      const amountCol = mappings.find((m) => m.targetField === 'amount')?.csvColumn;
+      const debitCol = mappings.find((m) => m.targetField === 'debitAmount')?.csvColumn;
+      const creditCol = mappings.find((m) => m.targetField === 'creditAmount')?.csvColumn;
+
+      const pairs = detectTransferPairs(
+        parsedRows,
+        sourceAccountCol,
+        dateCol,
+        amountCol,
+        debitCol,
+        creditCol
+      );
+      setTransferPairs(pairs);
+
+      setStep('account-assignment');
+      setShowAssignmentDialog(true);
+      return;
+    }
+
+    // Single-account flow (existing behavior)
     setStep('staging');
 
     let resolvedBankId = bankId;
@@ -246,8 +313,142 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
     onStatementStaged(uploadId);
   };
 
+  const handleAccountAssignmentConfirm = async (assignments: AccountAssignment[]) => {
+    setShowAssignmentDialog(false);
+    setStep('staging');
+
+    if (!selectedRestaurant?.restaurant_id) {
+      toast({ title: 'Error', description: 'No restaurant selected', variant: 'destructive' });
+      onCancel();
+      return;
+    }
+
+    const uploadIds: string[] = [];
+
+    try {
+      // Process each account assignment
+      for (let i = 0; i < assignments.length; i++) {
+        const assignment = assignments[i];
+        const { accountInfo } = assignment;
+        let bankId = assignment.bankId;
+
+        // Create new bank if needed
+        if (bankId === '__new__' && assignment.newBankName) {
+          setStagingMessage(`Creating bank "${assignment.newBankName}"...`);
+          const { data: newBank, error } = await supabase
+            .from('connected_banks')
+            .insert({
+              restaurant_id: selectedRestaurant.restaurant_id,
+              stripe_financial_account_id: `csv_import_${crypto.randomUUID()}`,
+              institution_name: assignment.newBankName,
+              status: 'connected',
+              connected_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (error || !newBank) {
+            toast({
+              title: 'Error',
+              description: `Failed to create bank "${assignment.newBankName}"`,
+              variant: 'destructive',
+            });
+            continue;
+          }
+          bankId = newBank.id;
+
+          // Create balance row with mask/type if available
+          const balanceInsert: Record<string, unknown> = {
+            connected_bank_id: bankId,
+            account_name: assignment.newBankName,
+            current_balance: 0,
+            currency: 'USD',
+            as_of_date: new Date().toISOString(),
+            is_active: true,
+          };
+          if (accountInfo.accountMask) balanceInsert.account_mask = accountInfo.accountMask;
+          if (accountInfo.accountType) balanceInsert.account_type = accountInfo.accountType;
+          await supabase.from('bank_account_balances').insert(balanceInsert as any);
+        }
+
+        // Filter rows for this account
+        const accountRows = accountInfo.rowIndices.map((idx) => parsedRows[idx]);
+
+        setStagingMessage(
+          `Staging account ${i + 1}/${assignments.length}: ${accountInfo.rawValue} (${accountRows.length} transactions)...`
+        );
+
+        const uploadId = await stageCSVStatement(
+          file,
+          accountRows,
+          confirmedMappings,
+          bankId,
+          assignment.newBankName || accountInfo.rawValue,
+          accountInfo.rawValue
+        );
+
+        if (uploadId) {
+          uploadIds.push(uploadId);
+
+          // Detect duplicates per upload
+          setStagingMessage(`Checking duplicates for ${accountInfo.rawValue}...`);
+          try {
+            const dups = await detectDuplicates(uploadId);
+            if (dups > 0) {
+              toast({
+                title: 'Duplicates Found',
+                description: `${dups} duplicate${dups !== 1 ? 's' : ''} in "${accountInfo.rawValue}" auto-excluded.`,
+              });
+            }
+          } catch {
+            // Non-fatal
+          }
+        }
+      }
+
+      if (uploadIds.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'No accounts were staged successfully',
+          variant: 'destructive',
+        });
+        onCancel();
+        return;
+      }
+
+      // Detect inter-account transfers
+      if (uploadIds.length > 1) {
+        setStagingMessage('Detecting inter-account transfers...');
+        const transferCount = await detectTransfersPostImport(uploadIds);
+        if (transferCount > 0) {
+          toast({
+            title: 'Transfers Detected',
+            description: `${transferCount} inter-account transfer${transferCount !== 1 ? 's' : ''} flagged.`,
+          });
+        }
+      }
+
+      setStep('complete');
+      // Navigate to the first upload for review
+      onStatementStaged(uploadIds[0]);
+    } catch (error) {
+      console.error('Error during multi-account staging:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to process multi-account import',
+        variant: 'destructive',
+      });
+      onCancel();
+    }
+  };
+
   const handleMappingCancel = () => {
     setShowMappingDialog(false);
+    onCancel();
+  };
+
+  const handleAssignmentCancel = () => {
+    setShowAssignmentDialog(false);
     onCancel();
   };
 
@@ -264,6 +465,22 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
           <span className="text-[14px]">{message}</span>
         </output>
       </div>
+    );
+  }
+
+  // Account assignment dialog
+  if (step === 'account-assignment') {
+    return (
+      <BankAccountAssignmentStep
+        open={showAssignmentDialog}
+        onOpenChange={(open) => {
+          if (!open) handleAssignmentCancel();
+        }}
+        accounts={accountMatches}
+        transferPairs={transferPairs}
+        connectedBanks={connectedBanks}
+        onConfirm={handleAccountAssignmentConfirm}
+      />
     );
   }
 

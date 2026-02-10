@@ -61,7 +61,8 @@ export interface BankTransactionColumnMappingDialogProps {
   onConfirm: (
     mappings: BankColumnMapping[],
     selectedBankId: string,
-    bankAccountName?: string
+    bankAccountName?: string,
+    hasSourceAccount?: boolean
   ) => void;
 }
 
@@ -119,13 +120,21 @@ export const BankTransactionColumnMappingDialog: React.FC<
 
   const validation = useMemo(() => validateBankMappings(mappings), [mappings]);
 
-  const hasBankSelection = selectedBankId || (isCreatingNew && newBankName.trim());
+  const hasSourceAccountMapping = mappings.some(
+    (m) => m.targetField === 'sourceAccount'
+  );
+
+  const hasBankSelection =
+    hasSourceAccountMapping || selectedBankId || (isCreatingNew && newBankName.trim());
 
   const handleConfirm = () => {
-    if (isCreatingNew && newBankName.trim()) {
-      onConfirm(mappings, '__new__', newBankName.trim());
+    if (hasSourceAccountMapping) {
+      // Source account mapped — skip bank selection, handled in next step
+      onConfirm(mappings, '', undefined, true);
+    } else if (isCreatingNew && newBankName.trim()) {
+      onConfirm(mappings, '__new__', newBankName.trim(), false);
     } else if (selectedBankId) {
-      onConfirm(mappings, selectedBankId);
+      onConfirm(mappings, selectedBankId, undefined, false);
     }
   };
 
@@ -150,91 +159,101 @@ export const BankTransactionColumnMappingDialog: React.FC<
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-5">
-          {/* Bank Account Selector */}
-          <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
-            <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
-              <h3 className="text-[13px] font-semibold text-foreground">
-                Bank Account
-              </h3>
-            </div>
-            <div className="p-4 space-y-3">
-              {detectedAccountInfo?.institutionName && (
-                <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
-                  <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <AlertDescription className="text-[13px] text-blue-700 dark:text-blue-300">
-                    Detected: <strong>{detectedAccountInfo.institutionName}</strong>
-                    {detectedAccountInfo.accountMask && (
-                      <> (****{detectedAccountInfo.accountMask})</>
-                    )}
-                    {detectedAccountInfo.accountType && (
-                      <> &mdash; {detectedAccountInfo.accountType}</>
-                    )}
-                  </AlertDescription>
-                </Alert>
-              )}
+          {/* Bank Account Selector — hidden when sourceAccount column is mapped */}
+          {hasSourceAccountMapping ? (
+            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <AlertDescription className="text-[13px] text-blue-700 dark:text-blue-300">
+                <strong>Source Account column detected.</strong>{' '}
+                You'll assign each account to a bank in the next step.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                <h3 className="text-[13px] font-semibold text-foreground">
+                  Bank Account
+                </h3>
+              </div>
+              <div className="p-4 space-y-3">
+                {detectedAccountInfo?.institutionName && (
+                  <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
+                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <AlertDescription className="text-[13px] text-blue-700 dark:text-blue-300">
+                      Detected: <strong>{detectedAccountInfo.institutionName}</strong>
+                      {detectedAccountInfo.accountMask && (
+                        <> (****{detectedAccountInfo.accountMask})</>
+                      )}
+                      {detectedAccountInfo.accountType && (
+                        <> &mdash; {detectedAccountInfo.accountType}</>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-              {isCreatingNew ? (
-                <div className="space-y-2">
-                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    New Bank Account Name
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newBankName}
-                      onChange={(e) => setNewBankName(e.target.value)}
-                      placeholder="e.g., Chase Checking ****1234"
-                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-10 rounded-lg text-[13px]"
-                      onClick={() => {
-                        setIsCreatingNew(false);
-                        setNewBankName('');
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <div className="flex-1">
+                {isCreatingNew ? (
+                  <div className="space-y-2">
                     <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                      Select Bank Account
+                      New Bank Account Name
                     </Label>
-                    <Select
-                      value={selectedBankId}
-                      onValueChange={setSelectedBankId}
-                    >
-                      <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg mt-1.5">
-                        <SelectValue placeholder="Choose a bank account..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {connectedBanks.map((bank) => (
-                          <SelectItem key={bank.id} value={bank.id}>
-                            {bank.institution_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newBankName}
+                        onChange={(e) => setNewBankName(e.target.value)}
+                        placeholder="e.g., Chase Checking ****1234"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 rounded-lg text-[13px]"
+                        onClick={() => {
+                          setIsCreatingNew(false);
+                          setNewBankName('');
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-10 rounded-lg text-[13px]"
-                      onClick={() => setIsCreatingNew(true)}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      New
-                    </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        Select Bank Account
+                      </Label>
+                      <Select
+                        value={selectedBankId}
+                        onValueChange={setSelectedBankId}
+                      >
+                        <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg mt-1.5">
+                          <SelectValue placeholder="Choose a bank account..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {connectedBanks.map((bank) => (
+                            <SelectItem key={bank.id} value={bank.id}>
+                              {bank.institution_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 rounded-lg text-[13px]"
+                        onClick={() => setIsCreatingNew(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        New
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Validation Alerts */}
           {!validation.valid && (
@@ -409,7 +428,7 @@ export const BankTransactionColumnMappingDialog: React.FC<
             disabled={!validation.valid || !hasBankSelection}
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
-            Continue with Mapping
+            {hasSourceAccountMapping ? 'Continue to Account Assignment' : 'Continue with Mapping'}
           </Button>
         </DialogFooter>
       </DialogContent>

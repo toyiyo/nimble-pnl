@@ -387,7 +387,7 @@ function parseSingleAmount(raw: string): number | null {
   }
 
   // Remove currency symbols and whitespace
-  str = str.replaceAll(/[$€£¥₹\s]/g, '');
+  str = str.replace(/[$€£¥₹\s]/g, '');
 
   // Handle explicit negative sign
   if (str.startsWith('-')) {
@@ -396,7 +396,7 @@ function parseSingleAmount(raw: string): number | null {
   }
 
   // Remove comma separators
-  str = str.replaceAll(',', '');
+  str = str.replace(/,/g, '');
 
   const num = Number.parseFloat(str);
   if (Number.isNaN(num)) return null;

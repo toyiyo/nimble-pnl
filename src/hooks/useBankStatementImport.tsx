@@ -269,7 +269,7 @@ export const useBankStatementImport = () => {
 
       if (error) throw error;
 
-      return (data || []) as BankStatementUpload[];
+      return (data || []) as unknown as BankStatementUpload[];
     } catch (error) {
       console.error('Error fetching bank statement uploads:', error);
       return [];
@@ -286,7 +286,7 @@ export const useBankStatementImport = () => {
 
       if (error) throw error;
 
-      return data as BankStatementUpload;
+      return data as unknown as BankStatementUpload;
     } catch (error) {
       console.error('Error fetching bank statement details:', error);
       return null;
@@ -428,10 +428,10 @@ export const useBankStatementImport = () => {
 
       // Determine connected_bank_id: use from upload record (CSV import) or create Manual Upload bank
       let connectedBankId: string;
-      const isCSVImport = statement.source_type === 'csv' || statement.source_type === 'excel';
+      const isCSVImport = (statement as any).source_type === 'csv' || (statement as any).source_type === 'excel';
 
-      if (isCSVImport && statement.connected_bank_id) {
-        connectedBankId = statement.connected_bank_id;
+      if (isCSVImport && (statement as any).connected_bank_id) {
+        connectedBankId = (statement as any).connected_bank_id;
         await ensureBankBalanceExists(connectedBankId, statement.bank_name || 'CSV Import Account');
       } else {
         connectedBankId = await resolveManualUploadBankId(
@@ -446,7 +446,7 @@ export const useBankStatementImport = () => {
       for (const line of lines) {
         // Use the shared predicate to determine if line can be imported
         // This ensures UI count matches what will actually be imported
-        if (!isLineImportable(line)) {
+        if (!isLineImportable(line as any)) {
           skippedCount++;
           if (line.has_validation_error) {
             console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
@@ -1007,7 +1007,7 @@ function tokenize(str: string): Set<string> {
   return new Set(
     str
       .toLowerCase()
-      .replaceAll(/[^a-z0-9\s]/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
       .filter((w) => w.length > 1)
   );

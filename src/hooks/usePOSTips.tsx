@@ -48,7 +48,7 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
           .gte('recorded_at', startDate)
           .lte('recorded_at', endDate + 'T23:59:59')
           .order('recorded_at', { ascending: true }),
-        supabase.rpc('get_pos_tips_by_date', {
+        (supabase.rpc as any)('get_pos_tips_by_date', {
           p_restaurant_id: restaurantId,
           p_start_date: startDate,
           p_end_date: endDate,
@@ -70,7 +70,7 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
         mergeTip(tipsByDate, date, tip.tip_amount || 0, 1, source);
       }
 
-      for (const tip of posResult.data ?? []) {
+      for (const tip of (posResult.data ?? []) as any[]) {
         const source = (tip.pos_source || 'pos') as POSTipData['source'];
         mergeTip(tipsByDate, tip.tip_date, tip.total_amount_cents || 0, tip.transaction_count || 0, source);
       }

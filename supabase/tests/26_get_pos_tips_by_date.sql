@@ -15,6 +15,10 @@ ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
 
 -- Fixture data
 
+INSERT INTO auth.users (id, email) VALUES
+  ('00000000-0000-0000-0000-000000000000'::uuid, 'tip-test@example.com')
+ON CONFLICT DO NOTHING;
+
 INSERT INTO restaurants (id, name, address, phone) VALUES
   ('00000000-0000-0000-0000-000000000001'::uuid, 'Test Restaurant', '123 Main St', '555-1234')
 ON CONFLICT (id) DO UPDATE SET name = 'Test Restaurant';
@@ -23,10 +27,10 @@ INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('00000000-0000-0000-0000-000000000000'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'owner')
 ON CONFLICT (user_id, restaurant_id) DO NOTHING;
 
-INSERT INTO chart_of_accounts (id, restaurant_id, account_name, account_type, account_subtype) VALUES
-  ('00000000-0000-0000-0000-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Tips Revenue', 'revenue', 'sales'),
-  ('00000000-0000-0000-0000-000000000011'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Other Income', 'revenue', 'other_income'),
-  ('00000000-0000-0000-0000-000000000012'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'Food Sales', 'revenue', 'sales')
+INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance) VALUES
+  ('00000000-0000-0000-0000-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'TIP001', 'Tips Revenue', 'revenue', 'sales', 'credit'),
+  ('00000000-0000-0000-0000-000000000011'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'OTH001', 'Other Income', 'revenue', 'other_income', 'credit'),
+  ('00000000-0000-0000-0000-000000000012'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'FOOD01', 'Food Sales', 'revenue', 'sales', 'credit')
 ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
 
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date) VALUES
@@ -41,8 +45,7 @@ INSERT INTO unified_sales_splits (sale_id, category_id, amount) VALUES
   ('00000000-0000-0000-0000-000000000020'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 50.00),
   ('00000000-0000-0000-0000-000000000021'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 75.00),
   ('00000000-0000-0000-0000-000000000022'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 100.00),
-  ('00000000-0000-0000-0000-000000000023'::uuid, '00000000-0000-0000-0000-000000000012'::uuid, 20.00)
-ON CONFLICT (sale_id, category_id) DO UPDATE SET amount = EXCLUDED.amount;
+  ('00000000-0000-0000-0000-000000000023'::uuid, '00000000-0000-0000-0000-000000000012'::uuid, 20.00);
 
 -- Test 1: Function exists with correct signature
 
@@ -52,8 +55,8 @@ SELECT has_function(
 );
 
 SELECT function_returns(
-  'public', 'get_pos_tips_by_date', ARRAY['uuid', 'date', 'date'], 'table',
-  'get_pos_tips_by_date should return table'
+  'public', 'get_pos_tips_by_date', ARRAY['uuid', 'date', 'date'], 'setof record',
+  'get_pos_tips_by_date should return setof record'
 );
 
 -- Test 2: Filters by account name containing "tip"

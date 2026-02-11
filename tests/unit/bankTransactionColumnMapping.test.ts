@@ -285,4 +285,35 @@ describe('detectAccountInfoFromCSV', () => {
     expect(result.institutionName).toBeUndefined();
     expect(result.accountType).toBeUndefined();
   });
+
+  it('detects Mercury institution from filename', () => {
+    const result = detectAccountInfoFromCSV([], 'Mercury_Transactions_2024.csv');
+    expect(result.institutionName).toBe('Mercury');
+  });
+
+  it('detects Mercury institution from raw lines', () => {
+    const rawLines = ['Mercury Checking xx7138', 'Date,Description,Amount'];
+    const result = detectAccountInfoFromCSV(rawLines, 'export.csv');
+    expect(result.institutionName).toBe('Mercury');
+  });
+});
+
+describe('suggestBankColumnMappings - sourceAccount', () => {
+  it('maps "Account" header to sourceAccount', () => {
+    const headers = ['Date', 'Account', 'Description', 'Amount'];
+    const mappings = suggestBankColumnMappings(headers, []);
+
+    const sourceAccountMapping = mappings.find((m) => m.targetField === 'sourceAccount');
+    expect(sourceAccountMapping).toBeDefined();
+    expect(sourceAccountMapping!.csvColumn).toBe('Account');
+  });
+
+  it('maps "Source Account" header to sourceAccount', () => {
+    const headers = ['Date', 'Source Account', 'Description', 'Amount'];
+    const mappings = suggestBankColumnMappings(headers, []);
+
+    const sourceAccountMapping = mappings.find((m) => m.targetField === 'sourceAccount');
+    expect(sourceAccountMapping).toBeDefined();
+    expect(sourceAccountMapping!.csvColumn).toBe('Source Account');
+  });
 });

@@ -553,11 +553,16 @@ export type Database = {
           confidence_score: number | null
           created_at: string
           description: string
+          duplicate_confidence: number | null
+          duplicate_transaction_id: string | null
           has_validation_error: boolean | null
           id: string
           imported_transaction_id: string | null
           is_imported: boolean
+          is_potential_duplicate: boolean | null
           line_sequence: number
+          raw_data: Json | null
+          source_account: string | null
           statement_upload_id: string
           transaction_date: string
           transaction_type: string | null
@@ -571,11 +576,16 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           description: string
+          duplicate_confidence?: number | null
+          duplicate_transaction_id?: string | null
           has_validation_error?: boolean | null
           id?: string
           imported_transaction_id?: string | null
           is_imported?: boolean
+          is_potential_duplicate?: boolean | null
           line_sequence: number
+          raw_data?: Json | null
+          source_account?: string | null
           statement_upload_id: string
           transaction_date: string
           transaction_type?: string | null
@@ -589,11 +599,16 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           description?: string
+          duplicate_confidence?: number | null
+          duplicate_transaction_id?: string | null
           has_validation_error?: boolean | null
           id?: string
           imported_transaction_id?: string | null
           is_imported?: boolean
+          is_potential_duplicate?: boolean | null
           line_sequence?: number
+          raw_data?: Json | null
+          source_account?: string | null
           statement_upload_id?: string
           transaction_date?: string
           transaction_type?: string | null
@@ -602,6 +617,13 @@ export type Database = {
           validation_errors?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "bank_statement_lines_duplicate_transaction_id_fkey"
+            columns: ["duplicate_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bank_statement_lines_imported_transaction_id_fkey"
             columns: ["imported_transaction_id"]
@@ -621,6 +643,7 @@ export type Database = {
       bank_statement_uploads: {
         Row: {
           bank_name: string | null
+          connected_bank_id: string | null
           created_at: string
           error_message: string | null
           failed_transaction_count: number | null
@@ -633,6 +656,7 @@ export type Database = {
           raw_file_url: string | null
           raw_ocr_data: Json | null
           restaurant_id: string
+          source_type: string | null
           statement_period_end: string | null
           statement_period_start: string | null
           status: string
@@ -644,6 +668,7 @@ export type Database = {
         }
         Insert: {
           bank_name?: string | null
+          connected_bank_id?: string | null
           created_at?: string
           error_message?: string | null
           failed_transaction_count?: number | null
@@ -656,6 +681,7 @@ export type Database = {
           raw_file_url?: string | null
           raw_ocr_data?: Json | null
           restaurant_id: string
+          source_type?: string | null
           statement_period_end?: string | null
           statement_period_start?: string | null
           status?: string
@@ -667,6 +693,7 @@ export type Database = {
         }
         Update: {
           bank_name?: string | null
+          connected_bank_id?: string | null
           created_at?: string
           error_message?: string | null
           failed_transaction_count?: number | null
@@ -679,6 +706,7 @@ export type Database = {
           raw_file_url?: string | null
           raw_ocr_data?: Json | null
           restaurant_id?: string
+          source_type?: string | null
           statement_period_end?: string | null
           statement_period_start?: string | null
           status?: string
@@ -689,6 +717,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "bank_statement_uploads_connected_bank_id_fkey"
+            columns: ["connected_bank_id"]
+            isOneToOne: false
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bank_statement_uploads_restaurant_id_fkey"
             columns: ["restaurant_id"]
@@ -8147,6 +8182,19 @@ export type Database = {
         Returns: {
           adjustment_type: string
           total_amount: number
+          transaction_count: number
+        }[]
+      }
+      get_pos_tips_by_date: {
+        Args: {
+          p_end_date: string
+          p_restaurant_id: string
+          p_start_date: string
+        }
+        Returns: {
+          pos_source: string
+          tip_date: string
+          total_amount_cents: number
           transaction_count: number
         }[]
       }

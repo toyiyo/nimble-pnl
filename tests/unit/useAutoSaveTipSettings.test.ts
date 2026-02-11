@@ -27,21 +27,38 @@ describe('useAutoSaveTipSettings', () => {
     updated_at: '2026-01-01',
   };
 
-  it('does not trigger save when settings is null', () => {
+  it('does not trigger save when settings is null and all values are defaults', () => {
     renderHook(() =>
       useAutoSaveTipSettings({
         settings: null,
         tipSource: 'manual',
         shareMethod: 'hours',
         splitCadence: 'daily',
-        roleWeights: { Server: 1 },
-        selectedEmployees: new Set(['emp1']),
+        roleWeights: {},
+        selectedEmployees: new Set(),
         onSave,
       })
     );
 
     vi.advanceTimersByTime(1500);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('triggers save when settings is null but user has configured values', () => {
+    renderHook(() =>
+      useAutoSaveTipSettings({
+        settings: null,
+        tipSource: 'pos',
+        shareMethod: 'hours',
+        splitCadence: 'daily',
+        roleWeights: {},
+        selectedEmployees: new Set(),
+        onSave,
+      })
+    );
+
+    vi.advanceTimersByTime(1500);
+    expect(onSave).toHaveBeenCalledOnce();
   });
 
   it('does not trigger save when no changes detected', () => {

@@ -13,6 +13,7 @@ interface POSSalesDashboardProps {
   totalSales: number;
   totalRevenue: number;
   discounts: number;
+  voids: number;
   passThroughAmount: number;
   collectedAtPOS: number;
   uniqueItems: number;
@@ -37,6 +38,7 @@ const formatCurrency = (amount: number): string => {
 export const POSSalesDashboard = ({
   totalRevenue,
   discounts,
+  voids,
   passThroughAmount,
   collectedAtPOS,
   uniqueItems,
@@ -72,6 +74,14 @@ export const POSSalesDashboard = ({
       label: "Discounts",
       value: `$${formatCurrency(discounts)}`,
     },
+    ...(voids > 0
+      ? [
+          {
+            label: "Voids",
+            value: `$${formatCurrency(voids)}`,
+          },
+        ]
+      : []),
     {
       label: "Pass-Through",
       value: `$${formatCurrency(passThroughAmount)}`,

@@ -595,6 +595,7 @@ export default function POSSales() {
     totalSales: serverTotals.totalCount,
     revenue: serverTotals.revenue,
     discounts: serverTotals.discounts,
+    voids: serverTotals.voids,
     passThroughAmount: serverTotals.passThroughAmount,
     collectedAtPOS: serverTotals.collectedAtPOS,
     uniqueItems: serverTotals.uniqueItems,
@@ -717,6 +718,7 @@ export default function POSSales() {
         { label: "Collected at POS", value: `$${dashboardMetrics.collectedAtPOS.toFixed(2)}` },
         { label: "Revenue", value: `$${dashboardMetrics.revenue.toFixed(2)}` },
         { label: "Discounts", value: `$${dashboardMetrics.discounts.toFixed(2)}` },
+        ...(dashboardMetrics.voids > 0 ? [{ label: "Voids", value: `$${dashboardMetrics.voids.toFixed(2)}` }] : []),
         { label: "Pass-Through Items", value: `$${dashboardMetrics.passThroughAmount.toFixed(2)}` },
         { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
         { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
@@ -848,6 +850,7 @@ export default function POSSales() {
         totalSales={dashboardMetrics.totalSales}
         totalRevenue={dashboardMetrics.revenue}
         discounts={dashboardMetrics.discounts}
+        voids={dashboardMetrics.voids}
         passThroughAmount={dashboardMetrics.passThroughAmount}
         collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}

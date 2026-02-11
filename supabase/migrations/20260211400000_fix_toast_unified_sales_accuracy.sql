@@ -172,7 +172,19 @@ BEGIN
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
 
-  -- 5. TIP entries (filter out denied/voided payments)
+  -- 5a. DELETE stale tip entries for denied/voided payments
+  -- The upsert below won't remove rows that the query no longer selects,
+  -- so we must explicitly delete tips from denied/voided payments.
+  DELETE FROM public.unified_sales us
+  USING public.toast_payments tp
+  WHERE us.restaurant_id = p_restaurant_id
+    AND us.pos_system = 'toast'
+    AND us.item_type = 'tip'
+    AND us.external_item_id = tp.toast_payment_guid || '_tip'
+    AND us.restaurant_id = tp.restaurant_id
+    AND tp.payment_status IN ('DENIED', 'VOIDED');
+
+  -- 5b. TIP entries (filter out denied/voided payments)
   INSERT INTO public.unified_sales (
     restaurant_id, pos_system, external_order_id, external_item_id,
     item_name, quantity, unit_price, total_price,
@@ -402,7 +414,19 @@ BEGIN
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
 
-  -- 5. TIP entries (filtered by payment_date, filter out denied/voided payments)
+  -- 5a. DELETE stale tip entries for denied/voided payments (filtered by date)
+  DELETE FROM public.unified_sales us
+  USING public.toast_payments tp
+  WHERE us.restaurant_id = p_restaurant_id
+    AND us.pos_system = 'toast'
+    AND us.item_type = 'tip'
+    AND us.external_item_id = tp.toast_payment_guid || '_tip'
+    AND us.restaurant_id = tp.restaurant_id
+    AND tp.payment_date >= p_start_date
+    AND tp.payment_date <= p_end_date
+    AND tp.payment_status IN ('DENIED', 'VOIDED');
+
+  -- 5b. TIP entries (filtered by payment_date, filter out denied/voided payments)
   INSERT INTO public.unified_sales (
     restaurant_id, pos_system, external_order_id, external_item_id,
     item_name, quantity, unit_price, total_price,

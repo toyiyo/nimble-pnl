@@ -208,22 +208,24 @@ SELECT is(
 -- TEST CATEGORY 5: Financial Breakdown - Discounts
 -- ============================================================
 
--- Test 11: Discount entries created
-SELECT ok(
+-- Test 11: No order-level discount entries (removed in favor of item-level)
+SELECT is(
+  (SELECT COUNT(*) FROM unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-200000000011'
+     AND item_name = 'Order Discount'),
+  0::bigint,
+  'No order-level discount entries (section removed in favor of item-level offsets)'
+);
+
+-- Test 12: No item-level discount entries when discount_amount = 0
+SELECT is(
   (SELECT COUNT(*) FROM unified_sales
    WHERE restaurant_id = '00000000-0000-0000-0000-200000000011'
      AND item_type = 'discount'
      AND adjustment_type = 'discount'
-     AND external_item_id = 'toast-order-101_discount') = 1,
-  'Function should create discount entry for order with discount_amount'
-);
-
--- Test 12: Discount amount is negative
-SELECT ok(
-  (SELECT total_price FROM unified_sales
-   WHERE restaurant_id = '00000000-0000-0000-0000-200000000011'
-     AND external_item_id = 'toast-order-101_discount') < 0,
-  'Discount entry should have negative amount'
+     AND external_item_id LIKE 'toast-item-%_discount'),
+  0::bigint,
+  'No item-level discount entries when items have zero discount_amount'
 );
 
 -- ============================================================

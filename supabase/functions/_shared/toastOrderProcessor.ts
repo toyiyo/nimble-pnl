@@ -150,14 +150,19 @@ async function upsertOrderItem(
 ): Promise<void> {
   const itemName = selection.displayName || selection.itemName || selection.name || 'Unknown Item';
 
+  const unitPrice = selection.preDiscountPrice ?? 0;
+  const netPrice = selection.price ?? 0;
+
   const { error: itemError } = await supabase.from('toast_order_items').upsert({
     restaurant_id: restaurantId,
     toast_item_guid: selection.guid,
     toast_order_guid: orderGuid,
     item_name: itemName,
     quantity: selection.quantity || 1,
-    unit_price: selection.preDiscountPrice ?? 0,
-    total_price: selection.price ?? 0,
+    unit_price: unitPrice,
+    total_price: netPrice,
+    is_voided: selection.voided ?? false,
+    discount_amount: Math.max(unitPrice - netPrice, 0),
     menu_category: selection.salesCategory || null,
     modifiers: selection.modifiers || null,
     raw_json: selection,

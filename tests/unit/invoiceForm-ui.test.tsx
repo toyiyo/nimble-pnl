@@ -29,6 +29,7 @@ vi.mock("@/hooks/useInvoices", () => ({
     createInvoice: createInvoiceMock,
     createLocalDraft: vi.fn(),
     updateInvoice: vi.fn(),
+    updateInvoiceAsync: vi.fn().mockResolvedValue({ invoiceId: 'inv-1' }),
     isCreating: false,
     isCreatingDraft: false,
     isUpdating: false,
@@ -68,7 +69,12 @@ describe("InvoiceForm", () => {
   });
 
   const renderForm = (path = "/invoices/new?customer=cust-1") => {
-    const queryClient = new QueryClient();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
     return render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>

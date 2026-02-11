@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, useParams } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useCustomers } from "@/hooks/useCustomers";
@@ -35,7 +35,7 @@ export default function InvoiceForm() {
   const { id: editInvoiceId } = useParams<{ id: string }>();
   const { selectedRestaurant } = useRestaurantContext();
   const { customers } = useCustomers(selectedRestaurant?.restaurant_id || null);
-  const { createInvoice, createLocalDraft, updateInvoice, isCreating, isCreatingDraft, isUpdating, createdInvoice, createdDraft } = useInvoices(selectedRestaurant?.restaurant_id || null);
+  const { createInvoice, createLocalDraft, updateInvoiceAsync, isCreating, isCreatingDraft, isUpdating, createdInvoice, createdDraft } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const { data: existingInvoice } = useInvoice(editInvoiceId || null);
 
@@ -66,9 +66,11 @@ export default function InvoiceForm() {
     }
   }, [createdDraft, navigate]);
 
-  // Populate form when editing an existing invoice
+  // Populate form when editing an existing invoice (guard prevents refetch overwriting edits)
+  const hasPopulatedRef = useRef(false);
   useEffect(() => {
-    if (existingInvoice && editInvoiceId) {
+    if (existingInvoice && editInvoiceId && !hasPopulatedRef.current) {
+      hasPopulatedRef.current = true;
       setCustomerId(existingInvoice.customer_id);
       setDueDate(existingInvoice.due_date ? existingInvoice.due_date.split('T')[0] : '');
       setDescription(existingInvoice.description || '');
@@ -116,7 +118,7 @@ export default function InvoiceForm() {
   const feeCents = passFeesToCustomer ? computeProcessingFeeCents(baseCents) : 0;
   const totalDollars = subtotalDollars + feeCents / 100;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!customerId) {
@@ -149,9 +151,14 @@ export default function InvoiceForm() {
     };
 
     if (isEditMode && !existingInvoice.stripe_invoice_id) {
-      // Edit local draft
-      updateInvoice({ invoiceId: existingInvoice.id, ...formData });
-      navigate(`/invoices/${existingInvoice.id}`);
+      // Edit local draft — await success before navigating
+      try {
+        await updateInvoiceAsync({ invoiceId: existingInvoice.id, ...formData });
+        navigate(`/invoices/${existingInvoice.id}`);
+      } catch {
+        // Error toast handled by mutation's onError
+      }
+      return;
     } else if (isReadyForInvoicing) {
       // Create via Stripe
       createInvoice(formData);

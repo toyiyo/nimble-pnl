@@ -49,6 +49,7 @@ vi.mock('@/hooks/useInvoices', () => ({
     createInvoice: mockCreateInvoice,
     createLocalDraft: vi.fn(),
     updateInvoice: vi.fn(),
+    updateInvoiceAsync: vi.fn().mockResolvedValue({ invoiceId: 'inv-1' }),
     isCreating: false,
     isCreatingDraft: false,
     isUpdating: false,

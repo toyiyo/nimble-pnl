@@ -1,6 +1,7 @@
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -34,6 +35,7 @@ export function InvoicePreviewDialog({
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0">
         <DialogHeader className="sr-only">
           <DialogTitle>Invoice Preview</DialogTitle>
+          <DialogDescription>Preview of invoice {invoice.invoice_number || 'draft'}</DialogDescription>
         </DialogHeader>
 
         <div className="bg-background p-8 space-y-8">
@@ -116,7 +118,7 @@ export function InvoicePreviewDialog({
                       {formatCurrency(item.unit_amount / 100, invoice.currency)}
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-foreground">
-                      {formatCurrency((item.amount || (item.quantity * item.unit_amount)) / 100, invoice.currency)}
+                      {formatCurrency((item.amount ?? (item.quantity * item.unit_amount)) / 100, invoice.currency)}
                     </td>
                   </tr>
                 ))}

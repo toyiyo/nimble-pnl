@@ -448,10 +448,12 @@ export function useBankStatementImport() {
       for (const line of lines) {
         if (!isLineImportable(line)) {
           skippedCount++;
-          if (line.has_validation_error) {
-            console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
-          } else {
-            console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+          if (import.meta.env.DEV) {
+            if (line.has_validation_error) {
+              console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
+            } else {
+              console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+            }
           }
           continue;
         }

@@ -1,5 +1,8 @@
 BEGIN;
-SELECT plan(14);
+-- Disable RLS so tests exercise CHECK constraints directly
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+
+SELECT plan(16);
 
 -- Test all 10 new columns exist with correct types
 SELECT has_column('public', 'restaurants', 'legal_name', 'legal_name column exists');
@@ -17,6 +20,12 @@ SELECT has_column('public', 'restaurants', 'entity_type', 'entity_type column ex
 
 -- Test country defaults to US
 SELECT col_default_is('public', 'restaurants', 'country', 'US'::text, 'country defaults to US');
+
+-- Test valid values are accepted
+SELECT lives_ok(
+  $$INSERT INTO restaurants (name, entity_type, state) VALUES ('Valid Biz', 'llc', 'NY')$$,
+  'valid entity_type and state are accepted'
+);
 
 -- Test entity_type constraint rejects invalid values
 SELECT throws_ok(

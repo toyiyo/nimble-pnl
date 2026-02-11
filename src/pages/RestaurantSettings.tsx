@@ -59,7 +59,7 @@ export default function RestaurantSettings() {
   const [country, setCountry] = useState('US');
   const [businessEmail, setBusinessEmail] = useState('');
   const [ein, setEin] = useState('');
-  const [entityType, setEntityType] = useState('');
+  const [entityType, setEntityType] = useState<Restaurant['entity_type'] | ''>('');
   const [savingBusiness, setSavingBusiness] = useState(false);
 
   // Update form when selected restaurant changes
@@ -161,16 +161,16 @@ export default function RestaurantSettings() {
     setSavingBusiness(true);
     try {
       await updateRestaurant(selectedRestaurant.restaurant_id, {
-        legal_name: legalName || undefined,
-        address_line1: addressLine1 || undefined,
-        address_line2: addressLine2 || undefined,
-        city: city || undefined,
-        state: stateProv || undefined,
-        zip: zip || undefined,
-        country: country || undefined,
-        business_email: businessEmail || undefined,
-        ein: ein || undefined,
-        entity_type: (entityType as any) || undefined,
+        legal_name: legalName || null,
+        address_line1: addressLine1 || null,
+        address_line2: addressLine2 || null,
+        city: city || null,
+        state: stateProv || null,
+        zip: zip || null,
+        country: country || null,
+        business_email: businessEmail || null,
+        ein: ein || null,
+        entity_type: entityType || null,
       });
       toast({ title: "Business info saved", description: "Business information has been updated successfully" });
     } catch (error) {

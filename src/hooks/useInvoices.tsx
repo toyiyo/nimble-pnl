@@ -358,7 +358,7 @@ export const useInvoices = (restaurantId: string | null) => {
 
       const { subtotalCents, feeCents, totalCents } = computeInvoiceTotals(data.lineItems, data.passFeesToCustomer);
 
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from('invoices')
         .update({
           customer_id: data.customerId,
@@ -374,9 +374,12 @@ export const useInvoices = (restaurantId: string | null) => {
         })
         .eq('id', data.invoiceId)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'draft');
+        .eq('status', 'draft')
+        .select('id')
+        .single();
 
       if (updateError) throw updateError;
+      if (!updated) throw new Error("Invoice is no longer a draft and cannot be edited");
 
       // Delete old line items and insert new ones
       const { error: deleteError } = await supabase

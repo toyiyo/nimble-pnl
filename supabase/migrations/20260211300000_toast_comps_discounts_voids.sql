@@ -118,7 +118,7 @@ BEGIN
   )
   SELECT
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_discount',
-    'Discount - ' || toi.item_name, 1, -toi.discount_amount, -toi.discount_amount * toi.quantity,
+    'Discount - ' || toi.item_name, toi.quantity, -toi.discount_amount, -toi.discount_amount * toi.quantity,
     too.order_date, too.order_time, toi.menu_category, 'discount', 'discount', toi.raw_json, NOW()
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -153,7 +153,7 @@ BEGIN
   )
   SELECT
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_void',
-    'Void - ' || toi.item_name, 1, -toi.unit_price, -toi.unit_price * toi.quantity,
+    'Void - ' || toi.item_name, toi.quantity, -toi.unit_price, -toi.unit_price * toi.quantity,
     too.order_date, too.order_time, toi.menu_category, 'discount', 'void', toi.raw_json, NOW()
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -343,7 +343,7 @@ BEGIN
   )
   SELECT
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_discount',
-    'Discount - ' || toi.item_name, 1, -toi.discount_amount, -toi.discount_amount * toi.quantity,
+    'Discount - ' || toi.item_name, toi.quantity, -toi.discount_amount, -toi.discount_amount * toi.quantity,
     too.order_date, too.order_time, toi.menu_category, 'discount', 'discount', toi.raw_json, NOW()
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -378,7 +378,7 @@ BEGIN
   )
   SELECT
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_void',
-    'Void - ' || toi.item_name, 1, -toi.unit_price, -toi.unit_price * toi.quantity,
+    'Void - ' || toi.item_name, toi.quantity, -toi.unit_price, -toi.unit_price * toi.quantity,
     too.order_date, too.order_time, toi.menu_category, 'discount', 'void', toi.raw_json, NOW()
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too

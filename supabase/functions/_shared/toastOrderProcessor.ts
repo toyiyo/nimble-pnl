@@ -150,7 +150,7 @@ async function upsertOrderItem(
 ): Promise<void> {
   const itemName = selection.displayName || selection.itemName || selection.name || 'Unknown Item';
 
-  const unitPrice = selection.preDiscountPrice ?? 0;
+  const unitPrice = selection.preDiscountPrice ?? selection.price ?? 0;
   const netPrice = selection.price ?? 0;
 
   const { error: itemError } = await supabase.from('toast_order_items').upsert({

@@ -8,7 +8,7 @@
 --   - Correct net amounts match Toast's Net Amount report
 
 BEGIN;
-SELECT plan(20);
+SELECT plan(17);
 
 -- Setup: Disable RLS for test data creation
 SET LOCAL role TO postgres;
@@ -254,8 +254,7 @@ SELECT is(
 -- Normal: $27.95 + $0 = $27.95
 -- Discounted: $28.95 + (-$2.90) = $26.05
 -- Comped: $23.95 + (-$23.95) = $0.00
--- Total: $53.00 (note: not $54.00, because comped item nets to 0)
--- Actually: 27.95 + 26.05 = 54.00
+-- Total: $54.00 (27.95 + 26.05 + 0.00)
 SELECT is(
   (SELECT SUM(total_price) FROM unified_sales
    WHERE restaurant_id = '00000000-0000-0000-0000-280000000011'

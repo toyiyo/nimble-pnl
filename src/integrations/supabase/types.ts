@@ -4692,13 +4692,22 @@ export type Database = {
       restaurants: {
         Row: {
           address: string | null
+          address_line1: string | null
+          address_line2: string | null
+          business_email: string | null
           capitalize_threshold_cents: number | null
+          city: string | null
+          country: string | null
           created_at: string
           cuisine_type: string | null
+          ein: string | null
+          entity_type: string | null
           grandfathered_until: string | null
           id: string
+          legal_name: string | null
           name: string
           phone: string | null
+          state: string | null
           stripe_customer_id: string | null
           stripe_subscription_customer_id: string | null
           stripe_subscription_id: string | null
@@ -4710,16 +4719,26 @@ export type Database = {
           timezone: string | null
           trial_ends_at: string | null
           updated_at: string
+          zip: string | null
         }
         Insert: {
           address?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          business_email?: string | null
           capitalize_threshold_cents?: number | null
+          city?: string | null
+          country?: string | null
           created_at?: string
           cuisine_type?: string | null
+          ein?: string | null
+          entity_type?: string | null
           grandfathered_until?: string | null
           id?: string
+          legal_name?: string | null
           name: string
           phone?: string | null
+          state?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -4731,16 +4750,26 @@ export type Database = {
           timezone?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          zip?: string | null
         }
         Update: {
           address?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          business_email?: string | null
           capitalize_threshold_cents?: number | null
+          city?: string | null
+          country?: string | null
           created_at?: string
           cuisine_type?: string | null
+          ein?: string | null
+          entity_type?: string | null
           grandfathered_until?: string | null
           id?: string
+          legal_name?: string | null
           name?: string
           phone?: string | null
+          state?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -4752,6 +4781,7 @@ export type Database = {
           timezone?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          zip?: string | null
         }
         Relationships: []
       }

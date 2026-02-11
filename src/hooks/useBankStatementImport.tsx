@@ -1016,7 +1016,7 @@ async function insertLinesInChunks(lines: StatementLineInsert[]) {
     const chunk = lines.slice(i, i + CHUNK_SIZE);
     const { error: insertError } = await supabase
       .from('bank_statement_lines')
-      .insert(chunk);
+      .insert(chunk as any);
 
     if (insertError) {
       if (import.meta.env.DEV) console.error('Error inserting statement lines chunk:', insertError);

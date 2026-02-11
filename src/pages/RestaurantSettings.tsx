@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useRestaurants } from '@/hooks/useRestaurants';
+import { useRestaurants, type Restaurant } from '@/hooks/useRestaurants';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -498,7 +498,7 @@ export default function RestaurantSettings() {
                         <Label htmlFor="entityType" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Entity Type
                         </Label>
-                        <Select value={entityType} onValueChange={setEntityType}>
+                        <Select value={entityType} onValueChange={(v) => setEntityType(v as typeof entityType)}>
                           <SelectTrigger id="entityType" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>

@@ -5,6 +5,7 @@ interface SalesTotals {
   totalCount: number;
   revenue: number;
   discounts: number;
+  voids: number;
   passThroughAmount: number;
   uniqueItems: number;
   collectedAtPOS: number;
@@ -30,6 +31,7 @@ export const useUnifiedSalesTotals = (
           totalCount: 0,
           revenue: 0,
           discounts: 0,
+          voids: 0,
           passThroughAmount: 0,
           uniqueItems: 0,
           collectedAtPOS: 0,
@@ -55,6 +57,7 @@ export const useUnifiedSalesTotals = (
         totalCount: Number(result?.total_count ?? 0),
         revenue: Number(result?.revenue ?? 0),
         discounts: Number(result?.discounts ?? 0),
+        voids: Number(result?.voids ?? 0),
         passThroughAmount: Number(result?.pass_through_amount ?? 0),
         uniqueItems: Number(result?.unique_items ?? 0),
         collectedAtPOS: Number(result?.collected_at_pos ?? 0),
@@ -70,6 +73,7 @@ export const useUnifiedSalesTotals = (
       totalCount: 0,
       revenue: 0,
       discounts: 0,
+      voids: 0,
       passThroughAmount: 0,
       uniqueItems: 0,
       collectedAtPOS: 0,

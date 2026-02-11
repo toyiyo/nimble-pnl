@@ -31,11 +31,11 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 const statusConfig = {
-  draft: { icon: FileText, color: "bg-gray-100 text-gray-800", label: "Draft" },
-  open: { icon: Clock, color: "bg-blue-100 text-blue-800", label: "Sent" },
-  paid: { icon: CheckCircle, color: "bg-green-100 text-green-800", label: "Paid" },
-  void: { icon: Ban, color: "bg-red-100 text-red-800", label: "Void" },
-  uncollectible: { icon: AlertCircle, color: "bg-orange-100 text-orange-800", label: "Uncollectible" },
+  draft: { icon: FileText, color: "bg-muted text-muted-foreground", label: "Draft" },
+  open: { icon: Clock, color: "bg-blue-500/10 text-blue-700 dark:text-blue-400", label: "Sent" },
+  paid: { icon: CheckCircle, color: "bg-green-500/10 text-green-700 dark:text-green-400", label: "Paid" },
+  void: { icon: Ban, color: "bg-destructive/10 text-destructive", label: "Void" },
+  uncollectible: { icon: AlertCircle, color: "bg-orange-500/10 text-orange-700 dark:text-orange-400", label: "Uncollectible" },
 };
 
 export default function InvoiceDetail() {
@@ -103,6 +103,12 @@ export default function InvoiceDetail() {
   const statusInfo = statusConfig[invoice.status];
   const StatusIcon = statusInfo.icon;
 
+  function getSendButtonLabel(): string {
+    if (isSending) return 'Sending...';
+    if (invoice.stripe_invoice_id) return 'Send Invoice';
+    return 'Create & Send Invoice';
+  }
+
   const handleSendInvoice = async () => {
     try {
       await sendInvoiceAsync(invoice.id);
@@ -110,8 +116,8 @@ export default function InvoiceDetail() {
         title: "Invoice Sent",
         description: "The invoice has been sent to the customer successfully.",
       });
-    } catch (error) {
-      console.error('Error sending invoice:', error);
+    } catch (err) {
+      console.error('Error sending invoice:', err);
     }
   };
 
@@ -130,8 +136,8 @@ export default function InvoiceDetail() {
   const handleSyncStatus = async () => {
     try {
       await syncInvoiceStatusAsync(invoice.id);
-    } catch (error) {
-      console.error('Error syncing invoice status:', error);
+    } catch (err) {
+      console.error('Error syncing invoice status:', err);
     }
   };
 
@@ -193,7 +199,7 @@ export default function InvoiceDetail() {
                   className="bg-primary hover:bg-primary/90"
                 >
                   <Send className="h-4 w-4 mr-2" />
-                  {isSending ? 'Sending...' : (invoice.stripe_invoice_id ? 'Send Invoice' : 'Create & Send Invoice')}
+                  {getSendButtonLabel()}
                 </Button>
               ) : (
                 <Button disabled className="bg-primary/50">

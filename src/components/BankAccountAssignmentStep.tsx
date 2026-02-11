@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -125,9 +126,9 @@ export const BankAccountAssignmentStep: React.FC<BankAccountAssignmentStepProps>
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 Assign Accounts
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 Match each source account to an existing bank or create a new one
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>

@@ -50,7 +50,7 @@ export function StripeEmbeddedConnect({
 
     switch (component) {
       case "account_onboarding":
-        return <ConnectAccountOnboarding onExit={onCompleted ? () => onCompleted() : undefined} />;
+        return <ConnectAccountOnboarding onExit={onCompleted} />;
       case "account_management":
         return <ConnectAccountManagement />;
       case "payments":

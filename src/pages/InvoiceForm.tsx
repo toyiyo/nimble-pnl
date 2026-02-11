@@ -23,14 +23,13 @@ import { formatCurrency } from "@/lib/utils";
 import { computeProcessingFeeCents } from "@/lib/invoiceUtils";
 import { CustomerFormDialog } from "@/components/invoicing/CustomerFormDialog";
 
+type LocalLineItem = InvoiceLineItem & { localId: string };
+
+function makeId(): string {
+  return crypto.randomUUID();
+}
+
 export default function InvoiceForm() {
-  type LocalLineItem = InvoiceLineItem & { localId: string };
-
-  const makeId = () =>
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { id: editInvoiceId } = useParams<{ id: string }>();
@@ -171,11 +170,12 @@ export default function InvoiceForm() {
   };
 
   const isBusy = isCreating || isCreatingDraft || isUpdating;
-  const submitLabel = isEditMode
-    ? (isBusy ? 'Saving...' : 'Save Changes')
-    : isReadyForInvoicing
-    ? (isBusy ? 'Creating...' : 'Create Invoice')
-    : (isBusy ? 'Saving...' : 'Save Draft');
+
+  function getSubmitLabel(): string {
+    if (isEditMode) return isBusy ? 'Saving...' : 'Save Changes';
+    if (isReadyForInvoicing) return isBusy ? 'Creating...' : 'Create Invoice';
+    return isBusy ? 'Saving...' : 'Save Draft';
+  }
 
   return (
     <div className="space-y-6">
@@ -387,7 +387,7 @@ export default function InvoiceForm() {
             Cancel
           </Button>
           <Button type="submit" disabled={isBusy}>
-            {submitLabel}
+            {getSubmitLabel()}
           </Button>
         </div>
       </form>

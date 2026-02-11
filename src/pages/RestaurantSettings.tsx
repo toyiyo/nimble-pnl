@@ -203,13 +203,12 @@ export default function RestaurantSettings() {
   }, [activeTab, allowedTabs, setActiveTab]);
 
   // Compute grid columns class based on visible tab count
-  const gridColsClass = allowedTabs.length === 5
-    ? 'grid-cols-5'
-    : allowedTabs.length === 4
-    ? 'grid-cols-4'
-    : allowedTabs.length === 3
-    ? 'grid-cols-3'
-    : 'grid-cols-2';
+  const gridColsMap: Record<number, string> = {
+    5: 'grid-cols-5',
+    4: 'grid-cols-4',
+    3: 'grid-cols-3',
+  };
+  const gridColsClass = gridColsMap[allowedTabs.length] || 'grid-cols-2';
 
   if (!user) {
     return (

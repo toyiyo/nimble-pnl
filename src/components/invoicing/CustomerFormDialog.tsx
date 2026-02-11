@@ -54,6 +54,14 @@ export function CustomerFormDialog({ open, onOpenChange, customer, onCreated }: 
     }
   }, [customer, reset]);
 
+  const isBusy = isCreating || isUpdating;
+
+  function getButtonLabel(): string {
+    if (isBusy) return "Saving...";
+    if (customer) return "Update";
+    return "Create";
+  }
+
   const onSubmit = async (data: CustomerFormData) => {
     if (customer) {
       updateCustomer({ id: customer.id, ...data });
@@ -182,12 +190,8 @@ export function CustomerFormDialog({ open, onOpenChange, customer, onCreated }: 
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isCreating || isUpdating}>
-              {isCreating || isUpdating
-                ? "Saving..."
-                : customer
-                  ? "Update"
-                  : "Create"}
+            <Button type="submit" disabled={isBusy}>
+              {getButtonLabel()}
             </Button>
           </DialogFooter>
         </form>

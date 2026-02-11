@@ -109,6 +109,50 @@ export const useInvoice = (invoiceId: string | null) => {
   });
 };
 
+interface InvoiceTotals {
+  subtotalCents: number;
+  feeCents: number;
+  totalCents: number;
+}
+
+function computeInvoiceTotals(lineItems: InvoiceLineItem[], passFeesToCustomer?: boolean): InvoiceTotals {
+  const subtotalCents = lineItems.reduce((sum, item) => {
+    return sum + Math.round(Number(item.quantity) * Number(item.unit_amount));
+  }, 0);
+  const feeCents = passFeesToCustomer ? computeProcessingFeeCents(subtotalCents) : 0;
+  const totalCents = subtotalCents + feeCents;
+  return { subtotalCents, feeCents, totalCents };
+}
+
+function buildLineItemRows(
+  invoiceId: string,
+  lineItems: InvoiceLineItem[],
+  feeCents: number,
+  passFeesToCustomer?: boolean
+): Array<{ invoice_id: string; description: string; quantity: number; unit_amount: number; amount: number }> {
+  const rows = lineItems
+    .filter(item => item.description.trim() !== '')
+    .map(item => ({
+      invoice_id: invoiceId,
+      description: item.description,
+      quantity: Number(item.quantity),
+      unit_amount: Math.round(Number(item.unit_amount)),
+      amount: Math.round(Number(item.quantity) * Number(item.unit_amount)),
+    }));
+
+  if (passFeesToCustomer && feeCents > 0) {
+    rows.push({
+      invoice_id: invoiceId,
+      description: 'Processing Fee',
+      quantity: 1,
+      unit_amount: feeCents,
+      amount: feeCents,
+    });
+  }
+
+  return rows;
+}
+
 export const useInvoices = (restaurantId: string | null) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -182,7 +226,7 @@ export const useInvoices = (restaurantId: string | null) => {
         title: "Invoice Created",
         description: "The invoice has been created successfully",
       });
-      return data; // Return the created invoice data
+      return data;
     },
     onError: (error) => {
       console.error('Error creating invoice:', error);
@@ -258,12 +302,7 @@ export const useInvoices = (restaurantId: string | null) => {
     mutationFn: async (data: InvoiceFormData) => {
       if (!restaurantId) throw new Error("No restaurant selected");
 
-      const subtotalCents = data.lineItems.reduce((sum, item) => {
-        return sum + Math.round(Number(item.quantity) * Number(item.unit_amount));
-      }, 0);
-
-      const feeCents = data.passFeesToCustomer ? computeProcessingFeeCents(subtotalCents) : 0;
-      const totalCents = subtotalCents + feeCents;
+      const { subtotalCents, feeCents, totalCents } = computeInvoiceTotals(data.lineItems, data.passFeesToCustomer);
 
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
@@ -291,27 +330,7 @@ export const useInvoices = (restaurantId: string | null) => {
 
       if (invoiceError) throw invoiceError;
 
-      // Insert line items
-      const lineItemRows = data.lineItems
-        .filter(item => item.description.trim() !== '')
-        .map(item => ({
-          invoice_id: invoice.id,
-          description: item.description,
-          quantity: Number(item.quantity),
-          unit_amount: Math.round(Number(item.unit_amount)),
-          amount: Math.round(Number(item.quantity) * Number(item.unit_amount)),
-        }));
-
-      // Add processing fee line item if applicable
-      if (data.passFeesToCustomer && feeCents > 0) {
-        lineItemRows.push({
-          invoice_id: invoice.id,
-          description: 'Processing Fee',
-          quantity: 1,
-          unit_amount: feeCents,
-          amount: feeCents,
-        });
-      }
+      const lineItemRows = buildLineItemRows(invoice.id, data.lineItems, feeCents, data.passFeesToCustomer);
 
       if (lineItemRows.length > 0) {
         const { error: itemsError } = await supabase
@@ -337,12 +356,7 @@ export const useInvoices = (restaurantId: string | null) => {
     mutationFn: async (data: InvoiceFormData & { invoiceId: string }) => {
       if (!restaurantId) throw new Error("No restaurant selected");
 
-      const subtotalCents = data.lineItems.reduce((sum, item) => {
-        return sum + Math.round(Number(item.quantity) * Number(item.unit_amount));
-      }, 0);
-
-      const feeCents = data.passFeesToCustomer ? computeProcessingFeeCents(subtotalCents) : 0;
-      const totalCents = subtotalCents + feeCents;
+      const { subtotalCents, feeCents, totalCents } = computeInvoiceTotals(data.lineItems, data.passFeesToCustomer);
 
       const { error: updateError } = await supabase
         .from('invoices')
@@ -364,33 +378,14 @@ export const useInvoices = (restaurantId: string | null) => {
 
       if (updateError) throw updateError;
 
-      // Delete old line items
+      // Delete old line items and insert new ones
       const { error: deleteError } = await supabase
         .from('invoice_line_items')
         .delete()
         .eq('invoice_id', data.invoiceId);
       if (deleteError) throw deleteError;
 
-      // Insert new line items
-      const lineItemRows = data.lineItems
-        .filter(item => item.description.trim() !== '')
-        .map(item => ({
-          invoice_id: data.invoiceId,
-          description: item.description,
-          quantity: Number(item.quantity),
-          unit_amount: Math.round(Number(item.unit_amount)),
-          amount: Math.round(Number(item.quantity) * Number(item.unit_amount)),
-        }));
-
-      if (data.passFeesToCustomer && feeCents > 0) {
-        lineItemRows.push({
-          invoice_id: data.invoiceId,
-          description: 'Processing Fee',
-          quantity: 1,
-          unit_amount: feeCents,
-          amount: feeCents,
-        });
-      }
+      const lineItemRows = buildLineItemRows(data.invoiceId, data.lineItems, feeCents, data.passFeesToCustomer);
 
       if (lineItemRows.length > 0) {
         const { error: itemsError } = await supabase

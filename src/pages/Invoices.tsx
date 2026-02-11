@@ -142,7 +142,7 @@ export default function Invoices() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <FileText className="h-6 w-6 text-primary transition-transform duration-300 group-hover:scale-110" />
+                <FileText className="h-6 w-6 text-primary" />
                 <div>
                   <CardTitle className="text-2xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                     Invoices

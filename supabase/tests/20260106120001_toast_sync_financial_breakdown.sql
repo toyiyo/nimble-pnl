@@ -40,7 +40,7 @@ ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE
   SET total_amount = EXCLUDED.total_amount, tax_amount = EXCLUDED.tax_amount, discount_amount = EXCLUDED.discount_amount;
 
 INSERT INTO toast_order_items (toast_item_guid, toast_order_id, toast_order_guid, restaurant_id, item_name, quantity, unit_price, total_price, menu_category, raw_json) VALUES
-  ('toast-item-101', '00000000-0000-0000-0000-200000000021', 'toast-order-101', '00000000-0000-0000-0000-200000000011', 'Burger', 2, 75.00, 150.00, 'Entrees', '{}'),
+  ('toast-item-101', '00000000-0000-0000-0000-200000000021', 'toast-order-101', '00000000-0000-0000-0000-200000000011', 'Burger', 2, 150.00, 150.00, 'Entrees', '{}'),
   ('toast-item-102', '00000000-0000-0000-0000-200000000022', 'toast-order-102', '00000000-0000-0000-0000-200000000011', 'Zero Item', 0, 0.00, 0.00, 'Test', '{}'),
   ('toast-item-103', '00000000-0000-0000-0000-200000000023', 'toast-order-103', '00000000-0000-0000-0000-200000000011', 'Steak', 1, 200.00, 200.00, 'Entrees', '{}')
 ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE SET total_price = EXCLUDED.total_price;

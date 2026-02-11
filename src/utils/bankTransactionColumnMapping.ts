@@ -556,32 +556,35 @@ export function matchAccountToBank(
       }
     }
 
-    // Account mask match (50 points)
+    // Account mask match (50 points — awarded once even if both sources match)
     if (accountInfo.accountMask) {
+      let maskMatched = false;
       for (const bal of balances) {
         if (bal.account_mask && bal.account_mask === accountInfo.accountMask) {
-          score += 50;
+          maskMatched = true;
           break;
         }
       }
       // Also check if the bank name contains the mask (e.g., "Mercury Checking ****7138")
-      if (bankName.includes(accountInfo.accountMask)) {
-        score += 50;
+      if (!maskMatched && bankName.includes(accountInfo.accountMask)) {
+        maskMatched = true;
       }
+      if (maskMatched) score += 50;
     }
 
-    // Account type match (10 points)
+    // Account type match (10 points — awarded once even if both sources match)
     if (accountInfo.accountType) {
+      let typeMatched = false;
       for (const bal of balances) {
         if (bal.account_type && bal.account_type === accountInfo.accountType) {
-          score += 10;
+          typeMatched = true;
           break;
         }
       }
-      // Also check bank name for type keywords
-      if (bankName.includes(accountInfo.accountType.replace('_', ' '))) {
-        score += 10;
+      if (!typeMatched && bankName.includes(accountInfo.accountType.replace('_', ' '))) {
+        typeMatched = true;
       }
+      if (typeMatched) score += 10;
     }
 
     if (score > bestScore) {

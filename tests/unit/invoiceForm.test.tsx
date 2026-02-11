@@ -12,6 +12,7 @@ vi.mock('react-router-dom', async () => {
     ...actual,
     useNavigate: () => navigateMock,
     useSearchParams: () => [new URLSearchParams()],
+    useParams: () => ({}),
   };
 });
 
@@ -46,8 +47,24 @@ const mockCreateInvoice = vi.fn();
 vi.mock('@/hooks/useInvoices', () => ({
   useInvoices: () => ({
     createInvoice: mockCreateInvoice,
+    createLocalDraft: vi.fn(),
+    updateInvoice: vi.fn(),
+    updateInvoiceAsync: vi.fn().mockResolvedValue({ invoiceId: 'inv-1' }),
     isCreating: false,
+    isCreatingDraft: false,
+    isUpdating: false,
+    createdInvoice: null,
+    createdDraft: null,
   }),
+  useInvoice: () => ({
+    data: null,
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+vi.mock('@/components/invoicing/CustomerFormDialog', () => ({
+  CustomerFormDialog: () => null,
 }));
 
 const createWrapper = () => {
@@ -113,7 +130,7 @@ describe('InvoiceForm', () => {
       expect(screen.getByLabelText('Description')).toBeInTheDocument();
       expect(screen.getByLabelText('Footer')).toBeInTheDocument();
       expect(screen.getByLabelText('Internal Memo')).toBeInTheDocument();
-      expect(screen.getByRole('checkbox', { name: /add processing fee to invoice/i })).toBeInTheDocument();
+      expect(screen.getByRole('switch', { name: /pass processing fee to customer/i })).toBeInTheDocument();
     });
 
     it('renders line item inputs', () => {
@@ -220,14 +237,14 @@ describe('InvoiceForm', () => {
         </MemoryRouter>
       );
 
-      const feeCheckbox = screen.getByRole('checkbox', { name: /add processing fee to invoice/i });
-      expect(feeCheckbox).not.toBeChecked();
+      const feeSwitch = screen.getByRole('switch', { name: /pass processing fee to customer/i });
+      expect(feeSwitch).not.toBeChecked();
 
-      fireEvent.click(feeCheckbox);
-      expect(feeCheckbox).toBeChecked();
+      fireEvent.click(feeSwitch);
+      expect(feeSwitch).toBeChecked();
 
-      fireEvent.click(feeCheckbox);
-      expect(feeCheckbox).not.toBeChecked();
+      fireEvent.click(feeSwitch);
+      expect(feeSwitch).not.toBeChecked();
     });
   });
 
@@ -263,6 +280,8 @@ describe('InvoiceForm', () => {
       );
 
       expect(screen.queryByText('Stripe Connect Setup Required')).not.toBeInTheDocument();
+      // Should show "Create Invoice" button when Stripe is ready
+      expect(screen.getByRole('button', { name: /create invoice/i })).toBeInTheDocument();
     });
   });
 });

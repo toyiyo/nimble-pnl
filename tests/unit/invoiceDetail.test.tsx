@@ -55,6 +55,9 @@ vi.mock('@/hooks/useSubscription', () => ({
 
 vi.mock('@/hooks/useStripeConnect', () => ({
   useStripeConnect: () => ({
+    isReadyForInvoicing: true,
+    createAccount: vi.fn(),
+    isCreatingAccount: false,
     openDashboard: vi.fn(),
     isOpeningDashboard: false,
   }),
@@ -64,6 +67,10 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
     toast: vi.fn(),
   }),
+}));
+
+vi.mock('@/components/invoicing/InvoicePreviewDialog', () => ({
+  InvoicePreviewDialog: () => null,
 }));
 
 vi.mock('@/hooks/useInvoices', () => {
@@ -611,7 +618,7 @@ describe('InvoiceDetail', () => {
         </MemoryRouter>
       );
 
-      expect(screen.getByRole('button', { name: /sync status/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /refresh status/i })).toBeInTheDocument();
     });
 
     it('does not show sync status button when stripe_invoice_id is null', () => {
@@ -629,7 +636,7 @@ describe('InvoiceDetail', () => {
         </MemoryRouter>
       );
 
-      expect(screen.queryByRole('button', { name: /sync status/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /refresh status/i })).not.toBeInTheDocument();
     });
 
     it('shows view invoice button when hosted_invoice_url exists', () => {
@@ -744,7 +751,7 @@ describe('InvoiceDetail', () => {
         </MemoryRouter>
       );
 
-      const syncButton = screen.getByRole('button', { name: /sync status/i });
+      const syncButton = screen.getByRole('button', { name: /refresh status/i });
       fireEvent.click(syncButton);
 
       await waitFor(() => {

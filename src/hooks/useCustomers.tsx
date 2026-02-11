@@ -204,6 +204,7 @@ export const useCustomers = (restaurantId: string | null) => {
     loading,
     error: queryError,
     createCustomer: createCustomerMutation.mutate,
+    createCustomerAsync: createCustomerMutation.mutateAsync,
     updateCustomer: updateCustomerMutation.mutate,
     deleteCustomer: deleteCustomerMutation.mutate,
     syncCustomerWithStripe: syncCustomerWithStripeMutation.mutate,

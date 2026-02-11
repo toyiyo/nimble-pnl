@@ -51,16 +51,16 @@ export interface BankStatementLine {
 }
 
 /**
- * Helper function to determine if a bank statement line is importable.
+ * Determine if a bank statement line is importable.
  * This predicate must match the import logic in importStatementLines.
- * 
+ *
  * A line is importable if:
  * 1. It hasn't been imported yet
  * 2. It hasn't been excluded by the user
  * 3. It has no validation errors
  * 4. All required fields are present (transaction_date, description, amount)
  */
-export const isLineImportable = (line: BankStatementLine): boolean => {
+export function isLineImportable(line: BankStatementLine): boolean {
   return (
     !line.is_imported &&
     !line.user_excluded &&
@@ -69,9 +69,9 @@ export const isLineImportable = (line: BankStatementLine): boolean => {
     line.description !== '' &&
     line.amount !== null
   );
-};
+}
 
-export const useBankStatementImport = () => {
+export function useBankStatementImport() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
@@ -417,8 +417,8 @@ export const useBankStatementImport = () => {
         throw linesResult.error;
       }
 
-      const statement = statementResult.data;
-      const lines = linesResult.data;
+      const statement = statementResult.data as unknown as BankStatementUpload;
+      const lines = linesResult.data as BankStatementLine[];
 
       if (lines.length === 0) {
         toast({
@@ -430,10 +430,10 @@ export const useBankStatementImport = () => {
 
       // Determine connected_bank_id: use from upload record (CSV import) or create Manual Upload bank
       let connectedBankId: string;
-      const isCSVImport = (statement as any).source_type === 'csv' || (statement as any).source_type === 'excel';
+      const isCSVImport = statement.source_type === 'csv' || statement.source_type === 'excel';
 
-      if (isCSVImport && (statement as any).connected_bank_id) {
-        connectedBankId = (statement as any).connected_bank_id;
+      if (isCSVImport && statement.connected_bank_id) {
+        connectedBankId = statement.connected_bank_id;
         await ensureBankBalanceExists(connectedBankId, statement.bank_name || 'CSV Import Account');
       } else {
         connectedBankId = await resolveManualUploadBankId(
@@ -446,14 +446,14 @@ export const useBankStatementImport = () => {
       let skippedCount = 0;
 
       for (const line of lines) {
-        // Use the shared predicate to determine if line can be imported
-        // This ensures UI count matches what will actually be imported
-        if (!isLineImportable(line as any)) {
+        if (!isLineImportable(line)) {
           skippedCount++;
-          if (line.has_validation_error) {
-            console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
-          } else {
-            console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+          if (import.meta.env.DEV) {
+            if (line.has_validation_error) {
+              console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
+            } else {
+              console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+            }
           }
           continue;
         }
@@ -465,22 +465,21 @@ export const useBankStatementImport = () => {
           : `manual_${statementUploadId}_${line.id}`;
 
         const insertPayload: Record<string, unknown> = {
-            restaurant_id: selectedRestaurant.restaurant_id,
-            connected_bank_id: connectedBankId,
-            stripe_transaction_id: syntheticId,
-            transaction_date: line.transaction_date,
-            posted_date: line.transaction_date,
-            description: line.description,
-            amount: line.amount,
-            source: txnSource,
-            statement_upload_id: statementUploadId,
-            status: 'posted',
-            is_categorized: false,
+          restaurant_id: selectedRestaurant.restaurant_id,
+          connected_bank_id: connectedBankId,
+          stripe_transaction_id: syntheticId,
+          transaction_date: line.transaction_date,
+          posted_date: line.transaction_date,
+          description: line.description,
+          amount: line.amount,
+          source: txnSource,
+          statement_upload_id: statementUploadId,
+          status: 'posted',
+          is_categorized: false,
         };
 
-        // Carry raw_data forward if present on the statement line
-        if ((line as any).raw_data) {
-          insertPayload.raw_data = (line as any).raw_data;
+        if (line.raw_data) {
+          insertPayload.raw_data = line.raw_data;
         }
 
         const { data: newTransaction, error: transactionError } = await supabase
@@ -510,7 +509,8 @@ export const useBankStatementImport = () => {
       const { data: allTransactions } = await supabase
         .from('bank_transactions')
         .select('amount')
-        .eq('connected_bank_id', connectedBankId);
+        .eq('connected_bank_id', connectedBankId)
+        .limit(10000);
 
       const totalBalance = allTransactions?.reduce((sum, t) => sum + t.amount, 0) || 0;
 
@@ -559,7 +559,6 @@ export const useBankStatementImport = () => {
     mappings: BankColumnMapping[],
     selectedBankId: string,
     bankAccountName?: string,
-    sourceAccountFilter?: string
   ): Promise<string | null> => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
@@ -722,7 +721,8 @@ export const useBankStatementImport = () => {
         .from('bank_transactions')
         .select('id, connected_bank_id, transaction_date, amount')
         .in('statement_upload_id', uploadIds)
-        .eq('restaurant_id', selectedRestaurant.restaurant_id);
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .limit(10000);
 
       if (error || !txns || txns.length === 0) return 0;
 
@@ -817,7 +817,7 @@ export const useBankStatementImport = () => {
     isUploading,
     isProcessing
   };
-};
+}
 
 // --- Types ---
 

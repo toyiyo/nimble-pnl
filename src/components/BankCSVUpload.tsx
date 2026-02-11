@@ -324,6 +324,7 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
     }
 
     const uploadIds: string[] = [];
+    const failedAccounts: string[] = [];
 
     try {
       // Process each account assignment
@@ -348,17 +349,23 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
             .single();
 
           if (error || !newBank) {
-            toast({
-              title: 'Error',
-              description: `Failed to create bank "${assignment.newBankName}"`,
-              variant: 'destructive',
-            });
+            failedAccounts.push(assignment.newBankName);
             continue;
           }
           bankId = newBank.id;
 
           // Create balance row with mask/type if available
-          const balanceInsert: Record<string, unknown> = {
+          // Supabase types don't include optional columns; typed payload ensures correctness
+          const balanceInsert: {
+            connected_bank_id: string;
+            account_name: string;
+            current_balance: number;
+            currency: string;
+            as_of_date: string;
+            is_active: boolean;
+            account_mask?: string;
+            account_type?: string;
+          } = {
             connected_bank_id: bankId,
             account_name: assignment.newBankName,
             current_balance: 0,
@@ -368,7 +375,10 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
           };
           if (accountInfo.accountMask) balanceInsert.account_mask = accountInfo.accountMask;
           if (accountInfo.accountType) balanceInsert.account_type = accountInfo.accountType;
-          await supabase.from('bank_account_balances').insert(balanceInsert as any);
+          const { error: balanceError } = await supabase.from('bank_account_balances').insert(balanceInsert as any);
+          if (balanceError && import.meta.env.DEV) {
+            console.error('Failed to create balance record:', balanceError);
+          }
         }
 
         // Filter rows for this account
@@ -384,7 +394,6 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
           confirmedMappings,
           bankId,
           assignment.newBankName || accountInfo.rawValue,
-          accountInfo.rawValue
         );
 
         if (uploadId) {
@@ -404,6 +413,14 @@ export const BankCSVUpload: React.FC<BankCSVUploadProps> = ({
             // Non-fatal
           }
         }
+      }
+
+      if (failedAccounts.length > 0) {
+        toast({
+          title: 'Some accounts failed',
+          description: `Could not create bank${failedAccounts.length > 1 ? 's' : ''}: ${failedAccounts.join(', ')}. Their transactions were skipped.`,
+          variant: 'destructive',
+        });
       }
 
       if (uploadIds.length === 0) {

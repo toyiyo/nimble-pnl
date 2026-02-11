@@ -16,7 +16,7 @@ SELECT has_column('public', 'restaurants', 'ein', 'ein column exists');
 SELECT has_column('public', 'restaurants', 'entity_type', 'entity_type column exists');
 
 -- Test country defaults to US
-SELECT col_default_is('public', 'restaurants', 'country', '''US''::text', 'country defaults to US');
+SELECT col_default_is('public', 'restaurants', 'country', 'US'::text, 'country defaults to US');
 
 -- Test entity_type constraint rejects invalid values
 SELECT throws_ok(

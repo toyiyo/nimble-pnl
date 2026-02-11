@@ -561,6 +561,8 @@ export type Database = {
           is_imported: boolean
           is_potential_duplicate: boolean | null
           line_sequence: number
+          raw_data: Json | null
+          source_account: string | null
           statement_upload_id: string
           transaction_date: string
           transaction_type: string | null
@@ -582,6 +584,8 @@ export type Database = {
           is_imported?: boolean
           is_potential_duplicate?: boolean | null
           line_sequence: number
+          raw_data?: Json | null
+          source_account?: string | null
           statement_upload_id: string
           transaction_date: string
           transaction_type?: string | null
@@ -603,6 +607,8 @@ export type Database = {
           is_imported?: boolean
           is_potential_duplicate?: boolean | null
           line_sequence?: number
+          raw_data?: Json | null
+          source_account?: string | null
           statement_upload_id?: string
           transaction_date?: string
           transaction_type?: string | null

@@ -1,7 +1,7 @@
 -- Tests for get_pos_tips_by_date function
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(16);
 
 -- Disable RLS for test setup
 SET LOCAL role TO postgres;
@@ -155,6 +155,70 @@ SELECT ok(
     '00000000-0000-0000-0000-000000000001'::uuid, '2024-01-15'::DATE, '2024-01-16'::DATE
   ) LIMIT 1) = '2024-01-16'::DATE,
   'First row should be most recent date (DESC order)'
+);
+
+-- Test 10: Uncategorized tips (item_type='tip', no splits) are included
+
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, item_type) VALUES
+  ('00000000-0000-0000-0000-000000000030'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'toast', 'order-005', 'POS Tip', 1, 25.00, '2024-01-18', 'tip')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price;
+
+SELECT is(
+  (SELECT total_amount_cents FROM get_pos_tips_by_date(
+    '00000000-0000-0000-0000-000000000001'::uuid, '2024-01-18'::DATE, '2024-01-18'::DATE
+  ) WHERE tip_date = '2024-01-18'),
+  2500::INTEGER,
+  'Uncategorized tip (item_type=tip, no splits) should return 2500 cents'
+);
+
+-- Test 11: Uncategorized tip with adjustment_type='tip'
+
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, adjustment_type) VALUES
+  ('00000000-0000-0000-0000-000000000031'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'square', 'order-006', 'Adjustment Tip', 1, 15.00, '2024-01-18', 'tip')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price;
+
+SELECT is(
+  (SELECT COUNT(*) FROM get_pos_tips_by_date(
+    '00000000-0000-0000-0000-000000000001'::uuid, '2024-01-18'::DATE, '2024-01-18'::DATE
+  ))::INTEGER,
+  2::INTEGER,
+  'Should return 2 rows for Jan 18: toast uncategorized + square uncategorized'
+);
+
+-- Test 12: Tip miscategorized to non-tip account still appears (not silently dropped)
+
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, item_type) VALUES
+  ('00000000-0000-0000-0000-000000000032'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'clover', 'order-007', 'Miscategorized Tip', 1, 40.00, '2024-01-19', 'tip')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price;
+
+-- Categorize this tip to a non-tip account (Food Sales)
+INSERT INTO unified_sales_splits (sale_id, category_id, amount) VALUES
+  ('00000000-0000-0000-0000-000000000032'::uuid, '00000000-0000-0000-0000-000000000012'::uuid, 40.00);
+
+SELECT is(
+  (SELECT total_amount_cents FROM get_pos_tips_by_date(
+    '00000000-0000-0000-0000-000000000001'::uuid, '2024-01-19'::DATE, '2024-01-19'::DATE
+  ) WHERE tip_date = '2024-01-19'),
+  4000::INTEGER,
+  'Tip miscategorized to non-tip account should still appear via uncategorized path'
+);
+
+-- Test 13: Tip correctly categorized to tip account is NOT double-counted
+
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, item_type) VALUES
+  ('00000000-0000-0000-0000-000000000033'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'square', 'order-008', 'Properly Categorized Tip', 1, 60.00, '2024-01-20', 'tip')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price;
+
+-- Categorize to a tip account
+INSERT INTO unified_sales_splits (sale_id, category_id, amount) VALUES
+  ('00000000-0000-0000-0000-000000000033'::uuid, '00000000-0000-0000-0000-000000000010'::uuid, 60.00);
+
+SELECT is(
+  (SELECT total_amount_cents FROM get_pos_tips_by_date(
+    '00000000-0000-0000-0000-000000000001'::uuid, '2024-01-20'::DATE, '2024-01-20'::DATE
+  ) WHERE tip_date = '2024-01-20'),
+  6000::INTEGER,
+  'Tip categorized to tip account should appear once (via categorized path, not double-counted)'
 );
 
 SELECT * FROM finish();

@@ -44,7 +44,7 @@ export default function InvoiceDetail() {
   const { selectedRestaurant } = useRestaurantContext();
   const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
-  const { isReadyForInvoicing, createAccount, isCreatingAccount } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
   const [showPreview, setShowPreview] = useState(false);
 
@@ -459,20 +459,23 @@ export default function InvoiceDetail() {
           )}
 
           {invoice.status === 'draft' && !isReadyForInvoicing && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Payment Processing Required</AlertTitle>
-              <AlertDescription className="space-y-3">
-                <p>To send this invoice, set up payment processing first.</p>
+            <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                <h3 className="text-[13px] font-semibold text-foreground">Payment Processing</h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-[13px] text-muted-foreground">
+                  Set up payment processing to send invoices and collect payments from customers.
+                </p>
                 <Button
                   size="sm"
-                  onClick={() => createAccount('express')}
-                  disabled={isCreatingAccount}
+                  className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium w-full"
+                  onClick={() => navigate('/stripe-account')}
                 >
-                  {isCreatingAccount ? 'Setting up...' : 'Set up Stripe'}
+                  Set up payment processing
                 </Button>
-              </AlertDescription>
-            </Alert>
+              </div>
+            </div>
           )}
         </div>
       </div>

@@ -235,9 +235,9 @@ export const useInvoices = (restaurantId: string | null) => {
 
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, invoiceId) => {
       queryClient.invalidateQueries({ queryKey: ['invoices', restaurantId] });
-      queryClient.invalidateQueries({ queryKey: ['invoice', data?.invoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       toast({
         title: "Invoice Status Updated",
         description: `Status: ${data?.status}`,

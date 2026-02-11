@@ -39,9 +39,11 @@ export function useAutoSaveTipSettings({
         JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
         JSON.stringify(Array.from(selectedEmployees).sort((a, b) => a.localeCompare(b))) !==
           JSON.stringify((settings.enabled_employee_ids || []).sort((a, b) => a.localeCompare(b)))
-      : // No settings exist - trigger save if user has selected non-default values
-        // Only save if user has actually interacted (e.g., changed from default 'manual')
-        selectedEmployees.size > 0; // If employees selected, assume user has configured
+      : // No settings exist - trigger save if any field differs from defaults
+        selectedEmployees.size > 0 ||
+        tipSource !== 'manual' ||
+        shareMethod !== 'hours' ||
+        splitCadence !== 'daily';
 
     if (!hasChanges) return;
 

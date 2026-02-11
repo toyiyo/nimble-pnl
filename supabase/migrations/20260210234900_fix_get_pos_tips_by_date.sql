@@ -34,12 +34,11 @@ BEGIN
 
   RETURN QUERY
   WITH categorized_tips AS (
-    -- Tips that have been categorized in splits
     SELECT
-      us.sale_date AS tip_date,
-      SUM(uss.amount * 100)::INTEGER AS total_amount_cents,
-      COUNT(DISTINCT us.external_order_id)::INTEGER AS transaction_count,
-      us.pos_system AS pos_source
+      us.sale_date AS t_date,
+      SUM(uss.amount * 100)::INTEGER AS t_cents,
+      COUNT(DISTINCT us.external_order_id)::INTEGER AS t_count,
+      us.pos_system AS t_source
     FROM unified_sales us
     INNER JOIN unified_sales_splits uss ON us.id = uss.sale_id
     INNER JOIN chart_of_accounts coa ON uss.category_id = coa.id
@@ -53,42 +52,41 @@ BEGIN
     GROUP BY us.sale_date, us.pos_system
   ),
   uncategorized_tips AS (
-    -- Tips that haven't been categorized yet (item_type='tip' or adjustment_type='tip')
-    -- Exclude items that already have splits to avoid double-counting
+    -- item_type='tip' or adjustment_type='tip' without a tip-account split
     SELECT
-      us.sale_date AS tip_date,
-      SUM(COALESCE(us.total_price, us.unit_price * us.quantity, 0) * 100)::INTEGER AS total_amount_cents,
-      COUNT(DISTINCT us.external_order_id)::INTEGER AS transaction_count,
-      us.pos_system AS pos_source
+      us.sale_date AS t_date,
+      SUM(COALESCE(us.total_price, us.unit_price * us.quantity, 0) * 100)::INTEGER AS t_cents,
+      COUNT(DISTINCT us.external_order_id)::INTEGER AS t_count,
+      us.pos_system AS t_source
     FROM unified_sales us
     WHERE us.restaurant_id = p_restaurant_id
       AND us.sale_date >= p_start_date
       AND us.sale_date <= p_end_date
       AND (us.item_type = 'tip' OR us.adjustment_type = 'tip')
-      -- Exclude items that have already been categorized (have splits)
       AND NOT EXISTS (
         SELECT 1 FROM unified_sales_splits uss
+        INNER JOIN chart_of_accounts coa ON uss.category_id = coa.id
         WHERE uss.sale_id = us.id
+        AND (
+          LOWER(COALESCE(coa.account_name, '')) LIKE '%tip%'
+          OR LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%'
+        )
       )
     GROUP BY us.sale_date, us.pos_system
   ),
   combined_tips AS (
-    -- Combine both sources
-    SELECT tip_date, total_amount_cents, transaction_count, pos_source
-    FROM categorized_tips
+    SELECT t_date, t_cents, t_count, t_source FROM categorized_tips
     UNION ALL
-    SELECT tip_date, total_amount_cents, transaction_count, pos_source
-    FROM uncategorized_tips
+    SELECT t_date, t_cents, t_count, t_source FROM uncategorized_tips
   )
-  -- Aggregate by date and POS system
   SELECT
-    ct.tip_date,
-    SUM(ct.total_amount_cents)::INTEGER AS total_amount_cents,
-    SUM(ct.transaction_count)::INTEGER AS transaction_count,
-    ct.pos_source
+    ct.t_date,
+    SUM(ct.t_cents)::INTEGER,
+    SUM(ct.t_count)::INTEGER,
+    ct.t_source
   FROM combined_tips ct
-  GROUP BY ct.tip_date, ct.pos_source
-  ORDER BY ct.tip_date DESC;
+  GROUP BY ct.t_date, ct.t_source
+  ORDER BY ct.t_date DESC;
 END;
 $$;
 

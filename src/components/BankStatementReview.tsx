@@ -370,6 +370,11 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
                           ) : (
                             <div className="space-y-1">
                               <span className="line-clamp-2">{line.description || 'Unknown'}</span>
+                              {line.source_account && (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
+                                  {line.source_account}
+                                </Badge>
+                              )}
                               {hasError && validationErrors.description && (
                                 <p className="text-xs text-red-600">{validationErrors.description}</p>
                               )}

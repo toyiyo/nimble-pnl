@@ -40,7 +40,7 @@ ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE
   SET total_amount = EXCLUDED.total_amount, tax_amount = EXCLUDED.tax_amount, discount_amount = EXCLUDED.discount_amount;
 
 INSERT INTO toast_order_items (toast_item_guid, toast_order_id, toast_order_guid, restaurant_id, item_name, quantity, unit_price, total_price, menu_category, raw_json) VALUES
-  ('toast-item-101', '00000000-0000-0000-0000-200000000021', 'toast-order-101', '00000000-0000-0000-0000-200000000011', 'Burger', 2, 75.00, 150.00, 'Entrees', '{}'),
+  ('toast-item-101', '00000000-0000-0000-0000-200000000021', 'toast-order-101', '00000000-0000-0000-0000-200000000011', 'Burger', 2, 150.00, 150.00, 'Entrees', '{}'),
   ('toast-item-102', '00000000-0000-0000-0000-200000000022', 'toast-order-102', '00000000-0000-0000-0000-200000000011', 'Zero Item', 0, 0.00, 0.00, 'Test', '{}'),
   ('toast-item-103', '00000000-0000-0000-0000-200000000023', 'toast-order-103', '00000000-0000-0000-0000-200000000011', 'Steak', 1, 200.00, 200.00, 'Entrees', '{}')
 ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE SET total_price = EXCLUDED.total_price;
@@ -208,22 +208,24 @@ SELECT is(
 -- TEST CATEGORY 5: Financial Breakdown - Discounts
 -- ============================================================
 
--- Test 11: Discount entries created
-SELECT ok(
+-- Test 11: No order-level discount entries (removed in favor of item-level)
+SELECT is(
+  (SELECT COUNT(*) FROM unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-200000000011'
+     AND item_name = 'Order Discount'),
+  0::bigint,
+  'No order-level discount entries (section removed in favor of item-level offsets)'
+);
+
+-- Test 12: No item-level discount entries when discount_amount = 0
+SELECT is(
   (SELECT COUNT(*) FROM unified_sales
    WHERE restaurant_id = '00000000-0000-0000-0000-200000000011'
      AND item_type = 'discount'
      AND adjustment_type = 'discount'
-     AND external_item_id = 'toast-order-101_discount') = 1,
-  'Function should create discount entry for order with discount_amount'
-);
-
--- Test 12: Discount amount is negative
-SELECT ok(
-  (SELECT total_price FROM unified_sales
-   WHERE restaurant_id = '00000000-0000-0000-0000-200000000011'
-     AND external_item_id = 'toast-order-101_discount') < 0,
-  'Discount entry should have negative amount'
+     AND external_item_id LIKE 'toast-item-%_discount'),
+  0::bigint,
+  'No item-level discount entries when items have zero discount_amount'
 );
 
 -- ============================================================

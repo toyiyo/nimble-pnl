@@ -44,21 +44,23 @@ export interface BankStatementLine {
   is_potential_duplicate: boolean;
   duplicate_transaction_id: string | null;
   duplicate_confidence: number | null;
+  source_account?: string | null;
+  raw_data?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
 
 /**
- * Helper function to determine if a bank statement line is importable.
+ * Determine if a bank statement line is importable.
  * This predicate must match the import logic in importStatementLines.
- * 
+ *
  * A line is importable if:
  * 1. It hasn't been imported yet
  * 2. It hasn't been excluded by the user
  * 3. It has no validation errors
  * 4. All required fields are present (transaction_date, description, amount)
  */
-export const isLineImportable = (line: BankStatementLine): boolean => {
+export function isLineImportable(line: BankStatementLine): boolean {
   return (
     !line.is_imported &&
     !line.user_excluded &&
@@ -67,9 +69,9 @@ export const isLineImportable = (line: BankStatementLine): boolean => {
     line.description !== '' &&
     line.amount !== null
   );
-};
+}
 
-export const useBankStatementImport = () => {
+export function useBankStatementImport() {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
@@ -269,7 +271,7 @@ export const useBankStatementImport = () => {
 
       if (error) throw error;
 
-      return (data || []) as BankStatementUpload[];
+      return (data || []) as unknown as BankStatementUpload[];
     } catch (error) {
       console.error('Error fetching bank statement uploads:', error);
       return [];
@@ -286,7 +288,7 @@ export const useBankStatementImport = () => {
 
       if (error) throw error;
 
-      return data as BankStatementUpload;
+      return data as unknown as BankStatementUpload;
     } catch (error) {
       console.error('Error fetching bank statement details:', error);
       return null;
@@ -415,8 +417,8 @@ export const useBankStatementImport = () => {
         throw linesResult.error;
       }
 
-      const statement = statementResult.data;
-      const lines = linesResult.data;
+      const statement = statementResult.data as unknown as BankStatementUpload;
+      const lines = linesResult.data as BankStatementLine[];
 
       if (lines.length === 0) {
         toast({
@@ -444,14 +446,14 @@ export const useBankStatementImport = () => {
       let skippedCount = 0;
 
       for (const line of lines) {
-        // Use the shared predicate to determine if line can be imported
-        // This ensures UI count matches what will actually be imported
         if (!isLineImportable(line)) {
           skippedCount++;
-          if (line.has_validation_error) {
-            console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
-          } else {
-            console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+          if (import.meta.env.DEV) {
+            if (line.has_validation_error) {
+              console.log(`Skipping line ${line.id} due to validation errors:`, line.validation_errors);
+            } else {
+              console.log(`Skipping line ${line.id} - missing required fields or already imported`);
+            }
           }
           continue;
         }
@@ -462,21 +464,27 @@ export const useBankStatementImport = () => {
           ? `csv_${statementUploadId}_${line.id}`
           : `manual_${statementUploadId}_${line.id}`;
 
+        const insertPayload: Record<string, unknown> = {
+          restaurant_id: selectedRestaurant.restaurant_id,
+          connected_bank_id: connectedBankId,
+          stripe_transaction_id: syntheticId,
+          transaction_date: line.transaction_date,
+          posted_date: line.transaction_date,
+          description: line.description,
+          amount: line.amount,
+          source: txnSource,
+          statement_upload_id: statementUploadId,
+          status: 'posted',
+          is_categorized: false,
+        };
+
+        if (line.raw_data) {
+          insertPayload.raw_data = line.raw_data;
+        }
+
         const { data: newTransaction, error: transactionError } = await supabase
           .from('bank_transactions')
-          .insert({
-            restaurant_id: selectedRestaurant.restaurant_id,
-            connected_bank_id: connectedBankId,
-            stripe_transaction_id: syntheticId,
-            transaction_date: line.transaction_date,
-            posted_date: line.transaction_date,
-            description: line.description,
-            amount: line.amount,
-            source: txnSource,
-            statement_upload_id: statementUploadId,
-            status: 'posted',
-            is_categorized: false,
-          })
+          .insert(insertPayload as any)
           .select()
           .single();
 
@@ -501,7 +509,8 @@ export const useBankStatementImport = () => {
       const { data: allTransactions } = await supabase
         .from('bank_transactions')
         .select('amount')
-        .eq('connected_bank_id', connectedBankId);
+        .eq('connected_bank_id', connectedBankId)
+        .limit(10000);
 
       const totalBalance = allTransactions?.reduce((sum, t) => sum + t.amount, 0) || 0;
 
@@ -549,7 +558,7 @@ export const useBankStatementImport = () => {
     parsedRows: Record<string, string>[],
     mappings: BankColumnMapping[],
     selectedBankId: string,
-    bankAccountName?: string
+    bankAccountName?: string,
   ): Promise<string | null> => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
@@ -699,6 +708,62 @@ export const useBankStatementImport = () => {
     }
   };
 
+  /**
+   * After importing multiple uploads (multi-account), detect transfer pairs
+   * across different connected_bank_ids and flag them.
+   */
+  const detectTransfersPostImport = async (uploadIds: string[]): Promise<number> => {
+    if (!selectedRestaurant?.restaurant_id || uploadIds.length < 2) return 0;
+
+    try {
+      // Fetch all recently imported transactions for these uploads
+      const { data: txns, error } = await supabase
+        .from('bank_transactions')
+        .select('id, connected_bank_id, transaction_date, amount')
+        .in('statement_upload_id', uploadIds)
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .limit(10000);
+
+      if (error || !txns || txns.length === 0) return 0;
+
+      let flaggedCount = 0;
+      const usedIds = new Set<string>();
+
+      // Find matching debit/credit pairs across different banks
+      const debits = txns.filter((t) => t.amount < 0);
+      const credits = txns.filter((t) => t.amount > 0);
+
+      for (const debit of debits) {
+        if (usedIds.has(debit.id)) continue;
+
+        for (const credit of credits) {
+          if (usedIds.has(credit.id)) continue;
+          if (credit.connected_bank_id === debit.connected_bank_id) continue;
+          if (credit.transaction_date !== debit.transaction_date) continue;
+          if (Math.abs(credit.amount + debit.amount) >= 0.01) continue;
+
+          // Match found — flag both
+          const pairId = crypto.randomUUID();
+          usedIds.add(debit.id);
+          usedIds.add(credit.id);
+
+          await supabase
+            .from('bank_transactions')
+            .update({ is_transfer: true, transfer_pair_id: pairId } as any)
+            .in('id', [debit.id, credit.id]);
+
+          flaggedCount++;
+          break;
+        }
+      }
+
+      return flaggedCount;
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('Error detecting transfers post-import:', err);
+      return 0;
+    }
+  };
+
   const recalculateBankBalance = async (connectedBankId: string) => {
     try {
       // Fetch the bank's name and all transactions in parallel
@@ -747,11 +812,12 @@ export const useBankStatementImport = () => {
     importStatementLines,
     stageCSVStatement,
     detectDuplicates,
+    detectTransfersPostImport,
     recalculateBankBalance,
     isUploading,
     isProcessing
   };
-};
+}
 
 // --- Types ---
 
@@ -767,6 +833,8 @@ interface StatementLineInsert {
   has_validation_error: boolean;
   validation_errors: Record<string, string> | null;
   user_excluded: boolean;
+  source_account?: string | null;
+  raw_data?: Record<string, unknown> | null;
 }
 
 interface MappingLookups {
@@ -777,6 +845,9 @@ interface MappingLookups {
   debitCol?: string;
   creditCol?: string;
   balanceCol?: string;
+  sourceAccountCol?: string;
+  /** All CSV column names that are mapped to target fields (used to compute raw_data) */
+  mappedColumns: Set<string>;
 }
 
 // --- Helper functions ---
@@ -846,6 +917,15 @@ async function ensureBankBalanceExists(
 
 function buildMappingLookups(mappings: BankColumnMapping[]): MappingLookups {
   const find = (field: string) => mappings.find((m) => m.targetField === field)?.csvColumn;
+
+  // Collect all CSV columns that are mapped to a known target (non-null, non-ignore)
+  const mappedColumns = new Set<string>();
+  for (const m of mappings) {
+    if (m.targetField && m.targetField !== 'ignore') {
+      mappedColumns.add(m.csvColumn);
+    }
+  }
+
   return {
     dateCol: find('transactionDate'),
     postedDateCol: find('postedDate'),
@@ -854,6 +934,8 @@ function buildMappingLookups(mappings: BankColumnMapping[]): MappingLookups {
     debitCol: find('debitAmount'),
     creditCol: find('creditAmount'),
     balanceCol: find('balance'),
+    sourceAccountCol: find('sourceAccount'),
+    mappedColumns,
   };
 }
 
@@ -891,6 +973,23 @@ function parseCSVRow(
 
   const hasError = Object.keys(errors).length > 0;
 
+  // Source account value
+  const sourceAccount = lookups.sourceAccountCol
+    ? (row[lookups.sourceAccountCol] || '').trim() || null
+    : null;
+
+  // Collect unmapped columns into raw_data
+  let rawData: Record<string, unknown> | null = null;
+  const unmappedEntries: [string, string][] = [];
+  for (const [col, val] of Object.entries(row)) {
+    if (!lookups.mappedColumns.has(col) && val && val.trim()) {
+      unmappedEntries.push([col, val.trim()]);
+    }
+  }
+  if (unmappedEntries.length > 0) {
+    rawData = Object.fromEntries(unmappedEntries);
+  }
+
   return {
     line: {
       statement_upload_id: uploadId,
@@ -904,6 +1003,8 @@ function parseCSVRow(
       has_validation_error: hasError,
       validation_errors: hasError ? errors : null,
       user_excluded: false,
+      source_account: sourceAccount,
+      raw_data: rawData,
     },
     amount,
   };
@@ -915,7 +1016,7 @@ async function insertLinesInChunks(lines: StatementLineInsert[]) {
     const chunk = lines.slice(i, i + CHUNK_SIZE);
     const { error: insertError } = await supabase
       .from('bank_statement_lines')
-      .insert(chunk);
+      .insert(chunk as any);
 
     if (insertError) {
       if (import.meta.env.DEV) console.error('Error inserting statement lines chunk:', insertError);
@@ -1007,7 +1108,7 @@ function tokenize(str: string): Set<string> {
   return new Set(
     str
       .toLowerCase()
-      .replaceAll(/[^a-z0-9\s]/g, ' ')
+      .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
       .filter((w) => w.length > 1)
   );

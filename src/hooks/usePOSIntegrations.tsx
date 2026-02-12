@@ -63,7 +63,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       .map(status => status.system);
   }, [integrationStatuses]);
 
-  const syncAllSystems = useCallback(async (): Promise<number> => {
+  const syncAllSystems = useCallback(async (startDate?: string, endDate?: string): Promise<number> => {
     if (!restaurantId) return 0;
 
     setIsSyncing(true);
@@ -71,11 +71,11 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
 
     try {
       const connectedSystems = getConnectedSystems();
-      
+
       for (const systemType of connectedSystems) {
         const adapter = adapters[systemType];
         if (adapter && systemType !== 'manual') {
-          const synced = await adapter.syncToUnified(restaurantId);
+          const synced = await adapter.syncToUnified(restaurantId, startDate, endDate);
           totalSynced += synced;
         }
       }

@@ -179,9 +179,9 @@ export default function POSSales() {
   const handleMappingComplete = useCallback(async () => {
     // Refresh sales data to update unmapped items
     if (selectedRestaurant?.restaurant_id) {
-      await syncAllSystems();
+      await syncAllSystems(startDate, endDate);
     }
-  }, [selectedRestaurant?.restaurant_id, syncAllSystems]);
+  }, [selectedRestaurant?.restaurant_id, syncAllSystems, startDate, endDate]);
 
   const handleCheckboxChange = useCallback((id: string) => {
     bulkSelection.toggleItem(id);
@@ -249,7 +249,7 @@ export default function POSSales() {
   // Auto-sync when restaurant is selected (only once)
   useEffect(() => {
     if (selectedRestaurant?.restaurant_id && hasAnyConnectedSystem()) {
-      syncAllSystems();
+      syncAllSystems(startDate, endDate);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRestaurant?.restaurant_id]); // Only re-run when restaurant changes
@@ -360,7 +360,7 @@ export default function POSSales() {
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
-      await syncAllSystems();
+      await syncAllSystems(startDate, endDate);
     }
   };
 
@@ -399,7 +399,7 @@ export default function POSSales() {
     setActiveTab("manual");
     // Refresh sales data to show newly imported sales
     if (selectedRestaurant?.restaurant_id) {
-      await syncAllSystems();
+      await syncAllSystems(startDate, endDate);
     }
   };
 
@@ -595,6 +595,7 @@ export default function POSSales() {
     totalSales: serverTotals.totalCount,
     revenue: serverTotals.revenue,
     discounts: serverTotals.discounts,
+    voids: serverTotals.voids,
     passThroughAmount: serverTotals.passThroughAmount,
     collectedAtPOS: serverTotals.collectedAtPOS,
     uniqueItems: serverTotals.uniqueItems,
@@ -717,6 +718,7 @@ export default function POSSales() {
         { label: "Collected at POS", value: `$${dashboardMetrics.collectedAtPOS.toFixed(2)}` },
         { label: "Revenue", value: `$${dashboardMetrics.revenue.toFixed(2)}` },
         { label: "Discounts", value: `$${dashboardMetrics.discounts.toFixed(2)}` },
+        ...(dashboardMetrics.voids > 0 ? [{ label: "Voids", value: `$${dashboardMetrics.voids.toFixed(2)}` }] : []),
         { label: "Pass-Through Items", value: `$${dashboardMetrics.passThroughAmount.toFixed(2)}` },
         { label: "Total Sales", value: dashboardMetrics.totalSales.toString() },
         { label: "Unique Items", value: dashboardMetrics.uniqueItems.toString() },
@@ -848,6 +850,7 @@ export default function POSSales() {
         totalSales={dashboardMetrics.totalSales}
         totalRevenue={dashboardMetrics.revenue}
         discounts={dashboardMetrics.discounts}
+        voids={dashboardMetrics.voids}
         passThroughAmount={dashboardMetrics.passThroughAmount}
         collectedAtPOS={dashboardMetrics.collectedAtPOS}
         uniqueItems={dashboardMetrics.uniqueItems}

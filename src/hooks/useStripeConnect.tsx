@@ -53,27 +53,26 @@ export const useStripeConnect = (restaurantId: string | null) => {
   // Create connected account
   const createAccountMutation = useMutation({
     mutationFn: async (accountType: 'express' | 'standard' = 'express') => {
-      // Ensure accountType is a valid string, not an event object
-      if (typeof accountType !== 'string' || !['express', 'standard'].includes(accountType)) {
-        accountType = 'express';
-      }
-
       if (!restaurantId) {
         throw new Error("No restaurant selected");
       }
+
+      // Default to 'express' if an invalid value is somehow passed (e.g. a React event)
+      const resolvedType = (typeof accountType === 'string' && (accountType === 'express' || accountType === 'standard'))
+        ? accountType
+        : 'express';
 
       const { data, error } = await supabase.functions.invoke(
         'stripe-create-connected-account',
         {
           body: {
             restaurantId,
-            accountType,
+            accountType: resolvedType,
           }
         }
       );
 
       if (error) {
-        console.error('Supabase function error:', error.message || 'Unknown error');
         throw new Error(error.message || 'Failed to create connected account');
       }
 
@@ -83,22 +82,11 @@ export const useStripeConnect = (restaurantId: string | null) => {
       queryClient.invalidateQueries({ queryKey: ['stripe-connected-account', restaurantId] });
       toast({
         title: "Account Created",
-        description: "Stripe Connect account created. Continue onboarding below.",
+        description: "Stripe Connect account created. Complete the onboarding process to start accepting payments.",
       });
     },
     onError: (error: unknown) => {
-      let errorMessage = "An unexpected error occurred while creating your Stripe account";
-      try {
-        if (error instanceof Error) {
-          errorMessage = error.message;
-        } else if (typeof error === 'object' && error !== null && 'message' in error) {
-          errorMessage = String((error as any).message);
-        }
-      } catch (e) {
-        // If we can't extract the message safely, use the default
-        console.error('Error extracting error message:', e);
-      }
-      
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       console.error('Error creating connected account:', errorMessage);
       toast({
         title: "Failed to Create Account",

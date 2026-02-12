@@ -52,9 +52,15 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
         next_check_number: settings.next_check_number,
       });
     } else if (selectedRestaurant) {
+      const r = selectedRestaurant.restaurant;
       setForm((prev) => ({
         ...prev,
-        business_name: selectedRestaurant.restaurant?.name || '',
+        business_name: r?.legal_name || r?.name || '',
+        business_address_line1: r?.address_line1 || '',
+        business_address_line2: r?.address_line2 || '',
+        business_city: r?.city || '',
+        business_state: r?.state || '',
+        business_zip: r?.zip || '',
       }));
     }
   }, [settings, selectedRestaurant]);

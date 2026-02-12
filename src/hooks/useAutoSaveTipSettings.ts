@@ -30,15 +30,20 @@ export function useAutoSaveTipSettings({
   onSave,
 }: Params) {
   useEffect(() => {
-    if (!settings) return;
-
-    const hasChanges =
-      tipSource !== settings.tip_source ||
-      shareMethod !== settings.share_method ||
-      splitCadence !== settings.split_cadence ||
-      JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
-      JSON.stringify(Array.from(selectedEmployees).sort((a, b) => a.localeCompare(b))) !==
-        JSON.stringify((settings.enabled_employee_ids || []).sort((a, b) => a.localeCompare(b)));
+    // If no settings exist, this is first-time setup - save after user makes selections
+    const hasChanges = settings
+      ? // Compare with existing settings
+        tipSource !== settings.tip_source ||
+        shareMethod !== settings.share_method ||
+        splitCadence !== settings.split_cadence ||
+        JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
+        JSON.stringify(Array.from(selectedEmployees).sort((a, b) => a.localeCompare(b))) !==
+          JSON.stringify((settings.enabled_employee_ids || []).sort((a, b) => a.localeCompare(b)))
+      : // No settings exist - trigger save if any field differs from defaults
+        selectedEmployees.size > 0 ||
+        tipSource !== 'manual' ||
+        shareMethod !== 'hours' ||
+        splitCadence !== 'daily';
 
     if (!hasChanges) return;
 

@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useInvoices, useInvoice } from "@/hooks/useInvoices";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InvoicePreviewDialog } from "@/components/invoicing/InvoicePreviewDialog";
 import {
   ArrowLeft,
   FileText,
@@ -20,18 +22,20 @@ import {
   Mail,
   Phone,
   MapPin,
-  RefreshCw
+  RefreshCw,
+  Edit,
+  Eye
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 const statusConfig = {
-  draft: { icon: FileText, color: "bg-gray-100 text-gray-800", label: "Draft" },
-  open: { icon: Clock, color: "bg-blue-100 text-blue-800", label: "Sent" },
-  paid: { icon: CheckCircle, color: "bg-green-100 text-green-800", label: "Paid" },
-  void: { icon: Ban, color: "bg-red-100 text-red-800", label: "Void" },
-  uncollectible: { icon: AlertCircle, color: "bg-orange-100 text-orange-800", label: "Uncollectible" },
+  draft: { icon: FileText, color: "bg-muted text-muted-foreground", label: "Draft" },
+  open: { icon: Clock, color: "bg-blue-500/10 text-blue-700 dark:text-blue-400", label: "Sent" },
+  paid: { icon: CheckCircle, color: "bg-green-500/10 text-green-700 dark:text-green-400", label: "Paid" },
+  void: { icon: Ban, color: "bg-destructive/10 text-destructive", label: "Void" },
+  uncollectible: { icon: AlertCircle, color: "bg-orange-500/10 text-orange-700 dark:text-orange-400", label: "Uncollectible" },
 };
 
 export default function InvoiceDetail() {
@@ -40,8 +44,18 @@ export default function InvoiceDetail() {
   const { selectedRestaurant } = useRestaurantContext();
   const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
-  const { openDashboard, isOpeningDashboard } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Auto-sync status for open invoices with Stripe ID
+  const hasSyncedRef = useRef(false);
+  useEffect(() => {
+    if (invoice?.status === 'open' && invoice?.stripe_invoice_id && !hasSyncedRef.current) {
+      hasSyncedRef.current = true;
+      syncInvoiceStatusAsync(invoice.id).catch(() => {});
+    }
+  }, [invoice?.id, invoice?.status, invoice?.stripe_invoice_id, syncInvoiceStatusAsync]);
 
   if (isLoading) {
     return (
@@ -89,6 +103,12 @@ export default function InvoiceDetail() {
   const statusInfo = statusConfig[invoice.status];
   const StatusIcon = statusInfo.icon;
 
+  function getSendButtonLabel(): string {
+    if (isSending) return 'Sending...';
+    if (invoice.stripe_invoice_id) return 'Send Invoice';
+    return 'Create & Send Invoice';
+  }
+
   const handleSendInvoice = async () => {
     try {
       await sendInvoiceAsync(invoice.id);
@@ -96,8 +116,8 @@ export default function InvoiceDetail() {
         title: "Invoice Sent",
         description: "The invoice has been sent to the customer successfully.",
       });
-    } catch (error) {
-      console.error('Error sending invoice:', error);
+    } catch (err) {
+      console.error('Error sending invoice:', err);
     }
   };
 
@@ -116,8 +136,8 @@ export default function InvoiceDetail() {
   const handleSyncStatus = async () => {
     try {
       await syncInvoiceStatusAsync(invoice.id);
-    } catch (error) {
-      console.error('Error syncing invoice status:', error);
+    } catch (err) {
+      console.error('Error syncing invoice status:', err);
     }
   };
 
@@ -157,24 +177,49 @@ export default function InvoiceDetail() {
 
         <div className="flex gap-2">
           {invoice.status === 'draft' && (
-            <Button
-              onClick={handleSendInvoice}
-              disabled={isSending}
-              className="bg-primary hover:bg-primary/90"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {isSending ? 'Sending...' : 'Send Invoice'}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setShowPreview(true)}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Preview
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/invoices/${invoice.id}/edit`)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+              {isReadyForInvoicing ? (
+                <Button
+                  onClick={handleSendInvoice}
+                  disabled={isSending}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  {getSendButtonLabel()}
+                </Button>
+              ) : (
+                <Button disabled className="bg-primary/50">
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Invoice
+                </Button>
+              )}
+            </>
           )}
 
           {invoice.stripe_invoice_id && (
             <Button
-              variant="outline"
+              variant="ghost"
+              size="icon"
               onClick={handleSyncStatus}
               disabled={isSyncingStatus}
+              className="h-8 w-8"
+              aria-label="Refresh status"
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingStatus ? 'animate-spin' : ''}`} />
-              {isSyncingStatus ? 'Syncing...' : 'Sync Status'}
+              <RefreshCw className={`h-4 w-4 ${isSyncingStatus ? 'animate-spin' : ''}`} />
             </Button>
           )}
 
@@ -418,8 +463,36 @@ export default function InvoiceDetail() {
               </AlertDescription>
             </Alert>
           )}
+
+          {invoice.status === 'draft' && !isReadyForInvoicing && (
+            <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                <h3 className="text-[13px] font-semibold text-foreground">Payment Processing</h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <p className="text-[13px] text-muted-foreground">
+                  Set up payment processing to send invoices and collect payments from customers.
+                </p>
+                <Button
+                  size="sm"
+                  className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium w-full"
+                  onClick={() => navigate('/stripe-account')}
+                >
+                  Set up payment processing
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Invoice Preview Dialog */}
+      <InvoicePreviewDialog
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        invoice={invoice}
+        restaurant={selectedRestaurant?.restaurant ?? null}
+      />
     </div>
   );
 }

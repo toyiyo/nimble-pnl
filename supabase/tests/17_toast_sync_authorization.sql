@@ -36,9 +36,11 @@ INSERT INTO toast_orders (id, toast_order_guid, restaurant_id, toast_restaurant_
   ('00000000-0000-0000-0000-100000000021', 'toast-order-001', '00000000-0000-0000-0000-100000000011', 'toast-rest-guid-001', '2026-01-01', '12:00:00', 100.00, 8.00, 5.00, '{}')
 ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE SET total_amount = 100.00;
 
-INSERT INTO toast_order_items (toast_item_guid, toast_order_id, toast_order_guid, restaurant_id, item_name, quantity, unit_price, total_price, menu_category, raw_json) VALUES
-  ('toast-item-001', '00000000-0000-0000-0000-100000000021', 'toast-order-001', '00000000-0000-0000-0000-100000000011', 'Test Item', 1, 100.00, 100.00, 'Food', '{}')
-ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE SET total_price = 100.00;
+INSERT INTO toast_order_items (toast_item_guid, toast_order_id, toast_order_guid, restaurant_id, item_name, quantity, unit_price, total_price, is_voided, discount_amount, menu_category, raw_json) VALUES
+  ('toast-item-001', '00000000-0000-0000-0000-100000000021', 'toast-order-001', '00000000-0000-0000-0000-100000000011', 'Test Item', 1, 100.00, 100.00, false, 0, 'Food', '{}'),
+  -- Discounted item to verify item-level discount entries
+  ('toast-item-002', '00000000-0000-0000-0000-100000000021', 'toast-order-001', '00000000-0000-0000-0000-100000000011', 'Discounted Item', 1, 25.00, 20.00, false, 5.00, 'Food', '{}')
+ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE SET total_price = EXCLUDED.total_price;
 
 INSERT INTO toast_payments (toast_payment_guid, toast_order_guid, restaurant_id, payment_date, payment_type, amount, tip_amount, payment_status, raw_json) VALUES
   ('toast-payment-001', 'toast-order-001', '00000000-0000-0000-0000-100000000011', '2026-01-01', 'CREDIT', 103.00, 10.00, 'PAID', '{"refundStatus": "NONE"}')

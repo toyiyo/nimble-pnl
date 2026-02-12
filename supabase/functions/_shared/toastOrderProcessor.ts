@@ -23,7 +23,21 @@ interface OrderDateTime {
   orderTime: string | null;
 }
 
+/** Convert Toast YYYYMMDD integer (e.g. 20260210) to ISO date string (2026-02-10) */
+function parseBusinessDate(bizDate: number | undefined): string | null {
+  if (!bizDate) return null;
+  const s = String(bizDate);
+  if (s.length !== 8) return null;
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+}
+
 function parseOrderDateTime(order: any): OrderDateTime {
+  // Prefer businessDate (restaurant's business day, YYYYMMDD integer) over UTC closedDate
+  const bizDate = parseBusinessDate(order.businessDate);
+  if (bizDate) {
+    return { orderDate: bizDate, orderTime: null };
+  }
+
   let closedDate = order.closedDate ? new Date(order.closedDate) : null;
 
   if (!closedDate && order.checks?.[0]?.closedDate) {
@@ -136,14 +150,19 @@ async function upsertOrderItem(
 ): Promise<void> {
   const itemName = selection.displayName || selection.itemName || selection.name || 'Unknown Item';
 
+  const unitPrice = selection.preDiscountPrice ?? selection.price ?? 0;
+  const netPrice = selection.price ?? 0;
+
   const { error: itemError } = await supabase.from('toast_order_items').upsert({
     restaurant_id: restaurantId,
     toast_item_guid: selection.guid,
     toast_order_guid: orderGuid,
     item_name: itemName,
     quantity: selection.quantity || 1,
-    unit_price: selection.preDiscountPrice ?? 0,
-    total_price: selection.price ?? 0,
+    unit_price: unitPrice,
+    total_price: netPrice,
+    is_voided: selection.voided ?? false,
+    discount_amount: Math.max(unitPrice - netPrice, 0),
     menu_category: selection.salesCategory || null,
     modifiers: selection.modifiers || null,
     raw_json: selection,
@@ -164,6 +183,10 @@ async function upsertPayment(
   restaurantId: string,
   orderDate: string
 ): Promise<void> {
+  // Use paidBusinessDate (restaurant's business day) when available,
+  // falling back to orderDate (UTC-derived) for older data
+  const paymentDate = parseBusinessDate(payment.paidBusinessDate) || orderDate;
+
   const { error: paymentError } = await supabase.from('toast_payments').upsert({
     restaurant_id: restaurantId,
     toast_payment_guid: payment.guid,
@@ -171,7 +194,7 @@ async function upsertPayment(
     payment_type: payment.type || null,
     amount: payment.amount ?? 0,
     tip_amount: payment.tipAmount ?? null,
-    payment_date: orderDate,
+    payment_date: paymentDate,
     payment_status: payment.paymentStatus || payment.status || null,
     raw_json: payment,
     synced_at: new Date().toISOString(),

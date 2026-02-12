@@ -38,19 +38,19 @@ export function StripeEmbeddedConnect({
 }: StripeEmbeddedConnectProps) {
   const { connectInstance, start, isLoading, error } = useStripeEmbeddedConnect(restaurantId);
 
-  // Auto-start when component mounts
+  // Auto-start when component mounts (skip if already errored to avoid infinite loop)
   useEffect(() => {
-    if (!connectInstance && !isLoading) {
+    if (!connectInstance && !isLoading && !error) {
       start();
     }
-  }, [connectInstance, isLoading, start]);
+  }, [connectInstance, isLoading, error, start]);
 
   const renderComponent = () => {
     if (!connectInstance) return null;
 
     switch (component) {
       case "account_onboarding":
-        return <ConnectAccountOnboarding onExit={onCompleted ? () => onCompleted() : undefined} />;
+        return <ConnectAccountOnboarding onExit={onCompleted} />;
       case "account_management":
         return <ConnectAccountManagement />;
       case "payments":
@@ -87,7 +87,12 @@ export function StripeEmbeddedConnect({
     return (
       <div className={className}>
         <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription className="flex items-center justify-between gap-4">
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={() => start()}>
+              Retry
+            </Button>
+          </AlertDescription>
         </Alert>
       </div>
     );

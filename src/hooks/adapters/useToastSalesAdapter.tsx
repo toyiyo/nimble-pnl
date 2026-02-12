@@ -57,19 +57,20 @@ export const useToastSalesAdapter = (restaurantId: string | null): POSAdapter =>
     }
   }, [isConnected]);
 
-  const syncToUnified = useCallback(async (restaurantId: string): Promise<number> => {
+  const syncToUnified = useCallback(async (restaurantId: string, startDate?: string, endDate?: string): Promise<number> => {
     if (!isConnected) return 0;
 
     try {
-      // Use date-range overload (last 7 days) to avoid timeout on large datasets.
+      // Use date-range overload to avoid timeout on large datasets.
+      // Falls back to last 7 days when no filters are set.
       // Full historical sync is handled by the scheduled cron job.
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const syncEnd = endDate || new Date().toISOString().split('T')[0];
+      const syncStart = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       const { data, error } = await supabase.rpc('sync_toast_to_unified_sales' as any, {
         p_restaurant_id: restaurantId,
-        p_start_date: startDate,
-        p_end_date: endDate
+        p_start_date: syncStart,
+        p_end_date: syncEnd
       });
 
       if (error) throw error;

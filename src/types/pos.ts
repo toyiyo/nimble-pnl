@@ -62,6 +62,6 @@ export interface POSAdapter {
   system: POSSystemType;
   isConnected: boolean;
   fetchSales: (restaurantId: string, startDate?: string, endDate?: string) => Promise<UnifiedSaleItem[]>;
-  syncToUnified: (restaurantId: string) => Promise<number>;
+  syncToUnified: (restaurantId: string, startDate?: string, endDate?: string) => Promise<number>;
   getIntegrationStatus: () => POSIntegrationStatus;
 }

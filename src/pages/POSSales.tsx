@@ -179,9 +179,9 @@ export default function POSSales() {
   const handleMappingComplete = useCallback(async () => {
     // Refresh sales data to update unmapped items
     if (selectedRestaurant?.restaurant_id) {
-      await syncAllSystems();
+      await syncAllSystems(startDate, endDate);
     }
-  }, [selectedRestaurant?.restaurant_id, syncAllSystems]);
+  }, [selectedRestaurant?.restaurant_id, syncAllSystems, startDate, endDate]);
 
   const handleCheckboxChange = useCallback((id: string) => {
     bulkSelection.toggleItem(id);
@@ -249,7 +249,7 @@ export default function POSSales() {
   // Auto-sync when restaurant is selected (only once)
   useEffect(() => {
     if (selectedRestaurant?.restaurant_id && hasAnyConnectedSystem()) {
-      syncAllSystems();
+      syncAllSystems(startDate, endDate);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRestaurant?.restaurant_id]); // Only re-run when restaurant changes
@@ -360,7 +360,7 @@ export default function POSSales() {
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
-      await syncAllSystems();
+      await syncAllSystems(startDate, endDate);
     }
   };
 
@@ -399,7 +399,7 @@ export default function POSSales() {
     setActiveTab("manual");
     // Refresh sales data to show newly imported sales
     if (selectedRestaurant?.restaurant_id) {
-      await syncAllSystems();
+      await syncAllSystems(startDate, endDate);
     }
   };
 

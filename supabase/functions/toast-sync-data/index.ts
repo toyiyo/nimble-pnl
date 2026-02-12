@@ -17,7 +17,6 @@ const TOAST_AUTH_URL = 'https://ws-api.toasttab.com/authentication/v1/authentica
 // Toast API allows pageSize up to 100 - use max to minimize requests
 const BATCH_DAYS = 1;
 const MAX_ORDERS_PER_REQUEST = 50;   // Orders to process per edge function request
-const MAX_ORDERS_INCREMENTAL = 500;  // Higher limit for incremental sync (25h window is small)
 const PAGE_SIZE = 100;               // Toast API max - minimizes API calls
 const TARGET_DAYS = 90;
 const MAX_ERRORS = 50;
@@ -519,14 +518,13 @@ serve(async (req) => {
       } else if (isInitialSync) {
         syncComplete = true;
       } else {
-        // Incremental sync (last 25 hours) - use higher limit since window is small
-        // This completes in one request to avoid infinite loop (no page cursor)
-        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_INCREMENTAL);
+        // Incremental sync (last 25 hours) - paginated like custom range
+        const result = await fetchOrdersForRange(ctx, syncStartDate, syncEndDate, MAX_ORDERS_PER_REQUEST, { startPage });
         totalOrders = result.ordersProcessed;
         allErrors = result.errors;
-        // Always complete incremental sync in one request (no cursor support yet)
-        syncComplete = true;
-        progress = 100;
+        syncComplete = !result.hasMore;
+        nextPage = result.nextPage;
+        progress = syncComplete ? 100 : 50;
       }
     }
 

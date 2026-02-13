@@ -196,12 +196,13 @@ describe('usePendingOutflowMutations', () => {
         });
       });
 
-      // Should not overwrite existing category
+      // Expense category should override existing bank transaction category
       expect(mockBankTransactionBuilder.update).toHaveBeenCalledWith({
         is_categorized: true,
         matched_at: expect.any(String),
         notes: 'Expense notes', // only expense notes since bank had none
-        // No category_id, suggested_category_id, or expense_invoice_upload_id copied
+        category_id: 'cat-456', // expense category overrides existing
+        suggested_category_id: 'cat-456', // expense category overrides existing
       });
     });
 

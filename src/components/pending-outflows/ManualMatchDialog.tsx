@@ -225,8 +225,11 @@ export const ManualMatchDialog = ({
             </div>
           </div>
 
-          {/* Virtualized Transaction List */}
-          <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
+          {/* Virtualized Transaction List — ref always mounted so virtualizer has a scroll element */}
+          <div
+            ref={parentRef}
+            className="flex-1 min-h-0 border rounded-lg overflow-auto"
+          >
             {isLoading ? (
               <div className="text-center text-muted-foreground py-8 text-sm">Loading transactions...</div>
             ) : availableTransactions.length === 0 ? (
@@ -235,47 +238,42 @@ export const ManualMatchDialog = ({
               </div>
             ) : (
               <div
-                ref={parentRef}
-                className="h-[600px] overflow-auto"
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: '100%',
+                  position: 'relative',
+                }}
               >
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: '100%',
-                    position: 'relative',
-                  }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const transaction = availableTransactions[virtualRow.index];
-                    if (!transaction) return null;
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const transaction = availableTransactions[virtualRow.index];
+                  if (!transaction) return null;
 
-                    const displayValues = displayValuesMap.get(transaction.id);
-                    if (!displayValues) return null;
+                  const displayValues = displayValuesMap.get(transaction.id);
+                  if (!displayValues) return null;
 
-                    return (
-                      <div
-                        key={transaction.id}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          transform: `translateY(${virtualRow.start}px)`,
-                          padding: '4px 8px',
-                        }}
-                      >
-                        <MemoizedMatchRow
-                          transaction={transaction}
-                          displayValues={displayValues}
-                          isSelected={selectedTransactionId === transaction.id}
-                          onSelect={handleSelect}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                  return (
+                    <div
+                      key={transaction.id}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualRow.start}px)`,
+                        padding: '4px 8px',
+                      }}
+                    >
+                      <MemoizedMatchRow
+                        transaction={transaction}
+                        displayValues={displayValues}
+                        isSelected={selectedTransactionId === transaction.id}
+                        onSelect={handleSelect}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

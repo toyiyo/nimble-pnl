@@ -236,7 +236,7 @@ export const ManualMatchDialog = ({
             ) : (
               <div
                 ref={parentRef}
-                className="h-full overflow-auto"
+                className="h-[600px] overflow-auto"
               >
                 <div
                   style={{

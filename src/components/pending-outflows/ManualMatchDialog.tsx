@@ -225,10 +225,11 @@ export const ManualMatchDialog = ({
             </div>
           </div>
 
-          {/* Virtualized Transaction List — ref always mounted so virtualizer has a scroll element */}
+          {/* Virtualized Transaction List — concrete height so virtualizer can compute visible items */}
           <div
             ref={parentRef}
-            className="flex-1 min-h-0 border rounded-lg overflow-auto"
+            className="border rounded-lg overflow-auto"
+            style={{ height: 'calc(90vh - 230px)' }}
           >
             {isLoading ? (
               <div className="text-center text-muted-foreground py-8 text-sm">Loading transactions...</div>

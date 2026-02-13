@@ -122,10 +122,7 @@ export default function InvoiceDetail() {
   const handleSendInvoice = async () => {
     try {
       await sendInvoiceAsync(invoice.id);
-      toast({
-        title: "Invoice Sent",
-        description: "The invoice has been sent to the customer successfully.",
-      });
+      // Toast handled by sendInvoiceMutation.onSuccess in useInvoices
     } catch (err) {
       console.error('Error sending invoice:', err);
     }

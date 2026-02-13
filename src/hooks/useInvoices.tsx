@@ -278,6 +278,7 @@ export const useInvoices = (restaurantId: string | null) => {
       );
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       return data;
     },

@@ -217,6 +217,7 @@ export const useInvoices = (restaurantId: string | null) => {
       );
 
       if (error) throw error;
+      if (result?.error) throw new Error(result.error);
 
       return result;
     },
@@ -247,6 +248,7 @@ export const useInvoices = (restaurantId: string | null) => {
       );
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       return data;
     },

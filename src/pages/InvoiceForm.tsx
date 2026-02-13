@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { FileText, Plus, Trash2, ArrowLeft, UserPlus } from "lucide-react";
+import { FileText, Plus, Trash2, ArrowLeft, UserPlus, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { computeProcessingFeeCents } from "@/lib/invoiceUtils";
 import { CustomerFormDialog } from "@/components/invoicing/CustomerFormDialog";
@@ -51,6 +51,10 @@ export default function InvoiceForm() {
     { localId: makeId(), description: "", quantity: 1, unit_amount: 0 },
   ]);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [showEditCustomerForm, setShowEditCustomerForm] = useState(false);
+
+  const selectedCustomer = customers.find(c => c.id === customerId) || null;
+  const customerMissingEmail = !!selectedCustomer && !selectedCustomer.email && isReadyForInvoicing;
 
   // Navigate to invoice detail page when invoice is created
   useEffect(() => {
@@ -253,6 +257,26 @@ export default function InvoiceForm() {
               </div>
             </div>
 
+            {customerMissingEmail && (
+              <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <div className="flex items-center gap-2 text-[13px]">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                  <span className="text-amber-800 dark:text-amber-200">
+                    This customer doesn't have an email address. An email is required to send invoices.
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 h-8 text-[12px]"
+                  onClick={() => setShowEditCustomerForm(true)}
+                >
+                  Add Email
+                </Button>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Input
@@ -393,7 +417,7 @@ export default function InvoiceForm() {
           <Button type="button" variant="outline" onClick={() => navigate('/invoices')}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isBusy}>
+          <Button type="submit" disabled={isBusy || !!customerMissingEmail}>
             {getSubmitLabel()}
           </Button>
         </div>
@@ -405,6 +429,15 @@ export default function InvoiceForm() {
         onOpenChange={setShowCustomerForm}
         onCreated={(customer) => setCustomerId(customer.id)}
       />
+
+      {/* Edit Customer Dialog (for adding email) */}
+      {selectedCustomer && (
+        <CustomerFormDialog
+          open={showEditCustomerForm}
+          onOpenChange={setShowEditCustomerForm}
+          customer={selectedCustomer}
+        />
+      )}
     </div>
   );
 }

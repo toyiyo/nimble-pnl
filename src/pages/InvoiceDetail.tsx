@@ -134,21 +134,25 @@ export default function InvoiceDetail() {
   const handleResendInvoice = async () => {
     try {
       await sendInvoiceAsync(invoice.id);
-      toast({
-        title: "Invoice Email Sent",
-        description: `Invoice email resent to ${invoice.customers?.email || 'the customer'}.`,
-      });
+      // Toast handled by sendInvoiceMutation.onSuccess in useInvoices
     } catch (err) {
       console.error('Error resending invoice:', err);
     }
   };
 
   const handleCopyLink = async () => {
-    if (invoice.hosted_invoice_url) {
+    if (!invoice.hosted_invoice_url) return;
+    try {
       await navigator.clipboard.writeText(invoice.hosted_invoice_url);
       toast({
         title: "Link Copied",
         description: "Invoice link copied to clipboard.",
+      });
+    } catch {
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy link to clipboard.",
+        variant: "destructive",
       });
     }
   };

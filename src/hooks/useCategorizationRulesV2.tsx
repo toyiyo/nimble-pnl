@@ -320,94 +320,74 @@ export function useApplyRulesV2() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ 
-      restaurantId, 
+    mutationFn: async ({
+      restaurantId,
       applyTo = 'both',
       batchLimit = 100
-    }: { 
-      restaurantId: string; 
+    }: {
+      restaurantId: string;
       applyTo?: 'bank_transactions' | 'pos_sales' | 'both';
       batchLimit?: number;
     }) => {
-      // Call database RPC directly instead of Edge Function to avoid execution limits
-      let bankResults = { applied_count: 0, total_count: 0 };
-      let posResults = { applied_count: 0, total_count: 0 };
+      let totalBankApplied = 0;
+      let totalPosApplied = 0;
 
-      // Apply rules to bank transactions
+      // Auto-loop: keep calling RPC until no more matches
       if (applyTo === 'bank_transactions' || applyTo === 'both') {
-        const { data: bankData, error: bankError } = await (supabase as any)
-          .rpc('apply_rules_to_bank_transactions', {
-            p_restaurant_id: restaurantId,
-            p_batch_limit: batchLimit
-          });
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await (supabase as any)
+            .rpc('apply_rules_to_bank_transactions', {
+              p_restaurant_id: restaurantId,
+              p_batch_limit: batchLimit
+            });
 
-        if (bankError) {
-          throw new Error(`Failed to apply rules to bank transactions: ${bankError.message}`);
-        }
+          if (error) {
+            throw new Error(`Failed to apply rules to bank transactions: ${error.message}`);
+          }
 
-        if (bankData && bankData.length > 0) {
-          bankResults = bankData[0];
+          const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
+          totalBankApplied += batch.applied_count;
+          hasMore = batch.applied_count > 0;
         }
       }
 
-      // Apply rules to POS sales
       if (applyTo === 'pos_sales' || applyTo === 'both') {
-        const { data: posData, error: posError } = await (supabase as any)
-          .rpc('apply_rules_to_pos_sales', {
-            p_restaurant_id: restaurantId,
-            p_batch_limit: batchLimit
-          });
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await (supabase as any)
+            .rpc('apply_rules_to_pos_sales', {
+              p_restaurant_id: restaurantId,
+              p_batch_limit: batchLimit
+            });
 
-        if (posError) {
-          throw new Error(`Failed to apply rules to POS sales: ${posError.message}`);
-        }
+          if (error) {
+            throw new Error(`Failed to apply rules to POS sales: ${error.message}`);
+          }
 
-        if (posData && posData.length > 0) {
-          posResults = posData[0];
+          const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
+          totalPosApplied += batch.applied_count;
+          hasMore = batch.applied_count > 0;
         }
       }
 
-      const totalApplied = bankResults.applied_count + posResults.applied_count;
-      const totalProcessed = bankResults.total_count + posResults.total_count;
+      const totalApplied = totalBankApplied + totalPosApplied;
 
       let message = '';
       if (applyTo === 'both') {
-        message = `Applied rules to ${totalApplied} of ${totalProcessed} transactions (${bankResults.applied_count} bank, ${posResults.applied_count} POS)`;
+        message = `Applied rules to ${totalApplied} transactions (${totalBankApplied} bank, ${totalPosApplied} POS)`;
       } else if (applyTo === 'bank_transactions') {
-        message = `Applied rules to ${bankResults.applied_count} of ${bankResults.total_count} bank transactions`;
+        message = `Applied rules to ${totalBankApplied} bank transactions`;
       } else {
-        message = `Applied rules to ${posResults.applied_count} of ${posResults.total_count} POS sales`;
+        message = `Applied rules to ${totalPosApplied} POS sales`;
       }
 
-      return {
-        success: true,
-        message,
-        count: totalApplied,
-        details: {
-          bank: bankResults,
-          pos: posResults
-        }
-      };
+      return { success: true, message, count: totalApplied };
     },
-    onSuccess: (data, variables) => {
-      const batchLimit = variables.batchLimit || 100;
-      
-      let description = data.message || 'Categorization rules applied successfully';
-      
-      // Add note if processing was limited
-      if (data.details) {
-        const bank = data.details.bank;
-        const pos = data.details.pos;
-        const totalProcessed = (bank?.total_count || 0) + (pos?.total_count || 0);
-        
-        if (totalProcessed >= batchLimit) {
-          description += '\n\nNote: Processed in batches. Click "Apply Rules" again to continue processing remaining records.';
-        }
-      }
-      
+    onSuccess: (data) => {
       toast({
         title: "Rules applied",
-        description,
+        description: data.message,
       });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });

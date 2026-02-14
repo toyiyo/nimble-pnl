@@ -78,6 +78,18 @@ const Transactions = () => {
     }
   }, [isLoading, isInitialLoad]);
 
+  // DEBUG: trace rendering timing — remove after investigation
+  useEffect(() => {
+    console.log('[Transactions] render state:', {
+      isLoading,
+      isInitialLoad,
+      txnCount: transactions.length,
+      totalCount,
+      showingSkeleton: isLoading || isInitialLoad,
+      timestamp: performance.now().toFixed(1),
+    });
+  });
+
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
   };

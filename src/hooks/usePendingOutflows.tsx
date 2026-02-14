@@ -174,13 +174,13 @@ export function usePendingOutflowMutations() {
         matched_at: new Date().toISOString(),
       };
 
-      // Copy category_id if pending outflow has one and bank transaction doesn't
-      if (pendingOutflow.category_id && !bankTransaction.category_id) {
+      // Copy category_id from pending outflow (overrides bank transaction's existing category)
+      if (pendingOutflow.category_id) {
         bankTransactionUpdates.category_id = pendingOutflow.category_id;
       }
 
       // Copy suggested_category_id from pending outflow's category as AI suggestion
-      if (pendingOutflow.category_id && !bankTransaction.suggested_category_id) {
+      if (pendingOutflow.category_id) {
         bankTransactionUpdates.suggested_category_id = pendingOutflow.category_id;
         // Note: AI confidence and reasoning would be set here if available from invoice processing
       }

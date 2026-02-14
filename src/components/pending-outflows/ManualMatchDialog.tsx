@@ -1,15 +1,25 @@
-import { useState, useMemo, useCallback, useRef, memo } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Search, Calendar, DollarSign } from 'lucide-react';
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useBankTransactionsWithRelations, BankTransaction } from '@/hooks/useBankTransactions';
-import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
-import { format } from 'date-fns';
-import { PendingOutflow } from '@/types/pending-outflows';
 
-// Pre-computed display values for each transaction row
+import { Search, Calendar, DollarSign } from 'lucide-react';
+
+import { useBankTransactionsWithRelations } from '@/hooks/useBankTransactions';
+import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
+
+import type { BankTransaction } from '@/hooks/useBankTransactions';
+import type { PendingOutflow } from '@/types/pending-outflows';
+
+import { format } from 'date-fns';
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+});
+
 interface MatchRowDisplayValues {
   formattedAmount: string;
   formattedDate: string;
@@ -19,7 +29,6 @@ interface MatchRowDisplayValues {
   isCategorized: boolean;
 }
 
-// Props for the memoized row
 interface MatchRowProps {
   transaction: BankTransaction;
   displayValues: MatchRowDisplayValues;
@@ -27,7 +36,6 @@ interface MatchRowProps {
   onSelect: (id: string) => void;
 }
 
-// Memoized row component — NO hooks, just render
 const MemoizedMatchRow = memo(function MemoizedMatchRow({
   transaction,
   displayValues,
@@ -44,7 +52,6 @@ const MemoizedMatchRow = memo(function MemoizedMatchRow({
       }`}
     >
       <div className="flex gap-3 sm:gap-4 w-full">
-        {/* Left: Amount */}
         <div className="flex items-center gap-1 shrink-0">
           <DollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="font-semibold text-foreground text-base whitespace-nowrap">
@@ -52,7 +59,6 @@ const MemoizedMatchRow = memo(function MemoizedMatchRow({
           </span>
         </div>
 
-        {/* Right: Transaction details */}
         <div className="flex-1 min-w-0 flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="font-medium text-foreground text-sm sm:text-base truncate">
@@ -99,29 +105,23 @@ interface ManualMatchDialogProps {
   restaurantId: string;
 }
 
-export const ManualMatchDialog = ({
+export function ManualMatchDialog({
   isOpen,
   onClose,
   pendingOutflow,
-  restaurantId
-}: ManualMatchDialogProps) => {
+  restaurantId,
+}: ManualMatchDialogProps): React.JSX.Element {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
-  const parentRef = useRef<HTMLDivElement>(null);
-  // Force re-render when scroll container mounts in dialog portal.
-  // The virtualizer reads parentRef.current via getScrollElement, but the
-  // dialog content only enters the DOM when open={true}. Without this,
-  // the virtualizer sees null and produces 0 virtual items on first open.
-  const [, setScrollMounted] = useState(false);
-  const scrollRef = useCallback((node: HTMLDivElement | null) => {
-    parentRef.current = node;
-    setScrollMounted(!!node);
-  }, []);
+
+  // Store the scroll container element in state so the virtualizer re-initializes
+  // when the dialog portal mounts. A plain ref would not trigger a re-render,
+  // causing the virtualizer to see null and produce 0 items on first open.
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
 
   const { data: transactions, isLoading } = useBankTransactionsWithRelations(restaurantId);
   const { confirmMatch } = usePendingOutflowMutations();
 
-  // Filter to negative transactions only (no is_categorized filter) with enhanced search
   const availableTransactions = useMemo(() => {
     if (!transactions) return [];
 
@@ -129,22 +129,18 @@ export const ManualMatchDialog = ({
 
     return transactions
       .filter(t => {
-        // Only filter out credits/inflows
         if (t.amount >= 0) return false;
 
         if (!searchLower) return true;
 
-        // Search by merchant name, description, payee
         const textMatch =
           t.merchant_name?.toLowerCase().includes(searchLower) ||
           t.description?.toLowerCase().includes(searchLower) ||
           t.normalized_payee?.toLowerCase().includes(searchLower);
 
-        // Search by amount (support formats like "100", "100.50", "$100")
         const amountStr = Math.abs(t.amount).toFixed(2);
         const amountMatch = amountStr.includes(searchLower.replace('$', ''));
 
-        // Search by date (support formats like "2024", "Jan", "January", "01/15")
         const dateStr = format(new Date(t.transaction_date), 'MMM d, yyyy').toLowerCase();
         const dateISOStr = format(new Date(t.transaction_date), 'yyyy-MM-dd');
         const dateMatch = dateStr.includes(searchLower) || dateISOStr.includes(searchLower);
@@ -154,13 +150,8 @@ export const ManualMatchDialog = ({
       .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
   }, [transactions, searchTerm]);
 
-  // Pre-compute display values for all filtered transactions
   const displayValuesMap = useMemo(() => {
     const map = new Map<string, MatchRowDisplayValues>();
-    const currencyFormatter = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    });
 
     for (const txn of availableTransactions) {
       map.set(txn.id, {
@@ -175,36 +166,27 @@ export const ManualMatchDialog = ({
     return map;
   }, [availableTransactions]);
 
-  // Virtual list setup
   const virtualizer = useVirtualizer({
     count: availableTransactions.length,
-    getScrollElement: () => parentRef.current,
+    getScrollElement: () => scrollElement,
     estimateSize: () => 72,
     overscan: 10,
   });
 
-  // Stable callback for row selection
   const handleSelect = useCallback((id: string) => {
     setSelectedTransactionId(id);
   }, []);
 
-  const handleConfirm = async () => {
+  async function handleConfirm(): Promise<void> {
     if (!selectedTransactionId) return;
 
     await confirmMatch.mutateAsync({
       pendingOutflowId: pendingOutflow.id,
-      bankTransactionId: selectedTransactionId
+      bankTransactionId: selectedTransactionId,
     });
 
     onClose();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(Math.abs(amount));
-  };
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -212,12 +194,12 @@ export const ManualMatchDialog = ({
         <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 shrink-0">
           <DialogTitle className="text-lg sm:text-xl">Manual Match Transaction</DialogTitle>
           <DialogDescription className="text-sm break-words">
-            Match with: <strong className="break-words">{pendingOutflow.vendor_name}</strong> - {formatCurrency(pendingOutflow.amount)}
+            Match with: <strong className="break-words">{pendingOutflow.vendor_name}</strong> -{' '}
+            {currencyFormatter.format(Math.abs(pendingOutflow.amount))}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 flex flex-col px-4 sm:px-6 gap-4">
-          {/* Enhanced Search */}
           <div className="shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -234,9 +216,9 @@ export const ManualMatchDialog = ({
             </div>
           </div>
 
-          {/* Virtualized Transaction List — concrete height so virtualizer can compute visible items */}
+          {/* Concrete height so virtualizer can compute visible items */}
           <div
-            ref={scrollRef}
+            ref={setScrollElement}
             className="border rounded-lg overflow-auto"
             style={{ height: 'calc(90vh - 230px)' }}
           >
@@ -289,7 +271,6 @@ export const ManualMatchDialog = ({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2 px-4 sm:px-6 py-4 border-t shrink-0">
           <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">
             Cancel
@@ -305,4 +286,4 @@ export const ManualMatchDialog = ({
       </DialogContent>
     </Dialog>
   );
-};
+}

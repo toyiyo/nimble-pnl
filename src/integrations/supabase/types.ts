@@ -7011,7 +7011,9 @@ export type Database = {
       toast_order_items: {
         Row: {
           created_at: string
+          discount_amount: number | null
           id: string
+          is_voided: boolean | null
           item_name: string
           menu_category: string | null
           modifiers: Json | null
@@ -7027,7 +7029,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          discount_amount?: number | null
           id?: string
+          is_voided?: boolean | null
           item_name: string
           menu_category?: string | null
           modifiers?: Json | null
@@ -7043,7 +7047,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          discount_amount?: number | null
           id?: string
+          is_voided?: boolean | null
           item_name?: string
           menu_category?: string | null
           modifiers?: Json | null
@@ -8296,6 +8302,7 @@ export type Database = {
           revenue: number
           total_count: number
           unique_items: number
+          voids: number
         }[]
       }
       get_users_by_ids: {

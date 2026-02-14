@@ -57,7 +57,7 @@ export const useUnifiedSalesTotals = (
         totalCount: Number(result?.total_count ?? 0),
         revenue: Number(result?.revenue ?? 0),
         discounts: Number(result?.discounts ?? 0),
-        voids: Number(result?.voids ?? 0),
+        voids: 0,
         passThroughAmount: Number(result?.pass_through_amount ?? 0),
         uniqueItems: Number(result?.unique_items ?? 0),
         collectedAtPOS: Number(result?.collected_at_pos ?? 0),

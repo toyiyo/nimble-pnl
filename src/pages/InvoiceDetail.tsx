@@ -24,8 +24,18 @@ import {
   MapPin,
   RefreshCw,
   Edit,
-  Eye
+  Eye,
+  Share2,
+  Copy,
+  MessageSquare,
+  RotateCw
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -112,13 +122,52 @@ export default function InvoiceDetail() {
   const handleSendInvoice = async () => {
     try {
       await sendInvoiceAsync(invoice.id);
-      toast({
-        title: "Invoice Sent",
-        description: "The invoice has been sent to the customer successfully.",
-      });
+      // Toast handled by sendInvoiceMutation.onSuccess in useInvoices
     } catch (err) {
       console.error('Error sending invoice:', err);
     }
+  };
+
+  const handleResendInvoice = async () => {
+    try {
+      await sendInvoiceAsync(invoice.id);
+      // Toast handled by sendInvoiceMutation.onSuccess in useInvoices
+    } catch (err) {
+      console.error('Error resending invoice:', err);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    if (!invoice.hosted_invoice_url) return;
+    try {
+      await navigator.clipboard.writeText(invoice.hosted_invoice_url);
+      toast({
+        title: "Link Copied",
+        description: "Invoice link copied to clipboard.",
+      });
+    } catch {
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy link to clipboard.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getShareMessage = () => {
+    const restaurantName = selectedRestaurant?.restaurant?.name || 'us';
+    const amount = formatCurrency(invoice.total / 100, invoice.currency);
+    return `Here's your invoice from ${restaurantName} for ${amount}: ${invoice.hosted_invoice_url}`;
+  };
+
+  const handleShareSMS = () => {
+    const message = encodeURIComponent(getShareMessage());
+    window.open(`sms:?body=${message}`, '_blank');
+  };
+
+  const handleShareWhatsApp = () => {
+    const message = encodeURIComponent(getShareMessage());
+    window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
   const handleViewHostedInvoice = () => {
@@ -207,6 +256,41 @@ export default function InvoiceDetail() {
                   Send Invoice
                 </Button>
               )}
+            </>
+          )}
+
+          {(invoice.status === 'open' || invoice.status === 'paid') && invoice.hosted_invoice_url && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleResendInvoice}
+                disabled={isSending}
+              >
+                <RotateCw className={`h-4 w-4 mr-2 ${isSending ? 'animate-spin' : ''}`} />
+                {isSending ? 'Sending...' : 'Resend Email'}
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="Share invoice">
+                    <Share2 className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleCopyLink}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Link
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareSMS}>
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Share via SMS
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareWhatsApp}>
+                    <Send className="h-4 w-4 mr-2" />
+                    Share via WhatsApp
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
 

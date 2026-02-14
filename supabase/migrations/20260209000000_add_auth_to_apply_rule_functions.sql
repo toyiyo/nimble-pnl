@@ -1,9 +1,8 @@
--- Add authentication checks to apply_rules functions to allow direct RPC calls from frontend.
--- This removes the dependency on Edge Functions which have execution limits.
--- Bank transaction function inlines journal entry creation to call rebuild_account_balances
--- only once at the end instead of per-row.
+-- Add authentication checks to apply_rules functions to allow direct RPC calls
+-- from the frontend, removing the dependency on Edge Functions execution limits.
+-- Bank transaction function inlines journal entry creation to call
+-- rebuild_account_balances only once at the end instead of per-row.
 
--- Update apply_rules_to_pos_sales to include permission check and error handling
 CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales(
   p_restaurant_id UUID,
   p_batch_limit INTEGER DEFAULT 100
@@ -24,7 +23,6 @@ DECLARE
   v_split JSONB;
   v_splits_array JSONB[] := ARRAY[]::JSONB[];
 BEGIN
-  -- CRITICAL SECURITY CHECK: Verify user has permission to apply rules for this restaurant
   IF NOT EXISTS (
     SELECT 1 FROM user_restaurants
     WHERE restaurant_id = p_restaurant_id
@@ -34,7 +32,6 @@ BEGIN
     RAISE EXCEPTION 'Permission denied: user does not have access to apply rules for this restaurant';
   END IF;
 
-  -- Only fetch uncategorized POS sales that already have a matching rule
   FOR v_sale IN
     SELECT
       s.id,
@@ -62,46 +59,31 @@ BEGIN
   LOOP
     v_total_count := v_total_count + 1;
 
-    -- Per-row error handling: one bad sale doesn't abort the batch
     BEGIN
-      -- Apply split rule or standard categorization
       IF v_sale.is_split_rule AND v_sale.split_categories IS NOT NULL THEN
         v_splits_array := ARRAY[]::JSONB[];
 
         FOR v_split IN SELECT * FROM jsonb_array_elements(v_sale.split_categories)
         LOOP
-          IF v_split->>'percentage' IS NOT NULL THEN
-            v_splits_array := v_splits_array || jsonb_build_object(
-              'category_id', v_split->>'category_id',
-              'amount', ROUND((v_sale.total_price * (v_split->>'percentage')::NUMERIC / 100.0), 2),
-              'description', COALESCE(v_split->>'description', '')
-            );
-          ELSE
-            v_splits_array := v_splits_array || jsonb_build_object(
-              'category_id', v_split->>'category_id',
-              'amount', (v_split->>'amount')::NUMERIC,
-              'description', COALESCE(v_split->>'description', '')
-            );
-          END IF;
+          v_splits_array := v_splits_array || jsonb_build_object(
+            'category_id', v_split->>'category_id',
+            'amount', CASE
+              WHEN v_split->>'percentage' IS NOT NULL
+              THEN ROUND((v_sale.total_price * (v_split->>'percentage')::NUMERIC / 100.0), 2)
+              ELSE (v_split->>'amount')::NUMERIC
+            END,
+            'description', COALESCE(v_split->>'description', '')
+          );
         END LOOP;
 
         v_splits_with_amounts := to_jsonb(v_splits_array);
 
         SELECT * INTO v_split_result
-        FROM split_pos_sale(
-          v_sale.id,
-          v_splits_with_amounts
-        );
+        FROM split_pos_sale(v_sale.id, v_splits_with_amounts);
 
-        IF v_split_result.success THEN
-          v_applied_count := v_applied_count + 1;
-          UPDATE categorization_rules
-          SET
-            apply_count = apply_count + 1,
-            last_applied_at = now()
-          WHERE id = v_sale.rule_id;
-        ELSE
+        IF NOT v_split_result.success THEN
           RAISE NOTICE 'Failed to split sale %: %', v_sale.id, v_split_result.message;
+          CONTINUE;
         END IF;
       ELSE
         UPDATE unified_sales
@@ -110,13 +92,12 @@ BEGIN
           is_categorized = true,
           updated_at = now()
         WHERE id = v_sale.id;
-        v_applied_count := v_applied_count + 1;
-        UPDATE categorization_rules
-        SET
-          apply_count = apply_count + 1,
-          last_applied_at = now()
-        WHERE id = v_sale.rule_id;
       END IF;
+
+      v_applied_count := v_applied_count + 1;
+      UPDATE categorization_rules
+      SET apply_count = apply_count + 1, last_applied_at = now()
+      WHERE id = v_sale.rule_id;
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Error categorizing sale %: %', v_sale.id, SQLERRM;
     END;
@@ -130,8 +111,6 @@ COMMENT ON FUNCTION apply_rules_to_pos_sales IS
   'Applies categorization rules to uncategorized POS sales. Includes permission check for owner/manager. Only batches sales that already match a rule, supports split rules with percentage-to-amount conversion, and processes up to p_batch_limit to avoid timeouts.';
 
 
--- Update apply_rules_to_bank_transactions: inlines journal entry creation
--- so rebuild_account_balances is called once at the end instead of per-row.
 CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions(
   p_restaurant_id UUID,
   p_batch_limit INTEGER DEFAULT 100
@@ -151,17 +130,16 @@ DECLARE
   v_splits_with_amounts JSONB;
   v_split JSONB;
   v_splits_array JSONB[] := ARRAY[]::JSONB[];
-  -- Pre-fetched restaurant-level data
   v_cash_account_id UUID;
-  -- Per-row variables for inlined categorization
   v_category RECORD;
-  v_fiscal_period RECORD;
+  v_fiscal_period_id UUID;
   v_journal_entry_id UUID;
   v_existing_journal_entry UUID;
   v_total_split_amount NUMERIC;
   v_split_rec RECORD;
+  v_entry_prefix TEXT;
+  v_entry_description TEXT;
 BEGIN
-  -- CRITICAL SECURITY CHECK: Verify user has permission to apply rules for this restaurant
   IF NOT EXISTS (
     SELECT 1 FROM user_restaurants
     WHERE restaurant_id = p_restaurant_id
@@ -171,7 +149,6 @@ BEGIN
     RAISE EXCEPTION 'Permission denied: user does not have access to apply rules for this restaurant';
   END IF;
 
-  -- Pre-fetch cash account once for the restaurant (needed for journal entries)
   SELECT id INTO v_cash_account_id
   FROM chart_of_accounts
   WHERE restaurant_id = p_restaurant_id
@@ -182,8 +159,6 @@ BEGIN
     RAISE EXCEPTION 'Cash account (1000) not found for restaurant %', p_restaurant_id;
   END IF;
 
-  -- Only fetch uncategorized bank transactions that already have a matching rule
-  -- Include extra fields needed for inlined journal entry creation
   FOR v_transaction IN
     SELECT
       bt.id,
@@ -216,10 +191,8 @@ BEGIN
   LOOP
     v_total_count := v_total_count + 1;
 
-    -- Per-row error handling: one bad transaction doesn't abort the batch
     BEGIN
-      -- Check if transaction falls in a closed fiscal period
-      SELECT id INTO v_fiscal_period
+      SELECT id INTO v_fiscal_period_id
       FROM fiscal_periods
       WHERE restaurant_id = p_restaurant_id
         AND v_transaction.transaction_date >= period_start
@@ -227,38 +200,30 @@ BEGIN
         AND is_closed = true
       LIMIT 1;
 
-      IF v_fiscal_period.id IS NOT NULL THEN
+      IF v_fiscal_period_id IS NOT NULL THEN
         RAISE EXCEPTION 'Transaction % in closed fiscal period', v_transaction.id;
       END IF;
 
       IF v_transaction.is_split_rule AND v_transaction.split_categories IS NOT NULL THEN
-        -----------------------------------------------------------------
-        -- SPLIT PATH: inline split_bank_transaction logic (no rebuild)
-        -----------------------------------------------------------------
+        -- Split path
         v_splits_array := ARRAY[]::JSONB[];
         v_total_split_amount := 0;
 
-        -- Convert percentages to amounts and build splits array
         FOR v_split IN SELECT * FROM jsonb_array_elements(v_transaction.split_categories)
         LOOP
-          IF v_split->>'percentage' IS NOT NULL THEN
-            v_splits_array := v_splits_array || jsonb_build_object(
-              'category_id', v_split->>'category_id',
-              'amount', ROUND((ABS(v_transaction.amount) * (v_split->>'percentage')::NUMERIC / 100.0), 2),
-              'description', COALESCE(v_split->>'description', '')
-            );
-          ELSE
-            v_splits_array := v_splits_array || jsonb_build_object(
-              'category_id', v_split->>'category_id',
-              'amount', (v_split->>'amount')::NUMERIC,
-              'description', COALESCE(v_split->>'description', '')
-            );
-          END IF;
+          v_splits_array := v_splits_array || jsonb_build_object(
+            'category_id', v_split->>'category_id',
+            'amount', CASE
+              WHEN v_split->>'percentage' IS NOT NULL
+              THEN ROUND((ABS(v_transaction.amount) * (v_split->>'percentage')::NUMERIC / 100.0), 2)
+              ELSE (v_split->>'amount')::NUMERIC
+            END,
+            'description', COALESCE(v_split->>'description', '')
+          );
         END LOOP;
 
         v_splits_with_amounts := to_jsonb(v_splits_array);
 
-        -- Validate splits total
         SELECT COALESCE(SUM((elem->>'amount')::NUMERIC), 0)
         INTO v_total_split_amount
         FROM jsonb_array_elements(v_splits_with_amounts) AS elem;
@@ -268,46 +233,66 @@ BEGIN
             v_total_split_amount, ABS(v_transaction.amount), v_transaction.id;
         END IF;
 
-        -- Check for existing journal entry (idempotency)
-        SELECT id INTO v_existing_journal_entry
-        FROM journal_entries
-        WHERE reference_type = 'bank_transaction'
-          AND reference_id = v_transaction.id
+        v_entry_prefix := 'SPLIT';
+        v_entry_description := 'Split transaction: ' || v_transaction.description;
+      ELSE
+        -- Non-split path: validate category
+        SELECT * INTO v_category
+        FROM chart_of_accounts
+        WHERE id = v_transaction.rule_category_id
           AND restaurant_id = p_restaurant_id
-        LIMIT 1;
+          AND is_active = true;
 
-        IF v_existing_journal_entry IS NOT NULL THEN
-          DELETE FROM journal_entry_lines WHERE journal_entry_id = v_existing_journal_entry;
-          v_journal_entry_id := v_existing_journal_entry;
-          UPDATE journal_entries
-          SET
-            entry_number = 'SPLIT-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
-            description = 'Split transaction: ' || v_transaction.description,
-            updated_at = now()
-          WHERE id = v_journal_entry_id;
-        ELSE
-          INSERT INTO journal_entries (
-            restaurant_id, entry_date, entry_number, description,
-            reference_type, reference_id, total_debit, total_credit, created_by
-          ) VALUES (
-            p_restaurant_id,
-            v_transaction.transaction_date,
-            'SPLIT-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
-            'Split transaction: ' || v_transaction.description,
-            'bank_transaction',
-            v_transaction.id,
-            ABS(v_transaction.amount),
-            ABS(v_transaction.amount),
-            auth.uid()
-          ) RETURNING id INTO v_journal_entry_id;
+        IF v_category.id IS NULL THEN
+          RAISE EXCEPTION 'Category not found or inactive for txn %', v_transaction.id;
         END IF;
 
-        -- Create split records and journal lines for each split
+        v_entry_prefix := 'BANK';
+        v_entry_description := 'Auto-categorized by rule: ' || v_transaction.rule_name;
+      END IF;
+
+      -- Upsert journal entry (shared by both paths)
+      SELECT id INTO v_existing_journal_entry
+      FROM journal_entries
+      WHERE reference_type = 'bank_transaction'
+        AND reference_id = v_transaction.id
+        AND restaurant_id = p_restaurant_id
+      LIMIT 1;
+
+      IF v_existing_journal_entry IS NOT NULL THEN
+        v_journal_entry_id := v_existing_journal_entry;
+        DELETE FROM journal_entry_lines WHERE journal_entry_id = v_existing_journal_entry;
+        UPDATE journal_entries
+        SET
+          entry_number = v_entry_prefix || '-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
+          description = v_entry_description,
+          total_debit = ABS(v_transaction.amount),
+          total_credit = ABS(v_transaction.amount),
+          updated_at = now()
+        WHERE id = v_existing_journal_entry;
+      ELSE
+        INSERT INTO journal_entries (
+          restaurant_id, entry_date, entry_number, description,
+          reference_type, reference_id, total_debit, total_credit, created_by
+        ) VALUES (
+          p_restaurant_id,
+          v_transaction.transaction_date,
+          v_entry_prefix || '-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
+          v_entry_description,
+          'bank_transaction',
+          v_transaction.id,
+          ABS(v_transaction.amount),
+          ABS(v_transaction.amount),
+          auth.uid()
+        ) RETURNING id INTO v_journal_entry_id;
+      END IF;
+
+      -- Create journal lines (path-specific)
+      IF v_transaction.is_split_rule AND v_transaction.split_categories IS NOT NULL THEN
         FOR v_split_rec IN
           SELECT * FROM jsonb_to_recordset(v_splits_with_amounts)
             AS x(category_id uuid, amount numeric, description text)
         LOOP
-          -- Validate category
           SELECT * INTO v_category
           FROM chart_of_accounts
           WHERE id = v_split_rec.category_id
@@ -318,7 +303,6 @@ BEGIN
             RAISE EXCEPTION 'Category not found or inactive: %', v_split_rec.category_id;
           END IF;
 
-          -- Insert split record
           INSERT INTO bank_transaction_splits (
             transaction_id, category_id, amount, description
           ) VALUES (
@@ -326,7 +310,6 @@ BEGIN
             v_split_rec.amount, v_split_rec.description
           );
 
-          -- Journal lines based on transaction direction
           IF v_transaction.amount < 0 THEN
             INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
             VALUES (v_journal_entry_id, v_split_rec.category_id, v_split_rec.amount, 0,
@@ -338,7 +321,7 @@ BEGIN
           END IF;
         END LOOP;
 
-        -- Offsetting cash line
+        -- Offsetting cash line for split
         IF v_transaction.amount < 0 THEN
           INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
           VALUES (v_journal_entry_id, v_cash_account_id, 0, ABS(v_transaction.amount), 'Cash payment (split)');
@@ -347,67 +330,11 @@ BEGIN
           VALUES (v_journal_entry_id, v_cash_account_id, ABS(v_transaction.amount), 0, 'Cash received (split)');
         END IF;
 
-        -- Update transaction status (no rebuild here)
         UPDATE bank_transactions
         SET is_split = true, is_categorized = true, category_id = NULL, updated_at = now()
         WHERE id = v_transaction.id;
-
-        v_applied_count := v_applied_count + 1;
-        UPDATE categorization_rules
-        SET apply_count = apply_count + 1, last_applied_at = now()
-        WHERE id = v_transaction.rule_id;
-
       ELSE
-        -----------------------------------------------------------------
-        -- NON-SPLIT PATH: inline categorize_bank_transaction (no rebuild)
-        -----------------------------------------------------------------
-
-        -- Validate category is active
-        SELECT * INTO v_category
-        FROM chart_of_accounts
-        WHERE id = v_transaction.rule_category_id
-          AND restaurant_id = p_restaurant_id
-          AND is_active = true;
-
-        IF v_category.id IS NULL THEN
-          RAISE EXCEPTION 'Category not found or inactive for txn %', v_transaction.id;
-        END IF;
-
-        -- Check for existing journal entry (idempotency)
-        SELECT id INTO v_existing_journal_entry
-        FROM journal_entries
-        WHERE reference_type = 'bank_transaction'
-          AND reference_id = v_transaction.id
-          AND restaurant_id = p_restaurant_id
-        LIMIT 1;
-
-        IF v_existing_journal_entry IS NOT NULL THEN
-          v_journal_entry_id := v_existing_journal_entry;
-          DELETE FROM journal_entry_lines WHERE journal_entry_id = v_existing_journal_entry;
-          UPDATE journal_entries
-          SET description = 'Auto-categorized by rule: ' || v_transaction.rule_name,
-              total_debit = ABS(v_transaction.amount),
-              total_credit = ABS(v_transaction.amount),
-              updated_at = now()
-          WHERE id = v_existing_journal_entry;
-        ELSE
-          INSERT INTO journal_entries (
-            restaurant_id, entry_date, entry_number, description,
-            reference_type, reference_id, total_debit, total_credit, created_by
-          ) VALUES (
-            p_restaurant_id,
-            v_transaction.transaction_date,
-            'BANK-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
-            'Auto-categorized by rule: ' || v_transaction.rule_name,
-            'bank_transaction',
-            v_transaction.id,
-            ABS(v_transaction.amount),
-            ABS(v_transaction.amount),
-            auth.uid()
-          ) RETURNING id INTO v_journal_entry_id;
-        END IF;
-
-        -- Journal entry lines based on transaction direction
+        -- Non-split journal lines
         IF v_transaction.amount < 0 THEN
           INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
           VALUES
@@ -420,7 +347,6 @@ BEGIN
             (v_journal_entry_id, v_transaction.rule_category_id, 0, ABS(v_transaction.amount), v_category.account_name);
         END IF;
 
-        -- Update transaction (no rebuild here)
         UPDATE bank_transactions
         SET
           category_id = v_transaction.rule_category_id,
@@ -429,18 +355,17 @@ BEGIN
           supplier_id = COALESCE(v_transaction.supplier_id, supplier_id),
           updated_at = now()
         WHERE id = v_transaction.id;
-
-        v_applied_count := v_applied_count + 1;
-        UPDATE categorization_rules
-        SET apply_count = apply_count + 1, last_applied_at = now()
-        WHERE id = v_transaction.rule_id;
       END IF;
+
+      v_applied_count := v_applied_count + 1;
+      UPDATE categorization_rules
+      SET apply_count = apply_count + 1, last_applied_at = now()
+      WHERE id = v_transaction.rule_id;
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Error categorizing transaction %: %', v_transaction.id, SQLERRM;
     END;
   END LOOP;
 
-  -- Rebuild account balances ONCE at the end (instead of per-row)
   IF v_applied_count > 0 THEN
     PERFORM rebuild_account_balances(p_restaurant_id);
   END IF;

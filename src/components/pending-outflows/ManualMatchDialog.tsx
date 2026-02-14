@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
+import { useState, useMemo, useCallback, useRef, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Calendar, DollarSign } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -108,6 +108,15 @@ export const ManualMatchDialog = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  // Force re-render when scroll container mounts in dialog portal.
+  // The virtualizer reads parentRef.current via getScrollElement, but the
+  // dialog content only enters the DOM when open={true}. Without this,
+  // the virtualizer sees null and produces 0 virtual items on first open.
+  const [, setScrollMounted] = useState(false);
+  const scrollRef = useCallback((node: HTMLDivElement | null) => {
+    parentRef.current = node;
+    setScrollMounted(!!node);
+  }, []);
 
   const { data: transactions, isLoading } = useBankTransactionsWithRelations(restaurantId);
   const { confirmMatch } = usePendingOutflowMutations();
@@ -174,20 +183,6 @@ export const ManualMatchDialog = ({
     overscan: 10,
   });
 
-  // DEBUG: trace virtualizer state — remove after investigation
-  useEffect(() => {
-    console.log('[ManualMatchDialog] render:', {
-      isLoading,
-      availCount: availableTransactions.length,
-      virtualItemCount: virtualizer.getVirtualItems().length,
-      totalSize: virtualizer.getTotalSize(),
-      hasScrollEl: !!parentRef.current,
-      scrollElHeight: parentRef.current?.clientHeight ?? 'N/A',
-      scrollElRect: parentRef.current?.getBoundingClientRect().height ?? 'N/A',
-      timestamp: performance.now().toFixed(1),
-    });
-  });
-
   // Stable callback for row selection
   const handleSelect = useCallback((id: string) => {
     setSelectedTransactionId(id);
@@ -241,7 +236,7 @@ export const ManualMatchDialog = ({
 
           {/* Virtualized Transaction List — concrete height so virtualizer can compute visible items */}
           <div
-            ref={parentRef}
+            ref={scrollRef}
             className="border rounded-lg overflow-auto"
             style={{ height: 'calc(90vh - 230px)' }}
           >

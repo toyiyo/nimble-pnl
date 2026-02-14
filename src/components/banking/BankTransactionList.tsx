@@ -121,17 +121,6 @@ export function BankTransactionList({
     overscan: 10,
   });
 
-  // DEBUG: trace virtualizer state — remove after investigation
-  const virtualItems = virtualizer.getVirtualItems();
-  console.log('[BankTransactionList] render:', {
-    isLoading,
-    txnCount: transactions.length,
-    virtualItemCount: virtualItems.length,
-    totalSize: virtualizer.getTotalSize(),
-    hasScrollEl: !!parentRef.current,
-    scrollElHeight: parentRef.current?.clientHeight ?? 'N/A',
-    timestamp: performance.now().toFixed(1),
-  });
 
   // Pre-compute display values for all transactions (memoized)
   const displayValuesMap = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, memo } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Search, Calendar, DollarSign } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -172,6 +172,20 @@ export const ManualMatchDialog = ({
     getScrollElement: () => parentRef.current,
     estimateSize: () => 72,
     overscan: 10,
+  });
+
+  // DEBUG: trace virtualizer state — remove after investigation
+  useEffect(() => {
+    console.log('[ManualMatchDialog] render:', {
+      isLoading,
+      availCount: availableTransactions.length,
+      virtualItemCount: virtualizer.getVirtualItems().length,
+      totalSize: virtualizer.getTotalSize(),
+      hasScrollEl: !!parentRef.current,
+      scrollElHeight: parentRef.current?.clientHeight ?? 'N/A',
+      scrollElRect: parentRef.current?.getBoundingClientRect().height ?? 'N/A',
+      timestamp: performance.now().toFixed(1),
+    });
   });
 
   // Stable callback for row selection

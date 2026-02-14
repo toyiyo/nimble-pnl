@@ -97,9 +97,39 @@ serve(async (req) => {
       apiVersion: "2024-12-18.acacia" as any
     });
 
-    // Only draft invoices can be sent; guard before any Stripe creation
-    if (invoice.status !== 'draft') {
-      throw new Error("Only draft invoices can be sent");
+    // Only draft, open, and paid invoices can be sent/resent
+    const allowedStatuses = ['draft', 'open', 'paid'];
+    if (!allowedStatuses.includes(invoice.status)) {
+      throw new Error(`Cannot send invoice with status "${invoice.status}". Only draft, open, or paid invoices can be sent.`);
+    }
+
+    // For open/paid invoices, just resend the email via Stripe
+    if (invoice.status !== 'draft' && invoice.stripe_invoice_id) {
+      console.log("[SEND-INVOICE] Resending invoice email for", invoice.status, "invoice");
+
+      const sentInvoice = await stripe.invoices.sendInvoice(
+        invoice.stripe_invoice_id,
+        {},
+        {
+          stripeAccount: connectedAccount.stripe_account_id,
+        }
+      );
+
+      console.log("[SEND-INVOICE] Invoice email resent:", sentInvoice.id);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status: invoice.status,
+          hostedInvoiceUrl: sentInvoice.hosted_invoice_url,
+          invoicePdfUrl: sentInvoice.invoice_pdf,
+          message: "Invoice email resent successfully",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
     }
 
     if (!invoice.stripe_invoice_id) {
@@ -290,14 +320,14 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    // Log full error details server-side but return sanitized response to client
-    console.error("[SEND-INVOICE] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[SEND-INVOICE] Error:", errorMessage);
 
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: errorMessage }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
+        status: 200,
       }
     );
   }

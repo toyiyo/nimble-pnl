@@ -107,13 +107,26 @@ serve(async (req) => {
     // Get customer with Stripe ID
     const { data: customer, error: customerError } = await supabaseAdmin
       .from("customers")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, email")
       .eq("id", customerId)
       .eq("restaurant_id", restaurantId)
       .single();
 
     if (customerError || !customer) {
       throw new Error("Customer not found");
+    }
+
+    if (!customer.email) {
+      return new Response(
+        JSON.stringify({
+          error: "Customer email is required to send invoices. Please add an email address for this customer.",
+          code: "MISSING_EMAIL"
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
     }
 
     if (!customer.stripe_customer_id) {
@@ -356,12 +369,27 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("[CREATE-INVOICE] Error:", errorMessage);
-    
+
+    // Map known Stripe errors to user-friendly messages
+    let userMessage = errorMessage;
+    let code = "STRIPE_ERROR";
+
+    if (errorMessage.includes("Missing email") || errorMessage.includes("valid email")) {
+      userMessage = "Customer email is required to send invoices. Please add an email address.";
+      code = "MISSING_EMAIL";
+    } else if (errorMessage.includes("No such customer")) {
+      userMessage = "This customer's Stripe account could not be found. Please try again.";
+      code = "CUSTOMER_NOT_FOUND";
+    } else if (errorMessage.includes("cannot currently make live charges")) {
+      userMessage = "Your Stripe account setup is incomplete. Please finish onboarding in Settings.";
+      code = "ONBOARDING_INCOMPLETE";
+    }
+
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: userMessage, code }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
+        status: 200,
       }
     );
   }

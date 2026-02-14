@@ -4,7 +4,7 @@ import { BankTransaction, useCategorizeTransaction, useDeleteTransaction } from 
 import { MemoizedTransactionRow, TransactionDisplayValues } from "./MemoizedTransactionRow";
 import { BankTransactionCard } from "./BankTransactionCard";
 import { TransactionDialogs } from "./TransactionDialogs";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TransactionTableSkeleton } from "./TransactionSkeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -121,7 +121,6 @@ export function BankTransactionList({
     overscan: 10,
   });
 
-
   // Pre-compute display values for all transactions (memoized)
   const displayValuesMap = useMemo(() => {
     const map = new Map<string, TransactionDisplayValues>();
@@ -130,12 +129,9 @@ export function BankTransactionList({
       currency: 'USD',
     });
 
-    // O(1) account lookups instead of O(n) Array.find per transaction
-    const accountMap = new Map(accounts?.map(a => [a.id, a]) ?? []);
-
     for (const txn of transactions) {
-      const suggestedCategory = txn.suggested_category_id ? accountMap.get(txn.suggested_category_id) : undefined;
-      const currentCategory = txn.category_id ? accountMap.get(txn.category_id) : undefined;
+      const suggestedCategory = accounts?.find(a => a.id === txn.suggested_category_id);
+      const currentCategory = accounts?.find(a => a.id === txn.category_id);
 
       map.set(txn.id, {
         isNegative: txn.amount < 0,
@@ -209,21 +205,13 @@ export function BankTransactionList({
     });
   }, [activeTransaction, selectedRestaurant?.restaurant_id, deleteTransaction, handleCloseDialog]);
 
+  // Loading skeleton
+  if (isLoading) {
+    return <TransactionTableSkeleton rowCount={10} />;
+  }
+
   // Mobile card view - not virtualized
   if (isMobile) {
-    if (isLoading) {
-      return (
-        <div className="space-y-3 px-4">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={`mobile-skel-${i}`} className="rounded-xl border border-border/40 p-4 space-y-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-5 w-full max-w-[200px]" />
-              <Skeleton className="h-4 w-20" />
-            </div>
-          ))}
-        </div>
-      );
-    }
     return (
       <div className="space-y-3 px-4">
         {transactions.map((transaction) => (
@@ -238,9 +226,7 @@ export function BankTransactionList({
     );
   }
 
-  // Desktop view — scroll container ALWAYS in DOM so virtualizer can measure it.
-  // Without this, the virtualizer has no scroll element during loading and can't
-  // compute visible items when data arrives (items appear blank until a re-render).
+  // Desktop virtualized view
   return (
     <>
       <div className="w-full overflow-hidden">
@@ -266,78 +252,58 @@ export function BankTransactionList({
           <div className={COLUMN_WIDTHS.actions}>Actions</div>
         </div>
 
-        {/* Scroll container — ref always mounted for virtualizer measurement */}
+        {/* Virtualized rows container */}
         <div
           ref={parentRef}
           className="h-[600px] overflow-auto"
         >
-          {isLoading ? (
-            // Skeleton rows inside the scroll container (keeps parentRef in DOM)
-            <div>
-              {Array.from({ length: 10 }, (_, i) => (
-                <div key={`skel-${i}`} className="flex items-center gap-2 px-4 py-3 border-b">
-                  <Skeleton className="h-4 w-[110px]" />
-                  <div className="flex-1 min-w-[180px] space-y-1">
-                    <Skeleton className="h-4 w-full max-w-[200px]" />
-                    <Skeleton className="h-3 w-16" />
-                  </div>
-                  <Skeleton className="h-4 w-[120px] hidden md:block" />
-                  <Skeleton className="h-4 w-[140px] hidden lg:block" />
-                  <Skeleton className="h-4 w-[100px]" />
-                  <Skeleton className="h-6 w-[140px] rounded-full hidden lg:block" />
-                  <Skeleton className="h-8 w-8 rounded" />
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const transaction = transactions[virtualRow.index];
+              if (!transaction) return null;
+
+              const displayValues = displayValuesMap.get(transaction.id);
+              if (!displayValues) return null;
+
+              return (
+                <div
+                  key={transaction.id}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <MemoizedTransactionRow
+                    transaction={transaction}
+                    status={status}
+                    displayValues={displayValues}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedIds.has(transaction.id)}
+                    isCategorizing={categorize.isPending}
+                    onSelectionToggle={handleSelectionToggle}
+                    onQuickAccept={handleQuickAccept}
+                    onOpenDetail={handleOpenDetail}
+                    onOpenSplit={handleOpenSplit}
+                    onOpenDelete={handleOpenDelete}
+                    onCreateRule={handleCreateRule}
+                    onReconcile={handleReconcile}
+                    onUnreconcile={handleUnreconcile}
+                  />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div
-              style={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-              }}
-            >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const transaction = transactions[virtualRow.index];
-                if (!transaction) return null;
-
-                const displayValues = displayValuesMap.get(transaction.id);
-                if (!displayValues) return null;
-
-                return (
-                  <div
-                    key={transaction.id}
-                    data-index={virtualRow.index}
-                    ref={virtualizer.measureElement}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                  >
-                    <MemoizedTransactionRow
-                      transaction={transaction}
-                      status={status}
-                      displayValues={displayValues}
-                      isSelectionMode={isSelectionMode}
-                      isSelected={selectedIds.has(transaction.id)}
-                      isCategorizing={categorize.isPending}
-                      onSelectionToggle={handleSelectionToggle}
-                      onQuickAccept={handleQuickAccept}
-                      onOpenDetail={handleOpenDetail}
-                      onOpenSplit={handleOpenSplit}
-                      onOpenDelete={handleOpenDelete}
-                      onCreateRule={handleCreateRule}
-                      onReconcile={handleReconcile}
-                      onUnreconcile={handleUnreconcile}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
       </div>
 

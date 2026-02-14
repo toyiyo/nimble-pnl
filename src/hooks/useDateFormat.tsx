@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { formatDateInTimezone } from '@/lib/timezone';
 
@@ -9,12 +8,9 @@ export function useDateFormat() {
   const { selectedRestaurant } = useRestaurantContext();
   const timezone = selectedRestaurant?.restaurant?.timezone || 'America/Chicago';
 
-  const formatTransactionDate = useCallback(
-    (date: string | Date, formatStr: string = 'MMM dd, yyyy') => {
-      return formatDateInTimezone(date, timezone, formatStr);
-    },
-    [timezone]
-  );
+  const formatTransactionDate = (date: string | Date, formatStr: string = 'MMM dd, yyyy') => {
+    return formatDateInTimezone(date, timezone, formatStr);
+  };
 
   return { formatTransactionDate, timezone };
 }

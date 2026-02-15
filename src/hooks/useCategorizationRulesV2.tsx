@@ -320,45 +320,74 @@ export function useApplyRulesV2() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ 
-      restaurantId, 
+    mutationFn: async ({
+      restaurantId,
       applyTo = 'both',
       batchLimit = 100
-    }: { 
-      restaurantId: string; 
+    }: {
+      restaurantId: string;
       applyTo?: 'bank_transactions' | 'pos_sales' | 'both';
       batchLimit?: number;
     }) => {
-      const { data, error } = await supabase.functions.invoke(
-        'apply-categorization-rules',
-        {
-          body: { restaurantId, applyTo, batchLimit }
-        }
-      );
+      let totalBankApplied = 0;
+      let totalPosApplied = 0;
 
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data, variables) => {
-      const result = data as { message: string; count: number; details?: any };
-      const batchLimit = variables.batchLimit || 100; // Fallback to 100 if not provided
-      
-      let description = result?.message || 'Categorization rules applied successfully';
-      
-      // Add note if processing was limited
-      if (result?.details) {
-        const bank = result.details.bank;
-        const pos = result.details.pos;
-        const totalProcessed = (bank?.total_count || 0) + (pos?.total_count || 0);
-        
-        if (totalProcessed >= batchLimit) {
-          description += '\n\nNote: Processed in batches. Click "Apply Rules" again to continue processing remaining records.';
+      // Auto-loop: keep calling RPC until no more matches
+      if (applyTo === 'bank_transactions' || applyTo === 'both') {
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await (supabase as any)
+            .rpc('apply_rules_to_bank_transactions', {
+              p_restaurant_id: restaurantId,
+              p_batch_limit: batchLimit
+            });
+
+          if (error) {
+            throw new Error(`Failed to apply rules to bank transactions: ${error.message}`);
+          }
+
+          const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
+          totalBankApplied += batch.applied_count;
+          hasMore = batch.applied_count > 0;
         }
       }
-      
+
+      if (applyTo === 'pos_sales' || applyTo === 'both') {
+        let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await (supabase as any)
+            .rpc('apply_rules_to_pos_sales', {
+              p_restaurant_id: restaurantId,
+              p_batch_limit: batchLimit
+            });
+
+          if (error) {
+            throw new Error(`Failed to apply rules to POS sales: ${error.message}`);
+          }
+
+          const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
+          totalPosApplied += batch.applied_count;
+          hasMore = batch.applied_count > 0;
+        }
+      }
+
+      const totalApplied = totalBankApplied + totalPosApplied;
+
+      let message = '';
+      if (applyTo === 'both') {
+        message = `Applied rules to ${totalApplied} transactions (${totalBankApplied} bank, ${totalPosApplied} POS)`;
+      } else if (applyTo === 'bank_transactions') {
+        message = `Applied rules to ${totalBankApplied} bank transactions`;
+      } else {
+        message = `Applied rules to ${totalPosApplied} POS sales`;
+      }
+
+      return { success: true, message, count: totalApplied };
+    },
+    onSuccess: (data) => {
       toast({
         title: "Rules applied",
-        description,
+        description: data.message,
       });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });

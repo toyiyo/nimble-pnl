@@ -40,7 +40,9 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
               'reports',
               'integrations',
               'team',
-              'settings'
+              'settings',
+              'daily-brief',
+              'ops-inbox'
             ],
             description: 'The section to navigate to'
           },
@@ -255,6 +257,22 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
           }
         },
         required: ['period']
+      }
+    },
+
+    // Proactive insights - available to all users
+    {
+      name: 'get_proactive_insights',
+      description: 'Check for urgent operational items and the latest daily brief. Call this at the start of new conversations to surface important issues proactively. Returns open ops inbox items ranked by priority and a summary of the most recent daily brief.',
+      parameters: {
+        type: 'object',
+        properties: {
+          include_brief: {
+            type: 'boolean',
+            description: 'Include latest daily brief summary (default: true)',
+            default: true
+          }
+        }
       }
     },
 
@@ -593,6 +611,132 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     );
   }
 
+  // Add action execution tools for managers and owners
+  if (userRole === 'manager' || userRole === 'owner') {
+    tools.push(
+      {
+        name: 'batch_categorize_transactions',
+        description: 'Categorize a batch of uncategorized bank transactions. Call with preview:true first to show what will change, then with confirmed:true after user approves. Returns evidence references.',
+        parameters: {
+          type: 'object',
+          properties: {
+            transaction_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Array of bank transaction IDs to categorize'
+            },
+            category_id: {
+              type: 'string',
+              description: 'Chart of accounts category ID to assign'
+            },
+            preview: {
+              type: 'boolean',
+              description: 'If true, returns preview of changes without executing',
+              default: false
+            },
+            confirmed: {
+              type: 'boolean',
+              description: 'If true, executes the categorization. Must call with preview:true first.',
+              default: false
+            }
+          },
+          required: ['transaction_ids', 'category_id']
+        }
+      },
+      {
+        name: 'batch_categorize_pos_sales',
+        description: 'Categorize a batch of uncategorized POS sales items. Call with preview:true first, then confirmed:true after user approves. Returns evidence references.',
+        parameters: {
+          type: 'object',
+          properties: {
+            sale_ids: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Array of unified_sales IDs to categorize'
+            },
+            category_id: {
+              type: 'string',
+              description: 'Chart of accounts category ID to assign'
+            },
+            preview: {
+              type: 'boolean',
+              description: 'If true, returns preview of changes without executing',
+              default: false
+            },
+            confirmed: {
+              type: 'boolean',
+              description: 'If true, executes the categorization. Must call with preview:true first.',
+              default: false
+            }
+          },
+          required: ['sale_ids', 'category_id']
+        }
+      },
+      {
+        name: 'create_categorization_rule',
+        description: 'Create a new auto-categorization rule from a pattern. Call with preview:true to show rule details, then confirmed:true to create. Returns evidence references.',
+        parameters: {
+          type: 'object',
+          properties: {
+            rule_name: {
+              type: 'string',
+              description: 'Name for the new rule'
+            },
+            pattern_type: {
+              type: 'string',
+              enum: ['exact', 'contains', 'starts_with', 'ends_with', 'regex'],
+              description: 'How to match the pattern'
+            },
+            pattern_value: {
+              type: 'string',
+              description: 'The pattern to match against transaction descriptions'
+            },
+            category_id: {
+              type: 'string',
+              description: 'Chart of accounts category ID to assign when matched'
+            },
+            source: {
+              type: 'string',
+              enum: ['bank', 'pos', 'both'],
+              description: 'Apply to bank transactions, POS sales, or both (default: both)',
+              default: 'both'
+            },
+            preview: {
+              type: 'boolean',
+              description: 'If true, returns preview including historical match count',
+              default: false
+            },
+            confirmed: {
+              type: 'boolean',
+              description: 'If true, creates the rule. Must call with preview:true first.',
+              default: false
+            }
+          },
+          required: ['rule_name', 'pattern_type', 'pattern_value', 'category_id']
+        }
+      },
+      {
+        name: 'resolve_inbox_item',
+        description: 'Mark an ops inbox item as done or dismissed.',
+        parameters: {
+          type: 'object',
+          properties: {
+            item_id: {
+              type: 'string',
+              description: 'The ops_inbox_item ID to resolve'
+            },
+            resolution: {
+              type: 'string',
+              enum: ['done', 'dismissed'],
+              description: 'How to resolve the item'
+            }
+          },
+          required: ['item_id', 'resolution']
+        }
+      }
+    );
+  }
+
   // Add AI-powered insights for owners
   if (userRole === 'owner') {
     tools.push({
@@ -627,8 +771,9 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_recipe_analytics',
     'get_sales_summary',
     'get_inventory_transactions',
-    'get_labor_costs',      // Labor costs visible to all (aggregate data)
-    'get_schedule_overview' // Schedule overview visible to all
+    'get_labor_costs',           // Labor costs visible to all (aggregate data)
+    'get_schedule_overview',     // Schedule overview visible to all
+    'get_proactive_insights'     // Proactive insights for all users
   ];
 
   if (basicTools.includes(toolName)) {
@@ -641,12 +786,16 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_bank_transactions',
     'get_financial_statement',
     'generate_report',
-    'get_payroll_summary',   // Payroll details - manager+
-    'get_tip_summary',       // Tip pooling details - manager+
-    'get_pending_outflows',  // Uncommitted expenses - manager+
-    'get_operating_costs',   // Operating cost breakdown - manager+
-    'get_monthly_trends',    // Monthly P&L trends - manager+
-    'get_expense_health'     // Expense health metrics - manager+
+    'get_payroll_summary',              // Payroll details - manager+
+    'get_tip_summary',                  // Tip pooling details - manager+
+    'get_pending_outflows',             // Uncommitted expenses - manager+
+    'get_operating_costs',              // Operating cost breakdown - manager+
+    'get_monthly_trends',               // Monthly P&L trends - manager+
+    'get_expense_health',               // Expense health metrics - manager+
+    'batch_categorize_transactions',    // Action: categorize bank txns - manager+
+    'batch_categorize_pos_sales',       // Action: categorize POS sales - manager+
+    'create_categorization_rule',       // Action: create rules - manager+
+    'resolve_inbox_item'                // Action: resolve inbox items - manager+
   ];
 
   if (managerOwnerTools.includes(toolName)) {

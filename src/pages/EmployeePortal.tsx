@@ -1,17 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTimeOffRequests, useDeleteTimeOffRequest } from '@/hooks/useTimeOffRequests';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
+import { useGustoEmployeeOnboarding, getOnboardingStatusLabel, useGustoWelcomeDialog } from '@/hooks/useGustoEmployeeOnboarding';
+import { useGustoConnection } from '@/hooks/useGustoConnection';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';
 import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
+import { GustoOnboardingWelcome } from '@/components/employee/GustoOnboardingWelcome';
 import {
   CalendarClock,
   CalendarX,
@@ -21,6 +24,10 @@ import {
   AlertCircle,
   UserCircle,
   Clock,
+  DollarSign,
+  CheckCircle,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -35,7 +42,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { formatTime } from '@/lib/utils';
 
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -55,6 +61,47 @@ const EmployeePortal = () => {
   const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId, currentEmployee?.id || undefined);
   const { exceptions, loading: exceptionsLoading } = useAvailabilityExceptions(restaurantId, currentEmployee?.id || undefined);
   const deleteTimeOffRequest = useDeleteTimeOffRequest();
+
+  // Gusto payroll onboarding
+  const { isConnected: gustoConnected } = useGustoConnection(restaurantId);
+  const {
+    onboardingState,
+    isLoading: onboardingLoading,
+    flowUrl,
+    flowLoading,
+    flowExpired,
+    openOnboardingFlow,
+    clearFlow,
+    refreshStatus,
+    isOnboardingComplete,
+    needsOnboarding,
+    hasGustoAccount,
+  } = useGustoEmployeeOnboarding(restaurantId, currentEmployee?.id || null);
+
+  // Welcome dialog for first-time onboarding
+  const { showWelcome, setShowWelcome, dismissWelcome } = useGustoWelcomeDialog(
+    needsOnboarding,
+    hasGustoAccount
+  );
+
+  // Auto-navigate to payroll tab if employee needs onboarding (first time only)
+  const [activeTab, setActiveTab] = useState('time-off');
+  const [hasAutoNavigated, setHasAutoNavigated] = useState(false);
+
+  useEffect(() => {
+    // Auto-navigate to payroll tab when employee needs onboarding
+    if (gustoConnected && needsOnboarding && !hasAutoNavigated && !onboardingLoading) {
+      setActiveTab('payroll');
+      setHasAutoNavigated(true);
+    }
+  }, [gustoConnected, needsOnboarding, hasAutoNavigated, onboardingLoading]);
+
+  // Auto-load payroll flow when tab is selected and employee needs onboarding
+  useEffect(() => {
+    if (activeTab === 'payroll' && hasGustoAccount && !flowUrl && !flowLoading && !flowExpired) {
+      openOnboardingFlow();
+    }
+  }, [activeTab, hasGustoAccount, flowUrl, flowLoading, flowExpired, openOnboardingFlow]);
 
   // Filter time-off requests to show only current employee's requests
   const myTimeOffRequests = currentEmployee
@@ -386,6 +433,221 @@ const EmployeePortal = () => {
     );
   };
 
+  const renderPayrollContent = () => {
+    const statusInfo = getOnboardingStatusLabel(onboardingState?.onboardingStatus);
+
+    // Loading state
+    if (onboardingLoading) {
+      return (
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-[500px] w-full" />
+        </div>
+      );
+    }
+
+    // Not synced to Gusto yet
+    if (!hasGustoAccount) {
+      return (
+        <Card className="bg-yellow-500/5 border-yellow-500/20">
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <div className="mx-auto w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mb-4">
+                <AlertCircle className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Payroll Account Pending</h3>
+              <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+                Your manager needs to add you to the payroll system. Once added, you'll be able to complete your
+                tax forms and set up direct deposit here.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Please contact your manager to get started.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    // Onboarding complete
+    if (isOnboardingComplete) {
+      return (
+        <>
+          <Card className="bg-green-500/5 border-green-500/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-green-500/10">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-green-700">Payroll Setup Complete</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Your tax forms and direct deposit information have been submitted.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Show Gusto flow for viewing pay stubs, etc. */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Payroll Information</CardTitle>
+                  <CardDescription>View your pay stubs, tax documents, and update your information</CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    clearFlow();
+                    openOnboardingFlow();
+                  }}
+                  disabled={flowLoading}
+                >
+                  {flowLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {flowLoading ? (
+                <div className="flex items-center justify-center h-[500px]">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : flowUrl ? (
+                <iframe
+                  src={flowUrl}
+                  className="w-full h-[500px] border-0 rounded-b-lg"
+                  title="Gusto Payroll"
+                  allow="clipboard-write; payment; geolocation"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground">
+                  <AlertCircle className="h-12 w-12 mb-4" />
+                  <p>Failed to load payroll interface</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={openOnboardingFlow}
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      );
+    }
+
+    // Needs onboarding
+    return (
+      <>
+        {/* Status Card */}
+        <Card className={
+          statusInfo.variant === 'warning'
+            ? 'bg-yellow-500/5 border-yellow-500/20'
+            : 'bg-primary/5 border-primary/20'
+        }>
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-full ${
+                statusInfo.variant === 'warning' ? 'bg-yellow-500/10' : 'bg-primary/10'
+              }`}>
+                <AlertCircle className={`h-5 w-5 ${
+                  statusInfo.variant === 'warning' ? 'text-yellow-600' : 'text-primary'
+                }`} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-semibold">Payroll Setup Required</h3>
+                  <Badge variant="outline">{statusInfo.label}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {statusInfo.description}
+                </p>
+                {!flowUrl && (
+                  <Button onClick={openOnboardingFlow} disabled={flowLoading}>
+                    {flowLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <DollarSign className="mr-2 h-4 w-4" />
+                        Complete Setup
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Flow expired alert */}
+        {flowExpired && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Session Expired</AlertTitle>
+            <AlertDescription>
+              Your session has expired.{' '}
+              <Button variant="link" className="p-0 h-auto" onClick={() => { clearFlow(); openOnboardingFlow(); }}>
+                Click here to refresh
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Embedded Gusto Flow */}
+        {flowUrl && !flowExpired && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Complete Your Payroll Setup</CardTitle>
+                  <CardDescription>Fill out the forms below to set up your payroll information</CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshStatus}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh Status
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <iframe
+                src={flowUrl}
+                className="w-full h-[600px] border-0 rounded-b-lg"
+                title="Gusto Onboarding"
+                allow="clipboard-write; payment; geolocation"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+              />
+            </CardContent>
+          </Card>
+        )}
+
+        <Alert className="bg-primary/5 border-primary/20">
+          <AlertCircle className="h-4 w-4 text-primary" />
+          <AlertDescription>
+            <strong>Need help?</strong> Contact your manager if you have questions about payroll setup.
+          </AlertDescription>
+        </Alert>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -405,16 +667,57 @@ const EmployeePortal = () => {
         </CardHeader>
       </Card>
 
-      <Tabs defaultValue="time-off" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+      {/* Payroll Setup Banner - Shows when employee needs to complete onboarding */}
+      {gustoConnected && (needsOnboarding || !hasGustoAccount) && activeTab !== 'payroll' && (
+        <Card className="bg-gradient-to-r from-yellow-500/10 via-orange-500/10 to-yellow-500/10 border-yellow-500/30 shadow-sm">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-yellow-500/20">
+                  <DollarSign className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">
+                    {hasGustoAccount ? 'Complete Your Payroll Setup' : 'Payroll Setup Pending'}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {hasGustoAccount
+                      ? 'Finish setting up your tax forms and direct deposit to get paid.'
+                      : 'Your manager needs to add you to the payroll system.'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setActiveTab('payroll')}
+                className="shrink-0"
+              >
+                {hasGustoAccount ? 'Complete Setup' : 'View Status'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className={`grid w-full ${gustoConnected ? 'grid-cols-3' : 'grid-cols-2'}`}>
           <TabsTrigger value="time-off" className="flex items-center gap-2">
             <CalendarX className="h-4 w-4" />
-            Time Off
+            <span className="hidden sm:inline">Time Off</span>
           </TabsTrigger>
           <TabsTrigger value="availability" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
-            Availability
+            <span className="hidden sm:inline">Availability</span>
           </TabsTrigger>
+          {gustoConnected && (
+            <TabsTrigger value="payroll" className="flex items-center gap-2 relative">
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Payroll</span>
+              {(needsOnboarding || !hasGustoAccount) && (
+                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-destructive" />
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Time-Off Tab */}
@@ -494,6 +797,13 @@ const EmployeePortal = () => {
             </AlertDescription>
           </Alert>
         </TabsContent>
+
+        {/* Payroll Tab */}
+        {gustoConnected && hasGustoAccount && (
+          <TabsContent value="payroll" className="space-y-4">
+            {renderPayrollContent()}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Dialogs */}
@@ -536,6 +846,20 @@ const EmployeePortal = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Gusto Onboarding Welcome Dialog */}
+      {currentEmployee && (
+        <GustoOnboardingWelcome
+          open={showWelcome}
+          onOpenChange={setShowWelcome}
+          employeeName={currentEmployee.name}
+          onStartOnboarding={() => {
+            setActiveTab('payroll');
+            dismissWelcome();
+          }}
+          onSkip={dismissWelcome}
+        />
+      )}
     </div>
   );
 };

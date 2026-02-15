@@ -8,6 +8,7 @@ import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastIntegration } from '@/hooks/useToastIntegration';
+import { useGusto } from '@/hooks/useGusto';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -19,6 +20,7 @@ const Integrations = () => {
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: shift4Connected } = useShift4Integration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: toastConnected } = useToastIntegration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: gustoConnected } = useGusto(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -60,6 +62,15 @@ const Integrations = () => {
       logo: '💳',
       connected: shift4Connected,
       features: ['Payment Charges', 'Refunds', 'Real-time Webhooks', 'API Key Auth']
+    },
+    {
+      id: 'gusto-payroll',
+      name: 'Gusto',
+      description: 'Full-service payroll, benefits administration, and tax filings',
+      category: 'Payroll',
+      logo: '💰',
+      connected: gustoConnected,
+      features: ['Payroll Processing', 'Benefits', 'Tax Filings', 'Employee Onboarding']
     },
     {
       id: '7shifts',

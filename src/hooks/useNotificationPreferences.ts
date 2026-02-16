@@ -2,6 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
+// Table not yet in generated types -- helper avoids repeating the cast
+function notificationPrefsTable() {
+  return supabase.from('notification_preferences' as never) as ReturnType<typeof supabase.from>;
+}
+
 export interface NotificationPreferences {
   id: string;
   user_id: string;
@@ -19,8 +24,7 @@ export function useNotificationPreferences(restaurantId: string | undefined) {
     queryKey: ['notification-preferences', restaurantId, user?.id],
     queryFn: async () => {
       if (!restaurantId || !user?.id) return null;
-      const { data, error } = await (supabase
-        .from('notification_preferences' as never) as ReturnType<typeof supabase.from>)
+      const { data, error } = await notificationPrefsTable()
         .select('*')
         .eq('user_id', user.id)
         .eq('restaurant_id', restaurantId)
@@ -34,8 +38,7 @@ export function useNotificationPreferences(restaurantId: string | undefined) {
   const upsert = useMutation({
     mutationFn: async (prefs: { daily_brief_email?: boolean; brief_send_time?: string }) => {
       if (!restaurantId || !user?.id) throw new Error('Missing context');
-      const { error } = await (supabase
-        .from('notification_preferences' as never) as ReturnType<typeof supabase.from>)
+      const { error } = await notificationPrefsTable()
         .upsert({
           user_id: user.id,
           restaurant_id: restaurantId,

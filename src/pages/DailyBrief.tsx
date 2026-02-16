@@ -51,7 +51,6 @@ function metricLabel(metric: string): string {
   return labels[metric] || metric;
 }
 
-/** Format a date string (YYYY-MM-DD) for display. */
 function formatDisplayDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(year, month - 1, day);
@@ -62,7 +61,6 @@ function formatDisplayDate(dateStr: string): string {
   });
 }
 
-/** Shift a YYYY-MM-DD string by `days`. */
 function shiftDate(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(year, month - 1, day);
@@ -70,14 +68,10 @@ function shiftDate(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
-/** Get yesterday as YYYY-MM-DD. */
 function yesterday(): string {
   return shiftDate(new Date().toISOString().split('T')[0], -1);
 }
 
-/**
- * For "revenue" and "gross_profit" up is good. For cost metrics up is bad.
- */
 function isUpGood(metric: string): boolean {
   return metric === 'net_revenue' || metric === 'gross_profit';
 }
@@ -95,12 +89,9 @@ interface MetricCardProps {
 }
 
 function MetricCard({ label, value, deltaPct, direction, goodWhenUp }: MetricCardProps) {
-  const isGood =
-    direction === 'flat'
-      ? true
-      : direction === 'up'
-        ? goodWhenUp
-        : !goodWhenUp;
+  let isGood = true;
+  if (direction === 'up') isGood = goodWhenUp;
+  else if (direction === 'down') isGood = !goodWhenUp;
 
   const colorClass = isGood
     ? 'text-emerald-600 dark:text-emerald-400'
@@ -208,13 +199,15 @@ export default function DailyBrief() {
     return (
       <div className="min-h-screen bg-background">
         <div className="max-w-5xl mx-auto px-4 py-6">
-          <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-6 text-center space-y-2">
-            <AlertTriangle className="h-6 w-6 text-red-500 mx-auto" />
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+            </div>
             <p className="text-[14px] font-medium text-foreground">
               Failed to load the daily brief
             </p>
             <p className="text-[13px] text-muted-foreground">
-              {(error as Error).message}
+              {error instanceof Error ? error.message : 'An unexpected error occurred.'}
             </p>
           </div>
         </div>

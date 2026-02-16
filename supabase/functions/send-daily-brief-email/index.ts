@@ -6,6 +6,7 @@ interface BriefRow {
   id: string;
   restaurant_id: string;
   brief_date: string;
+  email_sent_at: string | null;
   metrics_json: Record<string, number>;
   variances_json: Array<{
     metric: string;
@@ -27,6 +28,12 @@ interface BriefRow {
   }>;
 }
 
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -45,10 +52,7 @@ serve(async (req) => {
 
     const { restaurant_id, brief_date } = await req.json();
     if (!restaurant_id || !brief_date) {
-      return new Response(
-        JSON.stringify({ success: false, error: "restaurant_id and brief_date required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: false, error: "restaurant_id and brief_date required" }, 400);
     }
 
     // Fetch the brief
@@ -61,20 +65,14 @@ serve(async (req) => {
 
     if (briefError) throw new Error(`Failed to fetch brief: ${briefError.message}`);
     if (!brief) {
-      return new Response(
-        JSON.stringify({ success: false, error: "No brief found for this date" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: false, error: "No brief found for this date" }, 404);
     }
 
     const typedBrief = brief as BriefRow;
 
     // Already sent?
-    if (typedBrief.id && brief.email_sent_at) {
-      return new Response(
-        JSON.stringify({ success: true, message: "Email already sent" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (typedBrief.email_sent_at) {
+      return jsonResponse({ success: true, message: "Email already sent" });
     }
 
     // Fetch opted-in users
@@ -86,10 +84,7 @@ serve(async (req) => {
 
     if (prefError) throw new Error(`Failed to fetch prefs: ${prefError.message}`);
     if (!prefs || prefs.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: "No opted-in users" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: true, message: "No opted-in users" });
     }
 
     // Fetch user emails from profiles
@@ -101,10 +96,7 @@ serve(async (req) => {
 
     if (profileError) throw new Error(`Failed to fetch profiles: ${profileError.message}`);
     if (!profiles || profiles.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: "No user profiles found" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: true, message: "No user profiles found" });
     }
 
     // Fetch restaurant name
@@ -161,17 +153,11 @@ serve(async (req) => {
         .eq("id", typedBrief.id);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, sentCount, totalRecipients: profiles.length }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ success: true, sentCount, totalRecipients: profiles.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Fatal error in send-daily-brief-email:", message);
-    return new Response(
-      JSON.stringify({ success: false, error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ success: false, error: message }, 500);
   }
 });
 

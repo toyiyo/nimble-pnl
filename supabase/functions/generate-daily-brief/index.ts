@@ -217,22 +217,18 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
         console.log(`Brief generated for ${restaurantName} (${restaurantId})`);
 
         // Trigger email delivery (fire-and-forget, don't block on failure)
-        try {
-          const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-          fetch(`${supabaseUrl}/functions/v1/send-daily-brief-email`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${serviceRoleKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ restaurant_id: restaurantId, brief_date: yesterday }),
-          }).catch((emailErr) => {
-            console.error(`Email trigger failed for ${restaurantId}:`, emailErr);
-          });
-        } catch (emailErr) {
-          console.error(`Email trigger setup failed for ${restaurantId}:`, emailErr);
-        }
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+        fetch(`${supabaseUrl}/functions/v1/send-daily-brief-email`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ restaurant_id: restaurantId, brief_date: yesterday }),
+        }).catch((emailErr) => {
+          console.error(`Email trigger failed for ${restaurantId}:`, emailErr);
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`Failed to generate brief for ${restaurantId}:`, message);
@@ -293,8 +289,9 @@ function buildRecommendations(variances: VarianceItem[]): Recommendation[] {
 
   const flagOrder: Record<string, number> = { critical: 0, warning: 1 };
 
+  // Guard against SQL returning the string "null" instead of a real null
   const flagged = variances
-    .filter((v) => v.flag && v.flag !== "null")
+    .filter((v) => v.flag != null && v.flag !== "null")
     .sort((a, b) => {
       const aOrder = flagOrder[a.flag!] ?? 99;
       const bOrder = flagOrder[b.flag!] ?? 99;
@@ -308,7 +305,7 @@ function buildRecommendations(variances: VarianceItem[]): Recommendation[] {
     const pctChange = v.delta_pct_vs_avg != null ? ` (${v.delta_pct_vs_avg > 0 ? "+" : ""}${v.delta_pct_vs_avg}% vs 7-day avg)` : "";
     return {
       title: `Review ${metric}`,
-      body: `${metric} ${direction} to ${v.value}${isPercentMetric(v.metric) ? "%" : ""}${pctChange}`,
+      body: `${metric} ${direction} to ${v.value}${v.metric.endsWith("_pct") ? "%" : ""}${pctChange}`,
       impact: v.flag === "critical" ? "High" : "Medium",
       effort: "Low",
     };
@@ -324,8 +321,4 @@ function formatMetricName(metric: string): string {
     gross_profit: "gross profit",
   };
   return names[metric] || metric;
-}
-
-function isPercentMetric(metric: string): boolean {
-  return metric.endsWith("_pct");
 }

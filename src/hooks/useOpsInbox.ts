@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+// Table not yet in generated types -- helper avoids repeating the cast
+function opsInboxTable() {
+  return supabase.from('ops_inbox_item' as never) as ReturnType<typeof supabase.from>;
+}
+
 export interface OpsInboxItem {
   id: string;
   restaurant_id: string;
@@ -37,8 +42,7 @@ export function useOpsInbox(restaurantId: string | undefined, options: UseOpsInb
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      let q = (supabase
-        .from('ops_inbox_item' as never) as ReturnType<typeof supabase.from>)
+      let q = opsInboxTable()
         .select('*')
         .eq('restaurant_id', restaurantId)
         .order('priority', { ascending: true })
@@ -78,8 +82,7 @@ export function useOpsInbox(restaurantId: string | undefined, options: UseOpsInb
         updates.resolved_at = new Date().toISOString();
       }
 
-      const { error } = await (supabase
-        .from('ops_inbox_item' as never) as ReturnType<typeof supabase.from>)
+      const { error } = await opsInboxTable()
         .update(updates)
         .eq('id', itemId);
 
@@ -106,14 +109,12 @@ export function useOpsInboxCount(restaurantId: string | undefined) {
     queryFn: async () => {
       if (!restaurantId) return { open: 0, critical: 0 };
 
-      const { count: openCount, error: openError } = await (supabase
-        .from('ops_inbox_item' as never) as ReturnType<typeof supabase.from>)
+      const { count: openCount, error: openError } = await opsInboxTable()
         .select('*', { count: 'exact', head: true })
         .eq('restaurant_id', restaurantId)
         .eq('status', 'open');
 
-      const { count: criticalCount, error: critError } = await (supabase
-        .from('ops_inbox_item' as never) as ReturnType<typeof supabase.from>)
+      const { count: criticalCount, error: critError } = await opsInboxTable()
         .select('*', { count: 'exact', head: true })
         .eq('restaurant_id', restaurantId)
         .eq('status', 'open')

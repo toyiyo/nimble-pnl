@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { Inbox, AlertTriangle, Clock, X, MoreHorizontal, Sparkles } from 'lucide-react';
+import { Inbox, AlertTriangle, Clock, X, Sparkles } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChatContext } from '@/contexts/AiChatContext';

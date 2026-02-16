@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+// Table not yet in generated types -- helper avoids repeating the cast
+function dailyBriefTable() {
+  return supabase.from('daily_brief' as never) as ReturnType<typeof supabase.from>;
+}
+
 export interface DailyBrief {
   id: string;
   restaurant_id: string;
@@ -45,15 +50,15 @@ export interface DailyBrief {
 }
 
 export function useDailyBrief(restaurantId: string | undefined, date?: string) {
-  const briefDate = date || new Date(Date.now() - 86400000).toISOString().split('T')[0]; // yesterday
+  const MS_PER_DAY = 86_400_000;
+  const briefDate = date || new Date(Date.now() - MS_PER_DAY).toISOString().split('T')[0];
 
   return useQuery({
     queryKey: ['daily-brief', restaurantId, briefDate],
     queryFn: async () => {
       if (!restaurantId) return null;
 
-      const { data, error } = await (supabase
-        .from('daily_brief' as never) as ReturnType<typeof supabase.from>)
+      const { data, error } = await dailyBriefTable()
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('brief_date', briefDate)
@@ -73,8 +78,7 @@ export function useDailyBriefHistory(restaurantId: string | undefined, limit = 1
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      const { data, error } = await (supabase
-        .from('daily_brief' as never) as ReturnType<typeof supabase.from>)
+      const { data, error } = await dailyBriefTable()
         .select('id, brief_date, metrics_json, narrative, computed_at')
         .eq('restaurant_id', restaurantId)
         .order('brief_date', { ascending: false })

@@ -215,6 +215,24 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
 
         results.push({ restaurantId, restaurantName, status: "generated" });
         console.log(`Brief generated for ${restaurantName} (${restaurantId})`);
+
+        // Trigger email delivery (fire-and-forget, don't block on failure)
+        try {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          fetch(`${supabaseUrl}/functions/v1/send-daily-brief-email`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${serviceRoleKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ restaurant_id: restaurantId, brief_date: yesterday }),
+          }).catch((emailErr) => {
+            console.error(`Email trigger failed for ${restaurantId}:`, emailErr);
+          });
+        } catch (emailErr) {
+          console.error(`Email trigger setup failed for ${restaurantId}:`, emailErr);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`Failed to generate brief for ${restaurantId}:`, message);

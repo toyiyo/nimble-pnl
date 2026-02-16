@@ -41,6 +41,8 @@ import {
   Target,
   Sparkles,
   Printer,
+  Inbox,
+  Newspaper,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -78,6 +80,8 @@ const navigationGroups = [
       { path: '/', label: 'Dashboard', icon: Home },
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
+      { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
+      { path: '/daily-brief', label: 'Daily Brief', icon: Newspaper },
     ],
   },
   {

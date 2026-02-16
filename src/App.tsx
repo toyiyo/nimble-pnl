@@ -64,6 +64,8 @@ import StripeAccountManagement from "./pages/StripeAccountManagement";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
 import Assets from "./pages/Assets";
 import BudgetRunRate from "./pages/BudgetRunRate";
+import OpsInbox from "./pages/OpsInbox";
+import DailyBrief from "./pages/DailyBrief";
 import { queryClientConfig } from "@/lib/react-query-config";
 
 const queryClient = new QueryClient(queryClientConfig);
@@ -265,6 +267,8 @@ const App = () => (
           <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
+            <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
+            <Route path="/daily-brief" element={<ProtectedRoute><DailyBrief /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />

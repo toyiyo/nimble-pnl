@@ -36,6 +36,7 @@ import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryC
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
+import { useOpsInboxCount } from '@/hooks/useOpsInbox';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import {
   DollarSign,
@@ -52,6 +53,8 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
+  Inbox,
+  Newspaper,
 } from 'lucide-react';
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -241,6 +244,8 @@ const Index = () => {
     selectedRestaurant?.restaurant_id || null,
     14 // 14 days of history
   );
+
+  const { data: opsInboxCounts } = useOpsInboxCount(selectedRestaurant?.restaurant_id);
 
   // Calculate available cash from connected banks
   const availableCash = useMemo(() => {
@@ -1087,6 +1092,41 @@ const Index = () => {
                   </CollapsibleContent>
                 </div>
               </Collapsible>
+
+              {/* AI Operator */}
+              {(opsInboxCounts?.open ?? 0) > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => navigate('/ops-inbox')}
+                    className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
+                      <Inbox className="h-5 w-5 text-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium text-foreground">Ops Inbox</div>
+                      <div className="text-[13px] text-muted-foreground">
+                        {opsInboxCounts.open} open item{opsInboxCounts.open !== 1 ? 's' : ''}
+                        {(opsInboxCounts.critical ?? 0) > 0 && (
+                          <span className="text-destructive font-medium"> ({opsInboxCounts.critical} critical)</span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => navigate('/daily-brief')}
+                    className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
+                      <Newspaper className="h-5 w-5 text-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium text-foreground">Daily Brief</div>
+                      <div className="text-[13px] text-muted-foreground">Yesterday's performance summary</div>
+                    </div>
+                  </button>
+                </div>
+              )}
 
               {/* Quick Actions */}
               <Collapsible open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>

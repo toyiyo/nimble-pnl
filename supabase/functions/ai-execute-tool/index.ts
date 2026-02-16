@@ -2749,6 +2749,17 @@ async function executeGetProactiveInsights(
 ): Promise<any> {
   const { include_brief = true } = args;
 
+  // Fetch total count of open inbox items
+  const { count: totalOpenCount, error: countError } = await supabase
+    .from('ops_inbox_item')
+    .select('*', { count: 'exact', head: true })
+    .eq('restaurant_id', restaurantId)
+    .eq('status', 'open');
+
+  if (countError) {
+    throw new Error(`Failed to count inbox items: ${countError.message}`);
+  }
+
   // Fetch top 5 open ops inbox items by priority
   const { data: inboxItems, error: inboxError } = await supabase
     .from('ops_inbox_item')
@@ -2784,7 +2795,7 @@ async function executeGetProactiveInsights(
     data: {
       inbox: {
         items: inboxItems || [],
-        total_open: inboxItems?.length || 0,
+        total_open: totalOpenCount || 0,
         has_critical: inboxItems?.some((i: any) => i.priority <= 2) || false,
       },
       brief: briefData ? {
@@ -2796,7 +2807,7 @@ async function executeGetProactiveInsights(
       } : null,
     },
     evidence: [
-      { table: 'ops_inbox_item', summary: `${inboxItems?.length || 0} open inbox items (top 5 by priority)` },
+      { table: 'ops_inbox_item', summary: `${totalOpenCount || 0} total open inbox items (showing top 5 by priority)` },
       ...(briefData ? [{ table: 'daily_brief', summary: `Daily brief for ${briefData.brief_date}` }] : []),
     ],
   };
@@ -2865,7 +2876,7 @@ async function executeBatchCategorizeTransactions(
   if (confirmed) {
     const { error: updateError } = await supabase
       .from('bank_transactions')
-      .update({ category_id: category.id })
+      .update({ category_id: category.id, is_categorized: true })
       .eq('restaurant_id', restaurantId)
       .in('id', transaction_ids);
 

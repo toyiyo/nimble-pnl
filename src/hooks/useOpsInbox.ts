@@ -55,7 +55,7 @@ export function useOpsInbox(restaurantId: string | undefined, options: UseOpsInb
       if (kind) {
         q = q.eq('kind', kind);
       }
-      if (priority) {
+      if (priority !== undefined && priority !== null) {
         q = q.eq('priority', priority);
       }
 

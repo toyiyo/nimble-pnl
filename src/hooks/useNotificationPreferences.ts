@@ -34,6 +34,7 @@ export function useNotificationPreferences(restaurantId: string | undefined) {
     },
     enabled: !!restaurantId && !!user?.id,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
   });
 
   const upsert = useMutation({

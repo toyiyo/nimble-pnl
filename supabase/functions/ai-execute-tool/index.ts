@@ -3015,6 +3015,7 @@ async function executeCreateCategorizationRule(
     else if (pattern_type === 'contains') bankQuery = bankQuery.ilike('description', `%${pattern_value}%`);
     else if (pattern_type === 'starts_with') bankQuery = bankQuery.ilike('description', `${pattern_value}%`);
     else if (pattern_type === 'ends_with') bankQuery = bankQuery.ilike('description', `%${pattern_value}`);
+    else throw new Error(`Unsupported pattern_type: ${pattern_type}. Use exact, contains, starts_with, or ends_with.`);
 
     const { count } = await bankQuery;
     bankMatchCount = count || 0;
@@ -3031,6 +3032,7 @@ async function executeCreateCategorizationRule(
     else if (pattern_type === 'contains') posQuery = posQuery.ilike('item_name', `%${pattern_value}%`);
     else if (pattern_type === 'starts_with') posQuery = posQuery.ilike('item_name', `${pattern_value}%`);
     else if (pattern_type === 'ends_with') posQuery = posQuery.ilike('item_name', `%${pattern_value}`);
+    else throw new Error(`Unsupported pattern_type: ${pattern_type}. Use exact, contains, starts_with, or ends_with.`);
 
     const { count } = await posQuery;
     posMatchCount = count || 0;

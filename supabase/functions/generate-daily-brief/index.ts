@@ -25,9 +25,19 @@ serve(async (req) => {
   }
 
   try {
+    // Auth guard: only allow calls with the service role key
+    const authHeader = req.headers.get("Authorization");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (authHeader !== `Bearer ${serviceRoleKey}`) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      serviceRoleKey
     );
 
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -42,20 +52,18 @@ serve(async (req) => {
 
     console.log(`Generating daily briefs for ${yesterday}`);
 
-    // Get distinct restaurant IDs (limit 10 per run to avoid timeouts)
+    // Get restaurants ordered by least-recently-briefed first (round-robin)
     const { data: restaurants, error: restError } = await supabase
-      .from("user_restaurants")
-      .select("restaurant_id")
-      .limit(1000);
+      .from("restaurants")
+      .select("id")
+      .order("updated_at", { ascending: true })
+      .limit(10);
 
     if (restError) {
       throw new Error(`Failed to fetch restaurants: ${restError.message}`);
     }
 
-    // Deduplicate restaurant IDs
-    const restaurantIds = [
-      ...new Set((restaurants || []).map((r: { restaurant_id: string }) => r.restaurant_id)),
-    ].slice(0, 10);
+    const restaurantIds = (restaurants || []).map((r: { id: string }) => r.id);
 
     console.log(`Found ${restaurantIds.length} restaurants to process`);
 
@@ -264,7 +272,7 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Fatal error in generate-daily-brief:", message);
-    return new Response(JSON.stringify({ success: false, error: message }), {
+    return new Response(JSON.stringify({ success: false, error: "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

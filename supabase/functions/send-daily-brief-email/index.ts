@@ -40,9 +40,16 @@ serve(async (req) => {
   }
 
   try {
+    // Auth guard: only allow calls with the service role key
+    const authHeader = req.headers.get("Authorization");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (authHeader !== `Bearer ${serviceRoleKey}`) {
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      serviceRoleKey
     );
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -135,29 +142,32 @@ serve(async (req) => {
 
         if (res.ok) {
           sentCount++;
-          console.log(`Email sent to ${profile.email}`);
+          console.log(`Email sent to user ${profile.user_id}`);
         } else {
           const errText = await res.text();
-          console.error(`Failed to send to ${profile.email}:`, errText);
+          console.error(`Failed to send to user ${profile.user_id}:`, errText);
         }
       } catch (sendErr) {
-        console.error(`Error sending to ${profile.email}:`, sendErr);
+        console.error(`Error sending to user ${profile.user_id}:`, sendErr);
       }
     }
 
     // Update email_sent_at
     if (sentCount > 0) {
-      await supabase
+      const { error: updateError } = await supabase
         .from("daily_brief")
         .update({ email_sent_at: new Date().toISOString() })
         .eq("id", typedBrief.id);
+      if (updateError) {
+        console.error(`Failed to update email_sent_at for brief ${typedBrief.id}:`, updateError.message);
+      }
     }
 
     return jsonResponse({ success: true, sentCount, totalRecipients: profiles.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Fatal error in send-daily-brief-email:", message);
-    return jsonResponse({ success: false, error: message }, 500);
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });
 
@@ -192,6 +202,15 @@ function deltaArrow(direction: string): string {
   if (direction === "up") return "&#9650;";
   if (direction === "down") return "&#9660;";
   return "&#8212;";
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
@@ -247,7 +266,7 @@ function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
       ? `<div style="margin-top:24px;">
           <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:8px;">Top Actions</div>
           <ul style="padding-left:20px;margin:0;">
-            ${recs.map((r) => `<li style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>${r.title}</strong> — ${r.body}</li>`).join("")}
+            ${recs.map((r) => `<li style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>${escapeHtml(r.title)}</strong> — ${escapeHtml(r.body)}</li>`).join("")}
           </ul>
         </div>`
       : "";
@@ -276,7 +295,7 @@ function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
           brief.narrative
             ? `<tr><td style="padding:20px 24px 0;">
                 <div style="font-size:14px;line-height:1.6;color:#374151;background:#f9fafb;border-radius:8px;padding:16px;">
-                  ${brief.narrative}
+                  ${escapeHtml(brief.narrative)}
                 </div>
               </td></tr>`
             : ""

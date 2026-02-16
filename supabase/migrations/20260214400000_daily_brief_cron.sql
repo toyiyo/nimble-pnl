@@ -1,3 +1,11 @@
+-- Idempotent: unschedule if it already exists
+DO $$
+BEGIN
+  PERFORM cron.unschedule('generate-daily-briefs');
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
 -- Schedule daily brief generation at 6:00 AM UTC
 SELECT cron.schedule(
   'generate-daily-briefs',

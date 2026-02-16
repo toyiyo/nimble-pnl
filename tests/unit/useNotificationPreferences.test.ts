@@ -56,7 +56,7 @@ describe('useNotificationPreferences', () => {
     mockAuth.user = { id: 'user-123', email: 'test@example.com' };
   });
 
-  it('returns null when restaurantId is undefined', async () => {
+  it('returns undefined when restaurantId is undefined (query disabled)', async () => {
     const { result } = renderHook(() => useNotificationPreferences(undefined), {
       wrapper: createWrapper(),
     });
@@ -64,7 +64,7 @@ describe('useNotificationPreferences', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('returns null when user is null', async () => {
+  it('returns undefined when user is null (query disabled)', async () => {
     mockAuth.user = null;
     const { result } = renderHook(() => useNotificationPreferences('rest-123'), {
       wrapper: createWrapper(),

@@ -33,6 +33,7 @@ export function useNotificationPreferences(restaurantId: string | undefined) {
       return data as unknown as NotificationPreferences | null;
     },
     enabled: !!restaurantId && !!user?.id,
+    staleTime: 60000,
   });
 
   const upsert = useMutation({

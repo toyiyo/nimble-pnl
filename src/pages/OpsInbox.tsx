@@ -79,7 +79,7 @@ function tabToQueryOptions(tab: TabKey): { status?: string; priority?: number } 
     case 'snoozed':
       return { status: 'snoozed' };
     case 'resolved':
-      return { status: 'all' };
+      return { status: 'done' };
     default:
       return { status: 'open' };
   }
@@ -152,7 +152,7 @@ const InboxItemRow = memo(function InboxItemRow({
         </span>
 
         {/* Hover-reveal actions */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           {/* Snooze dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -296,22 +296,13 @@ export default function OpsInbox() {
 
   const queryOptions = tabToQueryOptions(activeTab);
 
-  const { items: rawItems, isLoading, error, updateStatus } = useOpsInbox(restaurantId, {
+  const { items, isLoading, error, updateStatus } = useOpsInbox(restaurantId, {
     status: queryOptions.status,
     priority: queryOptions.priority,
   });
 
   const { data: counts } = useOpsInboxCount(restaurantId);
 
-  // For the "resolved" tab we query status='all' and filter client-side
-  const items = useMemo(() => {
-    if (activeTab === 'resolved') {
-      return rawItems.filter(
-        (item) => item.status === 'done' || item.status === 'dismissed'
-      );
-    }
-    return rawItems;
-  }, [rawItems, activeTab]);
 
   // Pre-compute display values
   const displayValuesMap = useMemo(() => {
@@ -390,10 +381,12 @@ export default function OpsInbox() {
         </div>
 
         {/* Apple underline tabs */}
-        <div className="flex border-b border-border/40 mb-6">
+        <div className="flex border-b border-border/40 mb-6" role="tablist">
           {TABS.map((tab) => (
             <button
               key={tab.key}
+              role="tab"
+              aria-selected={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
                 activeTab === tab.key

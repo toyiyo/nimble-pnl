@@ -76,6 +76,7 @@ function buildListChain(resolvedValue: { data: unknown; error: unknown; count?: 
   chain.limit = vi.fn().mockReturnValue(chain);
   chain.update = vi.fn().mockReturnValue(chain);
   // Make chain thenable so `await chain` resolves to resolvedValue
+  // biome-ignore lint/suspicious/noThenProperty: intentional thenable to simulate Supabase query builder
   chain.then = vi.fn().mockImplementation((resolve: (v: unknown) => unknown) => {
     return Promise.resolve(resolvedValue).then(resolve);
   });
@@ -279,27 +280,6 @@ describe('useOpsInboxCount', () => {
 
   it('fetches open and critical counts', async () => {
     let callNum = 0;
-    mockSupabase.from.mockImplementation(() => {
-      callNum++;
-      const chain: Record<string, ReturnType<typeof vi.fn>> = {};
-      chain.select = vi.fn().mockReturnValue(chain);
-      chain.eq = vi.fn().mockReturnValue(chain);
-      // First chain resolves with open count, second with critical count
-      if (callNum === 1) {
-        // Override the last .eq to resolve
-        chain.eq = vi.fn().mockImplementation(function (this: typeof chain) {
-          // Return chain for chaining, but the second eq resolves
-          const innerChain = { ...chain };
-          innerChain.eq = vi.fn().mockResolvedValue({ count: 5, error: null });
-          return innerChain;
-        });
-      }
-      return chain;
-    });
-
-    // Simpler approach: mock from to return objects where the chain resolves correctly
-    vi.clearAllMocks();
-    callNum = 0;
 
     mockSupabase.from.mockImplementation(() => {
       callNum++;

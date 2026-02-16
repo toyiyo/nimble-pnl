@@ -112,7 +112,7 @@ describe('useDailyBriefHistory', () => {
     vi.clearAllMocks();
   });
 
-  it('returns empty array when restaurantId is undefined', async () => {
+  it('returns undefined when restaurantId is undefined (query disabled)', async () => {
     const { result } = renderHook(() => useDailyBriefHistory(undefined), { wrapper: createWrapper() });
     expect(result.current.data).toBeUndefined();
     expect(result.current.isLoading).toBe(false);

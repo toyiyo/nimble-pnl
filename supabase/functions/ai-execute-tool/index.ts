@@ -2739,6 +2739,237 @@ async function executeGetExpenseHealth(
 }
 
 /**
+ * Execute get_daily_sales_totals tool
+ * Uses the get_daily_sales_totals RPC to return daily revenue and transaction counts
+ */
+async function executeGetDailySalesTotals(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date } = args;
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  const { data, error } = await supabase.rpc('get_daily_sales_totals', {
+    p_restaurant_id: restaurantId,
+    p_date_from: startDateStr,
+    p_date_to: endDateStr,
+  });
+
+  if (error) throw new Error(`Failed to fetch daily sales: ${error.message}`);
+
+  const days = data || [];
+  const totalRevenue = days.reduce((sum: number, d: any) => sum + Number(d.total_revenue || 0), 0);
+  const totalTransactions = days.reduce((sum: number, d: any) => sum + Number(d.transaction_count || 0), 0);
+  const avgDailyRevenue = days.length > 0 ? totalRevenue / days.length : 0;
+
+  // Find best and worst days
+  let bestDay = null;
+  let worstDay = null;
+  for (const d of days) {
+    const rev = Number(d.total_revenue || 0);
+    if (!bestDay || rev > Number(bestDay.total_revenue)) bestDay = d;
+    if (!worstDay || rev < Number(worstDay.total_revenue)) worstDay = d;
+  }
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      days_count: days.length,
+      daily_totals: days.map((d: any) => ({
+        date: d.sale_date,
+        revenue: Number(d.total_revenue || 0),
+        transactions: Number(d.transaction_count || 0),
+      })),
+      summary: {
+        total_revenue: totalRevenue,
+        total_transactions: totalTransactions,
+        average_daily_revenue: avgDailyRevenue,
+        best_day: bestDay ? { date: bestDay.sale_date, revenue: Number(bestDay.total_revenue) } : null,
+        worst_day: worstDay ? { date: worstDay.sale_date, revenue: Number(worstDay.total_revenue) } : null,
+      },
+    },
+    evidence: [
+      { table: 'unified_sales', summary: `Daily sales totals for ${days.length} days from ${startDateStr} to ${endDateStr}` },
+    ],
+  };
+}
+
+/**
+ * Execute get_break_even_progress tool
+ * Computes daily break-even analysis with history and month-to-date progress
+ */
+async function executeGetBreakEvenProgress(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { history_days = 14, include_monthly_progress = true } = args;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const historyStart = new Date(today);
+  historyStart.setDate(today.getDate() - (history_days - 1));
+
+  const startDateStr = historyStart.toISOString().split('T')[0];
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Fetch operating costs
+  const { data: costs, error: costsError } = await supabase
+    .from('restaurant_operating_costs')
+    .select('name, category, cost_type, monthly_value, percentage_value, entry_type, is_active')
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true);
+
+  if (costsError) throw new Error(`Failed to fetch operating costs: ${costsError.message}`);
+
+  // Fetch daily sales via RPC
+  const { data: salesData, error: salesError } = await supabase.rpc('get_daily_sales_totals', {
+    p_restaurant_id: restaurantId,
+    p_date_from: startDateStr,
+    p_date_to: todayStr,
+  });
+
+  if (salesError) throw new Error(`Failed to fetch daily sales: ${salesError.message}`);
+
+  // Build sales lookup by date
+  const salesByDate: Record<string, number> = {};
+  for (const row of salesData || []) {
+    salesByDate[row.sale_date] = Number(row.total_revenue || 0);
+  }
+
+  // Calculate average daily sales for percentage-based costs
+  const allSales = Object.values(salesByDate) as number[];
+  const avgDailySales = allSales.length > 0
+    ? allSales.reduce((sum, v) => sum + v, 0) / allSales.length
+    : 0;
+
+  // Calculate daily break-even from operating costs
+  let dailyBreakEven = 0;
+  const costBreakdown: { fixed: number; semi_variable: number; variable: number } = {
+    fixed: 0, semi_variable: 0, variable: 0,
+  };
+
+  for (const cost of costs || []) {
+    let daily: number;
+    if (cost.entry_type === 'percentage') {
+      daily = avgDailySales * (cost.percentage_value || 0);
+    } else {
+      daily = (cost.monthly_value || 0) / 100 / 30; // cents to dollars, monthly to daily
+    }
+    dailyBreakEven += daily;
+
+    if (cost.cost_type === 'fixed') costBreakdown.fixed += daily;
+    else if (cost.cost_type === 'semi_variable') costBreakdown.semi_variable += daily;
+    else if (cost.cost_type === 'variable') costBreakdown.variable += daily;
+  }
+
+  // Build daily history
+  const tolerance = 0.05;
+  const history: any[] = [];
+  let current = new Date(historyStart);
+  while (current <= today) {
+    const dateStr = current.toISOString().split('T')[0];
+    const sales = salesByDate[dateStr] || 0;
+    const delta = sales - dailyBreakEven;
+    const threshold = dailyBreakEven * tolerance;
+    let status: string;
+    if (delta > threshold) status = 'above';
+    else if (delta < -threshold) status = 'below';
+    else status = 'at';
+
+    history.push({ date: dateStr, sales, break_even: dailyBreakEven, delta, status });
+    current = new Date(current);
+    current.setDate(current.getDate() + 1);
+  }
+
+  const daysAbove = history.filter(h => h.status === 'above').length;
+  const daysBelow = history.filter(h => h.status === 'below').length;
+  const daysAt = history.filter(h => h.status === 'at').length;
+
+  // Trend: compare first half vs second half average delta
+  const mid = Math.floor(history.length / 2);
+  const firstHalfAvg = mid > 0
+    ? history.slice(0, mid).reduce((s, h) => s + h.delta, 0) / mid
+    : 0;
+  const secondHalfAvg = history.length - mid > 0
+    ? history.slice(mid).reduce((s, h) => s + h.delta, 0) / (history.length - mid)
+    : 0;
+  const trend = secondHalfAvg > firstHalfAvg ? 'improving' : secondHalfAvg < firstHalfAvg ? 'declining' : 'stable';
+
+  // Monthly progress
+  let monthlyProgress = null;
+  if (include_monthly_progress) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const daysInMonth = monthEnd.getDate();
+    const dayOfMonth = now.getDate();
+    const monthStartStr = monthStart.toISOString().split('T')[0];
+
+    // Fetch month-to-date sales
+    const { data: mtdSales, error: mtdError } = await supabase.rpc('get_daily_sales_totals', {
+      p_restaurant_id: restaurantId,
+      p_date_from: monthStartStr,
+      p_date_to: todayStr,
+    });
+
+    if (!mtdError) {
+      const mtdRevenue = (mtdSales || []).reduce((sum: number, d: any) => sum + Number(d.total_revenue || 0), 0);
+      const monthlyBreakEven = dailyBreakEven * daysInMonth;
+      const percentCovered = monthlyBreakEven > 0 ? (mtdRevenue / monthlyBreakEven) * 100 : 0;
+      const daysRemaining = daysInMonth - dayOfMonth;
+      const projectedMonthEnd = dayOfMonth > 0 ? (mtdRevenue / dayOfMonth) * daysInMonth : 0;
+      const projectedAboveBreakEven = projectedMonthEnd >= monthlyBreakEven;
+
+      monthlyProgress = {
+        monthly_break_even_target: monthlyBreakEven,
+        month_to_date_revenue: mtdRevenue,
+        percent_covered: Math.round(percentCovered * 10) / 10,
+        days_elapsed: dayOfMonth,
+        days_remaining: daysRemaining,
+        projected_month_end_revenue: Math.round(projectedMonthEnd),
+        projected_above_break_even: projectedAboveBreakEven,
+        margin_of_safety: monthlyBreakEven > 0
+          ? Math.round(((projectedMonthEnd - monthlyBreakEven) / monthlyBreakEven) * 1000) / 10
+          : 0,
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      daily_break_even: Math.round(dailyBreakEven * 100) / 100,
+      cost_breakdown: {
+        fixed_daily: Math.round(costBreakdown.fixed * 100) / 100,
+        semi_variable_daily: Math.round(costBreakdown.semi_variable * 100) / 100,
+        variable_daily: Math.round(costBreakdown.variable * 100) / 100,
+      },
+      today: {
+        sales: salesByDate[todayStr] || 0,
+        delta: (salesByDate[todayStr] || 0) - dailyBreakEven,
+        status: history.length > 0 ? history[history.length - 1].status : 'unknown',
+      },
+      history,
+      summary: {
+        days_above: daysAbove,
+        days_below: daysBelow,
+        days_at: daysAt,
+        trend,
+      },
+      monthly_progress: monthlyProgress,
+    },
+    evidence: [
+      { table: 'restaurant_operating_costs', summary: `${(costs || []).length} active cost items` },
+      { table: 'unified_sales', summary: `Daily sales for ${history.length} days from ${startDateStr} to ${todayStr}` },
+    ],
+  };
+}
+
+/**
  * Execute get_proactive_insights tool
  * Returns top open inbox items + latest weekly brief for proactive AI context
  */
@@ -3285,6 +3516,12 @@ serve(async (req) => {
         break;
       case 'get_expense_health':
         result = await executeGetExpenseHealth(args, restaurant_id, supabase);
+        break;
+      case 'get_daily_sales_totals':
+        result = await executeGetDailySalesTotals(args, restaurant_id, supabase);
+        break;
+      case 'get_break_even_progress':
+        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase);
         break;
       case 'get_proactive_insights':
         result = await executeGetProactiveInsights(args, restaurant_id, supabase);

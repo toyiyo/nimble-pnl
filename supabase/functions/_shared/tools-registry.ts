@@ -307,6 +307,33 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
         required: ['period']
       }
     },
+
+    // Daily sales totals - available to all users
+    {
+      name: 'get_daily_sales_totals',
+      description: 'Get daily sales revenue totals and transaction counts for a date range. Use this to answer questions about daily, weekly, or monthly sales performance, revenue trends, and transaction volume.',
+      parameters: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            enum: ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'custom'],
+            description: 'The time period for daily sales totals'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date for custom period (YYYY-MM-DD)'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date for custom period (YYYY-MM-DD)'
+          }
+        },
+        required: ['period']
+      }
+    },
   ];
 
   // Add financial intelligence for managers and owners
@@ -498,6 +525,25 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             }
           },
           required: ['period']
+        }
+      },
+      {
+        name: 'get_break_even_progress',
+        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Use this to answer questions about break-even progress, daily performance tracking, and budget coverage.',
+        parameters: {
+          type: 'object',
+          properties: {
+            history_days: {
+              type: 'integer',
+              description: 'Number of days of daily history to include (default: 14, max: 60)',
+              default: 14
+            },
+            include_monthly_progress: {
+              type: 'boolean',
+              description: 'Include month-to-date break-even progress and projection (default: true)',
+              default: true
+            }
+          }
         }
       },
       {
@@ -773,7 +819,8 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_inventory_transactions',
     'get_labor_costs',           // Labor costs visible to all (aggregate data)
     'get_schedule_overview',     // Schedule overview visible to all
-    'get_proactive_insights'     // Proactive insights for all users
+    'get_proactive_insights',    // Proactive insights for all users
+    'get_daily_sales_totals'     // Daily revenue totals visible to all
   ];
 
   if (basicTools.includes(toolName)) {
@@ -792,6 +839,7 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_operating_costs',              // Operating cost breakdown - manager+
     'get_monthly_trends',               // Monthly P&L trends - manager+
     'get_expense_health',               // Expense health metrics - manager+
+    'get_break_even_progress',          // Break-even daily history + progress - manager+
     'batch_categorize_transactions',    // Action: categorize bank txns - manager+
     'batch_categorize_pos_sales',       // Action: categorize POS sales - manager+
     'create_categorization_rule',       // Action: create rules - manager+

@@ -104,6 +104,7 @@ CREATE OR REPLACE FUNCTION sync_toast_to_unified_sales(p_restaurant_id UUID)
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET statement_timeout = '120s'
 AS $$
 DECLARE
   v_synced_count INTEGER := 0;
@@ -406,6 +407,7 @@ CREATE OR REPLACE FUNCTION sync_toast_to_unified_sales(
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET statement_timeout = '120s'
 AS $$
 DECLARE
   v_synced_count INTEGER := 0;

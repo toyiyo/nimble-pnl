@@ -36,8 +36,8 @@ INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 
 -- Chart of accounts entry for categorization rules
-INSERT INTO chart_of_accounts (id, restaurant_id, name, type, category)
-VALUES ('00000000-0000-0000-0000-300000000099', '00000000-0000-0000-0000-300000000011', 'Food Revenue', 'revenue', 'sales')
+INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance)
+VALUES ('00000000-0000-0000-0000-300000000099', '00000000-0000-0000-0000-300000000011', '4000-TEST-30', 'Food Revenue', 'revenue', 'sales', 'credit')
 ON CONFLICT (id) DO NOTHING;
 
 -- Categorization rule that matches "Pizza" items (auto_apply = true)

@@ -118,8 +118,11 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
   END IF;
 
-  -- Disable categorization trigger during bulk sync
+  -- Disable per-row triggers during bulk sync to prevent timeouts:
+  -- 1. auto_categorize_pos_sale: per-row rule matching (BEFORE INSERT)
+  -- 2. trigger_unified_sales_to_daily: per-row SUM aggregation + daily P&L (AFTER INSERT/UPDATE/DELETE)
   ALTER TABLE public.unified_sales DISABLE TRIGGER auto_categorize_pos_sale;
+  ALTER TABLE public.unified_sales DISABLE TRIGGER trigger_unified_sales_to_daily;
 
   BEGIN
     -- 0a. DELETE stale sale entries for now-voided items
@@ -363,11 +366,13 @@ BEGIN
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     v_synced_count := v_synced_count + v_row_count;
 
-    -- Re-enable trigger after bulk operations
+    -- Re-enable triggers after bulk operations
     ALTER TABLE public.unified_sales ENABLE TRIGGER auto_categorize_pos_sale;
+    ALTER TABLE public.unified_sales ENABLE TRIGGER trigger_unified_sales_to_daily;
   EXCEPTION WHEN OTHERS THEN
-    -- Re-enable trigger even on error
+    -- Re-enable triggers even on error
     ALTER TABLE public.unified_sales ENABLE TRIGGER auto_categorize_pos_sale;
+    ALTER TABLE public.unified_sales ENABLE TRIGGER trigger_unified_sales_to_daily;
     RAISE;
   END;
 
@@ -377,12 +382,17 @@ BEGIN
     PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
   END IF;
 
+  -- Batch-aggregate daily sales for all affected dates (single pass instead of per-row)
+  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
+  FROM (SELECT DISTINCT sale_date FROM public.unified_sales
+        WHERE restaurant_id = p_restaurant_id AND pos_system = 'toast') d;
+
   RETURN v_synced_count;
 END;
 $$;
 
 COMMENT ON FUNCTION sync_toast_to_unified_sales(UUID) IS
-  'Syncs ALL Toast orders to unified_sales using gross pricing with discount/void offsets. Disables per-row categorization trigger and batch-categorizes after sync.';
+  'Syncs ALL Toast orders to unified_sales. Disables per-row triggers during bulk ops, then batch-categorizes and batch-aggregates after sync.';
 
 -- =============================================================================
 -- Part 4: Rewrite sync_toast_to_unified_sales(UUID, DATE, DATE) — date-range overload
@@ -410,8 +420,9 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
   END IF;
 
-  -- Disable categorization trigger during bulk sync
+  -- Disable per-row triggers during bulk sync to prevent timeouts
   ALTER TABLE public.unified_sales DISABLE TRIGGER auto_categorize_pos_sale;
+  ALTER TABLE public.unified_sales DISABLE TRIGGER trigger_unified_sales_to_daily;
 
   BEGIN
     -- 0a. DELETE stale sale entries for now-voided items (filtered by date)
@@ -669,11 +680,13 @@ BEGIN
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     v_synced_count := v_synced_count + v_row_count;
 
-    -- Re-enable trigger after bulk operations
+    -- Re-enable triggers after bulk operations
     ALTER TABLE public.unified_sales ENABLE TRIGGER auto_categorize_pos_sale;
+    ALTER TABLE public.unified_sales ENABLE TRIGGER trigger_unified_sales_to_daily;
   EXCEPTION WHEN OTHERS THEN
-    -- Re-enable trigger even on error
+    -- Re-enable triggers even on error
     ALTER TABLE public.unified_sales ENABLE TRIGGER auto_categorize_pos_sale;
+    ALTER TABLE public.unified_sales ENABLE TRIGGER trigger_unified_sales_to_daily;
     RAISE;
   END;
 
@@ -683,9 +696,15 @@ BEGIN
     PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
   END IF;
 
+  -- Batch-aggregate daily sales for affected dates in range (single pass instead of per-row)
+  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
+  FROM (SELECT DISTINCT sale_date FROM public.unified_sales
+        WHERE restaurant_id = p_restaurant_id AND pos_system = 'toast'
+          AND sale_date >= p_start_date AND sale_date <= p_end_date) d;
+
   RETURN v_synced_count;
 END;
 $$;
 
 COMMENT ON FUNCTION sync_toast_to_unified_sales(UUID, DATE, DATE) IS
-  'Syncs Toast orders within date range to unified_sales using gross pricing with discount/void offsets. Disables per-row categorization trigger and batch-categorizes after sync.';
+  'Syncs Toast orders within date range to unified_sales. Disables per-row triggers during bulk ops, then batch-categorizes and batch-aggregates after sync.';

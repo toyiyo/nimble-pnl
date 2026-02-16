@@ -1,9 +1,9 @@
 -- pgTAP tests for Toast sync timeout fix
 -- Tests migration: 20260215200000_fix_toast_sync_timeout.sql
 --
--- Verifies that sync_toast_to_unified_sales disables the
--- auto_categorize_pos_sale trigger during bulk upserts and
--- batch-categorizes afterward, preventing statement timeouts.
+-- Verifies that sync_toast_to_unified_sales uses GUC flag to skip
+-- per-row triggers during bulk upserts and batch-categorizes afterward,
+-- preventing statement timeouts.
 
 BEGIN;
 SELECT plan(12);
@@ -20,6 +20,13 @@ ALTER TABLE toast_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE unified_sales DISABLE ROW LEVEL SECURITY;
 ALTER TABLE categorization_rules DISABLE ROW LEVEL SECURITY;
 ALTER TABLE chart_of_accounts DISABLE ROW LEVEL SECURITY;
+
+-- Set auth context so batch categorization runs (auth.uid() must return a value)
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub": "00000000-0000-0000-0000-300000000001", "role": "authenticated"}',
+  true
+);
 
 -- Test user
 INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
@@ -41,9 +48,18 @@ VALUES ('00000000-0000-0000-0000-300000000099', '00000000-0000-0000-0000-3000000
 ON CONFLICT (id) DO NOTHING;
 
 -- Categorization rule that matches "Pizza" items (auto_apply = true)
+-- Use DO UPDATE for idempotent test data
 INSERT INTO categorization_rules (id, restaurant_id, rule_name, applies_to, item_name_pattern, item_name_match_type, category_id, priority, is_active, auto_apply)
 VALUES ('00000000-0000-0000-0000-300000000088', '00000000-0000-0000-0000-300000000011', 'Pizza Rule', 'pos_sales', 'Pizza', 'contains', '00000000-0000-0000-0000-300000000099', 10, true, true)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  rule_name = EXCLUDED.rule_name,
+  applies_to = EXCLUDED.applies_to,
+  item_name_pattern = EXCLUDED.item_name_pattern,
+  item_name_match_type = EXCLUDED.item_name_match_type,
+  category_id = EXCLUDED.category_id,
+  priority = EXCLUDED.priority,
+  is_active = EXCLUDED.is_active,
+  auto_apply = EXCLUDED.auto_apply;
 
 -- Toast order with 2 items
 INSERT INTO toast_orders (id, toast_order_guid, restaurant_id, toast_restaurant_guid, order_date, order_time, total_amount, tax_amount, raw_json) VALUES
@@ -164,11 +180,11 @@ SELECT is(
   'Date-range sync: Pizza sale item was categorized'
 );
 
--- Verify trigger is still enabled after sync
+-- Verify GUC flag was reset after sync (triggers still active)
 SELECT is(
-  (SELECT tgenabled FROM pg_trigger WHERE tgname = 'auto_categorize_pos_sale' AND tgrelid = 'public.unified_sales'::regclass),
-  'O',
-  'Trigger is re-enabled after sync'
+  current_setting('app.skip_unified_sales_triggers', true),
+  'false',
+  'GUC flag reset to false after sync (triggers active)'
 );
 
 SELECT * FROM finish();

@@ -118,37 +118,51 @@ serve(async (req) => {
     // Build email HTML
     const emailHtml = buildEmailHtml(typedBrief, restaurantName);
 
-    // Send to each user
+    // Build final HTML and subject once (not per-user)
     const appUrl = Deno.env.get("APP_URL") || "https://app.easyshifthq.com";
+    const viewBriefUrl = `${appUrl}/weekly-brief?date=${typedBrief.brief_week_end}`;
+    const finalHtml = emailHtml.replace("{{VIEW_BRIEF_URL}}", viewBriefUrl);
+    const subject = `Weekly Brief — ${restaurantName} — ${formatWeekRange(typedBrief.brief_week_end)}`;
+
+    // Build email payloads for all valid recipients
+    const emailPayloads = profiles
+      .filter((p: { email?: string }) => !!p.email)
+      .map((p: { email: string }) => ({
+        from: "EasyShiftHQ <briefs@easyshifthq.com>",
+        to: [p.email],
+        subject,
+        html: finalHtml,
+      }));
+
+    if (emailPayloads.length === 0) {
+      return jsonResponse({ success: true, message: "No valid email addresses", sentCount: 0 });
+    }
+
+    // Send in batches of 100 using Resend's batch API
+    const BATCH_SIZE = 100;
     let sentCount = 0;
 
-    for (const profile of profiles) {
-      if (!profile.email) continue;
-
+    for (let i = 0; i < emailPayloads.length; i += BATCH_SIZE) {
+      const batch = emailPayloads.slice(i, i + BATCH_SIZE);
       try {
-        const res = await fetch("https://api.resend.com/emails", {
+        const res = await fetch("https://api.resend.com/emails/batch", {
           method: "POST",
           headers: {
             Authorization: `Bearer ${resendApiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            from: "EasyShiftHQ <briefs@easyshifthq.com>",
-            to: [profile.email],
-            subject: `Weekly Brief — ${restaurantName} — ${formatWeekRange(typedBrief.brief_week_end)}`,
-            html: emailHtml.replace("{{VIEW_BRIEF_URL}}", `${appUrl}/weekly-brief?date=${typedBrief.brief_week_end}`),
-          }),
+          body: JSON.stringify(batch),
         });
 
         if (res.ok) {
-          sentCount++;
-          console.log(`Email sent to user ${profile.user_id}`);
+          sentCount += batch.length;
+          console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1}: sent ${batch.length} emails`);
         } else {
           const errText = await res.text();
-          console.error(`Failed to send to user ${profile.user_id}:`, errText);
+          console.error(`Batch ${Math.floor(i / BATCH_SIZE) + 1} failed:`, errText);
         }
-      } catch (sendErr) {
-        console.error(`Error sending to user ${profile.user_id}:`, sendErr);
+      } catch (batchErr) {
+        console.error(`Batch ${Math.floor(i / BATCH_SIZE) + 1} error:`, batchErr);
       }
     }
 

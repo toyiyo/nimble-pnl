@@ -1,9 +1,21 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { format, subDays, startOfDay, differenceInDays, subMonths } from 'date-fns';
+import { addDays, format, subDays, startOfDay, differenceInDays, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useOperatingCosts } from './useOperatingCosts';
 import { BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
+
+type BreakEvenStatus = 'above' | 'at' | 'below';
+
+/** 5% tolerance band for classifying sales relative to break-even */
+const BREAK_EVEN_TOLERANCE = 0.05;
+
+function classifyDelta(delta: number, breakEven: number): BreakEvenStatus {
+  const threshold = breakEven * BREAK_EVEN_TOLERANCE;
+  if (delta > threshold) return 'above';
+  if (delta < -threshold) return 'below';
+  return 'at';
+}
 
 interface DailySalesData {
   date: string;
@@ -47,7 +59,7 @@ async function fetchDailySales(
       netRevenue: entry?.revenue || 0,
       transactionCount: entry?.count || 0,
     });
-    current = new Date(current.getTime() + 24 * 60 * 60 * 1000);
+    current = addDays(current, 1);
   }
 
   return result;
@@ -96,7 +108,7 @@ async function calculateUtilityCostsFromHistory(
 export function useBreakEvenAnalysis(
   restaurantId: string | null,
   historyDays: number = 14
-) {
+): { data: BreakEvenData | null; isLoading: boolean; error: Error | null } {
   const { costs, isLoading: costsLoading } = useOperatingCosts(restaurantId);
   
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -206,25 +218,17 @@ export function useBreakEvenAnalysis(
     const customDaily = customItems.reduce((sum, i) => sum + i.daily, 0);
     const dailyBreakEven = fixedDaily + semiVariableDaily + variableDaily + customDaily;
     
-    // Today's status
     const todayDelta = todaySales - dailyBreakEven;
-    const todayStatus: 'above' | 'at' | 'below' = 
-      todayDelta > dailyBreakEven * 0.05 ? 'above' :
-      todayDelta < -dailyBreakEven * 0.05 ? 'below' : 'at';
+    const todayStatus = classifyDelta(todayDelta, dailyBreakEven);
     
-    // Build history
     const history = salesData.map(d => {
       const delta = d.netRevenue - dailyBreakEven;
-      const status: 'above' | 'at' | 'below' = 
-        delta > dailyBreakEven * 0.05 ? 'above' :
-        delta < -dailyBreakEven * 0.05 ? 'below' : 'at';
-      
       return {
         date: d.date,
         sales: d.netRevenue,
         breakEven: dailyBreakEven,
         delta,
-        status,
+        status: classifyDelta(delta, dailyBreakEven),
       };
     });
     

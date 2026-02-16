@@ -1,0 +1,320 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/cors.ts";
+
+interface BriefRow {
+  id: string;
+  restaurant_id: string;
+  brief_date: string;
+  metrics_json: Record<string, number>;
+  variances_json: Array<{
+    metric: string;
+    value: number;
+    direction: string;
+    flag: string | null;
+    delta_pct_vs_prior: number | null;
+  }>;
+  inbox_summary_json: {
+    open_count?: number;
+    critical_count?: number;
+  };
+  narrative: string | null;
+  recommendations_json: Array<{
+    title: string;
+    body: string;
+    impact: string;
+    effort: string;
+  }>;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      throw new Error("RESEND_API_KEY is not configured");
+    }
+
+    const { restaurant_id, brief_date } = await req.json();
+    if (!restaurant_id || !brief_date) {
+      return new Response(
+        JSON.stringify({ success: false, error: "restaurant_id and brief_date required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch the brief
+    const { data: brief, error: briefError } = await supabase
+      .from("daily_brief")
+      .select("*")
+      .eq("restaurant_id", restaurant_id)
+      .eq("brief_date", brief_date)
+      .maybeSingle();
+
+    if (briefError) throw new Error(`Failed to fetch brief: ${briefError.message}`);
+    if (!brief) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No brief found for this date" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const typedBrief = brief as BriefRow;
+
+    // Already sent?
+    if (typedBrief.id && brief.email_sent_at) {
+      return new Response(
+        JSON.stringify({ success: true, message: "Email already sent" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch opted-in users
+    const { data: prefs, error: prefError } = await supabase
+      .from("notification_preferences")
+      .select("user_id")
+      .eq("restaurant_id", restaurant_id)
+      .eq("daily_brief_email", true);
+
+    if (prefError) throw new Error(`Failed to fetch prefs: ${prefError.message}`);
+    if (!prefs || prefs.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, message: "No opted-in users" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch user emails from profiles
+    const userIds = prefs.map((p: { user_id: string }) => p.user_id);
+    const { data: profiles, error: profileError } = await supabase
+      .from("profiles")
+      .select("user_id, email, full_name")
+      .in("user_id", userIds);
+
+    if (profileError) throw new Error(`Failed to fetch profiles: ${profileError.message}`);
+    if (!profiles || profiles.length === 0) {
+      return new Response(
+        JSON.stringify({ success: true, message: "No user profiles found" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fetch restaurant name
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("name")
+      .eq("id", restaurant_id)
+      .single();
+
+    const restaurantName = restaurant?.name || "Your Restaurant";
+
+    // Build email HTML
+    const emailHtml = buildEmailHtml(typedBrief, restaurantName);
+
+    // Send to each user
+    const appUrl = Deno.env.get("APP_URL") || "https://app.easyshifthq.com";
+    let sentCount = 0;
+
+    for (const profile of profiles) {
+      if (!profile.email) continue;
+
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "EasyShiftHQ <briefs@easyshifthq.com>",
+            to: [profile.email],
+            subject: `Daily Brief — ${restaurantName} — ${formatDate(typedBrief.brief_date)}`,
+            html: emailHtml.replace("{{VIEW_BRIEF_URL}}", `${appUrl}/daily-brief?date=${typedBrief.brief_date}`),
+          }),
+        });
+
+        if (res.ok) {
+          sentCount++;
+          console.log(`Email sent to ${profile.email}`);
+        } else {
+          const errText = await res.text();
+          console.error(`Failed to send to ${profile.email}:`, errText);
+        }
+      } catch (sendErr) {
+        console.error(`Error sending to ${profile.email}:`, sendErr);
+      }
+    }
+
+    // Update email_sent_at
+    if (sentCount > 0) {
+      await supabase
+        .from("daily_brief")
+        .update({ email_sent_at: new Date().toISOString() })
+        .eq("id", typedBrief.id);
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, sentCount, totalRecipients: profiles.length }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Fatal error in send-daily-brief-email:", message);
+    return new Response(
+      JSON.stringify({ success: false, error: message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Email HTML builder
+// ---------------------------------------------------------------------------
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function fmtCurrency(val: number | undefined): string {
+  if (val === undefined || val === null) return "$0";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(val);
+}
+
+function fmtPct(val: number | undefined): string {
+  if (val === undefined || val === null) return "0%";
+  return `${Number(val).toFixed(1)}%`;
+}
+
+function deltaColor(direction: string, metric: string): string {
+  const upIsGood = metric === "net_revenue" || metric === "gross_profit";
+  if (direction === "flat") return "#6b7280";
+  if (direction === "up") return upIsGood ? "#059669" : "#dc2626";
+  return upIsGood ? "#dc2626" : "#059669";
+}
+
+function deltaArrow(direction: string): string {
+  if (direction === "up") return "&#9650;";
+  if (direction === "down") return "&#9660;";
+  return "&#8212;";
+}
+
+function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
+  const m = brief.metrics_json;
+  const variances = brief.variances_json || [];
+
+  // Hero metrics
+  const heroKeys = [
+    { key: "net_revenue", label: "Revenue", format: "currency" },
+    { key: "food_cost_percentage", label: "Food Cost %", format: "pct" },
+    { key: "labor_cost_percentage", label: "Labor Cost %", format: "pct" },
+    { key: "prime_cost_percentage", label: "Prime Cost %", format: "pct" },
+  ];
+
+  const metricCells = heroKeys
+    .map((h) => {
+      const val = m[h.key];
+      const formatted = h.format === "currency" ? fmtCurrency(val) : fmtPct(val);
+      const variance = variances.find((v) => {
+        if (h.key === "net_revenue") return v.metric === "net_revenue";
+        if (h.key === "food_cost_percentage") return v.metric === "food_cost_pct";
+        if (h.key === "labor_cost_percentage") return v.metric === "labor_cost_pct";
+        if (h.key === "prime_cost_percentage") return v.metric === "prime_cost_pct";
+        return false;
+      });
+      const dir = variance?.direction || "flat";
+      const dPct = variance?.delta_pct_vs_prior;
+      const color = deltaColor(dir, variance?.metric || h.key);
+      const arrow = deltaArrow(dir);
+      const deltaStr = dPct != null ? `${dPct > 0 ? "+" : ""}${Number(dPct).toFixed(1)}%` : "";
+
+      return `<td style="padding:12px 8px;text-align:center;width:25%;vertical-align:top;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:4px;">${h.label}</div>
+        <div style="font-size:22px;font-weight:600;color:#111827;">${formatted}</div>
+        ${deltaStr ? `<div style="font-size:11px;color:${color};margin-top:2px;">${arrow} ${deltaStr}</div>` : ""}
+      </td>`;
+    })
+    .join("");
+
+  // Inbox items
+  const inbox = brief.inbox_summary_json;
+  const inboxLine =
+    (inbox?.open_count ?? 0) > 0
+      ? `<p style="font-size:13px;color:#6b7280;margin-top:16px;">${inbox!.open_count} open items${
+          (inbox!.critical_count ?? 0) > 0 ? ` (${inbox!.critical_count} critical)` : ""
+        }</p>`
+      : "";
+
+  // Recommendations
+  const recs = (brief.recommendations_json || []).slice(0, 3);
+  const recsHtml =
+    recs.length > 0
+      ? `<div style="margin-top:24px;">
+          <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:8px;">Top Actions</div>
+          <ul style="padding-left:20px;margin:0;">
+            ${recs.map((r) => `<li style="font-size:13px;color:#374151;margin-bottom:6px;"><strong>${r.title}</strong> — ${r.body}</li>`).join("")}
+          </ul>
+        </div>`
+      : "";
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+        <!-- Header -->
+        <tr><td style="padding:24px 24px 16px;">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Daily Brief</div>
+          <div style="font-size:17px;font-weight:600;color:#111827;margin-top:4px;">${restaurantName}</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:2px;">${formatDate(brief.brief_date)}</div>
+        </td></tr>
+        <!-- Metrics -->
+        <tr><td style="padding:0 16px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+            <tr>${metricCells}</tr>
+          </table>
+        </td></tr>
+        <!-- Narrative -->
+        ${
+          brief.narrative
+            ? `<tr><td style="padding:20px 24px 0;">
+                <div style="font-size:14px;line-height:1.6;color:#374151;background:#f9fafb;border-radius:8px;padding:16px;">
+                  ${brief.narrative}
+                </div>
+              </td></tr>`
+            : ""
+        }
+        <!-- Recommendations + Inbox -->
+        <tr><td style="padding:0 24px;">
+          ${recsHtml}
+          ${inboxLine}
+        </td></tr>
+        <!-- CTA -->
+        <tr><td style="padding:24px;text-align:center;">
+          <a href="{{VIEW_BRIEF_URL}}" style="display:inline-block;background:#111827;color:#ffffff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500;">
+            View Full Brief
+          </a>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding:16px 24px;border-top:1px solid #e5e7eb;">
+          <div style="font-size:11px;color:#9ca3af;text-align:center;">
+            Sent by EasyShiftHQ. Manage preferences in Settings.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}

@@ -129,6 +129,8 @@ Real-time Subscription → Update UI
 
 1. **Square** (primary)
 2. **Clover** (secondary)
+3. **Toast** (Standard API — no webhooks)
+4. **Shift4** (planned)
 
 ### Integration Pattern: Adapter Architecture
 
@@ -229,6 +231,127 @@ const sales = await adapter.fetchSales(restaurantId, startDate, endDate);
 
 Similar pattern with `clover-oauth`, `clover-sync-data`, `clover-webhooks`, etc.
 
+#### Toast (Standard API)
+
+Toast uses a fundamentally different integration pattern from Square/Clover because Toast's Standard API **does not support webhooks** or restaurant auto-discovery. This changes the architecture significantly.
+
+**Key differences from Square/Clover:**
+
+| Aspect | Square/Clover | Toast |
+|--------|---------------|-------|
+| Sync trigger | Webhook + polling | Polling only (cron) |
+| Restaurant discovery | API-based | Manual (user provides GUID) |
+| Auth type | Standard OAuth | Machine Client OAuth |
+| Amount format | Cents (÷ 100) | Dollars (use as-is) |
+| Item name field | `name` | `displayName` |
+| Order totals | Order-level | Check-level (aggregate `order.checks[]`) |
+
+**Database tables (raw data):**
+
+```
+toast_connections    → OAuth credentials (encrypted), sync state
+toast_orders         → Order headers (one per order)
+toast_order_items    → Line items (unique: restaurant_id, toast_item_guid, toast_order_guid)
+toast_payments       → Payment records (unique: restaurant_id, toast_payment_guid, toast_order_guid)
+```
+
+**Edge Functions:**
+
+1. **`toast-oauth`** — Machine Client OAuth flow
+   - **Auth type**: `TOAST_MACHINE_CLIENT` access type
+   - **Credentials**: `clientId` + `clientSecret` per restaurant
+   - **Token storage**: Encrypted in `toast_connections.access_token`
+   - **No refresh tokens**: Toast machine client tokens don't expire (re-auth if revoked)
+
+2. **`toast-sync-data`** — Manual sync (user-triggered)
+   - **Batch size**: 10 orders per request (Edge Function CPU limits)
+   - **Returns**: `{ ordersSynced, syncComplete, hasMore, progress }`
+   - **Idempotent**: Uses upserts on all tables
+   - **Skips unified_sales sync**: Sets `skipUnifiedSalesSync: true` during bulk import (cron handles it)
+
+3. **`toast-bulk-sync`** — Scheduled sync (cron, every 6 hours)
+   - **Round-robin**: Processes max 5 restaurants per run, ordered by `last_sync_time`
+   - **Per-restaurant limit**: 200 orders max
+   - **Rate limiting**: 2-second delay between restaurants
+   - **Incremental**: Fetches orders from `last_sync_time - 25 hours` to now
+   - **Why 25 hours?** Toast data can be corrected within 24 hours; 1-hour buffer prevents boundary misses
+
+**Sync pipeline (raw → unified):**
+
+```
+Toast API → processOrder() → toast_orders / toast_order_items / toast_payments
+                                          ↓ (every 5 min via pg_cron)
+                              sync_toast_to_unified_sales()
+                                          ↓
+                                    unified_sales
+                                          ↓ (per-row trigger, disabled during bulk sync)
+                              auto_categorize_pos_sale → applies categorization_rules
+                              trigger_unified_sales_aggregation → daily_sales_summary
+```
+
+**Two cron jobs:**
+
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| `toast-bulk-sync` | Every 6h | Fetch from Toast API → raw tables |
+| `toast-unified-sales-sync` | Every 5min | Aggregate raw tables → `unified_sales` |
+
+**Separation rationale:** API fetch is slow and rate-limited (6h interval sufficient). Aggregation is fast SQL and needs to be near-real-time for dashboard accuracy (5min interval).
+
+**Performance patterns (apply to all POS imports):**
+
+1. **GUC-based trigger bypass during bulk sync**: Instead of `ALTER TABLE DISABLE TRIGGER` (which takes a `ShareRowExclusiveLock` and blocks concurrent writers), use a transaction-local GUC flag:
+   ```sql
+   -- In sync function (SECURITY DEFINER)
+   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
+   -- ... bulk operations ...
+   PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
+
+   -- In trigger function
+   IF current_setting('app.skip_unified_sales_triggers', true) = 'true' THEN
+     RETURN NEW;  -- Skip trigger logic
+   END IF;
+   ```
+   **Why GUC over ALTER TABLE?** (a) No table lock — concurrent single-row inserts (real-time sync, UI) proceed normally. (b) Transaction-scoped — auto-resets on commit/rollback, no cleanup needed. (c) No DDL privileges required by the calling function.
+
+2. **Batch categorization after bulk upsert**: Instead of per-row trigger categorization during bulk sync (N × expensive rule matching), do a single set-based UPDATE after all rows are inserted:
+   ```sql
+   UPDATE unified_sales us SET
+     category_id = cr.category_id,
+     is_categorized = true
+   FROM categorization_rules cr
+   WHERE us.restaurant_id = p_restaurant_id
+     AND us.is_categorized = false
+     AND us.item_type = 'sale'
+     AND cr.restaurant_id = p_restaurant_id
+     AND cr.is_active = true AND cr.auto_apply = true
+     AND matches_pos_sale_rule(cr.id, ...)
+   ```
+   **Why batch?** Per-row trigger fires `matches_pos_sale_rule()` for every rule × every row. Batch categorization does it once, joining all uncategorized rows with all active rules in a single pass.
+
+3. **Partial index for rule lookups**:
+   ```sql
+   CREATE INDEX idx_cr_pos_active_auto
+     ON categorization_rules (restaurant_id, priority DESC, created_at ASC)
+     WHERE is_active = true AND auto_apply = true AND applies_to IN ('pos_sales', 'both');
+   ```
+
+4. **SET search_path on SECURITY DEFINER functions**: Prevents search_path injection attacks. Always add `SET search_path = public` to functions that run with elevated privileges.
+
+5. **Date-range scoping in cron**: The cron should call the date-range overload instead of the full-table version. Only re-process orders within the sync window (last 25 hours).
+
+**Key Files:**
+
+| File | Purpose |
+|------|---------|
+| `supabase/functions/_shared/toastOrderProcessor.ts` | Order parsing + DB upserts |
+| `supabase/functions/toast-sync-data/index.ts` | Manual sync endpoint |
+| `supabase/functions/toast-bulk-sync/index.ts` | Cron-triggered API fetch |
+| `src/hooks/useToastConnection.ts` | Frontend connection hook |
+| `src/components/pos/ToastSetupWizard.tsx` | Setup wizard UI |
+| `supabase/migrations/*_fix_toast_sync_timeout.sql` | GUC bypass + batch categorization |
+| `supabase/migrations/*_toast_unified_sales_cron.sql` | Cron job definitions |
+
 ### Webhook Security Pattern
 
 **All POS webhooks follow this pattern:**
@@ -263,7 +386,7 @@ All POS systems write to a single `unified_sales` table with this structure:
 unified_sales (
   id,
   restaurant_id,
-  pos_system,              -- 'square' | 'clover'
+  pos_system,              -- 'square' | 'clover' | 'toast'
   external_order_id,       -- POS-specific order ID
   external_item_id,        -- POS-specific item ID
   item_name,
@@ -535,7 +658,8 @@ SELECT cron.schedule(
 
 **Key Features**:
 - Runs every 5 minutes
-- Processes last 7 days (catches any missed orders)
+- Uses each connection's `last_sync_time` with 25-hour buffer (not a hardcoded window)
+- Falls back to 90-day window for connections without a `last_sync_time`
 - Continues on error (doesn't fail entire batch)
 - Uses date-range filtering for efficiency
 

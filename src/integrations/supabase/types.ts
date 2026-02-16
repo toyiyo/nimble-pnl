@@ -8221,6 +8221,18 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_daily_sales_totals: {
+        Args: {
+          p_date_from: string
+          p_date_to: string
+          p_restaurant_id: string
+        }
+        Returns: {
+          sale_date: string
+          total_revenue: number
+          transaction_count: number
+        }[]
+      }
       get_pos_tips_by_date: {
         Args: {
           p_end_date: string

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { format, subDays, startOfDay, endOfDay, differenceInDays, subMonths } from 'date-fns';
+import { format, subDays, startOfDay, differenceInDays, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useOperatingCosts } from './useOperatingCosts';
 import { BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
@@ -8,44 +8,48 @@ import { BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
 interface DailySalesData {
   date: string;
   netRevenue: number;
+  transactionCount: number;
 }
 
 /**
- * Fetches daily sales for a date range from unified_sales
+ * Fetches daily sales for a date range using server-side RPC aggregation
  */
 async function fetchDailySales(
   restaurantId: string,
   startDate: Date,
   endDate: Date
 ): Promise<DailySalesData[]> {
-  const { data, error } = await supabase
-    .from('unified_sales')
-    .select('sale_date, total_price')
-    .eq('restaurant_id', restaurantId)
-    .gte('sale_date', format(startDate, 'yyyy-MM-dd'))
-    .lte('sale_date', format(endDate, 'yyyy-MM-dd'));
-  
+  const { data, error } = await supabase.rpc('get_daily_sales_totals', {
+    p_restaurant_id: restaurantId,
+    p_date_from: format(startDate, 'yyyy-MM-dd'),
+    p_date_to: format(endDate, 'yyyy-MM-dd'),
+  });
+
   if (error) throw error;
-  
-  // Aggregate by date
-  const byDate: Record<string, number> = {};
+
+  // Build lookup from RPC results
+  const byDate: Record<string, { revenue: number; count: number }> = {};
   for (const row of data || []) {
-    const date = row.sale_date;
-    byDate[date] = (byDate[date] || 0) + (Number(row.total_price) || 0);
+    byDate[row.sale_date] = {
+      revenue: Number(row.total_revenue) || 0,
+      count: Number(row.transaction_count) || 0,
+    };
   }
-  
+
   // Fill in missing dates with 0
   const result: DailySalesData[] = [];
   let current = new Date(startDate);
   while (current <= endDate) {
     const dateStr = format(current, 'yyyy-MM-dd');
+    const entry = byDate[dateStr];
     result.push({
       date: dateStr,
-      netRevenue: byDate[dateStr] || 0,
+      netRevenue: entry?.revenue || 0,
+      transactionCount: entry?.count || 0,
     });
     current = new Date(current.getTime() + 24 * 60 * 60 * 1000);
   }
-  
+
   return result;
 }
 

@@ -1,0 +1,458 @@
+import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+
+import {
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  TrendingDown,
+  FileText,
+  AlertTriangle,
+  Inbox,
+  ArrowRight,
+} from 'lucide-react';
+
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useDailyBrief } from '@/hooks/useDailyBrief';
+import type { DailyBrief as DailyBriefType } from '@/hooks/useDailyBrief';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatCurrency(val: number | undefined): string {
+  if (val === undefined) return '$0';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(val);
+}
+
+function formatPct(val: number | undefined): string {
+  if (val === undefined) return '0%';
+  return `${val.toFixed(1)}%`;
+}
+
+function metricLabel(metric: string): string {
+  const labels: Record<string, string> = {
+    net_revenue: 'Revenue',
+    food_cost: 'Food Cost',
+    food_cost_pct: 'Food Cost %',
+    labor_cost: 'Labor Cost',
+    labor_cost_pct: 'Labor Cost %',
+    prime_cost: 'Prime Cost',
+    prime_cost_pct: 'Prime Cost %',
+    gross_profit: 'Gross Profit',
+  };
+  return labels[metric] || metric;
+}
+
+/** Format a date string (YYYY-MM-DD) for display. */
+function formatDisplayDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+/** Shift a YYYY-MM-DD string by `days`. */
+function shiftDate(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
+/** Get yesterday as YYYY-MM-DD. */
+function yesterday(): string {
+  return shiftDate(new Date().toISOString().split('T')[0], -1);
+}
+
+/**
+ * For "revenue" and "gross_profit" up is good. For cost metrics up is bad.
+ */
+function isUpGood(metric: string): boolean {
+  return metric === 'net_revenue' || metric === 'gross_profit';
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+interface MetricCardProps {
+  label: string;
+  value: string;
+  deltaPct: number | null;
+  direction: 'up' | 'down' | 'flat';
+  goodWhenUp: boolean;
+}
+
+function MetricCard({ label, value, deltaPct, direction, goodWhenUp }: MetricCardProps) {
+  const isGood =
+    direction === 'flat'
+      ? true
+      : direction === 'up'
+        ? goodWhenUp
+        : !goodWhenUp;
+
+  const colorClass = isGood
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-red-600 dark:text-red-400';
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-background p-4 flex flex-col gap-1">
+      <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+        {label}
+      </span>
+      <span className="text-[22px] font-semibold text-foreground">{value}</span>
+      {deltaPct !== null && direction !== 'flat' && (
+        <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${colorClass}`}>
+          {direction === 'up' ? (
+            <TrendingUp className="h-3 w-3" />
+          ) : (
+            <TrendingDown className="h-3 w-3" />
+          )}
+          {deltaPct > 0 ? '+' : ''}
+          {deltaPct.toFixed(1)}% vs prior day
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
+export default function DailyBrief() {
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id;
+
+  const [selectedDate, setSelectedDate] = useState<string>(yesterday);
+
+  const { data: brief, isLoading, error } = useDailyBrief(restaurantId, selectedDate);
+
+  // Prevent navigating into the future
+  const canGoForward = selectedDate < yesterday();
+
+  // Find variance entries for the 4 hero metrics
+  const heroMetrics = useMemo(() => {
+    const keys = ['net_revenue', 'food_cost_pct', 'labor_cost_pct', 'prime_cost_pct'] as const;
+    if (!brief) return null;
+    const metrics = brief.metrics_json;
+    const variances = brief.variances_json || [];
+
+    return keys.map((key) => {
+      const variance = variances.find((v) => v.metric === key);
+      const isCurrency = key === 'net_revenue';
+      const raw = metrics[key];
+      return {
+        key,
+        label: metricLabel(key),
+        value: isCurrency ? formatCurrency(raw) : formatPct(raw),
+        deltaPct: variance?.delta_pct_vs_prior ?? null,
+        direction: variance?.direction ?? ('flat' as const),
+        goodWhenUp: isUpGood(key),
+      };
+    });
+  }, [brief]);
+
+  // Flagged variances (critical / warning)
+  const flaggedVariances = useMemo(() => {
+    if (!brief?.variances_json) return [];
+    return brief.variances_json.filter((v) => v.flag !== null);
+  }, [brief]);
+
+  // Recommendations (max 3)
+  const recommendations = useMemo(() => {
+    if (!brief?.recommendations_json) return [];
+    return brief.recommendations_json.slice(0, 3);
+  }, [brief]);
+
+  // Inbox summary
+  const inbox = brief?.inbox_summary_json;
+  const hasInboxItems = inbox && (inbox.open_count ?? 0) > 0;
+
+  // ----------- Loading state -----------
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+          {/* Header skeleton */}
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-7 w-40" />
+            <Skeleton className="h-9 w-48" />
+          </div>
+          {/* Metrics skeleton */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))}
+          </div>
+          {/* Narrative skeleton */}
+          <Skeleton className="h-32 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  // ----------- Error state -----------
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-5xl mx-auto px-4 py-6">
+          <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-6 text-center space-y-2">
+            <AlertTriangle className="h-6 w-6 text-red-500 mx-auto" />
+            <p className="text-[14px] font-medium text-foreground">
+              Failed to load the daily brief
+            </p>
+            <p className="text-[13px] text-muted-foreground">
+              {(error as Error).message}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ----------- Empty state -----------
+  if (!brief) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+          <DateHeader
+            date={selectedDate}
+            onPrev={() => setSelectedDate((d) => shiftDate(d, -1))}
+            onNext={() => setSelectedDate((d) => shiftDate(d, 1))}
+            canGoForward={canGoForward}
+          />
+          <div className="flex flex-col items-center justify-center py-24 space-y-3">
+            <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center">
+              <FileText className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <p className="text-[14px] font-medium text-foreground">
+              No brief generated for this date
+            </p>
+            <p className="text-[13px] text-muted-foreground">
+              Briefs are computed overnight. Check back tomorrow.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ----------- Populated state -----------
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {/* Header */}
+        <DateHeader
+          date={selectedDate}
+          onPrev={() => setSelectedDate((d) => shiftDate(d, -1))}
+          onNext={() => setSelectedDate((d) => shiftDate(d, 1))}
+          canGoForward={canGoForward}
+        />
+
+        {/* Metrics Row */}
+        {heroMetrics && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {heroMetrics.map((m) => (
+              <MetricCard
+                key={m.key}
+                label={m.label}
+                value={m.value}
+                deltaPct={m.deltaPct}
+                direction={m.direction}
+                goodWhenUp={m.goodWhenUp}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* What Changed */}
+        {flaggedVariances.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-[17px] font-semibold text-foreground">What Changed</h2>
+            <div className="space-y-2">
+              {flaggedVariances.map((v) => (
+                <VarianceCard key={v.metric} variance={v} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Narrative */}
+        {brief.narrative && (
+          <section className="space-y-3">
+            <h2 className="text-[17px] font-semibold text-foreground">Summary</h2>
+            <div className="rounded-xl border border-border/40 bg-muted/30 p-5 space-y-3">
+              <p className="text-[14px] leading-relaxed text-foreground whitespace-pre-line">
+                {brief.narrative}
+              </p>
+              {brief.computed_at && (
+                <p className="text-[11px] text-muted-foreground">
+                  Generated {new Date(brief.computed_at).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Top Actions */}
+        {recommendations.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-[17px] font-semibold text-foreground">Top Actions</h2>
+            <div className="space-y-2">
+              {recommendations.map((rec, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-xl border border-border/40 bg-background p-4 space-y-1.5"
+                >
+                  <p className="text-[14px] font-medium text-foreground">{rec.title}</p>
+                  <p className="text-[13px] text-muted-foreground">{rec.body}</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    {rec.impact && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-medium text-muted-foreground">
+                        Impact: {rec.impact}
+                      </span>
+                    )}
+                    {rec.effort && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-medium text-muted-foreground">
+                        Effort: {rec.effort}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Open Issues */}
+        {hasInboxItems && (
+          <section>
+            <Link
+              to="/ops-inbox"
+              className="group flex items-center justify-between rounded-xl border border-border/40 bg-background p-4 hover:border-border transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-lg bg-muted/50 flex items-center justify-center">
+                  <Inbox className="h-4 w-4 text-foreground" />
+                </div>
+                <div>
+                  <p className="text-[14px] font-medium text-foreground">Open Issues</p>
+                  <p className="text-[13px] text-muted-foreground">
+                    {inbox!.open_count} open
+                    {(inbox!.critical_count ?? 0) > 0 && (
+                      <span className="text-red-600 dark:text-red-400">
+                        {' '}
+                        ({inbox!.critical_count} critical)
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            </Link>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Date header
+// ---------------------------------------------------------------------------
+
+interface DateHeaderProps {
+  date: string;
+  onPrev: () => void;
+  onNext: () => void;
+  canGoForward: boolean;
+}
+
+function DateHeader({ date, onPrev, onNext, canGoForward }: DateHeaderProps) {
+  return (
+    <div className="flex items-center justify-between">
+      <h1 className="text-[17px] font-semibold text-foreground">Daily Brief</h1>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-lg"
+          onClick={onPrev}
+          aria-label="Previous day"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="text-[14px] font-medium text-foreground min-w-[120px] text-center">
+          {formatDisplayDate(date)}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-lg"
+          onClick={onNext}
+          disabled={!canGoForward}
+          aria-label="Next day"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Variance card
+// ---------------------------------------------------------------------------
+
+interface VarianceCardProps {
+  variance: DailyBriefType['variances_json'][number];
+}
+
+function VarianceCard({ variance }: VarianceCardProps) {
+  const isCritical = variance.flag === 'critical';
+
+  const flagBg = isCritical
+    ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400'
+    : 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400';
+
+  const deltaStr =
+    variance.delta_pct_vs_prior !== null
+      ? `${variance.delta_pct_vs_prior > 0 ? '+' : ''}${variance.delta_pct_vs_prior.toFixed(1)}% vs prior day`
+      : null;
+
+  const isPctMetric = variance.metric.endsWith('_pct');
+  const formattedValue = isPctMetric
+    ? formatPct(variance.value)
+    : formatCurrency(variance.value);
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-background p-4 flex items-start gap-3">
+      <span
+        className={`text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0 ${flagBg}`}
+      >
+        {isCritical ? 'Critical' : 'Warning'}
+      </span>
+      <div className="space-y-0.5 min-w-0">
+        <p className="text-[14px] font-medium text-foreground">
+          {metricLabel(variance.metric)}
+        </p>
+        <p className="text-[13px] text-muted-foreground">
+          {formattedValue}
+          {deltaStr && <span className="ml-1.5">{deltaStr}</span>}
+        </p>
+      </div>
+    </div>
+  );
+}

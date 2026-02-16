@@ -259,9 +259,9 @@ SELECT cron.schedule(
   $$SELECT enqueue_weekly_brief_jobs()$$
 );
 
--- Process queue every 60 seconds
+-- Process queue every minute
 SELECT cron.schedule(
   'process-weekly-brief-queue',
-  '60 seconds',
+  '* * * * *',
   $$SELECT process_weekly_brief_queue()$$
 );

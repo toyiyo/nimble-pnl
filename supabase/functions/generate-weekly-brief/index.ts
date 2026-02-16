@@ -1,38 +1,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { callAIWithFallback } from "../_shared/ai-caller.ts";
 
-interface VarianceItem {
-  metric: string;
-  flag: string | null;
-  value: number;
-  direction: string;
-  delta_pct_vs_prior?: number | null;
-  delta_pct_vs_avg?: number | null;
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 }
 
-interface BriefResult {
-  restaurantId: string;
-  restaurantName: string;
-  status: "generated" | "skipped" | "error";
-  reason?: string;
-}
-
+/**
+ * Weekly brief dispatcher.
+ *
+ * - No body or empty body: enqueue all restaurants via pgmq queue
+ * - Body with { restaurant_id }: directly invoke worker for that restaurant
+ *
+ * Kept as a thin wrapper for backward compatibility and manual triggers.
+ */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Auth guard: only allow calls with the service role key
     const authHeader = req.headers.get("Authorization");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (authHeader !== `Bearer ${serviceRoleKey}`) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ success: false, error: "Unauthorized" }, 401);
     }
 
     const supabase = createClient(
@@ -40,308 +33,50 @@ serve(async (req) => {
       serviceRoleKey
     );
 
-    const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
-    if (!openRouterApiKey) {
-      throw new Error("OPENROUTER_API_KEY is not configured");
+    let body: Record<string, unknown> = {};
+    try {
+      body = await req.json();
+    } catch {
+      // Empty body is fine — means "enqueue all"
     }
 
-    // Compute the week range: Monday through Sunday of the most recent completed week
-    const now = new Date();
-    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon (cron runs Monday)
-    const weekEnd = new Date(now);
-    weekEnd.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek)); // Last Sunday
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekEnd.getDate() - 6); // Monday of that week
-    const weekEndStr = weekEnd.toISOString().split("T")[0];
-    const weekStartStr = weekStart.toISOString().split("T")[0];
+    // Single restaurant: call worker directly
+    if (body.restaurant_id) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 
-    console.log(`Generating weekly briefs for ${weekStartStr} to ${weekEndStr}`);
+      // Compute week end if not provided
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const weekEnd = new Date(now);
+      weekEnd.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
+      const weekEndStr = (body.brief_week_end as string) || weekEnd.toISOString().split("T")[0];
 
-    // Get restaurants ordered by least-recently-briefed first (round-robin)
-    const { data: restaurants, error: restError } = await supabase
-      .from("restaurants")
-      .select("id")
-      .order("updated_at", { ascending: true })
-      .limit(10);
+      const workerRes = await fetch(`${supabaseUrl}/functions/v1/generate-weekly-brief-worker`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          restaurant_id: body.restaurant_id,
+          brief_week_end: weekEndStr,
+        }),
+      });
 
-    if (restError) {
-      throw new Error(`Failed to fetch restaurants: ${restError.message}`);
+      const result = await workerRes.json();
+      return jsonResponse(result, workerRes.status);
     }
 
-    const restaurantIds = (restaurants || []).map((r: { id: string }) => r.id);
-
-    console.log(`Found ${restaurantIds.length} restaurants to process`);
-
-    const results: BriefResult[] = [];
-
-    for (const restaurantId of restaurantIds) {
-      try {
-        // Check if brief already exists for this week
-        const { data: existing } = await supabase
-          .from("weekly_brief")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("brief_week_end", weekEndStr)
-          .maybeSingle();
-
-        if (existing) {
-          results.push({
-            restaurantId,
-            restaurantName: "",
-            status: "skipped",
-            reason: "Brief already exists",
-          });
-          continue;
-        }
-
-        // Run variance engine
-        const { data: variances, error: varError } = await supabase.rpc(
-          "compute_weekly_variances",
-          { p_restaurant_id: restaurantId, p_week_end: weekEndStr }
-        );
-        if (varError) {
-          console.error(`Variance error for ${restaurantId}:`, varError.message);
-        }
-
-        // Run anomaly detectors
-        const { error: backlogError } = await supabase.rpc(
-          "detect_uncategorized_backlog",
-          { p_restaurant_id: restaurantId }
-        );
-        if (backlogError) {
-          console.error(`Backlog error for ${restaurantId}:`, backlogError.message);
-        }
-
-        const { error: anomalyError } = await supabase.rpc(
-          "detect_metric_anomalies",
-          { p_restaurant_id: restaurantId, p_date: weekEndStr }
-        );
-        if (anomalyError) {
-          console.error(`Anomaly error for ${restaurantId}:`, anomalyError.message);
-        }
-
-        const { error: reconError } = await supabase.rpc(
-          "detect_reconciliation_gaps",
-          { p_restaurant_id: restaurantId, p_date: weekEndStr }
-        );
-        if (reconError) {
-          console.error(`Reconciliation error for ${restaurantId}:`, reconError.message);
-        }
-
-        // Query open ops_inbox_item count
-        const { count: openCount } = await supabase
-          .from("ops_inbox_item")
-          .select("id", { count: "exact", head: true })
-          .eq("restaurant_id", restaurantId)
-          .eq("status", "open");
-
-        const { count: criticalCount } = await supabase
-          .from("ops_inbox_item")
-          .select("id", { count: "exact", head: true })
-          .eq("restaurant_id", restaurantId)
-          .eq("status", "open")
-          .eq("priority", 1);
-
-        // Fetch restaurant name
-        const { data: restaurant } = await supabase
-          .from("restaurants")
-          .select("name")
-          .eq("id", restaurantId)
-          .single();
-
-        const restaurantName = restaurant?.name || "Unknown Restaurant";
-
-        // Build metrics_json from daily_pnl (aggregate the full week)
-        const { data: pnlRows } = await supabase
-          .from("daily_pnl")
-          .select("net_revenue, food_cost, labor_cost, prime_cost, gross_profit")
-          .eq("restaurant_id", restaurantId)
-          .gte("date", weekStartStr)
-          .lte("date", weekEndStr);
-
-        const metricsJson: Record<string, number> = {};
-        if (pnlRows && pnlRows.length > 0) {
-          metricsJson.net_revenue = pnlRows.reduce((s: number, r: any) => s + (r.net_revenue || 0), 0);
-          metricsJson.food_cost = pnlRows.reduce((s: number, r: any) => s + (r.food_cost || 0), 0);
-          metricsJson.labor_cost = pnlRows.reduce((s: number, r: any) => s + (r.labor_cost || 0), 0);
-          metricsJson.prime_cost = pnlRows.reduce((s: number, r: any) => s + (r.prime_cost || 0), 0);
-          metricsJson.gross_profit = pnlRows.reduce((s: number, r: any) => s + (r.gross_profit || 0), 0);
-          if (metricsJson.net_revenue > 0) {
-            metricsJson.food_cost_pct = Math.round(metricsJson.food_cost / metricsJson.net_revenue * 1000) / 10;
-            metricsJson.labor_cost_pct = Math.round(metricsJson.labor_cost / metricsJson.net_revenue * 1000) / 10;
-            metricsJson.prime_cost_pct = Math.round(metricsJson.prime_cost / metricsJson.net_revenue * 1000) / 10;
-          }
-        }
-        const variancesJson = variances || [];
-
-        // Generate top 3 recommendations from variances
-        const recommendations = buildRecommendations(variancesJson);
-
-        // Generate narrative via LLM
-        let narrativeText = "";
-        try {
-          const aiResult = await callAIWithFallback<{ narrative: string }>(
-            {
-              messages: [
-                {
-                  role: "system",
-                  content:
-                    'You are a restaurant financial analyst. Summarize this week\'s performance in 3-4 sentences. ONLY reference the numbers provided below. Do not invent or estimate any figures. Write in a direct, professional tone. Lead with the most important change. Return your response as JSON: {"narrative": "your summary here"}',
-                },
-                {
-                  role: "user",
-                  content: `Restaurant: ${restaurantName}
-Week: ${weekStartStr} to ${weekEndStr}
-Metrics: ${JSON.stringify(metricsJson)}
-Variances: ${JSON.stringify(variancesJson)}
-Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
-                },
-              ],
-              temperature: 0.3,
-              max_tokens: 300,
-            },
-            openRouterApiKey,
-            "generate-weekly-brief",
-            restaurantId
-          );
-
-          if (aiResult?.data?.narrative) {
-            narrativeText = aiResult.data.narrative;
-          }
-        } catch (aiError) {
-          console.error(`LLM error for ${restaurantId}:`, aiError);
-          // Continue without narrative -- the brief is still useful without it
-        }
-
-        // Insert weekly_brief row
-        const { error: insertError } = await supabase.from("weekly_brief").upsert(
-          {
-            restaurant_id: restaurantId,
-            brief_week_end: weekEndStr,
-            metrics_json: metricsJson,
-            comparisons_json: {},
-            variances_json: variancesJson,
-            inbox_summary_json: {
-              open_count: openCount ?? 0,
-              critical_count: criticalCount ?? 0,
-            },
-            recommendations_json: recommendations,
-            narrative: narrativeText || null,
-            computed_at: new Date().toISOString(),
-          },
-          { onConflict: "restaurant_id,brief_week_end" }
-        );
-
-        if (insertError) {
-          throw new Error(`Insert error: ${insertError.message}`);
-        }
-
-        results.push({ restaurantId, restaurantName, status: "generated" });
-        console.log(`Brief generated for ${restaurantName} (${restaurantId})`);
-
-        // Trigger email delivery (fire-and-forget, don't block on failure)
-        const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-        fetch(`${supabaseUrl}/functions/v1/send-weekly-brief-email`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${serviceRoleKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ restaurant_id: restaurantId, brief_week_end: weekEndStr }),
-        }).catch((emailErr) => {
-          console.error(`Email trigger failed for ${restaurantId}:`, emailErr);
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(`Failed to generate brief for ${restaurantId}:`, message);
-        results.push({
-          restaurantId,
-          restaurantName: "",
-          status: "error",
-          reason: message,
-        });
-      }
+    // No restaurant_id: enqueue all via SQL function
+    const { data, error } = await supabase.rpc("enqueue_weekly_brief_jobs");
+    if (error) {
+      throw new Error(`Failed to enqueue: ${error.message}`);
     }
 
-    const generated = results.filter((r) => r.status === "generated").length;
-    const skipped = results.filter((r) => r.status === "skipped").length;
-    const errors = results.filter((r) => r.status === "error").length;
-
-    console.log(
-      `Weekly brief run complete: ${generated} generated, ${skipped} skipped, ${errors} errors`
-    );
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        week_start: weekStartStr,
-        week_end: weekEndStr,
-        summary: { generated, skipped, errors },
-        results,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return jsonResponse({ success: true, ...(data as Record<string, unknown>) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Fatal error in generate-weekly-brief:", message);
-    return new Response(JSON.stringify({ success: false, error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });
-
-/**
- * Build top 3 recommendations from variance data.
- * Takes items with a non-null flag, sorted by severity (critical first).
- */
-interface Recommendation {
-  title: string;
-  body: string;
-  impact: string;
-  effort: string;
-}
-
-function buildRecommendations(variances: VarianceItem[]): Recommendation[] {
-  if (!Array.isArray(variances) || variances.length === 0) {
-    return [];
-  }
-
-  const flagOrder: Record<string, number> = { critical: 0, warning: 1 };
-
-  // Guard against SQL returning the string "null" instead of a real null
-  const flagged = variances
-    .filter((v) => v.flag != null && v.flag !== "null")
-    .sort((a, b) => {
-      const aOrder = flagOrder[a.flag!] ?? 99;
-      const bOrder = flagOrder[b.flag!] ?? 99;
-      return aOrder - bOrder;
-    })
-    .slice(0, 3);
-
-  return flagged.map((v) => {
-    const direction = v.direction === "up" ? "increased" : "decreased";
-    const metric = formatMetricName(v.metric);
-    const pctChange = v.delta_pct_vs_avg != null ? ` (${v.delta_pct_vs_avg > 0 ? "+" : ""}${v.delta_pct_vs_avg}% vs 4-week avg)` : "";
-    return {
-      title: `Review ${metric}`,
-      body: `${metric} ${direction} to ${v.value}${v.metric.endsWith("_pct") ? "%" : ""}${pctChange}`,
-      impact: v.flag === "critical" ? "High" : "Medium",
-      effort: "Low",
-    };
-  });
-}
-
-function formatMetricName(metric: string): string {
-  const names: Record<string, string> = {
-    net_revenue: "net revenue",
-    food_cost_pct: "food cost %",
-    labor_cost_pct: "labor cost %",
-    prime_cost_pct: "prime cost %",
-    gross_profit: "gross profit",
-  };
-  return names[metric] || metric;
-}

@@ -175,12 +175,6 @@ serve(async (req) => {
 // Email HTML builder
 // ---------------------------------------------------------------------------
 
-function formatDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const d = new Date(year, month - 1, day);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function formatWeekRange(weekEndStr: string): string {
   const [year, month, day] = weekEndStr.split("-").map(Number);
   const weekEnd = new Date(year, month - 1, day);
@@ -230,22 +224,16 @@ function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
   // Hero metrics
   const heroKeys = [
     { key: "net_revenue", label: "Revenue", format: "currency" },
-    { key: "food_cost_percentage", label: "Food Cost %", format: "pct" },
-    { key: "labor_cost_percentage", label: "Labor Cost %", format: "pct" },
-    { key: "prime_cost_percentage", label: "Prime Cost %", format: "pct" },
+    { key: "food_cost_pct", label: "Food Cost %", format: "pct" },
+    { key: "labor_cost_pct", label: "Labor Cost %", format: "pct" },
+    { key: "prime_cost_pct", label: "Prime Cost %", format: "pct" },
   ];
 
   const metricCells = heroKeys
     .map((h) => {
       const val = m[h.key];
       const formatted = h.format === "currency" ? fmtCurrency(val) : fmtPct(val);
-      const variance = variances.find((v) => {
-        if (h.key === "net_revenue") return v.metric === "net_revenue";
-        if (h.key === "food_cost_percentage") return v.metric === "food_cost_pct";
-        if (h.key === "labor_cost_percentage") return v.metric === "labor_cost_pct";
-        if (h.key === "prime_cost_percentage") return v.metric === "prime_cost_pct";
-        return false;
-      });
+      const variance = variances.find((v) => v.metric === h.key);
       const dir = variance?.direction || "flat";
       const dPct = variance?.delta_pct_vs_prior;
       const color = deltaColor(dir, variance?.metric || h.key);

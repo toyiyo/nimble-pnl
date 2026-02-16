@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useWeeklyBrief } from '@/hooks/useWeeklyBrief';
+import { useWeeklyBrief, getMostRecentSunday } from '@/hooks/useWeeklyBrief';
 import type { WeeklyBrief as WeeklyBriefType } from '@/hooks/useWeeklyBrief';
 
 // ---------------------------------------------------------------------------
@@ -74,14 +74,6 @@ function shiftDate(dateStr: string, days: number): string {
   const d = new Date(year, month - 1, day);
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
-}
-
-function getMostRecentSunday(): string {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const lastSunday = new Date(now);
-  lastSunday.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
-  return lastSunday.toISOString().split('T')[0];
 }
 
 function isUpGood(metric: string): boolean {

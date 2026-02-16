@@ -48,7 +48,7 @@ export interface WeeklyBrief {
   email_sent_at: string | null;
 }
 
-function getMostRecentSunday(): string {
+export function getMostRecentSunday(): string {
   const now = new Date();
   const dayOfWeek = now.getDay();
   const lastSunday = new Date(now);

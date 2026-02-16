@@ -12,7 +12,7 @@ interface NotificationSettingsProps {
   restaurantId: string;
 }
 
-export const NotificationSettings = ({ restaurantId }: NotificationSettingsProps) => {
+export function NotificationSettings({ restaurantId }: NotificationSettingsProps) {
   const { settings, loading } = useNotificationSettings(restaurantId);
   const updateSettings = useUpdateNotificationSettings();
   const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } = useNotificationPreferences(restaurantId);
@@ -276,4 +276,4 @@ export const NotificationSettings = ({ restaurantId }: NotificationSettingsProps
       </Card>
     </div>
   );
-};
+}

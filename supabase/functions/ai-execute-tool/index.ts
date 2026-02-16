@@ -160,51 +160,12 @@ async function executeGetKpis(
   restaurantId: string,
   supabase: any
 ): Promise<any> {
-  const { period, start_date, end_date } = args;
-  
+  const { period = 'month', start_date, end_date } = args;
+
   // Import shared calculation module
   const { calculatePeriodMetrics } = await import('../_shared/periodMetrics.ts');
-  
-  // Calculate date range based on period
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
 
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      break;
-    }
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case 'custom':
-      if (!start_date || !end_date) {
-        throw new Error('Custom period requires start_date and end_date');
-      }
-      startDate = new Date(start_date);
-      endDate = new Date(end_date);
-      break;
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
 
   // ====== FETCH DATA FROM DATABASE ======
   

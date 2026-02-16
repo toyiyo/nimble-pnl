@@ -241,7 +241,6 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
 
         // Trigger email delivery (fire-and-forget, don't block on failure)
         const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
         fetch(`${supabaseUrl}/functions/v1/send-weekly-brief-email`, {
           method: "POST",
           headers: {

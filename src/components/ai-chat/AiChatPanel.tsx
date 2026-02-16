@@ -36,6 +36,7 @@ export function AiChatPanel() {
   const { selectedRestaurant } = useRestaurantContext();
   const { hasFeature } = useSubscription();
   const navigate = useNavigate();
+  const role = selectedRestaurant?.role;
   const restaurantId = selectedRestaurant?.restaurant_id || '';
   const hasAiAccess = hasFeature('ai_assistant');
 
@@ -382,6 +383,9 @@ export function AiChatPanel() {
       </div>
     );
   };
+
+  // Hide for staff and kiosk users
+  if (role === 'staff' || role === 'kiosk') return null;
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closeChat()} modal={false}>

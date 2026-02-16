@@ -371,8 +371,11 @@ BEGIN
     RAISE;
   END;
 
-  -- Batch-categorize uncategorized sale rows
-  PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
+  -- Batch-categorize uncategorized sale rows (only when called by authenticated user;
+  -- service-role callers defer categorization to the apply-categorization-rules edge function)
+  IF auth.uid() IS NOT NULL THEN
+    PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
+  END IF;
 
   RETURN v_synced_count;
 END;
@@ -674,8 +677,11 @@ BEGIN
     RAISE;
   END;
 
-  -- Batch-categorize uncategorized sale rows
-  PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
+  -- Batch-categorize uncategorized sale rows (only when called by authenticated user;
+  -- service-role callers defer categorization to the apply-categorization-rules edge function)
+  IF auth.uid() IS NOT NULL THEN
+    PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
+  END IF;
 
   RETURN v_synced_count;
 END;

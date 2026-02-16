@@ -1,12 +1,12 @@
 -- pgTAP tests for Toast sync timeout fix
--- Tests migration: 20260215100000_fix_toast_sync_timeout.sql
+-- Tests migration: 20260215200000_fix_toast_sync_timeout.sql
 --
 -- Verifies that sync_toast_to_unified_sales disables the
 -- auto_categorize_pos_sale trigger during bulk upserts and
 -- batch-categorizes afterward, preventing statement timeouts.
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(12);
 
 -- ============================================================
 -- Setup
@@ -128,6 +128,47 @@ SELECT is(
   (SELECT apply_count FROM categorization_rules WHERE id = '00000000-0000-0000-0000-300000000088'),
   1,
   'Categorization rule apply_count incremented to 1'
+);
+
+-- ============================================================
+-- TEST: Date-range overload also works
+-- ============================================================
+
+-- Clear previous sync data
+DELETE FROM unified_sales WHERE restaurant_id = '00000000-0000-0000-0000-300000000011';
+
+-- Reset rule apply_count
+UPDATE categorization_rules SET apply_count = 0 WHERE id = '00000000-0000-0000-0000-300000000088';
+
+SELECT lives_ok(
+  $q$ SELECT sync_toast_to_unified_sales(
+    '00000000-0000-0000-0000-300000000011'::UUID,
+    '2026-02-15'::DATE,
+    '2026-02-15'::DATE
+  ) $q$,
+  'Date-range sync completes without timeout'
+);
+
+SELECT is(
+  (SELECT COUNT(*)::INTEGER FROM unified_sales WHERE restaurant_id = '00000000-0000-0000-0000-300000000011'),
+  4,
+  'Date-range sync created 4 unified_sales rows'
+);
+
+SELECT is(
+  (SELECT is_categorized FROM unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-300000000011'
+     AND external_item_id = 'timeout-item-a'
+     AND item_type = 'sale'),
+  true,
+  'Date-range sync: Pizza sale item was categorized'
+);
+
+-- Verify trigger is still enabled after sync
+SELECT is(
+  (SELECT tgenabled FROM pg_trigger WHERE tgname = 'auto_categorize_pos_sale' AND tgrelid = 'public.unified_sales'::regclass),
+  'O',
+  'Trigger is re-enabled after sync'
 );
 
 SELECT * FROM finish();

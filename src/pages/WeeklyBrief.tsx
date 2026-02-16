@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useDailyBrief } from '@/hooks/useDailyBrief';
-import type { DailyBrief as DailyBriefType } from '@/hooks/useDailyBrief';
+import { useWeeklyBrief } from '@/hooks/useWeeklyBrief';
+import type { WeeklyBrief as WeeklyBriefType } from '@/hooks/useWeeklyBrief';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,14 +51,22 @@ function metricLabel(metric: string): string {
   return labels[metric] || metric;
 }
 
-function formatDisplayDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const d = new Date(year, month - 1, day);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+function formatWeekRange(weekEndStr: string): string {
+  const [year, month, day] = weekEndStr.split('-').map(Number);
+  const weekEnd = new Date(year, month - 1, day);
+  const weekStart = new Date(weekEnd);
+  weekStart.setDate(weekEnd.getDate() - 6);
+
+  const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' });
+  const startDay = weekStart.getDate();
+  const endMonth = weekEnd.toLocaleDateString('en-US', { month: 'short' });
+  const endDay = weekEnd.getDate();
+  const endYear = weekEnd.getFullYear();
+
+  if (startMonth === endMonth) {
+    return `${startMonth} ${startDay} – ${endDay}, ${endYear}`;
+  }
+  return `${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
 }
 
 function shiftDate(dateStr: string, days: number): string {
@@ -68,8 +76,12 @@ function shiftDate(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
-function yesterday(): string {
-  return shiftDate(new Date().toISOString().split('T')[0], -1);
+function getMostRecentSunday(): string {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const lastSunday = new Date(now);
+  lastSunday.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
+  return lastSunday.toISOString().split('T')[0];
 }
 
 function isUpGood(metric: string): boolean {
@@ -111,7 +123,7 @@ function MetricCard({ label, value, deltaPct, direction, goodWhenUp }: MetricCar
             <TrendingDown className="h-3 w-3" />
           )}
           {deltaPct > 0 ? '+' : ''}
-          {deltaPct.toFixed(1)}% vs prior day
+          {deltaPct.toFixed(1)}% vs prior week
         </span>
       )}
     </div>
@@ -122,16 +134,16 @@ function MetricCard({ label, value, deltaPct, direction, goodWhenUp }: MetricCar
 // Main page
 // ---------------------------------------------------------------------------
 
-export default function DailyBrief() {
+export default function WeeklyBrief() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
 
-  const [selectedDate, setSelectedDate] = useState<string>(yesterday);
+  const [selectedDate, setSelectedDate] = useState<string>(getMostRecentSunday);
 
-  const { data: brief, isLoading, error } = useDailyBrief(restaurantId, selectedDate);
+  const { data: brief, isLoading, error } = useWeeklyBrief(restaurantId, selectedDate);
 
   // Prevent navigating into the future
-  const canGoForward = selectedDate < yesterday();
+  const canGoForward = selectedDate < getMostRecentSunday();
 
   // Find variance entries for the 4 hero metrics
   const heroMetrics = useMemo(() => {
@@ -204,7 +216,7 @@ export default function DailyBrief() {
               <AlertTriangle className="h-6 w-6 text-destructive" />
             </div>
             <p className="text-[14px] font-medium text-foreground">
-              Failed to load the daily brief
+              Failed to load the weekly brief
             </p>
             <p className="text-[13px] text-muted-foreground">
               {error instanceof Error ? error.message : 'An unexpected error occurred.'}
@@ -222,8 +234,8 @@ export default function DailyBrief() {
         <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
           <DateHeader
             date={selectedDate}
-            onPrev={() => setSelectedDate((d) => shiftDate(d, -1))}
-            onNext={() => setSelectedDate((d) => shiftDate(d, 1))}
+            onPrev={() => setSelectedDate((d) => shiftDate(d, -7))}
+            onNext={() => setSelectedDate((d) => shiftDate(d, 7))}
             canGoForward={canGoForward}
           />
           <div className="flex flex-col items-center justify-center py-24 space-y-3">
@@ -231,10 +243,10 @@ export default function DailyBrief() {
               <FileText className="h-6 w-6 text-muted-foreground" />
             </div>
             <p className="text-[14px] font-medium text-foreground">
-              No brief generated for this date
+              No brief generated for this week
             </p>
             <p className="text-[13px] text-muted-foreground">
-              Briefs are computed overnight. Check back tomorrow.
+              Briefs are generated every Monday morning.
             </p>
           </div>
         </div>
@@ -249,8 +261,8 @@ export default function DailyBrief() {
         {/* Header */}
         <DateHeader
           date={selectedDate}
-          onPrev={() => setSelectedDate((d) => shiftDate(d, -1))}
-          onNext={() => setSelectedDate((d) => shiftDate(d, 1))}
+          onPrev={() => setSelectedDate((d) => shiftDate(d, -7))}
+          onNext={() => setSelectedDate((d) => shiftDate(d, 7))}
           canGoForward={canGoForward}
         />
 
@@ -376,19 +388,19 @@ interface DateHeaderProps {
 function DateHeader({ date, onPrev, onNext, canGoForward }: DateHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <h1 className="text-[17px] font-semibold text-foreground">Daily Brief</h1>
+      <h1 className="text-[17px] font-semibold text-foreground">Weekly Brief</h1>
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
           size="icon"
           className="h-9 w-9 rounded-lg"
           onClick={onPrev}
-          aria-label="Previous day"
+          aria-label="Previous week"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <span className="text-[14px] font-medium text-foreground min-w-[120px] text-center">
-          {formatDisplayDate(date)}
+        <span className="text-[14px] font-medium text-foreground min-w-[180px] text-center">
+          {formatWeekRange(date)}
         </span>
         <Button
           variant="ghost"
@@ -396,7 +408,7 @@ function DateHeader({ date, onPrev, onNext, canGoForward }: DateHeaderProps) {
           className="h-9 w-9 rounded-lg"
           onClick={onNext}
           disabled={!canGoForward}
-          aria-label="Next day"
+          aria-label="Next week"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
@@ -410,7 +422,7 @@ function DateHeader({ date, onPrev, onNext, canGoForward }: DateHeaderProps) {
 // ---------------------------------------------------------------------------
 
 interface VarianceCardProps {
-  variance: DailyBriefType['variances_json'][number];
+  variance: WeeklyBriefType['variances_json'][number];
 }
 
 function VarianceCard({ variance }: VarianceCardProps) {
@@ -422,7 +434,7 @@ function VarianceCard({ variance }: VarianceCardProps) {
 
   const deltaStr =
     variance.delta_pct_vs_prior !== null
-      ? `${variance.delta_pct_vs_prior > 0 ? '+' : ''}${variance.delta_pct_vs_prior.toFixed(1)}% vs prior day`
+      ? `${variance.delta_pct_vs_prior > 0 ? '+' : ''}${variance.delta_pct_vs_prior.toFixed(1)}% vs prior week`
       : null;
 
   const isPctMetric = variance.metric.endsWith('_pct');

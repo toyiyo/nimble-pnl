@@ -203,28 +203,28 @@ export const NotificationSettings = ({ restaurantId }: NotificationSettingsProps
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Newspaper className="h-5 w-5" />
-            Daily Brief
+            Weekly Brief
           </CardTitle>
           <CardDescription>
-            Receive a daily summary of your restaurant's performance via email
+            Receive a weekly summary of your restaurant's performance via email
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="daily-brief-email" className="text-base">
-                Daily Brief Email
+              <Label htmlFor="weekly-brief-email" className="text-base">
+                Weekly Brief Email
               </Label>
               <p className="text-sm text-muted-foreground">
-                Receive a morning email with key metrics, variances, and action items
+                Receive a Monday morning email with key metrics, variances, and action items
               </p>
             </div>
             <Switch
-              id="daily-brief-email"
-              checked={briefPrefs?.daily_brief_email ?? true}
+              id="weekly-brief-email"
+              checked={briefPrefs?.weekly_brief_email ?? true}
               disabled={briefUpdating}
               onCheckedChange={(checked) =>
-                updateBriefPrefs({ daily_brief_email: checked })
+                updateBriefPrefs({ weekly_brief_email: checked })
               }
               className="data-[state=checked]:bg-foreground"
             />

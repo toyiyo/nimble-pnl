@@ -41,7 +41,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
               'integrations',
               'team',
               'settings',
-              'daily-brief',
+              'weekly-brief',
               'ops-inbox'
             ],
             description: 'The section to navigate to'
@@ -263,13 +263,13 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Proactive insights - available to all users
     {
       name: 'get_proactive_insights',
-      description: 'Check for urgent operational items and the latest daily brief. Call this at the start of new conversations to surface important issues proactively. Returns open ops inbox items ranked by priority and a summary of the most recent daily brief.',
+      description: 'Check for urgent operational items and the latest weekly brief. Call this at the start of new conversations to surface important issues proactively. Returns open ops inbox items ranked by priority and a summary of the most recent weekly brief.',
       parameters: {
         type: 'object',
         properties: {
           include_brief: {
             type: 'boolean',
-            description: 'Include latest daily brief summary (default: true)',
+            description: 'Include latest weekly brief summary (default: true)',
             default: true
           }
         }

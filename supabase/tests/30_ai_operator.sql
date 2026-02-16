@@ -1,30 +1,36 @@
 -- Tests for AI Operator tables and SQL functions
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================================
 -- TEST CATEGORY 1: Tables Exist
 -- ============================================================================
 
 SELECT has_table('public', 'ops_inbox_item', 'ops_inbox_item table exists');
-SELECT has_table('public', 'daily_brief', 'daily_brief table exists');
+SELECT has_table('public', 'weekly_brief', 'weekly_brief table exists');
 SELECT has_table('public', 'notification_preferences', 'notification_preferences table exists');
 
 -- ============================================================================
 -- TEST CATEGORY 2: Unique Constraints
 -- ============================================================================
 
-SELECT has_index('public', 'daily_brief', 'daily_brief_restaurant_id_brief_date_key',
-  'daily_brief has unique index on restaurant_id, brief_date');
+SELECT has_index('public', 'weekly_brief', 'weekly_brief_restaurant_id_brief_week_end_key',
+  'weekly_brief has unique index on restaurant_id, brief_week_end');
 
 -- ============================================================================
 -- TEST CATEGORY 3: Functions return safe defaults for nonexistent data
 -- ============================================================================
 
 SELECT is(
+  compute_weekly_variances('00000000-0000-0000-0000-000000000000'::uuid, CURRENT_DATE),
+  '[]'::jsonb,
+  'compute_weekly_variances returns empty array for nonexistent restaurant'
+);
+
+SELECT is(
   compute_daily_variances('00000000-0000-0000-0000-000000000000'::uuid, CURRENT_DATE),
   '[]'::jsonb,
-  'compute_daily_variances returns empty array for nonexistent restaurant'
+  'compute_daily_variances still works for nonexistent restaurant'
 );
 
 SELECT is(

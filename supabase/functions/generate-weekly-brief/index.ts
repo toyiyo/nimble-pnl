@@ -45,12 +45,17 @@ serve(async (req) => {
       throw new Error("OPENROUTER_API_KEY is not configured");
     }
 
-    // Yesterday's date in YYYY-MM-DD format
+    // Compute the week range: Monday through Sunday of the most recent completed week
     const now = new Date();
-    now.setDate(now.getDate() - 1);
-    const yesterday = now.toISOString().split("T")[0];
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon (cron runs Monday)
+    const weekEnd = new Date(now);
+    weekEnd.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek)); // Last Sunday
+    const weekStart = new Date(weekEnd);
+    weekStart.setDate(weekEnd.getDate() - 6); // Monday of that week
+    const weekEndStr = weekEnd.toISOString().split("T")[0];
+    const weekStartStr = weekStart.toISOString().split("T")[0];
 
-    console.log(`Generating daily briefs for ${yesterday}`);
+    console.log(`Generating weekly briefs for ${weekStartStr} to ${weekEndStr}`);
 
     // Get restaurants ordered by least-recently-briefed first (round-robin)
     const { data: restaurants, error: restError } = await supabase
@@ -71,12 +76,12 @@ serve(async (req) => {
 
     for (const restaurantId of restaurantIds) {
       try {
-        // Check if brief already exists for this date
+        // Check if brief already exists for this week
         const { data: existing } = await supabase
-          .from("daily_brief")
+          .from("weekly_brief")
           .select("id")
           .eq("restaurant_id", restaurantId)
-          .eq("brief_date", yesterday)
+          .eq("brief_week_end", weekEndStr)
           .maybeSingle();
 
         if (existing) {
@@ -91,8 +96,8 @@ serve(async (req) => {
 
         // Run variance engine
         const { data: variances, error: varError } = await supabase.rpc(
-          "compute_daily_variances",
-          { p_restaurant_id: restaurantId, p_date: yesterday }
+          "compute_weekly_variances",
+          { p_restaurant_id: restaurantId, p_week_end: weekEndStr }
         );
         if (varError) {
           console.error(`Variance error for ${restaurantId}:`, varError.message);
@@ -109,7 +114,7 @@ serve(async (req) => {
 
         const { error: anomalyError } = await supabase.rpc(
           "detect_metric_anomalies",
-          { p_restaurant_id: restaurantId, p_date: yesterday }
+          { p_restaurant_id: restaurantId, p_date: weekEndStr }
         );
         if (anomalyError) {
           console.error(`Anomaly error for ${restaurantId}:`, anomalyError.message);
@@ -117,7 +122,7 @@ serve(async (req) => {
 
         const { error: reconError } = await supabase.rpc(
           "detect_reconciliation_gaps",
-          { p_restaurant_id: restaurantId, p_date: yesterday }
+          { p_restaurant_id: restaurantId, p_date: weekEndStr }
         );
         if (reconError) {
           console.error(`Reconciliation error for ${restaurantId}:`, reconError.message);
@@ -146,17 +151,27 @@ serve(async (req) => {
 
         const restaurantName = restaurant?.name || "Unknown Restaurant";
 
-        // Build metrics_json from daily_pnl
-        const { data: pnl } = await supabase
+        // Build metrics_json from daily_pnl (aggregate the full week)
+        const { data: pnlRows } = await supabase
           .from("daily_pnl")
-          .select(
-            "net_revenue, food_cost, labor_cost, prime_cost, gross_profit, food_cost_percentage, labor_cost_percentage, prime_cost_percentage"
-          )
+          .select("net_revenue, food_cost, labor_cost, prime_cost, gross_profit")
           .eq("restaurant_id", restaurantId)
-          .eq("date", yesterday)
-          .maybeSingle();
+          .gte("date", weekStartStr)
+          .lte("date", weekEndStr);
 
-        const metricsJson = pnl || {};
+        const metricsJson: Record<string, number> = {};
+        if (pnlRows && pnlRows.length > 0) {
+          metricsJson.net_revenue = pnlRows.reduce((s: number, r: any) => s + (r.net_revenue || 0), 0);
+          metricsJson.food_cost = pnlRows.reduce((s: number, r: any) => s + (r.food_cost || 0), 0);
+          metricsJson.labor_cost = pnlRows.reduce((s: number, r: any) => s + (r.labor_cost || 0), 0);
+          metricsJson.prime_cost = pnlRows.reduce((s: number, r: any) => s + (r.prime_cost || 0), 0);
+          metricsJson.gross_profit = pnlRows.reduce((s: number, r: any) => s + (r.gross_profit || 0), 0);
+          if (metricsJson.net_revenue > 0) {
+            metricsJson.food_cost_pct = Math.round(metricsJson.food_cost / metricsJson.net_revenue * 1000) / 10;
+            metricsJson.labor_cost_pct = Math.round(metricsJson.labor_cost / metricsJson.net_revenue * 1000) / 10;
+            metricsJson.prime_cost_pct = Math.round(metricsJson.prime_cost / metricsJson.net_revenue * 1000) / 10;
+          }
+        }
         const variancesJson = variances || [];
 
         // Generate top 3 recommendations from variances
@@ -171,12 +186,12 @@ serve(async (req) => {
                 {
                   role: "system",
                   content:
-                    'You are a restaurant financial analyst. Summarize yesterday\'s performance in 3-4 sentences. ONLY reference the numbers provided below. Do not invent or estimate any figures. Write in a direct, professional tone. Lead with the most important change. Return your response as JSON: {"narrative": "your summary here"}',
+                    'You are a restaurant financial analyst. Summarize this week\'s performance in 3-4 sentences. ONLY reference the numbers provided below. Do not invent or estimate any figures. Write in a direct, professional tone. Lead with the most important change. Return your response as JSON: {"narrative": "your summary here"}',
                 },
                 {
                   role: "user",
                   content: `Restaurant: ${restaurantName}
-Date: ${yesterday}
+Week: ${weekStartStr} to ${weekEndStr}
 Metrics: ${JSON.stringify(metricsJson)}
 Variances: ${JSON.stringify(variancesJson)}
 Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
@@ -186,7 +201,7 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
               max_tokens: 300,
             },
             openRouterApiKey,
-            "generate-daily-brief",
+            "generate-weekly-brief",
             restaurantId
           );
 
@@ -198,11 +213,11 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
           // Continue without narrative -- the brief is still useful without it
         }
 
-        // Insert daily_brief row
-        const { error: insertError } = await supabase.from("daily_brief").upsert(
+        // Insert weekly_brief row
+        const { error: insertError } = await supabase.from("weekly_brief").upsert(
           {
             restaurant_id: restaurantId,
-            brief_date: yesterday,
+            brief_week_end: weekEndStr,
             metrics_json: metricsJson,
             comparisons_json: {},
             variances_json: variancesJson,
@@ -214,7 +229,7 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
             narrative: narrativeText || null,
             computed_at: new Date().toISOString(),
           },
-          { onConflict: "restaurant_id,brief_date" }
+          { onConflict: "restaurant_id,brief_week_end" }
         );
 
         if (insertError) {
@@ -227,13 +242,13 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
         // Trigger email delivery (fire-and-forget, don't block on failure)
         const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
         const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-        fetch(`${supabaseUrl}/functions/v1/send-daily-brief-email`, {
+        fetch(`${supabaseUrl}/functions/v1/send-weekly-brief-email`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${serviceRoleKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ restaurant_id: restaurantId, brief_date: yesterday }),
+          body: JSON.stringify({ restaurant_id: restaurantId, brief_week_end: weekEndStr }),
         }).catch((emailErr) => {
           console.error(`Email trigger failed for ${restaurantId}:`, emailErr);
         });
@@ -254,13 +269,14 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
     const errors = results.filter((r) => r.status === "error").length;
 
     console.log(
-      `Daily brief run complete: ${generated} generated, ${skipped} skipped, ${errors} errors`
+      `Weekly brief run complete: ${generated} generated, ${skipped} skipped, ${errors} errors`
     );
 
     return new Response(
       JSON.stringify({
         success: true,
-        date: yesterday,
+        week_start: weekStartStr,
+        week_end: weekEndStr,
         summary: { generated, skipped, errors },
         results,
       }),
@@ -271,7 +287,7 @@ Open issues: ${openCount ?? 0} open items (${criticalCount ?? 0} critical)`,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Fatal error in generate-daily-brief:", message);
+    console.error("Fatal error in generate-weekly-brief:", message);
     return new Response(JSON.stringify({ success: false, error: "Internal server error" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -310,7 +326,7 @@ function buildRecommendations(variances: VarianceItem[]): Recommendation[] {
   return flagged.map((v) => {
     const direction = v.direction === "up" ? "increased" : "decreased";
     const metric = formatMetricName(v.metric);
-    const pctChange = v.delta_pct_vs_avg != null ? ` (${v.delta_pct_vs_avg > 0 ? "+" : ""}${v.delta_pct_vs_avg}% vs 7-day avg)` : "";
+    const pctChange = v.delta_pct_vs_avg != null ? ` (${v.delta_pct_vs_avg > 0 ? "+" : ""}${v.delta_pct_vs_avg}% vs 4-week avg)` : "";
     return {
       title: `Review ${metric}`,
       body: `${metric} ${direction} to ${v.value}${v.metric.endsWith("_pct") ? "%" : ""}${pctChange}`,

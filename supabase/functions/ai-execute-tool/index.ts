@@ -132,7 +132,7 @@ function executeNavigate(args: any): any {
     'integrations': '/integrations',
     'team': '/team',
     'settings': '/settings',
-    'daily-brief': '/daily-brief',
+    'weekly-brief': '/weekly-brief',
     'ops-inbox': '/ops-inbox',
   };
 
@@ -2740,7 +2740,7 @@ async function executeGetExpenseHealth(
 
 /**
  * Execute get_proactive_insights tool
- * Returns top open inbox items + latest daily brief for proactive AI context
+ * Returns top open inbox items + latest weekly brief for proactive AI context
  */
 async function executeGetProactiveInsights(
   args: any,
@@ -2776,15 +2776,15 @@ async function executeGetProactiveInsights(
   let briefData = null;
   if (include_brief) {
     const { data: brief, error: briefError } = await supabase
-      .from('daily_brief')
-      .select('id, brief_date, metrics_json, comparisons_json, variances_json, inbox_summary_json, recommendations_json, narrative')
+      .from('weekly_brief')
+      .select('id, brief_week_end, metrics_json, comparisons_json, variances_json, inbox_summary_json, recommendations_json, narrative')
       .eq('restaurant_id', restaurantId)
-      .order('brief_date', { ascending: false })
+      .order('brief_week_end', { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (briefError) {
-      console.error('Failed to fetch daily brief:', briefError.message);
+      console.error('Failed to fetch weekly brief:', briefError.message);
     } else {
       briefData = brief;
     }
@@ -2799,7 +2799,7 @@ async function executeGetProactiveInsights(
         has_critical: inboxItems?.some((i: any) => i.priority <= 2) || false,
       },
       brief: briefData ? {
-        date: briefData.brief_date,
+        week_end: briefData.brief_week_end,
         narrative: briefData.narrative,
         metrics: briefData.metrics_json,
         variances: briefData.variances_json,
@@ -2808,7 +2808,7 @@ async function executeGetProactiveInsights(
     },
     evidence: [
       { table: 'ops_inbox_item', summary: `${totalOpenCount || 0} total open inbox items (showing top 5 by priority)` },
-      ...(briefData ? [{ table: 'daily_brief', summary: `Daily brief for ${briefData.brief_date}` }] : []),
+      ...(briefData ? [{ table: 'weekly_brief', summary: `Weekly brief for ${briefData.brief_week_end}` }] : []),
     ],
   };
 }
@@ -2829,6 +2829,7 @@ async function executeBatchCategorizeTransactions(
     .from('chart_of_accounts')
     .select('id, account_name, account_code')
     .eq('id', category_id)
+    .eq('restaurant_id', restaurantId)
     .single();
 
   if (catError || !category) {
@@ -2917,6 +2918,7 @@ async function executeBatchCategorizePosSales(
     .from('chart_of_accounts')
     .select('id, account_name, account_code')
     .eq('id', category_id)
+    .eq('restaurant_id', restaurantId)
     .single();
 
   if (catError || !category) {
@@ -3005,6 +3007,7 @@ async function executeCreateCategorizationRule(
     .from('chart_of_accounts')
     .select('id, account_name, account_code')
     .eq('id', category_id)
+    .eq('restaurant_id', restaurantId)
     .single();
 
   if (catError || !category) {

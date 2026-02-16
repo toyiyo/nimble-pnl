@@ -11,7 +11,7 @@ export interface NotificationPreferences {
   id: string;
   user_id: string;
   restaurant_id: string;
-  daily_brief_email: boolean;
+  weekly_brief_email: boolean;
   brief_send_time: string;
   inbox_digest_email: boolean;
 }
@@ -38,7 +38,7 @@ export function useNotificationPreferences(restaurantId: string | undefined) {
   });
 
   const upsert = useMutation({
-    mutationFn: async (prefs: { daily_brief_email?: boolean; brief_send_time?: string }) => {
+    mutationFn: async (prefs: { weekly_brief_email?: boolean; brief_send_time?: string }) => {
       if (!restaurantId || !user?.id) throw new Error('Missing context');
       const { error } = await notificationPrefsTable()
         .upsert({

@@ -1115,15 +1115,15 @@ const Index = () => {
                   </button>
                 )}
                 <button
-                  onClick={() => navigate('/daily-brief')}
+                  onClick={() => navigate('/weekly-brief')}
                   className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
                 >
                   <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center flex-shrink-0">
                     <Newspaper className="h-5 w-5 text-foreground" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[14px] font-medium text-foreground">Daily Brief</div>
-                    <div className="text-[13px] text-muted-foreground">Yesterday's performance summary</div>
+                    <div className="text-[14px] font-medium text-foreground">Weekly Brief</div>
+                    <div className="text-[13px] text-muted-foreground">This week's performance summary</div>
                   </div>
                 </button>
               </div>

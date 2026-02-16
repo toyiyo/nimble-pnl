@@ -5,7 +5,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 interface BriefRow {
   id: string;
   restaurant_id: string;
-  brief_date: string;
+  brief_week_end: string;
   email_sent_at: string | null;
   metrics_json: Record<string, number>;
   variances_json: Array<{
@@ -57,22 +57,22 @@ serve(async (req) => {
       throw new Error("RESEND_API_KEY is not configured");
     }
 
-    const { restaurant_id, brief_date } = await req.json();
-    if (!restaurant_id || !brief_date) {
-      return jsonResponse({ success: false, error: "restaurant_id and brief_date required" }, 400);
+    const { restaurant_id, brief_week_end } = await req.json();
+    if (!restaurant_id || !brief_week_end) {
+      return jsonResponse({ success: false, error: "restaurant_id and brief_week_end required" }, 400);
     }
 
     // Fetch the brief
     const { data: brief, error: briefError } = await supabase
-      .from("daily_brief")
+      .from("weekly_brief")
       .select("*")
       .eq("restaurant_id", restaurant_id)
-      .eq("brief_date", brief_date)
+      .eq("brief_week_end", brief_week_end)
       .maybeSingle();
 
     if (briefError) throw new Error(`Failed to fetch brief: ${briefError.message}`);
     if (!brief) {
-      return jsonResponse({ success: false, error: "No brief found for this date" }, 404);
+      return jsonResponse({ success: false, error: "No brief found for this week" }, 404);
     }
 
     const typedBrief = brief as BriefRow;
@@ -87,7 +87,7 @@ serve(async (req) => {
       .from("notification_preferences")
       .select("user_id")
       .eq("restaurant_id", restaurant_id)
-      .eq("daily_brief_email", true);
+      .eq("weekly_brief_email", true);
 
     if (prefError) throw new Error(`Failed to fetch prefs: ${prefError.message}`);
     if (!prefs || prefs.length === 0) {
@@ -135,8 +135,8 @@ serve(async (req) => {
           body: JSON.stringify({
             from: "EasyShiftHQ <briefs@easyshifthq.com>",
             to: [profile.email],
-            subject: `Daily Brief — ${restaurantName} — ${formatDate(typedBrief.brief_date)}`,
-            html: emailHtml.replace("{{VIEW_BRIEF_URL}}", `${appUrl}/daily-brief?date=${typedBrief.brief_date}`),
+            subject: `Weekly Brief — ${restaurantName} — ${formatWeekRange(typedBrief.brief_week_end)}`,
+            html: emailHtml.replace("{{VIEW_BRIEF_URL}}", `${appUrl}/weekly-brief?date=${typedBrief.brief_week_end}`),
           }),
         });
 
@@ -155,7 +155,7 @@ serve(async (req) => {
     // Update email_sent_at
     if (sentCount > 0) {
       const { error: updateError } = await supabase
-        .from("daily_brief")
+        .from("weekly_brief")
         .update({ email_sent_at: new Date().toISOString() })
         .eq("id", typedBrief.id);
       if (updateError) {
@@ -166,7 +166,7 @@ serve(async (req) => {
     return jsonResponse({ success: true, sentCount, totalRecipients: profiles.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Fatal error in send-daily-brief-email:", message);
+    console.error("Fatal error in send-weekly-brief-email:", message);
     return jsonResponse({ success: false, error: "Internal server error" }, 500);
   }
 });
@@ -179,6 +179,16 @@ function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split("-").map(Number);
   const d = new Date(year, month - 1, day);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatWeekRange(weekEndStr: string): string {
+  const [year, month, day] = weekEndStr.split("-").map(Number);
+  const weekEnd = new Date(year, month - 1, day);
+  const weekStart = new Date(weekEnd);
+  weekStart.setDate(weekEnd.getDate() - 6);
+  const startStr = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endStr = weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return `${startStr} – ${endStr}`;
 }
 
 function fmtCurrency(val: number | undefined): string {
@@ -280,9 +290,9 @@ function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="padding:24px 24px 16px;">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Daily Brief</div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Weekly Brief</div>
           <div style="font-size:17px;font-weight:600;color:#111827;margin-top:4px;">${restaurantName}</div>
-          <div style="font-size:13px;color:#6b7280;margin-top:2px;">${formatDate(brief.brief_date)}</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:2px;">${formatWeekRange(brief.brief_week_end)}</div>
         </td></tr>
         <!-- Metrics -->
         <tr><td style="padding:0 16px;">

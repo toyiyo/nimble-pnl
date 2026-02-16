@@ -81,7 +81,7 @@ const navigationGroups = [
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
       { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
-      { path: '/daily-brief', label: 'Daily Brief', icon: Newspaper },
+      { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
     ],
   },
   {

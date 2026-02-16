@@ -45,7 +45,7 @@ const mockPrefs = {
   id: 'pref-1',
   user_id: 'user-123',
   restaurant_id: 'rest-123',
-  daily_brief_email: true,
+  weekly_brief_email: true,
   brief_send_time: '06:00',
   inbox_digest_email: false,
 };
@@ -132,7 +132,7 @@ describe('useNotificationPreferences', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      result.current.updatePreferences({ daily_brief_email: false });
+      result.current.updatePreferences({ weekly_brief_email: false });
     });
 
     await waitFor(() => expect(result.current.isUpdating).toBe(false));
@@ -140,7 +140,7 @@ describe('useNotificationPreferences', () => {
       expect.objectContaining({
         user_id: 'user-123',
         restaurant_id: 'rest-123',
-        daily_brief_email: false,
+        weekly_brief_email: false,
       }),
       expect.anything(),
     );
@@ -158,7 +158,7 @@ describe('useNotificationPreferences', () => {
     let mutationError: Error | null = null;
     await act(async () => {
       result.current.updatePreferences(
-        { daily_brief_email: true },
+        { weekly_brief_email: true },
         {
           onError: (err: Error) => {
             mutationError = err;

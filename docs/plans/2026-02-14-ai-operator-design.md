@@ -141,7 +141,7 @@ Flow per restaurant (batched, max 10 per run):
 
 ### LLM Narrative Prompt
 
-```
+```text
 You are a restaurant financial analyst. Summarize yesterday's performance
 in 3-4 sentences. ONLY reference the numbers provided below. Do not
 invent or estimate any figures.

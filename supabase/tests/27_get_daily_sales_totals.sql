@@ -15,7 +15,7 @@ ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO auth.users (id, email) VALUES
   ('00000000-0000-0000-0000-000000000100'::uuid, 'daily-sales-test@example.com')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 INSERT INTO restaurants (id, name, address, phone) VALUES
   ('00000000-0000-0000-0000-000000000101'::uuid, 'Daily Sales Test Restaurant', '456 Test St', '555-5678'),
@@ -25,7 +25,7 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('00000000-0000-0000-0000-000000000100'::uuid, '00000000-0000-0000-0000-000000000101'::uuid, 'owner'),
   ('00000000-0000-0000-0000-000000000100'::uuid, '00000000-0000-0000-0000-000000000102'::uuid, 'owner')
-ON CONFLICT (user_id, restaurant_id) DO NOTHING;
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- Fixture sales for restaurant A (00..0101)
 -- 3 regular sale items on 2024-03-01

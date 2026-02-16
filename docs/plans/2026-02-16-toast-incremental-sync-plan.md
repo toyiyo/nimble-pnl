@@ -34,7 +34,7 @@ The test reuses the same setup pattern from `supabase/tests/30_toast_sync_timeou
 -- with last_sync_time, and that toast_payments index exists.
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(8);
 
 -- ============================================================
 -- Setup
@@ -326,7 +326,7 @@ Expected: All pgTAP tests pass (both files 30 and 31).
 git log --oneline -3
 
 # From the main repo directory:
-cd /Users/josedelgado/Documents/GitHub/nimble-pnl
+cd <repo-root>
 git checkout fix/toast-sync-timeout-clean
 git cherry-pick <test-commit-sha> <migration-commit-sha>
 git push origin fix/toast-sync-timeout-clean

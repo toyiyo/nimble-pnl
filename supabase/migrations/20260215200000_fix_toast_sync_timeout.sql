@@ -109,6 +109,7 @@ CREATE OR REPLACE FUNCTION auto_apply_pos_categorization_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_rule RECORD;
@@ -186,6 +187,7 @@ AS $$
 DECLARE
   v_synced_count INTEGER := 0;
   v_row_count INTEGER;
+  v_sync_start TIMESTAMPTZ := clock_timestamp();
 BEGIN
   -- Authorization check: skip when called from service role (auth.uid() is NULL)
   IF auth.uid() IS NOT NULL AND NOT EXISTS (
@@ -454,10 +456,11 @@ BEGIN
     RAISE LOG 'sync_toast_to_unified_sales: skipping batch categorization (service-role caller, auth.uid() is NULL)';
   END IF;
 
-  -- Batch-aggregate daily sales for all affected dates (single pass instead of per-row)
+  -- Batch-aggregate daily sales for dates touched in this sync (not all historical dates)
   PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
   FROM (SELECT DISTINCT sale_date FROM public.unified_sales
-        WHERE restaurant_id = p_restaurant_id AND pos_system = 'toast') d;
+        WHERE restaurant_id = p_restaurant_id AND pos_system = 'toast'
+          AND synced_at >= v_sync_start) d;
 
   RETURN v_synced_count;
 END;

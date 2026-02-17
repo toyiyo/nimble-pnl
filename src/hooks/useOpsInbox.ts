@@ -3,7 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Table not yet in generated types -- helper avoids repeating the cast
 function opsInboxTable() {
-  return supabase.from('ops_inbox_item' as never) as ReturnType<typeof supabase.from>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return supabase.from('ops_inbox_item' as any) as any;
 }
 
 export interface OpsInboxItem {

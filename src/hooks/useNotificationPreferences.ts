@@ -4,7 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 
 // Table not yet in generated types -- helper avoids repeating the cast
 function notificationPrefsTable() {
-  return supabase.from('notification_preferences' as never) as ReturnType<typeof supabase.from>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return supabase.from('notification_preferences' as any) as any;
 }
 
 export interface NotificationPreferences {

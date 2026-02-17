@@ -224,8 +224,9 @@ export async function callAIWithFallback<T>(
         continue;
       }
 
-      // Parse the JSON content
-      const result = JSON.parse(content);
+      // Strip markdown code fences if present (e.g. ```json ... ```)
+      const cleanedContent = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      const result = JSON.parse(cleanedContent);
       
       console.log(`✅ ${modelConfig.name} successfully returned result`);
       
@@ -305,8 +306,9 @@ export async function callAIWithFallbackStreaming<T>(
         continue;
       }
 
-      // Parse the JSON content
-      const result = JSON.parse(content);
+      // Strip markdown code fences if present (e.g. ```json ... ```)
+      const cleanedContent = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      const result = JSON.parse(cleanedContent);
       
       console.log(`✅ ${modelConfig.name} successfully returned result via streaming`);
       

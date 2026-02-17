@@ -1,217 +1,79 @@
 
 
-# Schedule Export for Kitchen & Manager Display
+## Fix `process_weekly_brief_queue()` -- Combined Approach
 
-## Overview
+Applying both my fix (correct iteration over `pgmq.read`) and Supabase's recommendation (`::json` casts for `pg_net`).
 
-We'll create a **print-optimized schedule export** that serves two primary use cases:
-1. **Kitchen Display** - A clean, at-a-glance weekly grid posted in back-of-house
-2. **Manager Quick Reference** - Portable format for floor managers during shifts
+### What changes
 
-Following Apple's principle of **"do one thing exceptionally well"** and Notion's **"clarity over features"**, we'll focus on a single, beautifully formatted print view rather than multiple export formats.
+A single database migration that replaces `process_weekly_brief_queue()` with corrected logic:
 
----
+1. **Replace `SELECT pgmq.read(...) INTO v_batch`** with `FOR v_msg IN SELECT * FROM pgmq.read('weekly_brief_jobs', 300, 5)` so we iterate over the returned record set properly.
 
-## Design Principles Applied
+2. **Access record columns directly** instead of JSON navigation:
+   - `v_msg.msg_id` instead of `(v_msg.value->>'msg_id')::bigint`
+   - `v_msg.read_ct` instead of `(v_msg.value->>'read_ct')::int`
+   - `v_msg.message->>'restaurant_id'` instead of `v_msg.value->'message'->>'restaurant_id'`
 
-| Principle | Application |
-|-----------|-------------|
-| **Simplicity** | Single "Print Schedule" button - no dropdown menus for format selection |
-| **Clarity** | Large, readable names and times - optimized for 10ft viewing distance in kitchen |
-| **Progressive Disclosure** | Basic info prominent, details (hours, cost) secondary |
-| **Actionable** | Each day clearly shows who works when - zero interpretation needed |
+3. **Cast `jsonb_build_object(...)::json`** on both `headers` and `body` arguments to `net.http_post` to avoid implicit cast issues with the installed `pg_net` version.
 
----
+4. **Add payload validation** before dispatching: verify `restaurant_id` and `week_end` are not null; if invalid, dead-letter the message with a descriptive error.
 
-## User Experience Flow
+### What stays the same
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Week Navigation                          [Print Schedule 🖨️]  │
-├─────────────────────────────────────────────────────────────────┤
-│  ... existing schedule grid ...                                 │
-└─────────────────────────────────────────────────────────────────┘
+- Vault-based service role key lookup with anon key fallback
+- Dead-letter logic after 3 attempts
+- Job log and ops inbox item writes
+- The hardcoded project URL and anon key
 
-        ↓ Click "Print Schedule"
-
-┌─────────────────────────────────────────────────────────────────┐
-│                    PRINT PREVIEW DIALOG                         │
-├─────────────────────────────────────────────────────────────────┤
-│  Preview:                                                       │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │ [Restaurant Name]                                          │  │
-│  │ Week of Jan 27 - Feb 2, 2026                              │  │
-│  │ ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐        │  │
-│  │ │     │ Mon │ Tue │ Wed │ Thu │ Fri │ Sat │ Sun │        │  │
-│  │ ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤        │  │
-│  │ │ John│ 6A  │ OFF │ 6A  │ 6A  │ OFF │ 5A  │ 5A  │        │  │
-│  │ │     │ 2P  │     │ 2P  │ 2P  │     │ 1P  │ 1P  │        │  │
-│  │ ├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┤        │  │
-│  │ │Maria│ OFF │ 4P  │ 4P  │ OFF │ 4P  │ 4P  │ OFF │        │  │
-│  │ │     │     │ CL  │ CL  │     │ CL  │ CL  │     │        │  │
-│  │ └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘        │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  Options:                                                        │
-│  ☑ Include position labels                                      │
-│  ☐ Include hours summary                                        │
-│                                                                  │
-│               [Cancel]              [Print]                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Technical Implementation
-
-### Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/components/scheduling/ScheduleExportDialog.tsx` | **Create** | Print preview dialog with options |
-| `src/utils/scheduleExport.ts` | **Create** | PDF generation logic for schedule |
-| `src/pages/Scheduling.tsx` | **Modify** | Add "Print Schedule" button |
-
----
-
-### Phase 1: Schedule Export Utility
-
-**File: `src/utils/scheduleExport.ts`**
-
-Create a dedicated schedule PDF generator optimized for kitchen display:
-
-- **Landscape orientation** - Better fit for weekly grid
-- **Large, bold names** - 14pt minimum for readability
-- **Compact time format** - "6A-2P" instead of "6:00 AM - 2:00 PM"
-- **Position as subtitle** - Smaller text under times
-- **Day columns** - Mon-Sun with dates
-- **"OFF" indicators** - Clear visual when employee not scheduled
-- **Footer** - Restaurant name, week dates, print timestamp
-
-**PDF Layout (Landscape A4/Letter):**
+### Technical detail -- the corrected function structure
 
 ```text
-┌────────────────────────────────────────────────────────────────────────────────┐
-│                         [RESTAURANT NAME]                                       │
-│                    Week of January 27 - February 2, 2026                        │
-├────────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┬───────┤
-│        │   Mon    │   Tue    │   Wed    │   Thu    │   Fri    │  Sat   │  Sun  │
-│        │  Jan 27  │  Jan 28  │  Jan 29  │  Jan 30  │  Jan 31  │  Feb 1 │ Feb 2 │
-├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┼───────┤
-│ John D │  6A-2P   │   OFF    │  6A-2P   │  6A-2P   │   OFF    │ 5A-1P  │ 5A-1P │
-│ Cook   │          │          │          │          │          │        │       │
-├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┼───────┤
-│ Maria S│   OFF    │  4P-CL   │  4P-CL   │   OFF    │  4P-CL   │ 4P-CL  │  OFF  │
-│ Server │          │          │          │          │          │        │       │
-├────────┼──────────┼──────────┼──────────┼──────────┼──────────┼────────┼───────┤
-│ Alex T │  11A-7P  │  11A-7P  │   OFF    │  11A-7P  │ 11A-7P   │  OFF   │  OFF  │
-│ Prep   │          │          │          │          │          │        │       │
-└────────┴──────────┴──────────┴──────────┴──────────┴──────────┴────────┴───────┘
-│ Generated Jan 26, 2026 at 3:45 PM                    Total: 142.5 hrs | 8 staff │
-└─────────────────────────────────────────────────────────────────────────────────┘
+DECLARE
+  v_msg RECORD;
+  v_supabase_url, v_anon_key, v_service_role_key, v_auth_key TEXT;
+  v_restaurant_id TEXT;
+  v_week_end TEXT;
+BEGIN
+  -- Auth key resolution (unchanged)
+
+  -- Iterate over pgmq records directly
+  FOR v_msg IN SELECT * FROM pgmq.read('weekly_brief_jobs', 300, 5)
+  LOOP
+    v_restaurant_id := v_msg.message->>'restaurant_id';
+    v_week_end := v_msg.message->>'week_end';
+
+    -- Validate payload
+    IF v_restaurant_id IS NULL OR v_week_end IS NULL THEN
+      -- dead-letter with 'invalid payload' error
+      CONTINUE;
+    END IF;
+
+    -- Dead-letter check: v_msg.read_ct >= 3
+    IF v_msg.read_ct >= 3 THEN
+      -- move to dead-letter queue, delete, log (unchanged logic)
+      CONTINUE;
+    END IF;
+
+    -- Dispatch worker with explicit ::json casts
+    PERFORM net.http_post(
+      url := v_supabase_url || '/functions/v1/generate-weekly-brief-worker',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || v_auth_key
+      )::json,
+      body := jsonb_build_object(
+        'restaurant_id', v_restaurant_id,
+        'week_end', v_week_end,
+        'msg_id', v_msg.msg_id,
+        'attempt', v_msg.read_ct
+      )::json
+    );
+  END LOOP;
+END;
 ```
 
----
+### Risk
 
-### Phase 2: Export Dialog Component
-
-**File: `src/components/scheduling/ScheduleExportDialog.tsx`**
-
-A simple, focused dialog with:
-
-1. **Visual preview** - Miniature representation of the output
-2. **Minimal options**:
-   - Include position labels (default: on)
-   - Include hours summary (default: off)
-3. **Two actions**: Cancel / Print
-
-**Key Features:**
-- Uses existing `Dialog` component from shadcn/ui
-- Generates PDF using jsPDF (already installed)
-- Landscape orientation for better fit
-- Respects current position filter (if applied)
-
----
-
-### Phase 3: Integrate into Scheduling Page
-
-**File: `src/pages/Scheduling.tsx`**
-
-Add a "Print Schedule" button next to existing actions:
-
-```tsx
-// In the header action buttons area (around line 624)
-<Button variant="outline" onClick={() => setExportDialogOpen(true)}>
-  <Printer className="h-4 w-4 mr-2" />
-  Print Schedule
-</Button>
-```
-
-Pass required data to dialog:
-- `shifts` - Current week's shifts
-- `employees` - Employee lookup
-- `weekStart` / `weekEnd` - Date range
-- `restaurantName` - For header
-- `positionFilter` - Apply current filter
-
----
-
-## PDF Generation Details
-
-### Time Formatting (Kitchen-Friendly)
-
-| Original | Kitchen Format |
-|----------|----------------|
-| 6:00 AM - 2:00 PM | 6A-2P |
-| 4:00 PM - 11:00 PM | 4P-11P |
-| 4:00 PM - 12:00 AM | 4P-CL |
-| 5:00 AM - 11:00 AM | 5A-11A |
-
-**"CL"** = Close (midnight or later) - common restaurant shorthand
-
-### Color Coding (Optional, if printing in color)
-
-| Status | Color |
-|--------|-------|
-| Scheduled shift | Black text |
-| OFF day | Gray text, lighter background |
-| Conflict | Yellow highlight |
-
-For kitchen displays, we'll default to high-contrast black/white for clarity.
-
----
-
-## Alternative: CSV Export (Manager Use)
-
-For managers who want to manipulate data in spreadsheets, we can add a secondary CSV export option:
-
-**Columns:**
-- Employee Name
-- Position
-- Date
-- Start Time
-- End Time
-- Hours
-- Status
-
-This uses the existing `exportToCSV` utility from the project.
-
----
-
-## Summary of Changes
-
-1. **Create** `src/utils/scheduleExport.ts` - PDF generation for schedule
-2. **Create** `src/components/scheduling/ScheduleExportDialog.tsx` - Print dialog
-3. **Modify** `src/pages/Scheduling.tsx` - Add Print button, state, and dialog
-
----
-
-## Benefits
-
-- **Zero cognitive load** - One button, one purpose
-- **Kitchen-optimized** - Large text, compact format, landscape
-- **Manager-friendly** - Hours summary, downloadable PDF
-- **Consistent** - Matches existing export patterns in the app
-- **Accessible** - High contrast, print-friendly
-- **Fast** - Client-side PDF generation, no server round-trip
+Low. This is a `CREATE OR REPLACE FUNCTION` that fixes two bugs without changing behavior. The cron job will pick it up on its next 60-second cycle.
 

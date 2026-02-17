@@ -4,16 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Bell, Mail, Users, CheckCircle } from 'lucide-react';
+import { Bell, Mail, Users, CheckCircle, Newspaper } from 'lucide-react';
 import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
+import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 
 interface NotificationSettingsProps {
   restaurantId: string;
 }
 
-export const NotificationSettings = ({ restaurantId }: NotificationSettingsProps) => {
+export function NotificationSettings({ restaurantId }: NotificationSettingsProps) {
   const { settings, loading } = useNotificationSettings(restaurantId);
   const updateSettings = useUpdateNotificationSettings();
+  const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } = useNotificationPreferences(restaurantId);
 
   const [localSettings, setLocalSettings] = useState({
     notify_time_off_request: true,
@@ -197,6 +199,39 @@ export const NotificationSettings = ({ restaurantId }: NotificationSettingsProps
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Newspaper className="h-5 w-5" />
+            Weekly Brief
+          </CardTitle>
+          <CardDescription>
+            Receive a weekly summary of your restaurant's performance via email
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="weekly-brief-email" className="text-base">
+                Weekly Brief Email
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Receive a Monday morning email with key metrics, variances, and action items
+              </p>
+            </div>
+            <Switch
+              id="weekly-brief-email"
+              checked={briefPrefs?.weekly_brief_email ?? true}
+              disabled={briefUpdating}
+              onCheckedChange={(checked) =>
+                updateBriefPrefs({ weekly_brief_email: checked })
+              }
+              className="data-[state=checked]:bg-foreground"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end gap-2">
         {hasChanges && (
           <Button
@@ -241,4 +276,4 @@ export const NotificationSettings = ({ restaurantId }: NotificationSettingsProps
       </Card>
     </div>
   );
-};
+}

@@ -132,6 +132,8 @@ function executeNavigate(args: any): any {
     'integrations': '/integrations',
     'team': '/team',
     'settings': '/settings',
+    'weekly-brief': '/weekly-brief',
+    'ops-inbox': '/ops-inbox',
   };
 
   const basePath = routes[section] || '/';
@@ -158,51 +160,12 @@ async function executeGetKpis(
   restaurantId: string,
   supabase: any
 ): Promise<any> {
-  const { period, start_date, end_date } = args;
-  
+  const { period = 'month', start_date, end_date } = args;
+
   // Import shared calculation module
   const { calculatePeriodMetrics } = await import('../_shared/periodMetrics.ts');
-  
-  // Calculate date range based on period
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
 
-  switch (period) {
-    case 'today':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      break;
-    case 'yesterday':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-      break;
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
-    case 'quarter': {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      break;
-    }
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    case 'custom':
-      if (!start_date || !end_date) {
-        throw new Error('Custom period requires start_date and end_date');
-      }
-      startDate = new Date(start_date);
-      endDate = new Date(end_date);
-      break;
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
 
   // ====== FETCH DATA FROM DATABASE ======
   
@@ -320,18 +283,24 @@ async function executeGetKpis(
       period,
       start_date: startDateStr,
       end_date: endDateStr,
-      
+
       // All metrics from shared calculation module
       revenue: metrics.revenue,
       costs: metrics.costs,
       profitability: metrics.profitability,
       liabilities: metrics.liabilities,
       benchmarks: metrics.benchmarks,
-      
+
       // Additional metrics not in shared module
       inventory_value: inventoryValue,
       bank_transaction_count: transactionCount || 0,
     },
+    evidence: [
+      { table: 'unified_sales', date: startDateStr, summary: `Sales data ${startDateStr} to ${endDateStr}` },
+      { table: 'inventory_transactions', date: startDateStr, summary: `Food cost (usage) ${startDateStr} to ${endDateStr}` },
+      { table: 'time_punches', date: startDateStr, summary: `Labor from time punches ${startDateStr} to ${endDateStr}` },
+      { table: 'products', summary: `Current inventory snapshot (${inventory?.length || 0} items)` },
+    ],
   };
 }
 
@@ -397,6 +366,9 @@ async function executeGetInventoryStatus(
         preferred_supplier: item.product_suppliers?.find((ps: any) => ps.is_preferred)?.supplier?.name || 'No supplier',
       })) : [],
     },
+    evidence: [
+      { table: 'products', summary: `Inventory snapshot: ${products?.length || 0} items, ${lowStockItems.length} low stock` },
+    ],
   };
 }
 
@@ -447,6 +419,10 @@ async function executeGetRecipeAnalytics(
         } : null,
         analysis_period_days: days_back
       },
+      evidence: [
+        { table: 'recipes', summary: `Recipe profitability for ${summary.totalRecipes} recipes (${days_back} days back)` },
+        { table: 'unified_sales', summary: `Sales data for recipe margin calculation (${summary.recipesWithSales} recipes with sales)` },
+      ],
     };
   } catch (error: any) {
     throw new Error(`Failed to calculate recipe analytics: ${error.message}`);
@@ -771,8 +747,12 @@ async function executeGetFinancialIntelligence(
         analysis_type,
         ...results,
       },
+      evidence: [
+        { table: 'bank_transactions', summary: `Bank transactions for ${analysis_type} analysis from ${start_date} to ${end_date}` },
+        { table: 'bank_account_balances', summary: `Current bank account balances for liquidity and cash flow metrics` },
+      ],
     };
-    
+
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`Failed to calculate financial intelligence: ${errorMessage}`);
@@ -873,6 +853,9 @@ async function executeGetBankTransactions(
         ai_confidence: t.ai_confidence,
       })) || [],
     },
+    evidence: [
+      { table: 'bank_transactions', summary: `${transactions?.length || 0} transactions from ${start_date} to ${end_date}` },
+    ],
   };
 }
 
@@ -949,6 +932,11 @@ async function executeGetFinancialStatement(
             net_income: netIncome,
             net_margin: revenue > 0 ? (netIncome / revenue) * 100 : 0,
           },
+          evidence: [
+            { table: 'unified_sales', summary: `Revenue data from ${start_date} to ${end_date} (${sales?.length || 0} sales)` },
+            { table: 'inventory_transactions', summary: `COGS from usage transactions ${start_date} to ${end_date}` },
+            { table: 'journal_entry_lines', summary: `Operating expenses from journal entries ${start_date} to ${end_date}` },
+          ],
         };
       }
       
@@ -1008,6 +996,10 @@ async function executeGetFinancialStatement(
             },
             total_liabilities_and_equity: totalLiabilities + totalEquity,
           },
+          evidence: [
+            { table: 'connected_banks', summary: `Cash balances from connected bank accounts as of ${asOfDate}` },
+            { table: 'products', summary: `Inventory valuation from ${inventory?.length || 0} products` },
+          ],
         };
       }
       
@@ -1041,6 +1033,9 @@ async function executeGetFinancialStatement(
             },
             net_change_in_cash: inflows - outflows,
           },
+          evidence: [
+            { table: 'bank_transactions', summary: `Cash flow from ${transactions?.length || 0} transactions ${start_date} to ${end_date}` },
+          ],
         };
       }
       
@@ -1097,6 +1092,10 @@ async function executeGetFinancialStatement(
             in_balance: Math.abs(totalDebits - totalCredits) < 0.01,
             difference: totalDebits - totalCredits,
           },
+          evidence: [
+            { table: 'chart_of_accounts', summary: `Trial balance from ${accounts?.length || 0} active accounts as of ${end_date}` },
+            { table: 'account_balances', summary: `Account balances for debit/credit classification` },
+          ],
         };
       }
       
@@ -1265,6 +1264,9 @@ async function executeGetSalesSummary(
       top_items: itemsBreakdown,
       comparison,
     },
+    evidence: [
+      { table: 'unified_sales', summary: `${currentCount} sales from ${startDateStr} to ${endDateStr}` },
+    ],
   };
 }
 
@@ -1367,6 +1369,9 @@ async function executeGetInventoryTransactions(
       transactions: formattedTransactions,
       has_more: transactions.length >= limit,
     },
+    evidence: [
+      { table: 'inventory_transactions', summary: `${transactions.length} inventory transactions from ${startDateStr} to ${endDateStr} (type: ${transaction_type})` },
+    ],
   };
 }
 
@@ -1563,6 +1568,10 @@ Provide insights in the following format. Be specific with numbers and actionabl
             model_used: model.name,
             data_points_analyzed: Object.keys(dataContext).length,
           },
+          evidence: [
+            { table: 'unified_sales', summary: `Monthly sales data for ${focus_area} analysis` },
+            { table: 'products', summary: `Inventory and recipe data for insight generation` },
+          ],
         };
       }
 
@@ -1785,6 +1794,45 @@ async function executeGenerateReport(
         );
     }
 
+    // Build evidence based on report type
+    const reportEvidence: { table: string; summary: string }[] = [];
+    switch (type) {
+      case 'monthly_pnl':
+        reportEvidence.push(
+          { table: 'unified_sales', summary: `Revenue data for P&L report ${start_date} to ${end_date}` },
+          { table: 'inventory_transactions', summary: `COGS from usage transactions ${start_date} to ${end_date}` },
+          { table: 'bank_transactions', summary: `Expense transactions ${start_date} to ${end_date}` },
+        );
+        break;
+      case 'inventory_variance':
+        reportEvidence.push(
+          { table: 'products', summary: `Inventory variance for all products vs par levels` },
+        );
+        break;
+      case 'recipe_profitability':
+        reportEvidence.push(
+          { table: 'recipes', summary: `Recipe profitability analysis` },
+          { table: 'unified_sales', summary: `Sales data for recipe margin calculation` },
+        );
+        break;
+      case 'sales_by_category':
+        reportEvidence.push(
+          { table: 'unified_sales', summary: `Sales by category ${start_date} to ${end_date}` },
+        );
+        break;
+      case 'cash_flow':
+        reportEvidence.push(
+          { table: 'bank_transactions', summary: `Cash flow transactions ${start_date} to ${end_date}` },
+        );
+        break;
+      case 'balance_sheet':
+        reportEvidence.push(
+          { table: 'products', summary: `Inventory valuation for balance sheet` },
+          { table: 'connected_banks', summary: `Cash balances from connected bank accounts` },
+        );
+        break;
+    }
+
     return {
       ok: true,
       data: {
@@ -1793,6 +1841,7 @@ async function executeGenerateReport(
         generated_at: new Date().toISOString(),
         ...reportData,
       },
+      evidence: reportEvidence,
     };
 
   } catch (error: unknown) {
@@ -1869,6 +1918,10 @@ async function executeGetLaborCosts(
       daily_costs: include_daily_breakdown ? dailyCosts : undefined,
       employee_breakdown: employeeBreakdown,
     },
+    evidence: [
+      { table: 'time_punches', summary: `${timePunches.length} time punches from ${startDateStr} to ${endDateStr}` },
+      { table: 'employees', summary: `${employees.length} employees for labor cost calculation` },
+    ],
   };
 }
 
@@ -1968,6 +2021,9 @@ async function executeGetScheduleOverview(
       shifts_by_date: shiftsByDate,
       projected_labor_costs: projectedCosts,
     },
+    evidence: [
+      { table: 'shifts', summary: `${shifts.length} scheduled shifts from ${startDateStr} to ${endDateStr}` },
+    ],
   };
 }
 
@@ -2079,6 +2135,10 @@ async function executeGetPayrollSummary(
       employee_count: activeEmployees.length,
       employee_details: employeeDetails,
     },
+    evidence: [
+      { table: 'time_punches', summary: `${punches.length} time punches from ${startDateStr} to ${endDateStr}` },
+      { table: 'employees', summary: `${activeEmployees.length} active employees out of ${employees.length} total` },
+    ],
   };
 }
 
@@ -2161,6 +2221,9 @@ async function executeGetTipSummary(
         .sort((a, b) => b.total - a.total)
         .slice(0, 10),
     },
+    evidence: [
+      { table: 'tip_splits', summary: `${allSplits.length} tip splits from ${startDateStr} to ${endDateStr}` },
+    ],
   };
 }
 
@@ -2249,6 +2312,9 @@ async function executeGetPendingOutflows(
       category_breakdown: categoryBreakdown,
       stale_items: staleItems,
     },
+    evidence: [
+      { table: 'pending_outflows', summary: `${allOutflows.length} outflows (${activePending.length} active pending, ${staleItems.length} stale)` },
+    ],
   };
 }
 
@@ -2350,6 +2416,9 @@ async function executeGetOperatingCosts(
       total_monthly_costs: fixedTotal + semiVariableTotal + variableTotal,
       break_even_analysis: breakEvenAnalysis,
     },
+    evidence: [
+      { table: 'restaurant_operating_costs', summary: `${(costs || []).length} active operating cost items` },
+    ],
   };
 }
 
@@ -2456,6 +2525,9 @@ async function executeGetMonthlyTrends(
           : 0,
       },
     },
+    evidence: [
+      { table: 'daily_pnl', summary: `Monthly trends for ${months.length} months from ${startDateStr} to ${endDateStr}` },
+    ],
   };
 }
 
@@ -2621,6 +2693,680 @@ async function executeGetExpenseHealth(
       revenue: revenue,
       alerts: alerts,
     },
+    evidence: [
+      { table: 'bank_transactions', summary: `${txns.length} transactions from ${startDateStr} to ${endDateStr} for expense health analysis` },
+    ],
+  };
+}
+
+/**
+ * Execute get_daily_sales_totals tool
+ * Uses the get_daily_sales_totals RPC to return daily revenue and transaction counts
+ */
+async function executeGetDailySalesTotals(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { period, start_date, end_date } = args;
+  const { startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  const { data, error } = await supabase.rpc('get_daily_sales_totals', {
+    p_restaurant_id: restaurantId,
+    p_date_from: startDateStr,
+    p_date_to: endDateStr,
+  });
+
+  if (error) throw new Error(`Failed to fetch daily sales: ${error.message}`);
+
+  const days = data || [];
+  const totalRevenue = days.reduce((sum: number, d: any) => sum + Number(d.total_revenue || 0), 0);
+  const totalTransactions = days.reduce((sum: number, d: any) => sum + Number(d.transaction_count || 0), 0);
+  const avgDailyRevenue = days.length > 0 ? totalRevenue / days.length : 0;
+
+  // Find best and worst days
+  let bestDay = null;
+  let worstDay = null;
+  for (const d of days) {
+    const rev = Number(d.total_revenue || 0);
+    if (!bestDay || rev > Number(bestDay.total_revenue)) bestDay = d;
+    if (!worstDay || rev < Number(worstDay.total_revenue)) worstDay = d;
+  }
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      days_count: days.length,
+      daily_totals: days.map((d: any) => ({
+        date: d.sale_date,
+        revenue: Number(d.total_revenue || 0),
+        transactions: Number(d.transaction_count || 0),
+      })),
+      summary: {
+        total_revenue: totalRevenue,
+        total_transactions: totalTransactions,
+        average_daily_revenue: avgDailyRevenue,
+        best_day: bestDay ? { date: bestDay.sale_date, revenue: Number(bestDay.total_revenue) } : null,
+        worst_day: worstDay ? { date: worstDay.sale_date, revenue: Number(worstDay.total_revenue) } : null,
+      },
+    },
+    evidence: [
+      { table: 'unified_sales', summary: `Daily sales totals for ${days.length} days from ${startDateStr} to ${endDateStr}` },
+    ],
+  };
+}
+
+/**
+ * Execute get_break_even_progress tool
+ * Computes daily break-even analysis with history and month-to-date progress
+ */
+async function executeGetBreakEvenProgress(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { history_days = 14, include_monthly_progress = true } = args;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const historyStart = new Date(today);
+  historyStart.setDate(today.getDate() - (history_days - 1));
+
+  const startDateStr = historyStart.toISOString().split('T')[0];
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Fetch operating costs
+  const { data: costs, error: costsError } = await supabase
+    .from('restaurant_operating_costs')
+    .select('name, category, cost_type, monthly_value, percentage_value, entry_type, is_active')
+    .eq('restaurant_id', restaurantId)
+    .eq('is_active', true);
+
+  if (costsError) throw new Error(`Failed to fetch operating costs: ${costsError.message}`);
+
+  // Fetch daily sales via RPC
+  const { data: salesData, error: salesError } = await supabase.rpc('get_daily_sales_totals', {
+    p_restaurant_id: restaurantId,
+    p_date_from: startDateStr,
+    p_date_to: todayStr,
+  });
+
+  if (salesError) throw new Error(`Failed to fetch daily sales: ${salesError.message}`);
+
+  // Build sales lookup by date
+  const salesByDate: Record<string, number> = {};
+  for (const row of salesData || []) {
+    salesByDate[row.sale_date] = Number(row.total_revenue || 0);
+  }
+
+  // Calculate average daily sales for percentage-based costs
+  const allSales = Object.values(salesByDate) as number[];
+  const avgDailySales = allSales.length > 0
+    ? allSales.reduce((sum, v) => sum + v, 0) / allSales.length
+    : 0;
+
+  // Calculate daily break-even from operating costs
+  let dailyBreakEven = 0;
+  const costBreakdown: { fixed: number; semi_variable: number; variable: number } = {
+    fixed: 0, semi_variable: 0, variable: 0,
+  };
+
+  for (const cost of costs || []) {
+    let daily: number;
+    if (cost.entry_type === 'percentage') {
+      daily = avgDailySales * (cost.percentage_value || 0);
+    } else {
+      daily = (cost.monthly_value || 0) / 100 / 30; // cents to dollars, monthly to daily
+    }
+    dailyBreakEven += daily;
+
+    if (cost.cost_type === 'fixed') costBreakdown.fixed += daily;
+    else if (cost.cost_type === 'semi_variable') costBreakdown.semi_variable += daily;
+    else if (cost.cost_type === 'variable') costBreakdown.variable += daily;
+  }
+
+  // Build daily history
+  const tolerance = 0.05;
+  const history: any[] = [];
+  let current = new Date(historyStart);
+  while (current <= today) {
+    const dateStr = current.toISOString().split('T')[0];
+    const sales = salesByDate[dateStr] || 0;
+    const delta = sales - dailyBreakEven;
+    const threshold = dailyBreakEven * tolerance;
+    let status: string;
+    if (delta > threshold) status = 'above';
+    else if (delta < -threshold) status = 'below';
+    else status = 'at';
+
+    history.push({ date: dateStr, sales, break_even: dailyBreakEven, delta, status });
+    current = new Date(current);
+    current.setDate(current.getDate() + 1);
+  }
+
+  const daysAbove = history.filter(h => h.status === 'above').length;
+  const daysBelow = history.filter(h => h.status === 'below').length;
+  const daysAt = history.filter(h => h.status === 'at').length;
+
+  // Trend: compare first half vs second half average delta
+  const mid = Math.floor(history.length / 2);
+  const firstHalfAvg = mid > 0
+    ? history.slice(0, mid).reduce((s, h) => s + h.delta, 0) / mid
+    : 0;
+  const secondHalfAvg = history.length - mid > 0
+    ? history.slice(mid).reduce((s, h) => s + h.delta, 0) / (history.length - mid)
+    : 0;
+  const trend = secondHalfAvg > firstHalfAvg ? 'improving' : secondHalfAvg < firstHalfAvg ? 'declining' : 'stable';
+
+  // Monthly progress
+  let monthlyProgress = null;
+  if (include_monthly_progress) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const daysInMonth = monthEnd.getDate();
+    const dayOfMonth = now.getDate();
+    const monthStartStr = monthStart.toISOString().split('T')[0];
+
+    // Fetch month-to-date sales
+    const { data: mtdSales, error: mtdError } = await supabase.rpc('get_daily_sales_totals', {
+      p_restaurant_id: restaurantId,
+      p_date_from: monthStartStr,
+      p_date_to: todayStr,
+    });
+
+    if (!mtdError) {
+      const mtdRevenue = (mtdSales || []).reduce((sum: number, d: any) => sum + Number(d.total_revenue || 0), 0);
+      const monthlyBreakEven = dailyBreakEven * daysInMonth;
+      const percentCovered = monthlyBreakEven > 0 ? (mtdRevenue / monthlyBreakEven) * 100 : 0;
+      const daysRemaining = daysInMonth - dayOfMonth;
+      const projectedMonthEnd = dayOfMonth > 0 ? (mtdRevenue / dayOfMonth) * daysInMonth : 0;
+      const projectedAboveBreakEven = projectedMonthEnd >= monthlyBreakEven;
+
+      monthlyProgress = {
+        monthly_break_even_target: monthlyBreakEven,
+        month_to_date_revenue: mtdRevenue,
+        percent_covered: Math.round(percentCovered * 10) / 10,
+        days_elapsed: dayOfMonth,
+        days_remaining: daysRemaining,
+        projected_month_end_revenue: Math.round(projectedMonthEnd),
+        projected_above_break_even: projectedAboveBreakEven,
+        margin_of_safety: monthlyBreakEven > 0
+          ? Math.round(((projectedMonthEnd - monthlyBreakEven) / monthlyBreakEven) * 1000) / 10
+          : 0,
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      daily_break_even: Math.round(dailyBreakEven * 100) / 100,
+      cost_breakdown: {
+        fixed_daily: Math.round(costBreakdown.fixed * 100) / 100,
+        semi_variable_daily: Math.round(costBreakdown.semi_variable * 100) / 100,
+        variable_daily: Math.round(costBreakdown.variable * 100) / 100,
+      },
+      today: {
+        sales: salesByDate[todayStr] || 0,
+        delta: (salesByDate[todayStr] || 0) - dailyBreakEven,
+        status: history.length > 0 ? history[history.length - 1].status : 'unknown',
+      },
+      history,
+      summary: {
+        days_above: daysAbove,
+        days_below: daysBelow,
+        days_at: daysAt,
+        trend,
+      },
+      monthly_progress: monthlyProgress,
+    },
+    evidence: [
+      { table: 'restaurant_operating_costs', summary: `${(costs || []).length} active cost items` },
+      { table: 'unified_sales', summary: `Daily sales for ${history.length} days from ${startDateStr} to ${todayStr}` },
+    ],
+  };
+}
+
+/**
+ * Execute get_proactive_insights tool
+ * Returns top open inbox items + latest weekly brief for proactive AI context
+ */
+async function executeGetProactiveInsights(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { include_brief = true } = args;
+
+  // Fetch total count of open inbox items
+  const { count: totalOpenCount, error: countError } = await supabase
+    .from('ops_inbox_item')
+    .select('*', { count: 'exact', head: true })
+    .eq('restaurant_id', restaurantId)
+    .eq('status', 'open');
+
+  if (countError) {
+    throw new Error(`Failed to count inbox items: ${countError.message}`);
+  }
+
+  // Fetch top 5 open ops inbox items by priority
+  const { data: inboxItems, error: inboxError } = await supabase
+    .from('ops_inbox_item')
+    .select('id, title, description, kind, priority, status, due_at, meta, created_at')
+    .eq('restaurant_id', restaurantId)
+    .eq('status', 'open')
+    .order('priority', { ascending: true })
+    .limit(5);
+
+  if (inboxError) {
+    throw new Error(`Failed to fetch inbox items: ${inboxError.message}`);
+  }
+
+  let briefData = null;
+  if (include_brief) {
+    const { data: brief, error: briefError } = await supabase
+      .from('weekly_brief')
+      .select('id, brief_week_end, metrics_json, comparisons_json, variances_json, inbox_summary_json, recommendations_json, narrative')
+      .eq('restaurant_id', restaurantId)
+      .order('brief_week_end', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (briefError) {
+      console.error('Failed to fetch weekly brief:', briefError.message);
+    } else {
+      briefData = brief;
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      inbox: {
+        items: inboxItems || [],
+        total_open: totalOpenCount || 0,
+        has_critical: inboxItems?.some((i: any) => i.priority <= 2) || false,
+      },
+      brief: briefData ? {
+        week_end: briefData.brief_week_end,
+        narrative: briefData.narrative,
+        metrics: briefData.metrics_json,
+        variances: briefData.variances_json,
+        recommendations: briefData.recommendations_json,
+      } : null,
+    },
+    evidence: [
+      { table: 'ops_inbox_item', summary: `${totalOpenCount || 0} total open inbox items (showing top 5 by priority)` },
+      ...(briefData ? [{ table: 'weekly_brief', summary: `Weekly brief for ${briefData.brief_week_end}` }] : []),
+    ],
+  };
+}
+
+/**
+ * Execute batch_categorize_transactions tool
+ * Preview-first pattern: preview=true shows changes, confirmed=true executes
+ */
+async function executeBatchCategorizeTransactions(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { transaction_ids, category_id, preview = false, confirmed = false } = args;
+
+  // Fetch the category info
+  const { data: category, error: catError } = await supabase
+    .from('chart_of_accounts')
+    .select('id, account_name, account_code')
+    .eq('id', category_id)
+    .eq('restaurant_id', restaurantId)
+    .single();
+
+  if (catError || !category) {
+    throw new Error(`Invalid category_id: ${category_id}`);
+  }
+
+  // Fetch the transactions
+  const { data: transactions, error: txnError } = await supabase
+    .from('bank_transactions')
+    .select('id, description, amount, transaction_date, merchant_name')
+    .eq('restaurant_id', restaurantId)
+    .in('id', transaction_ids);
+
+  if (txnError) {
+    throw new Error(`Failed to fetch transactions: ${txnError.message}`);
+  }
+
+  if (!transactions || transactions.length === 0) {
+    return { ok: false, error: { code: 'NO_TRANSACTIONS', message: 'No matching transactions found' } };
+  }
+
+  if (preview) {
+    return {
+      ok: true,
+      data: {
+        action: 'batch_categorize_transactions',
+        preview: true,
+        category: { id: category.id, name: category.account_name, code: category.account_code },
+        transactions: transactions.map((t: any) => ({
+          id: t.id,
+          description: t.description || t.merchant_name,
+          amount: t.amount,
+          date: t.transaction_date,
+        })),
+        count: transactions.length,
+        message: `Will categorize ${transactions.length} transaction(s) as "${category.account_name}". Please confirm to proceed.`,
+      },
+      evidence: [
+        { table: 'bank_transactions', summary: `${transactions.length} transactions to categorize` },
+        { table: 'chart_of_accounts', id: category.id, summary: `Category: ${category.account_name} (${category.account_code})` },
+      ],
+    };
+  }
+
+  if (confirmed) {
+    const { error: updateError } = await supabase
+      .from('bank_transactions')
+      .update({ category_id: category.id, is_categorized: true })
+      .eq('restaurant_id', restaurantId)
+      .in('id', transaction_ids);
+
+    if (updateError) {
+      throw new Error(`Failed to categorize transactions: ${updateError.message}`);
+    }
+
+    return {
+      ok: true,
+      data: {
+        action: 'batch_categorize_transactions',
+        confirmed: true,
+        count: transactions.length,
+        category: { id: category.id, name: category.account_name },
+        message: `Successfully categorized ${transactions.length} transaction(s) as "${category.account_name}".`,
+      },
+      evidence: [
+        { table: 'bank_transactions', summary: `${transactions.length} transactions categorized as ${category.account_name}` },
+      ],
+    };
+  }
+
+  return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
+}
+
+/**
+ * Execute batch_categorize_pos_sales tool
+ * Preview-first pattern for POS sales categorization
+ */
+async function executeBatchCategorizePosSales(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { sale_ids, category_id, preview = false, confirmed = false } = args;
+
+  const { data: category, error: catError } = await supabase
+    .from('chart_of_accounts')
+    .select('id, account_name, account_code')
+    .eq('id', category_id)
+    .eq('restaurant_id', restaurantId)
+    .single();
+
+  if (catError || !category) {
+    throw new Error(`Invalid category_id: ${category_id}`);
+  }
+
+  const { data: sales, error: salesError } = await supabase
+    .from('unified_sales')
+    .select('id, item_name, total_price, sale_date, source')
+    .eq('restaurant_id', restaurantId)
+    .in('id', sale_ids);
+
+  if (salesError) {
+    throw new Error(`Failed to fetch sales: ${salesError.message}`);
+  }
+
+  if (!sales || sales.length === 0) {
+    return { ok: false, error: { code: 'NO_SALES', message: 'No matching sales found' } };
+  }
+
+  if (preview) {
+    return {
+      ok: true,
+      data: {
+        action: 'batch_categorize_pos_sales',
+        preview: true,
+        category: { id: category.id, name: category.account_name, code: category.account_code },
+        sales: sales.map((s: any) => ({
+          id: s.id,
+          item_name: s.item_name,
+          amount: s.total_price,
+          date: s.sale_date,
+          source: s.source,
+        })),
+        count: sales.length,
+        message: `Will categorize ${sales.length} POS sale(s) as "${category.account_name}". Please confirm to proceed.`,
+      },
+      evidence: [
+        { table: 'unified_sales', summary: `${sales.length} POS sales to categorize` },
+        { table: 'chart_of_accounts', id: category.id, summary: `Category: ${category.account_name} (${category.account_code})` },
+      ],
+    };
+  }
+
+  if (confirmed) {
+    const { error: updateError } = await supabase
+      .from('unified_sales')
+      .update({ category_id: category.id, is_categorized: true })
+      .eq('restaurant_id', restaurantId)
+      .in('id', sale_ids);
+
+    if (updateError) {
+      throw new Error(`Failed to categorize POS sales: ${updateError.message}`);
+    }
+
+    return {
+      ok: true,
+      data: {
+        action: 'batch_categorize_pos_sales',
+        confirmed: true,
+        count: sales.length,
+        category: { id: category.id, name: category.account_name },
+        message: `Successfully categorized ${sales.length} POS sale(s) as "${category.account_name}".`,
+      },
+      evidence: [
+        { table: 'unified_sales', summary: `${sales.length} POS sales categorized as ${category.account_name}` },
+      ],
+    };
+  }
+
+  return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
+}
+
+/**
+ * Execute create_categorization_rule tool
+ * Preview-first: shows rule details + historical match count, then creates
+ */
+async function executeCreateCategorizationRule(
+  args: any,
+  restaurantId: string,
+  supabase: any
+): Promise<any> {
+  const { rule_name, pattern_type, pattern_value, category_id, source = 'both', preview = false, confirmed = false } = args;
+
+  const { data: category, error: catError } = await supabase
+    .from('chart_of_accounts')
+    .select('id, account_name, account_code')
+    .eq('id', category_id)
+    .eq('restaurant_id', restaurantId)
+    .single();
+
+  if (catError || !category) {
+    throw new Error(`Invalid category_id: ${category_id}`);
+  }
+
+  // Count historical matches
+  let bankMatchCount = 0;
+  let posMatchCount = 0;
+
+  if (source === 'bank' || source === 'both') {
+    let bankQuery = supabase
+      .from('bank_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .is('category_id', null);
+
+    if (pattern_type === 'exact') bankQuery = bankQuery.eq('description', pattern_value);
+    else if (pattern_type === 'contains') bankQuery = bankQuery.ilike('description', `%${pattern_value}%`);
+    else if (pattern_type === 'starts_with') bankQuery = bankQuery.ilike('description', `${pattern_value}%`);
+    else if (pattern_type === 'ends_with') bankQuery = bankQuery.ilike('description', `%${pattern_value}`);
+    else throw new Error(`Unsupported pattern_type: ${pattern_type}. Use exact, contains, starts_with, or ends_with.`);
+
+    const { count } = await bankQuery;
+    bankMatchCount = count || 0;
+  }
+
+  if (source === 'pos' || source === 'both') {
+    let posQuery = supabase
+      .from('unified_sales')
+      .select('id', { count: 'exact', head: true })
+      .eq('restaurant_id', restaurantId)
+      .eq('is_categorized', false);
+
+    if (pattern_type === 'exact') posQuery = posQuery.eq('item_name', pattern_value);
+    else if (pattern_type === 'contains') posQuery = posQuery.ilike('item_name', `%${pattern_value}%`);
+    else if (pattern_type === 'starts_with') posQuery = posQuery.ilike('item_name', `${pattern_value}%`);
+    else if (pattern_type === 'ends_with') posQuery = posQuery.ilike('item_name', `%${pattern_value}`);
+    else throw new Error(`Unsupported pattern_type: ${pattern_type}. Use exact, contains, starts_with, or ends_with.`);
+
+    const { count } = await posQuery;
+    posMatchCount = count || 0;
+  }
+
+  if (preview) {
+    return {
+      ok: true,
+      data: {
+        action: 'create_categorization_rule',
+        preview: true,
+        rule: { name: rule_name, pattern_type, pattern_value, source },
+        category: { id: category.id, name: category.account_name, code: category.account_code },
+        historical_matches: {
+          bank: bankMatchCount,
+          pos: posMatchCount,
+          total: bankMatchCount + posMatchCount,
+        },
+        message: `Rule "${rule_name}" would match ${bankMatchCount + posMatchCount} existing uncategorized item(s) (${bankMatchCount} bank, ${posMatchCount} POS). Please confirm to create.`,
+      },
+      evidence: [
+        { table: 'bank_transactions', summary: `${bankMatchCount} uncategorized bank transactions match pattern` },
+        { table: 'unified_sales', summary: `${posMatchCount} uncategorized POS sales match pattern` },
+      ],
+    };
+  }
+
+  if (confirmed) {
+    const appliesTo = source === 'bank' ? 'bank_transactions' : source === 'pos' ? 'pos_sales' : 'both';
+    const { data: rule, error: ruleError } = await supabase
+      .from('categorization_rules')
+      .insert({
+        restaurant_id: restaurantId,
+        rule_name,
+        description_pattern: pattern_value,
+        description_match_type: pattern_type,
+        category_id: category.id,
+        applies_to: appliesTo,
+        is_active: true,
+      })
+      .select('id, rule_name')
+      .single();
+
+    if (ruleError) {
+      throw new Error(`Failed to create rule: ${ruleError.message}`);
+    }
+
+    return {
+      ok: true,
+      data: {
+        action: 'create_categorization_rule',
+        confirmed: true,
+        rule: { id: rule.id, name: rule.rule_name, pattern_type, pattern_value, source },
+        category: { id: category.id, name: category.account_name },
+        historical_matches: bankMatchCount + posMatchCount,
+        message: `Created rule "${rule.name}". It will auto-categorize matching items as "${category.account_name}".`,
+      },
+      evidence: [
+        { table: 'categorization_rules', id: rule.id, summary: `New rule: ${rule.name} → ${category.account_name}` },
+      ],
+    };
+  }
+
+  return { ok: false, error: { code: 'INVALID_REQUEST', message: 'Must specify preview:true or confirmed:true' } };
+}
+
+/**
+ * Execute resolve_inbox_item tool
+ * Marks an ops inbox item as done or dismissed (low risk, no preview needed)
+ */
+async function executeResolveInboxItem(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  userId: string
+): Promise<any> {
+  const { item_id, resolution } = args;
+
+  const { data: item, error: fetchError } = await supabase
+    .from('ops_inbox_item')
+    .select('id, title, status, kind, priority')
+    .eq('id', item_id)
+    .eq('restaurant_id', restaurantId)
+    .single();
+
+  if (fetchError || !item) {
+    throw new Error(`Inbox item not found: ${item_id}`);
+  }
+
+  if (item.status === 'done' || item.status === 'dismissed') {
+    return {
+      ok: true,
+      data: {
+        action: 'resolve_inbox_item',
+        already_resolved: true,
+        item: { id: item.id, title: item.title, status: item.status },
+        message: `Item "${item.title}" is already ${item.status}.`,
+      },
+      evidence: [
+        { table: 'ops_inbox_item', id: item.id, summary: `Item already ${item.status}` },
+      ],
+    };
+  }
+
+  const { error: updateError } = await supabase
+    .from('ops_inbox_item')
+    .update({
+      status: resolution,
+      resolved_at: new Date().toISOString(),
+      resolved_by: userId,
+    })
+    .eq('id', item_id)
+    .eq('restaurant_id', restaurantId);
+
+  if (updateError) {
+    throw new Error(`Failed to resolve inbox item: ${updateError.message}`);
+  }
+
+  return {
+    ok: true,
+    data: {
+      action: 'resolve_inbox_item',
+      item: { id: item.id, title: item.title, previous_status: item.status, new_status: resolution },
+      message: `Marked "${item.title}" as ${resolution}.`,
+    },
+    evidence: [
+      { table: 'ops_inbox_item', id: item.id, summary: `Item ${resolution}: ${item.title}` },
+    ],
   };
 }
 
@@ -2731,6 +3477,27 @@ serve(async (req) => {
         break;
       case 'get_expense_health':
         result = await executeGetExpenseHealth(args, restaurant_id, supabase);
+        break;
+      case 'get_daily_sales_totals':
+        result = await executeGetDailySalesTotals(args, restaurant_id, supabase);
+        break;
+      case 'get_break_even_progress':
+        result = await executeGetBreakEvenProgress(args, restaurant_id, supabase);
+        break;
+      case 'get_proactive_insights':
+        result = await executeGetProactiveInsights(args, restaurant_id, supabase);
+        break;
+      case 'batch_categorize_transactions':
+        result = await executeBatchCategorizeTransactions(args, restaurant_id, supabase);
+        break;
+      case 'batch_categorize_pos_sales':
+        result = await executeBatchCategorizePosSales(args, restaurant_id, supabase);
+        break;
+      case 'create_categorization_rule':
+        result = await executeCreateCategorizationRule(args, restaurant_id, supabase);
+        break;
+      case 'resolve_inbox_item':
+        result = await executeResolveInboxItem(args, restaurant_id, supabase, user.id);
         break;
       default:
         throw new Error(`Unknown tool: ${tool_name}`);

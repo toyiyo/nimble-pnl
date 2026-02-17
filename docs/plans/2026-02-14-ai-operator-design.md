@@ -7,7 +7,7 @@
 ## Goals
 
 1. **Upgrade AI Chat** — Evidence-backed answers, proactive insights, action execution with approval
-2. **Daily Brief** — Morning email + dedicated page with key numbers, variances, narrative, top actions
+2. **Weekly Brief** — Monday morning email + dedicated page with key numbers, variances, narrative, top actions
 3. **Ops Inbox** — Prioritized task queue surfacing uncategorized transactions, anomalies, reconciliation gaps
 
 ## Constraints
@@ -46,15 +46,15 @@
 | `resolved_at` | timestamptz | When marked done/dismissed |
 | `resolved_by` | uuid | Who resolved it |
 
-#### `daily_brief`
+#### `weekly_brief`
 
 | Column | Type | Purpose |
 |--------|------|---------|
 | `id` | uuid PK | |
 | `restaurant_id` | uuid FK | |
-| `brief_date` | date | The date this brief covers |
-| `metrics_json` | jsonb | Key numbers: revenue, food cost, labor cost, prime cost, etc. |
-| `comparisons_json` | jsonb | Deltas: vs prior day, same day last week, 7-day avg |
+| `brief_week_end` | date | The Sunday ending the week this brief covers |
+| `metrics_json` | jsonb | Key numbers: weekly revenue, food cost, labor cost, prime cost, etc. |
+| `comparisons_json` | jsonb | Deltas: vs prior week, 4-week avg |
 | `variances_json` | jsonb | Array of `{metric, delta, direction, driver, evidence}` |
 | `inbox_summary_json` | jsonb | `{open_count, critical_count, top_items}` |
 | `recommendations_json` | jsonb | Array of `{title, body, impact, effort, evidence}` |
@@ -69,7 +69,7 @@
 | `id` | uuid PK | |
 | `user_id` | uuid FK | |
 | `restaurant_id` | uuid FK | |
-| `daily_brief_email` | boolean default true | Opt-out toggle |
+| `weekly_brief_email` | boolean default true | Opt-out toggle |
 | `brief_send_time` | time default '07:00' | Preferred delivery time |
 | `inbox_digest_email` | boolean default false | Future |
 
@@ -77,7 +77,7 @@
 
 - Evidence stored inline as jsonb (no separate `evidence_ref` table for v1)
 - Variances computed in SQL, not by LLM
-- `daily_brief` is a materialized row, not computed on page load
+- `weekly_brief` is a materialized row, not computed on page load
 - RLS follows existing `restaurant_id` + `user_restaurants` pattern
 
 ---
@@ -86,17 +86,16 @@
 
 ### SQL Functions
 
-**`compute_daily_variances(p_restaurant_id uuid, p_date date)`** returns jsonb
+**`compute_weekly_variances(p_restaurant_id uuid, p_week_end date)`** returns jsonb
 
-Compares `daily_pnl` for the given date against:
-- Prior day
-- Same day last week
-- 7-day rolling average
+Aggregates `daily_pnl` for the 7-day week ending on `p_week_end` and compares against:
+- Prior week (7 days before)
+- 4-week rolling average (28 days before, divided by 4)
 
 Returns array of variance objects with metric, value, delta, delta_pct, direction, flag.
 
 **Flagging thresholds (v1 hardcoded)**:
-- Revenue drop > 15% vs 7-day avg: `warning`
+- Revenue drop > 15% vs 4-week avg: `warning`
 - Food cost % > 33%: `warning`, > 38%: `critical`
 - Labor cost % > 35%: `warning`, > 40%: `critical`
 - Prime cost % > 65%: `warning`, > 70%: `critical`
@@ -124,25 +123,25 @@ Auto-resolution: cron checks if underlying condition cleared (e.g., all transact
 
 ---
 
-## Section 3: Daily Brief Generation + Email
+## Section 3: Weekly Brief Generation + Email
 
-### Edge Function: `generate-daily-brief`
+### Edge Function: `generate-weekly-brief`
 
-Triggered by pg_cron daily at 6:00 AM UTC.
+Triggered by pg_cron every Monday at 6:00 AM UTC.
 
 Flow per restaurant (batched, max 10 per run):
-1. Call `compute_daily_variances(restaurant_id, yesterday)`
+1. Call `compute_weekly_variances(restaurant_id, last_sunday)` — aggregates prior week (Mon–Sun)
 2. Run all anomaly detectors
 3. Query `ops_inbox_item` for open items summary
 4. Rank top 3 recommendations (highest impact anomalies)
 5. Call LLM to generate narrative (3-4 sentences, grounded in computed data)
-6. Insert `daily_brief` row
+6. Insert `weekly_brief` row
 7. Send email to opted-in users via Resend
 
 ### LLM Narrative Prompt
 
 ```text
-You are a restaurant financial analyst. Summarize yesterday's performance
+You are a restaurant financial analyst. Summarize this week's performance
 in 3-4 sentences. ONLY reference the numbers provided below. Do not
 invent or estimate any figures.
 
@@ -159,10 +158,10 @@ Write in a direct, professional tone. Lead with the most important change.
 - HTML template: key numbers grid, delta badges, narrative, top 3 inbox items, CTA to brief page
 - Failure: log error, don't retry (brief viewable in-app)
 
-### Brief Page: `/daily-brief`
+### Brief Page: `/weekly-brief`
 
-- Date picker (defaults to yesterday, browsable)
-- Metrics row: 4-6 cards with delta indicators
+- Week picker (defaults to last complete week, browsable ±7 days)
+- Metrics row: 4-6 cards with delta indicators (vs prior week)
 - What Changed: variance cards with navigation links
 - Narrative: LLM-generated paragraph
 - Top Actions: 3 recommendation cards with "Take action" buttons
@@ -171,7 +170,7 @@ Write in a direct, professional tone. Lead with the most important change.
 ### Settings
 
 - Added to existing Settings page
-- Toggle: "Receive daily brief email" (default on)
+- Toggle: "Receive weekly brief email" (default on)
 - Time picker: preferred send time (future enhancement for per-user scheduling)
 
 ---
@@ -219,7 +218,7 @@ React Query, 30s staleTime. Mutations: updateStatus, snoozeItem, dismissItem.
 
 New tool: `get_proactive_insights`
 - Queries top 5 open `ops_inbox_item` by priority
-- Queries latest `daily_brief`
+- Queries latest `weekly_brief`
 - Returns structured payload
 
 Auto-injection: system prompt tells AI to call this tool at session start and mention critical/high items before responding to user's question.

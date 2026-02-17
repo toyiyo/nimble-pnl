@@ -36,20 +36,22 @@ import {
   Coins,
   CreditCard,
   Utensils,
-  Calculator,
   Building2,
   Target,
   Sparkles,
   Printer,
+  Inbox,
+  Newspaper,
+  ChevronDown,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { SUBSCRIPTION_FEATURES } from '@/lib/subscriptionPlans';
 
 /**
@@ -78,6 +80,8 @@ const navigationGroups = [
       { path: '/', label: 'Dashboard', icon: Home },
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
+      { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
+      { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
     ],
   },
   {

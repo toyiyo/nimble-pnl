@@ -8628,7 +8628,7 @@ export type Database = {
         }
         Returns: Json
       }
-      process_weekly_brief_queue: { Args: never; Returns: Json }
+      process_weekly_brief_queue: { Args: never; Returns: undefined }
       publish_schedule: {
         Args: {
           p_notes?: string

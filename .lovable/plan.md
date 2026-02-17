@@ -1,38 +1,36 @@
 
 
-## Fix: Use `jsonb` instead of `json` for `net.http_post` calls
+## Fix: Column name mismatch in `ops_inbox_item` INSERT
 
 ### Problem
 
-`net.http_post()` from the `pg_net` extension accepts `jsonb` parameters for `headers` and `body`, not `json`. The current function casts both to `::json`, which causes PostgreSQL to report "function does not exist" because no overload matches that signature.
+The `process_weekly_brief_queue()` function inserts into `ops_inbox_item` using columns `type, title, body, severity, source`, but the actual table schema (from the `20260214100000_ai_operator.sql` migration) uses different column names: `kind, title, description, priority, created_by`.
 
 ### Change
 
-One migration that replaces `process_weekly_brief_queue()` with a single correction: remove the `::json` casts. `jsonb_build_object()` already returns `jsonb`, which is exactly what `net.http_post` expects -- no cast needed at all.
-
-### Technical detail
+One migration to replace `process_weekly_brief_queue()` with the corrected column names in the dead-letter INSERT statement:
 
 ```text
--- BEFORE (broken)
-PERFORM net.http_post(
-  url := ...,
-  headers := jsonb_build_object(...)::json,   -- wrong type
-  body := jsonb_build_object(...)::json        -- wrong type
-);
+-- BEFORE (wrong column names)
+INSERT INTO ops_inbox_item (restaurant_id, type, title, body, severity, source)
+VALUES (..., 'weekly_brief_failure', ..., ..., 'high', 'system');
 
--- AFTER (fixed)
-PERFORM net.http_post(
-  url := ...,
-  headers := jsonb_build_object(...),          -- jsonb, matches signature
-  body := jsonb_build_object(...)              -- jsonb, matches signature
-);
+-- AFTER (matches actual schema)
+INSERT INTO ops_inbox_item (restaurant_id, kind, title, description, priority, created_by)
+VALUES (..., 'weekly_brief_failure', ..., ..., 1, 'system');
 ```
+
+Column mapping:
+- `type` becomes `kind` (text)
+- `body` becomes `description` (text)
+- `severity` becomes `priority` (integer: 1 = high)
+- `source` becomes `created_by` (text)
 
 ### What stays the same
 
-Everything else in the function: key extraction (`brief_week_end`), invalid payload guard, dead-letter logic, vault lookup, iteration pattern.
+Everything else in the function: vault lookup, `net.http_post` call (now correctly using jsonb), dead-letter logic flow, invalid payload guard.
 
 ### Risk
 
-Minimal -- removes unnecessary casts that were causing the type mismatch. The `pg_net` extension is already enabled (the error is about argument types, not a missing extension).
+Minimal -- only changes column names to match the existing table schema.
 

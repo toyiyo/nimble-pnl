@@ -54,7 +54,10 @@ export function getMostRecentSunday(): string {
   const dayOfWeek = now.getDay();
   const lastSunday = new Date(now);
   lastSunday.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
-  return lastSunday.toISOString().split('T')[0];
+  const yyyy = lastSunday.getFullYear();
+  const mm = String(lastSunday.getMonth() + 1).padStart(2, '0');
+  const dd = String(lastSunday.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export function useWeeklyBrief(restaurantId: string | undefined, weekEnd?: string) {

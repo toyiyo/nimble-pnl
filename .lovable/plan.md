@@ -1,36 +1,24 @@
 
 
-## Fix: Column name mismatch in `ops_inbox_item` INSERT
+## Clean up weekly_brief_failure items and remove the dead-letter INSERT
 
 ### Problem
+The `process_weekly_brief_queue()` function's dead-letter logic inserts noisy `weekly_brief_failure` items into `ops_inbox_item`. These are not useful to surface in the Ops Inbox -- the failure is already logged in `weekly_brief_job_log`.
 
-The `process_weekly_brief_queue()` function inserts into `ops_inbox_item` using columns `type, title, body, severity, source`, but the actual table schema (from the `20260214100000_ai_operator.sql` migration) uses different column names: `kind, title, description, priority, created_by`.
+### Changes
 
-### Change
+**1. Delete existing `weekly_brief_failure` rows (data cleanup)**
+Run a DELETE to remove all existing rows with `kind = 'weekly_brief_failure'` from `ops_inbox_item`.
 
-One migration to replace `process_weekly_brief_queue()` with the corrected column names in the dead-letter INSERT statement:
+**2. Migration: Remove the dead-letter INSERT from `process_weekly_brief_queue()`**
+Update the function to simply mark the job as `'failed'` in `weekly_brief_job_log` (which it already does) without also inserting into `ops_inbox_item`. The INSERT block and surrounding IF will be removed.
 
-```text
--- BEFORE (wrong column names)
-INSERT INTO ops_inbox_item (restaurant_id, type, title, body, severity, source)
-VALUES (..., 'weekly_brief_failure', ..., ..., 'high', 'system');
+**3. Migration: Remove `weekly_brief_failure` from the kind check constraint**
+Revert the constraint back to the original five allowed values since nothing will insert that kind anymore.
 
--- AFTER (matches actual schema)
-INSERT INTO ops_inbox_item (restaurant_id, kind, title, description, priority, created_by)
-VALUES (..., 'weekly_brief_failure', ..., ..., 1, 'system');
-```
-
-Column mapping:
-- `type` becomes `kind` (text)
-- `body` becomes `description` (text)
-- `severity` becomes `priority` (integer: 1 = high)
-- `source` becomes `created_by` (text)
-
-### What stays the same
-
-Everything else in the function: vault lookup, `net.http_post` call (now correctly using jsonb), dead-letter logic flow, invalid payload guard.
+**4. Update TypeScript types**
+Remove `weekly_brief_failure` from the generated types to keep them in sync.
 
 ### Risk
-
-Minimal -- only changes column names to match the existing table schema.
+Low -- only removes an unwanted side-effect. Failure tracking remains in `weekly_brief_job_log`.
 

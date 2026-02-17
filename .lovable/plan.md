@@ -1,25 +1,38 @@
 
 
-## Fix: Correct the key name in `process_weekly_brief_queue()`
+## Fix: Use `jsonb` instead of `json` for `net.http_post` calls
 
 ### Problem
 
-Line 35 reads `week_end` from the message payload, but the enqueue function writes it as `brief_week_end`. This single typo causes every message to fail.
+`net.http_post()` from the `pg_net` extension accepts `jsonb` parameters for `headers` and `body`, not `json`. The current function casts both to `::json`, which causes PostgreSQL to report "function does not exist" because no overload matches that signature.
 
-### Changes (one migration, no schema changes)
+### Change
 
-**Replace `process_weekly_brief_queue()`** with three corrections:
+One migration that replaces `process_weekly_brief_queue()` with a single correction: remove the `::json` casts. `jsonb_build_object()` already returns `jsonb`, which is exactly what `net.http_post` expects -- no cast needed at all.
 
-1. **Line 35** -- extract the correct key:
-   `v_msg.message->>'brief_week_end'` instead of `->>'week_end'`
+### Technical detail
 
-2. **Lines 38-51** -- invalid payload guard: instead of trying to INSERT a row with NULLs (which violates NOT NULL), just `RAISE WARNING`, delete the message, and `CONTINUE`. No row written, no constraint violation, and the warning is visible in Postgres logs.
+```text
+-- BEFORE (broken)
+PERFORM net.http_post(
+  url := ...,
+  headers := jsonb_build_object(...)::json,   -- wrong type
+  body := jsonb_build_object(...)::json        -- wrong type
+);
 
-3. **Line 90** -- worker dispatch body: send `'brief_week_end'` instead of `'week_end'` so the edge function receives the correct key.
+-- AFTER (fixed)
+PERFORM net.http_post(
+  url := ...,
+  headers := jsonb_build_object(...),          -- jsonb, matches signature
+  body := jsonb_build_object(...)              -- jsonb, matches signature
+);
+```
 
-Everything else (vault lookup, dead-letter after 3 attempts, ops_inbox_item, `::json` casts, iteration pattern) stays exactly the same.
+### What stays the same
+
+Everything else in the function: key extraction (`brief_week_end`), invalid payload guard, dead-letter logic, vault lookup, iteration pattern.
 
 ### Risk
 
-Minimal -- fixes a one-word typo in three places. The 10 queued messages have valid payloads and will process on the next cron cycle.
+Minimal -- removes unnecessary casts that were causing the type mismatch. The `pg_net` extension is already enabled (the error is about argument types, not a missing extension).
 

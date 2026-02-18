@@ -75,6 +75,16 @@ serve(async (req) => {
       );
     }
 
+    // Step 2b: Subscription gate — skip non-Pro restaurants
+    const { data: hasFeature } = await supabase.rpc("has_subscription_feature", {
+      p_restaurant_id: restaurantId,
+      p_feature: "weekly_brief",
+    });
+    if (!hasFeature) {
+      console.log(`Skipping weekly brief for ${restaurantId}: not Pro`);
+      return jsonResponse({ success: true, skipped: true, reason: "not_pro" });
+    }
+
     // Step 3: Log processing
     await supabase.from("weekly_brief_job_log").insert({
       restaurant_id: restaurantId,

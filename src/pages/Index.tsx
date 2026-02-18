@@ -1109,9 +1109,9 @@ const Index = () => {
                       <div className="min-w-0">
                         <div className="text-[14px] font-medium text-foreground">Ops Inbox</div>
                         <div className="text-[13px] text-muted-foreground">
-                          {opsInboxCounts!.open} open item{opsInboxCounts!.open !== 1 ? 's' : ''}
-                          {(opsInboxCounts!.critical ?? 0) > 0 && (
-                            <span className="text-destructive font-medium"> ({opsInboxCounts!.critical} critical)</span>
+                          {opsInboxCounts?.open} open item{opsInboxCounts?.open !== 1 ? 's' : ''}
+                          {(opsInboxCounts?.critical ?? 0) > 0 && (
+                            <span className="text-destructive font-medium"> ({opsInboxCounts?.critical} critical)</span>
                           )}
                         </div>
                       </div>

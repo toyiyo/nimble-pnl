@@ -74,3 +74,31 @@ SELECT is(
 
 SELECT * FROM finish();
 ROLLBACK;
+
+
+-- 6) enqueue_weekly_brief_jobs only enqueues Pro restaurants
+BEGIN;
+SELECT plan(2);
+
+-- Create a Pro restaurant and a Starter restaurant
+INSERT INTO restaurants (id, name, subscription_tier, subscription_status) VALUES
+  ('00000000-0000-0000-0000-fff000000001', 'Pro Enqueue Test', 'pro', 'active'),
+  ('00000000-0000-0000-0000-fff000000002', 'Starter Enqueue Test', 'starter', 'active')
+ON CONFLICT DO NOTHING;
+
+-- Run enqueue — only the Pro restaurant should be enqueued
+SELECT ok(
+  (enqueue_weekly_brief_jobs() ->> 'enqueued')::int >= 1,
+  'enqueue_weekly_brief_jobs enqueues at least 1 Pro restaurant'
+);
+
+-- Verify Starter restaurant was NOT enqueued (no job_log entry)
+SELECT is(
+  (SELECT count(*)::int FROM weekly_brief_job_log
+   WHERE restaurant_id = '00000000-0000-0000-0000-fff000000002'),
+  0,
+  'Starter restaurant has no job_log entries (skipped by enqueue)'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

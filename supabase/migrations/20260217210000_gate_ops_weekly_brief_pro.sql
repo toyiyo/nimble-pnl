@@ -67,14 +67,8 @@ BEGIN
 
   -- Handle inactive subscriptions
   IF v_status IN ('canceled', 'past_due') THEN
-    -- For past_due, allow 3-day grace period before blocking
-    IF v_status = 'past_due' THEN
-      -- Allow basic features during past_due grace period
-      v_effective_tier := 'starter';
-    ELSE
-      -- Canceled = no access to premium features
-      v_effective_tier := 'starter';
-    END IF;
+    -- Canceled or past_due: downgrade to starter (basic features only)
+    v_effective_tier := 'starter';
   END IF;
 
   -- Feature tier requirements

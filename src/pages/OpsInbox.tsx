@@ -15,7 +15,7 @@ import { Inbox, AlertTriangle, Clock, X, Sparkles } from 'lucide-react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChatContext } from '@/contexts/AiChatContext';
 import { useOpsInbox, useOpsInboxCount, OpsInboxItem } from '@/hooks/useOpsInbox';
-import { FeatureGate, useFeatureAccess } from '@/components/subscription/FeatureGate';
+import { FeatureGate } from '@/components/subscription/FeatureGate';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -292,7 +292,6 @@ export default function OpsInbox() {
   const { selectedRestaurant } = useRestaurantContext();
   const { openChat } = useAiChatContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
-  const { hasAccess } = useFeatureAccess('ops_inbox');
 
   const [activeTab, setActiveTab] = useState<TabKey>('open');
 
@@ -304,7 +303,6 @@ export default function OpsInbox() {
   });
 
   const { data: counts } = useOpsInboxCount(restaurantId);
-
 
   // Pre-compute display values
   const displayValuesMap = useMemo(() => {
@@ -348,39 +346,31 @@ export default function OpsInbox() {
     openChat();
   }, [openChat]);
 
-  // Subscription gate
-  if (!hasAccess) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="max-w-5xl mx-auto px-4 py-6">
-          <FeatureGate featureKey="ops_inbox"><></></FeatureGate>
-        </div>
-      </div>
-    );
-  }
-
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="max-w-5xl mx-auto px-4 py-6">
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertTriangle className="h-6 w-6 text-destructive" />
+      <FeatureGate featureKey="ops_inbox">
+        <div className="min-h-screen bg-background">
+          <div className="max-w-5xl mx-auto px-4 py-6">
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+              <p className="text-[14px] font-medium text-foreground mb-1">
+                Failed to load inbox
+              </p>
+              <p className="text-[13px] text-muted-foreground">
+                {error instanceof Error ? error.message : 'An unexpected error occurred.'}
+              </p>
             </div>
-            <p className="text-[14px] font-medium text-foreground mb-1">
-              Failed to load inbox
-            </p>
-            <p className="text-[13px] text-muted-foreground">
-              {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-            </p>
           </div>
         </div>
-      </div>
+      </FeatureGate>
     );
   }
 
   return (
+    <FeatureGate featureKey="ops_inbox">
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 py-6">
         {/* Header */}
@@ -474,5 +464,6 @@ export default function OpsInbox() {
         )}
       </div>
     </div>
+    </FeatureGate>
   );
 }

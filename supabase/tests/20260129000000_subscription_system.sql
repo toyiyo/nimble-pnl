@@ -230,3 +230,75 @@ SELECT ok(
 
 SELECT * FROM finish();
 ROLLBACK;
+
+
+-- 5) ops_inbox and weekly_brief require Pro tier
+BEGIN;
+SELECT plan(8);
+
+-- Active Pro
+INSERT INTO restaurants (id, name, subscription_tier, subscription_status) VALUES
+  ('00000000-0000-0000-0000-eee000000001', 'Pro Restaurant', 'pro', 'active')
+ON CONFLICT DO NOTHING;
+
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000001', 'ops_inbox'),
+  true,
+  'Active Pro has ops_inbox'
+);
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000001', 'weekly_brief'),
+  true,
+  'Active Pro has weekly_brief'
+);
+
+-- Active Growth
+INSERT INTO restaurants (id, name, subscription_tier, subscription_status) VALUES
+  ('00000000-0000-0000-0000-eee000000002', 'Growth Restaurant', 'growth', 'active')
+ON CONFLICT DO NOTHING;
+
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000002', 'ops_inbox'),
+  false,
+  'Active Growth lacks ops_inbox'
+);
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000002', 'weekly_brief'),
+  false,
+  'Active Growth lacks weekly_brief'
+);
+
+-- Active Starter
+INSERT INTO restaurants (id, name, subscription_tier, subscription_status) VALUES
+  ('00000000-0000-0000-0000-eee000000003', 'Starter Restaurant', 'starter', 'active')
+ON CONFLICT DO NOTHING;
+
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000003', 'ops_inbox'),
+  false,
+  'Active Starter lacks ops_inbox'
+);
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000003', 'weekly_brief'),
+  false,
+  'Active Starter lacks weekly_brief'
+);
+
+-- Grandfathered (within window) gets Pro access
+INSERT INTO restaurants (id, name, subscription_tier, subscription_status, grandfathered_until) VALUES
+  ('00000000-0000-0000-0000-eee000000004', 'Grandfathered Restaurant', 'starter', 'grandfathered', now() + interval '30 days')
+ON CONFLICT DO NOTHING;
+
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000004', 'ops_inbox'),
+  true,
+  'Grandfathered restaurant has ops_inbox'
+);
+SELECT is(
+  has_subscription_feature('00000000-0000-0000-0000-eee000000004', 'weekly_brief'),
+  true,
+  'Grandfathered restaurant has weekly_brief'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

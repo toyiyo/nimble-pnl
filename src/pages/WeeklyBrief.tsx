@@ -18,6 +18,7 @@ import {
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useWeeklyBrief, getMostRecentSunday } from '@/hooks/useWeeklyBrief';
 import type { WeeklyBrief as WeeklyBriefType } from '@/hooks/useWeeklyBrief';
+import { FeatureGate, useFeatureAccess } from '@/components/subscription/FeatureGate';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,6 +130,7 @@ function MetricCard({ label, value, deltaPct, direction, goodWhenUp }: MetricCar
 export default function WeeklyBrief() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
+  const { hasAccess } = useFeatureAccess('weekly_brief');
 
   const [selectedDate, setSelectedDate] = useState<string>(getMostRecentSunday);
 
@@ -174,6 +176,17 @@ export default function WeeklyBrief() {
   // Inbox summary
   const inbox = brief?.inbox_summary_json;
   const hasInboxItems = inbox && (inbox.open_count ?? 0) > 0;
+
+  // ----------- Subscription gate -----------
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-5xl mx-auto px-4 py-6">
+          <FeatureGate featureKey="weekly_brief"><></></FeatureGate>
+        </div>
+      </div>
+    );
+  }
 
   // ----------- Loading state -----------
   if (isLoading) {

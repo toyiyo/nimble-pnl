@@ -64,6 +64,8 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = 
   '/scheduling': 'scheduling',
   '/receipt-import': 'inventory_automation',
   // Pro tier (Stripe features)
+  '/ops-inbox': 'ops_inbox',
+  '/weekly-brief': 'weekly_brief',
   '/banking': 'banking',
   '/invoices': 'invoicing',
   '/expenses': 'expenses',

@@ -15,6 +15,7 @@ import { Inbox, AlertTriangle, Clock, X, Sparkles } from 'lucide-react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAiChatContext } from '@/contexts/AiChatContext';
 import { useOpsInbox, useOpsInboxCount, OpsInboxItem } from '@/hooks/useOpsInbox';
+import { FeatureGate, useFeatureAccess } from '@/components/subscription/FeatureGate';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -291,6 +292,7 @@ export default function OpsInbox() {
   const { selectedRestaurant } = useRestaurantContext();
   const { openChat } = useAiChatContext();
   const restaurantId = selectedRestaurant?.restaurant_id;
+  const { hasAccess } = useFeatureAccess('ops_inbox');
 
   const [activeTab, setActiveTab] = useState<TabKey>('open');
 
@@ -345,6 +347,17 @@ export default function OpsInbox() {
   const handleAskAi = useCallback(() => {
     openChat();
   }, [openChat]);
+
+  // Subscription gate
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-5xl mx-auto px-4 py-6">
+          <FeatureGate featureKey="ops_inbox"><></></FeatureGate>
+        </div>
+      </div>
+    );
+  }
 
   // Error state
   if (error) {

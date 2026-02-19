@@ -93,6 +93,7 @@ const navigationGroups = [
       { path: '/time-punches', label: 'Time Clock', icon: ClipboardList },
       { path: '/tips', label: 'Tip Pooling', icon: Coins },
       { path: '/payroll', label: 'Payroll', icon: Wallet },
+      { path: '/payroll/gusto', label: 'Gusto Payroll', icon: DollarSign },
     ],
   },
   {

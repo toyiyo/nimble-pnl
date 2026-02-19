@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Users, UserX, UsersRound, Plus, RotateCcw, UserMinus, HelpCircle, Send } from 'lucide-react';
 import { useEmployees, EmployeeStatusFilter } from '@/hooks/useEmployees';
+import { useGustoConnection } from '@/hooks/useGustoConnection';
+import { useGustoEmployeeSync } from '@/hooks/useGustoEmployeeSync';
 import { Employee } from '@/types/scheduling';
-import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
@@ -26,21 +28,29 @@ interface EmployeeListProps {
   showInactiveCount?: boolean;
 }
 
-export const EmployeeList = ({ 
-  restaurantId, 
+export function EmployeeList({
+  restaurantId,
   onEmployeeEdit,
   onEmployeeDeactivate,
   onEmployeeReactivate,
   onAddEmployee,
-  showInactiveCount = true 
-}: EmployeeListProps) => {
+  showInactiveCount = true
+}: EmployeeListProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<EmployeeStatusFilter>('active');
 
-  // Fetch employees based on active tab
   const { employees, loading, error } = useEmployees(restaurantId, { status: activeTab });
 
-  // For showing counts, we need to fetch all separately
+  const { connection: gustoConnection } = useGustoConnection(restaurantId);
+  const hasGusto = !!gustoConnection;
+  const gustoSync = useGustoEmployeeSync(hasGusto ? restaurantId : null);
+
+  const syncEmployees = gustoSync?.syncEmployees;
+  const handleSendToGusto = useCallback(async (employeeId: string) => {
+    if (!syncEmployees) return;
+    await syncEmployees([employeeId]);
+  }, [syncEmployees]);
+
   const { employees: allActive } = useEmployees(restaurantId, { status: 'active' });
   const { employees: allInactive } = useEmployees(restaurantId, { status: 'inactive' });
 
@@ -125,103 +135,71 @@ export const EmployeeList = ({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="active" className="space-y-2 mt-4">
-            {loading ? (
-              <EmployeeListSkeleton />
-            ) : employees.length === 0 ? (
-              <EmptyState 
-                icon={Users}
-                title="No active employees"
-                description="Get started by adding your first employee."
-                actionLabel={onAddEmployee ? "Add Employee" : undefined}
-                onAction={onAddEmployee}
-              />
-            ) : (
-              <div className="space-y-2">
-                {employees.map((employee) => (
-                  <EmployeeCard
-                    key={employee.id}
-                    employee={employee}
-                    onEdit={onEmployeeEdit}
-                    onDeactivate={onEmployeeDeactivate}
-                    variant="active"
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+          {(['active', 'inactive', 'all'] as const).map((tab) => {
+            const emptyConfig = {
+              active: { icon: Users, title: 'No active employees', description: 'Get started by adding your first employee.', showAction: true },
+              inactive: { icon: UserX, title: 'No inactive employees', description: 'Deactivated employees will appear here. They can be reactivated at any time.', showAction: false },
+              all: { icon: UsersRound, title: 'No employees', description: 'Get started by adding your first employee.', showAction: true },
+            }[tab];
 
-          <TabsContent value="inactive" className="space-y-2 mt-4">
-            {loading ? (
-              <EmployeeListSkeleton />
-            ) : employees.length === 0 ? (
-              <EmptyState 
-                icon={UserX}
-                title="No inactive employees"
-                description="Deactivated employees will appear here. They can be reactivated at any time."
-              />
-            ) : (
-              <div className="space-y-2">
-                {employees.map((employee) => (
-                  <EmployeeCard
-                    key={employee.id}
-                    employee={employee}
-                    onEdit={onEmployeeEdit}
-                    onReactivate={onEmployeeReactivate}
-                    variant="inactive"
+            return (
+              <TabsContent key={tab} value={tab} className="space-y-2 mt-4">
+                {loading ? (
+                  <EmployeeListSkeleton />
+                ) : employees.length === 0 ? (
+                  <EmptyState
+                    icon={emptyConfig.icon}
+                    title={emptyConfig.title}
+                    description={emptyConfig.description}
+                    actionLabel={emptyConfig.showAction && onAddEmployee ? 'Add Employee' : undefined}
+                    onAction={emptyConfig.showAction ? onAddEmployee : undefined}
                   />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+                ) : (
+                  <div className="space-y-2">
+                    {employees.map((employee) => {
+                      const isActive = tab === 'active' || (tab === 'all' && employee.is_active);
+                      const isInactive = tab === 'inactive' || (tab === 'all' && !employee.is_active);
 
-          <TabsContent value="all" className="space-y-2 mt-4">
-            {loading ? (
-              <EmployeeListSkeleton />
-            ) : employees.length === 0 ? (
-              <EmptyState 
-                icon={UsersRound}
-                title="No employees"
-                description="Get started by adding your first employee."
-                actionLabel={onAddEmployee ? "Add Employee" : undefined}
-                onAction={onAddEmployee}
-              />
-            ) : (
-              <div className="space-y-2">
-                {employees.map((employee) => (
-                  <EmployeeCard
-                    key={employee.id}
-                    employee={employee}
-                    onEdit={onEmployeeEdit}
-                    onDeactivate={employee.is_active ? onEmployeeDeactivate : undefined}
-                    onReactivate={!employee.is_active ? onEmployeeReactivate : undefined}
-                    variant={employee.is_active ? 'active' : 'inactive'}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
+                      return (
+                        <EmployeeCard
+                          key={employee.id}
+                          employee={employee}
+                          onEdit={onEmployeeEdit}
+                          onDeactivate={isActive ? onEmployeeDeactivate : undefined}
+                          onReactivate={isInactive ? onEmployeeReactivate : undefined}
+                          hasGusto={hasGusto}
+                          onSendToGusto={hasGusto && isActive ? handleSendToGusto : undefined}
+                          variant={isActive ? 'active' : 'inactive'}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </TabsContent>
+            );
+          })}
         </Tabs>
       </CardContent>
     </Card>
   );
-};
+}
 
-// Employee Card Component
 interface EmployeeCardProps {
   employee: Employee;
   onEdit?: (employee: Employee) => void;
   onDeactivate?: (employee: Employee) => void;
   onReactivate?: (employee: Employee) => void;
+  hasGusto?: boolean;
+  onSendToGusto?: (employeeId: string) => void;
   variant: 'active' | 'inactive';
 }
 
-const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }: EmployeeCardProps) => {
-  const formatCurrency = (cents: number) => {
+function EmployeeCard({ employee, onEdit, onDeactivate, onReactivate, hasGusto, onSendToGusto, variant }: EmployeeCardProps) {
+  function formatCurrency(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
-  };
+  }
 
-  const getCompensationDisplay = () => {
+  function getCompensationDisplay(): string {
     switch (employee.compensation_type) {
       case 'hourly':
         return `${formatCurrency(employee.hourly_rate)}/hr`;
@@ -232,22 +210,18 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
       default:
         return '';
     }
-  };
+  }
 
-  const getDeactivationInfo = () => {
-    // Prefer last_active_date, fall back to deactivated_at
+  function getDeactivationInfo(): string | null {
     const dateToUse = employee.last_active_date || employee.deactivated_at;
     if (!dateToUse) return null;
-    
+
     const date = format(new Date(dateToUse), 'MMM d, yyyy');
-    
-    // Use appropriate label based on which field we're displaying
-    if (employee.last_active_date) {
-      return `Last active: ${date}`;
-    } else {
-      return `Deactivated: ${date}`;
-    }
-  };
+    const label = employee.last_active_date ? 'Last active' : 'Deactivated';
+    return `${label}: ${date}`;
+  }
+
+  const deactivationInfo = getDeactivationInfo();
 
   return (
     <Card
@@ -284,6 +258,9 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
                   Inactive
                 </Badge>
               )}
+              {hasGusto && variant === 'active' && (
+                <GustoSyncBadge employee={employee} />
+              )}
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="truncate">{employee.position}</span>
@@ -295,10 +272,8 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
                 Reason: {employee.deactivation_reason}
               </div>
             )}
-            {variant === 'inactive' && getDeactivationInfo() && (
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {getDeactivationInfo()}
-              </div>
+            {variant === 'inactive' && deactivationInfo && (
+              <div className="text-xs text-muted-foreground mt-0.5">{deactivationInfo}</div>
             )}
           </div>
 
@@ -345,15 +320,77 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
                 Reactivate
               </Button>
             )}
+            {onSendToGusto && variant === 'active' && !employee.gusto_employee_uuid && (
+              employee.email ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-[13px]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSendToGusto(employee.id);
+                  }}
+                  aria-label={`Send ${employee.name} to Gusto`}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send to Gusto
+                </Button>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-[13px]"
+                          disabled
+                          aria-label={`Send ${employee.name} to Gusto (email required)`}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          Send to Gusto
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Email address required to send to Gusto</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )
+            )}
           </div>
         </div>
       </CardContent>
     </Card>
   );
-};
+}
 
-// Skeleton Loader
-const EmployeeListSkeleton = () => {
+function GustoSyncBadge({ employee }: { employee: Employee }) {
+  if (!employee.gusto_employee_uuid || employee.gusto_sync_status === 'not_synced') {
+    return (
+      <Badge variant="outline" className="shrink-0 text-[11px] text-muted-foreground">
+        Not synced
+      </Badge>
+    );
+  }
+
+  if (employee.gusto_onboarding_status === 'onboarding_completed') {
+    return (
+      <Badge variant="outline" className="shrink-0 text-[11px] text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800">
+        Onboarded
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="outline" className="shrink-0 text-[11px] text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+      Pending onboarding
+    </Badge>
+  );
+}
+
+function EmployeeListSkeleton() {
   return (
     <div className="space-y-2">
       {[1, 2, 3].map((i) => (
@@ -367,9 +404,8 @@ const EmployeeListSkeleton = () => {
       ))}
     </div>
   );
-};
+}
 
-// Empty State Component
 interface EmptyStateProps {
   icon: React.ElementType;
   title: string;
@@ -378,7 +414,7 @@ interface EmptyStateProps {
   onAction?: () => void;
 }
 
-const EmptyState = ({ icon: Icon, title, description, actionLabel, onAction }: EmptyStateProps) => {
+function EmptyState({ icon: Icon, title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <Icon className="h-12 w-12 text-muted-foreground mb-4" />
@@ -392,4 +428,4 @@ const EmptyState = ({ icon: Icon, title, description, actionLabel, onAction }: E
       )}
     </div>
   );
-};
+}

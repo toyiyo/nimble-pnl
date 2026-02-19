@@ -65,6 +65,12 @@ export interface Employee {
 
   // Compensation history (optional join)
   compensation_history?: CompensationHistoryEntry[];
+
+  // Gusto payroll integration
+  gusto_employee_uuid?: string | null;
+  gusto_synced_at?: string | null;
+  gusto_sync_status?: 'not_synced' | 'pending' | 'synced' | 'error';
+  gusto_onboarding_status?: string | null;
 }
 
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'weekday' | 'custom';

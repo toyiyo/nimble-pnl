@@ -178,6 +178,30 @@ verify_jwt = true
 [functions.notify-schedule-published]
 verify_jwt = true
 
+[functions.gusto-oauth]
+verify_jwt = false
+
+[functions.gusto-create-flow]
+verify_jwt = false
+
+[functions.gusto-disconnect]
+verify_jwt = false
+
+[functions.gusto-sync-employees]
+verify_jwt = false
+
+[functions.gusto-sync-time-punches]
+verify_jwt = false
+
+[functions.gusto-webhooks]
+verify_jwt = false
+
+[functions.gusto-pull-employees]
+verify_jwt = false
+
+[functions.gusto-prepare-payroll]
+verify_jwt = false
+
 [functions.toast-save-credentials]
 verify_jwt = false
 

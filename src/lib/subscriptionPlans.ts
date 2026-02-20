@@ -88,6 +88,8 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionTier, SubscriptionPlan> = {
     features: [
       'Everything in Growth',
       'AI Assistant',
+      'Ops Inbox',
+      'Weekly Brief',
       'Bank Account Connections',
       'Automated Transaction Sync',
       'Customer Invoicing',
@@ -257,6 +259,28 @@ export const SUBSCRIPTION_FEATURES = {
       'Ask questions about your restaurant data',
       'Get instant insights and recommendations',
       'Natural language queries for reports',
+    ],
+  },
+  ops_inbox: {
+    key: 'ops_inbox',
+    name: 'Ops Inbox',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'AI-powered operational alerts, anomaly detection, and reconciliation insights',
+    benefits: [
+      'Automatic anomaly detection for revenue drops and cost spikes',
+      'Bank-to-POS reconciliation gap alerts',
+      'Uncategorized transaction backlog tracking',
+    ],
+  },
+  weekly_brief: {
+    key: 'weekly_brief',
+    name: 'Weekly Brief',
+    requiredTier: 'pro' as SubscriptionTier,
+    description: 'AI-generated weekly performance summary with variance analysis',
+    benefits: [
+      'Weekly P&L variance analysis vs prior periods',
+      'AI-written narrative summary of your week',
+      'Actionable recommendations for improvement',
     ],
   },
   banking: {

@@ -18,6 +18,7 @@ import {
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useWeeklyBrief, getMostRecentSunday } from '@/hooks/useWeeklyBrief';
 import type { WeeklyBrief as WeeklyBriefType } from '@/hooks/useWeeklyBrief';
+import { FeatureGate } from '@/components/subscription/FeatureGate';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -178,76 +179,80 @@ export default function WeeklyBrief() {
   // ----------- Loading state -----------
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          {/* Header skeleton */}
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-7 w-40" />
-            <Skeleton className="h-9 w-48" />
+      <FeatureGate featureKey="weekly_brief">
+        <div className="min-h-screen bg-background">
+          <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-7 w-40" />
+              <Skeleton className="h-9 w-48" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-28 rounded-xl" />
+              ))}
+            </div>
+            <Skeleton className="h-32 rounded-xl" />
           </div>
-          {/* Metrics skeleton */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 rounded-xl" />
-            ))}
-          </div>
-          {/* Narrative skeleton */}
-          <Skeleton className="h-32 rounded-xl" />
         </div>
-      </div>
+      </FeatureGate>
     );
   }
 
   // ----------- Error state -----------
   if (error) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="max-w-5xl mx-auto px-4 py-6">
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
-              <AlertTriangle className="h-6 w-6 text-destructive" />
+      <FeatureGate featureKey="weekly_brief">
+        <div className="min-h-screen bg-background">
+          <div className="max-w-5xl mx-auto px-4 py-6">
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+              <p className="text-[14px] font-medium text-foreground">
+                Failed to load the weekly brief
+              </p>
+              <p className="text-[13px] text-muted-foreground">
+                {error instanceof Error ? error.message : 'An unexpected error occurred.'}
+              </p>
             </div>
-            <p className="text-[14px] font-medium text-foreground">
-              Failed to load the weekly brief
-            </p>
-            <p className="text-[13px] text-muted-foreground">
-              {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-            </p>
           </div>
         </div>
-      </div>
+      </FeatureGate>
     );
   }
 
   // ----------- Empty state -----------
   if (!brief) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          <DateHeader
-            date={selectedDate}
-            onPrev={() => setSelectedDate((d) => shiftDate(d, -7))}
-            onNext={() => setSelectedDate((d) => shiftDate(d, 7))}
-            canGoForward={canGoForward}
-          />
-          <div className="flex flex-col items-center justify-center py-24 space-y-3">
-            <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center">
-              <FileText className="h-6 w-6 text-muted-foreground" />
+      <FeatureGate featureKey="weekly_brief">
+        <div className="min-h-screen bg-background">
+          <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+            <DateHeader
+              date={selectedDate}
+              onPrev={() => setSelectedDate((d) => shiftDate(d, -7))}
+              onNext={() => setSelectedDate((d) => shiftDate(d, 7))}
+              canGoForward={canGoForward}
+            />
+            <div className="flex flex-col items-center justify-center py-24 space-y-3">
+              <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-[14px] font-medium text-foreground">
+                No brief generated for this week
+              </p>
+              <p className="text-[13px] text-muted-foreground">
+                Briefs are generated every Monday morning.
+              </p>
             </div>
-            <p className="text-[14px] font-medium text-foreground">
-              No brief generated for this week
-            </p>
-            <p className="text-[13px] text-muted-foreground">
-              Briefs are generated every Monday morning.
-            </p>
           </div>
         </div>
-      </div>
+      </FeatureGate>
     );
   }
 
   // ----------- Populated state -----------
   return (
+    <FeatureGate featureKey="weekly_brief">
     <div className="min-h-screen bg-background">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
         {/* Header */}
@@ -363,6 +368,7 @@ export default function WeeklyBrief() {
         )}
       </div>
     </div>
+    </FeatureGate>
   );
 }
 

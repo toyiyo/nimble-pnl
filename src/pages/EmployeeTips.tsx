@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTipSplits } from '@/hooks/useTipSplits';
+import { useTipPayouts } from '@/hooks/useTipPayouts';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format } from 'date-fns';
@@ -39,11 +40,29 @@ const EmployeeTips = () => {
     handleToday,
   } = usePeriodNavigation({ includeLast2Weeks: false });
 
+  const formattedStart = format(startDate, 'yyyy-MM-dd');
+  const formattedEnd = format(endDate, 'yyyy-MM-dd');
+
   const { splits, isLoading } = useTipSplits(
     restaurantId,
-    format(startDate, 'yyyy-MM-dd'),
-    format(endDate, 'yyyy-MM-dd')
+    formattedStart,
+    formattedEnd
   );
+
+  const { payouts } = useTipPayouts(restaurantId, formattedStart, formattedEnd);
+
+  // Build a lookup map: "employeeId|payoutDate" -> amount in cents
+  const payoutLookup = useMemo(() => {
+    if (!payouts || !currentEmployee) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const p of payouts) {
+      if (p.employee_id === currentEmployee.id) {
+        const key = p.payout_date;
+        map.set(key, (map.get(key) || 0) + p.amount);
+      }
+    }
+    return map;
+  }, [payouts, currentEmployee]);
 
   // Filter splits to only show approved ones with current employee
   const myTips = useMemo(() => {
@@ -164,9 +183,19 @@ const EmployeeTips = () => {
                       <CardTitle className="text-lg">
                         {format(new Date(tip!.date), 'EEEE, MMM d')}
                       </CardTitle>
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        {formatCurrencyFromCents(tip!.amount)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {payoutLookup.has(tip!.date) && (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                          >
+                            Paid {formatCurrencyFromCents(payoutLookup.get(tip!.date)!)} cash
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          {formatCurrencyFromCents(tip!.amount)}
+                        </Badge>
+                      </div>
                     </div>
                     <CardDescription className="flex items-center gap-4">
                       {Boolean(tip!.hours) && (
@@ -230,9 +259,19 @@ const EmployeeTips = () => {
                           {tip!.hours?.toFixed(1)} hours
                         </p>
                       </div>
-                      <p className="font-bold text-green-600">
-                        {formatCurrencyFromCents(tip!.amount)}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {payoutLookup.has(tip!.date) && (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                          >
+                            Paid
+                          </Badge>
+                        )}
+                        <p className="font-bold text-green-600">
+                          {formatCurrencyFromCents(tip!.amount)}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>

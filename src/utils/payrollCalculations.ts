@@ -55,6 +55,8 @@ export interface EmployeePayroll {
   manualPaymentsTotal: number; // Sum of manual payments in cents
   grossPay: number; // In cents
   totalTips: number; // In cents
+  tipsPaidOut: number; // In cents - tips already paid out as cash
+  tipsOwed: number; // In cents - tips still owed (totalTips - tipsPaidOut)
   totalPay: number; // In cents (gross + tips)
   incompleteShifts?: IncompleteShift[]; // Anomalies that need manager attention
 }
@@ -67,6 +69,8 @@ export interface PayrollPeriod {
   totalOvertimeHours: number;
   totalGrossPay: number; // In cents
   totalTips: number; // In cents
+  totalTipsPaidOut: number; // In cents
+  totalTipsOwed: number; // In cents
 }
 
 /**
@@ -390,7 +394,8 @@ export function calculateEmployeePay(
   tips: number, // In cents
   periodStartDate?: Date,
   periodEndDate?: Date,
-  manualPayments: ManualPayment[] = []
+  manualPayments: ManualPayment[] = [],
+  tipsPaidOut: number = 0
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
   
@@ -467,7 +472,8 @@ export function calculateEmployeePay(
   const manualPaymentsTotal = manualPayments.reduce((sum, p) => sum + p.amount, 0);
 
   const grossPay = regularPay + overtimePay + salaryPay + contractorPay + dailyRatePay + manualPaymentsTotal;
-  const totalPay = grossPay + tips;
+  const tipsOwed = Math.max(0, tips - tipsPaidOut);
+  const totalPay = grossPay + tipsOwed;
 
   return {
     employeeId: employee.id,
@@ -487,6 +493,8 @@ export function calculateEmployeePay(
     manualPaymentsTotal,
     grossPay,
     totalTips: tips,
+    tipsPaidOut,
+    tipsOwed,
     totalPay,
     incompleteShifts: allIncompleteShifts.length > 0 ? allIncompleteShifts : undefined,
   };
@@ -551,20 +559,24 @@ export function calculatePayrollPeriod(
   employees: Employee[],
   punchesPerEmployee: Map<string, TimePunch[]>,
   tipsPerEmployee: Map<string, number>,
-  manualPaymentsPerEmployee: Map<string, ManualPayment[]> = new Map()
+  manualPaymentsPerEmployee: Map<string, ManualPayment[]> = new Map(),
+  tipPayoutsPerEmployee: Map<string, number> = new Map()
 ): PayrollPeriod {
   const employeePayrolls = employees.map(employee => {
     const punches = punchesPerEmployee.get(employee.id) || [];
     const tips = tipsPerEmployee.get(employee.id) || 0;
     const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
+    const tipsPaidOut = tipPayoutsPerEmployee.get(employee.id) || 0;
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments);
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);
   const totalOvertimeHours = employeePayrolls.reduce((sum, ep) => sum + ep.overtimeHours, 0);
   const totalGrossPay = employeePayrolls.reduce((sum, ep) => sum + ep.grossPay, 0);
   const totalTips = employeePayrolls.reduce((sum, ep) => sum + ep.totalTips, 0);
+  const totalTipsPaidOut = employeePayrolls.reduce((sum, ep) => sum + ep.tipsPaidOut, 0);
+  const totalTipsOwed = employeePayrolls.reduce((sum, ep) => sum + ep.tipsOwed, 0);
 
   return {
     startDate,
@@ -574,6 +586,8 @@ export function calculatePayrollPeriod(
     totalOvertimeHours,
     totalGrossPay,
     totalTips,
+    totalTipsPaidOut,
+    totalTipsOwed,
   };
 }
 
@@ -590,7 +604,9 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     'Regular Pay',
     'Overtime Pay',
     'Gross Pay',
-    'Tips',
+    'Tips Earned',
+    'Tips Paid',
+    'Tips Owed',
     'Total Pay',
   ].join(',');
 
@@ -604,6 +620,8 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     formatCurrency(ep.overtimePay),
     formatCurrency(ep.grossPay),
     formatCurrency(ep.totalTips),
+    formatCurrency(ep.tipsPaidOut),
+    formatCurrency(ep.tipsOwed),
     formatCurrency(ep.totalPay),
   ].join(','));
 
@@ -617,7 +635,9 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     '""',
     formatCurrency(payrollPeriod.totalGrossPay),
     formatCurrency(payrollPeriod.totalTips),
-    formatCurrency(payrollPeriod.totalGrossPay + payrollPeriod.totalTips),
+    formatCurrency(payrollPeriod.totalTipsPaidOut),
+    formatCurrency(payrollPeriod.totalTipsOwed),
+    formatCurrency(payrollPeriod.totalGrossPay + payrollPeriod.totalTipsOwed),
   ].join(',');
 
   return [headers, ...rows, '', totalRow].join('\n');

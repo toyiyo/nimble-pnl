@@ -202,6 +202,16 @@ export const usePayroll = (
 
       if (employeeTipsError) throw employeeTipsError;
 
+      // Fetch tip payouts (cash already paid out) for the period
+      const { data: tipPayoutsData, error: tipPayoutsError } = await supabase
+        .from('tip_payouts')
+        .select('employee_id, amount')
+        .eq('restaurant_id', restaurantId)
+        .gte('payout_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('payout_date', format(endDate, 'yyyy-MM-dd'));
+
+      if (tipPayoutsError) throw tipPayoutsError;
+
       // Transform the data to match the utility's expected types
       interface DBTipSplitItem {
         employee_id: string;
@@ -251,6 +261,13 @@ export const usePayroll = (
         }
       });
 
+      // Group tip payouts by employee (sum amounts in cents)
+      const tipPayoutsPerEmployee = new Map<string, number>();
+      (tipPayoutsData || []).forEach((payout: { employee_id: string; amount: number }) => {
+        const current = tipPayoutsPerEmployee.get(payout.employee_id) || 0;
+        tipPayoutsPerEmployee.set(payout.employee_id, current + payout.amount);
+      });
+
       // Filter employees based on deactivation date vs payroll period
       // Inactive employees are included only through their final week (the week containing their deactivation date)
       const eligibleEmployees = employees.filter(employee => 
@@ -264,7 +281,8 @@ export const usePayroll = (
         eligibleEmployees,
         punchesPerEmployee,
         tipsPerEmployee,
-        manualPaymentsPerEmployee
+        manualPaymentsPerEmployee,
+        tipPayoutsPerEmployee,
       );
 
       return payroll;

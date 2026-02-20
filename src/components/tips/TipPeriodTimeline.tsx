@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format, eachDayOfInterval, isSameDay, isToday } from 'date-fns';
-import { Plus, Check, FileText, Lock } from 'lucide-react';
+import { Plus, Check, FileText, Lock, Banknote } from 'lucide-react';
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
+import type { TipPayoutWithEmployee } from '@/hooks/useTipPayouts';
 import { cn } from '@/lib/utils';
 
 interface TipPeriodTimelineProps {
@@ -14,6 +15,8 @@ interface TipPeriodTimelineProps {
   splits: TipSplitWithItems[] | undefined;
   onDayClick: (date: Date) => void;
   isLoading: boolean;
+  payouts?: TipPayoutWithEmployee[];
+  onRecordPayout?: (split: TipSplitWithItems) => void;
 }
 
 interface DayData {
@@ -21,6 +24,8 @@ interface DayData {
   split: TipSplitWithItems | null;
   status: 'empty' | 'draft' | 'approved' | 'archived';
   totalCents: number;
+  payoutStatus: 'none' | 'partial' | 'full';
+  payoutTotalCents: number;
 }
 
 /**
@@ -33,6 +38,8 @@ export function TipPeriodTimeline({
   splits,
   onDayClick,
   isLoading,
+  payouts,
+  onRecordPayout,
 }: TipPeriodTimelineProps) {
   const days = useMemo((): DayData[] => {
     const interval = eachDayOfInterval({ start: startDate, end: endDate });
@@ -40,15 +47,31 @@ export function TipPeriodTimeline({
     return interval.map(date => {
       const dateStr = format(date, 'yyyy-MM-dd');
       const split = splits?.find(s => s.split_date === dateStr) || null;
+      const totalCents = split?.total_amount || 0;
+
+      // Compute payout status for this day
+      let payoutStatus: DayData['payoutStatus'] = 'none';
+      let payoutTotalCents = 0;
+
+      if (split && payouts) {
+        const dayPayouts = payouts.filter(p => p.tip_split_id === split.id);
+        payoutTotalCents = dayPayouts.reduce((sum, p) => sum + p.amount, 0);
+
+        if (payoutTotalCents > 0) {
+          payoutStatus = payoutTotalCents >= totalCents ? 'full' : 'partial';
+        }
+      }
 
       return {
         date,
         split,
         status: split ? (split.status as 'draft' | 'approved' | 'archived') : 'empty',
-        totalCents: split?.total_amount || 0,
+        totalCents,
+        payoutStatus,
+        payoutTotalCents,
       };
     });
-  }, [startDate, endDate, splits]);
+  }, [startDate, endDate, splits, payouts]);
 
   const getStatusStyles = (status: DayData['status'], isCurrentDay: boolean) => {
     const base = isCurrentDay
@@ -161,6 +184,34 @@ export function TipPeriodTimeline({
                     Add tips
                   </span>
                 )}
+
+                {/* Payout indicator for approved/archived days */}
+                {(day.status === 'approved' || day.status === 'archived') && day.payoutStatus === 'full' && (
+                  <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
+                    Paid
+                  </Badge>
+                )}
+                {(day.status === 'approved' || day.status === 'archived') && day.payoutStatus === 'partial' && (
+                  <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
+                    Partial
+                  </Badge>
+                )}
+
+                {/* Pay out action for approved/archived days without full payout */}
+                {onRecordPayout && day.split && (day.status === 'approved' || day.status === 'archived') && day.payoutStatus !== 'full' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRecordPayout(day.split!);
+                    }}
+                    className="mt-1 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={`Record payout for ${format(day.date, 'MMMM d')}`}
+                  >
+                    <Banknote className="h-3 w-3" />
+                    Pay out
+                  </button>
+                )}
               </button>
             );
           })}
@@ -183,6 +234,10 @@ export function TipPeriodTimeline({
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <div className="w-3 h-3 rounded bg-muted border border-muted-foreground/20" />
             <span>Locked</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-500/30" />
+            <span>Paid Out</span>
           </div>
         </div>
       </CardContent>

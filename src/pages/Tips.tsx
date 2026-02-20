@@ -13,6 +13,7 @@ import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByR
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence } from '@/hooks/useTipPoolSettings';
 import { useTipSplits, type TipSplitWithItems } from '@/hooks/useTipSplits';
+import { useTipPayouts, type CreatePayoutsInput } from '@/hooks/useTipPayouts';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
 import { useAutoSaveTipSettings } from '@/hooks/useAutoSaveTipSettings';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
@@ -25,6 +26,7 @@ import { TipHistoricalEntry } from '@/components/tips/TipHistoricalEntry';
 import { TipDraftsList } from '@/components/tips/TipDraftsList';
 import { TipPeriodTimeline } from '@/components/tips/TipPeriodTimeline';
 import { TipPeriodSummary } from '@/components/tips/TipPeriodSummary';
+import { TipPayoutSheet } from '@/components/tips/TipPayoutSheet';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
@@ -53,6 +55,7 @@ export const Tips = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('overview');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [periodOffset, setPeriodOffset] = useState(0); // 0 = current week, -1 = previous, +1 = next
+  const [payoutSheetSplit, setPayoutSheetSplit] = useState<TipSplitWithItems | null>(null);
 
   // ============ Memoized Date Calculations ============
   // Period dates for Overview mode (weekly view, Monday start to align with payroll)
@@ -101,6 +104,14 @@ export const Tips = () => {
     periodEndStr
   );
 
+  // Payouts for the current period
+  const {
+    payouts,
+    createPayouts,
+    isCreating: isCreatingPayouts,
+    deletePayout,
+  } = useTipPayouts(restaurantId, periodStartStr, periodEndStr);
+
   // Use appropriate splits based on view mode
   const splits = viewMode === 'overview' ? periodSplits : dailySplits;
 
@@ -134,6 +145,17 @@ export const Tips = () => {
   const handleDayClick = (date: Date) => {
     setSelectedDate(date);
     setViewMode('daily');
+  };
+
+  // Open payout sheet for a specific split
+  const handleRecordPayout = (split: TipSplitWithItems) => {
+    setPayoutSheetSplit(split);
+  };
+
+  // Confirm payout creation
+  const handleConfirmPayout = async (input: CreatePayoutsInput) => {
+    await createPayouts(input);
+    setPayoutSheetSplit(null);
   };
 
   // Lock all approved splits in the period (creates payroll snapshot)
@@ -712,6 +734,8 @@ export const Tips = () => {
             splits={periodSplits}
             onDayClick={handleDayClick}
             isLoading={periodSplitsLoading}
+            payouts={payouts}
+            onRecordPayout={handleRecordPayout}
           />
 
           {/* Lock period section with validation feedback */}
@@ -865,6 +889,20 @@ export const Tips = () => {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Tip Payout Sheet */}
+      {payoutSheetSplit && (
+        <TipPayoutSheet
+          key={payoutSheetSplit.id}
+          open={!!payoutSheetSplit}
+          onClose={() => setPayoutSheetSplit(null)}
+          split={payoutSheetSplit}
+          existingPayouts={payouts.filter(p => p.tip_split_id === payoutSheetSplit.id)}
+          onConfirm={handleConfirmPayout}
+          onDeletePayout={deletePayout}
+          isSubmitting={isCreatingPayouts}
+        />
       )}
     </div>
   );

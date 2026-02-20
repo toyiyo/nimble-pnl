@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTipSplits } from '@/hooks/useTipSplits';
+import { useTipPayouts } from '@/hooks/useTipPayouts';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format } from 'date-fns';
@@ -39,40 +40,68 @@ const EmployeeTips = () => {
     handleToday,
   } = usePeriodNavigation({ includeLast2Weeks: false });
 
+  const formattedStart = format(startDate, 'yyyy-MM-dd');
+  const formattedEnd = format(endDate, 'yyyy-MM-dd');
+
   const { splits, isLoading } = useTipSplits(
     restaurantId,
-    format(startDate, 'yyyy-MM-dd'),
-    format(endDate, 'yyyy-MM-dd')
+    formattedStart,
+    formattedEnd
   );
+
+  const { payouts } = useTipPayouts(restaurantId, formattedStart, formattedEnd);
+
+  // Build a lookup map: "employeeId|payoutDate" -> amount in cents
+  const payoutLookup = useMemo(() => {
+    if (!payouts || !currentEmployee) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const p of payouts) {
+      if (p.employee_id === currentEmployee.id) {
+        const key = p.payout_date;
+        map.set(key, (map.get(key) || 0) + p.amount);
+      }
+    }
+    return map;
+  }, [payouts, currentEmployee]);
 
   // Filter splits to only show approved ones with current employee
   const myTips = useMemo(() => {
     if (!splits || !currentEmployee) return [];
-    
-    return splits
-      .filter(split => split.status === 'approved')
-      .map(split => {
-        const myItem = split.items.find(item => item.employee_id === currentEmployee.id);
-        if (!myItem) return null;
 
-        return {
-          id: split.id,
-          split_id: split.id,
-          date: split.split_date,
-          amount: myItem.amount,
-          hours: myItem.hours_worked,
-          role: myItem.role,
-          shareMethod: split.share_method,
-          totalSplit: split.total_amount,
-          totalTeamHours: split.items.reduce((sum, item) => sum + (item.hours_worked || 0), 0),
-        };
-      })
-      .filter(Boolean);
+    const tips: Array<{
+      id: string;
+      date: string;
+      amount: number;
+      hours: number;
+      role: string;
+      shareMethod: string;
+      totalSplit: number;
+      totalTeamHours: number;
+    }> = [];
+
+    for (const split of splits) {
+      if (split.status !== 'approved') continue;
+      const myItem = split.items.find(item => item.employee_id === currentEmployee.id);
+      if (!myItem) continue;
+
+      tips.push({
+        id: split.id,
+        date: split.split_date,
+        amount: myItem.amount,
+        hours: myItem.hours_worked,
+        role: myItem.role,
+        shareMethod: split.share_method,
+        totalSplit: split.total_amount,
+        totalTeamHours: split.items.reduce((sum, item) => sum + (item.hours_worked || 0), 0),
+      });
+    }
+
+    return tips;
   }, [splits, currentEmployee]);
 
   // Calculate period totals
-  const periodTotal = myTips.reduce((sum, tip) => sum + (tip?.amount || 0), 0);
-  const periodHours = myTips.reduce((sum, tip) => sum + (tip?.hours || 0), 0);
+  const periodTotal = myTips.reduce((sum, tip) => sum + tip.amount, 0);
+  const periodHours = myTips.reduce((sum, tip) => sum + tip.hours, 0);
 
   if (!restaurantId) {
     return <NoRestaurantState />;
@@ -158,37 +187,47 @@ const EmployeeTips = () => {
           {!isLoading && myTips.length > 0 && (
             <>
               {myTips.map((tip) => (
-                <Card key={tip!.id}>
+                <Card key={tip.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">
-                        {format(new Date(tip!.date), 'EEEE, MMM d')}
+                        {format(new Date(tip.date), 'EEEE, MMM d')}
                       </CardTitle>
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        {formatCurrencyFromCents(tip!.amount)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {payoutLookup.has(tip.date) && (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                          >
+                            Paid {formatCurrencyFromCents(payoutLookup.get(tip.date) ?? 0)} cash
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          {formatCurrencyFromCents(tip.amount)}
+                        </Badge>
+                      </div>
                     </div>
                     <CardDescription className="flex items-center gap-4">
-                      {Boolean(tip!.hours) && (
+                      {Boolean(tip.hours) && (
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {tip!.hours.toFixed(1)} hours
+                          {tip.hours.toFixed(1)} hours
                         </span>
                       )}
-                      {tip!.role && <span>• {tip!.role}</span>}
+                      {tip.role && <span>• {tip.role}</span>}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <TipTransparency
-                      employeeTip={tip!}
-                      totalTeamHours={tip!.totalTeamHours}
-                      shareMethod={tip!.shareMethod || 'manual'}
+                      employeeTip={tip}
+                      totalTeamHours={tip.totalTeamHours}
+                      shareMethod={tip.shareMethod || 'manual'}
                     />
                     <TipDispute
                       restaurantId={restaurantId}
                       employeeId={currentEmployee.id}
-                      tipSplitId={tip!.id}
-                      tipDate={tip!.date}
+                      tipSplitId={tip.id}
+                      tipDate={tip.date}
                     />
                   </CardContent>
                 </Card>
@@ -219,20 +258,30 @@ const EmployeeTips = () => {
                 <div className="space-y-2">
                   {myTips.map((tip) => (
                     <div 
-                      key={tip!.id}
+                      key={tip.id}
                       className="flex items-center justify-between p-3 rounded-lg border"
                     >
                       <div>
                         <p className="font-medium">
-                          {format(new Date(tip!.date), 'EEE, MMM d, yyyy')}
+                          {format(new Date(tip.date), 'EEE, MMM d, yyyy')}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {tip!.hours?.toFixed(1)} hours
+                          {tip.hours.toFixed(1)} hours
                         </p>
                       </div>
-                      <p className="font-bold text-green-600">
-                        {formatCurrencyFromCents(tip!.amount)}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {payoutLookup.has(tip.date) && (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                          >
+                            Paid
+                          </Badge>
+                        )}
+                        <p className="font-bold text-green-600">
+                          {formatCurrencyFromCents(tip.amount)}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>

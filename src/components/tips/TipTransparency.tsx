@@ -47,13 +47,11 @@ export function TipTransparency({ employeeTip, totalTeamHours, shareMethod }: Ti
     if (shareMethod === 'hours' && employeeTip.hours && totalTeamHours > 0) {
       const percentage = ((employeeTip.hours / totalTeamHours) * 100).toFixed(1);
       return (
-        <>
-          <div className="space-y-2 text-sm">
-            <p>You worked <span className="font-semibold">{employeeTip.hours.toFixed(1)} hours</span></p>
-            <p>Team worked <span className="font-semibold">{totalTeamHours.toFixed(1)} hours</span></p>
-            <p className="text-muted-foreground">Your portion: {percentage}%</p>
-          </div>
-        </>
+        <div className="space-y-2 text-sm">
+          <p>You worked <span className="font-semibold">{employeeTip.hours.toFixed(1)} hours</span></p>
+          <p>Team worked <span className="font-semibold">{totalTeamHours.toFixed(1)} hours</span></p>
+          <p className="text-muted-foreground">Your portion: {percentage}%</p>
+        </div>
       );
     }
 

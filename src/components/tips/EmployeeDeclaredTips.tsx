@@ -18,7 +18,7 @@ interface EmployeeDeclaredTipsProps {
  * Component to display employee-declared tips for a specific date
  * Shows tips entered by employees via clock-out or self-service
  */
-export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeDeclaredTipsProps) => {
+export function EmployeeDeclaredTips({ restaurantId, date, onImport }: EmployeeDeclaredTipsProps) {
   const { tips, isLoading, deleteTip, isDeleting } = useEmployeeTips(restaurantId);
 
   // Filter tips for the selected date
@@ -84,8 +84,8 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
                 Employee-Declared Tips
               </CardTitle>
               <CardDescription className="text-[13px]">
-              Tips declared by employees for {format(new Date(date), 'MMMM d, yyyy')}
-            </CardDescription>
+                Tips declared by employees for {format(new Date(date), 'MMMM d, yyyy')}
+              </CardDescription>
             </div>
           </div>
           <div className="text-right">
@@ -186,4 +186,4 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
       </CardContent>
     </Card>
   );
-};
+}

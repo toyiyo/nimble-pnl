@@ -22,7 +22,16 @@ interface TipDraftsListProps {
   onResumeDraft: (draftId: string) => void;
 }
 
-export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProps) => {
+function getShareMethodLabel(method: string | null): string {
+  switch (method) {
+    case 'hours': return 'Split by hours';
+    case 'role': return 'Split by role';
+    case 'manual': return 'Manual allocation';
+    default: return 'Split evenly';
+  }
+}
+
+export function TipDraftsList({ restaurantId, onResumeDraft }: TipDraftsListProps) {
   const { splits, isLoading, deleteTipSplitAsync, isDeleting } = useTipSplits(restaurantId);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
@@ -111,10 +120,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
                       {formatCurrencyFromCents(split.total_amount)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {split.share_method === 'hours' && 'Split by hours'}
-                      {split.share_method === 'role' && 'Split by role'}
-                      {split.share_method === 'manual' && 'Manual allocation'}
-                      {!split.share_method && 'Split evenly'}
+                      {getShareMethodLabel(split.share_method)}
                     </p>
                   </div>
                   {split.notes && (
@@ -168,4 +174,4 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
       </AlertDialog>
     </>
   );
-};
+}

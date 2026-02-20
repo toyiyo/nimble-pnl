@@ -203,58 +203,54 @@ const EmployeeTips = () => {
               </CardContent>
             </Card>
           )}
-          {!isLoading && myTips.length > 0 && (
-            <>
-              {myTips.map((tip) => (
-                <Card key={tip.id} className="rounded-xl border-border/40 hover:border-border transition-colors">
-                  <div className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[14px] font-medium text-foreground">
-                          {format(new Date(tip.date), 'EEEE, MMM d')}
-                        </p>
-                        <div className="flex items-center gap-3 mt-0.5">
-                          {Boolean(tip.hours) && (
-                            <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              {tip.hours.toFixed(1)} hours
-                            </span>
-                          )}
-                          {tip.role && <span className="text-[13px] text-muted-foreground">{tip.role}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {payoutLookup.has(tip.date) && (
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
-                          >
-                            Paid {formatCurrencyFromCents(payoutLookup.get(tip.date) ?? 0)} cash
-                          </Badge>
-                        )}
-                        <span className="text-[14px] font-semibold text-foreground">
-                          {formatCurrencyFromCents(tip.amount)}
+          {!isLoading && myTips.map((tip) => (
+            <Card key={tip.id} className="rounded-xl border-border/40 hover:border-border transition-colors">
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-medium text-foreground">
+                      {format(new Date(tip.date), 'EEEE, MMM d')}
+                    </p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {Boolean(tip.hours) && (
+                        <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {tip.hours.toFixed(1)} hours
                         </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
-                      <TipTransparency
-                        employeeTip={tip}
-                        totalTeamHours={tip.totalTeamHours}
-                        shareMethod={tip.shareMethod || 'manual'}
-                      />
-                      <TipDispute
-                        restaurantId={restaurantId}
-                        employeeId={currentEmployee.id}
-                        tipSplitId={tip.id}
-                        tipDate={tip.date}
-                      />
+                      )}
+                      {tip.role && <span className="text-[13px] text-muted-foreground">{tip.role}</span>}
                     </div>
                   </div>
-                </Card>
-              ))}
-            </>
-          )}
+                  <div className="flex items-center gap-2">
+                    {payoutLookup.has(tip.date) && (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                      >
+                        Paid {formatCurrencyFromCents(payoutLookup.get(tip.date) ?? 0)} cash
+                      </Badge>
+                    )}
+                    <span className="text-[14px] font-semibold text-foreground">
+                      {formatCurrencyFromCents(tip.amount)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                  <TipTransparency
+                    employeeTip={tip}
+                    totalTeamHours={tip.totalTeamHours}
+                    shareMethod={tip.shareMethod || 'manual'}
+                  />
+                  <TipDispute
+                    restaurantId={restaurantId}
+                    employeeId={currentEmployee.id}
+                    tipSplitId={tip.id}
+                    tipDate={tip.date}
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
       )}
 

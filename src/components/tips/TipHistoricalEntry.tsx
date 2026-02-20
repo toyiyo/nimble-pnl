@@ -12,7 +12,7 @@ interface TipHistoricalEntryProps {
   currentDate: Date;
 }
 
-export const TipHistoricalEntry = ({ onDateSelected, currentDate }: TipHistoricalEntryProps) => {
+export function TipHistoricalEntry({ onDateSelected, currentDate }: TipHistoricalEntryProps) {
   const [selectedDate, setSelectedDate] = useState(format(currentDate, 'yyyy-MM-dd'));
   const [showPicker, setShowPicker] = useState(false);
 
@@ -102,4 +102,4 @@ export const TipHistoricalEntry = ({ onDateSelected, currentDate }: TipHistorica
       </CardContent>
     </Card>
   );
-};
+}

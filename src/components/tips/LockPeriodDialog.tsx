@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, Lock } from 'lucide-react';
@@ -11,13 +11,13 @@ export interface LockPeriodDialogProps {
   loading?: boolean;
 }
 
-export const LockPeriodDialog = ({
+export function LockPeriodDialog({
   open,
   periodLabel,
   onConfirm,
   onCancel,
   loading,
-}: LockPeriodDialogProps) => {
+}: LockPeriodDialogProps) {
   return (
     <Dialog open={open} onOpenChange={v => !v && onCancel()}>
       <DialogContent className="max-w-md w-full p-0 gap-0 border-border/40">
@@ -26,9 +26,7 @@ export const LockPeriodDialog = ({
             <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
               <Lock className="h-5 w-5 text-foreground" />
             </div>
-            <div>
-              <DialogTitle className="text-[17px] font-semibold text-foreground">Lock tips for {periodLabel}?</DialogTitle>
-            </div>
+            <DialogTitle className="text-[17px] font-semibold text-foreground">Lock tips for {periodLabel}?</DialogTitle>
           </div>
         </DialogHeader>
         <div className="px-6 py-5">
@@ -48,6 +46,4 @@ export const LockPeriodDialog = ({
       </DialogContent>
     </Dialog>
   );
-};
-
-export default LockPeriodDialog;
+}

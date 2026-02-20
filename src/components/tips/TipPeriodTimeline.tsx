@@ -197,19 +197,15 @@ export function TipPeriodTimeline({
                   )}
 
                   {/* Payout status badges */}
-                  {(day.status === 'approved' || day.status === 'archived') && (
-                    <>
-                      {day.payoutStatus === 'full' && (
-                        <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
-                          Paid
-                        </Badge>
-                      )}
-                      {day.payoutStatus === 'partial' && (
-                        <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
-                          Partial
-                        </Badge>
-                      )}
-                    </>
+                  {(day.status === 'approved' || day.status === 'archived') && day.payoutStatus === 'full' && (
+                    <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
+                      Paid
+                    </Badge>
+                  )}
+                  {(day.status === 'approved' || day.status === 'archived') && day.payoutStatus === 'partial' && (
+                    <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
+                      Partial
+                    </Badge>
                   )}
                 </button>
 

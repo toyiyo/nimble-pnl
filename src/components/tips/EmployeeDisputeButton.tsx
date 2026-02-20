@@ -3,7 +3,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -57,18 +56,18 @@ const DISPUTE_TYPES: Array<{ value: DisputeType; label: string; description: str
   },
 ];
 
-export const EmployeeDisputeButton = ({
+export function EmployeeDisputeButton({
   tipSplitId,
   employeeId,
   restaurantId,
-}: EmployeeDisputeButtonProps) => {
+}: EmployeeDisputeButtonProps) {
   const [open, setOpen] = useState(false);
   const [disputeType, setDisputeType] = useState<DisputeType>('missing_hours');
   const [message, setMessage] = useState('');
   const { toast } = useToast();
   const { createDispute, isCreating } = useTipDisputes(restaurantId);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!disputeType) {
       toast({
         title: 'Please select an issue type',
@@ -77,43 +76,34 @@ export const EmployeeDisputeButton = ({
       return;
     }
 
-    try {
-      createDispute(
-        {
-          restaurant_id: restaurantId,
-          employee_id: employeeId,
-          tip_split_id: tipSplitId,
-          dispute_type: disputeType,
-          message: message,
+    createDispute(
+      {
+        restaurant_id: restaurantId,
+        employee_id: employeeId,
+        tip_split_id: tipSplitId,
+        dispute_type: disputeType,
+        message,
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Review request sent',
+            description: 'Your manager will review this and get back to you.',
+          });
+          setOpen(false);
+          setMessage('');
+          setDisputeType('missing_hours');
         },
-        {
-          onSuccess: () => {
-            toast({
-              title: 'Review request sent',
-              description: 'Your manager will review this and get back to you.',
-            });
-            setOpen(false);
-            setMessage('');
-            setDisputeType('missing_hours');
-          },
-          onError: (error) => {
-            console.error('Error submitting dispute:', error);
-            toast({
-              title: 'Error',
-              description: 'Failed to submit review request. Please try again.',
-              variant: 'destructive',
-            });
-          },
-        }
-      );
-    } catch (error) {
-      console.error('Error submitting dispute:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to submit review request. Please try again.',
-        variant: 'destructive',
-      });
-    }
+        onError: (error) => {
+          console.error('Error submitting dispute:', error);
+          toast({
+            title: 'Error',
+            description: 'Failed to submit review request. Please try again.',
+            variant: 'destructive',
+          });
+        },
+      }
+    );
   };
 
   return (
@@ -180,4 +170,4 @@ export const EmployeeDisputeButton = ({
       </DialogContent>
     </Dialog>
   );
-};
+}

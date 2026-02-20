@@ -97,9 +97,11 @@ export function TipPeriodSummary({
   };
 
   const getShareMethodLabel = (method: string): string => {
-    if (method === 'hours') return 'By hours worked';
-    if (method === 'role') return 'By role';
-    return 'Manual';
+    switch (method) {
+      case 'hours': return 'By hours worked';
+      case 'role': return 'By role';
+      default: return 'Manual';
+    }
   };
 
   if (isLoading) {

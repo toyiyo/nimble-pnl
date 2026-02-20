@@ -43,7 +43,7 @@ export function TipDispute({ restaurantId, employeeId, tipSplitId, tipDate }: Ti
         employee_id: employeeId,
         tip_split_id: tipSplitId,
         dispute_type: disputeType,
-        message: message,
+        message,
       },
       {
         onSuccess: () => {

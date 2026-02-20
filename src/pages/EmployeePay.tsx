@@ -27,6 +27,19 @@ import {
   Calendar,
 } from 'lucide-react';
 
+function getPaySubtitle(employee: { name: string; compensation_type?: string; hourly_rate: number }): string {
+  switch (employee.compensation_type) {
+    case 'daily_rate':
+      return `${employee.name} \u2022 ${formatCurrency(employee.hourly_rate)}/day`;
+    case 'salary':
+      return `${employee.name} \u2022 Salary`;
+    case 'contractor':
+      return `${employee.name} \u2022 Contractor`;
+    default:
+      return `${employee.name} \u2022 ${formatCurrency(employee.hourly_rate)}/hr`;
+  }
+}
+
 const EmployeePay = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
@@ -70,15 +83,7 @@ const EmployeePay = () => {
       <EmployeePageHeader
         icon={Wallet}
         title="My Pay"
-        subtitle={
-          currentEmployee.compensation_type === 'daily_rate'
-            ? `${currentEmployee.name} • ${formatCurrency(currentEmployee.hourly_rate)}/day`
-            : currentEmployee.compensation_type === 'salary'
-              ? `${currentEmployee.name} • Salary`
-              : currentEmployee.compensation_type === 'contractor'
-                ? `${currentEmployee.name} • Contractor`
-                : `${currentEmployee.name} • ${formatCurrency(currentEmployee.hourly_rate)}/hr`
-        }
+        subtitle={getPaySubtitle(currentEmployee)}
       />
 
       {/* Period Selector */}
@@ -145,25 +150,28 @@ const EmployeePay = () => {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
-                  {myPayroll.compensationType === 'daily_rate' ? (
-                    <><Calendar className="h-4 w-4" />Days Worked</>
-                  ) : myPayroll.compensationType === 'salary' || myPayroll.compensationType === 'contractor' ? (
-                    <><Calendar className="h-4 w-4" />Pay Period</>
+                  {myPayroll.compensationType === 'hourly' ? (
+                    <Clock className="h-4 w-4" />
                   ) : (
-                    <><Clock className="h-4 w-4" />Hours Worked</>
+                    <Calendar className="h-4 w-4" />
                   )}
+                  {myPayroll.compensationType === 'daily_rate' && 'Days Worked'}
+                  {(myPayroll.compensationType === 'salary' || myPayroll.compensationType === 'contractor') && 'Pay Period'}
+                  {myPayroll.compensationType === 'hourly' && 'Hours Worked'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {myPayroll.compensationType === 'daily_rate' ? (
+                {myPayroll.compensationType === 'daily_rate' && (
                   <div className="text-2xl font-bold">
                     {myPayroll.daysWorked ?? 0}
                   </div>
-                ) : myPayroll.compensationType === 'salary' || myPayroll.compensationType === 'contractor' ? (
+                )}
+                {(myPayroll.compensationType === 'salary' || myPayroll.compensationType === 'contractor') && (
                   <div className="text-2xl font-bold text-muted-foreground">
-                    —
+                    &mdash;
                   </div>
-                ) : (
+                )}
+                {myPayroll.compensationType === 'hourly' && (
                   <>
                     <div className="text-2xl font-bold">
                       {formatHours(myPayroll.regularHours + myPayroll.overtimeHours)}
@@ -249,7 +257,7 @@ const EmployeePay = () => {
                     Wages
                   </h4>
                   <div className="space-y-2 pl-6">
-                    {myPayroll.compensationType === 'daily_rate' ? (
+                    {myPayroll.compensationType === 'daily_rate' && (
                       <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
                         <div>
                           <span className="font-medium">Daily Rate Pay</span>
@@ -259,7 +267,8 @@ const EmployeePay = () => {
                         </div>
                         <span className="font-medium">{formatCurrency(myPayroll.dailyRatePay)}</span>
                       </div>
-                    ) : myPayroll.compensationType === 'salary' ? (
+                    )}
+                    {myPayroll.compensationType === 'salary' && (
                       <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
                         <div>
                           <span className="font-medium">Salary</span>
@@ -267,7 +276,8 @@ const EmployeePay = () => {
                         </div>
                         <span className="font-medium">{formatCurrency(myPayroll.salaryPay)}</span>
                       </div>
-                    ) : myPayroll.compensationType === 'contractor' ? (
+                    )}
+                    {myPayroll.compensationType === 'contractor' && (
                       <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
                         <div>
                           <span className="font-medium">Contract Pay</span>
@@ -275,7 +285,8 @@ const EmployeePay = () => {
                         </div>
                         <span className="font-medium">{formatCurrency(myPayroll.contractorPay + myPayroll.manualPaymentsTotal)}</span>
                       </div>
-                    ) : (
+                    )}
+                    {myPayroll.compensationType === 'hourly' && (
                       <>
                         <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
                           <div>

@@ -301,15 +301,19 @@ export const Tips = () => {
 
   // Helper functions for display text
   const getShareMethodLabel = (method: ShareMethod): string => {
-    if (method === 'hours') return 'By hours worked';
-    if (method === 'role') return 'By role';
-    return 'Manual';
+    switch (method) {
+      case 'hours': return 'By hours worked';
+      case 'role': return 'By role';
+      default: return 'Manual';
+    }
   };
 
   const getSplitCadenceLabel = (cadence: SplitCadence): string => {
-    if (cadence === 'daily') return 'Every day';
-    if (cadence === 'weekly') return 'Every week';
-    return 'Per shift';
+    switch (cadence) {
+      case 'daily': return 'Every day';
+      case 'weekly': return 'Every week';
+      default: return 'Per shift';
+    }
   };
 
   const participants = useMemo(() => {

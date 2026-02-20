@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
-import { format, eachDayOfInterval, isSameDay, isToday } from 'date-fns';
+import { format, eachDayOfInterval, isToday } from 'date-fns';
 import { Plus, Check, FileText, Lock, Banknote } from 'lucide-react';
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
 import type { TipPayoutWithEmployee } from '@/hooks/useTipPayouts';
@@ -185,32 +185,34 @@ export function TipPeriodTimeline({
                   </span>
                 )}
 
-                {/* Payout indicator for approved/archived days */}
-                {(day.status === 'approved' || day.status === 'archived') && day.payoutStatus === 'full' && (
-                  <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
-                    Paid
-                  </Badge>
-                )}
-                {(day.status === 'approved' || day.status === 'archived') && day.payoutStatus === 'partial' && (
-                  <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
-                    Partial
-                  </Badge>
-                )}
-
-                {/* Pay out action for approved/archived days without full payout */}
-                {onRecordPayout && day.split && (day.status === 'approved' || day.status === 'archived') && day.payoutStatus !== 'full' && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRecordPayout(day.split!);
-                    }}
-                    className="mt-1 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={`Record payout for ${format(day.date, 'MMMM d')}`}
-                  >
-                    <Banknote className="h-3 w-3" />
-                    Pay out
-                  </button>
+                {/* Payout indicator and action for approved/archived days */}
+                {(day.status === 'approved' || day.status === 'archived') && (
+                  <>
+                    {day.payoutStatus === 'full' && (
+                      <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
+                        Paid
+                      </Badge>
+                    )}
+                    {day.payoutStatus === 'partial' && (
+                      <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
+                        Partial
+                      </Badge>
+                    )}
+                    {onRecordPayout && day.split && day.payoutStatus !== 'full' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRecordPayout(day.split!);
+                        }}
+                        className="mt-1 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label={`Record payout for ${format(day.date, 'MMMM d')}`}
+                      >
+                        <Banknote className="h-3 w-3" />
+                        Pay out
+                      </button>
+                    )}
+                  </>
                 )}
               </button>
             );

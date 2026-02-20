@@ -17,11 +17,6 @@ import {
   type EmployeeTip as EmployeeTipForAggregation,
 } from '@/utils/tipAggregation';
 
-interface EmployeeTip {
-  employee_id: string;
-  tip_amount: number;
-}
-
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
   tipItems: Array<{ employee_id: string; amount: number }> = [],
@@ -84,12 +79,16 @@ export function computeTipTotals(
   return base;
 }
 
-interface ManualPaymentDB {
-  id: string;
+interface DBTipSplitItem {
   employee_id: string;
-  date: string;
-  allocated_cost: number;
-  notes: string | null;
+  amount: number;
+  tip_splits?: { split_date: string } | null;
+}
+
+interface DBEmployeeTip {
+  employee_id: string;
+  tip_amount: number;
+  tip_date: string;
 }
 
 // Type for the time_punches data from Supabase
@@ -212,19 +211,6 @@ export const usePayroll = (
 
       if (tipPayoutsError) throw tipPayoutsError;
 
-      // Transform the data to match the utility's expected types
-      interface DBTipSplitItem {
-        employee_id: string;
-        amount: number;
-        tip_splits?: { split_date: string } | null;
-      }
-
-      interface DBEmployeeTip {
-        employee_id: string;
-        tip_amount: number;
-        tip_date: string;
-      }
-
       const tipItems: TipSplitItemForAggregation[] = (tips || []).map((item: DBTipSplitItem) => ({
         employee_id: item.employee_id,
         amount: item.amount,
@@ -274,8 +260,7 @@ export const usePayroll = (
         shouldIncludeEmployeeInPayroll(employee, startDate)
       );
 
-      // Calculate payroll for eligible employees
-      const payroll = calculatePayrollPeriod(
+      return calculatePayrollPeriod(
         startDate,
         endDate,
         eligibleEmployees,
@@ -284,8 +269,6 @@ export const usePayroll = (
         manualPaymentsPerEmployee,
         tipPayoutsPerEmployee,
       );
-
-      return payroll;
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds

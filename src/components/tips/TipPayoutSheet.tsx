@@ -57,14 +57,13 @@ function buildInitialEntries(
     .filter((item) => item.amount > 0)
     .map((item) => {
       const existing = payoutByEmployee.get(item.employee_id);
-      const hasExisting = !!existing;
 
       return {
         employeeId: item.employee_id,
         employeeName: item.employee?.name ?? 'Unknown',
         allocatedCents: item.amount,
-        payoutCents: hasExisting ? existing.amount : item.amount,
-        enabled: hasExisting ? true : existingPayouts.length === 0,
+        payoutCents: existing ? existing.amount : item.amount,
+        enabled: existing ? true : existingPayouts.length === 0,
         existingPayoutId: existing?.id ?? null,
       };
     })
@@ -95,8 +94,6 @@ export function TipPayoutSheet({
   isSubmitting,
 }: TipPayoutSheetProps) {
   const [entries, setEntries] = useState<PayoutEntry[]>([]);
-
-  const hasExistingPayouts = existingPayouts.length > 0;
 
   // Re-initialise entries when the sheet opens or the split/payouts change
   useEffect(() => {
@@ -189,13 +186,7 @@ export function TipPayoutSheet({
 
   // ------ Render -----------------------------------------------------------
 
-  const formattedDate = (() => {
-    try {
-      return format(parseISO(split.split_date), 'EEE, MMM d');
-    } catch {
-      return split.split_date;
-    }
-  })();
+  const formattedDate = format(parseISO(split.split_date), 'EEE, MMM d');
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -212,7 +203,7 @@ export function TipPayoutSheet({
             </div>
             <div>
               <SheetTitle className="text-[17px] font-semibold text-foreground">
-                {hasExistingPayouts ? 'Edit Tip Payouts' : 'Record Tip Payouts'}
+                {existingPayouts.length > 0 ? 'Edit Tip Payouts' : 'Record Tip Payouts'}
               </SheetTitle>
               <SheetDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {formattedDate} &middot; {formatCurrencyFromCents(split.total_amount)} total
@@ -371,5 +362,3 @@ export function TipPayoutSheet({
     </Sheet>
   );
 }
-
-export default TipPayoutSheet;

@@ -895,7 +895,7 @@ export const Tips = () => {
       {payoutSheetSplit && (
         <TipPayoutSheet
           key={payoutSheetSplit.id}
-          open={!!payoutSheetSplit}
+          open
           onClose={() => setPayoutSheetSplit(null)}
           split={payoutSheetSplit}
           existingPayouts={payouts.filter(p => p.tip_split_id === payoutSheetSplit.id)}

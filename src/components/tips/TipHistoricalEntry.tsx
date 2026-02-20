@@ -32,14 +32,16 @@ export const TipHistoricalEntry = ({ onDateSelected, currentDate }: TipHistorica
   const isPast = selectedDate < format(today, 'yyyy-MM-dd');
 
   return (
-    <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+    <Card className="rounded-xl border-border/40">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Calendar className="h-6 w-6 text-primary" />
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Calendar className="h-5 w-5 text-foreground" />
+            </div>
             <div>
-              <CardTitle>Tip Entry Date</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Tip Entry Date</CardTitle>
+              <CardDescription className="text-[13px]">
                 {isToday ? 'Entering for today' : 'Entering historical tips'}
               </CardDescription>
             </div>
@@ -55,8 +57,8 @@ export const TipHistoricalEntry = ({ onDateSelected, currentDate }: TipHistorica
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="p-4 bg-background rounded-lg border">
-          <p className="text-2xl font-bold">
+        <div className="p-4 bg-background rounded-xl border border-border/40">
+          <p className="text-[17px] font-semibold text-foreground">
             {format(new Date(selectedDate + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
           </p>
           {isPast && (

@@ -44,14 +44,21 @@ export function TipEntryDialog({ onContinue, defaultAmount, trigger }: TipEntryD
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Enter today's tips</DialogTitle>
-          <DialogDescription>
-            Enter the total amount of tips collected today.
-          </DialogDescription>
+      <DialogContent className="sm:max-w-md p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <DollarSign className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">Enter today's tips</DialogTitle>
+              <DialogDescription className="text-[13px] mt-0.5">
+                Enter the total amount of tips collected today.
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="px-6 py-5 space-y-4">
           <div className="space-y-2">
             <Label htmlFor="tip-amount" className="sr-only">
               Tip amount
@@ -77,14 +84,15 @@ export function TipEntryDialog({ onContinue, defaultAmount, trigger }: TipEntryD
             </div>
           </div>
         </div>
-        <Button 
-          onClick={handleContinue} 
-          size="lg" 
-          className="w-full"
-          disabled={!amount || Number.parseFloat(amount) <= 0}
-        >
-          Continue
-        </Button>
+        <div className="px-6 pb-6">
+          <Button
+            onClick={handleContinue}
+            className="w-full h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+            disabled={!amount || Number.parseFloat(amount) <= 0}
+          >
+            Continue
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

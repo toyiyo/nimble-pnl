@@ -72,23 +72,27 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
   }, {} as Record<string, { employeeId: string; employeeName: string; tips: typeof dateTips; total: number }>);
 
   return (
-    <Card className="border-primary/20 bg-primary/5">
-      <CardHeader>
+    <Card className="rounded-xl border-border/40">
+      <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-primary" aria-hidden="true" />
-              Employee-Declared Tips
-            </CardTitle>
-            <CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <DollarSign className="h-5 w-5 text-foreground" aria-hidden="true" />
+            </div>
+            <div>
+              <CardTitle className="text-[17px] font-semibold text-foreground">
+                Employee-Declared Tips
+              </CardTitle>
+              <CardDescription className="text-[13px]">
               Tips declared by employees for {format(new Date(date), 'MMMM d, yyyy')}
             </CardDescription>
+            </div>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold text-primary">
+            <p className="text-[22px] font-semibold text-foreground">
               {formatCurrencyFromCents(totalTipsCents)}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               {dateTips.length} {dateTips.length === 1 ? 'entry' : 'entries'}
             </p>
           </div>
@@ -100,7 +104,7 @@ export const EmployeeDeclaredTips = ({ restaurantId, date, onImport }: EmployeeD
           {Object.values(tipsByEmployee).map(({ employeeId, employeeName, tips, total }) => (
             <div
               key={employeeId}
-              className="bg-background rounded-lg border p-3 hover:bg-accent/50 transition-colors"
+              className="bg-background rounded-xl border border-border/40 p-3 hover:border-border transition-colors"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">

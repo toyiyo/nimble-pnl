@@ -49,7 +49,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
 
   if (isLoading) {
     return (
-      <Card className="bg-gradient-to-br from-muted/30 to-transparent">
+      <Card className="rounded-xl border-border/40">
         <CardContent className="py-8 text-center">
           <p className="text-muted-foreground">Loading drafts...</p>
         </CardContent>
@@ -59,11 +59,13 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
 
   if (!drafts || drafts.length === 0) {
     return (
-      <Card className="bg-gradient-to-br from-muted/30 to-transparent">
+      <Card className="rounded-xl border-border/40">
         <CardContent className="py-8 text-center">
-          <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">No saved drafts</p>
-          <p className="text-sm text-muted-foreground mt-1">
+          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+            <FileText className="h-5 w-5 text-muted-foreground/50" />
+          </div>
+          <p className="text-[14px] font-medium text-foreground mt-4">No saved drafts</p>
+          <p className="text-[13px] text-muted-foreground mt-1">
             Drafts appear here when you save a tip split without approving it.
           </p>
         </CardContent>
@@ -76,10 +78,12 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <FileText className="h-6 w-6 text-primary" />
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-foreground" />
+            </div>
             <div>
-              <CardTitle>Saved Drafts</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-[17px] font-semibold text-foreground">Saved Drafts</CardTitle>
+              <CardDescription className="text-[13px]">
                 {drafts.length} draft{drafts.length !== 1 ? 's' : ''} waiting for approval
               </CardDescription>
             </div>
@@ -90,7 +94,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
             {drafts.map((split) => (
               <div
                 key={split.id}
-                className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+                className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
               >
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
@@ -103,7 +107,7 @@ export const TipDraftsList = ({ restaurantId, onResumeDraft }: TipDraftsListProp
                     </span>
                   </div>
                   <div className="flex items-baseline gap-2">
-                    <p className="text-2xl font-bold">
+                    <p className="text-[22px] font-semibold text-foreground">
                       {formatCurrencyFromCents(split.total_amount)}
                     </p>
                     <p className="text-sm text-muted-foreground">

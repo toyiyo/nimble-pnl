@@ -30,7 +30,7 @@ import { TipPayoutSheet } from '@/components/tips/TipPayoutSheet';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
 import { calculateWorkedHours } from '@/utils/payrollCalculations';
-import { Info, Settings, RefreshCw, Clock } from 'lucide-react';
+import { Info, Settings, RefreshCw, Clock, DollarSign, Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const defaultWeights: Record<string, number> = {
@@ -492,16 +492,16 @@ export const Tips = () => {
   if (showReview && totalTipsCents > 0) {
     return (
       <div className="space-y-6">
-        <header className="space-y-2">
+        <header className="space-y-1">
           <Button
             variant="ghost"
             onClick={() => setShowReview(false)}
-            className="mb-2"
+            className="mb-2 h-9 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
           >
             ← Back to entry
           </Button>
-          <p className="text-sm text-muted-foreground">Dashboard → Tips → Review</p>
-          <h1 className="text-2xl font-bold">Review Tip Split</h1>
+          <p className="text-[13px] text-muted-foreground">Dashboard → Tips → Review</p>
+          <h1 className="text-[17px] font-semibold text-foreground">Review Tip Split</h1>
         </header>
 
         <Card className="max-w-md">
@@ -638,18 +638,18 @@ export const Tips = () => {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-2 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Dashboard → Tips</p>
-          <h1 className="text-2xl font-bold">Tips</h1>
-          <p className="text-muted-foreground max-w-2xl">
+      <header className="flex items-center justify-between">
+        <div className="space-y-1">
+          <p className="text-[13px] text-muted-foreground">Dashboard → Tips</p>
+          <h1 className="text-[17px] font-semibold text-foreground">Tips</h1>
+          <p className="text-[13px] text-muted-foreground max-w-2xl">
             Simple, trust-building tip splits. One choice at a time, with a live preview.
           </p>
         </div>
         <Button
           variant="ghost"
           aria-label="Setup"
-          className="gap-2"
+          className="h-9 rounded-lg gap-2"
           onClick={() => setShowSetup(true)}
           onKeyDown={e => e.key === 'Enter' && setShowSetup(true)}
         >
@@ -677,38 +677,39 @@ export const Tips = () => {
 
       {restaurantId && <DisputeManager restaurantId={restaurantId} />}
 
-      <div className="flex gap-2">
-        <Button
-          variant={viewMode === 'overview' ? 'default' : 'outline'}
-          onClick={() => setViewMode('overview')}
-        >
-          Overview
-        </Button>
-        <Button
-          variant={viewMode === 'daily' ? 'default' : 'outline'}
-          onClick={() => setViewMode('daily')}
-        >
-          Daily Entry
-        </Button>
-        <Button
-          variant={viewMode === 'history' ? 'default' : 'outline'}
-          onClick={() => setViewMode('history')}
-        >
-          History
-        </Button>
+      {/* Apple-style underline tabs */}
+      <div className="flex border-b border-border/40">
+        {(['overview', 'daily', 'history'] as const).map((mode) => {
+          const labels: Record<ViewMode, string> = { overview: 'Overview', daily: 'Daily Entry', history: 'History' };
+          return (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
+                viewMode === mode ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {labels[mode]}
+              {viewMode === mode && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {viewMode === 'overview' && (
         <div className="space-y-6">
           {/* Period navigation controls */}
           <div className="flex items-center justify-between pb-2">
-            <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)}>
+            <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)} className="h-9 rounded-lg text-[13px] font-medium">
               ← Previous
             </Button>
-            <span className="font-semibold text-lg">
+            <span className="text-[14px] font-semibold text-foreground">
               {`Week of ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`}
             </span>
-            <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0}>
+            <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0} className="h-9 rounded-lg text-[13px] font-medium">
               Next →
             </Button>
           </div>
@@ -743,12 +744,12 @@ export const Tips = () => {
           />
 
           {/* Lock period section with validation feedback */}
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <p className="font-medium">Ready for payroll?</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-[14px] font-medium text-foreground">Ready for payroll?</p>
+                  <p className="text-[13px] text-muted-foreground">
                     {periodValidation.approved} approved, {periodValidation.drafts} drafts
                     {periodValidation.drafts > 0 && (
                       <span className="text-yellow-600"> — approve all drafts first</span>
@@ -759,10 +760,10 @@ export const Tips = () => {
                   </p>
                 </div>
                 <Button
-                  variant="default"
                   onClick={() => setLockDialogOpen(true)}
                   aria-label="Lock tips for this period"
                   disabled={!periodValidation.canLock}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
                 >
                   Lock for payroll
                 </Button>
@@ -815,12 +816,19 @@ export const Tips = () => {
               onEdit={() => setTipSource('manual')}
             />
           ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Enter tips</CardTitle>
-                <CardDescription>
-                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-                </CardDescription>
+            <Card className="rounded-xl border-border/40">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                    <DollarSign className="h-5 w-5 text-foreground" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-[17px] font-semibold text-foreground">Enter tips</CardTitle>
+                    <CardDescription className="text-[13px]">
+                      {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                    </CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 <TipEntryDialog onContinue={handleContinueToReview} />
@@ -844,22 +852,22 @@ export const Tips = () => {
             />
           )}
 
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardContent className="pt-6">
-              <div className="grid md:grid-cols-3 gap-4 text-sm">
+              <div className="grid md:grid-cols-3 gap-4">
                 <div>
-                  <p className="text-muted-foreground">Tip source</p>
-                  <p className="font-medium">{tipSource === 'manual' ? 'Manual entry' : 'POS import'}</p>
+                  <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Tip source</p>
+                  <p className="text-[14px] font-medium text-foreground mt-1">{tipSource === 'manual' ? 'Manual entry' : 'POS import'}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Share method</p>
-                  <p className="font-medium">
+                  <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Share method</p>
+                  <p className="text-[14px] font-medium text-foreground mt-1">
                     {getShareMethodLabel(shareMethod)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Split cadence</p>
-                  <p className="font-medium">
+                  <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Split cadence</p>
+                  <p className="text-[14px] font-medium text-foreground mt-1">
                     {getSplitCadenceLabel(splitCadence)}
                   </p>
                 </div>
@@ -871,24 +879,41 @@ export const Tips = () => {
 
       {viewMode === 'history' && (
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tip History</CardTitle>
-              <CardDescription>Locked periods and payroll reference</CardDescription>
+          <Card className="rounded-xl border-border/40">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                  <Lock className="h-5 w-5 text-foreground" />
+                </div>
+                <div>
+                  <CardTitle className="text-[17px] font-semibold text-foreground">Tip History</CardTitle>
+                  <CardDescription className="text-[13px]">Locked periods and payroll reference</CardDescription>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {splits?.filter(s => s.status === 'archived').length ? (
-                <ul className="space-y-2">
+                <div className="space-y-2">
                   {splits.filter(s => s.status === 'archived').map(s => (
-                    <li key={s.id} className="border rounded p-3 flex flex-col">
-                      <span className="font-semibold">{format(new Date(s.split_date + 'T00:00:00'), 'MMM d, yyyy')}</span>
-                      <span className="text-sm text-muted-foreground">Amount: ${(s.total_amount / 100).toFixed(2)}</span>
-                      <span className="text-xs text-muted-foreground">Payroll snapshot: {s.approved_at ? format(new Date(s.approved_at), 'MMM d, yyyy, h:mm a') : 'N/A'}</span>
-                    </li>
+                    <div key={s.id} className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
+                      <div className="space-y-0.5">
+                        <span className="text-[14px] font-medium text-foreground">{format(new Date(s.split_date + 'T00:00:00'), 'MMM d, yyyy')}</span>
+                        <p className="text-[13px] text-muted-foreground">
+                          Payroll snapshot: {s.approved_at ? format(new Date(s.approved_at), 'MMM d, yyyy, h:mm a') : 'N/A'}
+                        </p>
+                      </div>
+                      <span className="text-[14px] font-semibold text-foreground">${(s.total_amount / 100).toFixed(2)}</span>
+                    </div>
                   ))}
-                </ul>
+                </div>
               ) : (
-                <span className="text-muted-foreground">No locked periods yet.</span>
+                <div className="py-12 text-center">
+                  <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+                    <Lock className="h-5 w-5 text-muted-foreground/50" />
+                  </div>
+                  <p className="text-[14px] font-medium text-foreground mt-4">No locked periods yet</p>
+                  <p className="text-[13px] text-muted-foreground mt-1">Locked periods will appear here after you lock tips for payroll.</p>
+                </div>
               )}
             </CardContent>
           </Card>

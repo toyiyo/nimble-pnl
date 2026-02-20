@@ -124,19 +124,23 @@ export const EmployeeDisputeButton = ({
           Something doesn't look right
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-500" />
-            <DialogTitle>Request a review</DialogTitle>
+      <DialogContent className="sm:max-w-[500px] p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">Request a review</DialogTitle>
+              <DialogDescription className="text-[13px] mt-0.5">
+                Let your manager know if something doesn't look right with your tips.
+                They'll review it and respond.
+              </DialogDescription>
+            </div>
           </div>
-          <DialogDescription>
-            Let your manager know if something doesn't look right with your tips.
-            They'll review it and respond.
-          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="px-6 py-5 space-y-4">
           <div className="space-y-3">
             <Label>What's the issue?</Label>
             <RadioGroup value={disputeType} onValueChange={(val) => setDisputeType(val as DisputeType)}>
@@ -165,14 +169,14 @@ export const EmployeeDisputeButton = ({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating}>
+        <div className="flex gap-2 justify-end px-6 py-4 border-t border-border/40">
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isCreating} className="h-9 rounded-lg text-[13px] font-medium">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isCreating}>
+          <Button onClick={handleSubmit} disabled={isCreating} className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium">
             {isCreating ? 'Sending...' : 'Send request'}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

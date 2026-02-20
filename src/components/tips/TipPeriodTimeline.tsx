@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format, eachDayOfInterval, isToday } from 'date-fns';
-import { Plus, Check, FileText, Lock, Banknote } from 'lucide-react';
+import { Plus, Check, FileText, Lock, Banknote, Calendar } from 'lucide-react';
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
 import type { TipPayoutWithEmployee } from '@/hooks/useTipPayouts';
 import { cn } from '@/lib/utils';
@@ -105,9 +105,9 @@ export function TipPeriodTimeline({
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="rounded-xl border-border/40">
         <CardHeader>
-          <CardTitle className="text-lg">Period Timeline</CardTitle>
+          <CardTitle className="text-[17px] font-semibold text-foreground">Period Timeline</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-7 gap-2">
@@ -121,12 +121,19 @@ export function TipPeriodTimeline({
   }
 
   return (
-    <Card>
+    <Card className="rounded-xl border-border/40">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Period Timeline</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Click a day to enter or edit tips
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+            <Calendar className="h-5 w-5 text-foreground" />
+          </div>
+          <div>
+            <CardTitle className="text-[17px] font-semibold text-foreground">Period Timeline</CardTitle>
+            <p className="text-[13px] text-muted-foreground">
+              Click a day to enter or edit tips
+            </p>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-7 gap-2">
@@ -137,7 +144,7 @@ export function TipPeriodTimeline({
               <div
                 key={day.date.toISOString()}
                 className={cn(
-                  'flex flex-col items-center p-3 rounded-lg border transition-colors',
+                  'flex flex-col items-center p-3 rounded-xl border transition-colors',
                   getStatusStyles(day.status, currentDay)
                 )}
               >
@@ -153,7 +160,7 @@ export function TipPeriodTimeline({
                   }`}
                 >
                   {/* Day name */}
-                  <span className="text-xs text-muted-foreground font-medium">
+                  <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">
                     {format(day.date, 'EEE')}
                   </span>
 
@@ -225,25 +232,25 @@ export function TipPeriodTimeline({
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-3 h-3 rounded border border-dashed bg-background" />
+        <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-border/40">
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="w-2.5 h-2.5 rounded-sm border border-dashed bg-background" />
             <span>No entry</span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-yellow-500/20 border border-yellow-500/30" />
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="w-2.5 h-2.5 rounded-sm bg-yellow-500/20 border border-yellow-500/30" />
             <span>Draft</span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-green-500/20 border border-green-500/30" />
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="w-2.5 h-2.5 rounded-sm bg-green-500/20 border border-green-500/30" />
             <span>Approved</span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-muted border border-muted-foreground/20" />
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="w-2.5 h-2.5 rounded-sm bg-muted border border-muted-foreground/20" />
             <span>Locked</span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-500/30" />
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-500/20 border border-emerald-500/30" />
             <span>Paid Out</span>
           </div>
         </div>

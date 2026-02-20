@@ -20,25 +20,31 @@ export const LockPeriodDialog = ({
 }: LockPeriodDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={v => !v && onCancel()}>
-      <DialogContent className="max-w-md w-full">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Lock className="h-5 w-5 text-muted-foreground" />
-            Lock tips for {periodLabel}?
-          </DialogTitle>
+      <DialogContent className="max-w-md w-full p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Lock className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">Lock tips for {periodLabel}?</DialogTitle>
+            </div>
+          </div>
         </DialogHeader>
-        <Alert className="mb-4">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription>
-            Locking ensures payroll numbers won’t change. Tips for this period will become immutable and a payroll snapshot will be created.
-          </AlertDescription>
-        </Alert>
-        <DialogFooter>
-          <Button variant="outline" onClick={onCancel} disabled={loading} aria-label="Cancel lock">Cancel</Button>
-          <Button variant="default" onClick={onConfirm} disabled={loading} aria-label="Confirm lock">
+        <div className="px-6 py-5">
+          <Alert>
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-[13px]">
+              Locking ensures payroll numbers won’t change. Tips for this period will become immutable and a payroll snapshot will be created.
+            </AlertDescription>
+          </Alert>
+        </div>
+        <div className="flex gap-2 justify-end px-6 py-4 border-t border-border/40">
+          <Button variant="outline" onClick={onCancel} disabled={loading} aria-label="Cancel lock" className="h-9 rounded-lg text-[13px] font-medium">Cancel</Button>
+          <Button onClick={onConfirm} disabled={loading} aria-label="Confirm lock" className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium">
             Lock Period
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

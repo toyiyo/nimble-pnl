@@ -74,14 +74,21 @@ export function TipDispute({ restaurantId, employeeId, tipSplitId, tipDate }: Ti
           Something doesn't look right
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Report an issue</DialogTitle>
-          <DialogDescription>
-            Tips for {format(new Date(tipDate), 'EEEE, MMM d, yyyy')}
-          </DialogDescription>
+      <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">Report an issue</DialogTitle>
+              <DialogDescription className="text-[13px] mt-0.5">
+                Tips for {format(new Date(tipDate), 'EEEE, MMM d, yyyy')}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <div className="space-y-6 py-4">
+        <div className="px-6 py-5 space-y-6">
           <div className="space-y-3">
             <Label>What seems wrong?</Label>
             <RadioGroup value={disputeType} onValueChange={(val) => setDisputeType(val as DisputeType)}>
@@ -133,18 +140,18 @@ export function TipDispute({ restaurantId, employeeId, tipSplitId, tipDate }: Ti
             Your manager will be notified and will review this issue.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleSubmit} 
+        <div className="flex gap-2 px-6 py-4 border-t border-border/40">
+          <Button
+            onClick={handleSubmit}
             disabled={isCreating}
-            className="flex-1"
+            className="flex-1 h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
             {isCreating ? 'Submitting...' : 'Submit report'}
           </Button>
-          <Button 
-            onClick={() => setOpen(false)} 
+          <Button
+            onClick={() => setOpen(false)}
             variant="outline"
-            className="flex-1"
+            className="flex-1 h-9 rounded-lg text-[13px] font-medium"
           >
             Cancel
           </Button>

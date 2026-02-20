@@ -75,7 +75,9 @@ const EmployeePay = () => {
             ? `${currentEmployee.name} • ${formatCurrency(currentEmployee.hourly_rate)}/day`
             : currentEmployee.compensation_type === 'salary'
               ? `${currentEmployee.name} • Salary`
-              : `${currentEmployee.name} • ${formatCurrency(currentEmployee.hourly_rate)}/hr`
+              : currentEmployee.compensation_type === 'contractor'
+                ? `${currentEmployee.name} • Contractor`
+                : `${currentEmployee.name} • ${formatCurrency(currentEmployee.hourly_rate)}/hr`
         }
       />
 
@@ -145,6 +147,8 @@ const EmployeePay = () => {
                 <CardDescription className="flex items-center gap-2">
                   {myPayroll.compensationType === 'daily_rate' ? (
                     <><Calendar className="h-4 w-4" />Days Worked</>
+                  ) : myPayroll.compensationType === 'salary' || myPayroll.compensationType === 'contractor' ? (
+                    <><Calendar className="h-4 w-4" />Pay Period</>
                   ) : (
                     <><Clock className="h-4 w-4" />Hours Worked</>
                   )}
@@ -155,13 +159,17 @@ const EmployeePay = () => {
                   <div className="text-2xl font-bold">
                     {myPayroll.daysWorked ?? 0}
                   </div>
+                ) : myPayroll.compensationType === 'salary' || myPayroll.compensationType === 'contractor' ? (
+                  <div className="text-2xl font-bold text-muted-foreground">
+                    —
+                  </div>
                 ) : (
                   <>
                     <div className="text-2xl font-bold">
                       {formatHours(myPayroll.regularHours + myPayroll.overtimeHours)}
                     </div>
                     {myPayroll.overtimeHours > 0 && (
-                      <p className="text-xs text-amber-600">
+                      <p className="text-xs text-muted-foreground">
                         {formatHours(myPayroll.overtimeHours)} OT
                       </p>
                     )}

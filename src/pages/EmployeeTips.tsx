@@ -39,6 +39,8 @@ const EmployeeTips = () => {
     handleToday,
   } = usePeriodNavigation({ includeLast2Weeks: false });
 
+  const [activeTab, setActiveTab] = useState<'breakdown' | 'history'>('breakdown');
+
   const formattedStart = format(startDate, 'yyyy-MM-dd');
   const formattedEnd = format(endDate, 'yyyy-MM-dd');
 
@@ -113,8 +115,6 @@ const EmployeeTips = () => {
   if (!currentEmployee) {
     return <EmployeeNotLinkedState />;
   }
-
-  const [activeTab, setActiveTab] = useState<'breakdown' | 'history'>('breakdown');
 
   return (
     <div className="space-y-6">

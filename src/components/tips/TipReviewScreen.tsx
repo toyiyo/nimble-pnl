@@ -184,7 +184,7 @@ export function TipReviewScreen({
         <div className="flex items-center gap-3 pt-2">
           <Button
             onClick={() => onApprove(shares)}
-            disabled={isLoading || shares.length === 0 || totalTipsCents <= 0}
+            disabled={isLoading || shares.length === 0 || totalTipsCents <= 0 || remaining !== 0}
             className="flex-1 h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
             {isLoading ? 'Saving...' : 'Approve tips'}

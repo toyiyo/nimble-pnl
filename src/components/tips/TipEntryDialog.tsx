@@ -88,7 +88,7 @@ export function TipEntryDialog({ onContinue, defaultAmount, trigger }: TipEntryD
           <Button
             onClick={handleContinue}
             className="w-full h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-            disabled={!amount || Number.parseFloat(amount) <= 0}
+            disabled={!amount || !(Number.parseFloat(amount) > 0)}
           >
             Continue
           </Button>

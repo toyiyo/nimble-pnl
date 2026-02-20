@@ -23,7 +23,8 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE tablename = 'tip_payouts'
+    WHERE schemaname = 'public'
+    AND tablename = 'tip_payouts'
     AND policyname = 'Employees can view their own tip payouts'
   ) THEN
     CREATE POLICY "Employees can view their own tip payouts"

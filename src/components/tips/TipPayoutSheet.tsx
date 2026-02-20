@@ -168,14 +168,18 @@ export function TipPayoutSheet({
 
   const handleDeletePayout = useCallback(
     async (payoutId: string, employeeId: string) => {
-      await onDeletePayout(payoutId);
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.employeeId === employeeId
-            ? { ...e, existingPayoutId: null, enabled: false }
-            : e,
-        ),
-      );
+      try {
+        await onDeletePayout(payoutId);
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.employeeId === employeeId
+              ? { ...e, existingPayoutId: null, enabled: false }
+              : e,
+          ),
+        );
+      } catch (err) {
+        console.error('Failed to delete payout:', err);
+      }
     },
     [onDeletePayout],
   );
@@ -196,8 +200,12 @@ export function TipPayoutSheet({
       payouts: payoutEntries,
     };
 
-    await onConfirm(input);
-    onClose();
+    try {
+      await onConfirm(input);
+      onClose();
+    } catch (err) {
+      console.error('Failed to confirm payouts:', err);
+    }
   }, [entries, split.id, split.split_date, onConfirm, onClose]);
 
   // ------ Render -----------------------------------------------------------

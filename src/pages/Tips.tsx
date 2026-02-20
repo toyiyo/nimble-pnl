@@ -154,8 +154,12 @@ export const Tips = () => {
 
   // Confirm payout creation
   const handleConfirmPayout = async (input: CreatePayoutsInput) => {
-    await createPayouts(input);
-    setPayoutSheetSplit(null);
+    try {
+      await createPayouts(input);
+      setPayoutSheetSplit(null);
+    } catch {
+      // Error already surfaced via mutation's onError toast; keep sheet open for retry
+    }
   };
 
   // Lock all approved splits in the period (creates payroll snapshot)

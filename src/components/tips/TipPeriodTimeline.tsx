@@ -134,87 +134,92 @@ export function TipPeriodTimeline({
             const currentDay = isToday(day.date);
 
             return (
-              <button
+              <div
                 key={day.date.toISOString()}
-                onClick={() => onDayClick(day.date)}
                 className={cn(
                   'flex flex-col items-center p-3 rounded-lg border transition-colors',
-                  'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
                   getStatusStyles(day.status, currentDay)
                 )}
-                aria-label={`${format(day.date, 'EEEE, MMMM d')} - ${
-                  day.status === 'empty'
-                    ? 'No tips entered'
-                    : `${formatCurrencyFromCents(day.totalCents)} (${day.status})`
-                }`}
               >
-                {/* Day name */}
-                <span className="text-xs text-muted-foreground font-medium">
-                  {format(day.date, 'EEE')}
-                </span>
-
-                {/* Date */}
-                <span className={cn(
-                  'text-lg font-semibold',
-                  currentDay && 'text-primary'
-                )}>
-                  {format(day.date, 'd')}
-                </span>
-
-                {/* Status indicator */}
-                <div className="flex items-center gap-1 mt-1">
-                  {getStatusIcon(day.status)}
-                </div>
-
-                {/* Amount or empty state */}
-                {day.status !== 'empty' ? (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'mt-2 text-xs',
-                      day.status === 'approved' && 'border-green-500/50 text-green-700',
-                      day.status === 'archived' && 'border-muted-foreground/50 text-muted-foreground',
-                      day.status === 'draft' && 'border-yellow-500/50 text-yellow-700'
-                    )}
-                  >
-                    {formatCurrencyFromCents(day.totalCents)}
-                  </Badge>
-                ) : (
-                  <span className="mt-2 text-xs text-muted-foreground">
-                    Add tips
+                {/* Clickable day content */}
+                <button
+                  type="button"
+                  onClick={() => onDayClick(day.date)}
+                  className="flex flex-col items-center w-full focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 rounded-md"
+                  aria-label={`${format(day.date, 'EEEE, MMMM d')} - ${
+                    day.status === 'empty'
+                      ? 'No tips entered'
+                      : `${formatCurrencyFromCents(day.totalCents)} (${day.status})`
+                  }`}
+                >
+                  {/* Day name */}
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {format(day.date, 'EEE')}
                   </span>
-                )}
 
-                {/* Payout indicator and action for approved/archived days */}
-                {(day.status === 'approved' || day.status === 'archived') && (
-                  <>
-                    {day.payoutStatus === 'full' && (
-                      <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
-                        Paid
-                      </Badge>
-                    )}
-                    {day.payoutStatus === 'partial' && (
-                      <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
-                        Partial
-                      </Badge>
-                    )}
-                    {onRecordPayout && day.split && day.payoutStatus !== 'full' && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRecordPayout(day.split!);
-                        }}
-                        className="mt-1 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label={`Record payout for ${format(day.date, 'MMMM d')}`}
-                      >
-                        <Banknote className="h-3 w-3" />
-                        Pay out
-                      </button>
-                    )}
-                  </>
+                  {/* Date */}
+                  <span className={cn(
+                    'text-lg font-semibold',
+                    currentDay && 'text-primary'
+                  )}>
+                    {format(day.date, 'd')}
+                  </span>
+
+                  {/* Status indicator */}
+                  <div className="flex items-center gap-1 mt-1">
+                    {getStatusIcon(day.status)}
+                  </div>
+
+                  {/* Amount or empty state */}
+                  {day.status !== 'empty' ? (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'mt-2 text-xs',
+                        day.status === 'approved' && 'border-green-500/50 text-green-700',
+                        day.status === 'archived' && 'border-muted-foreground/50 text-muted-foreground',
+                        day.status === 'draft' && 'border-yellow-500/50 text-yellow-700'
+                      )}
+                    >
+                      {formatCurrencyFromCents(day.totalCents)}
+                    </Badge>
+                  ) : (
+                    <span className="mt-2 text-xs text-muted-foreground">
+                      Add tips
+                    </span>
+                  )}
+
+                  {/* Payout status badges */}
+                  {(day.status === 'approved' || day.status === 'archived') && (
+                    <>
+                      {day.payoutStatus === 'full' && (
+                        <Badge className="mt-1 text-[10px] bg-emerald-500/20 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20">
+                          Paid
+                        </Badge>
+                      )}
+                      {day.payoutStatus === 'partial' && (
+                        <Badge className="mt-1 text-[10px] bg-amber-500/20 text-amber-700 border-amber-500/30 hover:bg-amber-500/20">
+                          Partial
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </button>
+
+                {/* Pay out action — sibling button, not nested */}
+                {(day.status === 'approved' || day.status === 'archived') &&
+                  onRecordPayout && day.split && day.payoutStatus !== 'full' && (
+                  <button
+                    type="button"
+                    onClick={() => onRecordPayout(day.split!)}
+                    className="mt-1 flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={`Record payout for ${format(day.date, 'MMMM d')}`}
+                  >
+                    <Banknote className="h-3 w-3" />
+                    Pay out
+                  </button>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

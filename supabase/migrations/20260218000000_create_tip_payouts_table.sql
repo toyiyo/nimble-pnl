@@ -86,13 +86,16 @@ CREATE POLICY "Managers can delete tip payouts"
     )
   );
 
--- Employees can SELECT their own records
+-- Employees can SELECT their own records (with restaurant_id scoping)
 DROP POLICY IF EXISTS "Employees can view their own tip payouts" ON tip_payouts;
 CREATE POLICY "Employees can view their own tip payouts"
   ON tip_payouts FOR SELECT
   USING (
-    employee_id IN (
-      SELECT id FROM employees WHERE user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = tip_payouts.employee_id
+      AND employees.user_id = auth.uid()
+      AND employees.restaurant_id = tip_payouts.restaurant_id
     )
   );
 

@@ -57,7 +57,7 @@ export interface EmployeePayroll {
   totalTips: number; // In cents
   tipsPaidOut: number; // In cents - tips already paid out as cash
   tipsOwed: number; // In cents - tips still owed (totalTips - tipsPaidOut)
-  totalPay: number; // In cents (gross + tips)
+  totalPay: number; // In cents (grossPay + tipsOwed)
   incompleteShifts?: IncompleteShift[]; // Anomalies that need manager attention
 }
 

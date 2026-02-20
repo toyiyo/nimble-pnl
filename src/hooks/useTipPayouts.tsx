@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -70,7 +71,16 @@ export function useTipPayouts(
       const { data, error: fetchError } = await supabase
         .from('tip_payouts')
         .select(`
-          *,
+          id,
+          restaurant_id,
+          employee_id,
+          payout_date,
+          amount,
+          tip_split_id,
+          notes,
+          paid_by,
+          created_at,
+          updated_at,
           employee:employees(name, position)
         `)
         .eq('restaurant_id', restaurantId)
@@ -83,6 +93,7 @@ export function useTipPayouts(
     },
     enabled: !!restaurantId,
     staleTime: 30000,
+    refetchOnWindowFocus: true,
   });
 
   // -----------------------------------------------------------------------
@@ -189,16 +200,22 @@ export function useTipPayouts(
   // -----------------------------------------------------------------------
 
   /** Return all payouts linked to a specific tip split. */
-  const getPayoutsForSplit = (tipSplitId: string): TipPayoutWithEmployee[] => {
-    return payouts.filter((p) => p.tip_split_id === tipSplitId);
-  };
+  const getPayoutsForSplit = useCallback(
+    (tipSplitId: string): TipPayoutWithEmployee[] => {
+      return payouts.filter((p) => p.tip_split_id === tipSplitId);
+    },
+    [payouts],
+  );
 
   /** Return the total amount (in cents) paid out for a specific tip split. */
-  const getTotalPaidForSplit = (tipSplitId: string): number => {
-    return payouts
-      .filter((p) => p.tip_split_id === tipSplitId)
-      .reduce((sum, p) => sum + p.amount, 0);
-  };
+  const getTotalPaidForSplit = useCallback(
+    (tipSplitId: string): number => {
+      return payouts
+        .filter((p) => p.tip_split_id === tipSplitId)
+        .reduce((sum, p) => sum + p.amount, 0);
+    },
+    [payouts],
+  );
 
   // -----------------------------------------------------------------------
   // Public API

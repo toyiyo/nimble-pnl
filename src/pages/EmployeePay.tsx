@@ -171,7 +171,7 @@ const EmployeePay = () => {
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
                   <Banknote className="h-4 w-4" />
-                  Tips
+                  Tips Earned
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -180,7 +180,13 @@ const EmployeePay = () => {
                     ? formatCurrency(myPayroll.totalTips)
                     : '$0.00'}
                 </div>
-                <p className="text-xs text-muted-foreground">Cash + Credit</p>
+                {myPayroll.tipsPaidOut > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(myPayroll.tipsPaidOut)} paid in cash
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Cash + Credit</p>
+                )}
               </CardContent>
             </Card>
 
@@ -195,7 +201,9 @@ const EmployeePay = () => {
                 <div className="text-2xl font-bold text-green-600">
                   {formatCurrency(myPayroll.totalPay)}
                 </div>
-                <p className="text-xs text-muted-foreground">Wages + Tips</p>
+                <p className="text-xs text-muted-foreground">
+                  {myPayroll.tipsPaidOut > 0 ? 'Wages + Tips owed in payroll' : 'Wages + Tips'}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -252,10 +260,30 @@ const EmployeePay = () => {
                       <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
                         <div className="flex items-center gap-2">
                           <CreditCard className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">Total Tips</span>
+                          <span className="font-medium">Tips Earned</span>
                         </div>
                         <span className="font-medium">{formatCurrency(myPayroll.totalTips)}</span>
                       </div>
+                      {myPayroll.tipsPaidOut > 0 && (
+                        <div className="flex justify-between items-center p-3 rounded-lg bg-emerald-500/10">
+                          <div className="flex items-center gap-2">
+                            <Banknote className="h-4 w-4 text-emerald-600" />
+                            <span className="font-medium">Paid in Cash</span>
+                          </div>
+                          <span className="font-medium text-emerald-600">
+                            −{formatCurrency(myPayroll.tipsPaidOut)}
+                          </span>
+                        </div>
+                      )}
+                      {myPayroll.tipsPaidOut > 0 && (
+                        <div className="flex justify-between items-center p-3 rounded-lg border border-border/40">
+                          <div className="flex items-center gap-2">
+                            <Wallet className="h-4 w-4 text-muted-foreground" />
+                            <span className="font-medium">Owed in Payroll</span>
+                          </div>
+                          <span className="font-medium">{formatCurrency(myPayroll.tipsOwed)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

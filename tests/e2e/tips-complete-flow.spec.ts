@@ -144,9 +144,8 @@ test.describe('Tips - Complete Customer Journey', () => {
     const draftsCard = page.locator('div').filter({ has: savedDraftsHeading }).first();
     
     // Within that card, check for the draft badge and amount
-    // Use more specific selector for the amount - it's in a <p> with class "text-2xl font-bold"
     await expect(draftsCard.getByText(/draft/i).first()).toBeVisible();
-    await expect(draftsCard.locator('p.text-2xl.font-bold', { hasText: /\$150\.00/ })).toBeVisible();
+    await expect(draftsCard.getByText(/\$150\.00/)).toBeVisible();
 
     // Click to resume draft
     const resumeButton = page.getByRole('button', { name: /resume|edit/i }).first();

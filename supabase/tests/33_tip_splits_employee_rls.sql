@@ -5,14 +5,34 @@
 -- restaurant, but NOT draft splits. Without these policies, the usePayroll hook
 -- returns $0 tips for staff because the tip_splits query is blocked by RLS.
 --
+-- Also verifies the prerequisite employee self-view policy on the employees
+-- table. Without it, subqueries like EXISTS(SELECT 1 FROM employees WHERE
+-- user_id = auth.uid()) return 0 rows for staff users because the employees
+-- table RLS only grants SELECT to users with 'view:employees' capability.
+--
 -- Migration: 20260220000000_add_staff_tip_read_policies.sql
 -- ============================================================================
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- ============================================================================
--- Test 1: Verify the employee SELECT policy exists on tip_splits
+-- Test 1: Verify the employee self-view policy exists on employees table
+-- ============================================================================
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'employees'
+    AND policyname = 'Employees can view their own record'
+    AND cmd = 'SELECT'
+  ),
+  'Employee self-view SELECT policy should exist on employees table'
+);
+
+-- ============================================================================
+-- Test 2: Verify the employee SELECT policy exists on tip_splits
 -- ============================================================================
 
 SELECT ok(
@@ -26,7 +46,7 @@ SELECT ok(
 );
 
 -- ============================================================================
--- Test 2: Verify existing manager policies still exist alongside new one
+-- Test 3: Verify existing manager policies still exist alongside new one
 -- ============================================================================
 
 SELECT policies_are(
@@ -43,7 +63,7 @@ SELECT policies_are(
 );
 
 -- ============================================================================
--- Test 3: Verify the employee policy is SELECT-only (no INSERT/UPDATE/DELETE)
+-- Test 4: Verify the employee policy is SELECT-only (no INSERT/UPDATE/DELETE)
 -- ============================================================================
 
 SELECT policy_cmd_is(
@@ -55,7 +75,7 @@ SELECT policy_cmd_is(
 );
 
 -- ============================================================================
--- Test 4-8: Functional RLS tests with JWT context switching
+-- Test 5-9: Functional RLS tests with JWT context switching
 -- ============================================================================
 
 -- Setup: Disable RLS for test data creation
@@ -97,7 +117,7 @@ ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
--- Test 4: Employee CAN read approved tip_splits for their restaurant
+-- Test 5: Employee CAN read approved tip_splits for their restaurant
 -- ============================================================================
 
 -- Switch to staff user context
@@ -112,7 +132,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 5: Employee CAN read archived tip_splits for their restaurant
+-- Test 6: Employee CAN read archived tip_splits for their restaurant
 -- ============================================================================
 
 SELECT is(
@@ -123,7 +143,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 6: Employee CANNOT read draft tip_splits (even for their restaurant)
+-- Test 7: Employee CANNOT read draft tip_splits (even for their restaurant)
 -- ============================================================================
 
 SELECT is(
@@ -134,7 +154,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 7: Employee CANNOT read tip_splits from another restaurant
+-- Test 8: Employee CANNOT read tip_splits from another restaurant
 -- ============================================================================
 
 SELECT is(
@@ -145,7 +165,7 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 8: Employee sees correct count (approved + archived only, own restaurant)
+-- Test 9: Employee sees correct count (approved + archived only, own restaurant)
 -- ============================================================================
 
 SELECT is(

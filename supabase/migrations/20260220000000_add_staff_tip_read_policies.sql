@@ -3,6 +3,18 @@
 -- the tip_splits query is blocked by RLS, causing the tip_split_items query
 -- to be skipped entirely.
 
+-- PREREQUISITE: Allow employees to see their own employee record.
+-- Multiple RLS policies on tip_splits, tip_split_items, and tip_payouts use
+-- subqueries like EXISTS(SELECT 1 FROM employees WHERE user_id = auth.uid()).
+-- PostgreSQL evaluates these subqueries under the caller's RLS permissions,
+-- and the employees table only grants SELECT to users with the 'view:employees'
+-- capability (owner/manager/accountant). Without this self-view policy, those
+-- subqueries return 0 rows for staff users, silently breaking tip visibility.
+DROP POLICY IF EXISTS "Employees can view their own record" ON employees;
+CREATE POLICY "Employees can view their own record"
+  ON employees FOR SELECT
+  USING (user_id = auth.uid());
+
 -- Staff can read approved/archived tip_splits for their restaurant
 -- (needed by usePayroll to resolve tip split IDs before querying items)
 DROP POLICY IF EXISTS "Employees can view approved tip splits" ON tip_splits;

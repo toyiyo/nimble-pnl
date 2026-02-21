@@ -94,11 +94,14 @@ export function TipPayoutSheet({
   isSubmitting,
 }: TipPayoutSheetProps) {
   const [entries, setEntries] = useState<PayoutEntry[]>([]);
+  // Track raw input strings so we don't reformat while typing
+  const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
 
   // Re-initialise entries when the sheet opens or the split/payouts change
   useEffect(() => {
     if (open) {
       setEntries(buildInitialEntries(split, existingPayouts));
+      setRawInputs({});
     }
   }, [open, split, existingPayouts]);
 
@@ -133,14 +136,27 @@ export function TipPayoutSheet({
     );
   }, []);
 
-  const updatePayoutAmount = useCallback(
-    (employeeId: string, dollarValue: string) => {
-      const cents = dollarsToCents(dollarValue);
+  const handlePayoutInputChange = useCallback(
+    (employeeId: string, rawValue: string) => {
+      setRawInputs((prev) => ({ ...prev, [employeeId]: rawValue }));
+      const cents = dollarsToCents(rawValue);
       setEntries((prev) =>
         prev.map((e) =>
           e.employeeId === employeeId ? { ...e, payoutCents: cents } : e,
         ),
       );
+    },
+    [],
+  );
+
+  const handlePayoutInputBlur = useCallback(
+    (employeeId: string) => {
+      // On blur, clear raw input so it falls back to the formatted value
+      setRawInputs((prev) => {
+        const next = { ...prev };
+        delete next[employeeId];
+        return next;
+      });
     },
     [],
   );
@@ -152,14 +168,18 @@ export function TipPayoutSheet({
 
   const handleDeletePayout = useCallback(
     async (payoutId: string, employeeId: string) => {
-      await onDeletePayout(payoutId);
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.employeeId === employeeId
-            ? { ...e, existingPayoutId: null, enabled: false }
-            : e,
-        ),
-      );
+      try {
+        await onDeletePayout(payoutId);
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.employeeId === employeeId
+              ? { ...e, existingPayoutId: null, enabled: false }
+              : e,
+          ),
+        );
+      } catch (err) {
+        console.error('Failed to delete payout:', err);
+      }
     },
     [onDeletePayout],
   );
@@ -180,8 +200,12 @@ export function TipPayoutSheet({
       payouts: payoutEntries,
     };
 
-    await onConfirm(input);
-    onClose();
+    try {
+      await onConfirm(input);
+      onClose();
+    } catch (err) {
+      console.error('Failed to confirm payouts:', err);
+    }
   }, [entries, split.id, split.split_date, onConfirm, onClose]);
 
   // ------ Render -----------------------------------------------------------
@@ -286,10 +310,11 @@ export function TipPayoutSheet({
                         type="number"
                         min={0}
                         step={0.01}
-                        value={centsToDollars(entry.payoutCents)}
+                        value={rawInputs[entry.employeeId] ?? centsToDollars(entry.payoutCents)}
                         onChange={(e) =>
-                          updatePayoutAmount(entry.employeeId, e.target.value)
+                          handlePayoutInputChange(entry.employeeId, e.target.value)
                         }
+                        onBlur={() => handlePayoutInputBlur(entry.employeeId)}
                         className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border pl-7"
                         aria-label={`Cash paid to ${entry.employeeName}`}
                       />

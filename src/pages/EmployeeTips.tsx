@@ -34,7 +34,7 @@ interface ServerEarningRow {
  * EmployeeTips - Part 3 of Apple-style UX
  * Employee-facing tip breakdown and transparency view
  */
-const EmployeeTips = () => {
+function EmployeeTips() {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);

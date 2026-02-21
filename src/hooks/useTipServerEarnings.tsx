@@ -36,19 +36,22 @@ export function useTipServerEarnings(splitId: string | null) {
 
       if (error) throw error;
 
-      return (data ?? []).map((row: Record<string, unknown>) => {
-        const emp = row.employees as { first_name: string; last_name: string } | null;
-        return {
-          id: row.id,
-          tip_split_id: row.tip_split_id,
-          employee_id: row.employee_id,
-          earned_amount: row.earned_amount,
-          retained_amount: row.retained_amount,
-          refunded_amount: row.refunded_amount,
-          created_at: row.created_at,
-          employee_name: emp ? `${emp.first_name} ${emp.last_name}` : undefined,
-        } as TipServerEarning;
-      });
+      type EarningRow = Omit<TipServerEarning, 'employee_name'> & {
+        employees: { first_name: string; last_name: string } | null;
+      };
+
+      return (data ?? []).map((row: EarningRow) => ({
+        id: row.id,
+        tip_split_id: row.tip_split_id,
+        employee_id: row.employee_id,
+        earned_amount: row.earned_amount,
+        retained_amount: row.retained_amount,
+        refunded_amount: row.refunded_amount,
+        created_at: row.created_at,
+        employee_name: row.employees
+          ? `${row.employees.first_name} ${row.employees.last_name}`
+          : undefined,
+      }));
     },
     enabled: !!splitId,
     staleTime: 30000,

@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatCurrencyFromCents, rebalanceAllocations, type TipShare } from '@/utils/tipPooling';
-import { Info, DollarSign, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Info, DollarSign, ChevronRight, AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { ShareMethod, PoolingModel } from '@/hooks/useTipPoolSettings';
 import type { ServerResult, PoolResult } from '@/utils/tipPooling';
 
@@ -69,18 +70,12 @@ export function TipReviewScreen({
     setEditingEmployeeId(null);
   };
 
-  const getMethodLabel = () => {
-    switch (shareMethod) {
-      case 'hours':
-        return 'Hours worked';
-      case 'role':
-        return 'By role';
-      case 'manual':
-        return 'Manual';
-      default:
-        return 'Custom';
-    }
+  const methodLabels: Record<string, string> = {
+    hours: 'Hours worked',
+    role: 'By role',
+    manual: 'Manual',
   };
+  const methodLabel = methodLabels[shareMethod] ?? 'Custom';
 
   const isPercentageModel = poolingModel === 'percentage_contribution';
 
@@ -100,7 +95,7 @@ export function TipReviewScreen({
                 {isPercentageModel ? (
                   <>Model: <span className="font-semibold text-foreground">Percentage contribution</span></>
                 ) : (
-                  <>Split by: <span className="font-semibold text-foreground">{getMethodLabel()}</span></>
+                  <>Split by: <span className="font-semibold text-foreground">{methodLabel}</span></>
                 )}
               </span>
             </div>
@@ -371,7 +366,6 @@ function PoolDisclosure({ pool }: { pool: PoolResult }) {
   const [open, setOpen] = useState(pool.totalDistributed > 0);
 
   const isRefunded = pool.totalDistributed === 0 && pool.totalContributed > 0;
-  const percentageLabel = pool.poolName; // Pool name already includes context
 
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
@@ -382,12 +376,8 @@ function PoolDisclosure({ pool }: { pool: PoolResult }) {
         aria-label={`Toggle ${pool.poolName} details`}
       >
         <div className="flex items-center gap-2">
-          {open ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          )}
-          <span className="text-[14px] font-medium text-foreground">{percentageLabel}</span>
+          <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-90')} />
+          <span className="text-[14px] font-medium text-foreground">{pool.poolName}</span>
         </div>
         <span className="text-[13px] text-muted-foreground">
           {isRefunded

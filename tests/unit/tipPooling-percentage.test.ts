@@ -6,10 +6,7 @@ import {
   type ServerEarning,
   type ContributionPool,
   type PoolWorker,
-  type PercentageAllocationResult,
 } from '@/utils/tipPooling';
-
-// ── Helpers ──
 
 const server = (id: string, name: string, earnedCents: number): ServerEarning => ({
   employeeId: id,
@@ -39,8 +36,6 @@ const worker = (id: string, name: string, hours: number, role?: string): PoolWor
   hoursWorked: hours,
   role: role ?? '',
 });
-
-// ── calculatePercentageContributions ──
 
 describe('calculatePercentageContributions', () => {
   it('calculates correct contribution amounts for each server and pool', () => {
@@ -95,8 +90,6 @@ describe('calculatePercentageContributions', () => {
   });
 });
 
-// ── calculatePoolRefunds ──
-
 describe('calculatePoolRefunds', () => {
   it('refunds proportionally when pool is empty', () => {
     const contributions = [
@@ -139,8 +132,6 @@ describe('calculatePoolRefunds', () => {
     expect(refunds[0].refundCents).toBe(500);
   });
 });
-
-// ── calculatePercentagePoolAllocations (end-to-end) ──
 
 describe('calculatePercentagePoolAllocations', () => {
   it('basic 2-server, 2-pool scenario with one empty pool', () => {

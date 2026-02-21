@@ -160,5 +160,3 @@ export function TipServerEntrySheet({
     </Sheet>
   );
 }
-
-export default TipServerEntrySheet;

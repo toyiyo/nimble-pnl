@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { TipContributionPool, CreatePoolInput, UpdatePoolInput } from '@/hooks/useTipContributionPools';
 import type { Employee } from '@/types/scheduling';
@@ -86,19 +86,11 @@ function PoolCard({
     debouncedSave({ [field]: value });
   };
 
-  const handleNameBlur = () => {
-    // Flush pending debounce immediately on blur
+  const flushAndSave = (updates: UpdatePoolInput) => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
-    onUpdate({ id: pool.id, updates: { name: local.name } });
-  };
-
-  const handlePercentageBlur = () => {
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    onUpdate({ id: pool.id, updates: { contribution_percentage: local.contribution_percentage } });
+    onUpdate({ id: pool.id, updates });
   };
 
   const handleDelete = async () => {
@@ -150,7 +142,7 @@ function PoolCard({
               <Input
                 value={local.name}
                 onChange={e => setLocal(prev => ({ ...prev, name: e.target.value }))}
-                onBlur={handleNameBlur}
+                onBlur={() => flushAndSave({ name: local.name })}
                 className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border mt-1"
                 placeholder="e.g., Kitchen Pool"
               />
@@ -172,7 +164,7 @@ function PoolCard({
                     ...prev,
                     contribution_percentage: parseFloat(e.target.value) || 0,
                   }))}
-                  onBlur={handlePercentageBlur}
+                  onBlur={() => flushAndSave({ contribution_percentage: local.contribution_percentage })}
                   className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border pr-8"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
@@ -213,7 +205,7 @@ function PoolCard({
                     : 'bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-border/40'
                 )}
               >
-                {method === 'hours' ? 'Hours' : method === 'role' ? 'Role' : 'Even'}
+                {{ hours: 'Hours', role: 'Role', even: 'Even' }[method]}
               </button>
             ))}
           </div>
@@ -251,11 +243,7 @@ function PoolCard({
             onClick={() => setEmployeesExpanded(!employeesExpanded)}
             className="flex items-center gap-1 text-[12px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
           >
-            {employeesExpanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
+            <ChevronRight className={cn('h-3 w-3 transition-transform', employeesExpanded && 'rotate-90')} />
             Eligible Employees
             <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted normal-case tracking-normal">
               {local.eligible_employee_ids.length} of {eligibleEmployees.length}

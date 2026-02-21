@@ -9,8 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations } from '@/utils/tipPooling';
-import type { PercentageAllocationResult } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, type PercentageAllocationResult } from '@/utils/tipPooling';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
 import { useTipContributionPools } from '@/hooks/useTipContributionPools';
@@ -46,7 +45,7 @@ const defaultWeights: Record<string, number> = {
 
 type ViewMode = 'overview' | 'daily' | 'history';
 
-export const Tips = () => {
+export function Tips() {
   // ============ Context Hooks ============
   const { loading } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
@@ -322,21 +321,16 @@ export const Tips = () => {
     setHoursByEmployee(hoursFromPunches);
   }, [eligibleEmployees, settings, punches, isResumingDraft]);
 
-  // Helper functions for display text
-  const getShareMethodLabel = (method: ShareMethod): string => {
-    switch (method) {
-      case 'hours': return 'By hours worked';
-      case 'role': return 'By role';
-      default: return 'Manual';
-    }
+  const shareMethodLabels: Record<ShareMethod, string> = {
+    hours: 'By hours worked',
+    role: 'By role',
+    manual: 'Manual',
   };
 
-  const getSplitCadenceLabel = (cadence: SplitCadence): string => {
-    switch (cadence) {
-      case 'daily': return 'Every day';
-      case 'weekly': return 'Every week';
-      default: return 'Per shift';
-    }
+  const splitCadenceLabels: Record<SplitCadence, string> = {
+    daily: 'Every day',
+    weekly: 'Every week',
+    shift: 'Per shift',
   };
 
   const participants = useMemo(() => {
@@ -733,7 +727,6 @@ export const Tips = () => {
           aria-label="Setup"
           className="h-9 rounded-lg gap-2"
           onClick={() => setShowSetup(true)}
-          onKeyDown={e => e.key === 'Enter' && setShowSetup(true)}
         >
           <Settings className="h-5 w-5" />
         </Button>
@@ -1030,13 +1023,13 @@ export const Tips = () => {
                 <div>
                   <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Share method</p>
                   <p className="text-[14px] font-medium text-foreground mt-1">
-                    {getShareMethodLabel(shareMethod)}
+                    {shareMethodLabels[shareMethod]}
                   </p>
                 </div>
                 <div>
                   <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Split cadence</p>
                   <p className="text-[14px] font-medium text-foreground mt-1">
-                    {getSplitCadenceLabel(splitCadence)}
+                    {splitCadenceLabels[splitCadence]}
                   </p>
                 </div>
               </div>

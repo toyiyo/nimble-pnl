@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations } from '@/utils/tipPooling';
+import type { PercentageAllocationResult } from '@/utils/tipPooling';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
 import { useTipContributionPools } from '@/hooks/useTipContributionPools';
@@ -17,8 +18,10 @@ import { useTipSplits, type TipSplitWithItems } from '@/hooks/useTipSplits';
 import { useTipPayouts, type CreatePayoutsInput } from '@/hooks/useTipPayouts';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
 import { useAutoSaveTipSettings } from '@/hooks/useAutoSaveTipSettings';
+import { useTipServerEarnings } from '@/hooks/useTipServerEarnings';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
+import { TipServerEntrySheet } from '@/components/tips/TipServerEntrySheet';
 import { POSTipImporter } from '@/components/tips/POSTipImporter';
 import { EmployeeDeclaredTips } from '@/components/tips/EmployeeDeclaredTips';
 import { DisputeManager } from '@/components/tips/DisputeManager';
@@ -123,6 +126,14 @@ export const Tips = () => {
   // Use appropriate splits based on view mode
   const splits = viewMode === 'overview' ? periodSplits : dailySplits;
 
+  // Get existing split ID for current day (used for saving server earnings)
+  const currentDaySplitId = useMemo(() => {
+    return dailySplits?.find(s => s.split_date === today)?.id ?? null;
+  }, [dailySplits, today]);
+
+  // Server earnings hook for percentage contribution model
+  const { saveServerEarnings } = useTipServerEarnings(currentDaySplitId);
+
   // ============ Computed Values ============
   // Period validation stats for lock button
   const periodValidation = useMemo(() => {
@@ -218,6 +229,8 @@ export const Tips = () => {
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [showReview, setShowReview] = useState(false);
+  const [serverEntryOpen, setServerEntryOpen] = useState(false);
+  const [percentageResult, setPercentageResult] = useState<PercentageAllocationResult | null>(null);
 
   const eligibleEmployees = useMemo(() => filterTipEligible(employees), [employees]);
 
@@ -427,7 +440,49 @@ export const Tips = () => {
       shares,
       status: 'approved',
     }, {
-      onSuccess: () => {
+      onSuccess: async (splitId) => {
+        // Save percentage contribution data (server earnings + pool allocations)
+        if (poolingModel === 'percentage_contribution' && percentageResult && splitId) {
+          try {
+            // Save server earnings
+            const earningsInput = percentageResult.serverResults.map(sr => ({
+              employee_id: sr.employeeId,
+              earned_amount: sr.earnedAmountCents,
+              retained_amount: sr.retainedAmountCents,
+              refunded_amount: sr.refundedAmountCents,
+            }));
+            await saveServerEarnings({ splitId, earnings: earningsInput });
+
+            // Save pool allocations
+            const poolAllocations = percentageResult.poolResults.map(pr => ({
+              tip_split_id: splitId,
+              pool_id: pr.poolId,
+              total_contributed: pr.totalContributed,
+              total_distributed: pr.totalDistributed,
+              total_refunded: pr.totalRefunded,
+            }));
+
+            if (poolAllocations.length > 0) {
+              // Delete existing allocations for this split, then insert new ones
+              await supabase
+                .from('tip_pool_allocations')
+                .delete()
+                .eq('tip_split_id', splitId);
+
+              const { error: allocError } = await supabase
+                .from('tip_pool_allocations')
+                .insert(poolAllocations);
+
+              if (allocError) {
+                console.error('Error saving pool allocations:', allocError);
+              }
+            }
+          } catch (err) {
+            console.error('Error saving percentage contribution data:', err);
+            // Non-blocking: the main split was saved successfully
+          }
+        }
+
         toast({
           title: 'Tips approved',
           description: `Successfully distributed ${formatCurrencyFromCents(totalTipsCents)} to ${shares.length} employees.`,
@@ -435,6 +490,7 @@ export const Tips = () => {
         setTipAmount(null);
         setShowReview(false);
         setIsResumingDraft(false);
+        setPercentageResult(null);
       },
       onError: (error) => {
         console.error('Error approving tips:', error);
@@ -465,6 +521,7 @@ export const Tips = () => {
         });
         setShowReview(false);
         setIsResumingDraft(false);
+        setPercentageResult(null);
       },
       onError: (error) => {
         console.error('Error saving draft:', error);
@@ -506,6 +563,8 @@ export const Tips = () => {
   }
 
   if (showReview && totalTipsCents > 0) {
+    const isPercentageContribution = poolingModel === 'percentage_contribution';
+
     return (
       <div className="space-y-6">
         <header className="space-y-1">
@@ -520,28 +579,32 @@ export const Tips = () => {
           <h1 className="text-[17px] font-semibold text-foreground">Review Tip Split</h1>
         </header>
 
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>Tip amount</CardTitle>
-            <CardDescription>Adjust before approving.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Label htmlFor="tipAmount" className="sr-only">Tip amount</Label>
-            <Input
-              id="tipAmount"
-              type="number"
-              step="0.01"
-              min="0"
-              value={(totalTipsCents / 100).toString()}
-              onChange={e => {
-                const cents = Math.round(Number.parseFloat(e.target.value || '0') * 100);
-                setTipAmount(cents);
-              }}
-            />
-          </CardContent>
-        </Card>
+        {/* Tip amount adjustment — skip for percentage contribution (amount comes from server earnings) */}
+        {!isPercentageContribution && (
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle>Tip amount</CardTitle>
+              <CardDescription>Adjust before approving.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Label htmlFor="tipAmount" className="sr-only">Tip amount</Label>
+              <Input
+                id="tipAmount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={(totalTipsCents / 100).toString()}
+                onChange={e => {
+                  const cents = Math.round(Number.parseFloat(e.target.value || '0') * 100);
+                  setTipAmount(cents);
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
 
-        {shareMethod === 'hours' && (
+        {/* Hours worked — skip for percentage contribution (hours are handled per-pool) */}
+        {!isPercentageContribution && shareMethod === 'hours' && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -642,8 +705,11 @@ export const Tips = () => {
 
         <TipReviewScreen
           totalTipsCents={totalTipsCents}
-          initialShares={previewShares}
+          initialShares={isPercentageContribution && percentageResult ? percentageResult.splitItems : previewShares}
           shareMethod={shareMethod}
+          poolingModel={poolingModel}
+          serverResults={percentageResult?.serverResults}
+          poolResults={percentageResult?.poolResults}
           onApprove={handleApprove}
           onSaveDraft={handleSaveDraft}
           isLoading={isSaving}
@@ -832,7 +898,86 @@ export const Tips = () => {
             />
           )}
 
-          {tipSource === 'pos' && hasPOSTips && posTipData ? (
+          {poolingModel === 'percentage_contribution' ? (
+            <>
+              <Card className="rounded-xl border-border/40">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                      <DollarSign className="h-5 w-5 text-foreground" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-[17px] font-semibold text-foreground">Enter server tips</CardTitle>
+                      <CardDescription className="text-[13px]">
+                        {format(selectedDate, 'EEEE, MMMM d, yyyy')} — {contributionPools.length} active pool{contributionPools.length !== 1 ? 's' : ''} ({totalContributionPercentage}% total)
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    onClick={() => setServerEntryOpen(true)}
+                    className="h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  >
+                    Enter server tips
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <TipServerEntrySheet
+                open={serverEntryOpen}
+                date={selectedDate}
+                servers={participants}
+                onCalculate={(earnings) => {
+                  // Build workers from time punches for pool distribution
+                  const poolWorkers = participants
+                    .filter(e => punches?.some(p => p.employee_id === e.id))
+                    .map(e => ({
+                      employeeId: e.id,
+                      name: e.name,
+                      hoursWorked: Number.parseFloat(hoursByEmployee[e.id] || '0') || 0,
+                      role: e.position || '',
+                    }));
+
+                  // Also include any employees from pool eligible lists who worked but aren't participants
+                  const allEligibleIds = new Set(contributionPools.flatMap(p => p.eligible_employee_ids));
+                  const additionalWorkers = employees
+                    .filter(e => allEligibleIds.has(e.id) && !participants.some(p => p.id === e.id))
+                    .filter(e => punches?.some(p => p.employee_id === e.id))
+                    .map(e => ({
+                      employeeId: e.id,
+                      name: e.name,
+                      hoursWorked: Number.parseFloat(hoursByEmployee[e.id] || '0') || 0,
+                      role: e.position || '',
+                    }));
+
+                  const allWorkers = [...poolWorkers, ...additionalWorkers];
+
+                  const serverEarnings = earnings.map(e => ({
+                    employeeId: e.employeeId,
+                    name: e.name,
+                    earnedAmountCents: e.amountCents,
+                  }));
+
+                  const pools = contributionPools.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    contributionPercentage: Number(p.contribution_percentage),
+                    shareMethod: p.share_method as 'hours' | 'role' | 'even',
+                    eligibleEmployeeIds: p.eligible_employee_ids,
+                    roleWeights: (p.role_weights || {}) as Record<string, number>,
+                  }));
+
+                  const result = calculatePercentagePoolAllocations(serverEarnings, pools, allWorkers);
+                  setPercentageResult(result);
+                  setTipAmount(serverEarnings.reduce((s, e) => s + e.earnedAmountCents, 0));
+                  setServerEntryOpen(false);
+                  setShowReview(true);
+                }}
+                onClose={() => setServerEntryOpen(false)}
+              />
+            </>
+          ) : tipSource === 'pos' && hasPOSTips && posTipData ? (
             <POSTipImporter
               tipData={posTipData}
               onImport={handleContinueToReview}

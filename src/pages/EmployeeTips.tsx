@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,7 +19,16 @@ import {
 } from '@/components/employee';
 import { TipTransparency } from '@/components/tips/TipTransparency';
 import { TipDispute } from '@/components/tips/TipDispute';
+import { supabase } from '@/integrations/supabase/client';
 import { Banknote, Clock } from 'lucide-react';
+
+interface ServerEarningRow {
+  tip_split_id: string;
+  employee_id: string;
+  earned_amount: number;
+  retained_amount: number;
+  refunded_amount: number;
+}
 
 /**
  * EmployeeTips - Part 3 of Apple-style UX
@@ -52,7 +62,7 @@ const EmployeeTips = () => {
 
   const { payouts } = useTipPayouts(restaurantId, formattedStart, formattedEnd);
 
-  // Build a lookup map: "employeeId|payoutDate" -> amount in cents
+  // Build a lookup map: "payoutDate" -> amount in cents
   const payoutLookup = useMemo(() => {
     if (!payouts || !currentEmployee) return new Map<string, number>();
     const map = new Map<string, number>();
@@ -64,6 +74,42 @@ const EmployeeTips = () => {
     }
     return map;
   }, [payouts, currentEmployee]);
+
+  // Batch fetch server earnings for all approved splits in the period
+  // This detects which splits used the percentage_contribution model
+  const approvedSplitIds = useMemo(() => {
+    if (!splits || !currentEmployee) return [];
+    return splits
+      .filter(s => s.status === 'approved')
+      .map(s => s.id);
+  }, [splits, currentEmployee]);
+
+  const { data: serverEarningsData } = useQuery({
+    queryKey: ['tip-server-earnings-batch', approvedSplitIds],
+    queryFn: async () => {
+      if (approvedSplitIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from('tip_server_earnings')
+        .select('tip_split_id, employee_id, earned_amount, retained_amount, refunded_amount')
+        .in('tip_split_id', approvedSplitIds);
+      if (error) throw error;
+      return (data ?? []) as ServerEarningRow[];
+    },
+    enabled: approvedSplitIds.length > 0,
+    staleTime: 30000,
+  });
+
+  // Build lookup: splitId -> ServerEarningRow (for the current employee only)
+  const myServerEarningsLookup = useMemo(() => {
+    const map = new Map<string, ServerEarningRow>();
+    if (!serverEarningsData || !currentEmployee) return map;
+    for (const row of serverEarningsData) {
+      if (row.employee_id === currentEmployee.id) {
+        map.set(row.tip_split_id, row);
+      }
+    }
+    return map;
+  }, [serverEarningsData, currentEmployee]);
 
   // Filter splits to only show approved ones with current employee
   const myTips = useMemo(() => {
@@ -203,54 +249,94 @@ const EmployeeTips = () => {
               </CardContent>
             </Card>
           )}
-          {!isLoading && myTips.map((tip) => (
-            <Card key={tip.id} className="rounded-xl border-border/40 hover:border-border transition-colors">
-              <div className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[14px] font-medium text-foreground">
-                      {format(new Date(tip.date), 'EEEE, MMM d')}
-                    </p>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      {Boolean(tip.hours) && (
-                        <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {tip.hours.toFixed(1)} hours
-                        </span>
+          {!isLoading && myTips.map((tip) => {
+            const serverEarning = myServerEarningsLookup.get(tip.id);
+            const deductionsCents = serverEarning
+              ? serverEarning.earned_amount - serverEarning.retained_amount - serverEarning.refunded_amount
+              : 0;
+
+            return (
+              <Card key={tip.id} className="rounded-xl border-border/40 hover:border-border transition-colors">
+                <div className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[14px] font-medium text-foreground">
+                        {format(new Date(tip.date), 'EEEE, MMM d')}
+                      </p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        {Boolean(tip.hours) && (
+                          <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            {tip.hours.toFixed(1)} hours
+                          </span>
+                        )}
+                        {tip.role && <span className="text-[13px] text-muted-foreground">{tip.role}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {payoutLookup.has(tip.date) && (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                        >
+                          Paid {formatCurrencyFromCents(payoutLookup.get(tip.date) ?? 0)} cash
+                        </Badge>
                       )}
-                      {tip.role && <span className="text-[13px] text-muted-foreground">{tip.role}</span>}
+                      <span className="text-[14px] font-semibold text-foreground">
+                        {formatCurrencyFromCents(tip.amount)}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {payoutLookup.has(tip.date) && (
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
-                      >
-                        Paid {formatCurrencyFromCents(payoutLookup.get(tip.date) ?? 0)} cash
-                      </Badge>
-                    )}
-                    <span className="text-[14px] font-semibold text-foreground">
-                      {formatCurrencyFromCents(tip.amount)}
-                    </span>
+
+                  {/* Server earnings breakdown for percentage contribution model */}
+                  {serverEarning && (
+                    <div className="mt-3 pt-3 border-t border-border/40">
+                      <div className="grid grid-cols-4 gap-2">
+                        <div>
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Earned</p>
+                          <p className="text-[13px] font-medium text-foreground mt-0.5">
+                            {formatCurrencyFromCents(serverEarning.earned_amount)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Deductions</p>
+                          <p className="text-[13px] font-medium text-destructive mt-0.5">
+                            {deductionsCents > 0 ? `-${formatCurrencyFromCents(deductionsCents)}` : '\u2014'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Refunds</p>
+                          <p className="text-[13px] font-medium text-green-600 mt-0.5">
+                            {serverEarning.refunded_amount > 0 ? `+${formatCurrencyFromCents(serverEarning.refunded_amount)}` : '\u2014'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Final</p>
+                          <p className="text-[13px] font-semibold text-foreground mt-0.5">
+                            {formatCurrencyFromCents(serverEarning.retained_amount)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                    <TipTransparency
+                      employeeTip={tip}
+                      totalTeamHours={tip.totalTeamHours}
+                      shareMethod={tip.shareMethod || 'manual'}
+                    />
+                    <TipDispute
+                      restaurantId={restaurantId}
+                      employeeId={currentEmployee.id}
+                      tipSplitId={tip.id}
+                      tipDate={tip.date}
+                    />
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
-                  <TipTransparency
-                    employeeTip={tip}
-                    totalTeamHours={tip.totalTeamHours}
-                    shareMethod={tip.shareMethod || 'manual'}
-                  />
-                  <TipDispute
-                    restaurantId={restaurantId}
-                    employeeId={currentEmployee.id}
-                    tipSplitId={tip.id}
-                    tipDate={tip.date}
-                  />
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 

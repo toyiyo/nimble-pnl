@@ -6688,6 +6688,66 @@ export type Database = {
           },
         ]
       }
+      tip_contribution_pools: {
+        Row: {
+          active: boolean
+          contribution_percentage: number
+          created_at: string | null
+          eligible_employee_ids: string[]
+          id: string
+          name: string
+          restaurant_id: string
+          role_weights: Json | null
+          settings_id: string
+          share_method: string
+          sort_order: number
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean
+          contribution_percentage: number
+          created_at?: string | null
+          eligible_employee_ids?: string[]
+          id?: string
+          name: string
+          restaurant_id: string
+          role_weights?: Json | null
+          settings_id: string
+          share_method: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean
+          contribution_percentage?: number
+          created_at?: string | null
+          eligible_employee_ids?: string[]
+          id?: string
+          name?: string
+          restaurant_id?: string
+          role_weights?: Json | null
+          settings_id?: string
+          share_method?: string
+          sort_order?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_contribution_pools_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_contribution_pools_settings_id_fkey"
+            columns: ["settings_id"]
+            isOneToOne: false
+            referencedRelation: "tip_pool_settings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_disputes: {
         Row: {
           created_at: string | null
@@ -6769,6 +6829,126 @@ export type Database = {
           },
         ]
       }
+      tip_payouts: {
+        Row: {
+          amount: number
+          created_at: string | null
+          employee_id: string
+          id: string
+          notes: string | null
+          paid_by: string | null
+          payout_date: string
+          restaurant_id: string
+          tip_split_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          notes?: string | null
+          paid_by?: string | null
+          payout_date: string
+          restaurant_id: string
+          tip_split_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          notes?: string | null
+          paid_by?: string | null
+          payout_date?: string
+          restaurant_id?: string
+          tip_split_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_payouts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_payouts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_payouts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_payouts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_payouts_tip_split_id_fkey"
+            columns: ["tip_split_id"]
+            isOneToOne: false
+            referencedRelation: "tip_splits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tip_pool_allocations: {
+        Row: {
+          created_at: string | null
+          id: string
+          pool_id: string
+          tip_split_id: string
+          total_contributed: number
+          total_distributed: number
+          total_refunded: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          pool_id: string
+          tip_split_id: string
+          total_contributed?: number
+          total_distributed?: number
+          total_refunded?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          pool_id?: string
+          tip_split_id?: string
+          total_contributed?: number
+          total_distributed?: number
+          total_refunded?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_pool_allocations_pool_id_fkey"
+            columns: ["pool_id"]
+            isOneToOne: false
+            referencedRelation: "tip_contribution_pools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_pool_allocations_tip_split_id_fkey"
+            columns: ["tip_split_id"]
+            isOneToOne: false
+            referencedRelation: "tip_splits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_pool_settings: {
         Row: {
           active: boolean | null
@@ -6776,6 +6956,7 @@ export type Database = {
           created_by: string | null
           enabled_employee_ids: string[] | null
           id: string
+          pooling_model: string
           restaurant_id: string
           role_weights: Json | null
           share_method: string | null
@@ -6789,6 +6970,7 @@ export type Database = {
           created_by?: string | null
           enabled_employee_ids?: string[] | null
           id?: string
+          pooling_model?: string
           restaurant_id: string
           role_weights?: Json | null
           share_method?: string | null
@@ -6802,6 +6984,7 @@ export type Database = {
           created_by?: string | null
           enabled_employee_ids?: string[] | null
           id?: string
+          pooling_model?: string
           restaurant_id?: string
           role_weights?: Json | null
           share_method?: string | null
@@ -6815,6 +6998,65 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tip_server_earnings: {
+        Row: {
+          created_at: string | null
+          earned_amount: number
+          employee_id: string
+          id: string
+          refunded_amount: number
+          retained_amount: number
+          tip_split_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          earned_amount?: number
+          employee_id: string
+          id?: string
+          refunded_amount?: number
+          retained_amount?: number
+          tip_split_id: string
+        }
+        Update: {
+          created_at?: string | null
+          earned_amount?: number
+          employee_id?: string
+          id?: string
+          refunded_amount?: number
+          retained_amount?: number
+          tip_split_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_server_earnings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_server_earnings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_server_earnings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_server_earnings_tip_split_id_fkey"
+            columns: ["tip_split_id"]
+            isOneToOne: false
+            referencedRelation: "tip_splits"
             referencedColumns: ["id"]
           },
         ]

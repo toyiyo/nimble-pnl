@@ -9,12 +9,12 @@ import type { TipContributionPool, CreatePoolInput, UpdatePoolInput } from '@/ho
 import type { Employee } from '@/types/scheduling';
 
 interface ContributionPoolEditorProps {
-  pools: TipContributionPool[];
-  eligibleEmployees: Employee[];
-  onCreatePool: (pool: CreatePoolInput) => Promise<TipContributionPool>;
-  onUpdatePool: (args: { id: string; updates: UpdatePoolInput }) => Promise<TipContributionPool>;
-  onDeletePool: (id: string) => Promise<void>;
-  totalContributionPercentage: number;
+  readonly pools: TipContributionPool[];
+  readonly eligibleEmployees: Employee[];
+  readonly onCreatePool: (pool: CreatePoolInput) => Promise<TipContributionPool>;
+  readonly onUpdatePool: (args: { id: string; updates: UpdatePoolInput }) => Promise<TipContributionPool>;
+  readonly onDeletePool: (id: string) => Promise<void>;
+  readonly totalContributionPercentage: number;
 }
 
 interface PoolCardState {
@@ -32,12 +32,12 @@ function PoolCard({
   eligibleEmployees,
   onUpdate,
   onDelete,
-}: {
+}: Readonly<{
   pool: TipContributionPool;
   eligibleEmployees: Employee[];
   onUpdate: (args: { id: string; updates: UpdatePoolInput }) => Promise<TipContributionPool>;
   onDelete: (id: string) => Promise<void>;
-}) {
+}>) {
   const [local, setLocal] = useState<PoolCardState>({
     name: pool.name,
     contribution_percentage: pool.contribution_percentage,
@@ -162,7 +162,7 @@ function PoolCard({
                   value={local.contribution_percentage}
                   onChange={e => setLocal(prev => ({
                     ...prev,
-                    contribution_percentage: parseFloat(e.target.value) || 0,
+                    contribution_percentage: Number.parseFloat(e.target.value) || 0,
                   }))}
                   onBlur={() => flushAndSave({ contribution_percentage: local.contribution_percentage })}
                   className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border pr-8"
@@ -227,7 +227,7 @@ function PoolCard({
                     min={0}
                     max={10}
                     value={local.role_weights[role] ?? 1}
-                    onChange={e => handleRoleWeightChange(role, parseFloat(e.target.value) || 0)}
+                    onChange={e => handleRoleWeightChange(role, Number.parseFloat(e.target.value) || 0)}
                     className="h-8 w-20 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
@@ -241,6 +241,7 @@ function PoolCard({
           <button
             type="button"
             onClick={() => setEmployeesExpanded(!employeesExpanded)}
+            aria-expanded={employeesExpanded}
             className="flex items-center gap-1 text-[12px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
           >
             <ChevronRight className={cn('h-3 w-3 transition-transform', employeesExpanded && 'rotate-90')} />

@@ -3,22 +3,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { formatCurrencyFromCents, rebalanceAllocations, type TipShare } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, rebalanceAllocations, type TipShare, type ServerResult, type PoolResult } from '@/utils/tipPooling';
 import { Info, DollarSign, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ShareMethod, PoolingModel } from '@/hooks/useTipPoolSettings';
-import type { ServerResult, PoolResult } from '@/utils/tipPooling';
 
 interface TipReviewScreenProps {
-  totalTipsCents: number;
-  initialShares: TipShare[];
-  shareMethod: ShareMethod;
-  onApprove: (shares: TipShare[]) => void;
-  onSaveDraft: (shares: TipShare[]) => void;
-  isLoading?: boolean;
-  poolingModel?: PoolingModel;
-  serverResults?: ServerResult[];
-  poolResults?: PoolResult[];
+  readonly totalTipsCents: number;
+  readonly initialShares: TipShare[];
+  readonly shareMethod: ShareMethod;
+  readonly onApprove: (shares: TipShare[]) => void;
+  readonly onSaveDraft: (shares: TipShare[]) => void;
+  readonly isLoading?: boolean;
+  readonly poolingModel?: PoolingModel;
+  readonly serverResults?: ServerResult[];
+  readonly poolResults?: PoolResult[];
 }
 
 /**
@@ -202,7 +201,7 @@ function AllocationTable({
   onEdit,
   onAmountChange,
   onBlur,
-}: {
+}: Readonly<{
   shares: TipShare[];
   shareMethod: ShareMethod;
   totalTipsCents: number;
@@ -210,7 +209,7 @@ function AllocationTable({
   onEdit: (id: string) => void;
   onAmountChange: (employeeId: string, newAmountCents: number) => void;
   onBlur: () => void;
-}) {
+}>) {
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
       <table className="w-full">
@@ -287,7 +286,7 @@ function AllocationTable({
 /**
  * Section 1: Server Earnings — shows earned, deductions, refunds, and final amounts.
  */
-function ServerEarningsSection({ serverResults }: { serverResults: ServerResult[] }) {
+function ServerEarningsSection({ serverResults }: Readonly<{ serverResults: ServerResult[] }>) {
   return (
     <div className="space-y-2">
       <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wider">
@@ -306,8 +305,8 @@ function ServerEarningsSection({ serverResults }: { serverResults: ServerResult[
           </thead>
           <tbody>
             {serverResults.map((sr) => {
-              // Deductions = earned - retained - refunded (total contributed to active pools)
-              const deductionsCents = sr.earnedAmountCents - sr.retainedAmountCents - sr.refundedAmountCents;
+              // Deductions = total contributed to active pools = earned - retained + refunded
+              const deductionsCents = sr.earnedAmountCents - sr.retainedAmountCents + sr.refundedAmountCents;
               return (
                 <tr
                   key={sr.employeeId}
@@ -341,7 +340,7 @@ function ServerEarningsSection({ serverResults }: { serverResults: ServerResult[
 /**
  * Section 2: Pool Breakdown — collapsible per pool, shows distributions.
  */
-function PoolBreakdownSection({ poolResults }: { poolResults: PoolResult[] }) {
+function PoolBreakdownSection({ poolResults }: Readonly<{ poolResults: PoolResult[] }>) {
   return (
     <div className="space-y-2">
       <h3 className="text-[13px] font-semibold text-foreground uppercase tracking-wider">
@@ -362,7 +361,7 @@ function PoolBreakdownSection({ poolResults }: { poolResults: PoolResult[] }) {
 /**
  * Collapsible pool detail — shows distribution or refund status.
  */
-function PoolDisclosure({ pool }: { pool: PoolResult }) {
+function PoolDisclosure({ pool }: Readonly<{ pool: PoolResult }>) {
   const [open, setOpen] = useState(pool.totalDistributed > 0);
 
   const isRefunded = pool.totalDistributed === 0 && pool.totalContributed > 0;
@@ -388,40 +387,50 @@ function PoolDisclosure({ pool }: { pool: PoolResult }) {
 
       {open && (
         <div className="px-4 py-3 border-t border-border/40">
-          {isRefunded ? (
-            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-              <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-              <span className="text-[13px] text-amber-600">
-                Refunded — no eligible employees worked this day
-              </span>
-            </div>
-          ) : pool.recipientShares.length > 0 ? (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border/40">
-                  <th className="pb-2 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Employee</th>
-                  <th className="pb-2 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pool.recipientShares.map((share) => (
-                  <tr
-                    key={share.employeeId}
-                    className="border-b border-border/40 last:border-b-0"
-                  >
-                    <td className="py-2 text-[14px] text-foreground">{share.name}</td>
-                    <td className="py-2 text-right text-[14px] font-medium text-foreground">
-                      {formatCurrencyFromCents(share.amountCents)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="text-[13px] text-muted-foreground">No distributions for this pool.</p>
-          )}
+          <PoolDisclosureContent pool={pool} isRefunded={isRefunded} />
         </div>
       )}
     </div>
+  );
+}
+
+function PoolDisclosureContent({ pool, isRefunded }: Readonly<{ pool: PoolResult; isRefunded: boolean }>) {
+  if (isRefunded) {
+    return (
+      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+        <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+        <span className="text-[13px] text-amber-600">
+          Refunded — no eligible employees worked this day
+        </span>
+      </div>
+    );
+  }
+
+  if (pool.recipientShares.length === 0) {
+    return <p className="text-[13px] text-muted-foreground">No distributions for this pool.</p>;
+  }
+
+  return (
+    <table className="w-full">
+      <thead>
+        <tr className="border-b border-border/40">
+          <th className="pb-2 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Employee</th>
+          <th className="pb-2 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {pool.recipientShares.map((share) => (
+          <tr
+            key={share.employeeId}
+            className="border-b border-border/40 last:border-b-0"
+          >
+            <td className="py-2 text-[14px] text-foreground">{share.name}</td>
+            <td className="py-2 text-right text-[14px] font-medium text-foreground">
+              {formatCurrencyFromCents(share.amountCents)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

@@ -252,7 +252,7 @@ function EmployeeTips() {
           {!isLoading && myTips.map((tip) => {
             const serverEarning = myServerEarningsLookup.get(tip.id);
             const deductionsCents = serverEarning
-              ? serverEarning.earned_amount - serverEarning.retained_amount - serverEarning.refunded_amount
+              ? serverEarning.earned_amount - serverEarning.retained_amount + serverEarning.refunded_amount
               : 0;
 
             return (

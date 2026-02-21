@@ -9,13 +9,13 @@ import { format } from 'date-fns';
 import type { Employee } from '@/types/scheduling';
 
 export interface TipServerEntrySheetProps {
-  open: boolean;
-  date: Date;
-  servers: Employee[];
-  initialEarnings?: Map<string, number>; // employeeId -> dollars
-  loading?: boolean;
-  onCalculate: (earnings: Array<{ employeeId: string; name: string; amountCents: number }>) => void;
-  onClose: () => void;
+  readonly open: boolean;
+  readonly date: Date;
+  readonly servers: Employee[];
+  readonly initialEarnings?: Map<string, number>; // employeeId -> dollars
+  readonly loading?: boolean;
+  readonly onCalculate: (earnings: Array<{ employeeId: string; name: string; amountCents: number }>) => void;
+  readonly onClose: () => void;
 }
 
 export function TipServerEntrySheet({

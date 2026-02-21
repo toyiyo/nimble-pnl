@@ -33,7 +33,7 @@ export function useAutoSaveTipSettings({
   onSave,
 }: Params) {
   useEffect(() => {
-    const sortedIds = (ids: Iterable<string>) => [...ids].sort().join(',');
+    const sortedIds = (ids: Iterable<string>) => [...ids].sort((a, b) => a.localeCompare(b)).join(',');
 
     const hasChanges = settings
       ? tipSource !== settings.tip_source ||

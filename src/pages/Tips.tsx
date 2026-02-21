@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven } from '@/utils/tipPooling';
 import { useToast } from '@/hooks/use-toast';
-import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence } from '@/hooks/useTipPoolSettings';
+import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
+import { useTipContributionPools } from '@/hooks/useTipContributionPools';
 import { useTipSplits, type TipSplitWithItems } from '@/hooks/useTipSplits';
 import { useTipPayouts, type CreatePayoutsInput } from '@/hooks/useTipPayouts';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
@@ -92,6 +93,13 @@ export const Tips = () => {
   // ============ Data Fetching Hooks ============
   const { employees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'active' });
   const { settings, updateSettings, isLoading: settingsLoading } = useTipPoolSettings(restaurantId);
+  const {
+    pools: contributionPools,
+    createPool,
+    updatePool,
+    deletePool,
+    totalContributionPercentage,
+  } = useTipContributionPools(restaurantId, settings?.id ?? null);
   const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
 
   // Query for Daily Entry mode - single day
@@ -202,6 +210,7 @@ export const Tips = () => {
   const [tipSource, setTipSource] = useState<TipSource>(settings?.tip_source || 'manual');
   const [shareMethod, setShareMethod] = useState<ShareMethod>(settings?.share_method || 'hours');
   const [splitCadence, setSplitCadence] = useState<SplitCadence>(settings?.split_cadence || 'daily');
+  const [poolingModel, setPoolingModel] = useState<PoolingModel>(settings?.pooling_model || 'full_pool');
   const [tipAmount, setTipAmount] = useState<number | null>(null);
   const [hoursByEmployee, setHoursByEmployee] = useState<Record<string, string>>({});
   const [isResumingDraft, setIsResumingDraft] = useState(false);
@@ -218,6 +227,7 @@ export const Tips = () => {
       setShareMethod(settings.share_method || 'hours');
       setSplitCadence(settings.split_cadence || 'daily');
       setRoleWeights(settings.role_weights || defaultWeights);
+      setPoolingModel(settings.pooling_model || 'full_pool');
       if (settings.enabled_employee_ids?.length) {
         setSelectedEmployees(new Set(settings.enabled_employee_ids));
       }
@@ -476,8 +486,9 @@ export const Tips = () => {
       split_cadence: splitCadence,
       role_weights: roleWeights,
       enabled_employee_ids: Array.from(selectedEmployees),
+      pooling_model: poolingModel,
     });
-  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, updateSettings]);
+  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, poolingModel, updateSettings]);
 
   useAutoSaveTipSettings({
     settings,
@@ -486,6 +497,7 @@ export const Tips = () => {
     splitCadence,
     roleWeights,
     selectedEmployees,
+    poolingModel,
     onSave: handleSaveSettings,
   });
 
@@ -665,6 +677,8 @@ export const Tips = () => {
       <TipPoolSettingsDialog
         open={showSetup}
         onClose={() => setShowSetup(false)}
+        poolingModel={poolingModel}
+        onPoolingModelChange={setPoolingModel}
         tipSource={tipSource}
         shareMethod={shareMethod}
         splitCadence={splitCadence}
@@ -677,6 +691,11 @@ export const Tips = () => {
         onSplitCadenceChange={setSplitCadence}
         onRoleWeightsChange={setRoleWeights}
         onSelectedEmployeesChange={setSelectedEmployees}
+        contributionPools={contributionPools}
+        onCreatePool={createPool}
+        onUpdatePool={updatePool}
+        onDeletePool={deletePool}
+        totalContributionPercentage={totalContributionPercentage}
       />
 
       {restaurantId && <DisputeManager restaurantId={restaurantId} />}

@@ -263,7 +263,8 @@ function isAlreadyTracked(
   suggestion: ExpenseSuggestion,
   costs: OperatingCost[],
 ): boolean {
-  const subtypeFromId = suggestion.id.split(':')[1]; // e.g. "rent" from "landlord llc:rent"
+  const lastColon = suggestion.id.lastIndexOf(':');
+  const subtypeFromId = lastColon >= 0 ? suggestion.id.slice(lastColon + 1) : ''; // e.g. "rent" from "landlord llc:rent"
   const payeeLower = suggestion.payeeName.toLowerCase();
 
   return costs.some((cost) => {

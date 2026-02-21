@@ -125,13 +125,13 @@ describe('detectRecurringExpenses', () => {
     expect(result).toEqual([]);
   });
 
-  // ------- 4. Allows up to 20% variance ------- //
-  it('allows up to 20% variance in amounts', () => {
-    // Base is $1000, $1200 is exactly 20% higher → should still be accepted
+  // ------- 4. Allows up to 20% variance (exactly at boundary) ------- //
+  it('allows amounts exactly at the 20% variance boundary', () => {
+    // $800 and $1200 → mean=1000, max deviation=200/1000=20% → exactly at boundary → accepted
     const transactions: ExpenseTransaction[] = [
       tx({
         normalized_payee: 'utility co',
-        amount: -1000,
+        amount: -800,
         transaction_date: '2026-01-10',
         chart_of_accounts: { account_name: 'Electric', account_subtype: 'utilities' },
       }),
@@ -148,19 +148,19 @@ describe('detectRecurringExpenses', () => {
     expect(result[0].costType).toBe('semi_variable');
   });
 
-  // ------- 5. Rejects >20% variance ------- //
-  it('rejects transactions with >20% variance', () => {
-    // $1000 vs $2000 → mean $1500, max deviation 33% → should be rejected
+  // ------- 5. Rejects >20% variance (just over boundary) ------- //
+  it('rejects transactions just over the 20% variance boundary', () => {
+    // $790 and $1210 → mean=1000, max deviation=210/1000=21% → just over boundary → rejected
     const transactions: ExpenseTransaction[] = [
       tx({
         normalized_payee: 'wild vendor',
-        amount: -1000,
+        amount: -790,
         transaction_date: '2026-01-10',
         chart_of_accounts: { account_name: 'Stuff', account_subtype: 'other' },
       }),
       tx({
         normalized_payee: 'wild vendor',
-        amount: -2000,
+        amount: -1210,
         transaction_date: '2025-12-10',
         chart_of_accounts: { account_name: 'Stuff', account_subtype: 'other' },
       }),
@@ -515,6 +515,84 @@ describe('detectRecurringExpenses', () => {
     ];
 
     const result = detectRecurringExpenses(transactions, existingCosts, []);
+    expect(result).toEqual([]);
+  });
+
+  // ------- Additional: accepted suggestions are hidden ------- //
+  it('excludes accepted suggestions', () => {
+    const transactions: ExpenseTransaction[] = [
+      tx({
+        normalized_payee: 'landlord llc',
+        amount: -3500,
+        transaction_date: '2026-01-15',
+        chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' },
+      }),
+      tx({
+        normalized_payee: 'landlord llc',
+        amount: -3500,
+        transaction_date: '2025-12-15',
+        chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' },
+      }),
+    ];
+
+    const dismissals: Dismissal[] = [
+      { suggestion_key: 'landlord llc:rent', action: 'accepted', snoozed_until: null },
+    ];
+
+    const result = detectRecurringExpenses(transactions, [], dismissals);
+    expect(result).toEqual([]);
+  });
+
+  // ------- Additional: snoozed with null expiry treated as permanent ------- //
+  it('treats snoozed with null expiry as permanently dismissed', () => {
+    const transactions: ExpenseTransaction[] = [
+      tx({
+        normalized_payee: 'landlord llc',
+        amount: -3500,
+        transaction_date: '2026-01-15',
+        chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' },
+      }),
+      tx({
+        normalized_payee: 'landlord llc',
+        amount: -3500,
+        transaction_date: '2025-12-15',
+        chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' },
+      }),
+    ];
+
+    const dismissals: Dismissal[] = [
+      { suggestion_key: 'landlord llc:rent', action: 'snoozed', snoozed_until: null },
+    ];
+
+    const result = detectRecurringExpenses(transactions, [], dismissals);
+    expect(result).toEqual([]);
+  });
+
+  // ------- Additional: payee with colon in name extracts subtype correctly ------- //
+  it('handles payee names containing colons in suggestion ID', () => {
+    const transactions: ExpenseTransaction[] = [
+      tx({
+        normalized_payee: 'ACME: Corp',
+        amount: -1500,
+        transaction_date: '2026-01-15',
+        chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' },
+      }),
+      tx({
+        normalized_payee: 'ACME: Corp',
+        amount: -1500,
+        transaction_date: '2025-12-15',
+        chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' },
+      }),
+    ];
+
+    // The suggestion ID should be "acme: corp:rent"
+    // With the safe extraction, the subtype should be "rent" (after last colon)
+    const existingCosts: OperatingCost[] = [
+      opCost({ category: 'rent', name: 'Some other rent' }),
+    ];
+
+    const result = detectRecurringExpenses(transactions, existingCosts, []);
+    // Should be excluded because subtype "rent" matches category "rent"
     expect(result).toEqual([]);
   });
 });

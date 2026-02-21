@@ -184,6 +184,230 @@ export function rebalanceAllocations(
   ];
 }
 
+// ── Percentage Contribution Types ─────────────────────────────────────────────
+
+export type ServerEarning = {
+  employeeId: string;
+  name: string;
+  earnedAmountCents: number;
+};
+
+export type ContributionPool = {
+  id: string;
+  name: string;
+  contributionPercentage: number;
+  shareMethod: 'hours' | 'role' | 'even';
+  eligibleEmployeeIds: string[];
+  roleWeights: Record<string, number>;
+};
+
+export type PoolWorker = {
+  employeeId: string;
+  name: string;
+  hoursWorked: number;
+  role: string;
+};
+
+export type Contribution = {
+  serverId: string;
+  poolId: string;
+  amountCents: number;
+};
+
+export type Refund = {
+  serverId: string;
+  poolId: string;
+  refundCents: number;
+};
+
+export type ServerResult = {
+  employeeId: string;
+  name: string;
+  earnedAmountCents: number;
+  retainedAmountCents: number;
+  refundedAmountCents: number;
+};
+
+export type PoolResult = {
+  poolId: string;
+  poolName: string;
+  totalContributed: number;
+  totalDistributed: number;
+  totalRefunded: number;
+  recipientShares: TipShare[];
+};
+
+export type PercentageAllocationResult = {
+  serverResults: ServerResult[];
+  poolResults: PoolResult[];
+  splitItems: TipShare[];
+};
+
+// ── Percentage Contribution Functions ────────────────────────────────────────
+
+/**
+ * Calculate how much each server contributes to each pool.
+ * Returns one Contribution per (server, pool) pair.
+ */
+export function calculatePercentageContributions(
+  servers: ServerEarning[],
+  pools: ContributionPool[],
+): Contribution[] {
+  const contributions: Contribution[] = [];
+  for (const s of servers) {
+    for (const p of pools) {
+      const amount = Math.round(s.earnedAmountCents * p.contributionPercentage / 100);
+      contributions.push({ serverId: s.employeeId, poolId: p.id, amountCents: amount });
+    }
+  }
+  return contributions;
+}
+
+/**
+ * Calculate proportional refunds when a pool is empty (no eligible workers).
+ * Each server gets back proportional to what they contributed.
+ * Remainder assigned to last server to preserve total.
+ */
+export function calculatePoolRefunds(
+  poolId: string,
+  contributions: Contribution[],
+  poolTotal: number,
+): Refund[] {
+  const poolContributions = contributions.filter(c => c.poolId === poolId);
+
+  if (poolTotal <= 0) {
+    return poolContributions.map(c => ({ serverId: c.serverId, poolId, refundCents: 0 }));
+  }
+
+  const refunds: Refund[] = [];
+  let allocated = 0;
+
+  poolContributions.forEach((c, idx) => {
+    if (idx === poolContributions.length - 1) {
+      refunds.push({ serverId: c.serverId, poolId, refundCents: poolTotal - allocated });
+    } else {
+      const refund = Math.round(poolTotal * (c.amountCents / poolTotal));
+      allocated += refund;
+      refunds.push({ serverId: c.serverId, poolId, refundCents: refund });
+    }
+  });
+
+  return refunds;
+}
+
+/**
+ * End-to-end percentage pool allocation.
+ * 1. Calculate contributions (server × pool)
+ * 2. For each pool, check if any eligible employees worked
+ * 3. Active pools: distribute using existing split functions
+ * 4. Empty pools: refund proportionally to servers
+ * 5. Build combined split items (server retained + pool distributions)
+ */
+export function calculatePercentagePoolAllocations(
+  servers: ServerEarning[],
+  pools: ContributionPool[],
+  workers: PoolWorker[],
+): PercentageAllocationResult {
+  const contributions = calculatePercentageContributions(servers, pools);
+  const poolResults: PoolResult[] = [];
+  const allRefunds: Refund[] = [];
+
+  for (const p of pools) {
+    const poolContribs = contributions.filter(c => c.poolId === p.id);
+    const poolTotal = poolContribs.reduce((s, c) => s + c.amountCents, 0);
+    const activeWorkers = workers.filter(w => p.eligibleEmployeeIds.includes(w.employeeId));
+
+    if (activeWorkers.length === 0) {
+      const refunds = calculatePoolRefunds(p.id, contributions, poolTotal);
+      allRefunds.push(...refunds);
+      poolResults.push({
+        poolId: p.id,
+        poolName: p.name,
+        totalContributed: poolTotal,
+        totalDistributed: 0,
+        totalRefunded: poolTotal,
+        recipientShares: [],
+      });
+    } else {
+      let shares: TipShare[];
+      if (p.shareMethod === 'hours') {
+        shares = calculateTipSplitByHours(
+          poolTotal,
+          activeWorkers.map(w => ({ id: w.employeeId, name: w.name, hours: w.hoursWorked })),
+        );
+      } else if (p.shareMethod === 'role') {
+        shares = calculateTipSplitByRole(
+          poolTotal,
+          activeWorkers.map(w => ({
+            id: w.employeeId,
+            name: w.name,
+            role: w.role,
+            weight: p.roleWeights[w.role] ?? 0,
+          })),
+        );
+      } else {
+        shares = calculateTipSplitEven(
+          poolTotal,
+          activeWorkers.map(w => ({ id: w.employeeId, name: w.name })),
+        );
+      }
+      poolResults.push({
+        poolId: p.id,
+        poolName: p.name,
+        totalContributed: poolTotal,
+        totalDistributed: poolTotal,
+        totalRefunded: 0,
+        recipientShares: shares,
+      });
+    }
+  }
+
+  // Build server results
+  const serverResults: ServerResult[] = servers.map(s => {
+    const totalContributed = contributions
+      .filter(c => c.serverId === s.employeeId)
+      .reduce((sum, c) => sum + c.amountCents, 0);
+    const totalRefunded = allRefunds
+      .filter(r => r.serverId === s.employeeId)
+      .reduce((sum, r) => sum + r.refundCents, 0);
+    return {
+      employeeId: s.employeeId,
+      name: s.name,
+      earnedAmountCents: s.earnedAmountCents,
+      retainedAmountCents: s.earnedAmountCents - totalContributed + totalRefunded,
+      refundedAmountCents: totalRefunded,
+    };
+  });
+
+  // Build combined split items (server retained + pool distributions)
+  const itemMap = new Map<string, TipShare>();
+
+  for (const sr of serverResults) {
+    itemMap.set(sr.employeeId, {
+      employeeId: sr.employeeId,
+      name: sr.name,
+      amountCents: sr.retainedAmountCents,
+    });
+  }
+
+  for (const pr of poolResults) {
+    for (const share of pr.recipientShares) {
+      const existing = itemMap.get(share.employeeId);
+      if (existing) {
+        existing.amountCents += share.amountCents;
+      } else {
+        itemMap.set(share.employeeId, { ...share });
+      }
+    }
+  }
+
+  const splitItems = Array.from(itemMap.values()).filter(
+    item => item.amountCents > 0 || servers.some(s => s.employeeId === item.employeeId),
+  );
+
+  return { serverResults, poolResults, splitItems };
+}
+
 export function formatCurrencyFromCents(cents: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',

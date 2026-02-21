@@ -298,7 +298,8 @@ describe('calculatePercentagePoolAllocations', () => {
 
     const maria = result.serverResults[0];
     expect(maria.earnedAmountCents).toBe(10000);
-    expect(maria.retainedAmountCents).toBe(9800);
+    // retained = earned(10000) - dishContrib(500) - fohContrib(300) + fohRefund(300) = 9500
+    expect(maria.retainedAmountCents).toBe(9500);
     expect(maria.refundedAmountCents).toBe(300);
 
     const totalOut = result.splitItems.reduce((s, i) => s + i.amountCents, 0);

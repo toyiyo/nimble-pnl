@@ -145,7 +145,7 @@ test.describe('Tips - Complete Customer Journey', () => {
     
     // Within that card, check for the draft badge and amount
     await expect(draftsCard.getByText(/draft/i).first()).toBeVisible();
-    await expect(draftsCard.getByText(/\$150\.00/)).toBeVisible();
+    await expect(draftsCard.getByText(/\$150\.00/).first()).toBeVisible();
 
     // Click to resume draft
     const resumeButton = page.getByRole('button', { name: /resume|edit/i }).first();

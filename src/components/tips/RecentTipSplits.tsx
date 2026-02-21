@@ -7,6 +7,15 @@ import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { useTipSplits } from '@/hooks/useTipSplits';
 import { useState } from 'react';
 import { TipSplitAuditLog } from './TipSplitAuditLog';
+
+function getShareMethodLabel(method: string): string {
+  switch (method) {
+    case 'hours': return 'Split by hours';
+    case 'role': return 'Split by role';
+    case 'manual': return 'Manual split';
+    default: return 'Split evenly';
+  }
+}
 import {
   Dialog,
   DialogContent,
@@ -21,7 +30,7 @@ interface RecentTipSplitsProps {
   currentDate: string; // Selected date in YYYY-MM-DD format
 }
 
-export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: RecentTipSplitsProps) => {
+export function RecentTipSplits({ restaurantId, onEditSplit, currentDate }: RecentTipSplitsProps) {
   // Fetch last 30 days of splits
   const startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   const endDate = format(new Date(), 'yyyy-MM-dd');
@@ -34,13 +43,9 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
   // State for audit log dialog
   const [selectedSplitId, setSelectedSplitId] = useState<string | null>(null);
 
-  const handleReopenSplit = (splitId: string) => {
-    reopenSplit(splitId);
-  };
-
   if (isLoading) {
     return (
-      <Card className="bg-gradient-to-br from-muted/30 to-transparent">
+      <Card className="rounded-xl border-border/40">
         <CardContent className="py-8 text-center">
           <p className="text-muted-foreground">Loading recent splits...</p>
         </CardContent>
@@ -50,11 +55,13 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
 
   if (!recentSplits || recentSplits.length === 0) {
     return (
-      <Card className="bg-gradient-to-br from-muted/30 to-transparent">
+      <Card className="rounded-xl border-border/40">
         <CardContent className="py-8 text-center">
-          <History className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">No recent tip splits</p>
-          <p className="text-sm text-muted-foreground mt-1">
+          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+            <History className="h-5 w-5 text-muted-foreground/50" />
+          </div>
+          <p className="text-[14px] font-medium text-foreground mt-4">No recent tip splits</p>
+          <p className="text-[13px] text-muted-foreground mt-1">
             Recent tip splits will appear here
           </p>
         </CardContent>
@@ -66,10 +73,12 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
     <Card>
       <CardHeader>
         <div className="flex items-center gap-3">
-          <History className="h-6 w-6 text-primary" />
+          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+            <History className="h-5 w-5 text-foreground" />
+          </div>
           <div>
-            <CardTitle>Recent Tip Splits</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-[17px] font-semibold text-foreground">Recent Tip Splits</CardTitle>
+            <CardDescription className="text-[13px]">
               Last 30 days • {recentSplits.length} split{recentSplits.length === 1 ? '' : 's'}
             </CardDescription>
           </div>
@@ -84,7 +93,7 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
             return (
               <div
                 key={split.id}
-                className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+                className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
               >
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
@@ -115,9 +124,7 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
                       • {split.items?.length || 0} employee{split.items?.length === 1 ? '' : 's'}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      • {split.share_method === 'hours' && 'Split by hours'}
-                      {split.share_method === 'role' && 'Split by role'}
-                      {split.share_method === 'manual' && 'Manual split'}
+                      • {getShareMethodLabel(split.share_method)}
                     </span>
                   </div>
                 </div>
@@ -138,7 +145,7 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleReopenSplit(split.id)}
+                        onClick={() => reopenSplit(split.id)}
                         disabled={isReopening}
                         aria-label="Reopen split for editing"
                       >
@@ -164,16 +171,18 @@ export const RecentTipSplits = ({ restaurantId, onEditSplit, currentDate }: Rece
 
       {/* Audit Log Dialog */}
       <Dialog open={!!selectedSplitId} onOpenChange={() => setSelectedSplitId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Tip Split Details</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-w-lg p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">Tip Split Details</DialogTitle>
+            <DialogDescription className="text-[13px]">
               View the complete history of changes for this tip split
             </DialogDescription>
           </DialogHeader>
-          {selectedSplitId && <TipSplitAuditLog splitId={selectedSplitId} />}
+          <div className="px-6 py-5">
+            {selectedSplitId && <TipSplitAuditLog splitId={selectedSplitId} />}
+          </div>
         </DialogContent>
       </Dialog>
     </Card>
   );
-};
+}

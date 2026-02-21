@@ -1,11 +1,11 @@
-import { useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useState, useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTipSplits } from '@/hooks/useTipSplits';
+import { useTipPayouts } from '@/hooks/useTipPayouts';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format } from 'date-fns';
@@ -39,40 +39,70 @@ const EmployeeTips = () => {
     handleToday,
   } = usePeriodNavigation({ includeLast2Weeks: false });
 
+  const [activeTab, setActiveTab] = useState<'breakdown' | 'history'>('breakdown');
+
+  const formattedStart = format(startDate, 'yyyy-MM-dd');
+  const formattedEnd = format(endDate, 'yyyy-MM-dd');
+
   const { splits, isLoading } = useTipSplits(
     restaurantId,
-    format(startDate, 'yyyy-MM-dd'),
-    format(endDate, 'yyyy-MM-dd')
+    formattedStart,
+    formattedEnd
   );
+
+  const { payouts } = useTipPayouts(restaurantId, formattedStart, formattedEnd);
+
+  // Build a lookup map: "employeeId|payoutDate" -> amount in cents
+  const payoutLookup = useMemo(() => {
+    if (!payouts || !currentEmployee) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const p of payouts) {
+      if (p.employee_id === currentEmployee.id) {
+        const key = p.payout_date;
+        map.set(key, (map.get(key) || 0) + p.amount);
+      }
+    }
+    return map;
+  }, [payouts, currentEmployee]);
 
   // Filter splits to only show approved ones with current employee
   const myTips = useMemo(() => {
     if (!splits || !currentEmployee) return [];
-    
-    return splits
-      .filter(split => split.status === 'approved')
-      .map(split => {
-        const myItem = split.items.find(item => item.employee_id === currentEmployee.id);
-        if (!myItem) return null;
 
-        return {
-          id: split.id,
-          split_id: split.id,
-          date: split.split_date,
-          amount: myItem.amount,
-          hours: myItem.hours_worked,
-          role: myItem.role,
-          shareMethod: split.share_method,
-          totalSplit: split.total_amount,
-          totalTeamHours: split.items.reduce((sum, item) => sum + (item.hours_worked || 0), 0),
-        };
-      })
-      .filter(Boolean);
+    const tips: Array<{
+      id: string;
+      date: string;
+      amount: number;
+      hours: number;
+      role: string;
+      shareMethod: string;
+      totalSplit: number;
+      totalTeamHours: number;
+    }> = [];
+
+    for (const split of splits) {
+      if (split.status !== 'approved') continue;
+      const myItem = split.items.find(item => item.employee_id === currentEmployee.id);
+      if (!myItem) continue;
+
+      tips.push({
+        id: split.id,
+        date: split.split_date,
+        amount: myItem.amount,
+        hours: myItem.hours_worked,
+        role: myItem.role,
+        shareMethod: split.share_method,
+        totalSplit: split.total_amount,
+        totalTeamHours: split.items.reduce((sum, item) => sum + (item.hours_worked || 0), 0),
+      });
+    }
+
+    return tips;
   }, [splits, currentEmployee]);
 
   // Calculate period totals
-  const periodTotal = myTips.reduce((sum, tip) => sum + (tip?.amount || 0), 0);
-  const periodHours = myTips.reduce((sum, tip) => sum + (tip?.hours || 0), 0);
+  const periodTotal = myTips.reduce((sum, tip) => sum + tip.amount, 0);
+  const periodHours = myTips.reduce((sum, tip) => sum + tip.hours, 0);
 
   if (!restaurantId) {
     return <NoRestaurantState />;
@@ -96,20 +126,20 @@ const EmployeeTips = () => {
       />
 
       {/* Period Summary */}
-      <Card className="bg-gradient-to-br from-green-500/5 to-green-600/5 border-green-500/20">
+      <Card className="rounded-xl border-border/40">
         <CardContent className="pt-6">
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">This period</p>
-              <p className="text-3xl font-bold text-green-600">
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mb-1">This period</p>
+              <p className="text-[22px] font-semibold text-foreground">
                 {formatCurrencyFromCents(periodTotal)}
               </p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Hours worked</p>
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Hours worked</p>
               <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-bold">{periodHours.toFixed(1)}</p>
-                <Clock className="h-5 w-5 text-muted-foreground" />
+                <p className="text-[22px] font-semibold text-foreground">{periodHours.toFixed(1)}</p>
+                <Clock className="h-4 w-4 text-muted-foreground" />
               </div>
             </div>
           </div>
@@ -128,15 +158,31 @@ const EmployeeTips = () => {
         label="View period:"
       />
 
-      {/* Tabs: This Week / History */}
-      <Tabs defaultValue="breakdown" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-        </TabsList>
+      {/* Apple Underline Tabs */}
+      <div className="flex border-b border-border/40">
+        {(['breakdown', 'history'] as const).map((tab) => {
+          const labels = { breakdown: 'Breakdown', history: 'History' };
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors ${
+                activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {labels[tab]}
+              {activeTab === tab && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Breakdown Tab */}
-        <TabsContent value="breakdown" className="space-y-4">
+      {/* Breakdown Tab */}
+      {activeTab === 'breakdown' && (
+        <div className="space-y-3">
           {isLoading && (
             <div className="space-y-3">
               {[1, 2, 3].map(i => (
@@ -145,102 +191,126 @@ const EmployeeTips = () => {
             </div>
           )}
           {!isLoading && myTips.length === 0 && (
-            <Card>
+            <Card className="rounded-xl border-border/40">
               <CardContent className="py-12 text-center">
-                <Banknote className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No tips yet</h3>
-                <p className="text-muted-foreground">
+                <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+                  <Banknote className="h-5 w-5 text-foreground" />
+                </div>
+                <h3 className="text-[14px] font-medium text-foreground mt-4">No tips yet</h3>
+                <p className="text-[13px] text-muted-foreground mt-1">
                   Your tips will appear here once they are approved by management.
                 </p>
               </CardContent>
             </Card>
           )}
-          {!isLoading && myTips.length > 0 && (
-            <>
-              {myTips.map((tip) => (
-                <Card key={tip!.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">
-                        {format(new Date(tip!.date), 'EEEE, MMM d')}
-                      </CardTitle>
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        {formatCurrencyFromCents(tip!.amount)}
-                      </Badge>
-                    </div>
-                    <CardDescription className="flex items-center gap-4">
-                      {Boolean(tip!.hours) && (
-                        <span className="flex items-center gap-1">
+          {!isLoading && myTips.map((tip) => (
+            <Card key={tip.id} className="rounded-xl border-border/40 hover:border-border transition-colors">
+              <div className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-medium text-foreground">
+                      {format(new Date(tip.date), 'EEEE, MMM d')}
+                    </p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {Boolean(tip.hours) && (
+                        <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
                           <Clock className="h-3 w-3" />
-                          {tip!.hours.toFixed(1)} hours
+                          {tip.hours.toFixed(1)} hours
                         </span>
                       )}
-                      {tip!.role && <span>• {tip!.role}</span>}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <TipTransparency
-                      employeeTip={tip!}
-                      totalTeamHours={tip!.totalTeamHours}
-                      shareMethod={tip!.shareMethod || 'manual'}
-                    />
-                    <TipDispute
-                      restaurantId={restaurantId}
-                      employeeId={currentEmployee.id}
-                      tipSplitId={tip!.id}
-                      tipDate={tip!.date}
-                    />
-                  </CardContent>
-                </Card>
-              ))}
-            </>
-          )}
-        </TabsContent>
+                      {tip.role && <span className="text-[13px] text-muted-foreground">{tip.role}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {payoutLookup.has(tip.date) && (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                      >
+                        Paid {formatCurrencyFromCents(payoutLookup.get(tip.date) ?? 0)} cash
+                      </Badge>
+                    )}
+                    <span className="text-[14px] font-semibold text-foreground">
+                      {formatCurrencyFromCents(tip.amount)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/40">
+                  <TipTransparency
+                    employeeTip={tip}
+                    totalTeamHours={tip.totalTeamHours}
+                    shareMethod={tip.shareMethod || 'manual'}
+                  />
+                  <TipDispute
+                    restaurantId={restaurantId}
+                    employeeId={currentEmployee.id}
+                    tipSplitId={tip.id}
+                    tipDate={tip.date}
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
-        {/* History Tab */}
-        <TabsContent value="history" className="space-y-4">
+      {/* History Tab */}
+      {activeTab === 'history' && (
+        <div className="space-y-3">
           {isLoading && <Skeleton className="h-64" />}
           {!isLoading && myTips.length === 0 && (
-            <Card>
+            <Card className="rounded-xl border-border/40">
               <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground">No tip history available.</p>
+                <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+                  <Clock className="h-5 w-5 text-foreground" />
+                </div>
+                <h3 className="text-[14px] font-medium text-foreground mt-4">No tip history</h3>
+                <p className="text-[13px] text-muted-foreground mt-1">No tip history available for this period.</p>
               </CardContent>
             </Card>
           )}
           {!isLoading && myTips.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Tip History</CardTitle>
-                <CardDescription>
+            <Card className="rounded-xl border-border/40 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                <h3 className="text-[13px] font-semibold text-foreground">Tip History</h3>
+                <p className="text-[12px] text-muted-foreground mt-0.5">
                   All approved tips for the selected period
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {myTips.map((tip) => (
-                    <div 
-                      key={tip!.id}
-                      className="flex items-center justify-between p-3 rounded-lg border"
-                    >
-                      <div>
-                        <p className="font-medium">
-                          {format(new Date(tip!.date), 'EEE, MMM d, yyyy')}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {tip!.hours?.toFixed(1)} hours
-                        </p>
-                      </div>
-                      <p className="font-bold text-green-600">
-                        {formatCurrencyFromCents(tip!.amount)}
+                </p>
+              </div>
+              <div className="p-3 space-y-1.5">
+                {myTips.map((tip) => (
+                  <div
+                    key={tip.id}
+                    className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+                  >
+                    <div>
+                      <p className="text-[14px] font-medium text-foreground">
+                        {format(new Date(tip.date), 'EEE, MMM d, yyyy')}
+                      </p>
+                      <p className="text-[13px] text-muted-foreground">
+                        {tip.hours.toFixed(1)} hours
                       </p>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
+                    <div className="flex items-center gap-2">
+                      {payoutLookup.has(tip.date) && (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-500/50 text-emerald-700 bg-emerald-500/10 text-[11px]"
+                        >
+                          Paid
+                        </Badge>
+                      )}
+                      <span className="text-[14px] font-semibold text-foreground">
+                        {formatCurrencyFromCents(tip.amount)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </div>
   );
 };

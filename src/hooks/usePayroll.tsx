@@ -17,11 +17,6 @@ import {
   type EmployeeTip as EmployeeTipForAggregation,
 } from '@/utils/tipAggregation';
 
-interface EmployeeTip {
-  employee_id: string;
-  tip_amount: number;
-}
-
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
   tipItems: Array<{ employee_id: string; amount: number }> = [],
@@ -84,12 +79,16 @@ export function computeTipTotals(
   return base;
 }
 
-interface ManualPaymentDB {
-  id: string;
+interface DBTipSplitItem {
   employee_id: string;
-  date: string;
-  allocated_cost: number;
-  notes: string | null;
+  amount: number;
+  tip_splits?: { split_date: string } | null;
+}
+
+interface DBEmployeeTip {
+  employee_id: string;
+  tip_amount: number;
+  tip_date: string;
 }
 
 // Type for the time_punches data from Supabase
@@ -202,18 +201,15 @@ export const usePayroll = (
 
       if (employeeTipsError) throw employeeTipsError;
 
-      // Transform the data to match the utility's expected types
-      interface DBTipSplitItem {
-        employee_id: string;
-        amount: number;
-        tip_splits?: { split_date: string } | null;
-      }
+      // Fetch tip payouts (cash already paid out) for the period
+      const { data: tipPayoutsData, error: tipPayoutsError } = await supabase
+        .from('tip_payouts')
+        .select('employee_id, amount')
+        .eq('restaurant_id', restaurantId)
+        .gte('payout_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('payout_date', format(endDate, 'yyyy-MM-dd'));
 
-      interface DBEmployeeTip {
-        employee_id: string;
-        tip_amount: number;
-        tip_date: string;
-      }
+      if (tipPayoutsError) throw tipPayoutsError;
 
       const tipItems: TipSplitItemForAggregation[] = (tips || []).map((item: DBTipSplitItem) => ({
         employee_id: item.employee_id,
@@ -251,23 +247,28 @@ export const usePayroll = (
         }
       });
 
+      // Group tip payouts by employee (sum amounts in cents)
+      const tipPayoutsPerEmployee = new Map<string, number>();
+      (tipPayoutsData || []).forEach((payout: { employee_id: string; amount: number }) => {
+        const current = tipPayoutsPerEmployee.get(payout.employee_id) || 0;
+        tipPayoutsPerEmployee.set(payout.employee_id, current + payout.amount);
+      });
+
       // Filter employees based on deactivation date vs payroll period
       // Inactive employees are included only through their final week (the week containing their deactivation date)
       const eligibleEmployees = employees.filter(employee => 
         shouldIncludeEmployeeInPayroll(employee, startDate)
       );
 
-      // Calculate payroll for eligible employees
-      const payroll = calculatePayrollPeriod(
+      return calculatePayrollPeriod(
         startDate,
         endDate,
         eligibleEmployees,
         punchesPerEmployee,
         tipsPerEmployee,
-        manualPaymentsPerEmployee
+        manualPaymentsPerEmployee,
+        tipPayoutsPerEmployee,
       );
-
-      return payroll;
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds

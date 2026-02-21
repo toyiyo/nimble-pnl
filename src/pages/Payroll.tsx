@@ -400,13 +400,18 @@ const Payroll = () => {
             <CardHeader className="pb-2">
               <CardDescription className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
-                Total Tips
+                Tips Owed
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(payrollPeriod.totalTips)}
+                {formatCurrency(payrollPeriod.totalTipsOwed)}
               </div>
+              {payrollPeriod.totalTipsPaidOut > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatCurrency(payrollPeriod.totalTips)} earned, {formatCurrency(payrollPeriod.totalTipsPaidOut)} paid out
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -487,7 +492,9 @@ const Payroll = () => {
                     <TableHead className="text-right">OT Hrs</TableHead>
                     <TableHead className="text-right">Regular Pay</TableHead>
                     <TableHead className="text-right">OT Pay</TableHead>
-                    <TableHead className="text-right">Tips</TableHead>
+                    <TableHead className="text-right">Tips Earned</TableHead>
+                    <TableHead className="text-right">Tips Paid</TableHead>
+                    <TableHead className="text-right">Tips Owed</TableHead>
                     <TableHead className="text-right font-semibold">Total Pay</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -566,6 +573,12 @@ const Payroll = () => {
                       <TableCell className="text-right">
                         {employee.totalTips > 0 ? formatCurrency(employee.totalTips) : '-'}
                       </TableCell>
+                      <TableCell className="text-right">
+                        {employee.tipsPaidOut > 0 ? formatCurrency(employee.tipsPaidOut) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {employee.tipsOwed > 0 ? formatCurrency(employee.tipsOwed) : '-'}
+                      </TableCell>
                       <TableCell className="text-right font-semibold">
                         {formatCurrency(employee.totalPay)}
                       </TableCell>
@@ -607,8 +620,14 @@ const Payroll = () => {
                       {formatCurrency(payrollPeriod.totalTips)}
                     </TableCell>
                     <TableCell className="text-right">
+                      {formatCurrency(payrollPeriod.totalTipsPaidOut)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(payrollPeriod.totalTipsOwed)}
+                    </TableCell>
+                    <TableCell className="text-right">
                       {formatCurrency(
-                        payrollPeriod.totalGrossPay + payrollPeriod.totalTips
+                        payrollPeriod.totalGrossPay + payrollPeriod.totalTipsOwed
                       )}
                     </TableCell>
                     <TableCell>{/* Actions column - empty for total row */}</TableCell>

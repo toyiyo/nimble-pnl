@@ -47,13 +47,11 @@ export function TipTransparency({ employeeTip, totalTeamHours, shareMethod }: Ti
     if (shareMethod === 'hours' && employeeTip.hours && totalTeamHours > 0) {
       const percentage = ((employeeTip.hours / totalTeamHours) * 100).toFixed(1);
       return (
-        <>
-          <div className="space-y-2 text-sm">
-            <p>You worked <span className="font-semibold">{employeeTip.hours.toFixed(1)} hours</span></p>
-            <p>Team worked <span className="font-semibold">{totalTeamHours.toFixed(1)} hours</span></p>
-            <p className="text-muted-foreground">Your portion: {percentage}%</p>
-          </div>
-        </>
+        <div className="space-y-2 text-sm">
+          <p>You worked <span className="font-semibold">{employeeTip.hours.toFixed(1)} hours</span></p>
+          <p>Team worked <span className="font-semibold">{totalTeamHours.toFixed(1)} hours</span></p>
+          <p className="text-muted-foreground">Your portion: {percentage}%</p>
+        </div>
       );
     }
 
@@ -83,14 +81,21 @@ export function TipTransparency({ employeeTip, totalTeamHours, shareMethod }: Ti
           How was this calculated?
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>How your tips were split</DialogTitle>
-          <DialogDescription>
-            {getMethodExplanation()}
-          </DialogDescription>
+      <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <HelpCircle className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">How your tips were split</DialogTitle>
+              <DialogDescription className="text-[13px] mt-0.5">
+                {getMethodExplanation()}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <div className="space-y-6 py-4">
+        <div className="px-6 py-5 space-y-6">
           {getCalculationDetails()}
 
           <div className="pt-4 border-t">

@@ -97,14 +97,16 @@ export function TipPeriodSummary({
   };
 
   const getShareMethodLabel = (method: string): string => {
-    if (method === 'hours') return 'By hours worked';
-    if (method === 'role') return 'By role';
-    return 'Manual';
+    switch (method) {
+      case 'hours': return 'By hours worked';
+      case 'role': return 'By role';
+      default: return 'Manual';
+    }
   };
 
   if (isLoading) {
     return (
-      <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+      <Card className="rounded-xl border-border/40">
         <CardContent className="pt-6">
           <Skeleton className="h-24" />
         </CardContent>
@@ -118,12 +120,12 @@ export function TipPeriodSummary({
   const missingDays = stats.totalDaysInPeriod - stats.daysWithEntries;
 
   return (
-    <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
+    <Card className="rounded-xl border-border/40">
       <CardContent className="pt-6 space-y-4">
         {/* Header with status */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               Weekly tips &middot; {format(startDate, 'MMM d')} - {format(endDate, 'MMM d')}
             </p>
           </div>
@@ -133,36 +135,36 @@ export function TipPeriodSummary({
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <DollarSign className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <DollarSign className="h-3.5 w-3.5" />
               Total tips
             </div>
-            <p className="text-2xl font-bold">
+            <p className="text-[22px] font-semibold text-foreground">
               {formatCurrencyFromCents(stats.totalTipsCents)}
             </p>
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Users className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Users className="h-3.5 w-3.5" />
               Employees
             </div>
-            <p className="text-2xl font-bold">{stats.employeeCount}</p>
+            <p className="text-[22px] font-semibold text-foreground">{stats.employeeCount}</p>
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Calendar className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Calendar className="h-3.5 w-3.5" />
               Coverage
             </div>
-            <p className="text-2xl font-bold">
+            <p className="text-[22px] font-semibold text-foreground">
               {stats.daysWithEntries} of {stats.totalDaysInPeriod} days
             </p>
           </div>
 
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Split method</p>
-            <p className="text-lg font-medium">{getShareMethodLabel(shareMethod)}</p>
+            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Split method</p>
+            <p className="text-[14px] font-medium text-foreground">{getShareMethodLabel(shareMethod)}</p>
           </div>
         </div>
 

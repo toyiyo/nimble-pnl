@@ -4736,6 +4736,44 @@ export type Database = {
           },
         ]
       }
+      expense_suggestion_dismissals: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          restaurant_id: string
+          snoozed_until: string | null
+          suggestion_key: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          snoozed_until?: string | null
+          suggestion_key: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          snoozed_until?: string | null
+          suggestion_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_suggestion_dismissals_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_operating_costs: {
         Row: {
           averaging_months: number | null

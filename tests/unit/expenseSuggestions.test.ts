@@ -568,6 +568,20 @@ describe('detectRecurringExpenses', () => {
     expect(result).toEqual([]);
   });
 
+  // ------- Additional: case-insensitive payee grouping ------- //
+  it('groups transactions with different payee casing together', () => {
+    // "ABC Landlord" and "abc landlord" should be treated as the same payee
+    const transactions = [
+      tx({ normalized_payee: 'ABC Landlord', transaction_date: '2026-01-15', amount: -3500,
+           chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' } }),
+      tx({ normalized_payee: 'abc landlord', transaction_date: '2025-12-15', amount: -3500,
+           chart_of_accounts: { account_name: 'Rent', account_subtype: 'rent' } }),
+    ];
+    const result = detectRecurringExpenses(transactions, [], []);
+    expect(result).toHaveLength(1);
+    expect(result[0].matchedMonths).toBe(2);
+  });
+
   // ------- Additional: payee with colon in name extracts subtype correctly ------- //
   it('handles payee names containing colons in suggestion ID', () => {
     const transactions: ExpenseTransaction[] = [

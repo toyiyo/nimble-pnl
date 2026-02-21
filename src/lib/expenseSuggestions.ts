@@ -98,7 +98,7 @@ export function detectRecurringExpenses(
   // Step 2-4: Identify recurring payees
   const candidates: ExpenseSuggestion[] = [];
 
-  for (const [payee, txns] of payeeGroups.entries()) {
+  for (const [payeeKey, txns] of payeeGroups.entries()) {
     const monthBuckets = bucketByMonth(txns);
     const monthCount = monthBuckets.size;
 
@@ -116,22 +116,29 @@ export function detectRecurringExpenses(
     const avgMonthlyDollars =
       monthlyTotals.reduce((a, b) => a + b, 0) / monthlyTotals.length;
 
-    // Use the first transaction's chart info as representative
-    const representative = txns[0];
+    // Use the most recent transaction's chart info as representative
+    const sorted = [...txns].sort(
+      (a, b) => b.transaction_date.localeCompare(a.transaction_date),
+    );
+    const representative = sorted[0];
     const subtype = representative.chart_of_accounts?.account_subtype ?? null;
     const accountName =
       representative.chart_of_accounts?.account_name ?? null;
 
+    // Display name comes from representative (original casing), not the lowercased key
+    const displayPayee =
+      representative.normalized_payee ?? representative.merchant_name ?? payeeKey;
+
     const costType = mapSubtypeToCostType(subtype);
     const suggestedName = suggestedNameForSubtype(subtype, accountName);
-    const suggestionKey = `${payee.toLowerCase()}:${subtype ?? 'custom'}`;
+    const suggestionKey = `${payeeKey}:${subtype ?? 'custom'}`;
 
     const variance = computeVariance(monthlyTotals);
     const confidence = computeConfidence(monthCount, variance);
 
     candidates.push({
       id: suggestionKey,
-      payeeName: payee,
+      payeeName: displayPayee,
       suggestedName,
       costType,
       monthlyAmount: Math.round(avgMonthlyDollars * 100), // dollars → cents
@@ -180,11 +187,12 @@ function groupByPayee(
     const payee = txn.normalized_payee ?? txn.merchant_name;
     if (!payee) continue; // skip transactions with no identifier
 
-    const existing = groups.get(payee);
+    const key = payee.toLowerCase();
+    const existing = groups.get(key);
     if (existing) {
       existing.push(txn);
     } else {
-      groups.set(payee, [txn]);
+      groups.set(key, [txn]);
     }
   }
 

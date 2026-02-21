@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,25 @@ function mockDismissalsUpsert(error: any = null) {
   const chain: Record<string, any> = {
     upsert: vi.fn().mockResolvedValue({ data: null, error }),
   };
+  return chain;
+}
+
+/**
+ * Build a combined mock that handles BOTH read (select/eq) and write (upsert)
+ * paths on the same from() return value.
+ */
+function mockDismissalsCombined(
+  queryData: any[] = [],
+  queryError: any = null,
+  upsertError: any = null,
+) {
+  const chain: Record<string, any> = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    upsert: vi.fn().mockResolvedValue({ data: null, error: upsertError }),
+  };
+  // The last call in the read chain resolves the promise
+  chain.eq.mockResolvedValue({ data: queryData, error: queryError });
   return chain;
 }
 
@@ -220,5 +239,105 @@ describe('useExpenseSuggestions', () => {
     expect(typeof result.current.dismissSuggestion).toBe('function');
     expect(typeof result.current.snoozeSuggestion).toBe('function');
     expect(typeof result.current.acceptSuggestion).toBe('function');
+  });
+
+  it('dismissSuggestion calls upsert with action dismissed', async () => {
+    const combinedChain = mockDismissalsCombined();
+    mockSupabase.from.mockReturnValue(combinedChain);
+
+    const { result } = renderHook(
+      () => useExpenseSuggestions('rest-123'),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    act(() => {
+      result.current.dismissSuggestion('some-key');
+    });
+
+    await waitFor(() => {
+      expect(combinedChain.upsert).toHaveBeenCalledWith(
+        {
+          restaurant_id: 'rest-123',
+          suggestion_key: 'some-key',
+          action: 'dismissed',
+          snoozed_until: null,
+        },
+        { onConflict: 'restaurant_id,suggestion_key' },
+      );
+    });
+  });
+
+  it('snoozeSuggestion calls upsert with action snoozed and future date', async () => {
+    const combinedChain = mockDismissalsCombined();
+    mockSupabase.from.mockReturnValue(combinedChain);
+
+    const { result } = renderHook(
+      () => useExpenseSuggestions('rest-123'),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const beforeCall = Date.now();
+
+    act(() => {
+      result.current.snoozeSuggestion('some-key');
+    });
+
+    await waitFor(() => {
+      expect(combinedChain.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    const upsertArgs = combinedChain.upsert.mock.calls[0];
+    const payload = upsertArgs[0];
+    const options = upsertArgs[1];
+
+    expect(payload.restaurant_id).toBe('rest-123');
+    expect(payload.suggestion_key).toBe('some-key');
+    expect(payload.action).toBe('snoozed');
+    expect(options).toEqual({ onConflict: 'restaurant_id,suggestion_key' });
+
+    // snoozed_until should be approximately 30 days in the future
+    const snoozedDate = new Date(payload.snoozed_until).getTime();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    // Allow 5 seconds of tolerance for test execution time
+    expect(snoozedDate).toBeGreaterThanOrEqual(beforeCall + thirtyDaysMs - 5000);
+    expect(snoozedDate).toBeLessThanOrEqual(beforeCall + thirtyDaysMs + 5000);
+  });
+
+  it('acceptSuggestion calls upsert with action accepted', async () => {
+    const combinedChain = mockDismissalsCombined();
+    mockSupabase.from.mockReturnValue(combinedChain);
+
+    const { result } = renderHook(
+      () => useExpenseSuggestions('rest-123'),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    act(() => {
+      result.current.acceptSuggestion('some-key');
+    });
+
+    await waitFor(() => {
+      expect(combinedChain.upsert).toHaveBeenCalledWith(
+        {
+          restaurant_id: 'rest-123',
+          suggestion_key: 'some-key',
+          action: 'accepted',
+          snoozed_until: null,
+        },
+        { onConflict: 'restaurant_id,suggestion_key' },
+      );
+    });
   });
 });

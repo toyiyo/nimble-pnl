@@ -39,8 +39,8 @@ export function useExpenseSuggestions(restaurantId: string | null) {
   });
 
   // 3. Fetch bank transactions (last 90 days)
-  const now = new Date();
-  const dateFrom = subDays(now, LOOKBACK_DAYS);
+  const dateTo = useMemo(() => new Date(), []); // computed once per mount
+  const dateFrom = useMemo(() => subDays(dateTo, LOOKBACK_DAYS), [dateTo]);
 
   const {
     data: expenseData,
@@ -51,7 +51,7 @@ export function useExpenseSuggestions(restaurantId: string | null) {
       return fetchExpenseData({
         restaurantId: restaurantId!,
         startDate: dateFrom,
-        endDate: now,
+        endDate: dateTo,
       });
     },
     enabled: !!restaurantId,

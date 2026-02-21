@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type {
+  PoolingModel,
   ShareMethod,
   SplitCadence,
   TipPoolSettings,
@@ -13,6 +14,7 @@ type Params = {
   splitCadence: SplitCadence;
   roleWeights: Record<string, number>;
   selectedEmployees: Set<string>;
+  poolingModel?: PoolingModel;
   onSave: () => void;
 };
 
@@ -27,23 +29,24 @@ export function useAutoSaveTipSettings({
   splitCadence,
   roleWeights,
   selectedEmployees,
+  poolingModel,
   onSave,
 }: Params) {
   useEffect(() => {
-    // If no settings exist, this is first-time setup - save after user makes selections
+    const sortedIds = (ids: Iterable<string>) => [...ids].sort((a, b) => a.localeCompare(b)).join(',');
+
     const hasChanges = settings
-      ? // Compare with existing settings
-        tipSource !== settings.tip_source ||
+      ? tipSource !== settings.tip_source ||
         shareMethod !== settings.share_method ||
         splitCadence !== settings.split_cadence ||
+        (poolingModel !== undefined && poolingModel !== settings.pooling_model) ||
         JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
-        JSON.stringify(Array.from(selectedEmployees).sort((a, b) => a.localeCompare(b))) !==
-          JSON.stringify((settings.enabled_employee_ids || []).sort((a, b) => a.localeCompare(b)))
-      : // No settings exist - trigger save if any field differs from defaults
-        selectedEmployees.size > 0 ||
+        sortedIds(selectedEmployees) !== sortedIds(settings.enabled_employee_ids ?? [])
+      : selectedEmployees.size > 0 ||
         tipSource !== 'manual' ||
         shareMethod !== 'hours' ||
-        splitCadence !== 'daily';
+        splitCadence !== 'daily' ||
+        (poolingModel !== undefined && poolingModel !== 'full_pool');
 
     if (!hasChanges) return;
 
@@ -52,5 +55,5 @@ export function useAutoSaveTipSettings({
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [settings, tipSource, shareMethod, splitCadence, roleWeights, selectedEmployees, onSave]);
+  }, [settings, tipSource, shareMethod, splitCadence, roleWeights, selectedEmployees, poolingModel, onSave]);
 }

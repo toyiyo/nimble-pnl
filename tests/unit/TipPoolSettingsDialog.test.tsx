@@ -38,6 +38,8 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
   const defaultProps = {
     open: true,
     onClose: vi.fn(),
+    poolingModel: 'full_pool' as const,
+    onPoolingModelChange: vi.fn(),
     tipSource: 'manual' as const,
     shareMethod: 'hours' as const,
     splitCadence: 'daily' as const,

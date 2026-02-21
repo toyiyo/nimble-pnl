@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Target, Plus } from 'lucide-react';
 import { CostType, OperatingCostInput, CostBreakdownItem } from '@/types/operatingCosts';
+import { useExpenseSuggestions } from '@/hooks/useExpenseSuggestions';
+import type { ExpenseSuggestion } from '@/types/operatingCosts';
 
 export default function BudgetRunRate() {
   const { selectedRestaurant } = useRestaurantContext();
@@ -31,7 +33,14 @@ export default function BudgetRunRate() {
   } = useOperatingCosts(restaurantId);
   
   const { data: breakEvenData, isLoading: analysisLoading } = useBreakEvenAnalysis(restaurantId);
-  
+
+  const {
+    suggestions,
+    dismissSuggestion,
+    snoozeSuggestion,
+    acceptSuggestion,
+  } = useExpenseSuggestions(restaurantId);
+
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CostBreakdownItem | null>(null);
@@ -58,8 +67,26 @@ export default function BudgetRunRate() {
     setDialogOpen(true);
   };
   
+  const handleAcceptSuggestion = (suggestion: ExpenseSuggestion) => {
+    // Pre-fill the dialog with suggestion data
+    const prefilledItem: CostBreakdownItem = {
+      id: 'suggestion-prefill',
+      name: suggestion.suggestedName,
+      category: suggestion.id.split(':').pop() || suggestion.suggestedName.toLowerCase().replace(/\s+/g, '_'),
+      daily: suggestion.monthlyAmount / 100 / 30,
+      monthly: suggestion.monthlyAmount / 100,
+      isPercentage: false,
+      source: 'manual',
+    };
+    setEditingItem(prefilledItem);
+    setDialogCostType(suggestion.costType);
+    setDialogOpen(true);
+    // Record as accepted
+    acceptSuggestion(suggestion.id);
+  };
+
   const handleSaveItem = (data: OperatingCostInput) => {
-    if (editingItem) {
+    if (editingItem && editingItem.id !== 'suggestion-prefill') {
       updateCost({
         id: editingItem.id,
         name: data.name,
@@ -141,6 +168,10 @@ export default function BudgetRunRate() {
                 onEditItem={handleEditItem}
                 onDeleteItem={handleDeleteItem}
                 showAddButton
+                suggestions={suggestions.filter(s => s.costType === 'fixed')}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onSnoozeSuggestion={snoozeSuggestion}
+                onDismissSuggestion={dismissSuggestion}
               />
               
               {/* Semi-Variable (Utilities) */}
@@ -151,6 +182,10 @@ export default function BudgetRunRate() {
                 items={breakEvenData?.semiVariableCosts.items || []}
                 onEditItem={handleEditItem}
                 infoText={`Smoothed from last ${breakEvenData?.semiVariableCosts.monthsAveraged || 3} months of transactions. Override any value to set manually.`}
+                suggestions={suggestions.filter(s => s.costType === 'semi_variable')}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onSnoozeSuggestion={snoozeSuggestion}
+                onDismissSuggestion={dismissSuggestion}
               />
               
               {/* Variable Costs */}
@@ -161,6 +196,10 @@ export default function BudgetRunRate() {
                 items={breakEvenData?.variableCosts.items || []}
                 onEditItem={handleEditItem}
                 showPercentages
+                suggestions={suggestions.filter(s => s.costType === 'variable')}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onSnoozeSuggestion={snoozeSuggestion}
+                onDismissSuggestion={dismissSuggestion}
               />
               
               {/* Custom Costs */}
@@ -173,6 +212,10 @@ export default function BudgetRunRate() {
                 onEditItem={handleEditItem}
                 onDeleteItem={handleDeleteItem}
                 showAddButton
+                suggestions={suggestions.filter(s => s.costType === 'custom')}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onSnoozeSuggestion={snoozeSuggestion}
+                onDismissSuggestion={dismissSuggestion}
               />
             </>
           )}

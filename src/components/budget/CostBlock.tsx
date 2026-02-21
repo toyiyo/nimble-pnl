@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ChevronDown, ChevronRight, Plus, Pencil, Trash2 } from 'lucide-react';
 import { CostBreakdownItem } from '@/types/operatingCosts';
+import { ExpenseSuggestionBanner } from '@/components/budget/ExpenseSuggestionBanner';
+import type { ExpenseSuggestion } from '@/types/operatingCosts';
 import { cn } from '@/lib/utils';
 
 interface CostBlockProps {
@@ -17,6 +19,10 @@ interface CostBlockProps {
   showAddButton?: boolean;
   infoText?: string;
   showPercentages?: boolean;
+  suggestions?: ExpenseSuggestion[];
+  onAcceptSuggestion?: (suggestion: ExpenseSuggestion) => void;
+  onSnoozeSuggestion?: (suggestionId: string) => void;
+  onDismissSuggestion?: (suggestionId: string) => void;
 }
 
 function formatCurrency(amount: number): string {
@@ -48,6 +54,10 @@ export function CostBlock({
   showAddButton = false,
   infoText,
   showPercentages = false,
+  suggestions,
+  onAcceptSuggestion,
+  onSnoozeSuggestion,
+  onDismissSuggestion,
 }: CostBlockProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -98,6 +108,14 @@ export function CostBlock({
         
         <CollapsibleContent>
           <div className="px-4 pb-4 space-y-2">
+            {suggestions && suggestions.length > 0 && onAcceptSuggestion && onSnoozeSuggestion && onDismissSuggestion && (
+              <ExpenseSuggestionBanner
+                suggestions={suggestions}
+                onAccept={onAcceptSuggestion}
+                onSnooze={onSnoozeSuggestion}
+                onDismiss={onDismissSuggestion}
+              />
+            )}
             {items.length === 0 ? (
               <div className="text-sm text-muted-foreground py-2 text-center">
                 No items configured yet.

@@ -61,3 +61,32 @@ export function calculateDailyOvertime(
 
   return { regularHours, dailyOvertimeHours, doubleTimeHours };
 }
+
+export function calculateWeeklyOvertime(
+  dailyHours: Record<string, number>,
+  rules: OvertimeRules
+): OvertimeResult {
+  let totalRegular = 0;
+  let totalDailyOt = 0;
+  let totalDoubleTime = 0;
+
+  for (const hours of Object.values(dailyHours)) {
+    const daily = calculateDailyOvertime(hours, rules.dailyThresholdHours, rules.dailyDoubleThresholdHours);
+    totalRegular += daily.regularHours;
+    totalDailyOt += daily.dailyOvertimeHours;
+    totalDoubleTime += daily.doubleTimeHours;
+  }
+
+  let weeklyOt = 0;
+  if (totalRegular > rules.weeklyThresholdHours) {
+    weeklyOt = totalRegular - rules.weeklyThresholdHours;
+    totalRegular = rules.weeklyThresholdHours;
+  }
+
+  return {
+    regularHours: Math.round(totalRegular * 100) / 100,
+    weeklyOvertimeHours: Math.round(weeklyOt * 100) / 100,
+    dailyOvertimeHours: Math.round(totalDailyOt * 100) / 100,
+    doubleTimeHours: Math.round(totalDoubleTime * 100) / 100,
+  };
+}

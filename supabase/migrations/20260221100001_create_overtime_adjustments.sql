@@ -20,8 +20,10 @@ ALTER TABLE overtime_adjustments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view their restaurant overtime adjustments"
   ON overtime_adjustments FOR SELECT
   USING (
-    restaurant_id IN (
-      SELECT restaurant_id FROM restaurant_users WHERE user_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM user_restaurants
+      WHERE user_restaurants.restaurant_id = overtime_adjustments.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
     )
   );
 
@@ -29,10 +31,10 @@ CREATE POLICY "Owners and managers can manage overtime adjustments"
   ON overtime_adjustments FOR ALL
   USING (
     EXISTS (
-      SELECT 1 FROM restaurant_users
-      WHERE restaurant_users.restaurant_id = overtime_adjustments.restaurant_id
-      AND restaurant_users.user_id = auth.uid()
-      AND restaurant_users.role IN ('owner', 'manager')
+      SELECT 1 FROM user_restaurants
+      WHERE user_restaurants.restaurant_id = overtime_adjustments.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager')
     )
   );
 

@@ -4,6 +4,7 @@ import {
   calculateDailyOvertime,
   calculateWeeklyOvertime,
   applyOvertimeAdjustments,
+  calculateOvertimePay,
   type OvertimeRules,
   type OvertimeResult,
   type OvertimeAdjustment,
@@ -224,6 +225,66 @@ describe('overtimeCalculations', () => {
       const base: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 5, dailyOvertimeHours: 2, doubleTimeHours: 1 };
       const result = applyOvertimeAdjustments(base, []);
       expect(result).toEqual(base);
+    });
+  });
+
+  describe('calculateOvertimePay', () => {
+    it('calculates pay with weekly OT only (tips excluded)', () => {
+      const hours: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 5, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const result = calculateOvertimePay(hours, 1500, 5000, DEFAULT_OVERTIME_RULES);
+      expect(result.regularPay).toBe(40 * 1500);
+      expect(result.overtimePay).toBe(5 * 1500 * 1.5);
+      expect(result.doubleTimePay).toBe(0);
+      expect(result.totalGrossPay).toBe(60000 + 11250);
+    });
+
+    it('calculates pay with daily OT (tips excluded)', () => {
+      const hours: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 0, dailyOvertimeHours: 5, doubleTimeHours: 0 };
+      const rules: OvertimeRules = { ...DEFAULT_OVERTIME_RULES, dailyOtMultiplier: 1.5 };
+      const result = calculateOvertimePay(hours, 2000, 0, rules);
+      expect(result.regularPay).toBe(40 * 2000);
+      expect(result.overtimePay).toBe(5 * 2000 * 1.5);
+      expect(result.doubleTimePay).toBe(0);
+    });
+
+    it('calculates pay with double-time', () => {
+      const hours: OvertimeResult = { regularHours: 8, weeklyOvertimeHours: 0, dailyOvertimeHours: 4, doubleTimeHours: 2 };
+      const rules: OvertimeRules = { ...DEFAULT_OVERTIME_RULES, dailyThresholdHours: 8, dailyDoubleThresholdHours: 12 };
+      const result = calculateOvertimePay(hours, 1500, 0, rules);
+      expect(result.regularPay).toBe(8 * 1500);
+      expect(result.overtimePay).toBe(4 * 1500 * 1.5);
+      expect(result.doubleTimePay).toBe(2 * 1500 * 2.0);
+    });
+
+    it('includes tips in OT rate when excludeTipsFromOtRate is false', () => {
+      const hours: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 5, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const rules: OvertimeRules = { ...DEFAULT_OVERTIME_RULES, excludeTipsFromOtRate: false };
+      const result = calculateOvertimePay(hours, 1500, 45000, rules);
+      const totalHours = 40 + 5;
+      const tipRatePerHour = Math.round(45000 / totalHours);
+      const effectiveRate = 1500 + tipRatePerHour;
+      expect(result.regularPay).toBe(40 * 1500);
+      expect(result.overtimePay).toBe(5 * effectiveRate * 1.5);
+    });
+
+    it('handles zero hours', () => {
+      const hours: OvertimeResult = { regularHours: 0, weeklyOvertimeHours: 0, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const result = calculateOvertimePay(hours, 1500, 0, DEFAULT_OVERTIME_RULES);
+      expect(result.regularPay).toBe(0);
+      expect(result.overtimePay).toBe(0);
+      expect(result.doubleTimePay).toBe(0);
+      expect(result.totalGrossPay).toBe(0);
+    });
+
+    it('uses weekly multiplier for weekly OT and daily multiplier for daily OT', () => {
+      const hours: OvertimeResult = { regularHours: 35, weeklyOvertimeHours: 3, dailyOvertimeHours: 5, doubleTimeHours: 0 };
+      const rules: OvertimeRules = {
+        ...DEFAULT_OVERTIME_RULES, weeklyThresholdHours: 35, weeklyOtMultiplier: 2.0,
+        dailyThresholdHours: 8, dailyOtMultiplier: 1.5,
+      };
+      const result = calculateOvertimePay(hours, 1000, 0, rules);
+      expect(result.regularPay).toBe(35 * 1000);
+      expect(result.overtimePay).toBe(6000 + 7500); // weekly: 3*1000*2.0, daily: 5*1000*1.5
     });
   });
 });

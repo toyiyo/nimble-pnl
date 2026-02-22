@@ -118,3 +118,39 @@ export function applyOvertimeAdjustments(
     doubleTimeHours: base.doubleTimeHours,
   };
 }
+
+export interface OvertimePayResult {
+  regularPay: number;
+  overtimePay: number;
+  doubleTimePay: number;
+  totalGrossPay: number;
+}
+
+export function calculateOvertimePay(
+  hours: OvertimeResult,
+  hourlyRateCents: number,
+  totalTipsCents: number,
+  rules: OvertimeRules
+): OvertimePayResult {
+  const totalHours = hours.regularHours + hours.weeklyOvertimeHours
+    + hours.dailyOvertimeHours + hours.doubleTimeHours;
+
+  let otBaseRate = hourlyRateCents;
+  if (!rules.excludeTipsFromOtRate && totalHours > 0 && totalTipsCents > 0) {
+    const tipRatePerHour = Math.round(totalTipsCents / totalHours);
+    otBaseRate = hourlyRateCents + tipRatePerHour;
+  }
+
+  const regularPay = Math.round(hours.regularHours * hourlyRateCents);
+  const weeklyOtPay = Math.round(hours.weeklyOvertimeHours * otBaseRate * rules.weeklyOtMultiplier);
+  const dailyOtPay = Math.round(hours.dailyOvertimeHours * otBaseRate * rules.dailyOtMultiplier);
+  const doubleTimePay = Math.round(hours.doubleTimeHours * otBaseRate * rules.dailyDoubleMultiplier);
+  const overtimePay = weeklyOtPay + dailyOtPay;
+
+  return {
+    regularPay,
+    overtimePay,
+    doubleTimePay,
+    totalGrossPay: regularPay + overtimePay + doubleTimePay,
+  };
+}

@@ -543,9 +543,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 <Label htmlFor="compensationType">
                   Compensation Type <span className="text-destructive">*</span>
                 </Label>
-                <Select 
-                  value={compensationType} 
-                  onValueChange={(value) => setCompensationType(value as CompensationType)}
+                <Select
+                  value={compensationType}
+                  onValueChange={(value) => {
+                    const newType = value as CompensationType;
+                    setCompensationType(newType);
+                    if (newType !== 'hourly') setIsExempt(false);
+                  }}
                 >
                   <SelectTrigger id="compensationType" aria-label="Compensation type">
                     <SelectValue />

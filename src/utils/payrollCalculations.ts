@@ -683,6 +683,12 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     formatCurrency(ep.totalPay),
   ].join(','));
 
+  const totalRegularPay = payrollPeriod.employees.reduce((sum, ep) => sum + ep.regularPay, 0);
+  const totalOvertimePay = payrollPeriod.employees.reduce((sum, ep) => sum + ep.overtimePay, 0);
+  const totalDoubleTimePay = payrollPeriod.employees.reduce((sum, ep) => sum + ep.doubleTimePay, 0);
+  const totalDailyOtHours = payrollPeriod.employees.reduce((sum, ep) => sum + ep.dailyOvertimeHours, 0);
+  const totalWeeklyOtHours = payrollPeriod.employees.reduce((sum, ep) => sum + ep.weeklyOvertimeHours, 0);
+
   const totalRow = [
     '"TOTAL"',
     '""',
@@ -690,11 +696,11 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     formatHours(payrollPeriod.totalRegularHours),
     formatHours(payrollPeriod.totalOvertimeHours),
     formatHours(payrollPeriod.totalDoubleTimeHours),
-    '""',
-    '""',
-    '""',
-    '""',
-    '""',
+    formatHours(totalDailyOtHours),
+    formatHours(totalWeeklyOtHours),
+    formatCurrency(totalRegularPay),
+    formatCurrency(totalOvertimePay),
+    formatCurrency(totalDoubleTimePay),
     formatCurrency(payrollPeriod.totalGrossPay),
     formatCurrency(payrollPeriod.totalTips),
     formatCurrency(payrollPeriod.totalTipsPaidOut),

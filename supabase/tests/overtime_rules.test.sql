@@ -1,8 +1,5 @@
 BEGIN;
-SELECT plan(22);
-
--- Disable RLS to test business logic directly
-SET session_replication_role = 'replica';
+SELECT plan(18);
 
 -- Table exists
 SELECT has_table('public', 'overtime_rules', 'overtime_rules table exists');
@@ -22,8 +19,9 @@ SELECT has_column('public', 'overtime_adjustments', 'hours', 'overtime_adjustmen
 -- employees.is_exempt
 SELECT has_column('public', 'employees', 'is_exempt', 'employees has is_exempt');
 
--- Create test restaurant for constraint tests
-INSERT INTO restaurants (id, name) VALUES ('00000000-0000-0000-0000-000000000099', 'OT Test Restaurant');
+-- Create test restaurant for constraint tests (idempotent)
+INSERT INTO restaurants (id, name) VALUES ('00000000-0000-0000-0000-000000000099', 'OT Test Restaurant')
+  ON CONFLICT (id) DO NOTHING;
 
 -- CHECK constraints: valid insert should succeed
 SELECT lives_ok(
@@ -78,7 +76,8 @@ DELETE FROM overtime_rules WHERE restaurant_id = '00000000-0000-0000-0000-000000
 
 -- overtime_adjustments: invalid adjustment_type should fail
 INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type)
-  VALUES ('00000000-0000-0000-0000-000000000088', '00000000-0000-0000-0000-000000000099', 'Test Employee', 'server', 'active', 'hourly');
+  VALUES ('00000000-0000-0000-0000-000000000088', '00000000-0000-0000-0000-000000000099', 'Test Employee', 'server', 'active', 'hourly')
+  ON CONFLICT (id) DO NOTHING;
 
 SELECT throws_ok(
   $$INSERT INTO overtime_adjustments (restaurant_id, employee_id, punch_date, adjustment_type, hours, adjusted_by)
@@ -97,9 +96,10 @@ SELECT throws_ok(
   'Zero hours rejected'
 );
 
--- updated_at trigger: verify it fires on update
+-- updated_at trigger: verify it fires on insert
 INSERT INTO overtime_rules (restaurant_id, weekly_threshold_hours, weekly_ot_multiplier)
-  VALUES ('00000000-0000-0000-0000-000000000099', 40, 1.5);
+  VALUES ('00000000-0000-0000-0000-000000000099', 40, 1.5)
+  ON CONFLICT (restaurant_id) DO UPDATE SET weekly_threshold_hours = 40;
 
 SELECT is(
   (SELECT updated_at < NOW() + interval '1 second' FROM overtime_rules WHERE restaurant_id = '00000000-0000-0000-0000-000000000099'),

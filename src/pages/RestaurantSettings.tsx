@@ -254,6 +254,16 @@ export default function RestaurantSettings() {
       return;
     }
 
+    if (weeklyThreshold <= 0 || (otDailyEnabled && dailyThreshold <= 0) || (otDailyEnabled && otDoubleEnabled && doubleThreshold <= 0)) {
+      toast({ title: 'Invalid thresholds', description: 'All thresholds must be greater than zero.', variant: 'destructive' });
+      return;
+    }
+
+    if (weeklyMultiplier < 1 || (otDailyEnabled && dailyMultiplier < 1) || (otDailyEnabled && otDoubleEnabled && doubleMultiplier < 1)) {
+      toast({ title: 'Invalid multipliers', description: 'All multipliers must be at least 1.0.', variant: 'destructive' });
+      return;
+    }
+
     if (otDailyEnabled && otDoubleEnabled && doubleThreshold <= dailyThreshold) {
       toast({ title: 'Invalid thresholds', description: 'Double-time threshold must be greater than daily overtime threshold.', variant: 'destructive' });
       return;

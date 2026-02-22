@@ -302,7 +302,7 @@ describe('detectRecurringExpenses', () => {
       }),
     ];
 
-    const existingCosts: Pick<OperatingCost, 'category' | 'name' | 'monthlyValue'>[] = [
+    const existingCosts: OperatingCost[] = [
       { category: 'rent', name: 'Rent / Lease', monthlyValue: 350000 },
     ];
 
@@ -514,7 +514,7 @@ interface Dismissal {
  */
 export function detectRecurringExpenses(
   transactions: ExpenseTransaction[],
-  existingCosts: Pick<OperatingCost, 'category' | 'name' | 'monthlyValue'>[],
+  existingCosts: OperatingCost[],
   dismissals: Dismissal[],
 ): ExpenseSuggestion[] {
   // 1. Group transactions by payee
@@ -1038,7 +1038,7 @@ describe('ExpenseSuggestionBanner', () => {
       />,
     );
 
-    fireClick(screen.getByRole('button', { name: /dismiss/i }));
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(onDismiss).toHaveBeenCalledWith(mockSuggestion.id);
   });
 

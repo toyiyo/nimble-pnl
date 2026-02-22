@@ -46,6 +46,7 @@ export default function BudgetRunRate() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CostBreakdownItem | null>(null);
   const [dialogCostType, setDialogCostType] = useState<CostType>('custom');
+  const [pendingSuggestionId, setPendingSuggestionId] = useState<string | null>(null);
   
   // Seed defaults if no costs exist
   useEffect(() => {
@@ -81,9 +82,8 @@ export default function BudgetRunRate() {
     };
     setEditingItem(prefilledItem);
     setDialogCostType(suggestion.costType);
+    setPendingSuggestionId(suggestion.id);
     setDialogOpen(true);
-    // Record as accepted
-    acceptSuggestion(suggestion.id);
   };
 
   const handleSaveItem = (data: OperatingCostInput) => {
@@ -98,6 +98,11 @@ export default function BudgetRunRate() {
       });
     } else {
       createCost(data);
+      // Record suggestion as accepted only after user confirms save
+      if (pendingSuggestionId) {
+        acceptSuggestion(pendingSuggestionId);
+        setPendingSuggestionId(null);
+      }
     }
   };
   

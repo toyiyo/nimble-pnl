@@ -48,6 +48,14 @@ USING (
     AND user_restaurants.user_id = auth.uid()
     AND user_restaurants.role IN ('owner', 'manager')
   )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE user_restaurants.restaurant_id = expense_suggestion_dismissals.restaurant_id
+    AND user_restaurants.user_id = auth.uid()
+    AND user_restaurants.role IN ('owner', 'manager')
+  )
 );
 
 CREATE POLICY "Owners and managers can delete expense suggestion dismissals"

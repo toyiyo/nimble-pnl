@@ -40,7 +40,7 @@ interface ExpenseSuggestion {
   id: string;              // deterministic hash of payee+category
   payeeName: string;       // "ABC Landlord LLC"
   suggestedName: string;   // "Rent / Lease" (mapped from category)
-  costType: CostType;      // 'fixed' | 'semi_variable' | 'custom'
+  costType: CostType;      // 'fixed' | 'semi_variable' | 'variable' | 'custom'
   monthlyAmount: number;   // average in cents
   confidence: number;      // 0-1 based on months matched + variance
   source: 'bank' | 'payroll';

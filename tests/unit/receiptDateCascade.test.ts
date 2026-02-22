@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildReceiptReferencePattern,
   matchesReceiptReference,
+  calculateUnitPrice,
 } from '@/utils/receiptImportUtils';
 
 /**
@@ -32,5 +33,35 @@ describe('Receipt Date Cascade - Reference ID Matching', () => {
   it('should NOT match non-receipt reference_ids', () => {
     expect(matchesReceiptReference('manual_adjustment_123', receiptId)).toBe(false);
     expect(matchesReceiptReference('', receiptId)).toBe(false);
+  });
+});
+
+describe('calculateUnitPrice', () => {
+  it('should return stored unit_price when available', () => {
+    expect(calculateUnitPrice({ unit_price: 5.25, parsed_quantity: 2, parsed_price: 20.00 })).toBe(5.25);
+  });
+
+  it('should calculate from parsed_price / parsed_quantity when no unit_price', () => {
+    expect(calculateUnitPrice({ unit_price: null, parsed_quantity: 4, parsed_price: 20.00 })).toBe(5.00);
+  });
+
+  it('should return parsed_price when quantity is zero', () => {
+    expect(calculateUnitPrice({ unit_price: null, parsed_quantity: 0, parsed_price: 15.00 })).toBe(15.00);
+  });
+
+  it('should return parsed_price when quantity is null', () => {
+    expect(calculateUnitPrice({ unit_price: null, parsed_quantity: null, parsed_price: 12.50 })).toBe(12.50);
+  });
+
+  it('should return 0 when all values are null', () => {
+    expect(calculateUnitPrice({ unit_price: null, parsed_quantity: null, parsed_price: null })).toBe(0);
+  });
+
+  it('should return 0 when no properties provided', () => {
+    expect(calculateUnitPrice({})).toBe(0);
+  });
+
+  it('should handle parsed_price of 0 with valid quantity', () => {
+    expect(calculateUnitPrice({ unit_price: null, parsed_quantity: 5, parsed_price: 0 })).toBe(0);
   });
 });

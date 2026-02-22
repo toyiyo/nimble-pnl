@@ -26,7 +26,6 @@ describe('buildShiftImportPreview', () => {
       employeeMap,
       existingShifts: [],
       publishedWeeks: [],
-      restaurantId: 'rest-1',
     });
     expect(result.summary.totalShifts).toBe(1);
     expect(result.summary.readyCount).toBe(1);
@@ -46,7 +45,6 @@ describe('buildShiftImportPreview', () => {
       employeeMap,
       existingShifts,
       publishedWeeks: [],
-      restaurantId: 'rest-1',
     });
     expect(result.summary.duplicateCount).toBe(1);
     expect(result.shifts[0].status).toBe('duplicate');
@@ -62,7 +60,6 @@ describe('buildShiftImportPreview', () => {
       employeeMap,
       existingShifts: [],
       publishedWeeks: ['2026-02-23'],
-      restaurantId: 'rest-1',
     });
     expect(result.summary.publishedCount).toBe(1);
     expect(result.shifts[0].status).toBe('published');
@@ -77,10 +74,51 @@ describe('buildShiftImportPreview', () => {
       employeeMap: {},
       existingShifts: [],
       publishedWeeks: [],
-      restaurantId: 'rest-1',
     });
     expect(result.summary.skippedCount).toBe(1);
     expect(result.shifts[0].status).toBe('skipped');
+  });
+
+  it('skips shifts where start >= end (zero or negative duration)', () => {
+    const parsedShifts: ParsedShift[] = [
+      { employeeName: 'Abraham Dominguez', startTime: '2026-02-28T18:00:00.000', endTime: '2026-02-28T10:00:00.000', position: 'Server' },
+      { employeeName: 'Abraham Dominguez', startTime: '2026-02-28T10:00:00.000', endTime: '2026-02-28T10:00:00.000', position: 'Server' },
+    ];
+    const result = buildShiftImportPreview({
+      parsedShifts,
+      employeeMap,
+      existingShifts: [],
+      publishedWeeks: [],
+    });
+    expect(result.summary.skippedCount).toBe(2);
+    expect(result.summary.readyCount).toBe(0);
+  });
+
+  it('passes through newEmployeesCount parameter', () => {
+    const parsedShifts: ParsedShift[] = [
+      { employeeName: 'Abraham Dominguez', startTime: '2026-02-28T10:00:00.000', endTime: '2026-02-28T18:00:00.000', position: 'Server' },
+    ];
+    const result = buildShiftImportPreview({
+      parsedShifts,
+      employeeMap,
+      existingShifts: [],
+      publishedWeeks: [],
+      newEmployeesCount: 3,
+    });
+    expect(result.summary.newEmployeesCount).toBe(3);
+  });
+
+  it('defaults newEmployeesCount to 0 when not provided', () => {
+    const parsedShifts: ParsedShift[] = [
+      { employeeName: 'Abraham Dominguez', startTime: '2026-02-28T10:00:00.000', endTime: '2026-02-28T18:00:00.000', position: 'Server' },
+    ];
+    const result = buildShiftImportPreview({
+      parsedShifts,
+      employeeMap,
+      existingShifts: [],
+      publishedWeeks: [],
+    });
+    expect(result.summary.newEmployeesCount).toBe(0);
   });
 
   it('calculates total hours correctly', () => {
@@ -93,7 +131,6 @@ describe('buildShiftImportPreview', () => {
       employeeMap,
       existingShifts: [],
       publishedWeeks: [],
-      restaurantId: 'rest-1',
     });
     expect(result.summary.totalHours).toBe(14); // 8 + 6
   });

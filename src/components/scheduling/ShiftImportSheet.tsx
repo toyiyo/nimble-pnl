@@ -5,7 +5,6 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetDescrip
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -42,6 +41,10 @@ import { ShiftImportPreview } from './ShiftImportPreview';
 
 type ImportStep = 'upload' | 'mapping' | 'employees' | 'preview' | 'importing';
 
+// TODO: publishedWeeks and existingShifts are currently passed from the parent, which only
+// has data for the current week view. For accurate duplicate/published detection, the import
+// sheet should fetch its own shifts and published weeks for the full date range of the
+// imported CSV. This is a known limitation — fast-follow to add date-range-aware fetching.
 interface ShiftImportSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -299,18 +302,23 @@ export const ShiftImportSheet = ({
   };
 
   const handleEmployeesNext = () => {
+    const newEmployeesCount = employeeMatches.filter(m => m.action === 'create').length;
     const result = buildShiftImportPreview({
       parsedShifts,
       employeeMap,
       existingShifts,
       publishedWeeks,
-      restaurantId,
+      newEmployeesCount,
     });
     setPreviewResult(result);
     setStep('preview');
   };
 
   const handleUpdateMatch = useCallback((normalizedName: string, employeeId: string | null, action: 'link' | 'create' | 'skip') => {
+    // Capture csvName before state updates to avoid stale closure in setEmployeeMap
+    const matchEntry = employeeMatches.find(m => m.normalizedName === normalizedName);
+    const csvName = matchEntry?.csvName;
+
     setEmployeeMatches(prev =>
       prev.map(m => {
         if (m.normalizedName !== normalizedName) return m;
@@ -333,13 +341,12 @@ export const ShiftImportSheet = ({
 
     setEmployeeMap(prev => {
       const next = { ...prev };
-      const match = employeeMatches.find(m => m.normalizedName === normalizedName);
-      if (!match) return next;
+      if (!csvName) return next;
 
       if (action === 'link' && employeeId) {
-        next[match.csvName] = employeeId;
+        next[csvName] = employeeId;
       } else {
-        delete next[match.csvName];
+        delete next[csvName];
       }
       return next;
     });
@@ -639,15 +646,12 @@ export const ShiftImportSheet = ({
   const renderImportingStep = () => (
     <div className="space-y-4 py-8">
       <div className="flex items-center justify-center">
-        <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
-          <Loader2 className="h-5 w-5 text-foreground animate-spin" />
-        </div>
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
       <div className="text-center">
         <p className="text-[14px] font-medium text-foreground">Importing shifts...</p>
         <p className="text-[13px] text-muted-foreground mt-1">This may take a moment.</p>
       </div>
-      <Progress value={65} />
     </div>
   );
 

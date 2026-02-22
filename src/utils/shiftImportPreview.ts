@@ -44,13 +44,13 @@ export function buildShiftImportPreview({
   employeeMap,
   existingShifts,
   publishedWeeks,
-  restaurantId,
+  newEmployeesCount = 0,
 }: {
   parsedShifts: ParsedShift[];
   employeeMap: Record<string, string>;
   existingShifts: Shift[];
   publishedWeeks: string[];
-  restaurantId: string;
+  newEmployeesCount?: number;
 }): ShiftImportPreviewResult {
   const publishedSet = new Set(publishedWeeks);
   let readyCount = 0;
@@ -61,6 +61,12 @@ export function buildShiftImportPreview({
 
   const shifts: PreviewShift[] = parsedShifts.map(parsed => {
     const employeeId = employeeMap[parsed.employeeName] || null;
+
+    // Guard against zero or negative duration shifts (start >= end)
+    if (parsed.startTime >= parsed.endTime) {
+      skippedCount++;
+      return { ...parsed, employeeId, status: 'skipped' as const };
+    }
 
     if (!employeeId) {
       skippedCount++;
@@ -97,7 +103,7 @@ export function buildShiftImportPreview({
       duplicateCount,
       publishedCount,
       skippedCount,
-      newEmployeesCount: 0,
+      newEmployeesCount,
     },
   };
 }

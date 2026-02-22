@@ -35,6 +35,7 @@ export interface ReceiptImport {
   processed_at: string | null;
   status: string;
   total_amount: number | null;
+  imported_total: number | null;
   raw_ocr_data: any;
   created_at: string;
   updated_at: string;

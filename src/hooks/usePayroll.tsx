@@ -402,6 +402,58 @@ export const usePayroll = (
     },
   });
 
+  const adjustOvertimeMutation = useMutation({
+    mutationFn: async ({
+      employeeId,
+      punchDate,
+      adjustmentType,
+      hours,
+      reason,
+    }: {
+      employeeId: string;
+      punchDate: string;
+      adjustmentType: 'regular_to_overtime' | 'overtime_to_regular';
+      hours: number;
+      reason: string;
+    }) => {
+      if (!restaurantId) throw new Error('Restaurant ID required');
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await (supabase
+        .from('overtime_adjustments' as any) as any)
+        .upsert({
+          restaurant_id: restaurantId,
+          employee_id: employeeId,
+          punch_date: punchDate,
+          adjustment_type: adjustmentType,
+          hours,
+          reason,
+          adjusted_by: user.id,
+        }, { onConflict: 'restaurant_id,employee_id,punch_date,adjustment_type' })
+        .select('id, employee_id, punch_date, adjustment_type, hours, reason')
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Overtime adjusted',
+        description: 'The overtime classification has been updated.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['payroll', restaurantId] });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error adjusting overtime',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     payrollPeriod,
     loading: isLoading,
@@ -411,5 +463,7 @@ export const usePayroll = (
     isAddingPayment: addManualPaymentMutation.isPending,
     deleteManualPayment: deleteManualPaymentMutation.mutate,
     isDeletingPayment: deleteManualPaymentMutation.isPending,
+    adjustOvertime: adjustOvertimeMutation.mutate,
+    isAdjustingOvertime: adjustOvertimeMutation.isPending,
   };
 };

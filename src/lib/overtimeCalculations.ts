@@ -90,3 +90,31 @@ export function calculateWeeklyOvertime(
     doubleTimeHours: Math.round(totalDoubleTime * 100) / 100,
   };
 }
+
+export function applyOvertimeAdjustments(
+  base: OvertimeResult,
+  adjustments: OvertimeAdjustment[]
+): OvertimeResult {
+  if (adjustments.length === 0) return base;
+
+  let { regularHours, weeklyOvertimeHours } = base;
+
+  for (const adj of adjustments) {
+    if (adj.adjustmentType === 'regular_to_overtime') {
+      const moved = Math.min(adj.hours, regularHours);
+      regularHours -= moved;
+      weeklyOvertimeHours += moved;
+    } else {
+      const moved = Math.min(adj.hours, weeklyOvertimeHours);
+      weeklyOvertimeHours -= moved;
+      regularHours += moved;
+    }
+  }
+
+  return {
+    regularHours: Math.round(regularHours * 100) / 100,
+    weeklyOvertimeHours: Math.round(weeklyOvertimeHours * 100) / 100,
+    dailyOvertimeHours: base.dailyOvertimeHours,
+    doubleTimeHours: base.doubleTimeHours,
+  };
+}

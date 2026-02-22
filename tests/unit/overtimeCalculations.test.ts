@@ -3,7 +3,10 @@ import {
   DEFAULT_OVERTIME_RULES,
   calculateDailyOvertime,
   calculateWeeklyOvertime,
+  applyOvertimeAdjustments,
   type OvertimeRules,
+  type OvertimeResult,
+  type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
 
 describe('overtimeCalculations', () => {
@@ -158,6 +161,69 @@ describe('overtimeCalculations', () => {
       const result = calculateWeeklyOvertime(dailyHours, rules);
       expect(result.regularHours).toBe(40);
       expect(result.weeklyOvertimeHours).toBe(10);
+    });
+  });
+
+  describe('applyOvertimeAdjustments', () => {
+    it('moves hours from regular to overtime', () => {
+      const base: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 0, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const adjustments: OvertimeAdjustment[] = [{
+        employeeId: 'emp-1', punchDate: '2026-02-16',
+        adjustmentType: 'regular_to_overtime', hours: 3, reason: 'Missed clock-out correction',
+      }];
+      const result = applyOvertimeAdjustments(base, adjustments);
+      expect(result.regularHours).toBe(37);
+      expect(result.weeklyOvertimeHours).toBe(3);
+    });
+
+    it('moves hours from overtime to regular', () => {
+      const base: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 5, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const adjustments: OvertimeAdjustment[] = [{
+        employeeId: 'emp-1', punchDate: '2026-02-16',
+        adjustmentType: 'overtime_to_regular', hours: 2, reason: 'Hours were lunch',
+      }];
+      const result = applyOvertimeAdjustments(base, adjustments);
+      expect(result.regularHours).toBe(42);
+      expect(result.weeklyOvertimeHours).toBe(3);
+    });
+
+    it('caps regular_to_overtime at available regular hours', () => {
+      const base: OvertimeResult = { regularHours: 5, weeklyOvertimeHours: 0, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const adjustments: OvertimeAdjustment[] = [{
+        employeeId: 'emp-1', punchDate: '2026-02-16',
+        adjustmentType: 'regular_to_overtime', hours: 10, reason: 'Test cap',
+      }];
+      const result = applyOvertimeAdjustments(base, adjustments);
+      expect(result.regularHours).toBe(0);
+      expect(result.weeklyOvertimeHours).toBe(5);
+    });
+
+    it('caps overtime_to_regular at available weekly OT hours', () => {
+      const base: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 3, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const adjustments: OvertimeAdjustment[] = [{
+        employeeId: 'emp-1', punchDate: '2026-02-16',
+        adjustmentType: 'overtime_to_regular', hours: 10, reason: 'Test cap',
+      }];
+      const result = applyOvertimeAdjustments(base, adjustments);
+      expect(result.regularHours).toBe(43);
+      expect(result.weeklyOvertimeHours).toBe(0);
+    });
+
+    it('applies multiple adjustments sequentially', () => {
+      const base: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 5, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+      const adjustments: OvertimeAdjustment[] = [
+        { employeeId: 'emp-1', punchDate: '2026-02-16', adjustmentType: 'overtime_to_regular', hours: 2, reason: 'a' },
+        { employeeId: 'emp-1', punchDate: '2026-02-17', adjustmentType: 'regular_to_overtime', hours: 1, reason: 'b' },
+      ];
+      const result = applyOvertimeAdjustments(base, adjustments);
+      expect(result.regularHours).toBe(41);
+      expect(result.weeklyOvertimeHours).toBe(4);
+    });
+
+    it('returns unchanged result when no adjustments', () => {
+      const base: OvertimeResult = { regularHours: 40, weeklyOvertimeHours: 5, dailyOvertimeHours: 2, doubleTimeHours: 1 };
+      const result = applyOvertimeAdjustments(base, []);
+      expect(result).toEqual(base);
     });
   });
 });

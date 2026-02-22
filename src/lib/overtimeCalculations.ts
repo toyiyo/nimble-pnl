@@ -87,10 +87,10 @@ export function calculateWeeklyOvertime(
   }
 
   return {
-    regularHours: Math.round(totalRegular * 100) / 100,
-    weeklyOvertimeHours: Math.round(weeklyOt * 100) / 100,
-    dailyOvertimeHours: Math.round(totalDailyOt * 100) / 100,
-    doubleTimeHours: Math.round(totalDoubleTime * 100) / 100,
+    regularHours: totalRegular,
+    weeklyOvertimeHours: weeklyOt,
+    dailyOvertimeHours: totalDailyOt,
+    doubleTimeHours: totalDoubleTime,
   };
 }
 
@@ -115,8 +115,8 @@ export function applyOvertimeAdjustments(
   }
 
   return {
-    regularHours: Math.round(regularHours * 100) / 100,
-    weeklyOvertimeHours: Math.round(weeklyOvertimeHours * 100) / 100,
+    regularHours,
+    weeklyOvertimeHours,
     dailyOvertimeHours: base.dailyOvertimeHours,
     doubleTimeHours: base.doubleTimeHours,
   };

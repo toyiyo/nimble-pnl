@@ -254,9 +254,42 @@ export const usePayroll = (
         tipPayoutsPerEmployee.set(payout.employee_id, current + payout.amount);
       });
 
+      // Fetch overtime rules for restaurant
+      const { data: otRulesData } = await supabase
+        .from('overtime_rules')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+
+      // Fetch overtime adjustments for the period
+      const { data: otAdjData } = await supabase
+        .from('overtime_adjustments')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .gte('punch_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('punch_date', format(endDate, 'yyyy-MM-dd'));
+
+      const overtimeRules = otRulesData ? {
+        weeklyThresholdHours: Number(otRulesData.weekly_threshold_hours),
+        weeklyOtMultiplier: Number(otRulesData.weekly_ot_multiplier),
+        dailyThresholdHours: otRulesData.daily_threshold_hours ? Number(otRulesData.daily_threshold_hours) : null,
+        dailyOtMultiplier: Number(otRulesData.daily_ot_multiplier),
+        dailyDoubleThresholdHours: otRulesData.daily_double_threshold_hours ? Number(otRulesData.daily_double_threshold_hours) : null,
+        dailyDoubleMultiplier: Number(otRulesData.daily_double_multiplier),
+        excludeTipsFromOtRate: otRulesData.exclude_tips_from_ot_rate,
+      } : undefined;
+
+      const overtimeAdjustments = (otAdjData || []).map((adj: { employee_id: string; punch_date: string; adjustment_type: string; hours: number; reason: string | null }) => ({
+        employeeId: adj.employee_id,
+        punchDate: adj.punch_date,
+        adjustmentType: adj.adjustment_type as 'regular_to_overtime' | 'overtime_to_regular',
+        hours: Number(adj.hours),
+        reason: adj.reason || '',
+      }));
+
       // Filter employees based on deactivation date vs payroll period
       // Inactive employees are included only through their final week (the week containing their deactivation date)
-      const eligibleEmployees = employees.filter(employee => 
+      const eligibleEmployees = employees.filter(employee =>
         shouldIncludeEmployeeInPayroll(employee, startDate)
       );
 
@@ -268,6 +301,8 @@ export const usePayroll = (
         tipsPerEmployee,
         manualPaymentsPerEmployee,
         tipPayoutsPerEmployee,
+        overtimeRules,
+        overtimeAdjustments,
       );
     },
     enabled: !!restaurantId && !!employees.length,

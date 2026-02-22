@@ -2,12 +2,17 @@ import { TimePunch } from '@/types/timeTracking';
 import { Employee, CompensationType } from '@/types/scheduling';
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
-import { 
-  calculateSalaryForPeriod, 
+import {
+  calculateSalaryForPeriod,
   calculateContractorPayForPeriod,
   calculateEmployeeDailyCostForDate,
   calculateDailyRatePay,
 } from '@/utils/compensationCalculations';
+import {
+  calculateEmployeeOvertime,
+  type OvertimeRules as OTRules,
+  type OvertimeAdjustment,
+} from '@/lib/overtimeCalculations';
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
 const MAX_SHIFT_HOURS = 16;
@@ -45,6 +50,10 @@ export interface EmployeePayroll {
   hourlyRate: number; // In cents (for hourly employees)
   regularHours: number;
   overtimeHours: number;
+  doubleTimeHours: number;       // Double-time hours worked
+  doubleTimePay: number;         // Double-time pay in cents
+  dailyOvertimeHours: number;    // Daily OT hours (subset of overtimeHours)
+  weeklyOvertimeHours: number;   // Weekly OT hours (subset of overtimeHours)
   regularPay: number; // In cents
   overtimePay: number; // In cents
   salaryPay: number; // In cents (for salaried employees)
@@ -67,6 +76,7 @@ export interface PayrollPeriod {
   employees: EmployeePayroll[];
   totalRegularHours: number;
   totalOvertimeHours: number;
+  totalDoubleTimeHours: number;
   totalGrossPay: number; // In cents
   totalTips: number; // In cents
   totalTipsPaidOut: number; // In cents
@@ -395,20 +405,26 @@ export function calculateEmployeePay(
   periodStartDate?: Date,
   periodEndDate?: Date,
   manualPayments: ManualPayment[] = [],
-  tipsPaidOut: number = 0
+  tipsPaidOut: number = 0,
+  overtimeRules?: OTRules,
+  overtimeAdjustments: OvertimeAdjustment[] = []
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
-  
+
   let totalRegularHours = 0;
   let totalOvertimeHours = 0;
   let regularPay = 0;
   let overtimePay = 0;
+  let doubleTimePay = 0;
+  let dailyOvertimeHours = 0;
+  let weeklyOvertimeHours = 0;
+  let doubleTimeHours = 0;
   let salaryPay = 0;
   let contractorPay = 0;
   let dailyRatePay = 0;
   let daysWorked = 0;
   const allIncompleteShifts: IncompleteShift[] = [];
-  
+
   // Calculate based on compensation type
   if (compensationType === 'hourly') {
     const parsed = parseWorkPeriods(punches);
@@ -420,24 +436,40 @@ export function calculateEmployeePay(
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) || 0) + period.hours);
     });
 
-    const weeklyTotals = new Map<string, { hours: number; payCents: number }>();
+    // Group daily hours by calendar week for per-week OT calculation
+    const hoursByWeek = new Map<string, Record<string, number>>();
     hoursByDate.forEach((hours, dateStr) => {
-      const payCents = calculateEmployeeDailyCostForDate(employee, dateStr, hours);
-      const weekKey = format(startOfWeek(new Date(dateStr)), 'yyyy-MM-dd');
-      const current = weeklyTotals.get(weekKey) || { hours: 0, payCents: 0 };
-      current.hours += hours;
-      current.payCents += payCents;
-      weeklyTotals.set(weekKey, current);
+      // Use T12:00:00 to parse as local time — new Date('YYYY-MM-DD') parses as UTC midnight
+      // which shifts to the previous day in US timezones, breaking week grouping
+      const weekKey = format(startOfWeek(new Date(dateStr + 'T12:00:00'), { weekStartsOn: WEEK_STARTS_ON }), 'yyyy-MM-dd');
+      if (!hoursByWeek.has(weekKey)) {
+        hoursByWeek.set(weekKey, {});
+      }
+      const weekHours = hoursByWeek.get(weekKey)!;
+      weekHours[dateStr] = (weekHours[dateStr] || 0) + hours;
     });
 
-    weeklyTotals.forEach(({ hours, payCents }) => {
-      const { regularHours, overtimeHours } = calculateRegularAndOvertimeHours(hours);
-      totalRegularHours += regularHours;
-      totalOvertimeHours += overtimeHours;
+    // Use the new overtime engine per week
+    const employeeAdjustments = overtimeAdjustments.filter(a => a.employeeId === employee.id);
 
-      const baseRatePerHour = hours > 0 ? payCents / hours : 0;
-      regularPay += Math.round(regularHours * baseRatePerHour);
-      overtimePay += Math.round(overtimeHours * baseRatePerHour * 1.5);
+    hoursByWeek.forEach((weekDailyHours) => {
+      const otResult = calculateEmployeeOvertime({
+        dailyHours: weekDailyHours,
+        rules: overtimeRules,
+        isExempt: employee.is_exempt ?? false,
+        hourlyRateCents: employee.hourly_rate,
+        totalTipsCents: tips,
+        adjustments: employeeAdjustments,
+      });
+
+      totalRegularHours += otResult.hours.regularHours;
+      totalOvertimeHours += otResult.hours.weeklyOvertimeHours + otResult.hours.dailyOvertimeHours + otResult.hours.doubleTimeHours;
+      regularPay += otResult.pay.regularPay;
+      overtimePay += otResult.pay.overtimePay;
+      doubleTimePay += otResult.pay.doubleTimePay;
+      dailyOvertimeHours += otResult.hours.dailyOvertimeHours;
+      weeklyOvertimeHours += otResult.hours.weeklyOvertimeHours;
+      doubleTimeHours += otResult.hours.doubleTimeHours;
     });
 
     allIncompleteShifts.push(...parsed.incompleteShifts);
@@ -471,7 +503,7 @@ export function calculateEmployeePay(
   // Calculate manual payments total
   const manualPaymentsTotal = manualPayments.reduce((sum, p) => sum + p.amount, 0);
 
-  const grossPay = regularPay + overtimePay + salaryPay + contractorPay + dailyRatePay + manualPaymentsTotal;
+  const grossPay = regularPay + overtimePay + doubleTimePay + salaryPay + contractorPay + dailyRatePay + manualPaymentsTotal;
   const tipsOwed = Math.max(0, tips - tipsPaidOut);
   const totalPay = grossPay + tipsOwed;
 
@@ -483,6 +515,10 @@ export function calculateEmployeePay(
     hourlyRate: employee.hourly_rate,
     regularHours: Math.round(totalRegularHours * 100) / 100, // Round to 2 decimals
     overtimeHours: Math.round(totalOvertimeHours * 100) / 100,
+    doubleTimeHours: Math.round(doubleTimeHours * 100) / 100,
+    doubleTimePay,
+    dailyOvertimeHours: Math.round(dailyOvertimeHours * 100) / 100,
+    weeklyOvertimeHours: Math.round(weeklyOvertimeHours * 100) / 100,
     regularPay,
     overtimePay,
     salaryPay,
@@ -560,7 +596,9 @@ export function calculatePayrollPeriod(
   punchesPerEmployee: Map<string, TimePunch[]>,
   tipsPerEmployee: Map<string, number>,
   manualPaymentsPerEmployee: Map<string, ManualPayment[]> = new Map(),
-  tipPayoutsPerEmployee: Map<string, number> = new Map()
+  tipPayoutsPerEmployee: Map<string, number> = new Map(),
+  overtimeRules?: OTRules,
+  overtimeAdjustments: OvertimeAdjustment[] = []
 ): PayrollPeriod {
   const employeePayrolls = employees.map(employee => {
     const punches = punchesPerEmployee.get(employee.id) || [];
@@ -568,11 +606,12 @@ export function calculatePayrollPeriod(
     const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
     const tipsPaidOut = tipPayoutsPerEmployee.get(employee.id) || 0;
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut);
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);
   const totalOvertimeHours = employeePayrolls.reduce((sum, ep) => sum + ep.overtimeHours, 0);
+  const totalDoubleTimeHours = employeePayrolls.reduce((sum, ep) => sum + (ep.doubleTimeHours || 0), 0);
   const totalGrossPay = employeePayrolls.reduce((sum, ep) => sum + ep.grossPay, 0);
   const totalTips = employeePayrolls.reduce((sum, ep) => sum + ep.totalTips, 0);
   const totalTipsPaidOut = employeePayrolls.reduce((sum, ep) => sum + ep.tipsPaidOut, 0);
@@ -584,6 +623,7 @@ export function calculatePayrollPeriod(
     employees: employeePayrolls,
     totalRegularHours,
     totalOvertimeHours,
+    totalDoubleTimeHours,
     totalGrossPay,
     totalTips,
     totalTipsPaidOut,
@@ -601,8 +641,12 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     'Hourly Rate',
     'Regular Hours',
     'Overtime Hours',
+    'Double-Time Hours',
+    'Daily OT Hours',
+    'Weekly OT Hours',
     'Regular Pay',
     'Overtime Pay',
+    'Double-Time Pay',
     'Gross Pay',
     'Tips Earned',
     'Tips Paid',
@@ -616,8 +660,12 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     formatCurrency(ep.hourlyRate),
     formatHours(ep.regularHours),
     formatHours(ep.overtimeHours),
+    formatHours(ep.doubleTimeHours || 0),
+    formatHours(ep.dailyOvertimeHours || 0),
+    formatHours(ep.weeklyOvertimeHours || 0),
     formatCurrency(ep.regularPay),
     formatCurrency(ep.overtimePay),
+    formatCurrency(ep.doubleTimePay || 0),
     formatCurrency(ep.grossPay),
     formatCurrency(ep.totalTips),
     formatCurrency(ep.tipsPaidOut),
@@ -631,6 +679,10 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
     '""',
     formatHours(payrollPeriod.totalRegularHours),
     formatHours(payrollPeriod.totalOvertimeHours),
+    formatHours(payrollPeriod.totalDoubleTimeHours),
+    '""',
+    '""',
+    '""',
     '""',
     '""',
     formatCurrency(payrollPeriod.totalGrossPay),

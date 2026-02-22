@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS overtime_rules (
 -- RLS
 ALTER TABLE overtime_rules ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their restaurant overtime rules" ON overtime_rules;
 CREATE POLICY "Users can view their restaurant overtime rules"
   ON overtime_rules FOR SELECT
   USING (
@@ -46,6 +47,7 @@ CREATE POLICY "Users can view their restaurant overtime rules"
     )
   );
 
+DROP POLICY IF EXISTS "Owners and managers can manage overtime rules" ON overtime_rules;
 CREATE POLICY "Owners and managers can manage overtime rules"
   ON overtime_rules FOR ALL
   USING (
@@ -58,10 +60,11 @@ CREATE POLICY "Owners and managers can manage overtime rules"
   );
 
 -- Updated_at trigger
+DROP TRIGGER IF EXISTS update_overtime_rules_updated_at ON overtime_rules;
 CREATE TRIGGER update_overtime_rules_updated_at
   BEFORE UPDATE ON overtime_rules
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
 -- Index
-CREATE INDEX idx_overtime_rules_restaurant_id ON overtime_rules(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_overtime_rules_restaurant_id ON overtime_rules(restaurant_id);

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS overtime_adjustments (
 -- RLS
 ALTER TABLE overtime_adjustments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their restaurant overtime adjustments" ON overtime_adjustments;
 CREATE POLICY "Users can view their restaurant overtime adjustments"
   ON overtime_adjustments FOR SELECT
   USING (
@@ -27,6 +28,7 @@ CREATE POLICY "Users can view their restaurant overtime adjustments"
     )
   );
 
+DROP POLICY IF EXISTS "Owners and managers can manage overtime adjustments" ON overtime_adjustments;
 CREATE POLICY "Owners and managers can manage overtime adjustments"
   ON overtime_adjustments FOR ALL
   USING (
@@ -39,5 +41,5 @@ CREATE POLICY "Owners and managers can manage overtime adjustments"
   );
 
 -- Indexes
-CREATE INDEX idx_overtime_adjustments_restaurant_id ON overtime_adjustments(restaurant_id);
-CREATE INDEX idx_overtime_adjustments_employee_date ON overtime_adjustments(employee_id, punch_date);
+CREATE INDEX IF NOT EXISTS idx_overtime_adjustments_restaurant_id ON overtime_adjustments(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_overtime_adjustments_employee_date ON overtime_adjustments(employee_id, punch_date);

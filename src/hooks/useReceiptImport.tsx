@@ -797,13 +797,23 @@ export const useReceiptImport = () => {
       const importedTotal = calculateImportedTotal(lineItems);
 
       // Mark receipt as imported with calculated total
-      await supabase
+      const { error: statusError } = await supabase
         .from('receipt_imports')
         .update({
           status: 'imported',
           imported_total: importedTotal
         })
         .eq('id', receiptId);
+
+      if (statusError) {
+        console.error('Error marking receipt as imported:', statusError);
+        toast({
+          title: "Warning",
+          description: "Items were imported but receipt status failed to update. Please verify.",
+          variant: "destructive",
+        });
+        return true;
+      }
 
       toast({
         title: "Success",

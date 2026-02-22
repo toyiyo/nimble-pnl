@@ -63,7 +63,7 @@ interface UnitPriceInput {
  * and finally to parsed_price itself when quantity is missing or zero.
  */
 export function calculateUnitPrice(item: UnitPriceInput): number {
-  if (item.unit_price) {
+  if (item.unit_price != null) {
     return item.unit_price;
   }
 

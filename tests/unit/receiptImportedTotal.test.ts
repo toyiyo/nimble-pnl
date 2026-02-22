@@ -61,4 +61,19 @@ describe('Imported Total Calculation', () => {
 
     expect(calculateImportedTotal(lineItems)).toBe(25.00);
   });
+
+  it('should handle undefined parsed_price as 0', () => {
+    const lineItems = [
+      { mapping_status: 'mapped', matched_product_id: 'prod-1', parsed_price: undefined as unknown as null },
+    ];
+    expect(calculateImportedTotal(lineItems)).toBe(0);
+  });
+
+  it('should include negative parsed_price in sum', () => {
+    const lineItems = [
+      { mapping_status: 'mapped', matched_product_id: 'prod-1', parsed_price: 30.00 },
+      { mapping_status: 'mapped', matched_product_id: 'prod-2', parsed_price: -5.00 },
+    ];
+    expect(calculateImportedTotal(lineItems)).toBe(25.00);
+  });
 });

@@ -64,4 +64,8 @@ describe('calculateUnitPrice', () => {
   it('should handle parsed_price of 0 with valid quantity', () => {
     expect(calculateUnitPrice({ unit_price: null, parsed_quantity: 5, parsed_price: 0 })).toBe(0);
   });
+
+  it('should respect stored unit_price of 0', () => {
+    expect(calculateUnitPrice({ unit_price: 0, parsed_quantity: 5, parsed_price: 25.00 })).toBe(0);
+  });
 });

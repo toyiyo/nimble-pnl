@@ -418,6 +418,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         const { error: txError } = await supabase
           .from('inventory_transactions')
           .update({ transaction_date: dateString })
+          .eq('restaurant_id', selectedRestaurant?.restaurant_id)
           .like('reference_id', buildReceiptReferencePattern(receiptId));
 
         if (txError) {

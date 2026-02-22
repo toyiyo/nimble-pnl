@@ -62,7 +62,7 @@ USER REQUEST
 |-------|-----------|
 | 3. Isolate | Already in a worktree |
 | 5. UI Review | No UI/component file changes |
-| For trivial fixes | Phases 1-3 can be condensed (still required, just brief) |
+| For trivial fixes | Phases 1-3 must still execute but may be condensed (e.g., brief brainstorm with single proposal, short plan) — never skipped entirely per HARD-GATE |
 
 ## CodeRabbit Review Loop
 

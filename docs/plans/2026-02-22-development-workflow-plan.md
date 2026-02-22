@@ -182,7 +182,7 @@ Iteration 1: Run coderabbit review --plain --type committed
 | 4. Build | `superpowers:test-driven-development` | Never |
 | 5. UI Review | `frontend-design:frontend-design` | No UI changes |
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
-| 7. CodeRabbit | `coderabbit review --plain` | Never |
+| 7. CodeRabbit | `coderabbit review --plain --type committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never |
 | 9. Finish | `superpowers:finishing-a-development-branch` | Never |
 ```

@@ -803,10 +803,21 @@ export const useReceiptImport = () => {
         }
       }
 
-      // Mark receipt as imported
+      // Calculate imported total from successfully imported items
+      const importedTotal = lineItems
+        .filter(item =>
+          (item.mapping_status === 'mapped' && item.matched_product_id) ||
+          item.mapping_status === 'new_item'
+        )
+        .reduce((sum, item) => sum + (item.parsed_price || 0), 0);
+
+      // Mark receipt as imported with calculated total
       await supabase
         .from('receipt_imports')
-        .update({ status: 'imported' })
+        .update({
+          status: 'imported',
+          imported_total: importedTotal
+        })
         .eq('id', receiptId);
 
       toast({

@@ -375,7 +375,7 @@ export default function InventoryAudit() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="h-8 w-[130px] text-[13px] bg-muted/30 border-border/40 rounded-lg"
+              className="h-8 w-[160px] text-[13px] bg-muted/30 border-border/40 rounded-lg"
               aria-label="Start date"
             />
             <span className="text-[13px] text-muted-foreground">to</span>
@@ -383,7 +383,7 @@ export default function InventoryAudit() {
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="h-8 w-[130px] text-[13px] bg-muted/30 border-border/40 rounded-lg"
+              className="h-8 w-[160px] text-[13px] bg-muted/30 border-border/40 rounded-lg"
               aria-label="End date"
             />
           </div>

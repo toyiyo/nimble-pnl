@@ -400,11 +400,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handlePurchaseDateChange = async (date: Date | undefined) => {
     if (!date) return;
-    
+
     try {
       const { supabase } = await import('@/integrations/supabase/client');
       const dateString = format(date, 'yyyy-MM-dd');
-      
+
       const { error } = await supabase
         .from('receipt_imports')
         .update({ purchase_date: dateString })
@@ -412,8 +412,31 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
       if (error) throw error;
 
+      // If already imported, cascade date change to inventory transactions
+      if (isImported) {
+        const { error: txError } = await supabase
+          .from('inventory_transactions')
+          .update({ transaction_date: dateString })
+          .like('reference_id', `receipt_${receiptId}_%`);
+
+        if (txError) {
+          console.error('Error cascading date to transactions:', txError);
+          toast({
+            title: "Partial Update",
+            description: `Purchase date updated, but failed to update inventory transaction dates.`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Purchase Date Updated",
+            description: `Set to ${format(date, 'PPP')}. Inventory transaction dates also updated.`
+          });
+        }
+      } else {
+        toast({ title: "Purchase Date Updated", description: `Set to ${format(date, 'PPP')}` });
+      }
+
       setReceiptDetails(prev => prev ? { ...prev, purchase_date: dateString } : null);
-      toast({ title: "Purchase Date Updated", description: `Set to ${format(date, 'PPP')}` });
     } catch (error) {
       console.error('Error updating purchase date:', error);
       toast({ title: "Error", description: "Failed to update purchase date", variant: "destructive" });

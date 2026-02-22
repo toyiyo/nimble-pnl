@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Employee, CompensationType, PayPeriodType, ContractorPaymentInterval } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,6 +51,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // Compensation type state
   const [compensationType, setCompensationType] = useState<CompensationType>('hourly');
   
+  // FLSA exempt toggle
+  const [isExempt, setIsExempt] = useState(false);
+
   // Hourly employee fields
   const [hourlyRate, setHourlyRate] = useState('');
   
@@ -123,6 +127,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       
       // Compensation fields
       setCompensationType(employee.compensation_type || 'hourly');
+      setIsExempt(employee.is_exempt ?? false);
       // Only set hourly rate if it's a valid finite number
       setHourlyRate(
         typeof employee.hourly_rate === 'number' && Number.isFinite(employee.hourly_rate)
@@ -153,6 +158,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     
     // Reset compensation fields
     setCompensationType('hourly');
+    setIsExempt(false);
     setHourlyRate('');
     setSalaryAmount('');
     setPayPeriodType('bi-weekly');
@@ -401,6 +407,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       notes: notes || undefined,
       is_active: employee?.is_active ?? true,
       compensation_type: compensationType,
+      is_exempt: isExempt,
       hourly_rate: hourlyRateInCents,
       salary_amount: salaryAmountInCents,
       pay_period_type: compensationType === 'salary' ? payPeriodType : undefined,
@@ -554,31 +561,63 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
               {/* Hourly Fields - shown for hourly employees */}
               {compensationType === 'hourly' && (
-                <div className="space-y-2">
-                  <Label htmlFor="hourlyRate" className="flex items-center gap-1.5">
-                    Hourly Rate ($) <span className="text-destructive">*</span>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-xs">
-                          <p className="text-xs">Regular hourly rate. Overtime (over 40 hrs/week) automatically calculated at 1.5× this rate.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </Label>
-                  <Input
-                    id="hourlyRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={hourlyRate}
-                    onChange={(e) => setHourlyRate(e.target.value)}
-                    placeholder="15.00"
-                    required
-                    aria-label="Hourly rate in dollars"
-                  />
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="hourlyRate" className="flex items-center gap-1.5">
+                      Hourly Rate ($) <span className="text-destructive">*</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-xs">
+                            <p className="text-xs">Regular hourly rate. Overtime (over 40 hrs/week) automatically calculated at 1.5× this rate.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Label>
+                    <Input
+                      id="hourlyRate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={hourlyRate}
+                      onChange={(e) => setHourlyRate(e.target.value)}
+                      placeholder="15.00"
+                      required
+                      aria-label="Hourly rate in dollars"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/30 p-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="isExempt" className="text-[14px] font-medium text-foreground cursor-pointer">
+                        Exempt from Overtime
+                      </Label>
+                      <p className="text-[13px] text-muted-foreground">
+                        Exempt employees are not eligible for overtime pay
+                      </p>
+                    </div>
+                    <Switch
+                      id="isExempt"
+                      checked={isExempt}
+                      onCheckedChange={setIsExempt}
+                      className="data-[state=checked]:bg-foreground"
+                      aria-label="Mark employee as exempt from overtime"
+                    />
+                  </div>
+
+                  {isExempt && (() => {
+                    const annualizedPay = (Number.parseFloat(hourlyRate || '0') * 100) * 2080 / 100;
+                    return annualizedPay < 35568 ? (
+                      <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
+                        <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-[13px] text-amber-700 dark:text-amber-400">
+                          This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               )}
 

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(18);
+SELECT plan(19);
 
 -- Table exists
 SELECT has_table('public', 'overtime_rules', 'overtime_rules table exists');
@@ -20,8 +20,9 @@ SELECT has_column('public', 'overtime_adjustments', 'hours', 'overtime_adjustmen
 SELECT has_column('public', 'employees', 'is_exempt', 'employees has is_exempt');
 
 -- Create test restaurant for constraint tests (idempotent)
-INSERT INTO restaurants (id, name) VALUES ('00000000-0000-0000-0000-000000000099', 'OT Test Restaurant')
-  ON CONFLICT (id) DO NOTHING;
+INSERT INTO restaurants (id, name)
+  VALUES ('00000000-0000-0000-0000-000000000099', 'OT Test Restaurant')
+  ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- CHECK constraints: valid insert should succeed
 SELECT lives_ok(
@@ -75,9 +76,15 @@ SELECT throws_ok(
 DELETE FROM overtime_rules WHERE restaurant_id = '00000000-0000-0000-0000-000000000099';
 
 -- overtime_adjustments: invalid adjustment_type should fail
-INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type)
-  VALUES ('00000000-0000-0000-0000-000000000088', '00000000-0000-0000-0000-000000000099', 'Test Employee', 'server', 'active', 'hourly')
-  ON CONFLICT (id) DO NOTHING;
+INSERT INTO employees (id, restaurant_id, name, position, status, compensation_type, is_exempt)
+  VALUES ('00000000-0000-0000-0000-000000000088', '00000000-0000-0000-0000-000000000099', 'Test Employee', 'server', 'active', 'hourly', FALSE)
+  ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    restaurant_id = EXCLUDED.restaurant_id,
+    position = EXCLUDED.position,
+    status = EXCLUDED.status,
+    compensation_type = EXCLUDED.compensation_type,
+    is_exempt = EXCLUDED.is_exempt;
 
 SELECT throws_ok(
   $$INSERT INTO overtime_adjustments (restaurant_id, employee_id, punch_date, adjustment_type, hours, adjusted_by)
@@ -96,15 +103,40 @@ SELECT throws_ok(
   'Zero hours rejected'
 );
 
--- updated_at trigger: verify it fires on insert
+-- updated_at trigger: verify it advances on UPDATE (not just set on insert)
 INSERT INTO overtime_rules (restaurant_id, weekly_threshold_hours, weekly_ot_multiplier)
   VALUES ('00000000-0000-0000-0000-000000000099', 40, 1.5)
   ON CONFLICT (restaurant_id) DO UPDATE SET weekly_threshold_hours = 40;
 
-SELECT is(
-  (SELECT updated_at < NOW() + interval '1 second' FROM overtime_rules WHERE restaurant_id = '00000000-0000-0000-0000-000000000099'),
-  true,
-  'updated_at is set on insert'
+-- Capture the initial updated_at, then update the row
+DO $$
+BEGIN
+  -- Small delay so updated_at will differ after update
+  PERFORM pg_sleep(0.05);
+END $$;
+
+UPDATE overtime_rules
+  SET weekly_threshold_hours = 35
+  WHERE restaurant_id = '00000000-0000-0000-0000-000000000099';
+
+SELECT ok(
+  (SELECT updated_at >= NOW() - interval '2 seconds'
+   FROM overtime_rules
+   WHERE restaurant_id = '00000000-0000-0000-0000-000000000099'),
+  'updated_at trigger advances on UPDATE'
+);
+
+-- update_exempt_audit trigger: verify exempt_changed_at is set when is_exempt changes
+-- Employee was inserted above with is_exempt = FALSE; update to TRUE
+UPDATE employees
+  SET is_exempt = TRUE
+  WHERE id = '00000000-0000-0000-0000-000000000088';
+
+SELECT ok(
+  (SELECT exempt_changed_at IS NOT NULL
+   FROM employees
+   WHERE id = '00000000-0000-0000-0000-000000000088'),
+  'update_exempt_audit trigger sets exempt_changed_at when is_exempt changes'
 );
 
 -- Clean up

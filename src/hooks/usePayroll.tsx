@@ -259,19 +259,27 @@ export function usePayroll(
       });
 
       // Fetch overtime rules for restaurant
-      const { data: otRulesData } = await supabase
+      const { data: otRulesData, error: otRulesError } = await supabase
         .from('overtime_rules')
-        .select('*')
+        .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
+      if (otRulesError) {
+        console.error('Error fetching overtime rules:', otRulesError);
+      }
+
       // Fetch overtime adjustments for the period
-      const { data: otAdjData } = await supabase
+      const { data: otAdjData, error: otAdjError } = await supabase
         .from('overtime_adjustments')
-        .select('*')
+        .select('employee_id, punch_date, adjustment_type, hours, reason')
         .eq('restaurant_id', restaurantId)
         .gte('punch_date', format(startDate, 'yyyy-MM-dd'))
         .lte('punch_date', format(endDate, 'yyyy-MM-dd'));
+
+      if (otAdjError) {
+        console.error('Error fetching overtime adjustments:', otAdjError);
+      }
 
       const overtimeRules = otRulesData
         ? {

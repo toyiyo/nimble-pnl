@@ -449,14 +449,26 @@ export function calculateEmployeePay(
 
     const employeeAdjustments = overtimeAdjustments.filter(a => a.employeeId === employee.id);
 
-    for (const weekDailyHours of hoursByWeek.values()) {
+    const totalPeriodHours = Array.from(hoursByDate.values()).reduce((sum, h) => sum + h, 0);
+
+    for (const [weekKey, weekDailyHours] of hoursByWeek.entries()) {
+      // Filter adjustments to only those whose punchDate falls within this week's dates
+      const weekDates = new Set(Object.keys(weekDailyHours));
+      const weekAdjustments = employeeAdjustments.filter(a => weekDates.has(a.punchDate));
+
+      // Prorate tips by this week's share of total hours to avoid inflating OT base rate
+      const weekHoursTotal = Object.values(weekDailyHours).reduce((sum, h) => sum + h, 0);
+      const weekTips = totalPeriodHours > 0
+        ? Math.round(tips * (weekHoursTotal / totalPeriodHours))
+        : 0;
+
       const { hours: otHours, pay: otPay } = calculateEmployeeOvertime({
         dailyHours: weekDailyHours,
         rules: overtimeRules,
         isExempt: employee.is_exempt ?? false,
         hourlyRateCents: employee.hourly_rate,
-        totalTipsCents: tips,
-        adjustments: employeeAdjustments,
+        totalTipsCents: weekTips,
+        adjustments: weekAdjustments,
       });
 
       totalRegularHours += otHours.regularHours;

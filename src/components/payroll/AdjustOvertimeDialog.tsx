@@ -84,7 +84,7 @@ export function AdjustOvertimeDialog({
       punchDate,
       adjustmentType,
       hours: hoursValue,
-      reason: reason || '',
+      reason,
     });
   };
 
@@ -121,7 +121,6 @@ export function AdjustOvertimeDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          {/* Direction */}
           <div className="space-y-2">
             <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Adjustment Type
@@ -140,7 +139,6 @@ export function AdjustOvertimeDialog({
             </Select>
           </div>
 
-          {/* Hours */}
           <div className="space-y-2">
             <Label htmlFor="adjust-hours" className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               <Clock className="h-3.5 w-3.5" />
@@ -168,7 +166,6 @@ export function AdjustOvertimeDialog({
             )}
           </div>
 
-          {/* Date */}
           <div className="space-y-2">
             <Label htmlFor="adjust-date" className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               <Calendar className="h-3.5 w-3.5" />
@@ -194,7 +191,6 @@ export function AdjustOvertimeDialog({
             )}
           </div>
 
-          {/* Reason */}
           <div className="space-y-2">
             <Label htmlFor="adjust-reason" className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               <FileText className="h-3.5 w-3.5" />

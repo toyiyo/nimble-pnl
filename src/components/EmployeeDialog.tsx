@@ -607,16 +607,17 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     />
                   </div>
 
-                  {isExempt && (() => {
-                    const annualizedPay = (Number.parseFloat(hourlyRate || '0') * 100) * 2080 / 100;
-                    return annualizedPay < 35568 ? (
+                  {(() => {
+                    const annualizedPay = Number.parseFloat(hourlyRate || '0') * 2080;
+                    if (!isExempt || annualizedPay >= 35568) return null;
+                    return (
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
                           This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>
-                    ) : null;
+                    );
                   })()}
                 </div>
               )}

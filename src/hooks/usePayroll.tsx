@@ -120,11 +120,11 @@ interface DBTimePunch {
 /**
  * Hook to fetch and calculate payroll for a given period
  */
-export const usePayroll = (
+export function usePayroll(
   restaurantId: string | null,
   startDate: Date,
   endDate: Date
-) => {
+) {
   // Fetch ALL employees (including inactive) for historical payroll accuracy
   // An employee deactivated today should still show their past work/salary
   const { employees } = useEmployees(restaurantId, { status: 'all' });
@@ -243,15 +243,12 @@ export const usePayroll = (
         if (!manualPaymentsPerEmployee.has(payment.employee_id)) {
           manualPaymentsPerEmployee.set(payment.employee_id, []);
         }
-        const paymentsList = manualPaymentsPerEmployee.get(payment.employee_id);
-        if (paymentsList) {
-          paymentsList.push({
-            id: payment.id,
-            date: payment.date,
-            amount: payment.allocated_cost,
-            description: payment.notes || undefined,
-          });
-        }
+        manualPaymentsPerEmployee.get(payment.employee_id)!.push({
+          id: payment.id,
+          date: payment.date,
+          amount: payment.allocated_cost,
+          description: payment.notes || undefined,
+        });
       });
 
       // Group tip payouts by employee (sum amounts in cents)
@@ -466,4 +463,4 @@ export const usePayroll = (
     adjustOvertime: adjustOvertimeMutation.mutate,
     isAdjustingOvertime: adjustOvertimeMutation.isPending,
   };
-};
+}

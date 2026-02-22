@@ -245,9 +245,11 @@ export default function RestaurantSettings() {
     const doubleThreshold = Number.parseFloat(otDoubleThreshold);
     const doubleMultiplier = Number.parseFloat(otDoubleMultiplier);
 
-    if (Number.isNaN(weeklyThreshold) || Number.isNaN(weeklyMultiplier)
-      || (otDailyEnabled && (Number.isNaN(dailyThreshold) || Number.isNaN(dailyMultiplier)))
-      || (otDailyEnabled && otDoubleEnabled && (Number.isNaN(doubleThreshold) || Number.isNaN(doubleMultiplier)))) {
+    const hasInvalidWeekly = Number.isNaN(weeklyThreshold) || Number.isNaN(weeklyMultiplier);
+    const hasInvalidDaily = otDailyEnabled && (Number.isNaN(dailyThreshold) || Number.isNaN(dailyMultiplier));
+    const hasInvalidDouble = otDailyEnabled && otDoubleEnabled && (Number.isNaN(doubleThreshold) || Number.isNaN(doubleMultiplier));
+
+    if (hasInvalidWeekly || hasInvalidDaily || hasInvalidDouble) {
       toast({ title: 'Invalid values', description: 'Please enter valid numbers for all fields.', variant: 'destructive' });
       return;
     }

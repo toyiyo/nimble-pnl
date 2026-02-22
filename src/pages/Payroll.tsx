@@ -585,12 +585,12 @@ const Payroll = () => {
                         {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {employee.compensationType === 'hourly' && employee.overtimeHours > 0 ? (
-                          <Badge variant="secondary">
-                            {formatHours(employee.overtimeHours)}
-                          </Badge>
-                        ) : (
-                          employee.compensationType === 'hourly' ? '0.00' : '-'
+                        {employee.compensationType !== 'hourly' ? '-' : (
+                          employee.overtimeHours > 0 ? (
+                            <Badge variant="secondary">
+                              {formatHours(employee.overtimeHours)}
+                            </Badge>
+                          ) : '0.00'
                         )}
                       </TableCell>
                       <TableCell className="text-right">

@@ -6,8 +6,7 @@ import { useOperatingCosts } from '@/hooks/useOperatingCosts';
 import { detectRecurringExpenses } from '@/lib/expenseSuggestions';
 import type { DismissalRecord } from '@/lib/expenseSuggestions';
 import { useToast } from '@/hooks/use-toast';
-import type { ExpenseSuggestion, SuggestionAction } from '@/types/operatingCosts';
-import { subDays } from 'date-fns';
+import type { SuggestionAction } from '@/types/operatingCosts';
 
 /** Number of days of bank transaction history to analyse for recurring expenses. */
 const LOOKBACK_DAYS = 90;
@@ -25,7 +24,7 @@ export function useExpenseSuggestions(restaurantId: string | null) {
     isLoading: dismissalsLoading,
   } = useQuery({
     queryKey: ['expenseSuggestionDismissals', restaurantId],
-    queryFn: async (): Promise<DismissalRecord[]> => {
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('expense_suggestion_dismissals')
         .select('suggestion_key, action, snoozed_until')
@@ -39,27 +38,22 @@ export function useExpenseSuggestions(restaurantId: string | null) {
   });
 
   // 3. Fetch bank transactions (last 90 days)
-  const dateTo = useMemo(() => new Date(), []); // computed once per mount
-  const dateFrom = useMemo(() => subDays(dateTo, LOOKBACK_DAYS), [dateTo]);
-
   const {
     data: expenseData,
     isLoading: transactionsLoading,
   } = useQuery({
     queryKey: ['expenseSuggestionTransactions', restaurantId],
-    queryFn: async () => {
-      return fetchExpenseData({
-        restaurantId: restaurantId!,
-        startDate: dateFrom,
-        endDate: dateTo,
-      });
+    queryFn: () => {
+      const endDate = new Date();
+      const startDate = new Date(endDate.getTime() - LOOKBACK_DAYS * 86_400_000);
+      return fetchExpenseData({ restaurantId: restaurantId!, startDate, endDate });
     },
     enabled: !!restaurantId,
     staleTime: 300000, // 5 minutes
   });
 
   // 4. Compute suggestions via pure detection logic (memoized)
-  const suggestions: ExpenseSuggestion[] = useMemo(() => {
+  const suggestions = useMemo(() => {
     if (!expenseData?.transactions) return [];
     return detectRecurringExpenses(
       expenseData.transactions,

@@ -7,12 +7,17 @@ import { CostBlock } from '@/components/budget/CostBlock';
 import { CostItemDialog } from '@/components/budget/CostItemDialog';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Target, Plus } from 'lucide-react';
-import { CostType, OperatingCostInput, CostBreakdownItem } from '@/types/operatingCosts';
+import { Target } from 'lucide-react';
+import type { CostType, OperatingCostInput, CostBreakdownItem, ExpenseSuggestion } from '@/types/operatingCosts';
 import { useExpenseSuggestions } from '@/hooks/useExpenseSuggestions';
-import type { ExpenseSuggestion } from '@/types/operatingCosts';
+
+const COST_TYPE_LABELS: Record<CostType, string> = {
+  fixed: 'Add Fixed Cost',
+  semi_variable: 'Add Semi-Variable Cost',
+  variable: 'Add Variable Cost',
+  custom: 'Add Custom Cost',
+};
 
 export default function BudgetRunRate() {
   const { selectedRestaurant } = useRestaurantContext();
@@ -20,10 +25,6 @@ export default function BudgetRunRate() {
   
   const {
     costs,
-    fixedCosts,
-    semiVariableCosts,
-    variableCosts,
-    customCosts,
     isLoading: costsLoading,
     createCost,
     updateCost,
@@ -100,11 +101,14 @@ export default function BudgetRunRate() {
     }
   };
   
-  const handleDeleteItem = (id: string) => {
-    deleteCost(id);
-  };
-  
   const isLoading = costsLoading || analysisLoading;
+
+  // Shared suggestion handler props for all CostBlock instances
+  const suggestionHandlers = {
+    onAcceptSuggestion: handleAcceptSuggestion,
+    onSnoozeSuggestion: snoozeSuggestion,
+    onDismissSuggestion: dismissSuggestion,
+  };
 
   if (!restaurantId) {
     return (
@@ -166,14 +170,12 @@ export default function BudgetRunRate() {
                 items={breakEvenData?.fixedCosts.items || []}
                 onAddItem={() => handleAddItem('fixed')}
                 onEditItem={handleEditItem}
-                onDeleteItem={handleDeleteItem}
+                onDeleteItem={deleteCost}
                 showAddButton
                 suggestions={suggestions.filter(s => s.costType === 'fixed')}
-                onAcceptSuggestion={handleAcceptSuggestion}
-                onSnoozeSuggestion={snoozeSuggestion}
-                onDismissSuggestion={dismissSuggestion}
+                {...suggestionHandlers}
               />
-              
+
               {/* Semi-Variable (Utilities) */}
               <CostBlock
                 title="Utilities (Averaged)"
@@ -183,11 +185,9 @@ export default function BudgetRunRate() {
                 onEditItem={handleEditItem}
                 infoText={`Smoothed from last ${breakEvenData?.semiVariableCosts.monthsAveraged || 3} months of transactions. Override any value to set manually.`}
                 suggestions={suggestions.filter(s => s.costType === 'semi_variable')}
-                onAcceptSuggestion={handleAcceptSuggestion}
-                onSnoozeSuggestion={snoozeSuggestion}
-                onDismissSuggestion={dismissSuggestion}
+                {...suggestionHandlers}
               />
-              
+
               {/* Variable Costs */}
               <CostBlock
                 title="Variable Costs"
@@ -197,11 +197,9 @@ export default function BudgetRunRate() {
                 onEditItem={handleEditItem}
                 showPercentages
                 suggestions={suggestions.filter(s => s.costType === 'variable')}
-                onAcceptSuggestion={handleAcceptSuggestion}
-                onSnoozeSuggestion={snoozeSuggestion}
-                onDismissSuggestion={dismissSuggestion}
+                {...suggestionHandlers}
               />
-              
+
               {/* Custom Costs */}
               <CostBlock
                 title="Custom / Other Costs"
@@ -210,12 +208,10 @@ export default function BudgetRunRate() {
                 items={breakEvenData?.customCosts.items || []}
                 onAddItem={() => handleAddItem('custom')}
                 onEditItem={handleEditItem}
-                onDeleteItem={handleDeleteItem}
+                onDeleteItem={deleteCost}
                 showAddButton
                 suggestions={suggestions.filter(s => s.costType === 'custom')}
-                onAcceptSuggestion={handleAcceptSuggestion}
-                onSnoozeSuggestion={snoozeSuggestion}
-                onDismissSuggestion={dismissSuggestion}
+                {...suggestionHandlers}
               />
             </>
           )}
@@ -232,11 +228,7 @@ export default function BudgetRunRate() {
         onSave={handleSaveItem}
         editingItem={editingItem}
         costType={dialogCostType}
-        title={
-          dialogCostType === 'fixed' ? 'Add Fixed Cost' :
-          dialogCostType === 'variable' ? 'Add Variable Cost' :
-          'Add Custom Cost'
-        }
+        title={COST_TYPE_LABELS[dialogCostType]}
       />
     </div>
   );

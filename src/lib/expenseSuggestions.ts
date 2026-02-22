@@ -13,19 +13,11 @@ import type {
   OperatingCost,
 } from '@/types/operatingCosts';
 
-// ---------------------------------------------------------------------------
-// Dismissal record shape (mirrors the DB table)
-// ---------------------------------------------------------------------------
-
 export interface DismissalRecord {
   suggestion_key: string;
   action: 'dismissed' | 'snoozed' | 'accepted';
   snoozed_until: string | null;
 }
-
-// ---------------------------------------------------------------------------
-// Subtype → CostType mapping
-// ---------------------------------------------------------------------------
 
 const SUBTYPE_COST_MAP: Record<string, CostType> = {
   rent: 'fixed',
@@ -43,10 +35,6 @@ export function mapSubtypeToCostType(
   return SUBTYPE_COST_MAP[subtype] ?? 'custom';
 }
 
-// ---------------------------------------------------------------------------
-// Suggested-name mapping (human-readable labels for known subtypes)
-// ---------------------------------------------------------------------------
-
 const SUBTYPE_NAME_MAP: Record<string, string> = {
   rent: 'Rent / Lease',
   insurance: 'Insurance',
@@ -59,16 +47,11 @@ function suggestedNameForSubtype(
   subtype: string | null | undefined,
   accountName: string | null | undefined,
 ): string {
-  if (subtype && SUBTYPE_NAME_MAP[subtype]) {
-    return SUBTYPE_NAME_MAP[subtype];
+  if (subtype) {
+    return SUBTYPE_NAME_MAP[subtype] ?? accountName ?? 'Other Expense';
   }
-  // Fallback to the chart-of-accounts name, or a generic label
   return accountName ?? 'Other Expense';
 }
-
-// ---------------------------------------------------------------------------
-// Core algorithm
-// ---------------------------------------------------------------------------
 
 /**
  * Detect recurring expenses from bank transactions and return suggestions.
@@ -148,31 +131,20 @@ export function detectRecurringExpenses(
     });
   }
 
-  // Step 7: Exclude already-tracked operating costs
-  const afterExclusion = candidates.filter(
-    (s) => !isAlreadyTracked(s, existingCosts),
-  );
-
-  // Step 8: Filter out dismissed / actively-snoozed
+  // Exclude already-tracked operating costs and dismissed/snoozed suggestions
   const dismissalMap = new Map(
     dismissals.map((d) => [d.suggestion_key, d]),
   );
 
-  const afterDismissals = afterExclusion.filter((s) => {
+  const filtered = candidates.filter((s) => {
+    if (isAlreadyTracked(s, existingCosts)) return false;
     const dismissal = dismissalMap.get(s.id);
-    if (!dismissal) return true;
-    return !isDismissedOrSnoozed(dismissal);
+    return !dismissal || !isDismissedOrSnoozed(dismissal);
   });
 
-  // Step 10: Sort by confidence descending
-  afterDismissals.sort((a, b) => b.confidence - a.confidence);
-
-  return afterDismissals;
+  filtered.sort((a, b) => b.confidence - a.confidence);
+  return filtered;
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Group transactions by payee. Uses normalized_payee first, falls back to
@@ -265,53 +237,42 @@ function computeConfidence(matchedMonths: number, cv: number): number {
 
 /**
  * Check if a suggestion is already tracked in operating costs.
- * Matches by category (exact) or name (case-insensitive contains payee).
+ * Matches by category (exact) or name (case-insensitive substring in either direction).
  */
 function isAlreadyTracked(
   suggestion: ExpenseSuggestion,
   costs: OperatingCost[],
 ): boolean {
   const lastColon = suggestion.id.lastIndexOf(':');
-  const subtypeFromId = lastColon >= 0 ? suggestion.id.slice(lastColon + 1) : ''; // e.g. "rent" from "landlord llc:rent"
+  const subtypeFromId = lastColon >= 0 ? suggestion.id.slice(lastColon + 1) : '';
   const payeeLower = suggestion.payeeName.toLowerCase();
 
   return costs.some((cost) => {
-    // Match by category (the account_subtype matches the operating cost category)
-    if (
+    const categoryMatch =
       subtypeFromId &&
       subtypeFromId !== 'custom' &&
-      cost.category.toLowerCase() === subtypeFromId.toLowerCase()
-    ) {
-      return true;
-    }
-    // Match by name (operating cost name contains the payee, case-insensitive)
-    if (cost.name.toLowerCase().includes(payeeLower)) {
-      return true;
-    }
-    // Match by payee containing the cost name
-    if (payeeLower.includes(cost.name.toLowerCase()) && cost.name.length > 0) {
-      return true;
-    }
-    return false;
+      cost.category.toLowerCase() === subtypeFromId.toLowerCase();
+
+    const costNameLower = cost.name.toLowerCase();
+    const nameMatch =
+      costNameLower.includes(payeeLower) ||
+      (costNameLower.length > 0 && payeeLower.includes(costNameLower));
+
+    return categoryMatch || nameMatch;
   });
 }
 
 /**
  * Check if a dismissal record means the suggestion should be hidden.
- * - 'dismissed' → always hidden
- * - 'accepted' → always hidden
- * - 'snoozed'  → hidden only if snoozed_until is in the future
+ * - 'dismissed' / 'accepted' → always hidden
+ * - 'snoozed' → hidden unless snoozed_until is in the past
  */
 function isDismissedOrSnoozed(dismissal: DismissalRecord): boolean {
   if (dismissal.action === 'dismissed' || dismissal.action === 'accepted') {
     return true;
   }
-  if (dismissal.action === 'snoozed' && dismissal.snoozed_until) {
-    return new Date(dismissal.snoozed_until) > new Date();
-  }
-  // Snoozed with no expiry → treat as dismissed
-  if (dismissal.action === 'snoozed' && !dismissal.snoozed_until) {
-    return true;
+  if (dismissal.action === 'snoozed') {
+    return !dismissal.snoozed_until || new Date(dismissal.snoozed_until) > new Date();
   }
   return false;
 }

@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { ChevronDown, ChevronRight, Plus, Pencil, Trash2 } from 'lucide-react';
 import { CostBreakdownItem } from '@/types/operatingCosts';
 import { ExpenseSuggestionBanner } from '@/components/budget/ExpenseSuggestionBanner';
 import type { ExpenseSuggestion } from '@/types/operatingCosts';
-import { cn } from '@/lib/utils';
 
 interface CostBlockProps {
   title: string;
@@ -108,7 +106,7 @@ export function CostBlock({
         
         <CollapsibleContent>
           <div className="px-4 pb-4 space-y-2">
-            {suggestions && suggestions.length > 0 && onAcceptSuggestion && onSnoozeSuggestion && onDismissSuggestion && (
+            {suggestions && onAcceptSuggestion && onSnoozeSuggestion && onDismissSuggestion && (
               <ExpenseSuggestionBanner
                 suggestions={suggestions}
                 onAccept={onAcceptSuggestion}

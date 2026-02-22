@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
+import { calculateImportedTotal, calculateUnitPrice } from '@/utils/receiptImportUtils';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -35,6 +36,7 @@ export interface ReceiptImport {
   processed_at: string | null;
   status: string;
   total_amount: number | null;
+  imported_total: number | null;
   raw_ocr_data: any;
   created_at: string;
   updated_at: string;
@@ -594,12 +596,7 @@ export const useReceiptImport = () => {
             ? currentMappings 
             : [...currentMappings, receiptItemName];
 
-          // Calculate unit price - prefer stored unit_price, fallback to calculation
-          const unitPrice = item.unit_price 
-            ? item.unit_price 
-            : (item.parsed_quantity && item.parsed_quantity > 0) 
-              ? (item.parsed_price || 0) / item.parsed_quantity 
-              : (item.parsed_price || 0);
+          const unitPrice = calculateUnitPrice(item);
 
           const { error: stockError } = await supabase
             .from('products')
@@ -607,7 +604,7 @@ export const useReceiptImport = () => {
               current_stock: newStock,
               cost_per_unit: unitPrice,
               receipt_item_names: updatedMappings,
-              supplier_id: supplierId,  // Update supplier reference
+              supplier_id: supplierId,
               updated_at: new Date().toISOString()
             })
             .eq('id', item.matched_product_id);
@@ -653,12 +650,7 @@ export const useReceiptImport = () => {
           const receiptItemName = item.parsed_name || item.raw_text;
           const itemNameKey = receiptItemName.toLowerCase().trim();
           
-          // Calculate unit price - prefer stored unit_price, fallback to calculation
-          const unitPrice = item.unit_price 
-            ? item.unit_price 
-            : (item.parsed_quantity && item.parsed_quantity > 0) 
-              ? (item.parsed_price || 0) / item.parsed_quantity 
-              : (item.parsed_price || 0);
+          const unitPrice = calculateUnitPrice(item);
 
           // Check if we already created this product from a previous line item
           if (createdProducts.has(itemNameKey)) {
@@ -802,11 +794,26 @@ export const useReceiptImport = () => {
         }
       }
 
-      // Mark receipt as imported
-      await supabase
+      const importedTotal = calculateImportedTotal(lineItems);
+
+      // Mark receipt as imported with calculated total
+      const { error: statusError } = await supabase
         .from('receipt_imports')
-        .update({ status: 'imported' })
+        .update({
+          status: 'imported',
+          imported_total: importedTotal
+        })
         .eq('id', receiptId);
+
+      if (statusError) {
+        console.error('Error marking receipt as imported:', statusError);
+        toast({
+          title: "Warning",
+          description: "Items were imported but receipt status failed to update. Please verify.",
+          variant: "destructive",
+        });
+        return true;
+      }
 
       toast({
         title: "Success",

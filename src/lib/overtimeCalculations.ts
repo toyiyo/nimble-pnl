@@ -154,3 +154,38 @@ export function calculateOvertimePay(
     totalGrossPay: regularPay + overtimePay + doubleTimePay,
   };
 }
+
+export interface CalculateEmployeeOvertimeInput {
+  dailyHours: Record<string, number>;
+  rules?: OvertimeRules;
+  isExempt: boolean;
+  hourlyRateCents: number;
+  totalTipsCents: number;
+  adjustments: OvertimeAdjustment[];
+}
+
+export interface EmployeeOvertimeResult {
+  hours: OvertimeResult;
+  pay: OvertimePayResult;
+}
+
+export function calculateEmployeeOvertime(
+  input: CalculateEmployeeOvertimeInput
+): EmployeeOvertimeResult {
+  const rules = input.rules ?? DEFAULT_OVERTIME_RULES;
+
+  if (input.isExempt) {
+    const totalHours = Object.values(input.dailyHours).reduce((s, h) => s + h, 0);
+    const hours: OvertimeResult = {
+      regularHours: totalHours, weeklyOvertimeHours: 0,
+      dailyOvertimeHours: 0, doubleTimeHours: 0,
+    };
+    return { hours, pay: calculateOvertimePay(hours, input.hourlyRateCents, input.totalTipsCents, rules) };
+  }
+
+  const weeklyResult = calculateWeeklyOvertime(input.dailyHours, rules);
+  const adjusted = applyOvertimeAdjustments(weeklyResult, input.adjustments);
+  const pay = calculateOvertimePay(adjusted, input.hourlyRateCents, input.totalTipsCents, rules);
+
+  return { hours: adjusted, pay };
+}

@@ -5,6 +5,7 @@ import {
   calculateWeeklyOvertime,
   applyOvertimeAdjustments,
   calculateOvertimePay,
+  calculateEmployeeOvertime,
   type OvertimeRules,
   type OvertimeResult,
   type OvertimeAdjustment,
@@ -285,6 +286,111 @@ describe('overtimeCalculations', () => {
       const result = calculateOvertimePay(hours, 1000, 0, rules);
       expect(result.regularPay).toBe(35 * 1000);
       expect(result.overtimePay).toBe(6000 + 7500); // weekly: 3*1000*2.0, daily: 5*1000*1.5
+    });
+  });
+
+  describe('calculateEmployeeOvertime', () => {
+    it('skips OT calculation for exempt employees', () => {
+      const dailyHours: Record<string, number> = {
+        '2026-02-16': 10, '2026-02-17': 10, '2026-02-18': 10,
+        '2026-02-19': 10, '2026-02-20': 10,
+      };
+      const result = calculateEmployeeOvertime({
+        dailyHours, rules: DEFAULT_OVERTIME_RULES, isExempt: true,
+        hourlyRateCents: 1500, totalTipsCents: 0, adjustments: [],
+      });
+      expect(result.hours.regularHours).toBe(50);
+      expect(result.hours.weeklyOvertimeHours).toBe(0);
+      expect(result.hours.dailyOvertimeHours).toBe(0);
+      expect(result.hours.doubleTimeHours).toBe(0);
+      expect(result.pay.overtimePay).toBe(0);
+      expect(result.pay.regularPay).toBe(50 * 1500);
+    });
+
+    it('calculates full OT pipeline for non-exempt employees', () => {
+      const dailyHours: Record<string, number> = {
+        '2026-02-16': 9, '2026-02-17': 9, '2026-02-18': 9,
+        '2026-02-19': 9, '2026-02-20': 9,
+      };
+      const result = calculateEmployeeOvertime({
+        dailyHours, rules: DEFAULT_OVERTIME_RULES, isExempt: false,
+        hourlyRateCents: 2000, totalTipsCents: 0, adjustments: [],
+      });
+      expect(result.hours.regularHours).toBe(40);
+      expect(result.hours.weeklyOvertimeHours).toBe(5);
+      expect(result.pay.regularPay).toBe(40 * 2000);
+      expect(result.pay.overtimePay).toBe(5 * 2000 * 1.5);
+    });
+
+    it('applies adjustments after OT calculation for non-exempt', () => {
+      const dailyHours: Record<string, number> = {
+        '2026-02-16': 9, '2026-02-17': 9, '2026-02-18': 9,
+        '2026-02-19': 9, '2026-02-20': 9,
+      };
+      const adjustments: OvertimeAdjustment[] = [{
+        employeeId: 'emp-1', punchDate: '2026-02-16',
+        adjustmentType: 'overtime_to_regular', hours: 2, reason: 'Correction',
+      }];
+      const result = calculateEmployeeOvertime({
+        dailyHours, rules: DEFAULT_OVERTIME_RULES, isExempt: false,
+        hourlyRateCents: 2000, totalTipsCents: 0, adjustments,
+      });
+      expect(result.hours.regularHours).toBe(42);
+      expect(result.hours.weeklyOvertimeHours).toBe(3);
+    });
+
+    it('uses default rules when none provided', () => {
+      const dailyHours: Record<string, number> = { '2026-02-16': 42 };
+      const result = calculateEmployeeOvertime({
+        dailyHours, isExempt: false, hourlyRateCents: 1000,
+        totalTipsCents: 0, adjustments: [],
+      });
+      expect(result.hours.regularHours).toBe(40);
+      expect(result.hours.weeklyOvertimeHours).toBe(2);
+    });
+  });
+
+  describe('Integration: calculateEmployeeOvertime with realistic scenarios', () => {
+    it('CA restaurant: daily 8hr + weekly 40hr + double-time 12hr', () => {
+      const rules: OvertimeRules = {
+        weeklyThresholdHours: 40, weeklyOtMultiplier: 1.5,
+        dailyThresholdHours: 8, dailyOtMultiplier: 1.5,
+        dailyDoubleThresholdHours: 12, dailyDoubleMultiplier: 2.0,
+        excludeTipsFromOtRate: true,
+      };
+      const dailyHours: Record<string, number> = {
+        '2026-02-16': 14, '2026-02-17': 8, '2026-02-18': 8,
+        '2026-02-19': 8, '2026-02-20': 8, '2026-02-21': 4,
+      };
+      const result = calculateEmployeeOvertime({
+        dailyHours, rules, isExempt: false,
+        hourlyRateCents: 2000, totalTipsCents: 10000, adjustments: [],
+      });
+      expect(result.hours.regularHours).toBe(40);
+      expect(result.hours.dailyOvertimeHours).toBe(4);
+      expect(result.hours.doubleTimeHours).toBe(2);
+      expect(result.hours.weeklyOvertimeHours).toBe(4);
+      expect(result.pay.regularPay).toBe(80000);
+      expect(result.pay.overtimePay).toBe(24000);
+      expect(result.pay.doubleTimePay).toBe(8000);
+      expect(result.pay.totalGrossPay).toBe(112000);
+    });
+
+    it('federal-only restaurant: weekly 40hr, no daily OT', () => {
+      const dailyHours: Record<string, number> = {
+        '2026-02-16': 12, '2026-02-17': 12, '2026-02-18': 12,
+        '2026-02-19': 12, '2026-02-20': 4,
+      };
+      const result = calculateEmployeeOvertime({
+        dailyHours, rules: DEFAULT_OVERTIME_RULES, isExempt: false,
+        hourlyRateCents: 1500, totalTipsCents: 0, adjustments: [],
+      });
+      expect(result.hours.regularHours).toBe(40);
+      expect(result.hours.weeklyOvertimeHours).toBe(12);
+      expect(result.hours.dailyOvertimeHours).toBe(0);
+      expect(result.hours.doubleTimeHours).toBe(0);
+      expect(result.pay.regularPay).toBe(60000);
+      expect(result.pay.overtimePay).toBe(12 * 1500 * 1.5);
     });
   });
 });

@@ -20,15 +20,13 @@ export interface MemoizedAuditTransactionRowProps {
   displayValues: AuditDisplayValues;
 }
 
-const getTransactionIcon = (type: string) => {
-  switch (type) {
-    case 'purchase': return <TrendingUp className="h-3.5 w-3.5" />;
-    case 'usage': return <TrendingDown className="h-3.5 w-3.5" />;
-    case 'adjustment': return <Package className="h-3.5 w-3.5" />;
-    case 'waste': return <AlertTriangle className="h-3.5 w-3.5" />;
-    default: return <Package className="h-3.5 w-3.5" />;
-  }
+const TRANSACTION_ICONS: Record<string, JSX.Element> = {
+  purchase: <TrendingUp className="h-3.5 w-3.5" />,
+  usage: <TrendingDown className="h-3.5 w-3.5" />,
+  adjustment: <Package className="h-3.5 w-3.5" />,
+  waste: <AlertTriangle className="h-3.5 w-3.5" />,
 };
+const DEFAULT_ICON = <Package className="h-3.5 w-3.5" />;
 
 export const MemoizedAuditTransactionRow = memo(function MemoizedAuditTransactionRow({
   transaction,
@@ -59,7 +57,7 @@ export const MemoizedAuditTransactionRow = memo(function MemoizedAuditTransactio
               variant="secondary"
               className={`${badgeColor} flex items-center gap-1 px-2 py-0.5 text-[12px]`}
             >
-              {getTransactionIcon(transaction.transaction_type)}
+              {TRANSACTION_ICONS[transaction.transaction_type] || DEFAULT_ICON}
               <span className="font-medium capitalize">{transaction.transaction_type}</span>
             </Badge>
             <h3 className="text-[14px] font-medium text-foreground leading-tight">{transaction.product_name}</h3>

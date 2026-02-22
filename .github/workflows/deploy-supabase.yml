@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-supabase-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to Production
@@ -49,3 +53,12 @@ jobs:
           echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Migrations:** Pushed successfully" >> $GITHUB_STEP_SUMMARY
           echo "- **Edge Functions:** Deployed successfully" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deployment failed
+        if: failure()
+        run: |
+          echo "## Deployment FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Check logs above for details**" >> $GITHUB_STEP_SUMMARY

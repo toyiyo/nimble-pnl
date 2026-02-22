@@ -1,23 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { calculateImportedTotal } from '@/utils/receiptImportUtils';
 
 /**
  * Tests for imported_total calculation logic.
  *
  * The imported total should sum parsed_price only for items
  * with mapping_status 'mapped' (with matched_product_id) or 'new_item'
- * — NOT 'skipped', 'pending', or 'mapped' without a product match.
+ * -- NOT 'skipped', 'pending', or 'mapped' without a product match.
  */
-
-const calculateImportedTotal = (
-  lineItems: Array<{ mapping_status: string; matched_product_id: string | null; parsed_price: number | null }>
-): number => {
-  return lineItems
-    .filter(item =>
-      (item.mapping_status === 'mapped' && item.matched_product_id) ||
-      item.mapping_status === 'new_item'
-    )
-    .reduce((sum, item) => sum + (item.parsed_price || 0), 0);
-};
 
 describe('Imported Total Calculation', () => {
   it('should sum parsed_price for mapped and new_item statuses only', () => {
@@ -28,8 +18,7 @@ describe('Imported Total Calculation', () => {
       { mapping_status: 'pending', matched_product_id: null, parsed_price: 5.00 },
     ];
 
-    const total = calculateImportedTotal(lineItems);
-    expect(total).toBe(35.50);
+    expect(calculateImportedTotal(lineItems)).toBe(35.50);
   });
 
   it('should return 0 when no items are mapped or new_item', () => {
@@ -38,8 +27,7 @@ describe('Imported Total Calculation', () => {
       { mapping_status: 'pending', matched_product_id: null, parsed_price: 5.00 },
     ];
 
-    const total = calculateImportedTotal(lineItems);
-    expect(total).toBe(0);
+    expect(calculateImportedTotal(lineItems)).toBe(0);
   });
 
   it('should handle null parsed_price as 0', () => {
@@ -48,13 +36,11 @@ describe('Imported Total Calculation', () => {
       { mapping_status: 'mapped', matched_product_id: 'prod-2', parsed_price: 20.00 },
     ];
 
-    const total = calculateImportedTotal(lineItems);
-    expect(total).toBe(20.00);
+    expect(calculateImportedTotal(lineItems)).toBe(20.00);
   });
 
   it('should handle empty array', () => {
-    const total = calculateImportedTotal([]);
-    expect(total).toBe(0);
+    expect(calculateImportedTotal([])).toBe(0);
   });
 
   it('should sum all items when all are mapped', () => {
@@ -64,8 +50,7 @@ describe('Imported Total Calculation', () => {
       { mapping_status: 'mapped', matched_product_id: 'prod-3', parsed_price: 30.00 },
     ];
 
-    const total = calculateImportedTotal(lineItems);
-    expect(total).toBe(60.00);
+    expect(calculateImportedTotal(lineItems)).toBe(60.00);
   });
 
   it('should exclude mapped items without matched_product_id', () => {
@@ -74,7 +59,6 @@ describe('Imported Total Calculation', () => {
       { mapping_status: 'mapped', matched_product_id: null, parsed_price: 10.00 },
     ];
 
-    const total = calculateImportedTotal(lineItems);
-    expect(total).toBe(25.00);
+    expect(calculateImportedTotal(lineItems)).toBe(25.00);
   });
 });

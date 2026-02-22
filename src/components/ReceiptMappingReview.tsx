@@ -20,6 +20,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { buildReceiptReferencePattern } from '@/utils/receiptImportUtils';
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
@@ -417,7 +418,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
         const { error: txError } = await supabase
           .from('inventory_transactions')
           .update({ transaction_date: dateString })
-          .like('reference_id', `receipt_${receiptId}_%`);
+          .like('reference_id', buildReceiptReferencePattern(receiptId));
 
         if (txError) {
           console.error('Error cascading date to transactions:', txError);

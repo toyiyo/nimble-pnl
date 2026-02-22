@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import {
+  buildReceiptReferencePattern,
+  matchesReceiptReference,
+} from '@/utils/receiptImportUtils';
 
 /**
  * Tests for date cascade reference_id matching logic.
@@ -7,14 +11,6 @@ import { describe, it, expect } from 'vitest';
  * we need to find all inventory_transactions linked to that receipt
  * via the reference_id pattern: receipt_{receiptId}_{itemId}
  */
-
-const buildReceiptReferencePattern = (receiptId: string): string => {
-  return `receipt_${receiptId}_%`;
-};
-
-const matchesReceiptReference = (referenceId: string, receiptId: string): boolean => {
-  return referenceId.startsWith(`receipt_${receiptId}_`);
-};
 
 describe('Receipt Date Cascade - Reference ID Matching', () => {
   const receiptId = 'abc-123-def';

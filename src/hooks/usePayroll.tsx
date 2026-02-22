@@ -91,6 +91,14 @@ interface DBEmployeeTip {
   tip_date: string;
 }
 
+interface DBOvertimeAdjustment {
+  employee_id: string;
+  punch_date: string;
+  adjustment_type: string;
+  hours: number;
+  reason: string | null;
+}
+
 // Type for the time_punches data from Supabase
 interface DBTimePunch {
   id: string;
@@ -190,8 +198,7 @@ export const usePayroll = (
         punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
 
-      // Include tips from tip_split_items and employee_tips for the period
-      // We'll use the new utility to prevent double-counting
+      // Fetch tips from tip_split_items and employee_tips for the period
       const { data: employeeTips, error: employeeTipsError } = await supabase
         .from('employee_tips')
         .select('employee_id, tip_amount, tip_date')
@@ -223,7 +230,7 @@ export const usePayroll = (
         tip_date: tip.tip_date,
       }));
 
-      // Use the new utility with date filtering to prevent double-counting
+      // Aggregate tips with date filtering to prevent double-counting
       const tipsPerEmployee = computeTipTotalsWithFiltering(
         tipItems,
         employeeTipItems,
@@ -269,22 +276,24 @@ export const usePayroll = (
         .gte('punch_date', format(startDate, 'yyyy-MM-dd'))
         .lte('punch_date', format(endDate, 'yyyy-MM-dd'));
 
-      const overtimeRules = otRulesData ? {
-        weeklyThresholdHours: Number(otRulesData.weekly_threshold_hours),
-        weeklyOtMultiplier: Number(otRulesData.weekly_ot_multiplier),
-        dailyThresholdHours: otRulesData.daily_threshold_hours ? Number(otRulesData.daily_threshold_hours) : null,
-        dailyOtMultiplier: Number(otRulesData.daily_ot_multiplier),
-        dailyDoubleThresholdHours: otRulesData.daily_double_threshold_hours ? Number(otRulesData.daily_double_threshold_hours) : null,
-        dailyDoubleMultiplier: Number(otRulesData.daily_double_multiplier),
-        excludeTipsFromOtRate: otRulesData.exclude_tips_from_ot_rate,
-      } : undefined;
+      const overtimeRules = otRulesData
+        ? {
+            weeklyThresholdHours: Number(otRulesData.weekly_threshold_hours),
+            weeklyOtMultiplier: Number(otRulesData.weekly_ot_multiplier),
+            dailyThresholdHours: otRulesData.daily_threshold_hours != null ? Number(otRulesData.daily_threshold_hours) : null,
+            dailyOtMultiplier: Number(otRulesData.daily_ot_multiplier),
+            dailyDoubleThresholdHours: otRulesData.daily_double_threshold_hours != null ? Number(otRulesData.daily_double_threshold_hours) : null,
+            dailyDoubleMultiplier: Number(otRulesData.daily_double_multiplier),
+            excludeTipsFromOtRate: otRulesData.exclude_tips_from_ot_rate,
+          }
+        : undefined;
 
-      const overtimeAdjustments = (otAdjData || []).map((adj: { employee_id: string; punch_date: string; adjustment_type: string; hours: number; reason: string | null }) => ({
+      const overtimeAdjustments = (otAdjData ?? []).map((adj: DBOvertimeAdjustment) => ({
         employeeId: adj.employee_id,
         punchDate: adj.punch_date,
         adjustmentType: adj.adjustment_type as 'regular_to_overtime' | 'overtime_to_regular',
         hours: Number(adj.hours),
-        reason: adj.reason || '',
+        reason: adj.reason ?? '',
       }));
 
       // Filter employees based on deactivation date vs payroll period

@@ -72,8 +72,7 @@ export function calculateWeeklyOvertime(
   let totalDailyOt = 0;
   let totalDoubleTime = 0;
 
-  for (const rawHours of Object.values(dailyHours)) {
-    const hours = Math.max(0, rawHours);
+  for (const hours of Object.values(dailyHours)) {
     const daily = calculateDailyOvertime(hours, rules.dailyThresholdHours, rules.dailyDoubleThresholdHours);
     totalRegular += daily.regularHours;
     totalDailyOt += daily.dailyOvertimeHours;
@@ -178,12 +177,15 @@ export function calculateEmployeeOvertime(
   const rules = input.rules ?? DEFAULT_OVERTIME_RULES;
 
   if (input.isExempt) {
-    const totalHours = Object.values(input.dailyHours).reduce((s, h) => s + h, 0);
+    const totalHours = Object.values(input.dailyHours).reduce((sum, h) => sum + h, 0);
     const hours: OvertimeResult = {
-      regularHours: totalHours, weeklyOvertimeHours: 0,
-      dailyOvertimeHours: 0, doubleTimeHours: 0,
+      regularHours: totalHours,
+      weeklyOvertimeHours: 0,
+      dailyOvertimeHours: 0,
+      doubleTimeHours: 0,
     };
-    return { hours, pay: calculateOvertimePay(hours, input.hourlyRateCents, input.totalTipsCents, rules) };
+    const pay = calculateOvertimePay(hours, input.hourlyRateCents, input.totalTipsCents, rules);
+    return { hours, pay };
   }
 
   const weeklyResult = calculateWeeklyOvertime(input.dailyHours, rules);

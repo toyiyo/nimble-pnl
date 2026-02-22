@@ -118,3 +118,24 @@ export function computeAuditDisplayValues(
     conversionBadges,
   };
 }
+
+// --- Filter Counting ---
+
+interface FilterState {
+  typeFilter: string;
+  searchTerm: string;
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * Counts the number of active filters that differ from defaults.
+ * The default 7-day date range does NOT count as an active filter.
+ */
+export function countActiveFilters(filters: FilterState): number {
+  let count = 0;
+  if (filters.typeFilter !== 'all') count++;
+  if (filters.searchTerm.trim() !== '') count++;
+  if (!isDefaultDateRange(filters.startDate, filters.endDate)) count++;
+  return count;
+}

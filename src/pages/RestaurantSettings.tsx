@@ -201,12 +201,15 @@ export default function RestaurantSettings() {
     if (!selectedRestaurant) return;
     const fetchOtRules = async () => {
       setOtRulesLoading(true);
-      const { data } = await (supabase
+      const { data, error } = await (supabase
         .from('overtime_rules' as any) as any)
-        .select('*')
+        .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .maybeSingle();
-      if (data) {
+      if (error) {
+        console.error('Error fetching overtime rules:', error);
+        toast({ title: 'Failed to load overtime rules', description: error.message, variant: 'destructive' });
+      } else if (data) {
         setOtWeeklyThreshold(String(data.weekly_threshold_hours));
         setOtWeeklyMultiplier(String(data.weekly_ot_multiplier));
         setOtDailyEnabled(data.daily_threshold_hours != null);
@@ -216,6 +219,16 @@ export default function RestaurantSettings() {
         setOtDoubleThreshold(String(data.daily_double_threshold_hours ?? 12));
         setOtDoubleMultiplier(String(data.daily_double_multiplier));
         setOtExcludeTips(data.exclude_tips_from_ot_rate);
+      } else {
+        setOtWeeklyThreshold('40');
+        setOtWeeklyMultiplier('1.5');
+        setOtDailyEnabled(false);
+        setOtDailyThreshold('8');
+        setOtDailyMultiplier('1.5');
+        setOtDoubleEnabled(false);
+        setOtDoubleThreshold('12');
+        setOtDoubleMultiplier('2.0');
+        setOtExcludeTips(true);
       }
       setOtRulesLoading(false);
     };
@@ -224,18 +237,38 @@ export default function RestaurantSettings() {
 
   const handleSaveOtRules = async () => {
     if (!selectedRestaurant) return;
+
+    const weeklyThreshold = Number.parseFloat(otWeeklyThreshold);
+    const weeklyMultiplier = Number.parseFloat(otWeeklyMultiplier);
+    const dailyThreshold = Number.parseFloat(otDailyThreshold);
+    const dailyMultiplier = Number.parseFloat(otDailyMultiplier);
+    const doubleThreshold = Number.parseFloat(otDoubleThreshold);
+    const doubleMultiplier = Number.parseFloat(otDoubleMultiplier);
+
+    if (Number.isNaN(weeklyThreshold) || Number.isNaN(weeklyMultiplier)
+      || (otDailyEnabled && (Number.isNaN(dailyThreshold) || Number.isNaN(dailyMultiplier)))
+      || (otDailyEnabled && otDoubleEnabled && (Number.isNaN(doubleThreshold) || Number.isNaN(doubleMultiplier)))) {
+      toast({ title: 'Invalid values', description: 'Please enter valid numbers for all fields.', variant: 'destructive' });
+      return;
+    }
+
+    if (otDailyEnabled && otDoubleEnabled && doubleThreshold <= dailyThreshold) {
+      toast({ title: 'Invalid thresholds', description: 'Double-time threshold must be greater than daily overtime threshold.', variant: 'destructive' });
+      return;
+    }
+
     setOtSaving(true);
     try {
       const { error } = await (supabase
         .from('overtime_rules' as any) as any)
         .upsert({
           restaurant_id: selectedRestaurant.restaurant_id,
-          weekly_threshold_hours: Number.parseFloat(otWeeklyThreshold),
-          weekly_ot_multiplier: Number.parseFloat(otWeeklyMultiplier),
-          daily_threshold_hours: otDailyEnabled ? Number.parseFloat(otDailyThreshold) : null,
-          daily_ot_multiplier: Number.parseFloat(otDailyMultiplier),
-          daily_double_threshold_hours: otDoubleEnabled ? Number.parseFloat(otDoubleThreshold) : null,
-          daily_double_multiplier: Number.parseFloat(otDoubleMultiplier),
+          weekly_threshold_hours: weeklyThreshold,
+          weekly_ot_multiplier: weeklyMultiplier,
+          daily_threshold_hours: otDailyEnabled ? dailyThreshold : null,
+          daily_ot_multiplier: dailyMultiplier,
+          daily_double_threshold_hours: (otDailyEnabled && otDoubleEnabled) ? doubleThreshold : null,
+          daily_double_multiplier: doubleMultiplier,
           exclude_tips_from_ot_rate: otExcludeTips,
         }, { onConflict: 'restaurant_id' });
       if (error) throw error;

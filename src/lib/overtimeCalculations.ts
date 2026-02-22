@@ -39,3 +39,25 @@ export const DEFAULT_OVERTIME_RULES: OvertimeRules = {
   dailyDoubleMultiplier: 2.0,
   excludeTipsFromOtRate: true,
 };
+
+export function calculateDailyOvertime(
+  hoursWorked: number,
+  dailyThreshold: number | null,
+  doubleTimeThreshold: number | null
+): { regularHours: number; dailyOvertimeHours: number; doubleTimeHours: number } {
+  if (dailyThreshold === null || hoursWorked <= dailyThreshold) {
+    return { regularHours: hoursWorked, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+  }
+
+  const regularHours = dailyThreshold;
+  const overtimeTotal = hoursWorked - dailyThreshold;
+
+  if (doubleTimeThreshold === null || hoursWorked <= doubleTimeThreshold) {
+    return { regularHours, dailyOvertimeHours: overtimeTotal, doubleTimeHours: 0 };
+  }
+
+  const dailyOvertimeHours = doubleTimeThreshold - dailyThreshold;
+  const doubleTimeHours = hoursWorked - doubleTimeThreshold;
+
+  return { regularHours, dailyOvertimeHours, doubleTimeHours };
+}

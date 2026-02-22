@@ -89,63 +89,42 @@ export default function InventoryAudit() {
     endDate,
   });
 
-  // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
-    const filtered = transactions.filter(transaction =>
-      transaction.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (transaction.reason || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (transaction.reference_id || '').toLowerCase().includes(searchTerm.toLowerCase())
+    const term = searchTerm.toLowerCase();
+    const filtered = transactions.filter(txn =>
+      txn.product_name.toLowerCase().includes(term) ||
+      (txn.reason || '').toLowerCase().includes(term) ||
+      (txn.reference_id || '').toLowerCase().includes(term)
     );
+
+    function getDate(txn: typeof transactions[number]): number {
+      return new Date(txn.transaction_date || txn.created_at).getTime();
+    }
+
+    function dateTiebreaker(a: typeof transactions[number], b: typeof transactions[number]): number {
+      return getDate(b) - getDate(a);
+    }
 
     return filtered.sort((a, b) => {
       let comparison = 0;
 
       switch (sortBy) {
-        case 'date': {
-          const aDate = a.transaction_date || a.created_at;
-          const bDate = b.transaction_date || b.created_at;
-          comparison = new Date(aDate).getTime() - new Date(bDate).getTime();
-          if (comparison === 0) {
-            comparison = a.id.localeCompare(b.id);
-          }
+        case 'date':
+          comparison = getDate(a) - getDate(b);
+          if (comparison === 0) comparison = a.id.localeCompare(b.id);
           break;
-        }
-        case 'product': {
-          comparison = a.product_name.localeCompare(b.product_name);
-          if (comparison === 0) {
-            const aDate = a.transaction_date || a.created_at;
-            const bDate = b.transaction_date || b.created_at;
-            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
-          }
+        case 'product':
+          comparison = a.product_name.localeCompare(b.product_name) || dateTiebreaker(a, b);
           break;
-        }
-        case 'quantity': {
-          comparison = Math.abs(a.quantity) - Math.abs(b.quantity);
-          if (comparison === 0) {
-            const aDate = a.transaction_date || a.created_at;
-            const bDate = b.transaction_date || b.created_at;
-            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
-          }
+        case 'quantity':
+          comparison = (Math.abs(a.quantity) - Math.abs(b.quantity)) || dateTiebreaker(a, b);
           break;
-        }
-        case 'cost': {
-          comparison = Math.abs(a.total_cost || 0) - Math.abs(b.total_cost || 0);
-          if (comparison === 0) {
-            const aDate = a.transaction_date || a.created_at;
-            const bDate = b.transaction_date || b.created_at;
-            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
-          }
+        case 'cost':
+          comparison = (Math.abs(a.total_cost || 0) - Math.abs(b.total_cost || 0)) || dateTiebreaker(a, b);
           break;
-        }
-        case 'type': {
-          comparison = a.transaction_type.localeCompare(b.transaction_type);
-          if (comparison === 0) {
-            const aDate = a.transaction_date || a.created_at;
-            const bDate = b.transaction_date || b.created_at;
-            comparison = new Date(bDate).getTime() - new Date(aDate).getTime();
-          }
+        case 'type':
+          comparison = a.transaction_type.localeCompare(b.transaction_type) || dateTiebreaker(a, b);
           break;
-        }
       }
 
       return sortDirection === 'asc' ? comparison : -comparison;
@@ -163,7 +142,6 @@ export default function InventoryAudit() {
     setSortDirection('desc');
   };
 
-  // Detect which date preset is currently active
   const activeDatePreset = useMemo((): DatePreset | null => {
     for (const preset of ['7d', '14d', '30d', 'mtd'] as DatePreset[]) {
       const range = getDatePresetRange(preset);
@@ -172,7 +150,6 @@ export default function InventoryAudit() {
     return null;
   }, [startDate, endDate]);
 
-  // Pre-compute display values for all visible transactions
   const displayValuesMap = useMemo(() => {
     const map = new Map<string, AuditDisplayValues>();
     const tz = selectedRestaurant?.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -182,7 +159,6 @@ export default function InventoryAudit() {
     return map;
   }, [filteredTransactions, selectedRestaurant?.restaurant.timezone]);
 
-  // Virtualizer for the transaction list
   const listRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: filteredTransactions.length,
@@ -191,15 +167,27 @@ export default function InventoryAudit() {
     overscan: 5,
   });
 
-  const handleExportCSV = async () => {
+  function hasInvalidDateRange(): boolean {
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
       toast({
         title: 'Invalid date range',
         description: 'Start date must be before end date.',
         variant: 'destructive',
       });
-      return;
+      return true;
     }
+    return false;
+  }
+
+  function getDateRangeLabel(): string {
+    if (startDate && endDate) return `${startDate} to ${endDate}`;
+    if (startDate) return `From ${startDate}`;
+    if (endDate) return `To ${endDate}`;
+    return 'All Time';
+  }
+
+  const handleExportCSV = async () => {
+    if (hasInvalidDateRange()) return;
 
     setIsExporting(true);
     try {
@@ -223,37 +211,21 @@ export default function InventoryAudit() {
   };
 
   const handleExportPDF = async () => {
-    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      toast({
-        title: 'Invalid date range',
-        description: 'Start date must be before end date.',
-        variant: 'destructive',
-      });
-      return;
-    }
+    if (hasInvalidDateRange()) return;
 
     setIsExporting(true);
     try {
+      const tz = selectedRestaurant?.restaurant.timezone || 'UTC';
       const columns = ['Date', 'Product', 'Type', 'Quantity', 'Unit Cost', 'Total Cost', 'Reason'];
-      const rows = filteredTransactions.map((transaction) => [
-        transaction.transaction_date
-          ? formatDateInTimezone(transaction.transaction_date, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy')
-          : formatDateInTimezone(transaction.created_at, selectedRestaurant?.restaurant.timezone || 'UTC', 'MMM dd, yyyy'),
-        transaction.product_name,
-        transaction.transaction_type.charAt(0).toUpperCase() + transaction.transaction_type.slice(1),
-        transaction.quantity.toFixed(2),
-        `$${(transaction.unit_cost || 0).toFixed(2)}`,
-        `$${(transaction.total_cost || 0).toFixed(2)}`,
-        transaction.reason || '-',
+      const rows = filteredTransactions.map((txn) => [
+        formatDateInTimezone(txn.transaction_date || txn.created_at, tz, 'MMM dd, yyyy'),
+        txn.product_name,
+        txn.transaction_type.charAt(0).toUpperCase() + txn.transaction_type.slice(1),
+        txn.quantity.toFixed(2),
+        `$${(txn.unit_cost || 0).toFixed(2)}`,
+        `$${(txn.total_cost || 0).toFixed(2)}`,
+        txn.reason || '-',
       ]);
-
-      const dateRange = startDate && endDate
-        ? `${startDate} to ${endDate}`
-        : startDate
-        ? `From ${startDate}`
-        : endDate
-        ? `To ${endDate}`
-        : 'All Time';
 
       const filterLabel = typeFilter !== 'all'
         ? ` - ${TRANSACTION_TYPES.find(t => t.value === typeFilter)?.label || 'Filtered'}`
@@ -262,7 +234,7 @@ export default function InventoryAudit() {
       generateTablePDF({
         title: `Inventory Audit Trail${filterLabel}`,
         restaurantName: selectedRestaurant?.restaurant.name || '',
-        dateRange,
+        dateRange: getDateRangeLabel(),
         columns,
         rows,
         filename: `inventory_audit_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`,
@@ -320,7 +292,6 @@ export default function InventoryAudit() {
 
   return (
     <div className="w-full px-4 py-8">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-[17px] font-semibold text-foreground">Inventory Audit Trail</h1>
         <p className="text-[13px] text-muted-foreground mt-0.5">
@@ -328,7 +299,6 @@ export default function InventoryAudit() {
         </p>
       </div>
 
-      {/* Filters */}
       <div className="mb-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-[14px] font-medium text-foreground">Filters</h2>
@@ -345,7 +315,6 @@ export default function InventoryAudit() {
           )}
         </div>
 
-        {/* Search */}
         <div className="space-y-1.5">
           <label htmlFor="search-input" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Search</label>
           <Input
@@ -358,7 +327,6 @@ export default function InventoryAudit() {
           />
         </div>
 
-        {/* Type filter pills */}
         <div className="space-y-1.5">
           <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Type</label>
           <div className="flex flex-wrap gap-1.5">
@@ -380,7 +348,6 @@ export default function InventoryAudit() {
           </div>
         </div>
 
-        {/* Date range with presets */}
         <div className="space-y-1.5">
           <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Date Range</label>
           <div className="flex flex-wrap items-center gap-2">
@@ -389,9 +356,9 @@ export default function InventoryAudit() {
                 <button
                   key={preset}
                   onClick={() => {
-                    const r = getDatePresetRange(preset);
-                    setStartDate(r.startDate);
-                    setEndDate(r.endDate);
+                    const range = getDatePresetRange(preset);
+                    setStartDate(range.startDate);
+                    setEndDate(range.endDate);
                   }}
                   className={`h-7 px-2.5 rounded-lg text-[12px] font-medium transition-colors ${
                     activeDatePreset === preset
@@ -422,7 +389,6 @@ export default function InventoryAudit() {
           </div>
         </div>
 
-        {/* Sort + Export row */}
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-1.5">
             <label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Sort By</label>
@@ -463,7 +429,6 @@ export default function InventoryAudit() {
         </div>
       </div>
 
-      {/* Summary Stats */}
       <TooltipProvider>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           {TRANSACTION_TYPES.filter(t => t.value !== 'all' && t.value !== 'transfer').map(type => {
@@ -508,7 +473,6 @@ export default function InventoryAudit() {
         </div>
       </TooltipProvider>
 
-      {/* Transactions List */}
       <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
         <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">
           <h2 className="text-[13px] font-semibold text-foreground">Inventory Transactions</h2>

@@ -1,25 +1,28 @@
 import { format, subDays, startOfMonth } from 'date-fns';
 import { formatDateInTimezone } from '@/lib/timezone';
 
+const DATE_FORMAT = 'yyyy-MM-dd';
+
+function formatToday(): string {
+  return format(new Date(), DATE_FORMAT);
+}
+
+function formatDaysAgo(days: number): string {
+  return format(subDays(new Date(), days), DATE_FORMAT);
+}
+
 /**
  * Returns the default start date (7 days ago) in yyyy-MM-dd format.
  */
 export function getDefaultStartDate(): string {
-  return format(subDays(new Date(), 7), 'yyyy-MM-dd');
+  return formatDaysAgo(7);
 }
 
 /**
  * Returns the default end date (today) in yyyy-MM-dd format.
  */
 export function getDefaultEndDate(): string {
-  return format(new Date(), 'yyyy-MM-dd');
-}
-
-/**
- * Returns the start of the current month in yyyy-MM-dd format.
- */
-export function getMonthToDateStart(): string {
-  return format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  return formatToday();
 }
 
 /**
@@ -36,20 +39,18 @@ export function isDefaultDateRange(startDate: string, endDate: string): boolean 
 export type DatePreset = '7d' | '14d' | '30d' | 'mtd';
 
 export function getDatePresetRange(preset: DatePreset): { startDate: string; endDate: string } {
-  const endDate = format(new Date(), 'yyyy-MM-dd');
+  const endDate = formatToday();
   switch (preset) {
     case '7d':
-      return { startDate: format(subDays(new Date(), 7), 'yyyy-MM-dd'), endDate };
+      return { startDate: formatDaysAgo(7), endDate };
     case '14d':
-      return { startDate: format(subDays(new Date(), 14), 'yyyy-MM-dd'), endDate };
+      return { startDate: formatDaysAgo(14), endDate };
     case '30d':
-      return { startDate: format(subDays(new Date(), 30), 'yyyy-MM-dd'), endDate };
+      return { startDate: formatDaysAgo(30), endDate };
     case 'mtd':
-      return { startDate: format(startOfMonth(new Date()), 'yyyy-MM-dd'), endDate };
+      return { startDate: format(startOfMonth(new Date()), DATE_FORMAT), endDate };
   }
 }
-
-// --- Display Value Types & Computation ---
 
 export interface AuditDisplayValues {
   formattedQuantity: string;
@@ -73,19 +74,29 @@ interface AuditTransaction {
   transaction_date: string | null;
 }
 
-const BADGE_COLORS: Record<string, string> = {
-  purchase: 'bg-emerald-100 text-emerald-700',
-  usage: 'bg-rose-100 text-rose-700',
-  adjustment: 'bg-blue-100 text-blue-700',
-  waste: 'bg-amber-100 text-amber-700',
+const TRANSACTION_STYLES: Record<string, { badge: string; border: string }> = {
+  purchase: { badge: 'bg-emerald-100 text-emerald-700', border: 'border-l-emerald-500' },
+  usage: { badge: 'bg-rose-100 text-rose-700', border: 'border-l-rose-500' },
+  adjustment: { badge: 'bg-blue-100 text-blue-700', border: 'border-l-blue-500' },
+  waste: { badge: 'bg-amber-100 text-amber-700', border: 'border-l-amber-500' },
 };
 
-const BORDER_COLORS: Record<string, string> = {
-  purchase: 'border-l-emerald-500',
-  usage: 'border-l-rose-500',
-  adjustment: 'border-l-blue-500',
-  waste: 'border-l-amber-500',
-};
+const DEFAULT_STYLE = { badge: 'bg-gray-100 text-gray-700', border: 'border-l-gray-500' };
+
+type ConversionBadge = 'volume' | 'weight' | 'fallback';
+
+const CONVERSION_MARKERS: { marker: string; badge: ConversionBadge }[] = [
+  { marker: '\u2713 VOL', badge: 'volume' },
+  { marker: '\u2713 WEIGHT', badge: 'weight' },
+  { marker: '\u26a0\ufe0f FALLBACK', badge: 'fallback' },
+];
+
+function parseConversionBadges(reason: string | null): ConversionBadge[] {
+  if (!reason) return [];
+  return CONVERSION_MARKERS
+    .filter(({ marker }) => reason.includes(marker))
+    .map(({ badge }) => badge);
+}
 
 export function computeAuditDisplayValues(
   transaction: AuditTransaction,
@@ -94,32 +105,23 @@ export function computeAuditDisplayValues(
   const qty = transaction.quantity;
   const unitCost = transaction.unit_cost || 0;
   const totalCost = transaction.total_cost || 0;
-
-  const conversionBadges: ('volume' | 'weight' | 'fallback')[] = [];
-  if (transaction.reason) {
-    if (transaction.reason.includes('\u2713 VOL')) conversionBadges.push('volume');
-    if (transaction.reason.includes('\u2713 WEIGHT')) conversionBadges.push('weight');
-    if (transaction.reason.includes('\u26a0\ufe0f FALLBACK')) conversionBadges.push('fallback');
-  }
+  const style = TRANSACTION_STYLES[transaction.transaction_type] || DEFAULT_STYLE;
 
   const dateSource = transaction.transaction_date || transaction.created_at;
   const dateFormat = transaction.transaction_date ? 'MMM dd, yyyy' : 'MMM dd, yyyy HH:mm';
-  const formattedDate = formatDateInTimezone(dateSource, timezone, dateFormat);
 
   return {
-    formattedQuantity: `${qty > 0 ? '+' : ''}${Number(qty).toFixed(2)}`,
+    formattedQuantity: `${qty > 0 ? '+' : ''}${qty.toFixed(2)}`,
     formattedUnitCost: `$${unitCost.toFixed(2)}`,
     formattedTotalCost: `$${Math.abs(totalCost).toFixed(2)}`,
-    formattedDate,
+    formattedDate: formatDateInTimezone(dateSource, timezone, dateFormat),
     isPositiveQuantity: qty > 0,
     isPositiveCost: totalCost >= 0,
-    badgeColor: BADGE_COLORS[transaction.transaction_type] || 'bg-gray-100 text-gray-700',
-    borderColor: BORDER_COLORS[transaction.transaction_type] || 'border-l-gray-500',
-    conversionBadges,
+    badgeColor: style.badge,
+    borderColor: style.border,
+    conversionBadges: parseConversionBadges(transaction.reason),
   };
 }
-
-// --- Filter Counting ---
 
 interface FilterState {
   typeFilter: string;

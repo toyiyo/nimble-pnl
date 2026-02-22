@@ -20,13 +20,27 @@ export interface MemoizedAuditTransactionRowProps {
   displayValues: AuditDisplayValues;
 }
 
+const ICON_SIZE = "h-3.5 w-3.5";
+
 const TRANSACTION_ICONS: Record<string, JSX.Element> = {
-  purchase: <TrendingUp className="h-3.5 w-3.5" />,
-  usage: <TrendingDown className="h-3.5 w-3.5" />,
-  adjustment: <Package className="h-3.5 w-3.5" />,
-  waste: <AlertTriangle className="h-3.5 w-3.5" />,
+  purchase: <TrendingUp className={ICON_SIZE} />,
+  usage: <TrendingDown className={ICON_SIZE} />,
+  adjustment: <Package className={ICON_SIZE} />,
+  waste: <AlertTriangle className={ICON_SIZE} />,
 };
-const DEFAULT_ICON = <Package className="h-3.5 w-3.5" />;
+const DEFAULT_ICON = <Package className={ICON_SIZE} />;
+
+const CONVERSION_BADGE_STYLES: Record<string, string> = {
+  fallback: 'bg-amber-50 text-amber-700 border-amber-300',
+  volume: 'bg-blue-50 text-blue-700 border-blue-300',
+  weight: 'bg-emerald-50 text-emerald-700 border-emerald-300',
+};
+
+const CONVERSION_BADGE_LABELS: Record<string, string> = {
+  fallback: '1:1 Fallback',
+  volume: 'Volume',
+  weight: 'Weight',
+};
 
 export const MemoizedAuditTransactionRow = memo(function MemoizedAuditTransactionRow({
   transaction,
@@ -51,7 +65,6 @@ export const MemoizedAuditTransactionRow = memo(function MemoizedAuditTransactio
     >
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="flex-1 space-y-2.5">
-          {/* Badge + Product Name */}
           <div className="flex flex-wrap items-center gap-2.5">
             <Badge
               variant="secondary"
@@ -63,7 +76,6 @@ export const MemoizedAuditTransactionRow = memo(function MemoizedAuditTransactio
             <h3 className="text-[14px] font-medium text-foreground leading-tight">{transaction.product_name}</h3>
           </div>
 
-          {/* Metrics Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-0.5">
               <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -102,33 +114,25 @@ export const MemoizedAuditTransactionRow = memo(function MemoizedAuditTransactio
             </div>
           </div>
 
-          {/* Reason */}
           {transaction.reason && (
             <div className="pt-1 space-y-1">
               <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Reason</div>
               <div className="flex flex-wrap items-start gap-2">
                 <div className="text-[13px] text-muted-foreground leading-relaxed flex-1 min-w-0">{transaction.reason}</div>
-                {conversionBadges.includes('fallback') && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1 shrink-0 text-[11px]">
-                    <AlertTriangle className="h-3 w-3" />
-                    1:1 Fallback
+                {conversionBadges.map(badge => (
+                  <Badge
+                    key={badge}
+                    variant="outline"
+                    className={`${CONVERSION_BADGE_STYLES[badge]} shrink-0 text-[11px] ${badge === 'fallback' ? 'flex items-center gap-1' : ''}`}
+                  >
+                    {badge === 'fallback' && <AlertTriangle className="h-3 w-3" />}
+                    {CONVERSION_BADGE_LABELS[badge]}
                   </Badge>
-                )}
-                {conversionBadges.includes('volume') && (
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 shrink-0 text-[11px]">
-                    Volume
-                  </Badge>
-                )}
-                {conversionBadges.includes('weight') && (
-                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 shrink-0 text-[11px]">
-                    Weight
-                  </Badge>
-                )}
+                ))}
               </div>
             </div>
           )}
 
-          {/* Reference ID */}
           {transaction.reference_id && (
             <div className="pt-1 space-y-1">
               <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Reference ID</div>

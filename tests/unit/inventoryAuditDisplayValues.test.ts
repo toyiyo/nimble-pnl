@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAuditDisplayValues, type AuditDisplayValues } from '@/lib/inventoryAuditUtils';
+import { computeAuditDisplayValues } from '@/lib/inventoryAuditUtils';
 
 const makeTransaction = (overrides: Record<string, any> = {}) => ({
   id: 'txn-1',

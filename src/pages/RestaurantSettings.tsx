@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurants, type Restaurant } from '@/hooks/useRestaurants';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +17,8 @@ import { SecuritySettings } from '@/components/SecuritySettings';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { SubscriptionPlans, TrialBanner } from '@/components/subscription';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building } from 'lucide-react';
+import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -61,6 +63,19 @@ export default function RestaurantSettings() {
   const [ein, setEin] = useState('');
   const [entityType, setEntityType] = useState<Restaurant['entity_type'] | ''>('');
   const [savingBusiness, setSavingBusiness] = useState(false);
+
+  // Overtime rules state
+  const [otWeeklyThreshold, setOtWeeklyThreshold] = useState('40');
+  const [otWeeklyMultiplier, setOtWeeklyMultiplier] = useState('1.5');
+  const [otDailyEnabled, setOtDailyEnabled] = useState(false);
+  const [otDailyThreshold, setOtDailyThreshold] = useState('8');
+  const [otDailyMultiplier, setOtDailyMultiplier] = useState('1.5');
+  const [otDoubleEnabled, setOtDoubleEnabled] = useState(false);
+  const [otDoubleThreshold, setOtDoubleThreshold] = useState('12');
+  const [otDoubleMultiplier, setOtDoubleMultiplier] = useState('2.0');
+  const [otExcludeTips, setOtExcludeTips] = useState(true);
+  const [otRulesLoading, setOtRulesLoading] = useState(false);
+  const [otSaving, setOtSaving] = useState(false);
 
   // Update form when selected restaurant changes
   useEffect(() => {
@@ -181,6 +196,102 @@ export default function RestaurantSettings() {
     }
   };
 
+  // Fetch overtime rules when restaurant changes
+  useEffect(() => {
+    if (!selectedRestaurant) return;
+    const fetchOtRules = async () => {
+      setOtRulesLoading(true);
+      const { data, error } = await (supabase
+        .from('overtime_rules' as any) as any)
+        .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .maybeSingle();
+      if (error) {
+        console.error('Error fetching overtime rules:', error);
+        toast({ title: 'Failed to load overtime rules', description: error.message, variant: 'destructive' });
+      } else if (data) {
+        setOtWeeklyThreshold(String(data.weekly_threshold_hours));
+        setOtWeeklyMultiplier(String(data.weekly_ot_multiplier));
+        setOtDailyEnabled(data.daily_threshold_hours != null);
+        setOtDailyThreshold(String(data.daily_threshold_hours ?? 8));
+        setOtDailyMultiplier(String(data.daily_ot_multiplier));
+        setOtDoubleEnabled(data.daily_double_threshold_hours != null);
+        setOtDoubleThreshold(String(data.daily_double_threshold_hours ?? 12));
+        setOtDoubleMultiplier(String(data.daily_double_multiplier));
+        setOtExcludeTips(data.exclude_tips_from_ot_rate);
+      } else {
+        setOtWeeklyThreshold('40');
+        setOtWeeklyMultiplier('1.5');
+        setOtDailyEnabled(false);
+        setOtDailyThreshold('8');
+        setOtDailyMultiplier('1.5');
+        setOtDoubleEnabled(false);
+        setOtDoubleThreshold('12');
+        setOtDoubleMultiplier('2.0');
+        setOtExcludeTips(true);
+      }
+      setOtRulesLoading(false);
+    };
+    fetchOtRules();
+  }, [selectedRestaurant?.restaurant_id]);
+
+  const handleSaveOtRules = async () => {
+    if (!selectedRestaurant) return;
+
+    const weeklyThreshold = Number.parseFloat(otWeeklyThreshold);
+    const weeklyMultiplier = Number.parseFloat(otWeeklyMultiplier);
+    const dailyThreshold = Number.parseFloat(otDailyThreshold);
+    const dailyMultiplier = Number.parseFloat(otDailyMultiplier);
+    const doubleThreshold = Number.parseFloat(otDoubleThreshold);
+    const doubleMultiplier = Number.parseFloat(otDoubleMultiplier);
+
+    const hasInvalidWeekly = Number.isNaN(weeklyThreshold) || Number.isNaN(weeklyMultiplier);
+    const hasInvalidDaily = otDailyEnabled && (Number.isNaN(dailyThreshold) || Number.isNaN(dailyMultiplier));
+    const hasInvalidDouble = otDailyEnabled && otDoubleEnabled && (Number.isNaN(doubleThreshold) || Number.isNaN(doubleMultiplier));
+
+    if (hasInvalidWeekly || hasInvalidDaily || hasInvalidDouble) {
+      toast({ title: 'Invalid values', description: 'Please enter valid numbers for all fields.', variant: 'destructive' });
+      return;
+    }
+
+    if (weeklyThreshold <= 0 || (otDailyEnabled && dailyThreshold <= 0) || (otDailyEnabled && otDoubleEnabled && doubleThreshold <= 0)) {
+      toast({ title: 'Invalid thresholds', description: 'All thresholds must be greater than zero.', variant: 'destructive' });
+      return;
+    }
+
+    if (weeklyMultiplier < 1 || (otDailyEnabled && dailyMultiplier < 1) || (otDailyEnabled && otDoubleEnabled && doubleMultiplier < 1)) {
+      toast({ title: 'Invalid multipliers', description: 'All multipliers must be at least 1.0.', variant: 'destructive' });
+      return;
+    }
+
+    if (otDailyEnabled && otDoubleEnabled && doubleThreshold <= dailyThreshold) {
+      toast({ title: 'Invalid thresholds', description: 'Double-time threshold must be greater than daily overtime threshold.', variant: 'destructive' });
+      return;
+    }
+
+    setOtSaving(true);
+    try {
+      const { error } = await (supabase
+        .from('overtime_rules' as any) as any)
+        .upsert({
+          restaurant_id: selectedRestaurant.restaurant_id,
+          weekly_threshold_hours: weeklyThreshold,
+          weekly_ot_multiplier: weeklyMultiplier,
+          daily_threshold_hours: otDailyEnabled ? dailyThreshold : null,
+          daily_ot_multiplier: dailyMultiplier,
+          daily_double_threshold_hours: (otDailyEnabled && otDoubleEnabled) ? doubleThreshold : null,
+          daily_double_multiplier: doubleMultiplier,
+          exclude_tips_from_ot_rate: otExcludeTips,
+        }, { onConflict: 'restaurant_id' });
+      if (error) throw error;
+      toast({ title: 'Overtime rules saved', description: 'Payroll overtime settings have been updated.' });
+    } catch (err) {
+      toast({ title: 'Failed to save overtime rules', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    } finally {
+      setOtSaving(false);
+    }
+  };
+
   const canEdit = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
   const isOwner = selectedRestaurant?.role === 'owner';
 
@@ -189,6 +300,7 @@ export default function RestaurantSettings() {
     return [
       'general',
       ...(canEdit ? ['business'] : []),
+      ...(canEdit ? ['payroll'] : []),
       ...(isOwner ? ['subscription'] : []),
       ...(canEdit ? ['notifications'] : []),
       'security',
@@ -204,6 +316,7 @@ export default function RestaurantSettings() {
 
   // Compute grid columns class based on visible tab count
   const gridColsMap: Record<number, string> = {
+    6: 'grid-cols-6',
     5: 'grid-cols-5',
     4: 'grid-cols-4',
     3: 'grid-cols-3',
@@ -302,6 +415,12 @@ export default function RestaurantSettings() {
             <TabsTrigger value="business">
               <Building className="h-4 w-4 mr-2" />
               Business
+            </TabsTrigger>
+          )}
+          {canEdit && (
+            <TabsTrigger value="payroll">
+              <Clock className="h-4 w-4 mr-2" />
+              Payroll
             </TabsTrigger>
           )}
           {isOwner && (
@@ -672,6 +791,208 @@ export default function RestaurantSettings() {
                   </Button>
                 </div>
               </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Payroll / Overtime Rules Tab */}
+        {canEdit && (
+          <TabsContent value="payroll">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" aria-hidden="true" />
+                  Overtime Rules
+                </CardTitle>
+                <CardDescription>
+                  Configure how overtime is calculated for payroll
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {otRulesLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Weekly Overtime */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Weekly Overtime</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Hours beyond the weekly threshold are paid at the overtime rate
+                        </p>
+                      </div>
+                      <div className="p-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="otWeeklyThreshold" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Threshold (hours/week)
+                            </Label>
+                            <Input
+                              id="otWeeklyThreshold"
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={otWeeklyThreshold}
+                              onChange={(e) => setOtWeeklyThreshold(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="otWeeklyMultiplier" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Multiplier
+                            </Label>
+                            <Input
+                              id="otWeeklyMultiplier"
+                              type="number"
+                              min="1"
+                              step="0.1"
+                              value={otWeeklyMultiplier}
+                              onChange={(e) => setOtWeeklyMultiplier(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Daily Overtime */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-[13px] font-semibold text-foreground">Daily Overtime</h3>
+                          <p className="text-[13px] text-muted-foreground mt-0.5">
+                            Required in some states (e.g., California)
+                          </p>
+                        </div>
+                        <Switch
+                          checked={otDailyEnabled}
+                          onCheckedChange={setOtDailyEnabled}
+                          className="data-[state=checked]:bg-foreground"
+                          aria-label="Enable daily overtime"
+                        />
+                      </div>
+                      {otDailyEnabled && (
+                        <div className="p-4 space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="otDailyThreshold" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                Threshold (hours/day)
+                              </Label>
+                              <Input
+                                id="otDailyThreshold"
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={otDailyThreshold}
+                                onChange={(e) => setOtDailyThreshold(e.target.value)}
+                                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="otDailyMultiplier" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                Multiplier
+                              </Label>
+                              <Input
+                                id="otDailyMultiplier"
+                                type="number"
+                                min="1"
+                                step="0.1"
+                                value={otDailyMultiplier}
+                                onChange={(e) => setOtDailyMultiplier(e.target.value)}
+                                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Double Time (nested inside Daily) */}
+                          <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/40 bg-muted/30 flex items-center justify-between">
+                              <div>
+                                <h3 className="text-[13px] font-semibold text-foreground">Double Time</h3>
+                                <p className="text-[13px] text-muted-foreground mt-0.5">
+                                  Additional threshold for double-time pay
+                                </p>
+                              </div>
+                              <Switch
+                                checked={otDoubleEnabled}
+                                onCheckedChange={setOtDoubleEnabled}
+                                className="data-[state=checked]:bg-foreground"
+                                aria-label="Enable double time"
+                              />
+                            </div>
+                            {otDoubleEnabled && (
+                              <div className="p-4">
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="otDoubleThreshold" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                      Threshold (hours/day)
+                                    </Label>
+                                    <Input
+                                      id="otDoubleThreshold"
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      value={otDoubleThreshold}
+                                      onChange={(e) => setOtDoubleThreshold(e.target.value)}
+                                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="otDoubleMultiplier" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                      Multiplier
+                                    </Label>
+                                    <Input
+                                      id="otDoubleMultiplier"
+                                      type="number"
+                                      min="1"
+                                      step="0.1"
+                                      value={otDoubleMultiplier}
+                                      onChange={(e) => setOtDoubleMultiplier(e.target.value)}
+                                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tip Exclusion */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-[13px] font-semibold text-foreground">Exclude Tips from OT Rate</h3>
+                          <p className="text-[13px] text-muted-foreground mt-0.5">
+                            When enabled, tips are not included when calculating the overtime hourly rate
+                          </p>
+                        </div>
+                        <Switch
+                          checked={otExcludeTips}
+                          onCheckedChange={setOtExcludeTips}
+                          className="data-[state=checked]:bg-foreground"
+                          aria-label="Exclude tips from overtime rate calculation"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+              <CardFooter className="flex justify-end border-t px-6 py-4">
+                <Button
+                  onClick={handleSaveOtRules}
+                  disabled={otSaving || otRulesLoading}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label={otSaving ? 'Saving overtime rules' : 'Save overtime rules'}
+                >
+                  <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {otSaving ? 'Saving...' : 'Save Rules'}
+                </Button>
+              </CardFooter>
             </Card>
           </TabsContent>
         )}

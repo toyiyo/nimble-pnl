@@ -91,6 +91,14 @@ interface DBEmployeeTip {
   tip_date: string;
 }
 
+interface DBOvertimeAdjustment {
+  employee_id: string;
+  punch_date: string;
+  adjustment_type: string;
+  hours: number;
+  reason: string | null;
+}
+
 // Type for the time_punches data from Supabase
 interface DBTimePunch {
   id: string;
@@ -112,11 +120,11 @@ interface DBTimePunch {
 /**
  * Hook to fetch and calculate payroll for a given period
  */
-export const usePayroll = (
+export function usePayroll(
   restaurantId: string | null,
   startDate: Date,
   endDate: Date
-) => {
+) {
   // Fetch ALL employees (including inactive) for historical payroll accuracy
   // An employee deactivated today should still show their past work/salary
   const { employees } = useEmployees(restaurantId, { status: 'all' });
@@ -190,8 +198,7 @@ export const usePayroll = (
         punchesPerEmployee.get(punch.employee_id)?.push(typedPunch);
       });
 
-      // Include tips from tip_split_items and employee_tips for the period
-      // We'll use the new utility to prevent double-counting
+      // Fetch tips from tip_split_items and employee_tips for the period
       const { data: employeeTips, error: employeeTipsError } = await supabase
         .from('employee_tips')
         .select('employee_id, tip_amount, tip_date')
@@ -223,7 +230,7 @@ export const usePayroll = (
         tip_date: tip.tip_date,
       }));
 
-      // Use the new utility with date filtering to prevent double-counting
+      // Aggregate tips with date filtering to prevent double-counting
       const tipsPerEmployee = computeTipTotalsWithFiltering(
         tipItems,
         employeeTipItems,
@@ -236,15 +243,12 @@ export const usePayroll = (
         if (!manualPaymentsPerEmployee.has(payment.employee_id)) {
           manualPaymentsPerEmployee.set(payment.employee_id, []);
         }
-        const paymentsList = manualPaymentsPerEmployee.get(payment.employee_id);
-        if (paymentsList) {
-          paymentsList.push({
-            id: payment.id,
-            date: payment.date,
-            amount: payment.allocated_cost,
-            description: payment.notes || undefined,
-          });
-        }
+        manualPaymentsPerEmployee.get(payment.employee_id)!.push({
+          id: payment.id,
+          date: payment.date,
+          amount: payment.allocated_cost,
+          description: payment.notes || undefined,
+        });
       });
 
       // Group tip payouts by employee (sum amounts in cents)
@@ -254,9 +258,52 @@ export const usePayroll = (
         tipPayoutsPerEmployee.set(payout.employee_id, current + payout.amount);
       });
 
+      // Fetch overtime rules for restaurant
+      const { data: otRulesData, error: otRulesError } = await supabase
+        .from('overtime_rules')
+        .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+
+      if (otRulesError) {
+        console.error('Error fetching overtime rules:', otRulesError);
+      }
+
+      // Fetch overtime adjustments for the period
+      const { data: otAdjData, error: otAdjError } = await supabase
+        .from('overtime_adjustments')
+        .select('employee_id, punch_date, adjustment_type, hours, reason')
+        .eq('restaurant_id', restaurantId)
+        .gte('punch_date', format(startDate, 'yyyy-MM-dd'))
+        .lte('punch_date', format(endDate, 'yyyy-MM-dd'));
+
+      if (otAdjError) {
+        console.error('Error fetching overtime adjustments:', otAdjError);
+      }
+
+      const overtimeRules = otRulesData
+        ? {
+            weeklyThresholdHours: Number(otRulesData.weekly_threshold_hours),
+            weeklyOtMultiplier: Number(otRulesData.weekly_ot_multiplier),
+            dailyThresholdHours: otRulesData.daily_threshold_hours != null ? Number(otRulesData.daily_threshold_hours) : null,
+            dailyOtMultiplier: Number(otRulesData.daily_ot_multiplier),
+            dailyDoubleThresholdHours: otRulesData.daily_double_threshold_hours != null ? Number(otRulesData.daily_double_threshold_hours) : null,
+            dailyDoubleMultiplier: Number(otRulesData.daily_double_multiplier),
+            excludeTipsFromOtRate: otRulesData.exclude_tips_from_ot_rate,
+          }
+        : undefined;
+
+      const overtimeAdjustments = (otAdjData ?? []).map((adj: DBOvertimeAdjustment) => ({
+        employeeId: adj.employee_id,
+        punchDate: adj.punch_date,
+        adjustmentType: adj.adjustment_type as 'regular_to_overtime' | 'overtime_to_regular',
+        hours: Number(adj.hours),
+        reason: adj.reason ?? '',
+      }));
+
       // Filter employees based on deactivation date vs payroll period
       // Inactive employees are included only through their final week (the week containing their deactivation date)
-      const eligibleEmployees = employees.filter(employee => 
+      const eligibleEmployees = employees.filter(employee =>
         shouldIncludeEmployeeInPayroll(employee, startDate)
       );
 
@@ -268,6 +315,8 @@ export const usePayroll = (
         tipsPerEmployee,
         manualPaymentsPerEmployee,
         tipPayoutsPerEmployee,
+        overtimeRules,
+        overtimeAdjustments,
       );
     },
     enabled: !!restaurantId && !!employees.length,
@@ -358,6 +407,58 @@ export const usePayroll = (
     },
   });
 
+  const adjustOvertimeMutation = useMutation({
+    mutationFn: async ({
+      employeeId,
+      punchDate,
+      adjustmentType,
+      hours,
+      reason,
+    }: {
+      employeeId: string;
+      punchDate: string;
+      adjustmentType: 'regular_to_overtime' | 'overtime_to_regular';
+      hours: number;
+      reason: string;
+    }) => {
+      if (!restaurantId) throw new Error('Restaurant ID required');
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await (supabase
+        .from('overtime_adjustments' as any) as any)
+        .upsert({
+          restaurant_id: restaurantId,
+          employee_id: employeeId,
+          punch_date: punchDate,
+          adjustment_type: adjustmentType,
+          hours,
+          reason,
+          adjusted_by: user.id,
+        }, { onConflict: 'restaurant_id,employee_id,punch_date,adjustment_type' })
+        .select('id, employee_id, punch_date, adjustment_type, hours, reason')
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Overtime adjusted',
+        description: 'The overtime classification has been updated.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['payroll', restaurantId] });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Error adjusting overtime',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     payrollPeriod,
     loading: isLoading,
@@ -367,5 +468,7 @@ export const usePayroll = (
     isAddingPayment: addManualPaymentMutation.isPending,
     deleteManualPayment: deleteManualPaymentMutation.mutate,
     isDeletingPayment: deleteManualPaymentMutation.isPending,
+    adjustOvertime: adjustOvertimeMutation.mutate,
+    isAdjustingOvertime: adjustOvertimeMutation.isPending,
   };
-};
+}

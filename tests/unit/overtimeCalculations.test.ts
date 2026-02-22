@@ -11,6 +11,12 @@ import {
   type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
 
+function assertHoursConserved(result: OvertimeResult, totalPunched: number) {
+  const sum = result.regularHours + result.weeklyOvertimeHours
+    + result.dailyOvertimeHours + result.doubleTimeHours;
+  expect(sum).toBeCloseTo(totalPunched, 2);
+}
+
 describe('overtimeCalculations', () => {
   describe('DEFAULT_OVERTIME_RULES', () => {
     it('has federal FLSA defaults', () => {
@@ -61,6 +67,18 @@ describe('overtimeCalculations', () => {
       const result = calculateDailyOvertime(0, 8, 12);
       expect(result).toEqual({ regularHours: 0, dailyOvertimeHours: 0, doubleTimeHours: 0 });
     });
+
+    it('treats doubleTimeThreshold as null when <= dailyThreshold (defensive)', () => {
+      // If misconfigured: doubleTimeThreshold = 6, dailyThreshold = 8
+      const result = calculateDailyOvertime(13, 8, 6);
+      // Should ignore double-time, treat all excess as daily OT
+      expect(result).toEqual({ regularHours: 8, dailyOvertimeHours: 5, doubleTimeHours: 0 });
+    });
+
+    it('treats negative hours as zero', () => {
+      const result = calculateDailyOvertime(-5, 8, null);
+      expect(result).toEqual({ regularHours: 0, dailyOvertimeHours: 0, doubleTimeHours: 0 });
+    });
   });
 
   describe('calculateWeeklyOvertime', () => {
@@ -74,6 +92,7 @@ describe('overtimeCalculations', () => {
       expect(result.weeklyOvertimeHours).toBe(5);
       expect(result.dailyOvertimeHours).toBe(0);
       expect(result.doubleTimeHours).toBe(0);
+      assertHoursConserved(result, 45);
     });
 
     it('calculates with custom weekly threshold', () => {
@@ -117,6 +136,7 @@ describe('overtimeCalculations', () => {
       expect(result.regularHours).toBe(40);
       expect(result.dailyOvertimeHours).toBe(10);
       expect(result.weeklyOvertimeHours).toBe(0);
+      assertHoursConserved(result, 50);
     });
 
     it('combined daily + weekly OT when both thresholds exceeded', () => {
@@ -129,6 +149,7 @@ describe('overtimeCalculations', () => {
       expect(result.dailyOvertimeHours).toBe(5);
       expect(result.regularHours).toBe(40);
       expect(result.weeklyOvertimeHours).toBe(6);
+      assertHoursConserved(result, 51);
     });
 
     it('handles double-time combined with weekly OT', () => {
@@ -144,6 +165,7 @@ describe('overtimeCalculations', () => {
       expect(result.dailyOvertimeHours).toBe(4);
       expect(result.doubleTimeHours).toBe(2);
       expect(result.weeklyOvertimeHours).toBe(0);
+      assertHoursConserved(result, 46);
     });
 
     it('handles empty daily hours', () => {
@@ -262,7 +284,7 @@ describe('overtimeCalculations', () => {
       const rules: OvertimeRules = { ...DEFAULT_OVERTIME_RULES, excludeTipsFromOtRate: false };
       const result = calculateOvertimePay(hours, 1500, 45000, rules);
       const totalHours = 40 + 5;
-      const tipRatePerHour = Math.round(45000 / totalHours);
+      const tipRatePerHour = 45000 / totalHours;
       const effectiveRate = 1500 + tipRatePerHour;
       expect(result.regularPay).toBe(40 * 1500);
       expect(result.overtimePay).toBe(5 * effectiveRate * 1.5);
@@ -370,6 +392,7 @@ describe('overtimeCalculations', () => {
       expect(result.hours.dailyOvertimeHours).toBe(4);
       expect(result.hours.doubleTimeHours).toBe(2);
       expect(result.hours.weeklyOvertimeHours).toBe(4);
+      assertHoursConserved(result.hours, 50);
       expect(result.pay.regularPay).toBe(80000);
       expect(result.pay.overtimePay).toBe(24000);
       expect(result.pay.doubleTimePay).toBe(8000);
@@ -389,6 +412,7 @@ describe('overtimeCalculations', () => {
       expect(result.hours.weeklyOvertimeHours).toBe(12);
       expect(result.hours.dailyOvertimeHours).toBe(0);
       expect(result.hours.doubleTimeHours).toBe(0);
+      assertHoursConserved(result.hours, 52);
       expect(result.pay.regularPay).toBe(60000);
       expect(result.pay.overtimePay).toBe(12 * 1500 * 1.5);
     });

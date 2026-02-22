@@ -45,19 +45,21 @@ export function calculateDailyOvertime(
   dailyThreshold: number | null,
   doubleTimeThreshold: number | null
 ): { regularHours: number; dailyOvertimeHours: number; doubleTimeHours: number } {
-  if (dailyThreshold === null || hoursWorked <= dailyThreshold) {
-    return { regularHours: hoursWorked, dailyOvertimeHours: 0, doubleTimeHours: 0 };
+  const safeHours = Math.max(0, hoursWorked);
+
+  if (dailyThreshold === null || safeHours <= dailyThreshold) {
+    return { regularHours: safeHours, dailyOvertimeHours: 0, doubleTimeHours: 0 };
   }
 
   const regularHours = dailyThreshold;
-  const overtimeTotal = hoursWorked - dailyThreshold;
+  const overtimeTotal = safeHours - dailyThreshold;
 
-  if (doubleTimeThreshold === null || hoursWorked <= doubleTimeThreshold) {
+  if (doubleTimeThreshold === null || safeHours <= doubleTimeThreshold || doubleTimeThreshold <= dailyThreshold) {
     return { regularHours, dailyOvertimeHours: overtimeTotal, doubleTimeHours: 0 };
   }
 
   const dailyOvertimeHours = doubleTimeThreshold - dailyThreshold;
-  const doubleTimeHours = hoursWorked - doubleTimeThreshold;
+  const doubleTimeHours = safeHours - doubleTimeThreshold;
 
   return { regularHours, dailyOvertimeHours, doubleTimeHours };
 }
@@ -70,7 +72,8 @@ export function calculateWeeklyOvertime(
   let totalDailyOt = 0;
   let totalDoubleTime = 0;
 
-  for (const hours of Object.values(dailyHours)) {
+  for (const rawHours of Object.values(dailyHours)) {
+    const hours = Math.max(0, rawHours);
     const daily = calculateDailyOvertime(hours, rules.dailyThresholdHours, rules.dailyDoubleThresholdHours);
     totalRegular += daily.regularHours;
     totalDailyOt += daily.dailyOvertimeHours;
@@ -137,7 +140,7 @@ export function calculateOvertimePay(
 
   let otBaseRate = hourlyRateCents;
   if (!rules.excludeTipsFromOtRate && totalHours > 0 && totalTipsCents > 0) {
-    const tipRatePerHour = Math.round(totalTipsCents / totalHours);
+    const tipRatePerHour = totalTipsCents / totalHours;
     otBaseRate = hourlyRateCents + tipRatePerHour;
   }
 

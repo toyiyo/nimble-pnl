@@ -86,8 +86,6 @@ export function AdjustOvertimeDialog({
       hours: hoursValue,
       reason: reason || '',
     });
-
-    resetForm();
   };
 
   const resetForm = () => {
@@ -162,10 +160,11 @@ export function AdjustOvertimeDialog({
               placeholder="0.00"
               className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
               aria-invalid={!!errors.hours}
+              aria-describedby={errors.hours ? 'adjust-hours-error' : undefined}
               aria-label="Hours to adjust"
             />
             {errors.hours && (
-              <p className="text-[13px] text-destructive">{errors.hours}</p>
+              <p id="adjust-hours-error" className="text-[13px] text-destructive">{errors.hours}</p>
             )}
           </div>
 
@@ -187,10 +186,11 @@ export function AdjustOvertimeDialog({
               }}
               className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
               aria-invalid={!!errors.punchDate}
+              aria-describedby={errors.punchDate ? 'adjust-date-error' : undefined}
               aria-label="Adjustment date"
             />
             {errors.punchDate && (
-              <p className="text-[13px] text-destructive">{errors.punchDate}</p>
+              <p id="adjust-date-error" className="text-[13px] text-destructive">{errors.punchDate}</p>
             )}
           </div>
 

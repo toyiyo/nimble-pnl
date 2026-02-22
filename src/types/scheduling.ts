@@ -63,6 +63,9 @@ export interface Employee {
   requires_time_punch?: boolean; // Must clock in/out (true for hourly, optional for others)
   tip_eligible?: boolean; // Can receive tip pool distributions
 
+  // FLSA exempt status
+  is_exempt?: boolean; // Exempt employees skip OT calculations
+
   // Compensation history (optional join)
   compensation_history?: CompensationHistoryEntry[];
 }

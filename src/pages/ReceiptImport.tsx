@@ -152,8 +152,18 @@ export const ReceiptImport = () => {
                             <div className="text-sm text-muted-foreground">
                               Uploaded {format(new Date(receipt.created_at), 'PPp')}
                             </div>
-                            {receipt.total_amount && (
-                              <div className="text-sm font-medium">Total: {formatCurrency(receipt.total_amount)}</div>
+                            {(receipt.imported_total || receipt.total_amount) && (
+                              <div className="text-sm">
+                                <span className="font-medium">
+                                  {formatCurrency(receipt.imported_total ?? receipt.total_amount)}
+                                </span>
+                                {receipt.imported_total != null && receipt.total_amount != null &&
+                                 receipt.imported_total !== receipt.total_amount && (
+                                  <span className="text-muted-foreground ml-1.5 text-xs">
+                                    (Receipt total: {formatCurrency(receipt.total_amount)})
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>

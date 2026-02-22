@@ -29,6 +29,7 @@ import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
+import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,7 @@ import {
   Printer,
   ArrowLeftRight,
   TrendingUp,
+  Upload,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -244,6 +246,7 @@ const Scheduling = () => {
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [shiftImportOpen, setShiftImportOpen] = useState(false);
   const [recurringActionDialog, setRecurringActionDialog] = useState<{
     open: boolean;
     shift: Shift | null;
@@ -897,6 +900,16 @@ const Scheduling = () => {
                   Print
                 </Button>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShiftImportOpen(true)}
+                  className="h-9 text-xs"
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1.5" />
+                  Import
+                </Button>
+
                 <div className="h-6 w-px bg-border hidden sm:block" />
 
                 <Button
@@ -1337,6 +1350,17 @@ const Scheduling = () => {
         restaurantName={selectedRestaurant?.restaurant?.name}
         positionFilter={positionFilter}
       />
+
+      {/* Shift Import Sheet */}
+      {restaurantId && (
+        <ShiftImportSheet
+          open={shiftImportOpen}
+          onOpenChange={setShiftImportOpen}
+          restaurantId={restaurantId}
+          employees={allEmployees}
+          existingShifts={shifts}
+        />
+      )}
     </div>
     </FeatureGate>
   );

@@ -55,7 +55,7 @@ export const ReceiptImport = () => {
   };
 
   const formatCurrency = (amount: number | null) => {
-    if (!amount) return 'N/A';
+    if (amount == null) return 'N/A';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD'
@@ -152,7 +152,7 @@ export const ReceiptImport = () => {
                             <div className="text-sm text-muted-foreground">
                               Uploaded {format(new Date(receipt.created_at), 'PPp')}
                             </div>
-                            {(receipt.imported_total || receipt.total_amount) && (
+                            {(receipt.imported_total != null || receipt.total_amount != null) && (
                               <div className="text-sm">
                                 <span className="font-medium">
                                   {formatCurrency(receipt.imported_total ?? receipt.total_amount)}

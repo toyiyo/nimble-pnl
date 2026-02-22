@@ -8,11 +8,11 @@ import { describe, it, expect } from 'vitest';
  * via the reference_id pattern: receipt_{receiptId}_{itemId}
  */
 
-export const buildReceiptReferencePattern = (receiptId: string): string => {
+const buildReceiptReferencePattern = (receiptId: string): string => {
   return `receipt_${receiptId}_%`;
 };
 
-export const matchesReceiptReference = (referenceId: string, receiptId: string): boolean => {
+const matchesReceiptReference = (referenceId: string, receiptId: string): boolean => {
   return referenceId.startsWith(`receipt_${receiptId}_`);
 };
 

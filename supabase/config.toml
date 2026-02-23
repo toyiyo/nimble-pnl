@@ -213,3 +213,15 @@ verify_jwt = true
 
 [functions.process-asset-document]
 verify_jwt = true
+
+[functions.sling-save-credentials]
+verify_jwt = false
+
+[functions.sling-test-connection]
+verify_jwt = false
+
+[functions.sling-sync-data]
+verify_jwt = false
+
+[functions.sling-bulk-sync]
+verify_jwt = false

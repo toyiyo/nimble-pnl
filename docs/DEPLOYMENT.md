@@ -16,6 +16,7 @@ Set these in **Settings > Secrets and variables > Actions**:
 |--------|-------------|---------------|
 | `SUPABASE_ACCESS_TOKEN` | Supabase personal access token | [Supabase Dashboard > Account > Access Tokens](https://supabase.com/dashboard/account/tokens) |
 | `SUPABASE_DB_PASSWORD` | Production database password | Set during project creation, or reset in Dashboard > Settings > Database |
+| `SUPABASE_PROJECT_ID` | Production project reference ID | Dashboard URL: `supabase.com/dashboard/project/<project-id>` |
 
 ## Migration Baseline
 

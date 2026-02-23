@@ -20,7 +20,7 @@ export interface ShiftImportPreviewResult {
   };
 }
 
-function getWeekMonday(dateStr: string): string {
+export function getWeekMonday(dateStr: string): string {
   const date = new Date(dateStr);
   const day = date.getDay();
   const diff = day === 0 ? -6 : 1 - day;

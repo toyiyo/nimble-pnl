@@ -22,7 +22,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useBulkCreateShifts } from '@/hooks/useBulkCreateShifts';
 import { useCreateEmployee } from '@/hooks/useEmployees';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { supabase } from '@/integrations/supabase/client';
 
 import type { Employee, Shift } from '@/types/scheduling';
 import type { ParsedShift } from '@/utils/slingCsvParser';
@@ -33,24 +35,18 @@ import type { ShiftImportPreviewResult } from '@/utils/shiftImportPreview';
 import { isSlingFormat, parseSlingCSV } from '@/utils/slingCsvParser';
 import { suggestShiftMappings, SHIFT_FIELD_OPTIONS } from '@/utils/shiftColumnMapping';
 import { matchEmployees } from '@/utils/shiftEmployeeMatching';
-import { buildShiftImportPreview } from '@/utils/shiftImportPreview';
+import { buildShiftImportPreview, getWeekMonday } from '@/utils/shiftImportPreview';
 import { cn } from '@/lib/utils';
 import { ShiftImportEmployeeReview } from './ShiftImportEmployeeReview';
 import { ShiftImportPreview } from './ShiftImportPreview';
 
 type ImportStep = 'upload' | 'mapping' | 'employees' | 'preview' | 'importing';
 
-// TODO: publishedWeeks and existingShifts are currently passed from the parent, which only
-// has data for the current week view. For accurate duplicate/published detection, the import
-// sheet should fetch its own shifts and published weeks for the full date range of the
-// imported CSV. This is a known limitation — fast-follow to add date-range-aware fetching.
 interface ShiftImportSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   employees: Employee[];
-  existingShifts?: Shift[];
-  publishedWeeks?: string[];
 }
 
 const STEP_LABELS: Record<ImportStep, string> = {
@@ -127,8 +123,6 @@ export const ShiftImportSheet = ({
   onOpenChange,
   restaurantId,
   employees,
-  existingShifts = [],
-  publishedWeeks = [],
 }: ShiftImportSheetProps) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -148,6 +142,47 @@ export const ShiftImportSheet = ({
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>(employees);
   const [isCreatingEmployees, setIsCreatingEmployees] = useState(false);
   const [previewResult, setPreviewResult] = useState<ShiftImportPreviewResult | null>(null);
+
+  // Derive the date range covered by parsed shifts for targeted fetching
+  const csvDateRange = useMemo(() => {
+    if (!parsedShifts.length) return null;
+    let min = parsedShifts[0].startTime;
+    let max = parsedShifts[0].endTime;
+    for (const s of parsedShifts) {
+      if (s.startTime < min) min = s.startTime;
+      if (s.endTime > max) max = s.endTime;
+    }
+    return { start: min, end: max };
+  }, [parsedShifts]);
+
+  // Fetch existing shifts for the CSV date range (for duplicate detection)
+  const { data: rangeShifts = [], isLoading: isLoadingShifts } = useQuery({
+    queryKey: ['shifts', 'import-range', restaurantId, csvDateRange?.start, csvDateRange?.end],
+    queryFn: async () => {
+      if (!csvDateRange) return [];
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('id, restaurant_id, employee_id, start_time, end_time, break_duration, position, status, is_published, locked, created_at, updated_at')
+        .eq('restaurant_id', restaurantId)
+        .gte('start_time', csvDateRange.start)
+        .lte('start_time', csvDateRange.end);
+      if (error) throw error;
+      return (data ?? []) as Shift[];
+    },
+    enabled: !!csvDateRange,
+    staleTime: 30000,
+  });
+
+  // Derive published week Mondays from existing shifts in the range
+  const publishedWeeks = useMemo(() => {
+    const mondays = new Set<string>();
+    for (const shift of rangeShifts) {
+      if (shift.is_published) {
+        mondays.add(getWeekMonday(shift.start_time));
+      }
+    }
+    return Array.from(mondays);
+  }, [rangeShifts]);
 
   useEffect(() => {
     setAvailableEmployees(employees);
@@ -305,7 +340,7 @@ export const ShiftImportSheet = ({
     const result = buildShiftImportPreview({
       parsedShifts,
       employeeMap,
-      existingShifts,
+      existingShifts: rangeShifts,
       publishedWeeks,
       newEmployeesCount,
     });
@@ -673,7 +708,7 @@ export const ShiftImportSheet = ({
 
   const canGoNext = () => {
     if (step === 'mapping') return mappingValidation.isValid;
-    if (step === 'employees') return parsedShifts.length > 0;
+    if (step === 'employees') return parsedShifts.length > 0 && !isLoadingShifts;
     if (step === 'preview') return previewResult && previewResult.summary.readyCount > 0;
     return false;
   };
@@ -745,6 +780,9 @@ export const ShiftImportSheet = ({
                   </>
                 ) : (
                   <>
+                    {step === 'employees' && isLoadingShifts && (
+                      <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    )}
                     Next
                     <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
                   </>

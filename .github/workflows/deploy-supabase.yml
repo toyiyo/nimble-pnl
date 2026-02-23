@@ -47,18 +47,22 @@ jobs:
       - name: Deployment summary
         if: success()
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Migrations:** Pushed successfully" >> $GITHUB_STEP_SUMMARY
-          echo "- **Edge Functions:** Deployed successfully" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Deployment Summary"
+            echo ""
+            echo "- **Commit:** ${{ github.sha }}"
+            echo "- **Branch:** ${{ github.ref_name }}"
+            echo "- **Migrations:** Pushed successfully"
+            echo "- **Edge Functions:** Deployed successfully"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Deployment failed
         if: failure()
         run: |
-          echo "## Deployment FAILED" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Check logs above for details**" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Deployment FAILED"
+            echo ""
+            echo "- **Commit:** ${{ github.sha }}"
+            echo "- **Branch:** ${{ github.ref_name }}"
+            echo "- **Check logs above for details**"
+          } >> "$GITHUB_STEP_SUMMARY"

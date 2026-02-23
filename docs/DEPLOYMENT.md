@@ -21,13 +21,18 @@ Set these in **Settings > Secrets and variables > Actions**:
 
 Before the pipeline can run, you must sync the migration history table:
 
-1. Install the Supabase CLI: `npm i -g supabase`
-2. Set environment variables:
+1. Install `psql` (PostgreSQL client):
    ```bash
-   export SUPABASE_ACCESS_TOKEN=your_token
-   export SUPABASE_DB_PASSWORD=your_password
+   # macOS
+   brew install libpq
+   # Ubuntu
+   sudo apt-get install postgresql-client
    ```
-3. Link to production: `supabase link --project-ref ncdujvdgqtaunuyigflp`
+2. Get your database connection string from **Dashboard > Settings > Database > Connection string > URI**
+3. Set the environment variable:
+   ```bash
+   export SUPABASE_DB_URL="postgresql://postgres.ncdujvdgqtaunuyigflp:[password]@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+   ```
 4. Run the baseline script: `bash scripts/baseline-migrations.sh`
 5. Verify: The script will confirm the migration count matches.
 

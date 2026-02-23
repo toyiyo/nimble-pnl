@@ -11,6 +11,7 @@ const imageLogoMap: Record<string, string> = {
   'clover-pos': '/logos/clover.png',
   'toast-pos': '/logos/toast.png',
   'shift4-pos': '/logos/shift4.png',
+  'sling-scheduling': '/logos/sling.svg',
   '7shifts': '/logos/7shifts.png',
   'when-i-work': '/logos/when-i-work.png',
 };
@@ -27,6 +28,7 @@ const emojiMap: Record<string, string> = {
   'toast-pos': '🍞',
   'square-pos': '⬜',
   'clover-pos': '🍀',
+  'sling-scheduling': '📋',
   '7shifts': '📅',
   'when-i-work': '⏰',
   'quickbooks': '💼',

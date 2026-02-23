@@ -9,16 +9,12 @@ import {
   SlingConnection,
 } from "../_shared/slingApiClient.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 const MAX_RESTAURANTS_PER_RUN = 5;
 const DELAY_BETWEEN_RESTAURANTS_MS = 2000;
 const MAX_USERS_PER_RESTAURANT = 100;
+const TARGET_DAYS = 90;
 
 // --- Date helpers ---
 
@@ -89,9 +85,10 @@ async function processConnection(
       batchStart = formatDate(subDays(now, 1));
       batchEnd = formatDate(now);
     } else {
-      // Initial catch-up: last 3 days
-      batchStart = formatDate(subDays(now, 3));
-      batchEnd = formatDate(now);
+      // Initial backfill: walk backwards from today in 1-day batches via sync_cursor
+      const cursor = connection.sync_cursor || 0;
+      batchEnd = formatDate(subDays(now, cursor));
+      batchStart = formatDate(subDays(now, cursor + 1));
     }
 
     console.log(
@@ -289,10 +286,17 @@ async function updateConnectionSuccess(
     last_error_at: null,
   };
 
-  // Mark initial sync done if not already
+  // Progress initial sync cursor, mark done when target reached
   if (!connection.initial_sync_done) {
-    update.initial_sync_done = true;
-    update.sync_cursor = 0;
+    const currentCursor = connection.sync_cursor || 0;
+    const newCursor = currentCursor + 1;
+
+    if (newCursor >= TARGET_DAYS) {
+      update.initial_sync_done = true;
+      update.sync_cursor = 0;
+    } else {
+      update.sync_cursor = newCursor;
+    }
   }
 
   await supabase
@@ -336,7 +340,7 @@ serve(async (req) => {
     // ordered by least-recently-synced first
     const { data: connections, error: connectionsError } = await supabase
       .from("sling_connections")
-      .select("*")
+      .select("id, restaurant_id, email, password_encrypted, auth_token, token_fetched_at, sling_org_id, sling_org_name, initial_sync_done, sync_cursor, is_active, connection_status")
       .eq("is_active", true)
       .eq("connection_status", "connected")
       .order("last_sync_time", { ascending: true, nullsFirst: true })

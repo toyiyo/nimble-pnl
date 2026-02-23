@@ -6,12 +6,7 @@ import {
   slingApiGet,
   fetchSlingUsers,
 } from "../_shared/slingApiClient.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -31,11 +26,11 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey =
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    // User JWT client for auth checks
-    const userSupabase = createClient(supabaseUrl, supabaseServiceKey, {
+    // User client for auth checks (anon key + user JWT)
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
@@ -85,7 +80,7 @@ serve(async (req) => {
     // Get connection using service role (to read encrypted password)
     const { data: connection, error: connectionError } = await serviceSupabase
       .from("sling_connections")
-      .select("*")
+      .select("id, restaurant_id, email, password_encrypted, sling_org_id, sling_org_name, is_active")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .single();
@@ -133,11 +128,13 @@ serve(async (req) => {
 
       // If multiple orgs, ask frontend to pick
       if (orgs.length > 1) {
-        // Save token while we wait for org selection
+        // Save encrypted token while we wait for org selection
+        const encryptionForTemp = await getEncryptionService();
+        const encryptedTempToken = await encryptionForTemp.encrypt(token);
         await serviceSupabase
           .from("sling_connections")
           .update({
-            auth_token: token,
+            auth_token: encryptedTempToken,
             token_fetched_at: new Date().toISOString(),
           })
           .eq("id", connection.id);
@@ -204,6 +201,10 @@ async function completeConnection(
   orgId: number,
   orgName: string
 ): Promise<Response> {
+  // Encrypt auth token before storing
+  const encryption = await getEncryptionService();
+  const encryptedToken = await encryption.encrypt(token);
+
   // Fetch all users from Sling
   const slingUsers = await fetchSlingUsers(token);
 
@@ -228,15 +229,15 @@ async function completeConnection(
       });
 
     if (usersError) {
-      console.error("Error upserting Sling users:", usersError);
+      throw new Error(`Failed to upsert Sling users: ${usersError.message}`);
     }
   }
 
-  // Update connection with token, org info, and connected status
+  // Update connection with encrypted token, org info, and connected status
   const { error: updateError } = await serviceSupabase
     .from("sling_connections")
     .update({
-      auth_token: token,
+      auth_token: encryptedToken,
       token_fetched_at: new Date().toISOString(),
       sling_org_id: orgId,
       sling_org_name: orgName,
@@ -247,7 +248,7 @@ async function completeConnection(
     .eq("id", connection.id);
 
   if (updateError) {
-    console.error("Error updating Sling connection:", updateError);
+    throw new Error(`Failed to update Sling connection: ${updateError.message}`);
   }
 
   return new Response(
@@ -257,12 +258,7 @@ async function completeConnection(
       usersCount: slingUsers.length,
     }),
     {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers":
-          "authorization, x-client-info, apikey, content-type",
-        "Content-Type": "application/json",
-      },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     }
   );
 }

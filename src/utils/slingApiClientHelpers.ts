@@ -28,7 +28,7 @@ export function parseSlingShiftEvents(
   events: Record<string, unknown>[]
 ): ParsedSlingShift[] {
   return events
-    .filter((e) => e.type === 'shift')
+    .filter((e) => e.type === 'shift' && e.id != null)
     .map((event) => {
       const user = event.user as Record<string, unknown> | undefined;
       const position = event.position as Record<string, unknown> | undefined;
@@ -59,7 +59,7 @@ export interface ParsedSlingTimesheetEntry {
   raw_json: Record<string, unknown>;
 }
 
-const VALID_PUNCH_TYPES = ['clock_in', 'clock_out', 'break_start', 'break_end'];
+const VALID_PUNCH_TYPES = new Set(['clock_in', 'clock_out', 'break_start', 'break_end']);
 
 export function parseSlingTimesheetEntries(
   entries: Record<string, unknown>[]
@@ -71,7 +71,7 @@ export function parseSlingTimesheetEntries(
     if (!entry.id || !user?.id) continue;
 
     const type = entry.type as string;
-    if (!VALID_PUNCH_TYPES.includes(type)) continue;
+    if (!VALID_PUNCH_TYPES.has(type)) continue;
 
     const event = entry.event as Record<string, unknown> | undefined;
 

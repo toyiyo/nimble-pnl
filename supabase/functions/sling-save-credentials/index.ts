@@ -2,12 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -28,15 +23,14 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const supabaseServiceKey =
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    // User client for auth verification
+    // User client for auth verification (anon key + user JWT)
     const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Service client for privileged data operations
+    // Service client for privileged data operations (bypasses RLS)
     const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const {
@@ -116,9 +110,21 @@ serve(async (req) => {
       { email }
     );
 
-    return new Response(JSON.stringify({ success: true, connection }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        connection: {
+          id: connection.id,
+          restaurant_id: connection.restaurant_id,
+          email: connection.email,
+          is_active: connection.is_active,
+          connection_status: connection.connection_status,
+        },
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   } catch (error: any) {
     console.error("Error saving Sling credentials:", error);
     return new Response(JSON.stringify({ error: error.message }), {

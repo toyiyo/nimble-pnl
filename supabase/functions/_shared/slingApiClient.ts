@@ -93,25 +93,27 @@ export async function getValidSlingToken(
   connection: SlingConnection,
   supabase: SupabaseClient
 ): Promise<string> {
-  // If we have a token fetched less than 1 hour ago, reuse it
+  const encryption = await getEncryptionService();
+
+  // If we have a token fetched less than 1 hour ago, decrypt and reuse it
   if (connection.auth_token && connection.token_fetched_at) {
     const tokenAge =
       Date.now() - new Date(connection.token_fetched_at).getTime();
     if (tokenAge < 3600000) {
-      return connection.auth_token;
+      return await encryption.decrypt(connection.auth_token);
     }
   }
 
   // Re-login to get fresh token
-  const encryption = await getEncryptionService();
   const password = await encryption.decrypt(connection.password_encrypted);
   const token = await slingLogin(connection.email, password);
 
-  // Save the new token
+  // Encrypt and save the new token
+  const encryptedToken = await encryption.encrypt(token);
   await supabase
     .from("sling_connections")
     .update({
-      auth_token: token,
+      auth_token: encryptedToken,
       token_fetched_at: new Date().toISOString(),
     })
     .eq("id", connection.id);

@@ -26,7 +26,7 @@ const Integrations = () => {
     setSelectedRestaurant(restaurant);
   };
 
-  const integrations = [
+  const integrations = useMemo(() => [
     {
       id: 'toast-pos',
       name: 'Toast POS',
@@ -108,7 +108,7 @@ const Integrations = () => {
       connected: false,
       features: ['Purchase Orders', 'Food Costs', 'Inventory', 'Delivery Tracking']
     }
-  ];
+  ], [toastConnected, squareConnected, cloverConnected, shift4Connected, slingConnected]);
 
   const groupedIntegrations = useMemo(() => {
     return integrations.reduce((acc, integration) => {

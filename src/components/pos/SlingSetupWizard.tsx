@@ -18,10 +18,15 @@ import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
 
 import { matchEmployees } from '@/utils/shiftEmployeeMatching';
 import { ShiftImportEmployeeReview } from '@/components/scheduling/ShiftImportEmployeeReview';
+import { cn } from '@/lib/utils';
 
 interface SlingSetupWizardProps {
-  restaurantId: string;
-  onComplete: () => void;
+  readonly restaurantId: string;
+  readonly onComplete: () => void;
+}
+
+function getSlingUserFullName(u: SlingUser): string {
+  return getSlingUserFullName(u);
 }
 
 type SetupStep = 'credentials' | 'organization' | 'employees' | 'complete';
@@ -91,7 +96,7 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
 
     // Build names array for matchEmployees
     const csvNames = fetchedUsers.map((u) => ({
-      name: `${u.name || ''} ${u.lastname || ''}`.trim(),
+      name: getSlingUserFullName(u),
       position: u.position || '',
     }));
 
@@ -123,7 +128,7 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
         setCurrentStep('organization');
       } else if (result.success) {
         // Single org — auto-selected, proceed to employee mapping
-        setOrgName(String(result.orgName || 'Sling'));
+        setOrgName((result.orgName as string) || 'Sling');
         await fetchSlingUsersAndEmployees();
         setCurrentStep('employees');
       }
@@ -215,7 +220,7 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
 
       // Find corresponding Sling user
       const slingUser = slingUsers.find(
-        (u) => `${u.name || ''} ${u.lastname || ''}`.trim() === match.csvName
+        (u) => getSlingUserFullName(u) === match.csvName
       );
 
       if (slingUser) {
@@ -310,14 +315,16 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
     try {
       // Write all linked mappings
       const mappingsToWrite = employeeMatches
-        .filter((m) => m.matchedEmployeeId && m.action === 'link')
+        .filter((m): m is typeof m & { matchedEmployeeId: string } =>
+          !!m.matchedEmployeeId && m.action === 'link'
+        )
         .map((m) => {
           const slingUser = slingUsers.find(
-            (u) => `${u.name || ''} ${u.lastname || ''}`.trim() === m.csvName
+            (u) => getSlingUserFullName(u) === m.csvName
           );
           return {
             restaurant_id: restaurantId,
-            employee_id: m.matchedEmployeeId!,
+            employee_id: m.matchedEmployeeId,
             integration_type: 'sling',
             external_user_id: slingUser?.sling_user_id?.toString() || '',
             external_user_name: m.csvName,
@@ -367,13 +374,12 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
             <div key={step.id} className="flex items-center">
               <div className="flex flex-col items-center">
                 <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-colors ${
-                    step.completed
-                      ? 'bg-foreground border-foreground text-background'
-                      : currentStep === step.id
-                        ? 'border-foreground text-foreground'
-                        : 'border-border text-muted-foreground'
-                  }`}
+                  className={cn(
+                    'w-9 h-9 rounded-full flex items-center justify-center border-2 transition-colors',
+                    step.completed && 'bg-foreground border-foreground text-background',
+                    !step.completed && currentStep === step.id && 'border-foreground text-foreground',
+                    !step.completed && currentStep !== step.id && 'border-border text-muted-foreground',
+                  )}
                 >
                   {step.completed ? (
                     <CheckCircle className="w-5 h-5" />
@@ -590,8 +596,8 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
         {/* Step 4: Complete */}
         {currentStep === 'complete' && (
           <div className="space-y-6 text-center py-8">
-            <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-12 h-12 text-emerald-600" />
+            <div className="w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle className="w-12 h-12 text-foreground" />
             </div>
 
             <div>

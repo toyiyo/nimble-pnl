@@ -67,18 +67,26 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const isToastIntegration = integration.id === 'toast-pos';
   const isSlingIntegration = integration.id === 'sling-scheduling';
 
-  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected :
-                            isCloverIntegration ? cloverIntegration.isConnected :
-                            isShift4Integration ? shift4Integration.isConnected :
-                            isToastIntegration ? toastConnection.isConnected :
-                            isSlingIntegration ? slingConnection.isConnected :
-                            integration.connected;
-  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting :
-                             isCloverIntegration ? cloverIntegration.isConnecting :
-                             isShift4Integration ? shift4Integration.loading :
-                             isToastIntegration ? toastConnection.loading :
-                             isSlingIntegration ? slingConnection.loading :
-                             isConnecting;
+  const getActuallyConnected = (): boolean => {
+    if (isSquareIntegration) return squareIntegration.isConnected;
+    if (isCloverIntegration) return cloverIntegration.isConnected;
+    if (isShift4Integration) return shift4Integration.isConnected;
+    if (isToastIntegration) return toastConnection.isConnected;
+    if (isSlingIntegration) return slingConnection.isConnected;
+    return integration.connected;
+  };
+
+  const getActuallyConnecting = (): boolean => {
+    if (isSquareIntegration) return squareIntegration.isConnecting;
+    if (isCloverIntegration) return cloverIntegration.isConnecting;
+    if (isShift4Integration) return shift4Integration.loading;
+    if (isToastIntegration) return toastConnection.loading;
+    if (isSlingIntegration) return slingConnection.loading;
+    return isConnecting;
+  };
+
+  const actuallyConnected = getActuallyConnected();
+  const actuallyConnecting = getActuallyConnecting();
 
   const handleConnect = async () => {
     if (isSquareIntegration) {
@@ -168,6 +176,25 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       title: "Disconnected",
       description: `Successfully disconnected from ${integration.name}`,
     });
+  };
+
+  const getConnectionDateLabel = (): string => {
+    if (isSquareIntegration && squareIntegration.connection) {
+      return `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}`;
+    }
+    if (isCloverIntegration && cloverIntegration.connection) {
+      return `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}`;
+    }
+    if (isShift4Integration && shift4Integration.connection) {
+      return `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}`;
+    }
+    if (isToastIntegration && toastConnection.connection) {
+      return `Connected: ${new Date(toastConnection.connection.created_at).toLocaleDateString()}`;
+    }
+    if (isSlingIntegration && slingConnection.connection) {
+      return `Connected: ${new Date(slingConnection.connection.created_at).toLocaleDateString()}`;
+    }
+    return 'Last sync: 2 hours ago';
   };
 
   const handleConfigure = () => {
@@ -272,18 +299,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
           <div className="space-y-4 pt-4 border-t">
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
               <Clock className="h-3 w-3" />
-              {isSquareIntegration && squareIntegration.connection ? 
-                `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
-              isCloverIntegration && cloverIntegration.connection ?
-                `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
-              isShift4Integration && shift4Integration.connection ?
-                `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}` :
-              isToastIntegration && toastConnection.connection ?
-                `Connected: ${new Date(toastConnection.connection.created_at).toLocaleDateString()}` :
-              isSlingIntegration && slingConnection.connection ?
-                `Connected: ${new Date(slingConnection.connection.created_at).toLocaleDateString()}` :
-                'Last sync: 2 hours ago'
-              }
+              {getConnectionDateLabel()}
             </div>
             
             {/* Square Sync Component */}

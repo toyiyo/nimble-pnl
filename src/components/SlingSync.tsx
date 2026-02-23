@@ -24,7 +24,7 @@ import {
 import { format } from 'date-fns';
 
 interface SlingSyncProps {
-  restaurantId: string;
+  readonly restaurantId: string;
 }
 
 interface SyncError {
@@ -73,16 +73,16 @@ export function SlingSync({ restaurantId }: SlingSyncProps): JSX.Element {
       try {
         const data = await triggerManualSync(restaurantId, options);
 
-        if (data?.shiftsSynced === undefined && data?.timesheetsSynced === undefined) {
+        if (!data || (data.shiftsSynced === undefined && data.timesheetsSynced === undefined)) {
           break;
         }
 
         consecutiveFailures = 0;
-        totalShifts += (data.shiftsSynced as number) || 0;
-        totalTimesheets += (data.timesheetsSynced as number) || 0;
+        totalShifts += Number(data.shiftsSynced) || 0;
+        totalTimesheets += Number(data.timesheetsSynced) || 0;
         const currentTotal = totalShifts + totalTimesheets;
         setTotalItemsSynced(currentTotal);
-        setSyncProgress((data.progress as number) || 100);
+        setSyncProgress(Number(data.progress) || 100);
 
         if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
           allErrors.push(...(data.errors as (string | SyncError)[]));
@@ -96,8 +96,6 @@ export function SlingSync({ restaurantId }: SlingSyncProps): JSX.Element {
       } catch (error) {
         consecutiveFailures++;
         const errorMessage = error instanceof Error ? error.message : 'Request failed';
-
-        console.warn(`Sync request failed (attempt ${consecutiveFailures}/${MAX_RETRIES}):`, errorMessage);
 
         if (consecutiveFailures >= MAX_RETRIES) {
           allErrors.push({ message: `Sync interrupted after ${MAX_RETRIES} retries: ${errorMessage}` });
@@ -142,8 +140,6 @@ export function SlingSync({ restaurantId }: SlingSyncProps): JSX.Element {
 
       const { totalShifts, totalTimesheets, allErrors } = await executeSyncLoop(syncOptions);
 
-      const totalItems = totalShifts + totalTimesheets;
-
       setSyncResult({
         shiftsSynced: totalShifts,
         timesheetsSynced: totalTimesheets,
@@ -152,19 +148,18 @@ export function SlingSync({ restaurantId }: SlingSyncProps): JSX.Element {
         progress: 100,
       });
 
-      const description = syncMode === 'custom'
-        ? `${totalShifts} shifts + ${totalTimesheets} timesheets synced for ${format(dateRange!.from, 'MMM d')} - ${format(dateRange!.to, 'MMM d, yyyy')}`
+      const description = syncMode === 'custom' && dateRange
+        ? `${totalShifts} shifts + ${totalTimesheets} timesheets synced for ${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d, yyyy')}`
         : `${totalShifts} shifts + ${totalTimesheets} timesheets synced successfully`;
 
       toast({ title: 'Sync complete', description });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed';
       toast({ title: 'Sync failed', description: errorMessage, variant: 'destructive' });
-      console.error('Sync error:', error);
 
       if (totalItemsSynced > 0) {
         setSyncResult({
-          shiftsSynced: totalItemsSynced,
+          shiftsSynced: 0,
           timesheetsSynced: 0,
           errors: [errorMessage],
           syncComplete: false,

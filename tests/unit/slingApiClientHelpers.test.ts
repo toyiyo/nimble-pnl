@@ -220,4 +220,76 @@ describe('parseSlingTimesheetEntries', () => {
     expect(result).toHaveLength(1);
     expect(result[0].sling_shift_id).toBeNull();
   });
+
+  it('skips entries where user object exists but has no id', () => {
+    const entries = [
+      {
+        id: 90001,
+        type: 'clock_in',
+        timestamp: '2026-01-15T08:55:00',
+        user: { name: 'John' }, // no id
+      },
+    ];
+    expect(parseSlingTimesheetEntries(entries)).toHaveLength(0);
+  });
+});
+
+describe('parseSlingShiftEvents — edge cases', () => {
+  it('skips shift events with null id', () => {
+    const events = [
+      {
+        id: null,
+        type: 'shift',
+        dtstart: '2026-01-15T09:00:00',
+        dtend: '2026-01-15T17:00:00',
+        user: { id: 1 },
+      },
+    ];
+    expect(parseSlingShiftEvents(events)).toHaveLength(0);
+  });
+
+  it('skips shift events with undefined id', () => {
+    const events = [
+      {
+        type: 'shift',
+        dtstart: '2026-01-15T09:00:00',
+        dtend: '2026-01-15T17:00:00',
+        user: { id: 1 },
+      },
+    ];
+    expect(parseSlingShiftEvents(events)).toHaveLength(0);
+  });
+
+  it('handles empty events array', () => {
+    expect(parseSlingShiftEvents([])).toHaveLength(0);
+  });
+
+  it('handles missing dtstart gracefully', () => {
+    const events = [
+      {
+        id: 500,
+        type: 'shift',
+        dtend: '2026-01-15T17:00:00',
+        user: { id: 1 },
+      },
+    ];
+    const result = parseSlingShiftEvents(events);
+    expect(result).toHaveLength(1);
+    expect(result[0].shift_date).toBe('');
+    expect(result[0].start_time).toBe('');
+  });
+
+  it('handles missing dtend gracefully', () => {
+    const events = [
+      {
+        id: 600,
+        type: 'shift',
+        dtstart: '2026-01-15T09:00:00',
+        user: { id: 1 },
+      },
+    ];
+    const result = parseSlingShiftEvents(events);
+    expect(result).toHaveLength(1);
+    expect(result[0].end_time).toBe('');
+  });
 });

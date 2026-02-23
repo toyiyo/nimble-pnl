@@ -8,9 +8,6 @@ type SlingConnection = {
   id: string;
   restaurant_id: string;
   email: string;
-  password_encrypted: string;
-  auth_token: string | null;
-  token_fetched_at: string | null;
   sling_org_id: number | null;
   sling_org_name: string | null;
   last_sync_time: string | null;
@@ -37,7 +34,7 @@ export function useSlingConnection(restaurantId?: string | null) {
 
       const { data, error } = await supabase
         .from('sling_connections' as any)
-        .select('*')
+        .select('id, restaurant_id, email, sling_org_id, sling_org_name, last_sync_time, initial_sync_done, sync_cursor, is_active, connection_status, last_error, last_error_at, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .maybeSingle();
@@ -50,8 +47,7 @@ export function useSlingConnection(restaurantId?: string | null) {
     },
     enabled: !!restaurantId,
     staleTime: 30000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const isConnected = !!connection;
@@ -136,13 +132,12 @@ export function useSlingConnection(restaurantId?: string | null) {
         description: 'Sling connection has been disabled',
       });
     },
-    onError: (error: Error) => {
+    onError: () => {
       toast({
         title: 'Error',
         description: 'Failed to disconnect from Sling',
         variant: 'destructive',
       });
-      throw error;
     },
   });
 

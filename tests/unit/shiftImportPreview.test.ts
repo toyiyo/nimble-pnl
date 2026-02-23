@@ -3,6 +3,7 @@ import type { Employee } from '@/types/scheduling';
 import type { Shift } from '@/types/scheduling';
 import {
   buildShiftImportPreview,
+  getWeekMonday,
   type ShiftImportPreviewResult,
 } from '@/utils/shiftImportPreview';
 import type { ParsedShift } from '@/utils/slingCsvParser';
@@ -12,6 +13,28 @@ const makeEmployee = (id: string, name: string): Employee =>
 
 const makeShift = (id: string, employeeId: string, start: string, end: string): Shift =>
   ({ id, restaurant_id: 'rest-1', employee_id: employeeId, start_time: start, end_time: end, break_duration: 0, position: 'Server', status: 'scheduled', is_published: false, locked: false } as Shift);
+
+describe('getWeekMonday', () => {
+  it('returns Monday for a Saturday date', () => {
+    // Feb 28 2026 is Saturday → Monday is Feb 23
+    expect(getWeekMonday('2026-02-28T10:00:00.000')).toBe('2026-02-23');
+  });
+
+  it('returns the same date when input is Monday', () => {
+    // Feb 23 2026 is Monday
+    expect(getWeekMonday('2026-02-23T08:00:00.000')).toBe('2026-02-23');
+  });
+
+  it('returns Monday for a Sunday date', () => {
+    // Mar 1 2026 is Sunday → Monday is Feb 23
+    expect(getWeekMonday('2026-03-01T12:00:00.000')).toBe('2026-02-23');
+  });
+
+  it('handles month boundary correctly', () => {
+    // Mar 4 2026 is Wednesday → Monday is Mar 2
+    expect(getWeekMonday('2026-03-04T09:00:00.000')).toBe('2026-03-02');
+  });
+});
 
 describe('buildShiftImportPreview', () => {
   const employees = [makeEmployee('emp-1', 'Abraham Dominguez')];

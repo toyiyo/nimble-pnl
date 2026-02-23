@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,12 +11,8 @@ import { CheckCircle, Circle, Loader2, Info, Users, Building2 } from 'lucide-rea
 
 import { useToast } from '@/hooks/use-toast';
 import { useSlingConnection } from '@/hooks/useSlingConnection';
-import { supabase } from '@/integrations/supabase/client';
+import { useSlingEmployeeMapping } from '@/hooks/useSlingEmployeeMapping';
 
-import type { Employee } from '@/types/scheduling';
-import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
-
-import { matchEmployees } from '@/utils/shiftEmployeeMatching';
 import { ShiftImportEmployeeReview } from '@/components/scheduling/ShiftImportEmployeeReview';
 import { cn } from '@/lib/utils';
 
@@ -25,24 +21,11 @@ interface SlingSetupWizardProps {
   readonly onComplete: () => void;
 }
 
-function getSlingUserFullName(u: SlingUser): string {
-  return getSlingUserFullName(u);
-}
-
 type SetupStep = 'credentials' | 'organization' | 'employees' | 'complete';
 
 interface SlingOrg {
   id: number;
   name: string;
-}
-
-interface SlingUser {
-  sling_user_id: number;
-  name: string | null;
-  lastname: string | null;
-  email: string | null;
-  position: string | null;
-  is_active: boolean;
 }
 
 export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardProps) => {
@@ -53,13 +36,19 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
   const [orgs, setOrgs] = useState<SlingOrg[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [orgName, setOrgName] = useState('');
-  const [slingUsers, setSlingUsers] = useState<SlingUser[]>([]);
-  const [existingEmployees, setExistingEmployees] = useState<Employee[]>([]);
-  const [employeeMatches, setEmployeeMatches] = useState<ShiftImportEmployee[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
 
   const { toast } = useToast();
   const { saveCredentials, testConnection } = useSlingConnection(restaurantId);
+  const {
+    employeeMatches,
+    existingEmployees,
+    isCreating,
+    fetchSlingUsersAndEmployees,
+    updateMatch,
+    createSingle,
+    bulkCreateAll,
+    confirmMappings,
+  } = useSlingEmployeeMapping(restaurantId);
 
   const steps: { id: SetupStep; label: string; completed: boolean }[] = [
     { id: 'credentials', label: 'Credentials', completed: currentStep !== 'credentials' },
@@ -67,42 +56,6 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
     { id: 'employees', label: 'Employees', completed: currentStep === 'complete' },
     { id: 'complete', label: 'Complete', completed: false },
   ];
-
-  const fetchSlingUsersAndEmployees = useCallback(async () => {
-    const [usersResult, employeesResult] = await Promise.all([
-      supabase
-        .from('sling_users' as any)
-        .select('sling_user_id, name, lastname, email, position, is_active')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true),
-      supabase
-        .from('employees')
-        .select('id, name, position, restaurant_id, status, email, phone, hire_date, notes, created_at, updated_at, is_active, compensation_type, hourly_rate')
-        .eq('restaurant_id', restaurantId),
-    ]);
-
-    if (usersResult.error) {
-      throw new Error(`Failed to fetch Sling users: ${usersResult.error.message}`);
-    }
-    if (employeesResult.error) {
-      throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
-    }
-
-    const fetchedUsers = (usersResult.data || []) as unknown as SlingUser[];
-    const fetchedEmployees = (employeesResult.data || []) as Employee[];
-
-    setSlingUsers(fetchedUsers);
-    setExistingEmployees(fetchedEmployees);
-
-    // Build names array for matchEmployees
-    const csvNames = fetchedUsers.map((u) => ({
-      name: getSlingUserFullName(u),
-      position: u.position || '',
-    }));
-
-    const matches = matchEmployees(csvNames, fetchedEmployees);
-    setEmployeeMatches(matches);
-  }, [restaurantId]);
 
   const handleConnectAndTest = async () => {
     if (!email || !password) {
@@ -116,18 +69,13 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
 
     setLoading(true);
     try {
-      // Step 1: Save credentials
       await saveCredentials(restaurantId, email, password);
-
-      // Step 2: Test connection
       const result = await testConnection(restaurantId);
 
       if (result.needsOrgSelection) {
-        // Multiple orgs — show org picker
         setOrgs((result.orgs as SlingOrg[]) || []);
         setCurrentStep('organization');
       } else if (result.success) {
-        // Single org — auto-selected, proceed to employee mapping
         setOrgName((result.orgName as string) || 'Sling');
         await fetchSlingUsersAndEmployees();
         setCurrentStep('employees');
@@ -175,125 +123,30 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
     }
   };
 
-  const handleUpdateMatch = useCallback(
-    (normalizedName: string, employeeId: string | null, action: 'link' | 'create' | 'skip') => {
-      setEmployeeMatches((prev) =>
-        prev.map((m) => {
-          if (m.normalizedName !== normalizedName) return m;
-          if (action === 'link' && employeeId) {
-            const matchedEmp = existingEmployees.find((e) => e.id === employeeId);
-            return {
-              ...m,
-              matchedEmployeeId: employeeId,
-              matchedEmployeeName: matchedEmp?.name || null,
-              matchConfidence: 'exact' as const,
-              action: 'link',
-            };
-          }
-          return { ...m, matchedEmployeeId: null, matchedEmployeeName: null, action };
-        })
-      );
-    },
-    [existingEmployees]
-  );
-
-  const createEmployeeAndMap = useCallback(
-    async (match: ShiftImportEmployee): Promise<void> => {
-      // Create the employee
-      const { data: newEmp, error: createError } = await supabase
-        .from('employees')
-        .insert({
-          restaurant_id: restaurantId,
-          name: match.csvName,
-          position: match.csvPosition || 'Team Member',
-          status: 'active',
-          is_active: true,
-          compensation_type: 'hourly',
-          hourly_rate: 0,
-        })
-        .select('id, name, position, restaurant_id')
-        .single();
-
-      if (createError) {
-        throw new Error(`Failed to create employee ${match.csvName}: ${createError.message}`);
-      }
-
-      // Find corresponding Sling user
-      const slingUser = slingUsers.find(
-        (u) => getSlingUserFullName(u) === match.csvName
-      );
-
-      if (slingUser) {
-        await supabase
-          .from('employee_integration_mappings' as any)
-          .upsert(
-            {
-              restaurant_id: restaurantId,
-              employee_id: newEmp.id,
-              integration_type: 'sling',
-              external_user_id: slingUser.sling_user_id.toString(),
-              external_user_name: match.csvName,
-            },
-            { onConflict: 'restaurant_id,integration_type,external_user_id' }
-          );
-      }
-
-      // Update local state
-      setExistingEmployees((prev) => [...prev, newEmp as unknown as Employee]);
-      setEmployeeMatches((prev) =>
-        prev.map((m) =>
-          m.normalizedName === match.normalizedName
-            ? {
-                ...m,
-                matchedEmployeeId: newEmp.id,
-                matchedEmployeeName: newEmp.name,
-                matchConfidence: 'exact' as const,
-                action: 'link' as const,
-              }
-            : m
-        )
-      );
-    },
-    [restaurantId, slingUsers]
-  );
-
-  const handleCreateSingle = useCallback(
-    async (normalizedName: string) => {
-      const match = employeeMatches.find((m) => m.normalizedName === normalizedName);
-      if (!match) return;
-
-      setIsCreating(true);
-      try {
-        await createEmployeeAndMap(match);
-        toast({
-          title: 'Employee created',
-          description: `${match.csvName} has been added`,
-        });
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to create employee';
-        toast({
-          title: 'Error',
-          description: errorMessage,
-          variant: 'destructive',
-        });
-      } finally {
-        setIsCreating(false);
-      }
-    },
-    [employeeMatches, createEmployeeAndMap, toast]
-  );
-
-  const handleBulkCreateAll = useCallback(async () => {
-    const unmatched = employeeMatches.filter(
-      (m) => m.matchConfidence === 'none' && m.action !== 'link'
-    );
-    if (unmatched.length === 0) return;
-
-    setIsCreating(true);
+  const handleCreateSingle = async (normalizedName: string) => {
     try {
-      for (const match of unmatched) {
-        await createEmployeeAndMap(match);
-      }
+      await createSingle(normalizedName);
+      const match = employeeMatches.find((m) => m.normalizedName === normalizedName);
+      toast({
+        title: 'Employee created',
+        description: `${match?.csvName || normalizedName} has been added`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create employee';
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleBulkCreateAll = async () => {
+    try {
+      await bulkCreateAll();
+      const unmatched = employeeMatches.filter(
+        (m) => m.matchConfidence === 'none' && m.action !== 'link'
+      );
       toast({
         title: 'Employees created',
         description: `${unmatched.length} employees have been added`,
@@ -305,46 +158,16 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
         description: errorMessage,
         variant: 'destructive',
       });
-    } finally {
-      setIsCreating(false);
     }
-  }, [employeeMatches, createEmployeeAndMap, toast]);
+  };
 
   const handleConfirmEmployees = async () => {
     setLoading(true);
     try {
-      // Write all linked mappings
-      const mappingsToWrite = employeeMatches
-        .filter((m): m is typeof m & { matchedEmployeeId: string } =>
-          !!m.matchedEmployeeId && m.action === 'link'
-        )
-        .map((m) => {
-          const slingUser = slingUsers.find(
-            (u) => getSlingUserFullName(u) === m.csvName
-          );
-          return {
-            restaurant_id: restaurantId,
-            employee_id: m.matchedEmployeeId,
-            integration_type: 'sling',
-            external_user_id: slingUser?.sling_user_id?.toString() || '',
-            external_user_name: m.csvName,
-          };
-        })
-        .filter((m) => m.external_user_id);
-
-      if (mappingsToWrite.length > 0) {
-        const { error } = await supabase
-          .from('employee_integration_mappings' as any)
-          .upsert(mappingsToWrite, { onConflict: 'restaurant_id,integration_type,external_user_id' });
-
-        if (error) {
-          throw new Error(`Failed to save mappings: ${error.message}`);
-        }
-      }
-
+      const count = await confirmMappings();
       toast({
         title: 'Employee mappings saved',
-        description: `${mappingsToWrite.length} employees linked to Sling`,
+        description: `${count} employees linked to Sling`,
       });
       setCurrentStep('complete');
     } catch (err) {
@@ -561,7 +384,7 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
             <ShiftImportEmployeeReview
               employeeMatches={employeeMatches}
               existingEmployees={existingEmployees}
-              onUpdateMatch={handleUpdateMatch}
+              onUpdateMatch={updateMatch}
               onCreateSingle={handleCreateSingle}
               onBulkCreateAll={handleBulkCreateAll}
               isCreating={isCreating}

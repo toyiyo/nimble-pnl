@@ -330,10 +330,16 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
+    // Auth gate: only allow calls with service role key (cron jobs)
+    const authHeader = req.headers.get("Authorization");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!authHeader || !authHeader.includes(supabaseServiceKey)) {
+      return jsonResponse({ error: "Unauthorized" }, 401);
+    }
+
     console.log("Sling bulk sync started");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Fetch up to MAX_RESTAURANTS_PER_RUN active connections,

@@ -85,6 +85,8 @@ serve(async (req) => {
           restaurant_id: restaurantId,
           email,
           password_encrypted: encryptedPassword,
+          auth_token: null,
+          token_fetched_at: null,
           is_active: true,
           connection_status: "pending",
           updated_at: new Date().toISOString(),

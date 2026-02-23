@@ -82,7 +82,7 @@ export function SlingSync({ restaurantId }: SlingSyncProps): JSX.Element {
         totalTimesheets += Number(data.timesheetsSynced) || 0;
         const currentTotal = totalShifts + totalTimesheets;
         setTotalItemsSynced(currentTotal);
-        setSyncProgress(Number(data.progress) || 100);
+        setSyncProgress(data.progress != null ? Number(data.progress) : 100);
 
         if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
           allErrors.push(...(data.errors as (string | SyncError)[]));

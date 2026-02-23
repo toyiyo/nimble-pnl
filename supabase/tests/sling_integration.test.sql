@@ -1,6 +1,6 @@
 -- Tests for Sling integration tables, indexes, RLS policies, and triggers
 BEGIN;
-SELECT plan(12);
+SELECT plan(15);
 
 -- Test tables exist
 SELECT has_table('public', 'sling_connections', 'sling_connections table should exist');
@@ -25,6 +25,33 @@ SELECT ok(
       AND policyname = 'Users can view sling connections for their restaurants'
   ),
   'sling_connections SELECT policy should exist'
+);
+SELECT ok(
+  EXISTS(
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'sling_users'
+      AND policyname = 'Users can view sling users for their restaurants'
+  ),
+  'sling_users SELECT policy should exist'
+);
+SELECT ok(
+  EXISTS(
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'sling_shifts'
+      AND policyname = 'Users can view sling shifts for their restaurants'
+  ),
+  'sling_shifts SELECT policy should exist'
+);
+SELECT ok(
+  EXISTS(
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'sling_timesheets'
+      AND policyname = 'Users can view sling timesheets for their restaurants'
+  ),
+  'sling_timesheets SELECT policy should exist'
 );
 SELECT ok(
   EXISTS(

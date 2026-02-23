@@ -172,7 +172,7 @@ export function parseSlingShiftEvents(
   raw_json: any;
 }> {
   return events
-    .filter((e: any) => e.type === "shift")
+    .filter((e: any) => e.type === "shift" && e.id != null)
     .map((event: any) => ({
       sling_shift_id: event.id,
       sling_user_id: event.user?.id ?? null,

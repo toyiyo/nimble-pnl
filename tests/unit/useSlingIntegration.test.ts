@@ -129,11 +129,15 @@ describe('useSlingIntegration', () => {
   });
 
   it('disconnectSling calls through to useSlingConnection', async () => {
+    // Select-chain eq calls return the chain; the final eq in the update call resolves
+    mockFromChain.eq
+      .mockReturnValueOnce(mockFromChain)  // eq('restaurant_id', ...) in select
+      .mockReturnValueOnce(mockFromChain)  // eq('is_active', ...) in select
+      .mockResolvedValue({ error: null }); // eq('restaurant_id', ...) in update
     mockFromChain.maybeSingle.mockResolvedValue({
       data: mockConnection,
       error: null,
     });
-    mockFromChain.eq.mockResolvedValue({ error: null });
 
     const { result } = renderHook(() => useSlingIntegration(RESTAURANT_ID), {
       wrapper: createWrapper(),

@@ -134,6 +134,10 @@ describe('parseSlingShiftEvents', () => {
 });
 
 describe('parseSlingTimesheetEntries', () => {
+  it('handles empty entries array', () => {
+    expect(parseSlingTimesheetEntries([])).toHaveLength(0);
+  });
+
   it('parses clock_in entries', () => {
     const entries = [
       {

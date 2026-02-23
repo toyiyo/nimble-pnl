@@ -183,6 +183,7 @@ async function fetchAndUpsertShifts(
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message === "SLING_TOKEN_EXPIRED") throw err;
       errors.push(`Shifts for user ${user.sling_user_id}: ${message}`);
     }
   }
@@ -238,6 +239,7 @@ async function fetchAndUpsertTimesheets(
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    if (message === "SLING_TOKEN_EXPIRED") throw err;
     errors.push(`Timesheets fetch: ${message}`);
   }
 

@@ -13,6 +13,7 @@ interface ShiftImportEmployeeReviewProps {
   employeeMatches: ShiftImportEmployee[];
   existingEmployees: Employee[];
   onUpdateMatch: (normalizedName: string, employeeId: string | null, action: 'link' | 'create' | 'skip') => void;
+  onCreateSingle: (normalizedName: string) => void;
   onBulkCreateAll: () => void;
   isCreating: boolean;
 }
@@ -44,6 +45,7 @@ export const ShiftImportEmployeeReview = ({
   employeeMatches,
   existingEmployees,
   onUpdateMatch,
+  onCreateSingle,
   onBulkCreateAll,
   isCreating,
 }: ShiftImportEmployeeReviewProps) => {
@@ -159,7 +161,7 @@ export const ShiftImportEmployeeReview = ({
                     variant="outline"
                     size="sm"
                     className="h-9 px-3 rounded-lg text-[13px] font-medium"
-                    onClick={() => onUpdateMatch(match.normalizedName, null, 'create')}
+                    onClick={() => onCreateSingle(match.normalizedName)}
                     disabled={isCreating}
                     aria-label={`Create employee ${match.csvName}`}
                   >

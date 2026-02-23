@@ -348,6 +348,37 @@ export const ShiftImportSheet = ({
     });
   }, [updateMatchEntry, employeeMatches]);
 
+  const handleCreateSingle = async (normalizedName: string) => {
+    const match = employeeMatches.find(m => m.normalizedName === normalizedName);
+    if (!match) return;
+
+    setIsCreatingEmployees(true);
+    try {
+      const result = await createEmployeeMutation.mutateAsync({
+        restaurant_id: restaurantId,
+        name: match.csvName.trim(),
+        position: match.csvPosition || 'Staff',
+        status: 'active',
+        is_active: true,
+        compensation_type: 'hourly',
+        hourly_rate: 0,
+      });
+
+      setAvailableEmployees(prev => [...prev, result as Employee]);
+      setEmployeeMap(prev => ({ ...prev, [match.csvName]: result.id }));
+      setEmployeeMatches(prev =>
+        prev.map(m =>
+          m.normalizedName === normalizedName
+            ? { ...m, matchedEmployeeId: result.id, matchedEmployeeName: result.name, matchConfidence: 'exact' as const, action: 'link' as const }
+            : m
+        )
+      );
+    } catch {
+      // Error is surfaced via the hook toast
+    }
+    setIsCreatingEmployees(false);
+  };
+
   const handleBulkCreateAll = async () => {
     const toCreate = employeeMatches.filter(m => m.matchConfidence === 'none' && m.action !== 'link');
     if (!toCreate.length) return;
@@ -612,6 +643,7 @@ export const ShiftImportSheet = ({
       employeeMatches={employeeMatches}
       existingEmployees={availableEmployees}
       onUpdateMatch={handleUpdateMatch}
+      onCreateSingle={handleCreateSingle}
       onBulkCreateAll={handleBulkCreateAll}
       isCreating={isCreatingEmployees}
     />

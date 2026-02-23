@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const [showToastSetup, setShowToastSetup] = useState(false);
   const [showSlingSetup, setShowSlingSetup] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   // Square-specific integration hook
   const squareIntegration = useSquareIntegration(restaurantId);
@@ -348,6 +350,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             restaurantId={restaurantId}
             onComplete={() => {
               setShowSlingSetup(false);
+              queryClient.invalidateQueries({ queryKey: ['sling-connection', restaurantId] });
             }}
           />
         </DialogContent>

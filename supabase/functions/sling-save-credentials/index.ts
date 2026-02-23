@@ -27,15 +27,21 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const supabaseServiceKey =
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+
+    // User client for auth verification
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
+    // Service client for privileged data operations
+    const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey);
+
     const {
       data: { user },
-    } = await supabase.auth.getUser();
+    } = await userSupabase.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -56,7 +62,7 @@ serve(async (req) => {
     }
 
     // Verify user has permission (owner/manager only)
-    const { data: userRestaurant } = await supabase
+    const { data: userRestaurant } = await userSupabase
       .from("user_restaurants")
       .select("role")
       .eq("user_id", user.id)
@@ -77,8 +83,8 @@ serve(async (req) => {
     const encryption = await getEncryptionService();
     const encryptedPassword = await encryption.encrypt(password);
 
-    // Upsert connection
-    const { data: connection, error: upsertError } = await supabase
+    // Upsert connection (using service role for privileged write)
+    const { data: connection, error: upsertError } = await serviceSupabase
       .from("sling_connections")
       .upsert(
         {
@@ -103,7 +109,7 @@ serve(async (req) => {
     }
 
     await logSecurityEvent(
-      supabase,
+      serviceSupabase,
       "SLING_CREDENTIALS_SAVED",
       user.id,
       restaurantId,

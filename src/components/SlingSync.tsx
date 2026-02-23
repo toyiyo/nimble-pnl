@@ -137,7 +137,7 @@ export function SlingSync({ restaurantId }: SlingSyncProps): JSX.Element {
 
     try {
       const syncOptions = syncMode === 'custom' && dateRange
-        ? { startDate: dateRange.from.toISOString(), endDate: dateRange.to.toISOString() }
+        ? { startDate: format(dateRange.from, 'yyyy-MM-dd'), endDate: format(dateRange.to, 'yyyy-MM-dd') }
         : undefined;
 
       const { totalShifts, totalTimesheets, allErrors } = await executeSyncLoop(syncOptions);

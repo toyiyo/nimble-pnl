@@ -105,7 +105,8 @@ Iteration 1: Run coderabbit review --plain --type committed
 
 **Invoke:** `superpowers:verification-before-completion`
 
-- Run all relevant tests: `npm run test`, `npm run lint`, `npm run build`
+- set a symlink to .env.local so you can run tests in the worktree with access to env vars
+- Run all relevant tests: `npm run test && npm run test:db && npm run test:e2e`, `npm run lint`, `npm run build`
 - Confirm ALL pass with actual output evidence
 - Never claim "tests pass" without running them
 

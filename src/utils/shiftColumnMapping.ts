@@ -110,11 +110,10 @@ const calculateConfidence = (csvColumn: string, targetField: ShiftTargetField) =
     score = pattern.weight * 7;
   }
 
-  const confidence: ShiftColumnMapping['confidence'] =
-    score >= 70 ? 'high' :
-    score >= 40 ? 'medium' :
-    score >= 20 ? 'low' :
-    'none';
+  let confidence: ShiftColumnMapping['confidence'] = 'none';
+  if (score >= 70) confidence = 'high';
+  else if (score >= 40) confidence = 'medium';
+  else if (score >= 20) confidence = 'low';
 
   return { score, confidence };
 };

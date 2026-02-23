@@ -100,12 +100,10 @@ export const ShiftImportEmployeeReview = ({
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
-                  {match.matchConfidence === 'exact' ? (
-                    <UserCheck className="h-4 w-4 text-emerald-600" />
-                  ) : match.matchConfidence === 'partial' ? (
-                    <UserCheck className="h-4 w-4 text-amber-600" />
-                  ) : (
+                  {match.matchConfidence === 'none' ? (
                     <UserX className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <UserCheck className={`h-4 w-4 ${match.matchConfidence === 'exact' ? 'text-emerald-600' : 'text-amber-600'}`} />
                   )}
                 </div>
                 <div className="min-w-0">

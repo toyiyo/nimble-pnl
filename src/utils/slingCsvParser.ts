@@ -9,10 +9,10 @@ export interface ParsedShift {
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const SECTION_HEADERS = ['unassigned shifts', 'available shifts', 'scheduled shifts'];
+const SECTION_HEADERS = new Set(['unassigned shifts', 'available shifts', 'scheduled shifts']);
 
 // Regex to extract: "10:00 AM - 11:00 PM • 13h" line followed by "Server • San Antonio" line
-const SHIFT_BLOCK_PATTERN = /(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)\s*•\s*[\d]+h(?:\s*\d+min)?\n([^•\n]+?)•\s*([^\n]+)/g;
+const SHIFT_BLOCK_PATTERN = /(\d{1,2}:\d{2} [AP]M) - (\d{1,2}:\d{2} [AP]M) • \d+h(?: \d+min)?\n([^•\n]+?)• ([^\n]+)/g;
 
 export function isSlingFormat(headers: string[], rows: Record<string, string>[]): boolean {
   const dateColumns = headers.slice(1).filter(h => DATE_PATTERN.test(h.trim()));
@@ -25,10 +25,10 @@ export function isSlingFormat(headers: string[], rows: Record<string, string>[])
 }
 
 function parseTime12h(timeStr: string): { hours: number; minutes: number } {
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const match = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(timeStr.trim());
   if (!match) return { hours: 0, minutes: 0 };
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
   const period = match[3].toUpperCase();
   if (period === 'PM' && hours !== 12) hours += 12;
   if (period === 'AM' && hours === 12) hours = 0;
@@ -50,7 +50,7 @@ function addOneDay(dateStr: string): string {
 }
 
 export function parseSlingShiftCell(cell: string, dateStr: string): ParsedShift[] {
-  if (!cell || !cell.trim()) return [];
+  if (!cell?.trim()) return [];
 
   const shifts: ParsedShift[] = [];
   let match: RegExpExecArray | null;
@@ -93,7 +93,7 @@ export function parseSlingCSV(headers: string[], rows: Record<string, string>[])
   for (const row of rows) {
     const name = row[nameColumn]?.trim();
     if (!name) continue;
-    if (SECTION_HEADERS.includes(name.toLowerCase())) continue;
+    if (SECTION_HEADERS.has(name.toLowerCase())) continue;
 
     const hasShifts = dateColumns.some(dateCol => {
       const cell = row[dateCol];

@@ -28,7 +28,7 @@ function buildEmployeeLookup(employees: Employee[]) {
       const words = employee.name.trim().split(/\s+/);
       if (words.length >= 2) {
         const first = words[0];
-        const last = words[words.length - 1];
+        const last = words.at(-1);
         add(`${last}, ${first}`, employee);
         add(`${last} ${first}`, employee);
       }

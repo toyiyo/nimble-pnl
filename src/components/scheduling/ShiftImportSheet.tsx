@@ -34,7 +34,6 @@ import { isSlingFormat, parseSlingCSV } from '@/utils/slingCsvParser';
 import { suggestShiftMappings, SHIFT_FIELD_OPTIONS } from '@/utils/shiftColumnMapping';
 import { matchEmployees } from '@/utils/shiftEmployeeMatching';
 import { buildShiftImportPreview } from '@/utils/shiftImportPreview';
-import { normalizeEmployeeKey } from '@/utils/timePunchImport';
 import { cn } from '@/lib/utils';
 import { ShiftImportEmployeeReview } from './ShiftImportEmployeeReview';
 import { ShiftImportPreview } from './ShiftImportPreview';
@@ -68,7 +67,20 @@ function parseDateAndTime(dateStr?: string, timeStr?: string): string | null {
   const combined = [dateStr, timeStr].filter(Boolean).join(' ').trim();
   if (!combined) return null;
   const d = new Date(combined);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function resolveTime(
+  fieldMap: Map<string, string>,
+  row: Record<string, string>,
+  dateVal: string,
+  datetimeField: string,
+  timeField: string,
+): string | null {
+  if (fieldMap.has(datetimeField)) {
+    return parseDateAndTime(row[fieldMap.get(datetimeField) ?? '']);
+  }
+  return parseDateAndTime(dateVal, row[fieldMap.get(timeField) ?? '']?.trim());
 }
 
 function buildParsedShiftsFromMappings(
@@ -83,39 +95,26 @@ function buildParsedShiftsFromMappings(
   const shifts: ParsedShift[] = [];
 
   for (const row of rows) {
-    const employeeName = row[fieldMap.get('employee_name') || '']?.trim() || '';
+    const employeeName = row[fieldMap.get('employee_name') ?? '']?.trim() || '';
     if (!employeeName) continue;
 
-    const dateVal = row[fieldMap.get('date') || '']?.trim() || '';
-
-    let startTime: string | null = null;
-    let endTime: string | null = null;
-
-    if (fieldMap.has('start_datetime')) {
-      startTime = parseDateAndTime(row[fieldMap.get('start_datetime')!]);
-    } else {
-      startTime = parseDateAndTime(dateVal, row[fieldMap.get('start_time') || '']?.trim());
-    }
-
-    if (fieldMap.has('end_datetime')) {
-      endTime = parseDateAndTime(row[fieldMap.get('end_datetime')!]);
-    } else {
-      endTime = parseDateAndTime(dateVal, row[fieldMap.get('end_time') || '']?.trim());
-    }
+    const dateVal = row[fieldMap.get('date') ?? '']?.trim() || '';
+    const startTime = resolveTime(fieldMap, row, dateVal, 'start_datetime', 'start_time');
+    const endTime = resolveTime(fieldMap, row, dateVal, 'end_datetime', 'end_time');
 
     if (!startTime || !endTime) continue;
 
-    const position = row[fieldMap.get('position') || '']?.trim() || '';
-    const breakStr = row[fieldMap.get('break_duration') || '']?.trim() || '';
-    const breakDuration = breakStr ? parseInt(breakStr, 10) : undefined;
-    const notes = row[fieldMap.get('notes') || '']?.trim() || undefined;
+    const position = row[fieldMap.get('position') ?? '']?.trim() || '';
+    const breakStr = row[fieldMap.get('break_duration') ?? '']?.trim() || '';
+    const breakDuration = breakStr ? Number.parseInt(breakStr, 10) : undefined;
+    const notes = row[fieldMap.get('notes') ?? '']?.trim() || undefined;
 
     shifts.push({
       employeeName,
       startTime,
       endTime,
       position,
-      breakDuration: breakDuration && !isNaN(breakDuration) ? breakDuration : undefined,
+      breakDuration: breakDuration && !Number.isNaN(breakDuration) ? breakDuration : undefined,
       notes,
     });
   }
@@ -201,7 +200,7 @@ export const ShiftImportSheet = ({
       !hasStartTime && 'Map a column to Start Time or Start Date/Time.',
       !hasEndTime && 'Map a column to End Time or End Date/Time.',
       duplicates.length > 0 && `Duplicate mappings: ${duplicates.join(', ')}`,
-    ].filter(Boolean) as string[];
+    ].filter((e): e is string => Boolean(e));
 
     return { isValid, errors };
   }, [mappings]);
@@ -314,35 +313,32 @@ export const ShiftImportSheet = ({
     setStep('preview');
   };
 
+  const updateMatchEntry = useCallback((
+    match: ShiftImportEmployee,
+    employeeId: string | null,
+    action: 'link' | 'create' | 'skip',
+  ): ShiftImportEmployee => {
+    if (action === 'link' && employeeId) {
+      const emp = availableEmployees.find(e => e.id === employeeId);
+      return { ...match, matchedEmployeeId: employeeId, matchedEmployeeName: emp?.name || null, action: 'link', matchConfidence: 'exact' as const };
+    }
+    if (action === 'skip') {
+      return { ...match, matchedEmployeeId: null, matchedEmployeeName: null, action: 'skip' };
+    }
+    return { ...match, action };
+  }, [availableEmployees]);
+
   const handleUpdateMatch = useCallback((normalizedName: string, employeeId: string | null, action: 'link' | 'create' | 'skip') => {
-    // Capture csvName before state updates to avoid stale closure in setEmployeeMap
     const matchEntry = employeeMatches.find(m => m.normalizedName === normalizedName);
     const csvName = matchEntry?.csvName;
 
     setEmployeeMatches(prev =>
-      prev.map(m => {
-        if (m.normalizedName !== normalizedName) return m;
-        if (action === 'link' && employeeId) {
-          const emp = availableEmployees.find(e => e.id === employeeId);
-          return {
-            ...m,
-            matchedEmployeeId: employeeId,
-            matchedEmployeeName: emp?.name || null,
-            action: 'link',
-            matchConfidence: 'exact' as const,
-          };
-        }
-        if (action === 'skip') {
-          return { ...m, matchedEmployeeId: null, matchedEmployeeName: null, action: 'skip' };
-        }
-        return { ...m, action };
-      })
+      prev.map(m => m.normalizedName === normalizedName ? updateMatchEntry(m, employeeId, action) : m)
     );
 
     setEmployeeMap(prev => {
       const next = { ...prev };
       if (!csvName) return next;
-
       if (action === 'link' && employeeId) {
         next[csvName] = employeeId;
       } else {
@@ -350,7 +346,7 @@ export const ShiftImportSheet = ({
       }
       return next;
     });
-  }, [availableEmployees, employeeMatches]);
+  }, [updateMatchEntry, employeeMatches]);
 
   const handleBulkCreateAll = async () => {
     const toCreate = employeeMatches.filter(m => m.matchConfidence === 'none' && m.action !== 'link');
@@ -415,7 +411,7 @@ export const ShiftImportSheet = ({
     try {
       const inserts = readyShifts.map(s => ({
         restaurant_id: restaurantId,
-        employee_id: s.employeeId!,
+        employee_id: s.employeeId || '',
         start_time: s.startTime,
         end_time: s.endTime,
         break_duration: s.breakDuration || 0,
@@ -450,19 +446,12 @@ export const ShiftImportSheet = ({
   const handleBack = () => {
     if (step === 'upload') {
       onOpenChange(false);
-      return;
-    }
-    if (step === 'mapping') {
+    } else if (step === 'mapping') {
       setStep('upload');
-      return;
-    }
-    if (step === 'employees') {
+    } else if (step === 'employees') {
       setStep(isSling ? 'upload' : 'mapping');
-      return;
-    }
-    if (step === 'preview') {
+    } else if (step === 'preview') {
       setStep('employees');
-      return;
     }
   };
 
@@ -483,11 +472,9 @@ export const ShiftImportSheet = ({
               <div
                 className={cn(
                   'h-6 px-2 rounded-md flex items-center justify-center text-[11px] font-medium transition-colors',
-                  isActive
-                    ? 'bg-foreground text-background'
-                    : isCompleted
-                    ? 'bg-muted text-foreground'
-                    : 'bg-muted/50 text-muted-foreground'
+                  isActive && 'bg-foreground text-background',
+                  !isActive && isCompleted && 'bg-muted text-foreground',
+                  !isActive && !isCompleted && 'bg-muted/50 text-muted-foreground',
                 )}
               >
                 {STEP_LABELS[s]}
@@ -501,8 +488,8 @@ export const ShiftImportSheet = ({
 
   const renderUploadStep = () => (
     <div className="space-y-5">
-      <div
-        className="border border-dashed border-border/40 rounded-xl p-8 text-center bg-muted/20 hover:bg-muted/30 transition-colors cursor-pointer"
+      <label
+        className="border border-dashed border-border/40 rounded-xl p-8 text-center bg-muted/20 hover:bg-muted/30 transition-colors cursor-pointer block"
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
       >
@@ -512,24 +499,29 @@ export const ShiftImportSheet = ({
         <p className="text-[14px] font-medium text-foreground">Drop a CSV file here</p>
         <p className="text-[13px] text-muted-foreground mt-1">or choose a file to upload</p>
         <div className="mt-4 flex items-center justify-center">
-          <label className="inline-flex items-center gap-2 text-[13px] font-medium text-foreground cursor-pointer hover:text-foreground/80 transition-colors">
+          <span className="inline-flex items-center gap-2 text-[13px] font-medium text-foreground cursor-pointer hover:text-foreground/80 transition-colors">
             <FileText className="h-4 w-4" />
             Choose file
-            <Input
-              type="file"
-              accept=".csv,.txt"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </label>
+          </span>
         </div>
-      </div>
+        <Input
+          type="file"
+          accept=".csv,.txt"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </label>
       <div className="text-[12px] text-muted-foreground space-y-1">
         <p>Supported formats: CSV, TXT</p>
         <p>Works with Sling exports and generic shift schedules.</p>
       </div>
     </div>
   );
+
+  const handleMappingChange = useCallback((header: string, value: string) => {
+    const targetField = value === 'ignore' ? null : (value as ShiftColumnMapping['targetField']);
+    setMappings(prev => prev.map(m => m.csvColumn === header ? { ...m, targetField } : m));
+  }, []);
 
   const renderMappingStep = () => (
     <div className="space-y-5">
@@ -561,15 +553,7 @@ export const ShiftImportSheet = ({
                     <div className="space-y-2 py-1">
                       <Select
                         value={mapping?.targetField || 'ignore'}
-                        onValueChange={(value) => {
-                          setMappings(prev =>
-                            prev.map(m =>
-                              m.csvColumn === header
-                                ? { ...m, targetField: value === 'ignore' ? null : (value as ShiftColumnMapping['targetField']) }
-                                : m
-                            )
-                          );
-                        }}
+                        onValueChange={(value) => handleMappingChange(header, value)}
                       >
                         <SelectTrigger
                           className="h-8 text-[13px] bg-muted/30 border-border/40 rounded-lg"
@@ -608,10 +592,10 @@ export const ShiftImportSheet = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.slice(0, 5).map((row, index) => (
-              <TableRow key={index}>
+            {rows.slice(0, 5).map((row) => (
+              <TableRow key={headers.map(h => row[h] ?? '').join('|')}>
                 {headers.map((header) => (
-                  <TableCell key={`${index}-${header}`} className="text-[12px] text-muted-foreground">
+                  <TableCell key={`${row[headers[0]] ?? ''}-${header}`} className="text-[12px] text-muted-foreground">
                     {row[header]}
                   </TableCell>
                 ))}

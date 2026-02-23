@@ -117,9 +117,9 @@ export const ShiftImportPreview = ({
       }
     }
 
-    const sortedKeys = Array.from(dateMap.keys()).sort();
+    const sortedKeys = Array.from(dateMap.keys()).sort((a, b) => a.localeCompare(b));
     for (const key of sortedKeys) {
-      const dateShifts = dateMap.get(key)!;
+      const dateShifts = dateMap.get(key) ?? [];
       groups.push({
         dateKey: key,
         dateLabel: formatDate(dateShifts[0].startTime),

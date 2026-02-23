@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS public.employee_integration_mappings (
   external_metadata JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT employee_integration_mappings_restaurant_id_integration_type_key UNIQUE (restaurant_id, integration_type, external_user_id)
+  CONSTRAINT eim_restaurant_integration_external_key UNIQUE (restaurant_id, integration_type, external_user_id)
 );
 
 -- =========================

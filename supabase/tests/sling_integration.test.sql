@@ -14,7 +14,7 @@ SELECT has_index('public', 'sling_connections', 'sling_connections_restaurant_id
 SELECT has_index('public', 'sling_users', 'sling_users_restaurant_id_sling_user_id_key', 'sling_users should have composite unique constraint');
 SELECT has_index('public', 'sling_shifts', 'sling_shifts_restaurant_id_sling_shift_id_key', 'sling_shifts should have composite unique constraint');
 SELECT has_index('public', 'sling_timesheets', 'sling_timesheets_restaurant_id_sling_timesheet_id_key', 'sling_timesheets should have composite unique constraint');
-SELECT has_index('public', 'employee_integration_mappings', 'employee_integration_mappings_restaurant_id_integration_type_key', 'employee_integration_mappings should have composite unique constraint');
+SELECT has_index('public', 'employee_integration_mappings', 'eim_restaurant_integration_external_key', 'employee_integration_mappings should have composite unique constraint');
 
 -- Test RLS policies exist
 SELECT ok(

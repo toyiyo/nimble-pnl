@@ -77,10 +77,10 @@ serve(async (req) => {
       });
     }
 
-    // Get connection using service role (to read encrypted password)
+    // Get connection using service role (to read encrypted password/token)
     const { data: connection, error: connectionError } = await serviceSupabase
       .from("sling_connections")
-      .select("id, restaurant_id, email, password_encrypted, sling_org_id, sling_org_name, is_active")
+      .select("id, restaurant_id, email, password_encrypted, auth_token, token_fetched_at, sling_org_id, sling_org_name, is_active")
       .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .single();
@@ -95,10 +95,28 @@ serve(async (req) => {
       );
     }
 
-    // Decrypt password and login to Sling
     const encryption = await getEncryptionService();
-    const password = await encryption.decrypt(connection.password_encrypted);
-    const token = await slingLogin(connection.email, password);
+    let token: string;
+
+    // If we have a fresh auth token (less than 1 hour old), use it directly
+    if (connection.auth_token && connection.token_fetched_at) {
+      const tokenAge = Date.now() - new Date(connection.token_fetched_at).getTime();
+      if (tokenAge < 3600000) {
+        token = await encryption.decrypt(connection.auth_token);
+      } else if (connection.password_encrypted) {
+        // Token expired, re-login with password
+        const password = await encryption.decrypt(connection.password_encrypted);
+        token = await slingLogin(connection.email, password);
+      } else {
+        throw new Error("Auth token expired. Please re-enter your Sling auth token.");
+      }
+    } else if (connection.password_encrypted) {
+      // No token, login with password
+      const password = await encryption.decrypt(connection.password_encrypted);
+      token = await slingLogin(connection.email, password);
+    } else {
+      throw new Error("No authentication method available. Please save credentials first.");
+    }
 
     // If no org selected yet, fetch session to get org list
     if (!slingOrgId) {
@@ -182,10 +200,11 @@ serve(async (req) => {
       slingOrgId,
       orgName
     );
-  } catch (error: any) {
-    console.error("Error testing Sling connection:", error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error testing Sling connection:", message);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: message }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

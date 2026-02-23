@@ -55,10 +55,11 @@ export function useSlingConnection(restaurantId?: string | null) {
   async function saveCredentials(
     restaurantId: string,
     email: string,
-    password: string
+    password: string,
+    authToken?: string
   ): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke('sling-save-credentials', {
-      body: { restaurantId, email, password },
+      body: { restaurantId, email, password, ...(authToken && { authToken }) },
     });
 
     if (error) {

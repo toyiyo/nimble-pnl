@@ -38,7 +38,10 @@ export async function slingLogin(
 ): Promise<string> {
   const response = await fetchWithTimeout(`${SLING_API_BASE}/account/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "*/*",
+    },
     body: JSON.stringify({ email, password }),
   });
 
@@ -104,7 +107,10 @@ export async function getValidSlingToken(
     }
   }
 
-  // Re-login to get fresh token
+  // Re-login to get fresh token (only works with password-based auth)
+  if (!connection.password_encrypted) {
+    throw new Error("Auth token expired. Please re-enter your Sling auth token in settings.");
+  }
   const password = await encryption.decrypt(connection.password_encrypted);
   const token = await slingLogin(connection.email, password);
 

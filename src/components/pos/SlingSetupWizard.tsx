@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { CheckCircle, Circle, Loader2, Info, Users, Building2 } from 'lucide-react';
+import { CheckCircle, Circle, Loader2, Info, Users, Building2, Key } from 'lucide-react';
 
 import { useToast } from '@/hooks/use-toast';
 import { useSlingConnection } from '@/hooks/useSlingConnection';
@@ -28,10 +28,14 @@ interface SlingOrg {
   name: string;
 }
 
+type AuthMode = 'password' | 'token';
+
 export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardProps) => {
   const [currentStep, setCurrentStep] = useState<SetupStep>('credentials');
+  const [authMode, setAuthMode] = useState<AuthMode>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [authToken, setAuthToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [orgs, setOrgs] = useState<SlingOrg[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
@@ -58,7 +62,7 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
   ];
 
   const handleConnectAndTest = async () => {
-    if (!email || !password) {
+    if (authMode === 'password' && (!email || !password)) {
       toast({
         title: 'Missing information',
         description: 'Please enter your Sling email and password',
@@ -66,10 +70,22 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
       });
       return;
     }
+    if (authMode === 'token' && !authToken) {
+      toast({
+        title: 'Missing information',
+        description: 'Please enter your Sling auth token',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setLoading(true);
     try {
-      await saveCredentials(restaurantId, email, password);
+      if (authMode === 'token') {
+        await saveCredentials(restaurantId, '', '', authToken);
+      } else {
+        await saveCredentials(restaurantId, email, password);
+      }
       const result = await testConnection(restaurantId);
 
       if (result.needsOrgSelection) {
@@ -228,72 +244,129 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
         {/* Step 1: Credentials */}
         {currentStep === 'credentials' && (
           <div className="space-y-5">
-            <Alert className="border-border/40 bg-muted/30">
-              <Info className="h-4 w-4 text-muted-foreground" />
-              <AlertDescription className="text-[13px] text-muted-foreground">
-                Enter the email and password you use to log in to your Sling account at{' '}
-                <a
-                  href="https://app.getsling.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-foreground underline"
-                >
-                  app.getsling.com
-                </a>
-                . Your credentials are encrypted and stored securely.
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="sling-email"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Email
-                </Label>
-                <Input
-                  id="sling-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@restaurant.com"
-                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="sling-password"
-                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-                >
-                  Password
-                </Label>
-                <Input
-                  id="sling-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your Sling password"
-                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
-                />
-              </div>
-
-              <Button
-                onClick={handleConnectAndTest}
-                disabled={!email || !password || loading}
-                className="w-full h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  'Continue'
+            {/* Auth mode toggle */}
+            <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40">
+              <button
+                type="button"
+                onClick={() => setAuthMode('password')}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-[13px] font-medium transition-colors',
+                  authMode === 'password'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
-              </Button>
+              >
+                Email & Password
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthMode('token')}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-[13px] font-medium transition-colors',
+                  authMode === 'token'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Key className="w-3.5 h-3.5" />
+                Auth Token
+              </button>
             </div>
+
+            {authMode === 'password' ? (
+              <>
+                <Alert className="border-border/40 bg-muted/30">
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                  <AlertDescription className="text-[13px] text-muted-foreground">
+                    Enter the email and password for a Sling <span className="font-medium text-foreground">admin or manager</span> account.
+                    Your credentials are encrypted and stored securely.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="sling-email"
+                      className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                    >
+                      Email
+                    </Label>
+                    <Input
+                      id="sling-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="admin@restaurant.com"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="sling-password"
+                      className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                    >
+                      Password
+                    </Label>
+                    <Input
+                      id="sling-password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your Sling password"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <Alert className="border-border/40 bg-muted/30">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <AlertDescription className="text-[13px] text-muted-foreground">
+                    <span className="font-medium text-foreground">How to get your auth token:</span>
+                    <ol className="mt-1.5 ml-4 list-decimal space-y-0.5">
+                      <li>Log in to <a href="https://app.getsling.com" target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline">app.getsling.com</a> with an admin account</li>
+                      <li>Open browser DevTools (F12) and go to the Network tab</li>
+                      <li>Refresh the page and click any API request to <code className="text-[12px] bg-muted/50 px-1 rounded">api.getsling.com</code></li>
+                      <li>Copy the <code className="text-[12px] bg-muted/50 px-1 rounded">Authorization</code> header value</li>
+                    </ol>
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-1.5">
+                  <Label
+                    htmlFor="sling-token"
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    Authorization Token
+                  </Label>
+                  <Input
+                    id="sling-token"
+                    type="password"
+                    value={authToken}
+                    onChange={(e) => setAuthToken(e.target.value)}
+                    placeholder="Paste the Authorization header value"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                  />
+                </div>
+              </>
+            )}
+
+            <Button
+              onClick={handleConnectAndTest}
+              disabled={(authMode === 'password' ? (!email || !password) : !authToken) || loading}
+              className="w-full h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                'Continue'
+              )}
+            </Button>
           </div>
         )}
 

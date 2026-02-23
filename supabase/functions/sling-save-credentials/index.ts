@@ -43,11 +43,12 @@ serve(async (req) => {
       });
     }
 
-    const { restaurantId, email, password } = await req.json();
+    const { restaurantId, email, password, authToken } = await req.json();
 
-    if (!restaurantId || !email || !password) {
+    // Either email+password or authToken is required
+    if (!restaurantId || (!authToken && (!email || !password))) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: restaurantId, email, password" }),
+        JSON.stringify({ error: "Missing required fields: restaurantId and either (email + password) or authToken" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -73,28 +74,36 @@ serve(async (req) => {
       });
     }
 
-    // Encrypt the password
     const encryption = await getEncryptionService();
-    const encryptedPassword = await encryption.encrypt(password);
+
+    // Build upsert payload based on auth method
+    const upsertPayload: Record<string, unknown> = {
+      restaurant_id: restaurantId,
+      is_active: true,
+      connection_status: "pending",
+      updated_at: new Date().toISOString(),
+    };
+
+    if (authToken) {
+      // Direct token auth — encrypt and store the token directly
+      upsertPayload.auth_token = await encryption.encrypt(authToken);
+      upsertPayload.token_fetched_at = new Date().toISOString();
+      upsertPayload.email = email || "token-auth";
+      upsertPayload.password_encrypted = "";
+    } else {
+      // Email+password auth — encrypt password, clear stale token
+      upsertPayload.email = email;
+      upsertPayload.password_encrypted = await encryption.encrypt(password);
+      upsertPayload.auth_token = null;
+      upsertPayload.token_fetched_at = null;
+    }
 
     // Upsert connection (using service role for privileged write)
     const { data: connection, error: upsertError } = await serviceSupabase
       .from("sling_connections")
-      .upsert(
-        {
-          restaurant_id: restaurantId,
-          email,
-          password_encrypted: encryptedPassword,
-          auth_token: null,
-          token_fetched_at: null,
-          is_active: true,
-          connection_status: "pending",
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "restaurant_id",
-        }
-      )
+      .upsert(upsertPayload, {
+        onConflict: "restaurant_id",
+      })
       .select()
       .single();
 

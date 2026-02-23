@@ -17,26 +17,11 @@ Set these in **Settings > Secrets and variables > Actions**:
 | `SUPABASE_ACCESS_TOKEN` | Supabase personal access token | [Supabase Dashboard > Account > Access Tokens](https://supabase.com/dashboard/account/tokens) |
 | `SUPABASE_DB_PASSWORD` | Production database password | Set during project creation, or reset in Dashboard > Settings > Database |
 
-## First-Time Setup (Baseline)
+## Migration Baseline
 
-Before the pipeline can run, you must sync the migration history table:
+The production `schema_migrations` table has been synced with all local migration versions (completed Feb 2026 via `scripts/baseline-migrations.sql`). `supabase db push` now correctly skips already-applied migrations and only runs new ones.
 
-1. Install `psql` (PostgreSQL client):
-   ```bash
-   # macOS
-   brew install libpq
-   # Ubuntu
-   sudo apt-get install postgresql-client
-   ```
-2. Get your database connection string from **Dashboard > Settings > Database > Connection string > URI**
-3. Set the environment variable:
-   ```bash
-   export SUPABASE_DB_URL="postgresql://postgres.ncdujvdgqtaunuyigflp:[password]@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
-   ```
-4. Run the baseline script: `bash scripts/baseline-migrations.sh`
-5. Verify: The script will confirm the migration count matches.
-
-After this, add the GitHub secrets and the pipeline is live.
+If migrations ever get out of sync again, regenerate and run `scripts/baseline-migrations.sql` in the Supabase SQL Editor. The script is non-destructive (insert-only, skips existing entries).
 
 ## Manual Re-deploy
 

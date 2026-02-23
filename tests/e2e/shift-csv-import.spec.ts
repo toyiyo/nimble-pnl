@@ -65,12 +65,16 @@ test.describe('Shift CSV Import', () => {
       },
     );
 
-    // Navigate to scheduling
+    // Navigate to scheduling and wait for employee data to load
+    const empResponse1 = page.waitForResponse(
+      resp => resp.url().includes('rest/v1/employees') && resp.ok(),
+    );
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await empResponse1;
 
     // Click Import button
-    const importButton = page.getByRole('button', { name: /import/i });
+    const importButton = page.getByRole('button', { name: 'Import', exact: true });
     await expect(importButton).toBeVisible({ timeout: 5000 });
     await importButton.click();
 
@@ -78,36 +82,36 @@ test.describe('Shift CSV Import', () => {
     await expect(page.getByRole('heading', { name: /import shifts/i })).toBeVisible({ timeout: 5000 });
 
     // Generate Sling CSV with 2 known + 1 unknown employee
-    const dates = ['2026-03-02', '2026-03-03'];
+    const dates = ['2026-03-02', '2026-03-03', '2026-03-04'];
     const csv = buildSlingCsv(['Abraham Dominguez', 'Alfonso Moya', 'Unknown Employee'], dates);
     const filePath = testInfo.outputPath('shifts.csv');
     fs.writeFileSync(filePath, csv);
 
     // Upload the CSV
-    const fileInput = page.getByLabel('Upload shift CSV file');
+    const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(filePath);
 
     // Should auto-detect Sling format and skip to Employees step
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
 
     // Verify matched employees show green "Matched" badge
-    const matchedBadges = page.locator('text=Matched');
+    const matchedBadges = page.getByText('Matched', { exact: true });
     await expect(matchedBadges.first()).toBeVisible({ timeout: 5000 });
 
     // Verify unmatched employee shows "Unmatched" badge
-    await expect(page.getByText('Unmatched')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Unmatched', { exact: true })).toBeVisible({ timeout: 5000 });
 
     // Click "Create All Unmatched"
     await page.getByRole('button', { name: /create all unmatched/i }).click();
 
     // Wait for the badge to change from "Unmatched" to "Matched"
-    await expect(page.getByText('Unmatched')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Unmatched', { exact: true })).not.toBeVisible({ timeout: 10000 });
 
     // Click Next to go to Preview
     await page.getByRole('button', { name: /next/i }).click();
 
-    // Verify Preview step with summary cards
-    await expect(page.getByText('Ready')).toBeVisible({ timeout: 10000 });
+    // Verify Preview step loaded (use total shifts count — unique to preview)
+    await expect(page.getByText(/\d+ total shifts/)).toBeVisible({ timeout: 10000 });
 
     // Import the shifts
     const importShiftsButton = page.getByRole('button', { name: /import \d+ shifts/i });
@@ -139,19 +143,24 @@ test.describe('Shift CSV Import', () => {
       },
     );
 
+    // Navigate to scheduling and wait for employee data to load
+    const empResponse2 = page.waitForResponse(
+      resp => resp.url().includes('rest/v1/employees') && resp.ok(),
+    );
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await empResponse2;
 
-    await page.getByRole('button', { name: /import/i }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByRole('heading', { name: /import shifts/i })).toBeVisible({ timeout: 5000 });
 
     // CSV with 1 known + 1 unknown
-    const dates = ['2026-03-02', '2026-03-03'];
+    const dates = ['2026-03-02', '2026-03-03', '2026-03-04'];
     const csv = buildSlingCsv(['Abraham Dominguez', 'New Employee'], dates);
     const filePath = testInfo.outputPath('shifts-create.csv');
     fs.writeFileSync(filePath, csv);
 
-    const fileInput = page.getByLabel('Upload shift CSV file');
+    const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(filePath);
 
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
@@ -162,17 +171,17 @@ test.describe('Shift CSV Import', () => {
     await createButton.click();
 
     // Wait for the employee's badge to change from "Unmatched" to "Matched"
-    await expect(page.getByText('Unmatched')).not.toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Unmatched', { exact: true })).not.toBeVisible({ timeout: 10000 });
 
     // All employees should now be matched
-    const matchedBadges = page.locator('text=Matched');
+    const matchedBadges = page.getByText('Matched', { exact: true });
     await expect(matchedBadges).toHaveCount(2, { timeout: 5000 });
 
     // Click Next → Preview step
     await page.getByRole('button', { name: /next/i }).click();
 
-    // All shifts should be "Ready" (none skipped)
-    await expect(page.getByText('Ready')).toBeVisible({ timeout: 10000 });
+    // All shifts should be "Ready" (none skipped) — use total shifts count to avoid strict mode
+    await expect(page.getByText(/\d+ total shifts/)).toBeVisible({ timeout: 10000 });
 
     // If a Skipped card exists its count should be 0
     const skippedCard = page.getByText('Skipped').locator('xpath=..').locator('p');
@@ -203,26 +212,31 @@ test.describe('Shift CSV Import', () => {
       },
     );
 
+    // Navigate to scheduling and wait for employee data to load
+    const empResponse3 = page.waitForResponse(
+      resp => resp.url().includes('rest/v1/employees') && resp.ok(),
+    );
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await empResponse3;
 
     // --- First import ---
-    await page.getByRole('button', { name: /import/i }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByRole('heading', { name: /import shifts/i })).toBeVisible({ timeout: 5000 });
 
-    const dates = ['2026-03-02', '2026-03-03'];
+    const dates = ['2026-03-02', '2026-03-03', '2026-03-04'];
     const csv = buildSlingCsv(['Abraham Dominguez'], dates);
     const filePath = testInfo.outputPath('shifts-dup.csv');
     fs.writeFileSync(filePath, csv);
 
-    const fileInput = page.getByLabel('Upload shift CSV file');
+    const fileInput = page.locator('input[type="file"]');
     await fileInput.setInputFiles(filePath);
 
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
 
     // Click Next → Preview
     await page.getByRole('button', { name: /next/i }).click();
-    await expect(page.getByText('Ready')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/\d+ total shifts/)).toBeVisible({ timeout: 10000 });
 
     // Import
     const importBtn = page.getByRole('button', { name: /import \d+ shifts/i });
@@ -231,10 +245,10 @@ test.describe('Shift CSV Import', () => {
     await expect(page.getByText(/import complete/i)).toBeVisible({ timeout: 10000 });
 
     // --- Second import with same CSV ---
-    await page.getByRole('button', { name: /import/i }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(page.getByRole('heading', { name: /import shifts/i })).toBeVisible({ timeout: 5000 });
 
-    const fileInput2 = page.getByLabel('Upload shift CSV file');
+    const fileInput2 = page.locator('input[type="file"]');
     await fileInput2.setInputFiles(filePath);
 
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
@@ -243,11 +257,11 @@ test.describe('Shift CSV Import', () => {
     await page.getByRole('button', { name: /next/i }).click();
 
     // On preview, the Duplicates summary card should show the count matching the previously imported shifts
-    // We imported 2 shifts (1 employee x 2 dates), so duplicates should be 2
+    // We imported 3 shifts (1 employee x 3 dates), so duplicates should be 3
     const duplicatesCard = page.getByText('Duplicates').locator('..');
     await expect(duplicatesCard).toBeVisible({ timeout: 10000 });
 
-    // Verify the count "2" is shown within the Duplicates card
-    await expect(duplicatesCard.getByText('2')).toBeVisible({ timeout: 5000 });
+    // Verify the count "3" is shown within the Duplicates card
+    await expect(duplicatesCard.getByText('3')).toBeVisible({ timeout: 5000 });
   });
 });

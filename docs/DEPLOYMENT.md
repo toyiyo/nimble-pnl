@@ -6,6 +6,8 @@ Merging to `main` triggers automatic deployment of:
 - **Database migrations** via `supabase db push`
 - **Edge functions** via `supabase functions deploy`
 
+The workflow only triggers when files under `supabase/` or the workflow file itself change. Frontend-only PRs skip the deploy. Use **Manual Re-deploy** below to trigger a deploy for any commit.
+
 The workflow is defined in `.github/workflows/deploy-supabase.yml`.
 
 ## Required GitHub Secrets
@@ -50,6 +52,7 @@ Function environment variables (API keys, etc.) are NOT deployed by this pipelin
 - Fix locally, commit, and merge (or use manual re-deploy)
 
 ### Pipeline not triggering
+- The workflow only runs when `supabase/**` files change. Frontend-only PRs won't trigger it — use **Manual Re-deploy** if needed
 - Verify the workflow file exists on `main` branch
 - Check that GitHub Actions is enabled for the repository
 - Check Settings > Actions > General > Workflow permissions

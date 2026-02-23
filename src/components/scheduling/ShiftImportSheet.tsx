@@ -22,11 +22,10 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useBulkCreateShifts } from '@/hooks/useBulkCreateShifts';
 import { useCreateEmployee } from '@/hooks/useEmployees';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useShiftsInRange } from '@/hooks/useShiftsInRange';
+import { useQueryClient } from '@tanstack/react-query';
 
-import { supabase } from '@/integrations/supabase/client';
-
-import type { Employee, Shift } from '@/types/scheduling';
+import type { Employee } from '@/types/scheduling';
 import type { ParsedShift } from '@/utils/slingCsvParser';
 import type { ShiftColumnMapping } from '@/utils/shiftColumnMapping';
 import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
@@ -156,22 +155,7 @@ export const ShiftImportSheet = ({
   }, [parsedShifts]);
 
   // Fetch existing shifts for the CSV date range (for duplicate detection)
-  const { data: rangeShifts = [], isLoading: isLoadingShifts } = useQuery({
-    queryKey: ['shifts', 'import-range', restaurantId, csvDateRange?.start, csvDateRange?.end],
-    queryFn: async () => {
-      if (!csvDateRange) return [];
-      const { data, error } = await supabase
-        .from('shifts')
-        .select('id, restaurant_id, employee_id, start_time, end_time, break_duration, position, status, is_published, locked, created_at, updated_at')
-        .eq('restaurant_id', restaurantId)
-        .gte('start_time', csvDateRange.start)
-        .lte('start_time', csvDateRange.end);
-      if (error) throw error;
-      return (data ?? []) as Shift[];
-    },
-    enabled: !!csvDateRange,
-    staleTime: 30000,
-  });
+  const { data: rangeShifts = [], isLoading: isLoadingShifts, isError: isShiftsError } = useShiftsInRange(restaurantId, csvDateRange);
 
   // Derive published week Mondays from existing shifts in the range
   const publishedWeeks = useMemo(() => {
@@ -574,6 +558,7 @@ export const ShiftImportSheet = ({
           type="file"
           accept=".csv,.txt"
           className="hidden"
+          aria-label="Upload shift CSV file"
           onChange={handleFileChange}
         />
       </label>
@@ -674,14 +659,23 @@ export const ShiftImportSheet = ({
   );
 
   const renderEmployeesStep = () => (
-    <ShiftImportEmployeeReview
-      employeeMatches={employeeMatches}
-      existingEmployees={availableEmployees}
-      onUpdateMatch={handleUpdateMatch}
-      onCreateSingle={handleCreateSingle}
-      onBulkCreateAll={handleBulkCreateAll}
-      isCreating={isCreatingEmployees}
-    />
+    <>
+      {isShiftsError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>
+            Could not load existing shifts — duplicate and published-week detection will be unavailable.
+          </AlertDescription>
+        </Alert>
+      )}
+      <ShiftImportEmployeeReview
+        employeeMatches={employeeMatches}
+        existingEmployees={availableEmployees}
+        onUpdateMatch={handleUpdateMatch}
+        onCreateSingle={handleCreateSingle}
+        onBulkCreateAll={handleBulkCreateAll}
+        isCreating={isCreatingEmployees}
+      />
+    </>
   );
 
   const renderPreviewStep = () => {
@@ -708,7 +702,7 @@ export const ShiftImportSheet = ({
 
   const canGoNext = () => {
     if (step === 'mapping') return mappingValidation.isValid;
-    if (step === 'employees') return parsedShifts.length > 0 && !isLoadingShifts;
+    if (step === 'employees') return parsedShifts.length > 0 && !isLoadingShifts && !isShiftsError;
     if (step === 'preview') return previewResult && previewResult.summary.readyCount > 0;
     return false;
   };

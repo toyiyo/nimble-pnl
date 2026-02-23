@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'fs';
-import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 /**
  * Generate a minimal Sling-format CSV string.
@@ -47,6 +47,7 @@ test.describe('Shift CSV Import', () => {
     const testUser = generateTestUser('shift-import');
 
     await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
 
     // Seed 2 known employees
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
@@ -83,7 +84,7 @@ test.describe('Shift CSV Import', () => {
     fs.writeFileSync(filePath, csv);
 
     // Upload the CSV
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByLabel('Upload shift CSV file');
     await fileInput.setInputFiles(filePath);
 
     // Should auto-detect Sling format and skip to Employees step
@@ -121,6 +122,7 @@ test.describe('Shift CSV Import', () => {
     const testUser = generateTestUser('shift-create');
 
     await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
 
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
@@ -149,7 +151,7 @@ test.describe('Shift CSV Import', () => {
     const filePath = testInfo.outputPath('shifts-create.csv');
     fs.writeFileSync(filePath, csv);
 
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByLabel('Upload shift CSV file');
     await fileInput.setInputFiles(filePath);
 
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
@@ -171,15 +173,20 @@ test.describe('Shift CSV Import', () => {
 
     // All shifts should be "Ready" (none skipped)
     await expect(page.getByText('Ready')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Skipped').locator('.. >> p')).not.toBeVisible().catch(() => {
-      // Skipped card may show with count 0, which is fine
-    });
+
+    // If a Skipped card exists its count should be 0
+    const skippedCard = page.getByText('Skipped').locator('xpath=..').locator('p');
+    const isPresent = await skippedCard.isVisible().catch(() => false);
+    if (isPresent) {
+      await expect(skippedCard).not.toHaveText(/^[1-9]/);
+    }
   });
 
   test('duplicate detection on second import', async ({ page }, testInfo) => {
     const testUser = generateTestUser('shift-dup');
 
     await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
 
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
@@ -208,7 +215,7 @@ test.describe('Shift CSV Import', () => {
     const filePath = testInfo.outputPath('shifts-dup.csv');
     fs.writeFileSync(filePath, csv);
 
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.getByLabel('Upload shift CSV file');
     await fileInput.setInputFiles(filePath);
 
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
@@ -227,7 +234,7 @@ test.describe('Shift CSV Import', () => {
     await page.getByRole('button', { name: /import/i }).click();
     await expect(page.getByRole('heading', { name: /import shifts/i })).toBeVisible({ timeout: 5000 });
 
-    const fileInput2 = page.locator('input[type="file"]');
+    const fileInput2 = page.getByLabel('Upload shift CSV file');
     await fileInput2.setInputFiles(filePath);
 
     await expect(page.getByText(/employees matched/i)).toBeVisible({ timeout: 10000 });
@@ -237,10 +244,10 @@ test.describe('Shift CSV Import', () => {
 
     // On preview, the Duplicates summary card should show the count matching the previously imported shifts
     // We imported 2 shifts (1 employee x 2 dates), so duplicates should be 2
-    const duplicatesCard = page.locator('text=Duplicates').locator('..');
+    const duplicatesCard = page.getByText('Duplicates').locator('..');
     await expect(duplicatesCard).toBeVisible({ timeout: 10000 });
 
-    // The "2" count should be visible in the duplicates card area
-    await expect(page.locator('p:has-text("2")').first()).toBeVisible({ timeout: 5000 });
+    // Verify the count "2" is shown within the Duplicates card
+    await expect(duplicatesCard.getByText('2')).toBeVisible({ timeout: 5000 });
   });
 });

@@ -334,3 +334,10 @@ export const TOAST_CONFIG: POSConfig = {
   dataLabelSingular: 'order',
   syncInterval: '6 hours',
 };
+
+export const SLING_CONFIG: POSConfig = {
+  name: 'Sling',
+  dataLabel: 'shifts',
+  dataLabelSingular: 'shift',
+  syncInterval: '6 hours',
+};

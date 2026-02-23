@@ -105,7 +105,7 @@ export function useSlingEmployeeMapping(restaurantId: string) {
       );
 
       if (slingUser) {
-        await supabase
+        const { error: mappingError } = await supabase
           .from('employee_integration_mappings' as any)
           .upsert(
             {
@@ -117,6 +117,9 @@ export function useSlingEmployeeMapping(restaurantId: string) {
             },
             { onConflict: 'restaurant_id,integration_type,external_user_id' }
           );
+        if (mappingError) {
+          throw new Error(`Failed to create integration mapping for ${match.csvName}: ${mappingError.message}`);
+        }
       }
 
       setExistingEmployees((prev) => [...prev, newEmp as unknown as Employee]);

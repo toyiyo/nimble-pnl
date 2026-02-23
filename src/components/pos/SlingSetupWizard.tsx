@@ -393,7 +393,7 @@ export const SlingSetupWizard = ({ restaurantId, onComplete }: SlingSetupWizardP
             <div className="flex gap-2 pt-2">
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep('credentials')}
+                onClick={() => setCurrentStep(orgs.length > 0 ? 'organization' : 'credentials')}
                 className="flex-1 h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
               >
                 Back

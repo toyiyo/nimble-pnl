@@ -127,9 +127,10 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-  } catch (error: any) {
-    console.error("Error saving Sling credentials:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error saving Sling credentials:", message);
+    return new Response(JSON.stringify({ error: "Failed to save Sling credentials" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

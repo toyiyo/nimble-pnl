@@ -1,6 +1,6 @@
 ---
 name: development-workflow
-description: "MANDATORY for every task. Orchestrates the full development pipeline: brainstorm, plan, TDD build, UI review, code-simplify, CodeRabbit review, verify, finish."
+description: "MANDATORY — invoke BEFORE any implementation, feature, bugfix, or code change. Orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → finish → retrospective."
 ---
 
 # Development Workflow
@@ -13,6 +13,15 @@ This skill defines the mandatory development pipeline for every task. Follow eac
 Do NOT skip phases. Do NOT start coding before phases 1-2 are complete. Do NOT claim work is done before phases 7-8 pass. This applies to EVERY task regardless of perceived simplicity.
 </HARD-GATE>
 
+## Phase 0: Consult Lessons
+
+- Read `memory/lessons.md` from the auto-memory directory
+- Scan for entries relevant to the current task (matching category, similar patterns, related files)
+- Keep relevant lessons in mind during brainstorm and implementation
+- If lessons suggest a specific approach or warn against a mistake, call it out during Phase 1
+
+**Skip condition:** None. Always check past lessons before starting.
+
 ## Phase 1: Brainstorm
 
 **Invoke:** `superpowers:brainstorming`
@@ -20,6 +29,7 @@ Do NOT skip phases. Do NOT start coding before phases 1-2 are complete. Do NOT c
 - Explore project context (files, docs, recent commits)
 - Ask clarifying questions (one at a time, prefer multiple choice)
 - Propose 2-3 approaches with trade-offs and recommendation
+- Reference any relevant lessons from Phase 0 in your proposals
 - Get design approval
 - Write design doc to `docs/plans/YYYY-MM-DD-<topic>-design.md`
 
@@ -122,10 +132,35 @@ Iteration 1: Run coderabbit review --plain --type committed
 
 **Skip condition:** None.
 
+## Phase 10: Retrospective
+
+Review the entire workflow session and capture lessons learned:
+
+1. **Identify corrections** — Scan the session for:
+   - User corrections ("no, do it this way", "that's wrong", redirects)
+   - CodeRabbit findings that required fixes (Phase 7)
+   - Test failures that revealed wrong assumptions (Phase 4/8)
+   - Design changes after initial brainstorm (Phase 1 pivots)
+
+2. **Write lessons** — For each correction, append to the appropriate category in `memory/lessons.md`:
+   ```markdown
+   ### [YYYY-MM-DD] Short title
+   - **Mistake:** What was done wrong or assumed incorrectly
+   - **Correction:** What the right approach turned out to be
+   - **Rule:** The general principle to apply going forward
+   ```
+
+3. **Deduplicate** — If a lesson reinforces an existing entry, update the existing one instead of adding a duplicate. Add a "confirmed" note.
+
+4. **Prune** — If a lesson from a previous session turned out to be wrong or outdated, remove or correct it.
+
+**Skip condition:** No corrections occurred during the session (clean run through all phases).
+
 ## Quick Reference
 
 | Phase | Skill/Command | Skip If |
 |-------|---------------|---------|
+| 0. Consult Lessons | Read `memory/lessons.md` | Never |
 | 1. Brainstorm | `superpowers:brainstorming` | Never |
 | 2. Plan | `superpowers:writing-plans` | Never |
 | 3. Isolate | `superpowers:using-git-worktrees` | Already in worktree |
@@ -135,3 +170,4 @@ Iteration 1: Run coderabbit review --plain --type committed
 | 7. CodeRabbit | `coderabbit review --plain --type committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never |
 | 9. Finish | `superpowers:finishing-a-development-branch` | Never |
+| 10. Retrospective | Write to `memory/lessons.md` | No corrections occurred |

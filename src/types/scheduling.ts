@@ -111,14 +111,62 @@ export interface ShiftTemplate {
   id: string;
   restaurant_id: string;
   name: string;
-  day_of_week: number; // 0 = Sunday, 6 = Saturday
+  day_of_week?: number | null; // 0 = Sunday, 6 = Saturday (nullable for reusable definitions)
   start_time: string;
   end_time: string;
   break_duration: number;
-  position: string;
+  position?: string | null;
+  is_active: boolean;
+  color?: string | null;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const SHIFT_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+  '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+] as const;
+
+export interface WeekTemplate {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  description?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface WeekTemplateSlot {
+  id: string;
+  week_template_id: string;
+  shift_template_id: string;
+  day_of_week: number; // 0 = Sunday, 6 = Saturday
+  position?: string | null;
+  headcount: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  shift_template?: ShiftTemplate; // Joined data
+}
+
+export type ScheduleSlotStatus = 'unfilled' | 'assigned' | 'confirmed';
+
+export interface ScheduleSlot {
+  id: string;
+  restaurant_id: string;
+  week_template_slot_id?: string | null;
+  shift_id?: string | null;
+  week_start_date: string; // DATE format (YYYY-MM-DD)
+  slot_index: number;
+  employee_id?: string | null;
+  status: ScheduleSlotStatus;
+  created_at: string;
+  updated_at: string;
+  shift?: Shift; // Joined data
+  employee?: Employee; // Joined data
+  week_template_slot?: WeekTemplateSlot; // Joined data
 }
 
 export interface TimeOffRequest {

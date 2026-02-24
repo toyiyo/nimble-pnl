@@ -402,7 +402,7 @@ BEGIN
         v_position,
         'scheduled',
         'template',
-        v_slot.slot_id::TEXT || '-' || v_headcount_idx::TEXT
+        v_slot.slot_id::TEXT || '-' || p_week_start_date::TEXT || '-' || v_headcount_idx::TEXT
       )
       RETURNING id INTO v_shift_id;
 

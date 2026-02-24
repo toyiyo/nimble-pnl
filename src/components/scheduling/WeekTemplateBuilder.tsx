@@ -18,13 +18,15 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
-import { Plus, Star, Settings, Trash2, CalendarDays } from 'lucide-react';
+import { Plus, Star, Settings, Trash2, CalendarDays, Pencil } from 'lucide-react';
 
 import {
   useWeekTemplates,
   useCreateWeekTemplate,
+  useUpdateWeekTemplate,
   useSetActiveTemplate,
   useWeekTemplateSlots,
+  useUpdateTemplateSlot,
   useRemoveTemplateSlot,
 } from '@/hooks/useWeekTemplates';
 import { useShiftDefinitions } from '@/hooks/useShiftDefinitions';
@@ -105,12 +107,20 @@ export function WeekTemplateBuilder({
 
   // Mutations
   const createTemplateMutation = useCreateWeekTemplate();
+  const updateTemplateMutation = useUpdateWeekTemplate();
   const setActiveMutation = useSetActiveTemplate();
+  const updateSlotMutation = useUpdateTemplateSlot();
   const removeSlotMutation = useRemoveTemplateSlot();
 
   // UI state
   const [newTemplateDialogOpen, setNewTemplateDialogOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameName, setRenameName] = useState('');
+  const [editSlotDialogOpen, setEditSlotDialogOpen] = useState(false);
+  const [editingSlot, setEditingSlot] = useState<WeekTemplateSlot | null>(null);
+  const [editHeadcount, setEditHeadcount] = useState(1);
+  const [editPosition, setEditPosition] = useState('');
   const [definitionsManagerOpen, setDefinitionsManagerOpen] = useState(false);
   const [addSlotDay, setAddSlotDay] = useState<number | null>(null);
   const [weekStartDate, setWeekStartDate] = useState(() => {
@@ -187,6 +197,42 @@ export function WeekTemplateBuilder({
     [resolvedTemplateId, removeSlotMutation],
   );
 
+  // Rename template
+  const handleOpenRename = useCallback(() => {
+    if (!currentTemplate) return;
+    setRenameName(currentTemplate.name);
+    setRenameDialogOpen(true);
+  }, [currentTemplate]);
+
+  const handleRenameTemplate = useCallback(() => {
+    if (!resolvedTemplateId || !renameName.trim()) return;
+    updateTemplateMutation.mutate(
+      { id: resolvedTemplateId, name: renameName.trim() },
+      { onSuccess: () => setRenameDialogOpen(false) },
+    );
+  }, [resolvedTemplateId, renameName, updateTemplateMutation]);
+
+  // Edit slot
+  const handleOpenEditSlot = useCallback((slot: WeekTemplateSlot) => {
+    setEditingSlot(slot);
+    setEditHeadcount(slot.headcount);
+    setEditPosition(slot.position || '');
+    setEditSlotDialogOpen(true);
+  }, []);
+
+  const handleSaveSlot = useCallback(() => {
+    if (!editingSlot || !resolvedTemplateId) return;
+    updateSlotMutation.mutate(
+      {
+        id: editingSlot.id,
+        weekTemplateId: resolvedTemplateId,
+        headcount: editHeadcount,
+        position: editPosition || null,
+      },
+      { onSuccess: () => setEditSlotDialogOpen(false) },
+    );
+  }, [editingSlot, resolvedTemplateId, editHeadcount, editPosition, updateSlotMutation]);
+
   // Generate schedule
   const handleGenerate = useCallback(() => {
     if (!resolvedTemplateId || !weekStartDate) return;
@@ -235,6 +281,18 @@ export function WeekTemplateBuilder({
           </Select>
         ) : (
           <p className="text-[14px] text-muted-foreground">No templates yet</p>
+        )}
+
+        {/* Rename template */}
+        {resolvedTemplateId && (
+          <Button
+            variant="ghost"
+            onClick={handleOpenRename}
+            aria-label="Rename template"
+            className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-foreground"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
         )}
 
         {/* New template */}
@@ -339,14 +397,23 @@ export function WeekTemplateBuilder({
                                 </span>
                               )}
                             </div>
-                            {/* Delete on hover */}
-                            <button
-                              onClick={() => handleRemoveSlot(slot.id)}
-                              aria-label={`Remove ${st.name} from ${DAY_SHORT[dayOfWeek]}`}
-                              className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 p-1 rounded text-destructive hover:text-destructive/80 transition-all"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
+                            {/* Edit & Delete on hover */}
+                            <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                              <button
+                                onClick={() => handleOpenEditSlot(slot)}
+                                aria-label={`Edit ${st.name} on ${DAY_SHORT[dayOfWeek]}`}
+                                className="p-1 rounded text-muted-foreground hover:text-foreground"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => handleRemoveSlot(slot.id)}
+                                aria-label={`Remove ${st.name} from ${DAY_SHORT[dayOfWeek]}`}
+                                className="p-1 rounded text-destructive hover:text-destructive/80"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -426,6 +493,132 @@ export function WeekTemplateBuilder({
         onOpenChange={setDefinitionsManagerOpen}
         restaurantId={restaurantId}
       />
+
+      {/* Rename template dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent className="max-w-sm p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">
+              Rename Template
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleRenameTemplate();
+            }}
+            className="px-6 py-5 space-y-4"
+          >
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="rename-template"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Template Name
+              </Label>
+              <Input
+                id="rename-template"
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                autoFocus
+                required
+                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setRenameDialogOpen(false)}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={updateTemplateMutation.isPending || !renameName.trim()}
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              >
+                {updateTemplateMutation.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit slot dialog */}
+      <Dialog open={editSlotDialogOpen} onOpenChange={setEditSlotDialogOpen}>
+        <DialogContent className="max-w-sm p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">
+              Edit Slot
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveSlot();
+            }}
+            className="px-6 py-5 space-y-4"
+          >
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="edit-headcount"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Headcount
+              </Label>
+              <Input
+                id="edit-headcount"
+                type="number"
+                min={1}
+                value={editHeadcount}
+                onChange={(e) => setEditHeadcount(Math.max(1, parseInt(e.target.value) || 1))}
+                autoFocus
+                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="edit-position"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Position
+              </Label>
+              <Select value={editPosition || '__inherit__'} onValueChange={(v) => setEditPosition(v === '__inherit__' ? '' : v)}>
+                <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__inherit__">Inherit from definition</SelectItem>
+                  {positions.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setEditSlotDialogOpen(false)}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={updateSlotMutation.isPending}
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              >
+                {updateSlotMutation.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* New template name dialog */}
       <Dialog open={newTemplateDialogOpen} onOpenChange={setNewTemplateDialogOpen}>

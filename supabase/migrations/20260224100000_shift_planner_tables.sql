@@ -91,6 +91,10 @@ CREATE INDEX IF NOT EXISTS idx_schedule_slots_restaurant_week
 CREATE INDEX IF NOT EXISTS idx_schedule_slots_shift_id
   ON public.schedule_slots(shift_id);
 
+-- Prevent duplicate schedule generation via race condition
+CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_slots_unique_per_week
+  ON public.schedule_slots(restaurant_id, week_start_date, week_template_slot_id, slot_index);
+
 -- =========================
 -- 7. Enable RLS
 -- =========================
@@ -296,6 +300,30 @@ DECLARE
   v_existing_count INTEGER;
   v_headcount_idx INTEGER;
 BEGIN
+  -- Validate caller has owner/manager role for this restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+      AND role IN ('owner', 'manager')
+  ) THEN
+    RETURN json_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  -- Validate week template belongs to this restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM public.week_templates
+    WHERE id = p_week_template_id
+      AND restaurant_id = p_restaurant_id
+  ) THEN
+    RETURN json_build_object('success', false, 'error', 'Week template not found for this restaurant');
+  END IF;
+
+  -- Validate week_start_date is a Monday
+  IF EXTRACT(ISODOW FROM p_week_start_date) != 1 THEN
+    RETURN json_build_object('success', false, 'error', 'week_start_date must be a Monday');
+  END IF;
+
   -- Check if schedule already exists for this week + restaurant
   SELECT COUNT(*) INTO v_existing_count
   FROM public.schedule_slots
@@ -424,11 +452,23 @@ DECLARE
   v_shift_ids UUID[];
   v_slots_deleted INTEGER;
 BEGIN
-  -- Collect shift IDs linked to schedule_slots for this week
-  SELECT ARRAY_AGG(shift_id) INTO v_shift_ids
-  FROM public.schedule_slots
-  WHERE restaurant_id = p_restaurant_id
-    AND week_start_date = p_week_start_date;
+  -- Validate caller has owner/manager role for this restaurant
+  IF NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+      AND role IN ('owner', 'manager')
+  ) THEN
+    RETURN json_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  -- Collect shift IDs linked to schedule_slots for this week (template-generated only)
+  SELECT ARRAY_AGG(ss.shift_id) INTO v_shift_ids
+  FROM public.schedule_slots ss
+  JOIN public.shifts s ON s.id = ss.shift_id
+  WHERE ss.restaurant_id = p_restaurant_id
+    AND ss.week_start_date = p_week_start_date
+    AND s.source_type = 'template';
 
   IF v_shift_ids IS NULL OR array_length(v_shift_ids, 1) IS NULL THEN
     RETURN json_build_object(
@@ -439,11 +479,11 @@ BEGIN
 
   v_slots_deleted := array_length(v_shift_ids, 1);
 
-  -- Delete schedule_slots first (FK constraint on shift_id CASCADE would
-  -- handle this, but being explicit is clearer)
+  -- Delete only template-generated schedule_slots
   DELETE FROM public.schedule_slots
   WHERE restaurant_id = p_restaurant_id
-    AND week_start_date = p_week_start_date;
+    AND week_start_date = p_week_start_date
+    AND shift_id = ANY(v_shift_ids);
 
   -- Delete the linked shifts
   DELETE FROM public.shifts

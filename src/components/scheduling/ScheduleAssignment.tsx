@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-import { ArrowLeft, Trash2, UserPlus, X, Search, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Trash2, UserPlus, X, Search, CalendarDays, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 import {
   useScheduleSlots,
@@ -25,6 +25,7 @@ import {
   useDeleteGeneratedSchedule,
 } from '@/hooks/useScheduleSlots';
 import { useEmployees } from '@/hooks/useEmployees';
+import { usePublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 
 import { ScheduleSlot, Employee } from '@/types/scheduling';
 
@@ -132,15 +133,79 @@ interface ScheduleAssignmentProps {
 // Sub-component: Employee selector popover
 // ---------------------------------------------------------------------------
 
+/** Check if two time ranges overlap (supports overnight shifts). */
+function timesOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string,
+): boolean {
+  const toMin = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const aStart = toMin(startA);
+  let aEnd = toMin(endA);
+  const bStart = toMin(startB);
+  let bEnd = toMin(endB);
+
+  // Handle overnight shifts by extending past midnight
+  if (aEnd <= aStart) aEnd += 24 * 60;
+  if (bEnd <= bStart) bEnd += 24 * 60;
+
+  return aStart < bEnd && bStart < aEnd;
+}
+
+interface OverlapInfo {
+  timeRange: string;
+}
+
 interface EmployeeSelectorProps {
   employees: Employee[];
   assignedIds: Set<string>;
   position: string;
   onSelect: (employeeId: string) => void;
+  /** All schedule slots for this week, used to detect time overlaps */
+  allSlots: ScheduleSlot[];
+  /** The day_of_week and time range of the slot being assigned */
+  slotDayOfWeek: number;
+  slotStartTime: string;
+  slotEndTime: string;
 }
 
-function EmployeeSelector({ employees, assignedIds, position, onSelect }: EmployeeSelectorProps) {
+function EmployeeSelector({
+  employees,
+  assignedIds,
+  position,
+  onSelect,
+  allSlots,
+  slotDayOfWeek,
+  slotStartTime,
+  slotEndTime,
+}: EmployeeSelectorProps) {
   const [search, setSearch] = useState('');
+
+  // Build a map of employee_id -> overlap info for this slot
+  const overlapMap = useMemo(() => {
+    const map = new Map<string, OverlapInfo>();
+    for (const slot of allSlots) {
+      if (!slot.employee_id) continue;
+      const wts = slot.week_template_slot;
+      const st = wts?.shift_template;
+      if (!wts || !st) continue;
+
+      // Same day check
+      if (wts.day_of_week !== slotDayOfWeek) continue;
+
+      // Time overlap check
+      if (timesOverlap(slotStartTime, slotEndTime, st.start_time, st.end_time)) {
+        map.set(slot.employee_id, {
+          timeRange: `${formatTime(st.start_time)} \u2013 ${formatTime(st.end_time)}`,
+        });
+      }
+    }
+    return map;
+  }, [allSlots, slotDayOfWeek, slotStartTime, slotEndTime]);
 
   // Filter: match position (unless "Any"), then by search
   const filtered = useMemo(() => {
@@ -176,6 +241,7 @@ function EmployeeSelector({ employees, assignedIds, position, onSelect }: Employ
         ) : (
           filtered.map((emp) => {
             const alreadyAssigned = assignedIds.has(emp.id);
+            const overlap = overlapMap.get(emp.id);
             return (
               <button
                 key={emp.id}
@@ -188,12 +254,22 @@ function EmployeeSelector({ employees, assignedIds, position, onSelect }: Employ
                     : 'hover:bg-muted/50 cursor-pointer',
                 )}
               >
-                <div>
-                  <p className="text-[13px] font-medium text-foreground">{emp.name}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    {overlap && !alreadyAssigned && (
+                      <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                    )}
+                    <p className="text-[13px] font-medium text-foreground truncate">{emp.name}</p>
+                  </div>
                   <p className="text-[11px] text-muted-foreground">{emp.position}</p>
+                  {overlap && !alreadyAssigned && (
+                    <p className="text-[10px] text-amber-500 mt-0.5">
+                      Already scheduled {overlap.timeRange}
+                    </p>
+                  )}
                 </div>
                 {alreadyAssigned && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
                     Assigned
                   </span>
                 )}
@@ -220,6 +296,8 @@ export function ScheduleAssignment({
   const assignMutation = useAssignEmployee();
   const unassignMutation = useUnassignEmployee();
   const deleteMutation = useDeleteGeneratedSchedule();
+  const publishMutation = usePublishSchedule();
+  const { isPublished } = useWeekPublicationStatus(restaurantId, weekStartDate);
 
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
@@ -263,6 +341,11 @@ export function ScheduleAssignment({
       },
     );
   }, [deleteMutation, restaurantId, weekStartDate, onBack]);
+
+  // Publish schedule
+  const handlePublish = useCallback(() => {
+    publishMutation.mutate({ restaurantId, weekStartDate });
+  }, [publishMutation, restaurantId, weekStartDate]);
 
   // -----------------------------------------------------------------------
   // Render
@@ -330,12 +413,20 @@ export function ScheduleAssignment({
             <Trash2 className="h-4 w-4 mr-1" />
             Clear Schedule
           </Button>
-          <Button
-            disabled={filledSlots === 0}
-            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-          >
-            Publish
-          </Button>
+          {isPublished ? (
+            <span className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-muted-foreground">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              Published
+            </span>
+          ) : (
+            <Button
+              onClick={handlePublish}
+              disabled={filledSlots === 0 || publishMutation.isPending}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+            >
+              {publishMutation.isPending ? 'Publishing...' : 'Publish'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -446,6 +537,10 @@ export function ScheduleAssignment({
                                   onSelect={(empId) =>
                                     handleAssign(slot.id, slot.shift_id ?? null, empId)
                                   }
+                                  allSlots={slots}
+                                  slotDayOfWeek={group.dayOfWeek}
+                                  slotStartTime={slot.week_template_slot?.shift_template?.start_time ?? '00:00'}
+                                  slotEndTime={slot.week_template_slot?.shift_template?.end_time ?? '23:59'}
                                 />
                               </PopoverContent>
                             </Popover>

@@ -3,6 +3,8 @@ import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -16,16 +18,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 
-import { Plus, Star, Settings, Trash2, CalendarDays, Pencil } from 'lucide-react';
+import { Plus, Star, Settings, Trash2, CalendarDays, Pencil, Copy } from 'lucide-react';
 
 import {
   useWeekTemplates,
   useCreateWeekTemplate,
   useUpdateWeekTemplate,
+  useDeleteWeekTemplate,
   useSetActiveTemplate,
   useWeekTemplateSlots,
+  useAddTemplateSlot,
   useUpdateTemplateSlot,
   useRemoveTemplateSlot,
 } from '@/hooks/useWeekTemplates';
@@ -108,19 +122,25 @@ export function WeekTemplateBuilder({
   // Mutations
   const createTemplateMutation = useCreateWeekTemplate();
   const updateTemplateMutation = useUpdateWeekTemplate();
+  const deleteTemplateMutation = useDeleteWeekTemplate();
   const setActiveMutation = useSetActiveTemplate();
+  const addSlotMutation = useAddTemplateSlot();
   const updateSlotMutation = useUpdateTemplateSlot();
   const removeSlotMutation = useRemoveTemplateSlot();
 
   // UI state
   const [newTemplateDialogOpen, setNewTemplateDialogOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateDescription, setNewTemplateDescription] = useState('');
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameName, setRenameName] = useState('');
+  const [renameDescription, setRenameDescription] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editSlotDialogOpen, setEditSlotDialogOpen] = useState(false);
   const [editingSlot, setEditingSlot] = useState<WeekTemplateSlot | null>(null);
   const [editHeadcount, setEditHeadcount] = useState(1);
   const [editPosition, setEditPosition] = useState('');
+  const [copyDays, setCopyDays] = useState<Set<number>>(new Set());
   const [definitionsManagerOpen, setDefinitionsManagerOpen] = useState(false);
   const [addSlotDay, setAddSlotDay] = useState<number | null>(null);
   const [weekStartDate, setWeekStartDate] = useState(() => {
@@ -170,17 +190,19 @@ export function WeekTemplateBuilder({
       {
         restaurant_id: restaurantId,
         name: newTemplateName.trim(),
+        description: newTemplateDescription.trim() || undefined,
         is_active: templates.length === 0,
       },
       {
         onSuccess: (data) => {
           setSelectedTemplateId(data.id);
           setNewTemplateName('');
+          setNewTemplateDescription('');
           setNewTemplateDialogOpen(false);
         },
       },
     );
-  }, [newTemplateName, restaurantId, templates.length, createTemplateMutation]);
+  }, [newTemplateName, newTemplateDescription, restaurantId, templates.length, createTemplateMutation]);
 
   // Set active template
   const handleSetActive = useCallback(() => {
@@ -197,26 +219,46 @@ export function WeekTemplateBuilder({
     [resolvedTemplateId, removeSlotMutation],
   );
 
+  // Delete template
+  const handleDeleteTemplate = useCallback(() => {
+    if (!resolvedTemplateId) return;
+    deleteTemplateMutation.mutate(
+      { id: resolvedTemplateId, restaurantId },
+      {
+        onSuccess: () => {
+          setDeleteDialogOpen(false);
+          setSelectedTemplateId('');
+        },
+      },
+    );
+  }, [resolvedTemplateId, restaurantId, deleteTemplateMutation]);
+
   // Rename template
   const handleOpenRename = useCallback(() => {
     if (!currentTemplate) return;
     setRenameName(currentTemplate.name);
+    setRenameDescription(currentTemplate.description || '');
     setRenameDialogOpen(true);
   }, [currentTemplate]);
 
   const handleRenameTemplate = useCallback(() => {
     if (!resolvedTemplateId || !renameName.trim()) return;
     updateTemplateMutation.mutate(
-      { id: resolvedTemplateId, name: renameName.trim() },
+      {
+        id: resolvedTemplateId,
+        name: renameName.trim(),
+        description: renameDescription.trim() || undefined,
+      },
       { onSuccess: () => setRenameDialogOpen(false) },
     );
-  }, [resolvedTemplateId, renameName, updateTemplateMutation]);
+  }, [resolvedTemplateId, renameName, renameDescription, updateTemplateMutation]);
 
   // Edit slot
   const handleOpenEditSlot = useCallback((slot: WeekTemplateSlot) => {
     setEditingSlot(slot);
     setEditHeadcount(slot.headcount);
     setEditPosition(slot.position || '');
+    setCopyDays(new Set([slot.day_of_week]));
     setEditSlotDialogOpen(true);
   }, []);
 
@@ -232,6 +274,24 @@ export function WeekTemplateBuilder({
       { onSuccess: () => setEditSlotDialogOpen(false) },
     );
   }, [editingSlot, resolvedTemplateId, editHeadcount, editPosition, updateSlotMutation]);
+
+  // Copy slot to other days
+  const handleCopyToOtherDays = useCallback(() => {
+    if (!editingSlot || !resolvedTemplateId) return;
+    const otherDays = Array.from(copyDays).filter((d) => d !== editingSlot.day_of_week);
+    if (otherDays.length === 0) return;
+
+    for (const day of otherDays) {
+      addSlotMutation.mutate({
+        week_template_id: resolvedTemplateId,
+        shift_template_id: editingSlot.shift_template_id,
+        day_of_week: day,
+        position: editPosition || editingSlot.position || null,
+        headcount: editHeadcount,
+        sort_order: 0,
+      });
+    }
+  }, [editingSlot, resolvedTemplateId, copyDays, editPosition, editHeadcount, addSlotMutation]);
 
   // Generate schedule
   const handleGenerate = useCallback(() => {
@@ -292,6 +352,18 @@ export function WeekTemplateBuilder({
             className="h-9 w-9 p-0 rounded-lg text-muted-foreground hover:text-foreground"
           >
             <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {/* Delete template (only if 2+ templates) */}
+        {resolvedTemplateId && templates.length >= 2 && (
+          <Button
+            variant="ghost"
+            onClick={() => setDeleteDialogOpen(true)}
+            aria-label="Delete template"
+            className="h-9 w-9 p-0 rounded-lg text-destructive hover:text-destructive/80"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         )}
 
@@ -525,6 +597,22 @@ export function WeekTemplateBuilder({
                 className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="rename-description"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Description (optional)
+              </Label>
+              <Textarea
+                id="rename-description"
+                value={renameDescription}
+                onChange={(e) => setRenameDescription(e.target.value)}
+                placeholder="e.g. High-traffic weekend template"
+                rows={2}
+                className="text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border resize-none"
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
@@ -599,6 +687,57 @@ export function WeekTemplateBuilder({
                 </SelectContent>
               </Select>
             </div>
+            {/* Copy to Other Days */}
+            <div className="space-y-2 pt-2 border-t border-border/40">
+              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                Copy to Other Days
+              </Label>
+              <div className="flex flex-wrap gap-3">
+                {COLUMN_DAYS.map((day) => {
+                  const isCurrentDay = editingSlot?.day_of_week === day;
+                  const isChecked = copyDays.has(day);
+                  return (
+                    <label
+                      key={day}
+                      className={cn(
+                        'flex items-center gap-1.5 text-[13px]',
+                        isCurrentDay ? 'text-muted-foreground' : 'text-foreground cursor-pointer',
+                      )}
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        disabled={isCurrentDay}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(copyDays);
+                          if (checked) {
+                            next.add(day);
+                          } else {
+                            next.delete(day);
+                          }
+                          setCopyDays(next);
+                        }}
+                      />
+                      {DAY_SHORT[day]}
+                    </label>
+                  );
+                })}
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleCopyToOtherDays}
+                disabled={
+                  addSlotMutation.isPending ||
+                  !editingSlot ||
+                  Array.from(copyDays).filter((d) => d !== editingSlot.day_of_week).length === 0
+                }
+                className="h-8 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground"
+              >
+                <Copy className="h-3.5 w-3.5 mr-1" />
+                {addSlotMutation.isPending ? 'Copying...' : 'Copy'}
+              </Button>
+            </div>
+
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
@@ -619,6 +758,28 @@ export function WeekTemplateBuilder({
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete template confirm */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete &ldquo;{currentTemplate?.name}&rdquo; and all its
+              slots. Generated schedules will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTemplate}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteTemplateMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* New template name dialog */}
       <Dialog open={newTemplateDialogOpen} onOpenChange={setNewTemplateDialogOpen}>
@@ -655,6 +816,22 @@ export function WeekTemplateBuilder({
                 autoFocus
                 required
                 className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="new-template-description"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Description (optional)
+              </Label>
+              <Textarea
+                id="new-template-description"
+                value={newTemplateDescription}
+                onChange={(e) => setNewTemplateDescription(e.target.value)}
+                placeholder="e.g. Standard weekday schedule with brunch weekends"
+                rows={2}
+                className="text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border resize-none"
               />
             </div>
             <div className="flex justify-end gap-2">

@@ -106,12 +106,14 @@ export function useAssignEmployee() {
       employeeId,
       restaurantId,
       weekStartDate,
+      silent,
     }: {
       slotId: string;
       shiftId: string | null;
       employeeId: string;
       restaurantId: string;
       weekStartDate: string;
+      silent?: boolean;
     }) => {
       // Update the schedule slot
       const { error: slotError } = await supabase
@@ -131,19 +133,77 @@ export function useAssignEmployee() {
         if (shiftError) throw shiftError;
       }
 
-      return { slotId, restaurantId, weekStartDate };
+      return { slotId, restaurantId, weekStartDate, silent };
     },
-    onSuccess: ({ restaurantId, weekStartDate }) => {
+    onSuccess: ({ restaurantId, weekStartDate, silent }) => {
       queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
-      toast({
-        title: 'Employee assigned',
-        description: 'The employee has been assigned to the shift slot.',
-      });
+      if (!silent) {
+        toast({
+          title: 'Employee assigned',
+          description: 'The employee has been assigned to the shift slot.',
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
         title: 'Error assigning employee',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mutation: bulk-assign an employee to multiple schedule slots at once
+// ---------------------------------------------------------------------------
+
+export function useBulkAssignEmployee() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({
+      assignments,
+      restaurantId,
+      weekStartDate,
+    }: {
+      assignments: Array<{ slotId: string; shiftId: string | null; employeeId: string }>;
+      restaurantId: string;
+      weekStartDate: string;
+    }) => {
+      for (const { slotId, shiftId, employeeId } of assignments) {
+        const { error: slotError } = await supabase
+          .from('schedule_slots')
+          .update({ employee_id: employeeId, status: 'assigned' })
+          .eq('id', slotId);
+
+        if (slotError) throw slotError;
+
+        if (shiftId) {
+          const { error: shiftError } = await supabase
+            .from('shifts')
+            .update({ employee_id: employeeId })
+            .eq('id', shiftId);
+
+          if (shiftError) throw shiftError;
+        }
+      }
+
+      return { count: assignments.length, restaurantId, weekStartDate };
+    },
+    onSuccess: ({ count, restaurantId, weekStartDate }) => {
+      queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
+      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      toast({
+        title: 'Applied to all days',
+        description: `Assigned to ${count} additional slot${count === 1 ? '' : 's'}.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error applying assignments',
         description: error.message,
         variant: 'destructive',
       });

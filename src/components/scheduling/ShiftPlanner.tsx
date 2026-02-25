@@ -5,13 +5,13 @@ import { CalendarDays } from 'lucide-react';
 import { useGenerateSchedule } from '@/hooks/useScheduleSlots';
 
 import { WeekTemplateBuilder } from './WeekTemplateBuilder';
-import { ScheduleAssignment } from './ScheduleAssignment';
+import { ScheduleBoard } from './ScheduleBoard';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type View = 'template' | 'assignment';
+type View = 'template' | 'board';
 
 interface ShiftPlannerProps {
   restaurantId: string | null;
@@ -27,7 +27,7 @@ export function ShiftPlanner({ restaurantId }: ShiftPlannerProps) {
 
   const generateMutation = useGenerateSchedule();
 
-  // Handle generate: call RPC, on success switch to assignment view
+  // Handle generate: call RPC, on success switch to board view
   const handleGenerateSchedule = useCallback(
     (templateId: string, weekStartDate: string) => {
       if (!restaurantId) return;
@@ -41,7 +41,7 @@ export function ShiftPlanner({ restaurantId }: ShiftPlannerProps) {
         {
           onSuccess: () => {
             setTargetWeekStart(weekStartDate);
-            setView('assignment');
+            setView('board');
           },
         },
       );
@@ -81,7 +81,7 @@ export function ShiftPlanner({ restaurantId }: ShiftPlannerProps) {
           onGenerateSchedule={handleGenerateSchedule}
         />
       ) : (
-        <ScheduleAssignment
+        <ScheduleBoard
           restaurantId={restaurantId}
           weekStartDate={targetWeekStart}
           onBack={handleBack}

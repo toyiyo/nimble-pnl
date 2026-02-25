@@ -1,11 +1,18 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 
 import { CalendarDays } from 'lucide-react';
+
+import { Skeleton } from '@/components/ui/skeleton';
 
 import { useGenerateSchedule } from '@/hooks/useScheduleSlots';
 
 import { WeekTemplateBuilder } from './WeekTemplateBuilder';
-import { ScheduleBoard } from './ScheduleBoard';
+
+// Lazy-load ScheduleBoard so its dependency tree (ToastAction, etc.) is
+// deferred until the user actually switches to the board view.
+const ScheduleBoard = lazy(() =>
+  import('./ScheduleBoard').then((m) => ({ default: m.ScheduleBoard })),
+);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,11 +88,24 @@ export function ShiftPlanner({ restaurantId }: ShiftPlannerProps) {
           onGenerateSchedule={handleGenerateSchedule}
         />
       ) : (
-        <ScheduleBoard
-          restaurantId={restaurantId}
-          weekStartDate={targetWeekStart}
-          onBack={handleBack}
-        />
+        <Suspense
+          fallback={
+            <div className="space-y-4">
+              <Skeleton className="h-10 w-full rounded-lg" />
+              <div className="grid grid-cols-7 gap-2">
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <Skeleton key={i} className="h-48 rounded-xl" />
+                ))}
+              </div>
+            </div>
+          }
+        >
+          <ScheduleBoard
+            restaurantId={restaurantId}
+            weekStartDate={targetWeekStart}
+            onBack={handleBack}
+          />
+        </Suspense>
       )}
     </div>
   );

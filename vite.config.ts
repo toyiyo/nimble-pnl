@@ -66,7 +66,10 @@ export default defineConfig(async ({ mode }) => {
           manualChunks: {
             // Split vendor chunks to reduce memory usage during build
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-            'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
+            // NOTE: Do NOT split Radix UI packages into a separate chunk.
+            // Radix packages share internal sub-dependencies (@radix-ui/react-context,
+            // @radix-ui/react-primitive, etc.) which creates circular cross-chunk
+            // initialization and TDZ errors in production builds.
             'chart-vendor': ['recharts'],
             // Deduplicate large libraries that were being bundled multiple times
             'mermaid': ['mermaid'],

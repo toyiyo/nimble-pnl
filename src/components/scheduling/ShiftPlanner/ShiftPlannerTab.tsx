@@ -236,7 +236,7 @@ export function ShiftPlannerTab({
               />
             )}
           </div>
-          <EmployeeSidebar employees={employees} />
+          <EmployeeSidebar employees={employees} shifts={shifts} />
         </div>
       </DndContext>
 

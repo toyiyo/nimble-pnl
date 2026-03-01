@@ -4,7 +4,7 @@
 --              and delete/restore/permanent-delete functions
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(27);
 
 -- Setup
 SET LOCAL role TO postgres;
@@ -263,7 +263,19 @@ SELECT ok(
 );
 
 -- ============================================================
--- Test 22: Permanently delete tombstone removes it
+-- Test 22: Restore is idempotent (second call returns false)
+-- ============================================================
+SELECT is(
+  (public.restore_deleted_transaction(
+    (current_setting('test.tombstone_id_4'))::uuid,
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'false',
+  'second restore should return false (tombstone already removed) (Test 22)'
+);
+
+-- ============================================================
+-- Test 23: Permanently delete tombstone removes it
 -- ============================================================
 
 -- Get tombstone ID for transaction 1 (deleted earlier)
@@ -285,7 +297,7 @@ SELECT is(
     'a0000000-0000-0000-0000-000000000001'::uuid
   ))->>'success',
   'true',
-  'permanently_delete_tombstone should return success (Test 22)'
+  'permanently_delete_tombstone should return success (Test 23)'
 );
 
 -- Tombstone should be gone
@@ -294,11 +306,11 @@ SELECT ok(
     SELECT 1 FROM public.deleted_bank_transactions
     WHERE id = (current_setting('test.tombstone_id_1'))::uuid
   ),
-  'tombstone should be removed after permanent delete (Test 23 - verify)'
+  'tombstone should be removed after permanent delete (Test 24 - verify)'
 );
 
 -- ============================================================
--- Test 24: Bulk delete creates tombstones for multiple transactions
+-- Test 25: Bulk delete creates tombstones for multiple transactions
 -- ============================================================
 SELECT is(
   (public.bulk_delete_bank_transactions(
@@ -306,7 +318,25 @@ SELECT is(
     'a0000000-0000-0000-0000-000000000001'::uuid
   ))->>'success',
   'true',
-  'bulk_delete_bank_transactions should return success (Test 24)'
+  'bulk_delete_bank_transactions should return success (Test 25)'
+);
+
+-- Test 26: Tombstones exist for bulk-deleted transactions
+SELECT is(
+  (SELECT count(*)::int FROM public.deleted_bank_transactions
+   WHERE restaurant_id = 'a0000000-0000-0000-0000-000000000001'::uuid
+   AND external_transaction_id IN ('stripe_txn_tombstone_002', 'stripe_txn_tombstone_003')),
+  2,
+  'tombstones should exist for both bulk-deleted transactions (Test 26)'
+);
+
+-- Test 27: Active rows removed for bulk-deleted transactions
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.bank_transactions
+    WHERE id IN ('c0000000-0000-0000-0000-000000000002'::uuid, 'c0000000-0000-0000-0000-000000000003'::uuid)
+  ),
+  'active rows should be removed after bulk delete (Test 27)'
 );
 
 -- ============================================================

@@ -259,11 +259,19 @@ export function ScheduleAssignment({
   const filledSlots = slots.filter((s) => s.status === 'assigned' || s.status === 'confirmed').length;
   const progressPct = totalSlots > 0 ? Math.round((filledSlots / totalSlots) * 100) : 0;
 
-  // Set of already-assigned employee IDs (for greying out)
-  const assignedEmployeeIds = useMemo(
-    () => new Set(slots.filter((s) => s.employee_id).map((s) => s.employee_id!)),
-    [slots],
-  );
+  // Build per-group assigned employee IDs (scoped to the slot group, not entire week)
+  // This allows the same employee to be assigned to different shift groups on the same day
+  const assignedByGroup = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const slot of slots) {
+      const wts = slot.week_template_slot;
+      if (!wts) continue;
+      const key = `${wts.day_of_week}-${wts.id}`;
+      if (!map.has(key)) map.set(key, new Set());
+      if (slot.employee_id) map.get(key)!.add(slot.employee_id);
+    }
+    return map;
+  }, [slots]);
 
   // Handlers
   const handleAssign = useCallback(
@@ -492,7 +500,7 @@ export function ScheduleAssignment({
                               >
                                 <EmployeeSelector
                                   employees={employees}
-                                  assignedIds={assignedEmployeeIds}
+                                  assignedIds={assignedByGroup.get(`${group.dayOfWeek}-${slot.week_template_slot?.id}`) ?? new Set()}
                                   position={group.position}
                                   onSelect={(empId) =>
                                     handleAssign(slot.id, slot.shift_id ?? null, empId)

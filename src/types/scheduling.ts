@@ -88,7 +88,7 @@ export interface RecurrencePattern {
 export interface Shift {
   id: string;
   restaurant_id: string;
-  employee_id: string;
+  employee_id: string | null;
   start_time: string;
   end_time: string;
   break_duration: number; // In minutes

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { AlertCircle, AlertTriangle } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CalendarOff, Users } from 'lucide-react';
 
 import { useShiftPlanner } from '@/hooks/useShiftPlanner';
 
@@ -37,6 +37,7 @@ export function ShiftPlannerTab({
     employees,
     gridData,
     isLoading,
+    error,
     validateAndCreate,
     validateAndReassign,
     validationResult,
@@ -125,10 +126,36 @@ export function ShiftPlannerTab({
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-9 w-24" />
         </div>
         <Skeleton className="h-[400px] w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center mb-3">
+          <CalendarOff className="h-5 w-5 text-destructive" />
+        </div>
+        <p className="text-[15px] font-medium text-foreground">Failed to load schedule</p>
+        <p className="text-[13px] text-muted-foreground mt-1">{error.message}</p>
+      </div>
+    );
+  }
+
+  // Empty state — no employees
+  if (!employees.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
+          <Users className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <p className="text-[15px] font-medium text-foreground">No employees found</p>
+        <p className="text-[13px] text-muted-foreground mt-1">Add employees to start building your schedule.</p>
       </div>
     );
   }

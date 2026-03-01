@@ -10,8 +10,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 
-import type { Shift } from '@/types/scheduling';
-import type { Employee } from '@/types/scheduling';
+import type { Shift, Employee } from '@/types/scheduling';
 
 import { cn } from '@/lib/utils';
 
@@ -186,6 +185,7 @@ export function WeeklyGrid({
                       ) : (
                         <EmptyCell
                           employeeId={employee.id}
+                          employeeName={employee.name}
                           day={day}
                           onClickCreate={onCellClick}
                         />
@@ -227,6 +227,7 @@ export function WeeklyGrid({
                   ) : (
                     <EmptyCell
                       employeeId="__open__"
+                      employeeName="Open Shifts"
                       day={day}
                       onClickCreate={onCellClick}
                     />

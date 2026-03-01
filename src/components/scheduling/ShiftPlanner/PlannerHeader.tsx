@@ -38,7 +38,7 @@ export const PlannerHeader = memo(function PlannerHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-lg"
+          className="h-9 w-9 rounded-lg"
           onClick={onPrevWeek}
           aria-label="Previous week"
         >
@@ -52,7 +52,7 @@ export const PlannerHeader = memo(function PlannerHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-lg"
+          className="h-9 w-9 rounded-lg"
           onClick={onNextWeek}
           aria-label="Next week"
         >
@@ -62,7 +62,7 @@ export const PlannerHeader = memo(function PlannerHeader({
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground ml-1"
+          className="h-9 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground ml-1"
           onClick={onToday}
         >
           <Calendar className="h-3.5 w-3.5 mr-1" />

@@ -8,12 +8,21 @@ import { cn } from '@/lib/utils';
 
 interface EmptyCellProps {
   employeeId: string;
+  employeeName?: string;
   day: string;
   onClickCreate: (employeeId: string, day: string) => void;
 }
 
+/** Format YYYY-MM-DD as a readable date like "Mon, Feb 28". */
+function formatDayLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 export const EmptyCell = memo(function EmptyCell({
   employeeId,
+  employeeName,
   day,
   onClickCreate,
 }: EmptyCellProps) {
@@ -22,12 +31,16 @@ export const EmptyCell = memo(function EmptyCell({
     data: { employeeId, day },
   });
 
+  const label = employeeName
+    ? `Add shift for ${employeeName} on ${formatDayLabel(day)}`
+    : `Add shift on ${formatDayLabel(day)}`;
+
   return (
     <button
       ref={setNodeRef}
       type="button"
       onClick={() => onClickCreate(employeeId, day)}
-      aria-label={`Add shift for ${day}`}
+      aria-label={label}
       className={cn(
         'group w-full h-full min-h-[48px] rounded-lg border border-transparent transition-colors',
         'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',

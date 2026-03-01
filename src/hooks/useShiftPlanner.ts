@@ -143,6 +143,7 @@ export interface UseShiftPlannerReturn {
   employees: ReturnType<typeof useEmployees>['employees'];
   gridData: Map<string, Map<string, Shift[]>>;
   isLoading: boolean;
+  error: Error | null;
 
   // Mutations
   validateAndCreate: (input: {
@@ -189,12 +190,12 @@ export function useShiftPlanner(
     useState<ValidationResult | null>(null);
 
   // Data hooks
-  const { shifts, loading: shiftsLoading } = useShifts(
+  const { shifts, loading: shiftsLoading, error: shiftsError } = useShifts(
     restaurantId,
     weekStart,
     weekEnd,
   );
-  const { employees, loading: employeesLoading } = useEmployees(restaurantId, {
+  const { employees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId, {
     status: 'active',
   });
 
@@ -212,6 +213,7 @@ export function useShiftPlanner(
   const totalHours = useMemo(() => computeTotalHours(shifts), [shifts]);
 
   const isLoading = shiftsLoading || employeesLoading;
+  const error = shiftsError || employeesError;
 
   // Navigation
   const goToNextWeek = useCallback(() => {
@@ -419,6 +421,7 @@ export function useShiftPlanner(
     employees,
     gridData,
     isLoading,
+    error,
     validateAndCreate,
     validateAndUpdateTime,
     validateAndReassign,

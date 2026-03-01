@@ -1124,65 +1124,56 @@ async function executeGetSalesSummary(
     include_items = false 
   } = args;
 
-  // Calculate date ranges
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
-  let prevStartDate: Date;
-  let prevEndDate: Date;
+  // Use centralized date calculation
+  const effectivePeriod = (start_date && end_date) ? 'custom' : (period || 'month');
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(
+    effectivePeriod as PeriodType,
+    start_date,
+    end_date
+  );
 
-  // If custom dates provided, use those
-  if (start_date && end_date) {
-    // Parse dates explicitly to avoid timezone issues
-    const [startYear, startMonth, startDay] = start_date.split('-').map(Number);
-    const [endYear, endMonth, endDay] = end_date.split('-').map(Number);
-    startDate = new Date(startYear, startMonth - 1, startDay);
-    endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
-    
-    // Calculate previous period with same duration
-    const durationMs = endDate.getTime() - startDate.getTime();
-    prevEndDate = new Date(startDate.getTime() - 1);
-    prevStartDate = new Date(prevEndDate.getTime() - durationMs);
-  } else {
-    // Calculate based on period
-    switch (period) {
-      case 'today':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-        break;
-      case 'yesterday':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 23, 59, 59);
-        break;
-      case 'week':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-        break;
-      case 'quarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        startDate = new Date(now.getFullYear(), quarter * 3, 1);
-        prevStartDate = new Date(now.getFullYear(), (quarter - 1) * 3, 1);
-        prevEndDate = new Date(now.getFullYear(), quarter * 3, 0, 23, 59, 59);
-        break;
-      }
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+  // Calculate previous period for comparison
+  let prevStartDate!: Date;
+  let prevEndDate!: Date;
+  const durationMs = endDate.getTime() - startDate.getTime();
+
+  switch (effectivePeriod) {
+    case 'today':
+    case 'yesterday': {
+      prevStartDate = new Date(startDate);
+      prevStartDate.setDate(prevStartDate.getDate() - 1);
+      prevEndDate = new Date(prevStartDate);
+      prevEndDate.setHours(23, 59, 59);
+      break;
+    }
+    case 'week':
+    case 'last_week': {
+      prevEndDate = new Date(startDate.getTime() - 1);
+      prevStartDate = new Date(prevEndDate.getTime() - durationMs);
+      break;
+    }
+    case 'month':
+    case 'last_month': {
+      prevStartDate = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
+      prevEndDate = new Date(startDate.getFullYear(), startDate.getMonth(), 0, 23, 59, 59);
+      break;
+    }
+    case 'quarter': {
+      prevStartDate = new Date(startDate.getFullYear(), startDate.getMonth() - 3, 1);
+      prevEndDate = new Date(startDate.getFullYear(), startDate.getMonth(), 0, 23, 59, 59);
+      break;
+    }
+    case 'year': {
+      prevStartDate = new Date(startDate.getFullYear() - 1, 0, 1);
+      prevEndDate = new Date(startDate.getFullYear() - 1, endDate.getMonth(), endDate.getDate(), 23, 59, 59);
+      break;
+    }
+    default: {
+      // custom or unknown: use same duration before start
+      prevEndDate = new Date(startDate.getTime() - 1);
+      prevStartDate = new Date(prevEndDate.getTime() - durationMs);
     }
   }
-
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
 
   // Fetch current period sales (excluding adjustments - only actual revenue)
   const { data: currentSales, error: currentError } = await supabase

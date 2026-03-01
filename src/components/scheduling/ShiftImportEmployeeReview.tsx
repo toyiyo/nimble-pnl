@@ -4,10 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { Loader2, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { AlertTriangle, Loader2, UserCheck, UserPlus, UserX } from 'lucide-react';
 
 import type { Employee } from '@/types/scheduling';
-import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
+import { getDuplicateEmployeeIds, type ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
 
 interface ShiftImportEmployeeReviewProps {
   employeeMatches: ShiftImportEmployee[];
@@ -56,6 +56,11 @@ export const ShiftImportEmployeeReview = ({
 
   const unmatchedCount = useMemo(
     () => employeeMatches.filter(m => (m.matchConfidence === 'none' || m.matchConfidence === 'partial') && m.action !== 'link').length,
+    [employeeMatches]
+  );
+
+  const duplicateIds = useMemo(
+    () => getDuplicateEmployeeIds(employeeMatches),
     [employeeMatches]
   );
 
@@ -123,6 +128,12 @@ export const ShiftImportEmployeeReview = ({
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {match.matchedEmployeeId && duplicateIds.has(match.matchedEmployeeId) && (
+                  <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 rounded-md bg-destructive/10 text-destructive border-destructive/20">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    Duplicate
+                  </Badge>
+                )}
                 {confidenceBadge(match.matchConfidence)}
               </div>
             </div>

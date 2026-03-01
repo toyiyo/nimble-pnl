@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Employee } from '@/types/scheduling';
 import {
   matchEmployees,
+  getDuplicateEmployeeIds,
   type ShiftImportEmployee,
 } from '@/utils/shiftEmployeeMatching';
 import { normalizeEmployeeKey } from '@/utils/timePunchImport';
@@ -208,5 +209,33 @@ describe('accented name matching (end-to-end)', () => {
     ];
     const result = matchEmployees(csvNames, emps);
     expect(result).toHaveLength(0);
+  });
+});
+
+describe('getDuplicateEmployeeIds', () => {
+  it('returns empty set when no duplicates', () => {
+    const matches: ShiftImportEmployee[] = [
+      { csvName: 'Alice', normalizedName: 'alice', matchedEmployeeId: 'emp-1', matchedEmployeeName: 'Alice', matchConfidence: 'exact', csvPosition: '', action: 'link' },
+      { csvName: 'Bob', normalizedName: 'bob', matchedEmployeeId: 'emp-2', matchedEmployeeName: 'Bob', matchConfidence: 'exact', csvPosition: '', action: 'link' },
+    ];
+    expect(getDuplicateEmployeeIds(matches).size).toBe(0);
+  });
+
+  it('detects when two CSV names link to the same employee', () => {
+    const matches: ShiftImportEmployee[] = [
+      { csvName: 'Maria Garcia', normalizedName: 'maria garcia', matchedEmployeeId: 'emp-1', matchedEmployeeName: 'Maria Garcia', matchConfidence: 'exact', csvPosition: '', action: 'link' },
+      { csvName: 'M. Garcia', normalizedName: 'm garcia', matchedEmployeeId: 'emp-1', matchedEmployeeName: 'Maria Garcia', matchConfidence: 'exact', csvPosition: '', action: 'link' },
+    ];
+    const dupes = getDuplicateEmployeeIds(matches);
+    expect(dupes.has('emp-1')).toBe(true);
+    expect(dupes.size).toBe(1);
+  });
+
+  it('ignores unlinked entries (null matchedEmployeeId)', () => {
+    const matches: ShiftImportEmployee[] = [
+      { csvName: 'Alice', normalizedName: 'alice', matchedEmployeeId: null, matchedEmployeeName: null, matchConfidence: 'none', csvPosition: '', action: 'create' },
+      { csvName: 'Bob', normalizedName: 'bob', matchedEmployeeId: null, matchedEmployeeName: null, matchConfidence: 'none', csvPosition: '', action: 'create' },
+    ];
+    expect(getDuplicateEmployeeIds(matches).size).toBe(0);
   });
 });

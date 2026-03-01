@@ -112,3 +112,17 @@ export function matchEmployees(
   });
   return results.sort((a, b) => a.csvName.localeCompare(b.csvName));
 }
+
+export function getDuplicateEmployeeIds(matches: ShiftImportEmployee[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const m of matches) {
+    if (m.matchedEmployeeId && m.action === 'link') {
+      counts.set(m.matchedEmployeeId, (counts.get(m.matchedEmployeeId) || 0) + 1);
+    }
+  }
+  const dupes = new Set<string>();
+  counts.forEach((count, id) => {
+    if (count > 1) dupes.add(id);
+  });
+  return dupes;
+}

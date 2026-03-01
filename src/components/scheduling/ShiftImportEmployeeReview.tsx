@@ -64,6 +64,17 @@ export const ShiftImportEmployeeReview = ({
     [employeeMatches]
   );
 
+  // Map of employeeId → csvName that claimed it (for disabling in dropdowns)
+  const takenEmployeeMap = useMemo(() => {
+    const taken = new Map<string, string>();
+    for (const m of employeeMatches) {
+      if (m.matchedEmployeeId && m.action === 'link') {
+        taken.set(m.matchedEmployeeId, m.csvName);
+      }
+    }
+    return taken;
+  }, [employeeMatches]);
+
   if (!employeeMatches.length) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -165,11 +176,16 @@ export const ShiftImportEmployeeReview = ({
                     {match.matchedEmployeeId && (
                       <SelectItem value="__clear__">Clear</SelectItem>
                     )}
-                    {existingEmployees.map((emp) => (
-                      <SelectItem key={emp.id} value={emp.id}>
-                        {emp.name} {emp.position ? `(${emp.position})` : ''}
-                      </SelectItem>
-                    ))}
+                    {existingEmployees.map((emp) => {
+                      const claimedBy = takenEmployeeMap.get(emp.id);
+                      const isTaken = !!claimedBy && claimedBy !== match.csvName;
+                      return (
+                        <SelectItem key={emp.id} value={emp.id} disabled={isTaken}>
+                          {emp.name} {emp.position ? `(${emp.position})` : ''}
+                          {isTaken && ` — linked to ${claimedBy}`}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 {match.action !== 'link' && (

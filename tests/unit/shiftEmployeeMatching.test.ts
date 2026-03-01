@@ -178,3 +178,35 @@ describe('normalizeEmployeeKey — accent handling', () => {
     expect(normalizeEmployeeKey('María García')).toBe(normalizeEmployeeKey('Maria Garcia'));
   });
 });
+
+describe('accented name matching (end-to-end)', () => {
+  it('matches accented CSV name to non-accented DB employee', () => {
+    const accentedEmployees = [
+      makeEmployee('emp-accent', 'Maria Garcia', 'Server'),
+    ];
+    const csvNames = [{ name: 'María García', position: 'Server' }];
+    const result = matchEmployees(csvNames, accentedEmployees);
+    expect(result[0].matchedEmployeeId).toBe('emp-accent');
+    expect(result[0].matchConfidence).toBe('exact');
+  });
+
+  it('matches non-accented CSV name to accented DB employee', () => {
+    const accentedEmployees = [
+      makeEmployee('emp-accent', 'José García López', 'Server'),
+    ];
+    const csvNames = [{ name: 'Jose Garcia Lopez', position: 'Server' }];
+    const result = matchEmployees(csvNames, accentedEmployees);
+    expect(result[0].matchedEmployeeId).toBe('emp-accent');
+    expect(result[0].matchConfidence).toBe('exact');
+  });
+
+  it('handles empty and whitespace-only names gracefully', () => {
+    const emps = [makeEmployee('emp-1', 'John Smith', 'Server')];
+    const csvNames = [
+      { name: '', position: 'Server' },
+      { name: '   ', position: 'Server' },
+    ];
+    const result = matchEmployees(csvNames, emps);
+    expect(result).toHaveLength(0);
+  });
+});

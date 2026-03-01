@@ -11,6 +11,15 @@ import { Json } from '@/integrations/supabase/types';
 
 import { parseISO } from 'date-fns';
 
+import {
+  emptyState,
+  validateCommand,
+  dbShiftToState,
+  buildCreateCommand,
+  buildChangeTimeCommand,
+  buildCancelCommand,
+} from '@/domain/scheduling';
+
 /**
  * Convert database shift to typed Shift with proper RecurrencePattern
  */
@@ -91,7 +100,14 @@ export function useCreateShift() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (shift: ShiftInput) => {
+    mutationFn: async (shift: ShiftInput & { timezone?: string }) => {
+      const tz = shift.timezone ?? 'America/Chicago';
+
+      // Domain validation: validate the first shift's time/identity
+      const cmd = buildCreateCommand(shift as unknown as Shift, tz, 'system');
+      const result = validateCommand(emptyState(cmd.shiftId), cmd);
+      if (!result.valid) throw result.error!;
+
       if (shift.recurrence_pattern && shift.is_recurring) {
         return createRecurringShifts(shift);
       }
@@ -184,10 +200,22 @@ export function useUpdateShift() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Shift> & { id: string }) => {
-      await assertShiftNotLocked(id);
+    mutationFn: async ({ id, ...updates }: Partial<Shift> & { id: string; timezone?: string }) => {
+      // Fetch current shift for domain validation
+      const currentShift = await fetchShiftForValidation(id);
+      const tz = updates.timezone ?? 'America/Chicago';
+      const state = dbShiftToState(currentShift, tz);
 
-      const { employee: _employee, ...shiftUpdates } = updates;
+      // Validate time changes through the domain
+      if (updates.start_time !== undefined || updates.end_time !== undefined) {
+        const newStart = updates.start_time ?? currentShift.start_time;
+        const newEnd = updates.end_time ?? currentShift.end_time;
+        const cmd = buildChangeTimeCommand(state, newStart, newEnd, 'system');
+        const result = validateCommand(state, cmd);
+        if (!result.valid) throw result.error!;
+      }
+
+      const { employee: _employee, timezone: _tz, ...shiftUpdates } = updates;
 
       const { data, error } = await supabase
         .from('shifts')
@@ -219,18 +247,15 @@ export function useUpdateShift() {
   });
 }
 
-async function assertShiftNotLocked(shiftId: string): Promise<void> {
-  const { data: existingShift, error: fetchError } = await supabase
+async function fetchShiftForValidation(shiftId: string): Promise<Shift> {
+  const { data, error } = await supabase
     .from('shifts')
-    .select('locked')
+    .select('*')
     .eq('id', shiftId)
     .single();
 
-  if (fetchError) throw fetchError;
-
-  if (existingShift.locked) {
-    throw new Error('Cannot modify a locked shift. The schedule has been published.');
-  }
+  if (error) throw error;
+  return toTypedShift(data);
 }
 
 export function useDeleteShift() {
@@ -239,7 +264,12 @@ export function useDeleteShift() {
 
   return useMutation({
     mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      await assertShiftNotLocked(id);
+      // Domain validation: cancel command checks editability (blocks Canceled shifts)
+      const currentShift = await fetchShiftForValidation(id);
+      const state = dbShiftToState(currentShift);
+      const cmd = buildCancelCommand(state, 'system');
+      const result = validateCommand(state, cmd);
+      if (!result.valid) throw result.error!;
 
       const { error } = await supabase.from('shifts').delete().eq('id', id);
 
@@ -289,9 +319,11 @@ export function useDeleteShiftSeries() {
   return useMutation({
     mutationFn: async ({ shift, scope, restaurantId }: SeriesOperationParams): Promise<SeriesOperationResult> => {
       if (scope === 'this') {
-        if (shift.locked) {
-          throw new Error('Cannot delete a locked shift. The schedule has been published.');
-        }
+        // Domain validation for the trigger shift
+        const state = dbShiftToState(shift);
+        const cmd = buildCancelCommand(state, 'system');
+        const valResult = validateCommand(state, cmd);
+        if (!valResult.valid) throw valResult.error!;
 
         const { error } = await supabase
           .from('shifts')
@@ -418,8 +450,14 @@ export function useUpdateShiftSeries() {
       };
 
       if (scope === 'this') {
-        if (shift.locked) {
-          throw new Error('Cannot update a locked shift. The schedule has been published.');
+        // Domain validation for the trigger shift
+        const state = dbShiftToState(shift);
+        if (start_time !== undefined || end_time !== undefined) {
+          const newStart = start_time ?? shift.start_time;
+          const newEnd = end_time ?? shift.end_time;
+          const cmd = buildChangeTimeCommand(state, newStart, newEnd, 'system');
+          const valResult = validateCommand(state, cmd);
+          if (!valResult.valid) throw valResult.error!;
         }
 
         const { data, error } = await supabase

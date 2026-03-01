@@ -200,6 +200,23 @@ describe('useWeekTemplates', () => {
     expect(mockFromChain.eq).toHaveBeenCalledWith('restaurant_id', RESTAURANT_ID);
     expect(result.current.templates).toEqual([mockTemplate]);
   });
+
+  it('handles query error', async () => {
+    mockFromChain.order.mockResolvedValue({
+      data: null,
+      error: { message: 'Permission denied' },
+    });
+
+    const { result } = renderHook(() => useWeekTemplates(RESTAURANT_ID), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.error).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -229,6 +246,161 @@ describe('useCreateWeekTemplate', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Week template created',
       description: '"Default Week" has been added.',
+    });
+  });
+
+  it('shows error toast on creation failure', async () => {
+    mockFromChain.single.mockResolvedValue({
+      data: null,
+      error: { message: 'Duplicate name' },
+    });
+
+    const { result } = renderHook(() => useCreateWeekTemplate(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          restaurant_id: RESTAURANT_ID,
+          name: 'Default Week',
+          is_active: true,
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error creating week template',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useUpdateWeekTemplate mutation tests
+// ---------------------------------------------------------------------------
+
+describe('useUpdateWeekTemplate', () => {
+  it('updates a template and shows toast', async () => {
+    const updatedTemplate = { ...mockTemplate, name: 'Updated Week' };
+    mockFromChain.single.mockResolvedValue({
+      data: updatedTemplate,
+      error: null,
+    });
+
+    const { result } = renderHook(() => useUpdateWeekTemplate(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: TEMPLATE_ID,
+        name: 'Updated Week',
+      });
+    });
+
+    expect(mockSupabase.from).toHaveBeenCalledWith('week_templates');
+    expect(mockFromChain.update).toHaveBeenCalled();
+    expect(mockFromChain.eq).toHaveBeenCalledWith('id', TEMPLATE_ID);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Week template updated',
+      description: '"Updated Week" has been updated.',
+    });
+  });
+
+  it('shows error toast on update failure', async () => {
+    mockFromChain.single.mockResolvedValue({
+      data: null,
+      error: { message: 'Not found' },
+    });
+
+    const { result } = renderHook(() => useUpdateWeekTemplate(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          id: TEMPLATE_ID,
+          name: 'Updated Week',
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error updating week template',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useDeleteWeekTemplate mutation tests
+// ---------------------------------------------------------------------------
+
+describe('useDeleteWeekTemplate', () => {
+  it('deletes a template and shows toast', async () => {
+    mockFromChain.eq.mockResolvedValue({ error: null });
+
+    const { result } = renderHook(() => useDeleteWeekTemplate(), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: TEMPLATE_ID,
+        restaurantId: RESTAURANT_ID,
+      });
+    });
+
+    expect(mockSupabase.from).toHaveBeenCalledWith('week_templates');
+    expect(mockFromChain.delete).toHaveBeenCalled();
+    expect(mockFromChain.eq).toHaveBeenCalledWith('id', TEMPLATE_ID);
+    expect(mockToast).toHaveBeenCalledWith({
+      title: 'Week template deleted',
+      description: 'The week template has been removed.',
+    });
+  });
+
+  it('shows error toast on delete failure', async () => {
+    mockFromChain.eq.mockResolvedValue({
+      error: { message: 'Foreign key constraint' },
+    });
+
+    const { result } = renderHook(() => useDeleteWeekTemplate(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          id: TEMPLATE_ID,
+          restaurantId: RESTAURANT_ID,
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error deleting week template',
+          variant: 'destructive',
+        }),
+      );
     });
   });
 });
@@ -280,6 +452,40 @@ describe('useSetActiveTemplate', () => {
       description: '"Default Week" is now the active template.',
     });
   });
+
+  it('shows error toast when deactivation step fails', async () => {
+    mockSupabase.from.mockImplementation(() => {
+      return {
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: { message: 'Permission denied' } }),
+        }),
+      };
+    });
+
+    const { result } = renderHook(() => useSetActiveTemplate(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          id: TEMPLATE_ID,
+          restaurantId: RESTAURANT_ID,
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error setting active template',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -323,6 +529,27 @@ describe('useWeekTemplateSlots', () => {
     expect(mockFromChain.eq).toHaveBeenCalledWith('week_template_id', TEMPLATE_ID);
     expect(result.current.slots).toEqual([mockSlot]);
   });
+
+  it('handles query error', async () => {
+    const secondOrder = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'Table not found' },
+    });
+    mockFromChain.order.mockReturnValue({
+      ...mockFromChain,
+      order: secondOrder,
+    });
+
+    const { result } = renderHook(() => useWeekTemplateSlots(TEMPLATE_ID), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.error).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -356,6 +583,40 @@ describe('useAddTemplateSlot', () => {
       description: 'A new shift slot has been added to the template.',
     });
   });
+
+  it('shows error toast on add failure', async () => {
+    mockFromChain.single.mockResolvedValue({
+      data: null,
+      error: { message: 'Unique constraint violation' },
+    });
+
+    const { result } = renderHook(() => useAddTemplateSlot(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          week_template_id: TEMPLATE_ID,
+          shift_template_id: 'def-1',
+          day_of_week: 1,
+          headcount: 2,
+          sort_order: 0,
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error adding slot',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -387,6 +648,38 @@ describe('useUpdateTemplateSlot', () => {
       description: 'The shift slot has been updated.',
     });
   });
+
+  it('shows error toast on update failure', async () => {
+    mockFromChain.single.mockResolvedValue({
+      data: null,
+      error: { message: 'Row not found' },
+    });
+
+    const { result } = renderHook(() => useUpdateTemplateSlot(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          id: 'slot-1',
+          weekTemplateId: TEMPLATE_ID,
+          headcount: 5,
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error updating slot',
+          variant: 'destructive',
+        }),
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -412,6 +705,36 @@ describe('useRemoveTemplateSlot', () => {
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Slot removed',
       description: 'The shift slot has been removed from the template.',
+    });
+  });
+
+  it('shows error toast on remove failure', async () => {
+    mockFromChain.eq.mockResolvedValue({
+      error: { message: 'Foreign key constraint' },
+    });
+
+    const { result } = renderHook(() => useRemoveTemplateSlot(), {
+      wrapper: createWrapper(),
+    });
+
+    try {
+      await act(async () => {
+        await result.current.mutateAsync({
+          id: 'slot-1',
+          weekTemplateId: TEMPLATE_ID,
+        });
+      });
+    } catch {
+      // expected
+    }
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error removing slot',
+          variant: 'destructive',
+        }),
+      );
     });
   });
 });

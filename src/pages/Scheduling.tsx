@@ -233,6 +233,7 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
 const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);

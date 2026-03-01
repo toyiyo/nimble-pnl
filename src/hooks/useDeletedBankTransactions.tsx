@@ -24,7 +24,7 @@ export function useDeletedBankTransactions(restaurantId: string | undefined) {
     queryFn: async () => {
       if (!restaurantId) return [];
       const { data, error } = await supabase
-        .from('deleted_bank_transactions' as any)
+        .from('deleted_bank_transactions')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .order('deleted_at', { ascending: false });
@@ -50,7 +50,7 @@ export function useRestoreTransaction() {
       tombstoneId: string;
       restaurantId: string;
     }) => {
-      const { data, error } = await supabase.rpc('restore_deleted_transaction' as any, {
+      const { data, error } = await supabase.rpc('restore_deleted_transaction', {
         p_tombstone_id: tombstoneId,
         p_restaurant_id: restaurantId,
       });
@@ -89,7 +89,7 @@ export function usePermanentlyDeleteTombstone() {
       tombstoneId: string;
       restaurantId: string;
     }) => {
-      const { data, error } = await supabase.rpc('permanently_delete_tombstone' as any, {
+      const { data, error } = await supabase.rpc('permanently_delete_tombstone', {
         p_tombstone_id: tombstoneId,
         p_restaurant_id: restaurantId,
       });

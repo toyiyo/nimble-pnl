@@ -507,7 +507,7 @@ export function useBankStatementImport() {
         // so future imports of the same transaction won't be blocked
         if (line.was_previously_deleted && line.transaction_date && line.amount !== null) {
           const { data: fpResult } = await supabase.rpc(
-            'compute_transaction_fingerprint' as any,
+            'compute_transaction_fingerprint',
             {
               p_transaction_date: line.transaction_date,
               p_amount: line.amount,
@@ -738,7 +738,7 @@ export function useBankStatementImport() {
           if (!line.transaction_date || line.amount === null) continue;
 
           const { data: fpResult } = await supabase.rpc(
-            'compute_transaction_fingerprint' as any,
+            'compute_transaction_fingerprint',
             {
               p_transaction_date: line.transaction_date,
               p_amount: line.amount,
@@ -752,7 +752,7 @@ export function useBankStatementImport() {
               .update({
                 was_previously_deleted: true,
                 user_excluded: true,
-              } as any)
+              })
               .eq('id', line.id);
 
             flaggedCount++;

@@ -1,31 +1,28 @@
 import { useState, useCallback, useMemo } from 'react';
 
+import { DndContext, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { AlertCircle, AlertTriangle, CalendarOff, Users } from 'lucide-react';
+import { AlertCircle, CalendarOff, Users } from 'lucide-react';
 
-import { useShiftPlanner } from '@/hooks/useShiftPlanner';
+import { useShiftPlanner, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 
-import type { Shift } from '@/types/scheduling';
+import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 import { PlannerHeader } from './PlannerHeader';
-import { WeeklyGrid } from './WeeklyGrid';
-import { ShiftQuickCreate } from './ShiftQuickCreate';
+import { TemplateGrid } from './TemplateGrid';
+import { EmployeeSidebar } from './EmployeeSidebar';
+import { TemplateFormDialog } from './TemplateFormDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
-  onShiftClick: (shift: Shift) => void;
-}
-
-interface QuickCreateTarget {
-  employeeId: string;
-  employeeName: string;
-  day: string;
+  onShiftClick?: (shift: Shift) => void;
 }
 
 export function ShiftPlannerTab({
   restaurantId,
-  onShiftClick,
 }: ShiftPlannerTabProps) {
   const {
     weekStart,
@@ -34,95 +31,115 @@ export function ShiftPlannerTab({
     goToNextWeek,
     goToPrevWeek,
     goToToday,
+    shifts,
     employees,
-    gridData,
     isLoading,
     error,
     validateAndCreate,
-    validateAndReassign,
+    deleteShift,
     validationResult,
     clearValidation,
     totalHours,
   } = useShiftPlanner(restaurantId);
 
-  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const [quickCreateTarget, setQuickCreateTarget] =
-    useState<QuickCreateTarget | null>(null);
+  const {
+    templates,
+    loading: templatesLoading,
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
+  } = useShiftTemplates(restaurantId);
 
-  // Derive unique positions from employees
+  // Compute template grid data
+  const templateGridData = useMemo(
+    () => buildTemplateGridData(shifts, templates, weekDays),
+    [shifts, templates, weekDays],
+  );
+
+  // Dialog state
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
+
+  // Derive unique positions from employees and templates
   const positions = useMemo(() => {
     const posSet = new Set<string>();
     for (const emp of employees) {
       if (emp.position) posSet.add(emp.position);
     }
+    for (const t of templates) {
+      if (t.position) posSet.add(t.position);
+    }
     return Array.from(posSet).sort();
-  }, [employees]);
+  }, [employees, templates]);
 
-  const handleCellClick = useCallback(
-    (employeeId: string, day: string) => {
-      const employee = employees.find((e) => e.id === employeeId);
-      setQuickCreateTarget({
-        employeeId,
-        employeeName: employee?.name ?? 'Open Shift',
-        day,
-      });
-      setQuickCreateOpen(true);
-      clearValidation();
-    },
-    [employees, clearValidation],
+  // DnD setup
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  const handleQuickCreate = useCallback(
-    async (data: {
-      employeeId: string;
-      day: string;
-      startTime: string;
-      endTime: string;
-      position: string;
-    }) => {
-      const success = await validateAndCreate({
-        employeeId: data.employeeId,
-        date: data.day,
-        startTime: data.startTime,
-        endTime: data.endTime,
-        position: data.position,
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const employee = active.data.current?.employee;
+    if (!employee) return;
+
+    // over.id is "templateId:day"
+    const [templateId, day] = String(over.id).split(':');
+    if (!templateId || !day) return;
+
+    // Find the template to get times and position
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
+
+    await validateAndCreate({
+      employeeId: employee.id,
+      date: day,
+      startTime: template.start_time.substring(0, 5),
+      endTime: template.end_time.substring(0, 5),
+      position: template.position,
+      breakDuration: template.break_duration,
+    });
+
+    clearValidation();
+  }, [templates, validateAndCreate, clearValidation]);
+
+  // Template CRUD handlers
+  const handleAddTemplate = useCallback(() => {
+    setEditingTemplate(undefined);
+    setTemplateDialogOpen(true);
+  }, []);
+
+  const handleEditTemplate = useCallback((template: ShiftTemplate) => {
+    setEditingTemplate(template);
+    setTemplateDialogOpen(true);
+  }, []);
+
+  const handleDeleteTemplate = useCallback(async (templateId: string) => {
+    await deleteTemplate(templateId);
+  }, [deleteTemplate]);
+
+  const handleTemplateSubmit = useCallback(async (data: {
+    name: string;
+    start_time: string;
+    end_time: string;
+    position: string;
+    days: number[];
+    break_duration: number;
+  }) => {
+    if (editingTemplate) {
+      await updateTemplate({ id: editingTemplate.id, ...data });
+    } else {
+      await createTemplate({
+        ...data,
+        restaurant_id: restaurantId,
+        is_active: true,
       });
-
-      if (success) {
-        setQuickCreateOpen(false);
-        setQuickCreateTarget(null);
-      }
-    },
-    [validateAndCreate],
-  );
-
-  const handleShiftReassign = useCallback(
-    async (shiftId: string, newEmployeeId: string) => {
-      // Find the shift from gridData
-      let targetShift: Shift | undefined;
-      for (const [, days] of gridData) {
-        for (const [, shifts] of days) {
-          const found = shifts.find((s) => s.id === shiftId);
-          if (found) {
-            targetShift = found;
-            break;
-          }
-        }
-        if (targetShift) break;
-      }
-
-      if (!targetShift) return;
-
-      await validateAndReassign({
-        shift: targetShift,
-        newEmployeeId,
-      });
-    },
-    [gridData, validateAndReassign],
-  );
+    }
+  }, [editingTemplate, createTemplate, updateTemplate, restaurantId]);
 
   // Loading state
-  if (isLoading) {
+  if (isLoading || templatesLoading) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -147,7 +164,7 @@ export function ShiftPlannerTab({
     );
   }
 
-  // Empty state — no employees
+  // Empty state -- no employees
   if (!employees.length) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -177,58 +194,56 @@ export function ShiftPlannerTab({
           <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
           <div className="space-y-1">
             {validationResult.errors.map((err, i) => (
-              <p key={i} className="text-[13px] text-destructive">
-                {err.message}
-              </p>
+              <p key={i} className="text-[13px] text-destructive">{err.message}</p>
             ))}
           </div>
         </div>
       )}
 
-      {validationResult?.warnings && validationResult.warnings.length > 0 && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-          <div className="space-y-1">
-            {validationResult.warnings.map((warn, i) => (
-              <p
-                key={i}
-                className="text-[13px] text-amber-700 dark:text-amber-300"
-              >
-                {warn.message}
-              </p>
-            ))}
+      {/* Two-panel layout */}
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div className="flex gap-0">
+          <div className="flex-1 min-w-0">
+            {templates.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-border/40">
+                <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
+                  <CalendarOff className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <p className="text-[15px] font-medium text-foreground">No shift templates yet</p>
+                <p className="text-[13px] text-muted-foreground mt-1">Create templates to start building your schedule.</p>
+                <button
+                  onClick={handleAddTemplate}
+                  className="mt-4 h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label="Add shift template"
+                >
+                  Add Shift Template
+                </button>
+              </div>
+            ) : (
+              <TemplateGrid
+                weekDays={weekDays}
+                templates={templates}
+                gridData={templateGridData}
+                onAssign={() => {}} // handled by DndContext
+                onRemoveShift={deleteShift}
+                onEditTemplate={handleEditTemplate}
+                onDeleteTemplate={handleDeleteTemplate}
+                onAddTemplate={handleAddTemplate}
+              />
+            )}
           </div>
+          <EmployeeSidebar employees={employees} />
         </div>
-      )}
+      </DndContext>
 
-      {/* Grid */}
-      <WeeklyGrid
-        weekDays={weekDays}
-        employees={employees}
-        gridData={gridData}
-        onShiftClick={onShiftClick}
-        onCellClick={handleCellClick}
-        onShiftReassign={handleShiftReassign}
+      {/* Template form dialog */}
+      <TemplateFormDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        template={editingTemplate}
+        onSubmit={handleTemplateSubmit}
+        positions={positions}
       />
-
-      {/* Quick create dialog */}
-      {quickCreateTarget && (
-        <ShiftQuickCreate
-          open={quickCreateOpen}
-          onOpenChange={(open) => {
-            setQuickCreateOpen(open);
-            if (!open) {
-              setQuickCreateTarget(null);
-              clearValidation();
-            }
-          }}
-          employeeId={quickCreateTarget.employeeId}
-          employeeName={quickCreateTarget.employeeName}
-          day={quickCreateTarget.day}
-          positions={positions}
-          onSubmit={handleQuickCreate}
-        />
-      )}
     </div>
   );
 }

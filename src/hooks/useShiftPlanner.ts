@@ -201,7 +201,6 @@ export interface UseShiftPlannerReturn {
   // Data
   shifts: Shift[];
   employees: ReturnType<typeof useEmployees>['employees'];
-  gridData: Map<string, Map<string, Shift[]>>;
   isLoading: boolean;
   error: Error | null;
 
@@ -265,11 +264,6 @@ export function useShiftPlanner(
   const deleteShiftMutation = useDeleteShift();
 
   // Computed data
-  const gridData = useMemo(
-    () => buildGridData(shifts, weekDays),
-    [shifts, weekDays],
-  );
-
   const totalHours = useMemo(() => computeTotalHours(shifts), [shifts]);
 
   const isLoading = shiftsLoading || employeesLoading;
@@ -460,7 +454,6 @@ export function useShiftPlanner(
     goToToday,
     shifts,
     employees,
-    gridData,
     isLoading,
     error,
     validateAndCreate,

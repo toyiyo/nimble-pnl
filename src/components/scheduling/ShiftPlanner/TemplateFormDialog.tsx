@@ -29,7 +29,7 @@ interface TemplateFormDialogProps {
     position: string;
     days: number[];
     break_duration: number;
-  }) => void;
+  }) => void | Promise<void>;
   positions: string[];
 }
 
@@ -74,21 +74,25 @@ export function TemplateFormDialog({
     );
   };
 
-  const isValid = name.trim().length > 0 && days.length > 0 && startTime < endTime;
+  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0 && startTime < endTime;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) return;
 
-    onSubmit({
-      name: name.trim(),
-      start_time: startTime,
-      end_time: endTime,
-      position: position.trim(),
-      days,
-      break_duration: breakDuration,
-    });
-    onOpenChange(false);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        start_time: startTime,
+        end_time: endTime,
+        position: position.trim(),
+        days,
+        break_duration: breakDuration,
+      });
+      onOpenChange(false);
+    } catch {
+      // Error handled by mutation's onError toast
+    }
   };
 
   return (

@@ -89,5 +89,6 @@ export const EmployeeChip = memo(
   (prev, next) =>
     prev.shiftId === next.shiftId &&
     prev.employeeName === next.employeeName &&
+    prev.position === next.position &&
     prev.onRemove === next.onRemove,
 );

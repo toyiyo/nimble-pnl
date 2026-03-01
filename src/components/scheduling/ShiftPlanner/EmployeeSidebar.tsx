@@ -59,7 +59,10 @@ const DraggableEmployee = memo(
       </div>
     );
   },
-  (prev, next) => prev.employee.id === next.employee.id,
+  (prev, next) =>
+    prev.employee.id === next.employee.id &&
+    prev.employee.name === next.employee.name &&
+    prev.employee.position === next.employee.position,
 );
 
 export function EmployeeSidebar({ employees }: EmployeeSidebarProps) {

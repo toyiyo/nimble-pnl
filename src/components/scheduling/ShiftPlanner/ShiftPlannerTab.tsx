@@ -92,16 +92,21 @@ export function ShiftPlannerTab({
     const template = templates.find((t) => t.id === templateId);
     if (!template) return;
 
-    await validateAndCreate({
+    const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
+    const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
+
+    const success = await validateAndCreate({
       employeeId: employee.id,
       date: day,
-      startTime: template.start_time.substring(0, 5),
-      endTime: template.end_time.substring(0, 5),
+      startTime: startHHMM,
+      endTime: endHHMM,
       position: template.position,
       breakDuration: template.break_duration,
     });
 
-    clearValidation();
+    if (success) {
+      clearValidation();
+    }
   }, [templates, validateAndCreate, clearValidation]);
 
   // Template CRUD handlers
@@ -224,7 +229,6 @@ export function ShiftPlannerTab({
                 weekDays={weekDays}
                 templates={templates}
                 gridData={templateGridData}
-                onAssign={() => {}} // handled by DndContext
                 onRemoveShift={deleteShift}
                 onEditTemplate={handleEditTemplate}
                 onDeleteTemplate={handleDeleteTemplate}

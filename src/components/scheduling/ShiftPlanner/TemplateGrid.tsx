@@ -18,7 +18,6 @@ interface TemplateGridProps {
   weekDays: string[];
   templates: ShiftTemplate[];
   gridData: Map<string, Map<string, Shift[]>>;
-  onAssign: (employeeId: string, templateId: string, day: string) => void;
   onRemoveShift: (shiftId: string) => void;
   onEditTemplate: (template: ShiftTemplate) => void;
   onDeleteTemplate: (templateId: string) => void;
@@ -70,9 +69,9 @@ export function TemplateGrid({
         {templates.map((template) => (
           <div
             key={template.id}
-            className="group contents"
+            className="contents"
           >
-            <div className="border-t border-border/40">
+            <div className="group border-t border-border/40">
               <TemplateRowHeader
                 template={template}
                 onEdit={onEditTemplate}
@@ -83,7 +82,7 @@ export function TemplateGrid({
               const isActiveDay = templateAppliesToDay(template, day);
               const shifts = gridData.get(template.id)?.get(day) ?? [];
               return (
-                <div key={day} className="border-t border-border/40 border-l border-border/40">
+                <div key={day} className="border-t border-l border-border/40">
                   <ShiftCell
                     templateId={template.id}
                     day={day}

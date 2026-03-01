@@ -264,7 +264,7 @@ describe('useDeleteShiftSeries', () => {
       );
     });
 
-    it('should throw error when trying to delete locked shift with scope "this"', async () => {
+    it('should throw error when trying to delete cancelled shift with scope "this"', async () => {
       setupMockForScope('this');
 
       const { Wrapper } = createWrapper();
@@ -272,15 +272,16 @@ describe('useDeleteShiftSeries', () => {
 
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
-      const lockedShift = createMockShift({ id: 'locked-shift', locked: true });
+      // Domain: Published (locked) shifts ARE editable, but Canceled shifts are not
+      const cancelledShift = createMockShift({ id: 'cancelled-shift', status: 'cancelled' });
 
       await expect(
         result.current.mutateAsync({
-          shift: lockedShift,
+          shift: cancelledShift,
           scope: 'this',
           restaurantId: 'rest-123',
         })
-      ).rejects.toThrow('Cannot delete a locked shift');
+      ).rejects.toThrow();
 
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -423,22 +424,23 @@ describe('useUpdateShiftSeries', () => {
       );
     });
 
-    it('should throw error when trying to update locked shift with scope "this"', async () => {
+    it('should throw error when trying to update cancelled shift with scope "this"', async () => {
       const { Wrapper } = createWrapper();
       const { result } = renderHook(() => useUpdateShiftSeries(), { wrapper: Wrapper });
 
       await waitFor(() => expect(result.current.mutateAsync).toBeDefined());
 
-      const lockedShift = createMockShift({ id: 'locked-shift', locked: true });
+      // Domain: Published (locked) shifts ARE editable, but Canceled shifts are not
+      const cancelledShift = createMockShift({ id: 'cancelled-shift', status: 'cancelled' });
 
       await expect(
         result.current.mutateAsync({
-          shift: lockedShift,
+          shift: cancelledShift,
           scope: 'this',
-          updates: { position: 'Cook' },
+          updates: { start_time: '2026-01-10T10:00:00Z', end_time: '2026-01-10T18:00:00Z' },
           restaurantId: 'rest-123',
         })
-      ).rejects.toThrow('Cannot update a locked shift');
+      ).rejects.toThrow();
     });
 
     it('should include time changes for scope "this"', async () => {

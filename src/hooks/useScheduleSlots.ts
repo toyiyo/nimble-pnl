@@ -4,9 +4,21 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
-import { ScheduleSlot } from '@/types/scheduling';
+import { ScheduleSlot, Shift } from '@/types/scheduling';
 
 import { invalidateScheduleQueries, showErrorToast } from '@/hooks/scheduling-helpers';
+
+import {
+  dbShiftToState,
+  buildAssignCommand,
+  buildReassignCommand,
+  buildUnassignCommand,
+  buildPolicyContext,
+  validateCommand,
+  OverlapPolicy,
+  RestHoursPolicy,
+} from '@/domain/scheduling';
+import type { ShiftPolicy } from '@/domain/scheduling';
 
 // ---------------------------------------------------------------------------
 // Query: fetch schedule slots for a restaurant + week
@@ -90,6 +102,8 @@ export function useGenerateSchedule() {
 // Mutation: assign an employee to a schedule slot
 // ---------------------------------------------------------------------------
 
+const ASSIGNMENT_POLICIES: ShiftPolicy[] = [new OverlapPolicy(), new RestHoursPolicy()];
+
 export function useAssignEmployee() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -110,6 +124,54 @@ export function useAssignEmployee() {
       weekStartDate: string;
       silent?: boolean;
     }) => {
+      // Domain validation when a shift is associated
+      if (shiftId) {
+        const { data: shiftRow, error: fetchErr } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('id', shiftId)
+          .single();
+        if (fetchErr) throw fetchErr;
+
+        const currentShift = shiftRow as unknown as Shift;
+        const state = dbShiftToState(currentShift);
+
+        // Assign or Reassign based on whether shift already has an employee
+        const cmd = state.employeeId
+          ? buildReassignCommand(state, employeeId, 'system')
+          : buildAssignCommand(state, employeeId, 'system');
+
+        // Fetch sibling shifts for policy evaluation
+        const { data: siblings } = await supabase
+          .from('shifts')
+          .select('id, start_time, end_time')
+          .eq('restaurant_id', restaurantId)
+          .eq('employee_id', employeeId)
+          .neq('id', shiftId);
+
+        const policyContext = buildPolicyContext(
+          employeeId,
+          currentShift.start_time,
+          currentShift.end_time,
+          state.businessDate!,
+          (siblings || []) as Array<{ id: string; start_time: string; end_time: string }>,
+        );
+
+        const result = validateCommand(state, cmd, {
+          context: policyContext,
+          checks: ASSIGNMENT_POLICIES,
+        });
+
+        if (!result.valid) throw result.error!;
+
+        // Surface warnings via toast but don't block
+        if (result.warnings?.length) {
+          for (const w of result.warnings) {
+            toast({ title: 'Scheduling warning', description: w.message || w.code || '' });
+          }
+        }
+      }
+
       // Update the schedule slot
       const { error: slotError } = await supabase
         .from('schedule_slots')
@@ -212,6 +274,22 @@ export function useUnassignEmployee() {
       restaurantId: string;
       weekStartDate: string;
     }) => {
+      // Domain validation when a shift is associated
+      if (shiftId) {
+        const { data: shiftRow, error: fetchErr } = await supabase
+          .from('shifts')
+          .select('*')
+          .eq('id', shiftId)
+          .single();
+        if (fetchErr) throw fetchErr;
+
+        const currentShift = shiftRow as unknown as Shift;
+        const state = dbShiftToState(currentShift);
+        const cmd = buildUnassignCommand(state, 'system');
+        const result = validateCommand(state, cmd);
+        if (!result.valid) throw result.error!;
+      }
+
       // Clear employee from the schedule slot
       const { error: slotError } = await supabase
         .from('schedule_slots')

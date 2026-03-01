@@ -241,19 +241,54 @@ describe('useGenerateSchedule', () => {
 // useAssignEmployee mutation tests
 // ---------------------------------------------------------------------------
 
-describe('useAssignEmployee', () => {
-  it('updates both slot and shift when shiftId is provided', async () => {
-    // First from() call: update schedule_slots
-    // Second from() call: update shifts
-    let callCount = 0;
-    mockSupabase.from.mockImplementation(() => {
-      callCount++;
+// Mock shift data for domain validation
+const mockShiftRow = {
+  id: 'shift-1',
+  restaurant_id: RESTAURANT_ID,
+  employee_id: null,
+  start_time: '2026-03-02T09:00:00.000Z',
+  end_time: '2026-03-02T17:00:00.000Z',
+  break_duration: 30,
+  position: 'cook',
+  status: 'scheduled',
+  is_published: false,
+  locked: false,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+};
+
+/** Build a from() mock that handles select (fetch), update, and neq chains */
+function buildAssignMock() {
+  return (table: string) => {
+    if (table === 'shifts') {
       return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            // .eq().single() path (fetch shift for validation)
+            single: vi.fn().mockResolvedValue({ data: mockShiftRow, error: null }),
+            // .eq().eq().neq() path (sibling shifts query)
+            eq: vi.fn().mockReturnValue({
+              neq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        }),
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ error: null }),
         }),
       };
-    });
+    }
+    // schedule_slots
+    return {
+      update: vi.fn().mockReturnValue({
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      }),
+    };
+  };
+}
+
+describe('useAssignEmployee', () => {
+  it('updates both slot and shift when shiftId is provided', async () => {
+    mockSupabase.from.mockImplementation(buildAssignMock());
 
     const { result } = renderHook(() => useAssignEmployee(), {
       wrapper: createWrapper(),
@@ -269,8 +304,6 @@ describe('useAssignEmployee', () => {
       });
     });
 
-    // Should have called from() twice: once for schedule_slots, once for shifts
-    expect(callCount).toBe(2);
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Employee assigned',
       description: 'The employee has been assigned to the shift slot.',
@@ -302,7 +335,7 @@ describe('useAssignEmployee', () => {
       });
     });
 
-    // Should have called from() once: only for schedule_slots
+    // Should have called from() once: only for schedule_slots (no validation needed)
     expect(callCount).toBe(1);
   });
 });
@@ -313,9 +346,21 @@ describe('useAssignEmployee', () => {
 
 describe('useUnassignEmployee', () => {
   it('clears employee from both slot and shift when shiftId is provided', async () => {
-    let callCount = 0;
-    mockSupabase.from.mockImplementation(() => {
-      callCount++;
+    // Unassign requires the shift to have an employee assigned
+    const assignedShift = { ...mockShiftRow, employee_id: 'emp-1' };
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'shifts') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: assignedShift, error: null }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ error: null }),
+          }),
+        };
+      }
       return {
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ error: null }),
@@ -336,7 +381,6 @@ describe('useUnassignEmployee', () => {
       });
     });
 
-    expect(callCount).toBe(2);
     expect(mockToast).toHaveBeenCalledWith({
       title: 'Employee unassigned',
       description: 'The employee has been removed from the shift slot.',

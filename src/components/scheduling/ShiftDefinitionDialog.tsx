@@ -68,7 +68,7 @@ export function ShiftDefinitionDialog({
   const updateMutation = useUpdateShiftDefinition();
   const isPending = createMutation.isPending || updateMutation.isPending;
 
-  const isInvalidTimeRange = startTime === endTime;
+  const isInvalidTimeRange = endTime <= startTime;
 
   // Reset form when dialog opens or definition changes
   useEffect(() => {
@@ -199,7 +199,7 @@ export function ShiftDefinitionDialog({
             </div>
           </div>
           {isInvalidTimeRange && (
-            <p className="text-[12px] text-destructive">Start and end time cannot be the same.</p>
+            <p className="text-[12px] text-destructive">End time must be later than start time.</p>
           )}
 
           {/* Break duration */}

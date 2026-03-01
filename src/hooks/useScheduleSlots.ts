@@ -187,7 +187,14 @@ export function useAssignEmployee() {
           .update({ employee_id: employeeId })
           .eq('id', shiftId);
 
-        if (shiftError) throw shiftError;
+        if (shiftError) {
+          // Roll back the slot update to prevent inconsistent state
+          await supabase
+            .from('schedule_slots')
+            .update({ employee_id: null, status: 'unfilled' })
+            .eq('id', slotId);
+          throw shiftError;
+        }
       }
 
       return { slotId, restaurantId, weekStartDate, silent };
@@ -275,6 +282,7 @@ export function useUnassignEmployee() {
       weekStartDate: string;
     }) => {
       // Domain validation when a shift is associated
+      let previousEmployeeId: string | null = null;
       if (shiftId) {
         const { data: shiftRow, error: fetchErr } = await supabase
           .from('shifts')
@@ -284,6 +292,7 @@ export function useUnassignEmployee() {
         if (fetchErr) throw fetchErr;
 
         const currentShift = shiftRow as unknown as Shift;
+        previousEmployeeId = currentShift.employee_id;
         const state = dbShiftToState(currentShift);
         const cmd = buildUnassignCommand(state, 'system');
         const result = validateCommand(state, cmd);
@@ -305,7 +314,14 @@ export function useUnassignEmployee() {
           .update({ employee_id: null })
           .eq('id', shiftId);
 
-        if (shiftError) throw shiftError;
+        if (shiftError) {
+          // Roll back the slot update to prevent inconsistent state
+          await supabase
+            .from('schedule_slots')
+            .update({ employee_id: previousEmployeeId, status: 'assigned' })
+            .eq('id', slotId);
+          throw shiftError;
+        }
       }
 
       return { slotId, restaurantId, weekStartDate };

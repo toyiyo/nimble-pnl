@@ -116,4 +116,19 @@ describe('ShiftInterval Value Object', () => {
       expect(a.restHoursUntil(b)).toBe(0);
     });
   });
+
+  describe('invalid input handling', () => {
+    it('should reject invalid ISO timestamps', () => {
+      expect(() => ShiftInterval.fromTimestamps('garbage', '2026-02-28T16:00:00', '2026-02-28'))
+        .toThrow('INVALID_DATE');
+    });
+
+    it('should reject reversed timestamps', () => {
+      expect(() => ShiftInterval.fromTimestamps(
+        '2026-02-28T16:00:00',
+        '2026-02-28T10:00:00',
+        '2026-02-28'
+      )).toThrow('INVALID_DURATION');
+    });
+  });
 });

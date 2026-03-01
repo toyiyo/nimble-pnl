@@ -8,8 +8,21 @@
  * @param timeHHMM - Time in HH:MM format (24h)
  * @param timezone - IANA timezone string (e.g., 'America/Chicago')
  * @returns UTC ISO string like '2026-01-15T16:00:00.000Z'
+ *
+ * @note During DST "fall back" when wall-clock times repeat (e.g., 1:30 AM occurs
+ *       twice), this function assumes the first occurrence (the earlier UTC instant).
+ *       During DST "spring forward" gaps (e.g., 2:30 AM does not exist), the result
+ *       is an approximation. These edge cases are acceptable for the shift planner
+ *       domain where shifts rarely start at 2-3 AM.
  */
 export function localToUTC(dateStr: string, timeHHMM: string, timezone: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    throw new Error(`Invalid dateStr format: "${dateStr}" (expected YYYY-MM-DD)`);
+  }
+  if (!/^\d{2}:\d{2}$/.test(timeHHMM)) {
+    throw new Error(`Invalid timeHHMM format: "${timeHHMM}" (expected HH:MM)`);
+  }
+
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hours, minutes] = timeHHMM.split(':').map(Number);
 
@@ -26,20 +39,14 @@ export function localToUTC(dateStr: string, timeHHMM: string, timezone: string):
     minute: '2-digit',
     second: '2-digit',
     hour12: false,
+    hourCycle: 'h23',
   });
 
   const parts = formatter.formatToParts(guessUTC);
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
 
   const localAtGuess = new Date(
-    Date.UTC(
-      get('year'),
-      get('month') - 1,
-      get('day'),
-      get('hour') === 24 ? 0 : get('hour'),
-      get('minute'),
-      get('second'),
-    ),
+    Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')),
   );
 
   // Offset = localAtGuess - guessUTC (in ms)
@@ -48,5 +55,5 @@ export function localToUTC(dateStr: string, timeHHMM: string, timezone: string):
   // The actual UTC time = local wall-clock time - offset
   const actualUTC = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0, 0) - offsetMs);
 
-  return actualUTC.toISOString().replace(/\.\d{3}Z$/, '.000Z');
+  return actualUTC.toISOString();
 }

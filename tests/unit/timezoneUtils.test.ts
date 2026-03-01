@@ -34,4 +34,21 @@ describe('localToUTC', () => {
     const result = localToUTC('2026-01-15', '23:59', 'America/Chicago');
     expect(result).toBe('2026-01-16T05:59:00.000Z');
   });
+
+  it('handles spring-forward transition day correctly', () => {
+    // 2026-03-08 is spring forward in America/Chicago
+    // 10:00 CDT = UTC-5
+    const result = localToUTC('2026-03-08', '10:00', 'America/Chicago');
+    expect(result).toBe('2026-03-08T15:00:00.000Z');
+  });
+
+  it('throws on invalid dateStr format', () => {
+    expect(() => localToUTC('abc', '10:00', 'UTC')).toThrow('Invalid dateStr format');
+    expect(() => localToUTC('2026/01/15', '10:00', 'UTC')).toThrow('Invalid dateStr format');
+  });
+
+  it('throws on invalid timeHHMM format', () => {
+    expect(() => localToUTC('2026-01-15', '10:00:00', 'UTC')).toThrow('Invalid timeHHMM format');
+    expect(() => localToUTC('2026-01-15', 'abc', 'UTC')).toThrow('Invalid timeHHMM format');
+  });
 });

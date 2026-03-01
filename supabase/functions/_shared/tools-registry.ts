@@ -135,14 +135,24 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Sales analysis - available to all users
     {
       name: 'get_sales_summary',
-      description: 'Get sales summary for a time period, including trends and comparisons',
+      description: 'Get sales summary for a time period, including trends and comparisons. For specific past periods, use period "custom" with start_date and end_date, or use "last_month" / "last_week".',
       parameters: {
         type: 'object',
         properties: {
           period: {
             type: 'string',
-            enum: ['today', 'yesterday', 'week', 'month', 'quarter', 'year'],
+            enum: ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'quarter', 'year', 'custom'],
             description: 'The time period for sales summary'
+          },
+          start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date for custom period (YYYY-MM-DD)'
+          },
+          end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date for custom period (YYYY-MM-DD)'
           },
           compare_to_previous: {
             type: 'boolean',
@@ -232,7 +242,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
         properties: {
           period: {
             type: 'string',
-            enum: ['today', 'yesterday', 'week', 'month', 'custom'],
+            enum: ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'custom'],
             description: 'The time period for labor costs'
           },
           start_date: {
@@ -285,7 +295,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
         properties: {
           period: {
             type: 'string',
-            enum: ['today', 'tomorrow', 'week', 'month', 'custom'],
+            enum: ['today', 'tomorrow', 'week', 'last_week', 'month', 'last_month', 'custom'],
             description: 'The time period for schedule overview'
           },
           start_date: {
@@ -406,7 +416,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
           properties: {
             period: {
               type: 'string',
-              enum: ['today', 'week', 'month', 'custom'],
+              enum: ['today', 'week', 'month', 'last_month', 'custom'],
               description: 'The time period for tip summary'
             },
             start_date: {
@@ -506,7 +516,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
           properties: {
             period: {
               type: 'string',
-              enum: ['week', 'month', 'quarter', 'custom'],
+              enum: ['week', 'month', 'last_month', 'quarter', 'custom'],
               description: 'The time period for expense health analysis'
             },
             start_date: {
@@ -529,7 +539,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
       },
       {
         name: 'get_break_even_progress',
-        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Use this to answer questions about break-even progress, daily performance tracking, and budget coverage.',
+        description: 'Get detailed break-even analysis with daily history showing sales vs break-even threshold for each day. Includes month-to-date progress toward break-even goal, days above/below, trend direction, and projected month-end status. Use this to answer questions about break-even progress, daily performance tracking, and budget coverage. Use the month parameter to query a specific month (e.g., "2026-02" for February 2026).',
         parameters: {
           type: 'object',
           properties: {
@@ -542,6 +552,10 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
               type: 'boolean',
               description: 'Include month-to-date break-even progress and projection (default: true)',
               default: true
+            },
+            month: {
+              type: 'string',
+              description: 'Specific month to analyze in YYYY-MM format (e.g., "2026-02"). Defaults to current month. Controls both the history window and monthly progress calculation.'
             }
           }
         }

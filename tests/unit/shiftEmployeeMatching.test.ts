@@ -88,6 +88,29 @@ describe('shiftEmployeeMatching', () => {
   });
 });
 
+describe('buildEmployeeLookup collision', () => {
+  it('first employee wins when two normalize to same key', () => {
+    const collisionEmployees = [
+      makeEmployee('emp-first', 'John Smith', 'Server'),
+      makeEmployee('emp-second', 'Smith, John', 'Cook'),
+    ];
+    const csvNames = [{ name: 'John Smith', position: 'Server' }];
+    const result = matchEmployees(csvNames, collisionEmployees);
+    expect(result[0].matchedEmployeeId).toBe('emp-first');
+    expect(result[0].matchConfidence).toBe('exact');
+  });
+
+  it('does not overwrite first employee with second having same normalized name variant', () => {
+    const collisionEmployees = [
+      makeEmployee('emp-a', 'García López', 'Server'),
+      makeEmployee('emp-b', 'Lopez, Garcia', 'Cook'),
+    ];
+    const csvNames = [{ name: 'Garcia Lopez', position: 'Server' }];
+    const result = matchEmployees(csvNames, collisionEmployees);
+    expect(result[0].matchedEmployeeId).toBe('emp-a');
+  });
+});
+
 describe('partial match safety', () => {
   it('partial matches set action to create with suggestion, not link', () => {
     const emps = [

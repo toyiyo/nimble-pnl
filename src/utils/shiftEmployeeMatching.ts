@@ -17,7 +17,7 @@ function buildEmployeeLookup(employees: Employee[]) {
   const lookup = new Map<string, Employee>();
   const add = (name: string, employee: Employee) => {
     const normalized = normalizeEmployeeKey(name);
-    if (normalized) lookup.set(normalized, employee);
+    if (normalized && !lookup.has(normalized)) lookup.set(normalized, employee);
   };
   employees.forEach(employee => {
     add(employee.name, employee);

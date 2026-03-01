@@ -211,7 +211,7 @@ const buildEmployeeLookup = (employees: Employee[]) => {
 
   const add = (name: string, employee: Employee) => {
     const normalized = normalizeEmployeeKey(name);
-    if (normalized) {
+    if (normalized && !lookup.has(normalized)) {
       lookup.set(normalized, employee);
     }
   };

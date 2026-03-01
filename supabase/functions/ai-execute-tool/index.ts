@@ -2759,12 +2759,38 @@ async function executeGetBreakEvenProgress(
   restaurantId: string,
   supabase: any
 ): Promise<any> {
-  const { history_days = 14, include_monthly_progress = true } = args;
+  const { history_days = 14, include_monthly_progress = true, month } = args;
 
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const historyStart = new Date(today);
-  historyStart.setDate(today.getDate() - (history_days - 1));
+
+  let today: Date;
+  let historyStart: Date;
+  let targetMonthStart: Date;
+  let targetMonthEnd: Date;
+
+  if (month) {
+    // Parse YYYY-MM format
+    const [yearStr, monthStr] = month.split('-').map(Number);
+    targetMonthStart = new Date(yearStr, monthStr - 1, 1);
+    targetMonthEnd = new Date(yearStr, monthStr, 0); // last day of the month
+
+    // For a past month, set "today" to the last day of that month
+    // For current/future month, use actual today
+    if (targetMonthEnd < now) {
+      today = new Date(targetMonthEnd);
+    } else {
+      today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    // History covers the full month
+    historyStart = new Date(targetMonthStart);
+  } else {
+    today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    historyStart = new Date(today);
+    historyStart.setDate(today.getDate() - (history_days - 1));
+    targetMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    targetMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  }
 
   const startDateStr = historyStart.toISOString().split('T')[0];
   const todayStr = today.toISOString().split('T')[0];
@@ -2855,17 +2881,18 @@ async function executeGetBreakEvenProgress(
   // Monthly progress
   let monthlyProgress = null;
   if (include_monthly_progress) {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const monthStart = targetMonthStart;
+    const monthEnd = targetMonthEnd;
     const daysInMonth = monthEnd.getDate();
-    const dayOfMonth = now.getDate();
+    const dayOfMonth = today <= targetMonthEnd ? Math.min(today.getDate(), daysInMonth) : daysInMonth;
     const monthStartStr = monthStart.toISOString().split('T')[0];
+    const monthEndStr = today <= targetMonthEnd ? todayStr : targetMonthEnd.toISOString().split('T')[0];
 
     // Fetch month-to-date sales
     const { data: mtdSales, error: mtdError } = await supabase.rpc('get_daily_sales_totals', {
       p_restaurant_id: restaurantId,
       p_date_from: monthStartStr,
-      p_date_to: todayStr,
+      p_date_to: monthEndStr,
     });
 
     if (!mtdError) {

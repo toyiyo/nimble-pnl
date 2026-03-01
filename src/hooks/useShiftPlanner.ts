@@ -77,7 +77,7 @@ export function buildGridData(
 // ---------------------------------------------------------------------------
 
 function errorToValidationResult(err: unknown, fallback: string): ValidationResult {
-  const message = (err as Error).message || fallback;
+  const message = err instanceof Error ? err.message : fallback;
   return {
     valid: false,
     errors: [{ code: message, message }],

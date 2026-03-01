@@ -1220,14 +1220,11 @@ const Scheduling = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="planner" className="mt-4">
+        <TabsContent value="planner">
           {restaurantId && (
             <ShiftPlannerTab
               restaurantId={restaurantId}
-              onShiftClick={(shift) => {
-                setSelectedShift(shift);
-                setShiftDialogOpen(true);
-              }}
+              onShiftClick={handleEditShift}
             />
           )}
         </TabsContent>

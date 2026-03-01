@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -83,6 +83,8 @@ function getColors(position: string) {
 
 export const ShiftBlock = memo(
   function ShiftBlock({ shift, onClick }: ShiftBlockProps) {
+    const wasDragging = useRef(false);
+
     const {
       attributes,
       listeners,
@@ -94,6 +96,18 @@ export const ShiftBlock = memo(
       data: { shift },
       disabled: shift.locked,
     });
+
+    if (isDragging) {
+      wasDragging.current = true;
+    }
+
+    const handleClick = () => {
+      if (wasDragging.current) {
+        wasDragging.current = false;
+        return;
+      }
+      onClick(shift);
+    };
 
     const style = transform
       ? { transform: CSS.Translate.toString(transform) }
@@ -110,7 +124,7 @@ export const ShiftBlock = memo(
         {...listeners}
         {...attributes}
         type="button"
-        onClick={() => onClick(shift)}
+        onClick={handleClick}
         aria-label={`${shift.position} shift ${timeRange}`}
         className={cn(
           'w-full text-left rounded-lg border px-2 py-1.5 transition-colors cursor-pointer',
@@ -139,5 +153,6 @@ export const ShiftBlock = memo(
   },
   (prev, next) =>
     prev.shift.id === next.shift.id &&
-    prev.shift.updated_at === next.shift.updated_at,
+    prev.shift.updated_at === next.shift.updated_at &&
+    prev.onClick === next.onClick,
 );

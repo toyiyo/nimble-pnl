@@ -19,14 +19,15 @@ export class ShiftInterval {
   readonly endTime: string;
   readonly startEpoch: number;
   readonly endEpoch: number;
+  readonly endsOnNextDay: boolean;
 
   private constructor(businessDate: string, startTime: string, endTime: string) {
     this.businessDate = businessDate;
     this.startTime = startTime;
     this.endTime = endTime;
-    const crossesMidnight = parseTime(endTime) < parseTime(startTime);
+    this.endsOnNextDay = parseTime(endTime) < parseTime(startTime);
     this.startEpoch = toEpoch(businessDate, startTime, false);
-    this.endEpoch = toEpoch(businessDate, endTime, crossesMidnight);
+    this.endEpoch = toEpoch(businessDate, endTime, this.endsOnNextDay);
   }
 
   static create(businessDate: string, startTime: string, endTime: string): ShiftInterval {
@@ -46,10 +47,6 @@ export class ShiftInterval {
 
   get durationInHours(): number {
     return this.durationInMinutes / 60;
-  }
-
-  get endsOnNextDay(): boolean {
-    return parseTime(this.endTime) < parseTime(this.startTime);
   }
 
   overlapsWith(other: ShiftInterval): boolean {

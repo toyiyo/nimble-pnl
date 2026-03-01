@@ -1,4 +1,4 @@
-import type { ShiftState, ShiftEvent, ShiftCommand, UUID, Instant, Actor } from './types';
+import type { ShiftState, ShiftEvent, ShiftCommand, UUID } from './types';
 import { DomainError } from './types';
 import {
   assertTimeValidity,
@@ -9,17 +9,9 @@ import {
   assertIsOpen,
 } from './invariants';
 
-// ---------------------------------------------------------------------------
-// Empty state factory
-// ---------------------------------------------------------------------------
-
 export function emptyState(shiftId: UUID): ShiftState {
   return { shiftId, version: 0 };
 }
-
-// ---------------------------------------------------------------------------
-// Evolve: apply a single event to produce new state (pure)
-// ---------------------------------------------------------------------------
 
 export function evolve(state: ShiftState, event: ShiftEvent): ShiftState {
   const version = state.version + 1;
@@ -69,17 +61,9 @@ export function evolve(state: ShiftState, event: ShiftEvent): ShiftState {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Replay: fold events from empty state
-// ---------------------------------------------------------------------------
-
 export function replay(shiftId: UUID, events: ShiftEvent[]): ShiftState {
   return events.reduce(evolve, emptyState(shiftId));
 }
-
-// ---------------------------------------------------------------------------
-// Decide: validate command against state, produce events (pure)
-// ---------------------------------------------------------------------------
 
 export function decide(state: ShiftState, command: ShiftCommand): ShiftEvent[] {
   if (command.expectedVersion !== state.version) {
@@ -181,9 +165,6 @@ export function decide(state: ShiftState, command: ShiftCommand): ShiftEvent[] {
     }
 
     case 'CancelShift': {
-      if (state.status === 'Canceled') {
-        throw new DomainError('ALREADY_CANCELED', 'Shift is already canceled');
-      }
       assertEditable(state);
       if (!command.payload.reasonCode) {
         throw new DomainError('CMD_MISSING_REASON', 'CancelShift requires a reasonCode');
@@ -195,10 +176,6 @@ export function decide(state: ShiftState, command: ShiftCommand): ShiftEvent[] {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Apply: convenience — decide + evolve in one step
-// ---------------------------------------------------------------------------
 
 export function apply(shiftId: UUID, events: ShiftEvent[], command: ShiftCommand): ShiftEvent[] {
   const state = replay(shiftId, events);

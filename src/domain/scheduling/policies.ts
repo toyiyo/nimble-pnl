@@ -1,14 +1,15 @@
 import type { PolicyContext, PolicyResult, ShiftPolicy } from './types';
 import { MIN_REST_HOURS, DEFAULT_OT_WEEKLY_MINUTES } from './types';
 
+function parseProposed(ctx: PolicyContext): { pStart: number; pEnd: number } {
+  return { pStart: Date.parse(ctx.proposedStartAt), pEnd: Date.parse(ctx.proposedEndAt) };
+}
+
 export class OverlapPolicy implements ShiftPolicy {
   evaluate(ctx: PolicyContext): PolicyResult {
-    const pStart = Date.parse(ctx.proposedStartAt);
-    const pEnd = Date.parse(ctx.proposedEndAt);
+    const { pStart, pEnd } = parseProposed(ctx);
     for (const shift of ctx.existingShifts) {
-      const sStart = Date.parse(shift.startAt);
-      const sEnd = Date.parse(shift.endAt);
-      if (pStart < sEnd && sStart < pEnd) {
+      if (pStart < Date.parse(shift.endAt) && Date.parse(shift.startAt) < pEnd) {
         return { outcome: 'block', code: 'POLICY_OVERLAP', message: `Overlaps with shift ${shift.shiftId}` };
       }
     }
@@ -18,16 +19,13 @@ export class OverlapPolicy implements ShiftPolicy {
 
 export class RestHoursPolicy implements ShiftPolicy {
   evaluate(ctx: PolicyContext): PolicyResult {
-    const pStart = Date.parse(ctx.proposedStartAt);
-    const pEnd = Date.parse(ctx.proposedEndAt);
+    const { pStart, pEnd } = parseProposed(ctx);
     for (const shift of ctx.existingShifts) {
-      const sEnd = Date.parse(shift.endAt);
-      const sStart = Date.parse(shift.startAt);
-      const gapBefore = (pStart - sEnd) / 3_600_000;
+      const gapBefore = (pStart - Date.parse(shift.endAt)) / 3_600_000;
       if (gapBefore > 0 && gapBefore < MIN_REST_HOURS) {
         return { outcome: 'warn', code: 'POLICY_INSUFFICIENT_REST', message: `Only ${gapBefore.toFixed(1)}h rest after shift ${shift.shiftId} (minimum ${MIN_REST_HOURS}h)` };
       }
-      const gapAfter = (sStart - pEnd) / 3_600_000;
+      const gapAfter = (Date.parse(shift.startAt) - pEnd) / 3_600_000;
       if (gapAfter > 0 && gapAfter < MIN_REST_HOURS) {
         return { outcome: 'warn', code: 'POLICY_INSUFFICIENT_REST', message: `Only ${gapAfter.toFixed(1)}h rest before shift ${shift.shiftId} (minimum ${MIN_REST_HOURS}h)` };
       }
@@ -65,8 +63,8 @@ export class TimeOffPolicy implements ShiftPolicy {
 export class OvertimeForecastPolicy implements ShiftPolicy {
   evaluate(ctx: PolicyContext): PolicyResult {
     if (ctx.weeklyMinutesWorked == null) return { outcome: 'ok' };
-    const proposedMinutes = (Date.parse(ctx.proposedEndAt) - Date.parse(ctx.proposedStartAt)) / 60_000;
-    const totalMinutes = ctx.weeklyMinutesWorked + proposedMinutes;
+    const { pStart, pEnd } = parseProposed(ctx);
+    const totalMinutes = ctx.weeklyMinutesWorked + (pEnd - pStart) / 60_000;
     if (totalMinutes > DEFAULT_OT_WEEKLY_MINUTES) {
       return { outcome: 'warn', code: 'POLICY_OVERTIME_FORECAST', message: `Projected ${(totalMinutes / 60).toFixed(1)}h this week (threshold: ${DEFAULT_OT_WEEKLY_MINUTES / 60}h)` };
     }

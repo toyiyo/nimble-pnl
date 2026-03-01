@@ -29,6 +29,7 @@ import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
+import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
@@ -54,6 +55,7 @@ import {
   ArrowLeftRight,
   TrendingUp,
   Upload,
+  LayoutGrid,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -775,6 +777,13 @@ const Scheduling = () => {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger
+            value="planner"
+            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Planner</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule">
@@ -1209,6 +1218,18 @@ const Scheduling = () => {
               <TradeApprovalQueue />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="planner" className="mt-4">
+          {restaurantId && (
+            <ShiftPlannerTab
+              restaurantId={restaurantId}
+              onShiftClick={(shift) => {
+                setSelectedShift(shift);
+                setShiftDialogOpen(true);
+              }}
+            />
+          )}
         </TabsContent>
       </Tabs>
 

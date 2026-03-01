@@ -34,10 +34,12 @@ import { BulkCategorizeTransactionsPanel } from "@/components/banking/BulkCatego
 import { useBulkCategorizeTransactions, useBulkDeleteTransactions, useBulkMarkAsTransfer } from "@/hooks/useBulkTransactionActions";
 import { BulkDeleteConfirmDialog } from "@/components/bulk-edit/BulkDeleteConfirmDialog";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
+import { DeletedTransactionsList } from "@/components/banking/DeletedTransactionsList";
+import { useDeletedBankTransactions } from "@/hooks/useDeletedBankTransactions";
 
 export default function Banking() {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'upload_statement'>('for_review');
+  const [activeTab, setActiveTab] = useState<'for_review' | 'categorized' | 'excluded' | 'reconciliation' | 'upload_statement' | 'deleted'>('for_review');
   const [activeStatementId, setActiveStatementId] = useState<string | null>(null);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showReconciliationDialog, setShowReconciliationDialog] = useState(false);
@@ -125,6 +127,8 @@ export default function Banking() {
   });
   const categorizeAll = useCategorizeTransactions();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
+  const { data: deletedTransactions } = useDeletedBankTransactions(selectedRestaurant?.restaurant_id);
+  const deletedCount = deletedTransactions?.length ?? 0;
   
   const {
     connectedBanks,
@@ -561,7 +565,7 @@ export default function Banking() {
           </Card>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 mb-6 h-auto">
+            <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 mb-6 h-auto">
             <TabsTrigger value="for_review" className="relative py-2.5">
               <span className="hidden sm:inline">For Review</span>
               <span className="sm:hidden">Review</span>
@@ -596,6 +600,15 @@ export default function Banking() {
               <Upload className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Upload Statement</span>
               <span className="sm:hidden">Upload</span>
+            </TabsTrigger>
+            <TabsTrigger value="deleted" className="py-2.5">
+              <Trash2 className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Deleted</span>
+              {deletedCount > 0 && (
+                <span className="ml-1 sm:ml-2 bg-muted text-muted-foreground rounded-full px-1.5 sm:px-2 py-0.5 text-xs">
+                  {deletedCount}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -767,6 +780,16 @@ export default function Banking() {
                 />
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="deleted">
+            <Card>
+              <div className="p-6">
+                <div className="-mx-6">
+                  <DeletedTransactionsList restaurantId={selectedRestaurant?.restaurant_id} />
+                </div>
+              </div>
+            </Card>
           </TabsContent>
           </Tabs>
         </div>

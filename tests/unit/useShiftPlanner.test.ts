@@ -185,5 +185,75 @@ describe('useShiftPlanner utilities', () => {
       const grid = buildTemplateGridData(shifts, templates, weekDays);
       expect(grid.get('t1')?.get('2026-03-02') ?? []).toHaveLength(0);
     });
+
+    it('should match shifts with UTC timestamps (Z suffix) to local-time templates', () => {
+      // Simulate what Supabase returns: 6am local CST (UTC-6) = noon UTC
+      // ShiftInterval.create('2026-03-02', '06:00', '12:00') in CST →
+      //   new Date('2026-03-02T06:00:00').toISOString() → '2026-03-02T12:00:00.000Z'
+      // The grid matching must convert back to local time (06:00:00) to match template
+      const localSixAm = new Date('2026-03-02T06:00:00');
+      const localNoon = new Date('2026-03-02T12:00:00');
+
+      const shifts = [
+        mockShift({
+          id: 's1',
+          employee_id: 'e1',
+          start_time: localSixAm.toISOString(),
+          end_time: localNoon.toISOString(),
+          position: 'Server',
+          status: 'scheduled',
+        }),
+      ];
+
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      const t1Days = grid.get('t1');
+      expect(t1Days?.get('2026-03-02')).toHaveLength(1);
+    });
+
+    it('should match shifts with timezone offset (+00:00) to local-time templates', () => {
+      // Supabase may return timestamps with +00:00 instead of Z
+      const localSixAm = new Date('2026-03-02T06:00:00');
+      const localNoon = new Date('2026-03-02T12:00:00');
+      // Manually build +00:00 format like Supabase might return
+      const startStr = localSixAm.toISOString().replace('Z', '+00:00');
+      const endStr = localNoon.toISOString().replace('Z', '+00:00');
+
+      const shifts = [
+        mockShift({
+          id: 's1',
+          employee_id: 'e1',
+          start_time: startStr,
+          end_time: endStr,
+          position: 'Server',
+          status: 'scheduled',
+        }),
+      ];
+
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      const t1Days = grid.get('t1');
+      expect(t1Days?.get('2026-03-02')).toHaveLength(1);
+    });
+  });
+
+  describe('buildGridData with UTC timestamps', () => {
+    it('should extract local date from UTC timestamp', () => {
+      // A shift at 11pm local on March 2 in UTC-6 = 5am UTC March 3
+      // The grid should place it on March 2 (local), not March 3 (UTC)
+      const localLateNight = new Date('2026-03-02T23:00:00');
+      const localEnd = new Date('2026-03-03T03:00:00');
+
+      const shifts = [
+        mockShift({
+          employee_id: 'e1',
+          start_time: localLateNight.toISOString(),
+          end_time: localEnd.toISOString(),
+        }),
+      ];
+      const days = getWeekDays(new Date('2026-03-02T00:00:00'));
+      const grid = buildGridData(shifts, days);
+
+      // Should be on March 2 (local date), not whatever UTC date it converts to
+      expect(grid.get('e1')?.get('2026-03-02')).toHaveLength(1);
+    });
   });
 });

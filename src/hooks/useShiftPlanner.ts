@@ -20,6 +20,17 @@ import type { Shift, ShiftTemplate } from '@/types/scheduling';
 // ---------------------------------------------------------------------------
 
 /**
+ * Extract local-timezone HH:MM:SS from an ISO timestamp string.
+ * Handles both 'Z' and '+00:00' suffixed UTC strings from Supabase,
+ * as well as naive strings without timezone.
+ */
+export function formatLocalTime(isoString: string): string {
+  const d = new Date(isoString);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
  * Returns an array of 7 date strings (YYYY-MM-DD) starting from weekStart.
  * Uses local timezone date formatting (not toISOString).
  */
@@ -47,7 +58,7 @@ export function buildGridData(
 
   for (const shift of shifts) {
     // Extract the date portion from start_time using local timezone
-    const dayStr = shift.start_time.split('T')[0];
+    const dayStr = formatLocalDate(new Date(shift.start_time));
 
     // Only include shifts that fall within the week
     if (!weekDaySet.has(dayStr)) continue;
@@ -94,12 +105,12 @@ export function buildTemplateGridData(
 
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;
-    const dayStr = shift.start_time.split('T')[0];
+    const dayStr = formatLocalDate(new Date(shift.start_time));
     if (!weekDaySet.has(dayStr)) continue;
 
-    // Extract HH:MM:SS from ISO timestamp
-    const shiftStart = shift.start_time.split('T')[1]?.substring(0, 8);
-    const shiftEnd = shift.end_time.split('T')[1]?.substring(0, 8);
+    // Extract HH:MM:SS using local timezone (templates store local time)
+    const shiftStart = formatLocalTime(shift.start_time);
+    const shiftEnd = formatLocalTime(shift.end_time);
 
     // Find matching template
     let matched = false;

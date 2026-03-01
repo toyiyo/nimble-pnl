@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 
 import { SchedulePublication } from '@/types/scheduling';
 
+import { invalidateScheduleQueries, showErrorToast } from '@/hooks/scheduling-helpers';
+
 // ---------------------------------------------------------------------------
 // Query: check if a week has been published
 // ---------------------------------------------------------------------------
@@ -87,25 +89,13 @@ export function usePublishSchedule() {
       return { publicationId: data, restaurantId, weekStartDate };
     },
     onSuccess: ({ restaurantId, weekStartDate }) => {
-      queryClient.invalidateQueries({
-        queryKey: ['schedule-publication-status', restaurantId, weekStartDate],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['schedule-slots', restaurantId, weekStartDate],
-      });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStartDate);
       toast({
         title: 'Schedule published',
         description: 'The schedule has been published and shifts are now locked.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error publishing schedule',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error publishing schedule', error),
   });
 }
 
@@ -140,24 +130,12 @@ export function useUnpublishSchedule() {
       return { shiftCount: data, restaurantId, weekStart };
     },
     onSuccess: ({ restaurantId, weekStart }) => {
-      queryClient.invalidateQueries({
-        queryKey: ['schedule-publication-status', restaurantId, weekStart],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['schedule-slots', restaurantId, weekStart],
-      });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStart);
       toast({
         title: 'Schedule unpublished',
         description: 'The schedule has been unpublished and shifts are now unlocked.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error unpublishing schedule',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error unpublishing schedule', error),
   });
 }

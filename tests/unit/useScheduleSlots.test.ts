@@ -9,10 +9,8 @@
  * - useDeleteGeneratedSchedule (call delete_generated_schedule RPC)
  */
 
-import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
   useScheduleSlots,
@@ -21,6 +19,13 @@ import {
   useUnassignEmployee,
   useDeleteGeneratedSchedule,
 } from '@/hooks/useScheduleSlots';
+
+import {
+  RESTAURANT_ID,
+  createWrapper,
+  buildMockFromChain,
+  type MockFromChain,
+} from './helpers/scheduling-test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -44,20 +49,6 @@ vi.mock('@/hooks/use-toast', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, staleTime: 0 },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(QueryClientProvider, { client: queryClient }, children);
-  };
-}
-
-const RESTAURANT_ID = 'rest-abc-123';
 const WEEK_START = '2026-03-02';
 
 const mockSlot = {
@@ -73,20 +64,14 @@ const mockSlot = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-let mockFromChain: Record<string, ReturnType<typeof vi.fn>>;
+let mockFromChain: MockFromChain;
 
 beforeEach(() => {
   vi.clearAllMocks();
 
-  mockFromChain = {
-    select: vi.fn().mockReturnThis(),
-    insert: vi.fn().mockReturnThis(),
-    update: vi.fn().mockReturnThis(),
-    delete: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    order: vi.fn().mockResolvedValue({ data: [], error: null }),
-    single: vi.fn().mockResolvedValue({ data: mockSlot, error: null }),
-  };
+  mockFromChain = buildMockFromChain({ terminalData: mockSlot });
+  // order() returns empty by default for list queries
+  mockFromChain.order.mockResolvedValue({ data: [], error: null });
 
   mockSupabase.from.mockReturnValue(mockFromChain);
   mockSupabase.rpc.mockResolvedValue({ data: null, error: null });

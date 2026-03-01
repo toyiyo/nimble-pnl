@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 
 import { ScheduleSlot } from '@/types/scheduling';
 
+import { invalidateScheduleQueries, showErrorToast } from '@/hooks/scheduling-helpers';
+
 // ---------------------------------------------------------------------------
 // Query: fetch schedule slots for a restaurant + week
 // ---------------------------------------------------------------------------
@@ -74,20 +76,13 @@ export function useGenerateSchedule() {
       return { data, restaurantId, weekStartDate };
     },
     onSuccess: ({ restaurantId, weekStartDate }) => {
-      queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStartDate);
       toast({
         title: 'Schedule generated',
         description: 'Shifts and schedule slots have been created from the template.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error generating schedule',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error generating schedule', error),
   });
 }
 
@@ -136,8 +131,7 @@ export function useAssignEmployee() {
       return { slotId, restaurantId, weekStartDate, silent };
     },
     onSuccess: ({ restaurantId, weekStartDate, silent }) => {
-      queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStartDate);
       if (!silent) {
         toast({
           title: 'Employee assigned',
@@ -145,13 +139,7 @@ export function useAssignEmployee() {
         });
       }
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error assigning employee',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error assigning employee', error),
   });
 }
 
@@ -194,20 +182,13 @@ export function useBulkAssignEmployee() {
       return { count: assignments.length, restaurantId, weekStartDate };
     },
     onSuccess: ({ count, restaurantId, weekStartDate }) => {
-      queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStartDate);
       toast({
         title: 'Applied to all days',
         description: `Assigned to ${count} additional slot${count === 1 ? '' : 's'}.`,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error applying assignments',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error applying assignments', error),
   });
 }
 
@@ -252,20 +233,13 @@ export function useUnassignEmployee() {
       return { slotId, restaurantId, weekStartDate };
     },
     onSuccess: ({ restaurantId, weekStartDate }) => {
-      queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStartDate);
       toast({
         title: 'Employee unassigned',
         description: 'The employee has been removed from the shift slot.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error unassigning employee',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error unassigning employee', error),
   });
 }
 
@@ -294,19 +268,12 @@ export function useDeleteGeneratedSchedule() {
       return { data, restaurantId, weekStartDate };
     },
     onSuccess: ({ restaurantId, weekStartDate }) => {
-      queryClient.invalidateQueries({ queryKey: ['schedule-slots', restaurantId, weekStartDate] });
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
+      invalidateScheduleQueries(queryClient, restaurantId, weekStartDate);
       toast({
         title: 'Schedule deleted',
         description: 'All generated shifts and slots for this week have been removed.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error deleting schedule',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error deleting schedule', error),
   });
 }

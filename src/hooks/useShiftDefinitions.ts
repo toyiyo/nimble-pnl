@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 
 import { ShiftTemplate } from '@/types/scheduling';
 
+import { showErrorToast } from '@/hooks/scheduling-helpers';
+
 // ---------------------------------------------------------------------------
 // Query: fetch all shift definitions (shift_templates) for a restaurant
 // ---------------------------------------------------------------------------
@@ -65,13 +67,7 @@ export function useCreateShiftDefinition() {
         description: `"${data.name}" has been added.`,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error creating shift definition',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error creating shift definition', error),
   });
 }
 
@@ -102,13 +98,7 @@ export function useUpdateShiftDefinition() {
         description: `"${data.name}" has been updated.`,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error updating shift definition',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error updating shift definition', error),
   });
 }
 
@@ -137,12 +127,6 @@ export function useDeleteShiftDefinition() {
         description: 'The shift definition has been removed.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error deleting shift definition',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error deleting shift definition', error),
   });
 }

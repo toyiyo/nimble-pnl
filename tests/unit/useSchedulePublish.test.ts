@@ -7,16 +7,21 @@
  * - useUnpublishSchedule (mutation hook)
  */
 
-import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
   useWeekPublicationStatus,
   usePublishSchedule,
   useUnpublishSchedule,
 } from '@/hooks/useSchedulePublish';
+
+import {
+  RESTAURANT_ID,
+  createWrapper,
+  buildMockFromChain,
+  type MockFromChain,
+} from './helpers/scheduling-test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -40,20 +45,6 @@ vi.mock('@/hooks/use-toast', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, staleTime: 0 },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(QueryClientProvider, { client: queryClient }, children);
-  };
-}
-
-const RESTAURANT_ID = 'rest-abc-123';
 const WEEK_START = '2026-03-02';
 
 const mockPublication = {
@@ -67,18 +58,15 @@ const mockPublication = {
   notes: 'Published for March week 1',
 };
 
-let mockFromChain: Record<string, ReturnType<typeof vi.fn>>;
+let mockFromChain: MockFromChain;
 
 beforeEach(() => {
   vi.clearAllMocks();
 
-  mockFromChain = {
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-  };
+  mockFromChain = buildMockFromChain({
+    terminalMethods: ['maybeSingle'],
+    extraChainMethods: ['order', 'limit'],
+  });
 
   mockSupabase.from.mockReturnValue(mockFromChain);
   mockSupabase.rpc.mockResolvedValue({ data: null, error: null });

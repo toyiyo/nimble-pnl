@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 
 import { WeekTemplate, WeekTemplateSlot } from '@/types/scheduling';
 
+import { invalidateTemplateQueries, showErrorToast } from '@/hooks/scheduling-helpers';
+
 // ---------------------------------------------------------------------------
 // Query: fetch all week templates for a restaurant
 // ---------------------------------------------------------------------------
@@ -59,19 +61,13 @@ export function useCreateWeekTemplate() {
       return data as WeekTemplate;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['week-templates', data.restaurant_id] });
+      invalidateTemplateQueries(queryClient, data.restaurant_id);
       toast({
         title: 'Week template created',
         description: `"${data.name}" has been added.`,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error creating week template',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error creating week template', error),
   });
 }
 
@@ -96,19 +92,13 @@ export function useUpdateWeekTemplate() {
       return data as WeekTemplate;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['week-templates', data.restaurant_id] });
+      invalidateTemplateQueries(queryClient, data.restaurant_id);
       toast({
         title: 'Week template updated',
         description: `"${data.name}" has been updated.`,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error updating week template',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error updating week template', error),
   });
 }
 
@@ -131,19 +121,13 @@ export function useDeleteWeekTemplate() {
       return { id, restaurantId };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['week-templates', data.restaurantId] });
+      invalidateTemplateQueries(queryClient, data.restaurantId);
       toast({
         title: 'Week template deleted',
         description: 'The week template has been removed.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error deleting week template',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error deleting week template', error),
   });
 }
 
@@ -177,19 +161,13 @@ export function useSetActiveTemplate() {
       return data as WeekTemplate;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['week-templates', data.restaurant_id] });
+      invalidateTemplateQueries(queryClient, data.restaurant_id);
       toast({
         title: 'Active template updated',
         description: `"${data.name}" is now the active template.`,
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error setting active template',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error setting active template', error),
   });
 }
 
@@ -253,13 +231,7 @@ export function useAddTemplateSlot() {
         description: 'A new shift slot has been added to the template.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error adding slot',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error adding slot', error),
   });
 }
 
@@ -294,13 +266,7 @@ export function useUpdateTemplateSlot() {
         description: 'The shift slot has been updated.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error updating slot',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error updating slot', error),
   });
 }
 
@@ -329,12 +295,6 @@ export function useRemoveTemplateSlot() {
         description: 'The shift slot has been removed from the template.',
       });
     },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error removing slot',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => showErrorToast(toast, 'Error removing slot', error),
   });
 }

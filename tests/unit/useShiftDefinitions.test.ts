@@ -8,10 +8,8 @@
  * - useDeleteShiftDefinition (delete)
  */
 
-import React from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import {
   useShiftDefinitions,
@@ -19,6 +17,13 @@ import {
   useUpdateShiftDefinition,
   useDeleteShiftDefinition,
 } from '@/hooks/useShiftDefinitions';
+
+import {
+  RESTAURANT_ID,
+  createWrapper,
+  buildMockFromChain,
+  type MockFromChain,
+} from './helpers/scheduling-test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -38,25 +43,6 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function createWrapper() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, staleTime: 0 },
-      mutations: { retry: false },
-    },
-  });
-
-  return function Wrapper({ children }: { children: React.ReactNode }) {
-    return React.createElement(QueryClientProvider, { client: queryClient }, children);
-  };
-}
-
-const RESTAURANT_ID = 'rest-abc-123';
-
 const mockDefinition = {
   id: 'def-1',
   restaurant_id: RESTAURANT_ID,
@@ -73,20 +59,14 @@ const mockDefinition = {
   updated_at: '2026-01-01T00:00:00Z',
 };
 
-let mockFromChain: Record<string, ReturnType<typeof vi.fn>>;
+let mockFromChain: MockFromChain;
 
 beforeEach(() => {
   vi.clearAllMocks();
 
-  mockFromChain = {
-    select: vi.fn().mockReturnThis(),
-    insert: vi.fn().mockReturnThis(),
-    update: vi.fn().mockReturnThis(),
-    delete: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    order: vi.fn().mockResolvedValue({ data: [], error: null }),
-    single: vi.fn().mockResolvedValue({ data: mockDefinition, error: null }),
-  };
+  mockFromChain = buildMockFromChain({ terminalData: mockDefinition });
+  // order() returns empty by default for list queries
+  mockFromChain.order.mockResolvedValue({ data: [], error: null });
 
   mockSupabase.from.mockReturnValue(mockFromChain);
 });

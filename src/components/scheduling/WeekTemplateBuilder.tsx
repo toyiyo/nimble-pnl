@@ -49,33 +49,10 @@ import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { WeekTemplateSlot } from '@/types/scheduling';
 
 import { cn } from '@/lib/utils';
+import { COLUMN_DAYS, DAY_SHORT, formatTime, hoursForSlot } from '@/utils/schedulingHelpers';
 
 import { AddSlotDialog } from './AddSlotDialog';
 import { ShiftDefinitionsManager } from './ShiftDefinitionsManager';
-
-// ---------------------------------------------------------------------------
-// Constants & helpers
-// ---------------------------------------------------------------------------
-
-// Column order: Mon(1), Tue(2), Wed(3), Thu(4), Fri(5), Sat(6), Sun(0)
-const COLUMN_DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
-const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function formatTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-/** Calculate hours between two HH:MM times (supports overnight). */
-function hoursForSlot(start: string, end: string, breakMin: number): number {
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  let diff = eh * 60 + em - (sh * 60 + sm);
-  if (diff <= 0) diff += 24 * 60; // overnight
-  return Math.max(0, (diff - breakMin) / 60);
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,9 +72,9 @@ export function WeekTemplateBuilder({
   onGenerateSchedule,
 }: WeekTemplateBuilderProps) {
   // Data hooks
-  const { templates, isLoading: templatesLoading } = useWeekTemplates(restaurantId);
-  const { definitions } = useShiftDefinitions(restaurantId);
-  const { positions } = useEmployeePositions(restaurantId);
+  const { templates, isLoading: templatesLoading, error: templatesError } = useWeekTemplates(restaurantId);
+  const { definitions, error: definitionsError } = useShiftDefinitions(restaurantId);
+  const { positions, error: positionsError } = useEmployeePositions(restaurantId);
 
   // Selected template
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -110,6 +87,9 @@ export function WeekTemplateBuilder({
     const active = templates.find((t) => t.is_active);
     return active?.id ?? templates[0]?.id ?? '';
   }, [selectedTemplateId, templates]);
+
+  const currentTemplate = templates.find((t) => t.id === resolvedTemplateId);
+  const isActive = currentTemplate?.is_active ?? false;
 
   // Sync selection when resolved changes
   const handleTemplateChange = useCallback((val: string) => {
@@ -150,7 +130,10 @@ export function WeekTemplateBuilder({
     const daysUntilMonday = day === 0 ? 1 : day === 1 ? 0 : 8 - day;
     const nextMon = new Date(now);
     nextMon.setDate(now.getDate() + daysUntilMonday);
-    return nextMon.toISOString().slice(0, 10);
+    const yyyy = nextMon.getFullYear();
+    const mm = String(nextMon.getMonth() + 1).padStart(2, '0');
+    const dd = String(nextMon.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   });
 
   // Group slots by day
@@ -293,23 +276,37 @@ export function WeekTemplateBuilder({
     }
   }, [editingSlot, resolvedTemplateId, copyDays, editPosition, editHeadcount, addSlotMutation]);
 
+  // Validate week start is a Monday
+  const isMonday = useMemo(() => {
+    if (!weekStartDate) return false;
+    return new Date(`${weekStartDate}T00:00:00`).getDay() === 1;
+  }, [weekStartDate]);
+
   // Generate schedule
   const handleGenerate = useCallback(() => {
     if (!resolvedTemplateId || !weekStartDate) return;
     onGenerateSchedule(resolvedTemplateId, weekStartDate);
   }, [resolvedTemplateId, weekStartDate, onGenerateSchedule]);
 
-  const currentTemplate = templates.find((t) => t.id === resolvedTemplateId);
-  const isActive = currentTemplate?.is_active ?? false;
   const isLoading = templatesLoading || slotsLoading;
 
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
+  const hookError = templatesError || definitionsError || positionsError;
+  if (hookError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <p className="text-[14px] font-medium text-destructive">Something went wrong</p>
+        <p className="text-[13px] text-muted-foreground mt-1">{hookError.message}</p>
+      </div>
+    );
+  }
+
   if (templatesLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" aria-live="polite">
         <Skeleton className="h-10 w-full rounded-lg" />
         <div className="grid grid-cols-7 gap-2">
           {Array.from({ length: 7 }).map((_, i) => (
@@ -413,7 +410,7 @@ export function WeekTemplateBuilder({
       {resolvedTemplateId ? (
         <>
           {isLoading ? (
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-2" aria-live="polite">
               {Array.from({ length: 7 }).map((_, i) => (
                 <Skeleton key={i} className="h-48 rounded-xl" />
               ))}
@@ -522,10 +519,13 @@ export function WeekTemplateBuilder({
                 onChange={(e) => setWeekStartDate(e.target.value)}
                 className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border w-44"
               />
+              {weekStartDate && !isMonday && (
+                <p className="text-[12px] text-destructive">Week must start on a Monday.</p>
+              )}
             </div>
             <Button
               onClick={handleGenerate}
-              disabled={!resolvedTemplateId || !weekStartDate || slots.length === 0}
+              disabled={!resolvedTemplateId || !weekStartDate || slots.length === 0 || !isMonday}
               className="h-10 px-5 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
               <CalendarDays className="h-4 w-4 mr-1.5" />

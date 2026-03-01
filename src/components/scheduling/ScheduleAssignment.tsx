@@ -30,47 +30,19 @@ import { usePublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedul
 import { ScheduleSlot, Employee } from '@/types/scheduling';
 
 import { cn } from '@/lib/utils';
+import {
+  DAY_SHORT,
+  formatTime,
+  formatWeekRange,
+  dateForDay,
+  timesOverlap,
+} from '@/utils/schedulingHelpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function formatTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-/** Format a date range for the header: "Feb 24 – Mar 2, 2026" */
-function formatWeekRange(weekStartStr: string): string {
-  const start = new Date(weekStartStr + 'T00:00:00');
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-
-  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
-  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
-  const year = end.getFullYear();
-
-  if (startMonth === endMonth) {
-    return `${startMonth} ${start.getDate()} \u2013 ${end.getDate()}, ${year}`;
-  }
-  return `${startMonth} ${start.getDate()} \u2013 ${endMonth} ${end.getDate()}, ${year}`;
-}
-
-/** Get the date for a specific day_of_week within the given week start (Monday). */
-function dateForDay(weekStartStr: string, dayOfWeek: number): Date {
-  const start = new Date(weekStartStr + 'T00:00:00');
-  // weekStart is Monday (1). dayOfWeek: 0=Sun,1=Mon,...,6=Sat
-  // offset: Mon=0, Tue=1, ..., Sat=5, Sun=6
-  const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const d = new Date(start);
-  d.setDate(start.getDate() + offset);
-  return d;
-}
 
 // ---------------------------------------------------------------------------
 // Grouped slot structure
@@ -132,29 +104,6 @@ interface ScheduleAssignmentProps {
 // ---------------------------------------------------------------------------
 // Sub-component: Employee selector popover
 // ---------------------------------------------------------------------------
-
-/** Check if two time ranges overlap (supports overnight shifts). */
-function timesOverlap(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string,
-): boolean {
-  const toMin = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const aStart = toMin(startA);
-  let aEnd = toMin(endA);
-  const bStart = toMin(startB);
-  let bEnd = toMin(endB);
-
-  // Handle overnight shifts by extending past midnight
-  if (aEnd <= aStart) aEnd += 24 * 60;
-  if (bEnd <= bStart) bEnd += 24 * 60;
-
-  return aStart < bEnd && bStart < aEnd;
-}
 
 interface OverlapInfo {
   timeRange: string;
@@ -230,6 +179,7 @@ function EmployeeSelector({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search employees..."
+          aria-label="Search employees"
           className="h-8 text-[13px] pl-7 bg-muted/30 border-border/40 rounded-lg"
         />
       </div>
@@ -291,8 +241,8 @@ export function ScheduleAssignment({
   weekStartDate,
   onBack,
 }: ScheduleAssignmentProps) {
-  const { slots, isLoading } = useScheduleSlots(restaurantId, weekStartDate);
-  const { employees } = useEmployees(restaurantId);
+  const { slots, isLoading, error: slotsError } = useScheduleSlots(restaurantId, weekStartDate);
+  const { employees, error: employeesError } = useEmployees(restaurantId);
   const assignMutation = useAssignEmployee();
   const unassignMutation = useUnassignEmployee();
   const deleteMutation = useDeleteGeneratedSchedule();
@@ -350,6 +300,16 @@ export function ScheduleAssignment({
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
+
+  const hookError = slotsError || employeesError;
+  if (hookError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <p className="text-[14px] font-medium text-destructive">Something went wrong</p>
+        <p className="text-[13px] text-muted-foreground mt-1">{hookError.message}</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

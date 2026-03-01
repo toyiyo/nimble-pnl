@@ -42,60 +42,14 @@ import { useToast } from '@/hooks/use-toast';
 import { ScheduleSlot, Employee } from '@/types/scheduling';
 
 import { cn } from '@/lib/utils';
-
-// ---------------------------------------------------------------------------
-// Constants & helpers
-// ---------------------------------------------------------------------------
-
-const COLUMN_DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
-const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function formatTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-function formatWeekRange(weekStartStr: string): string {
-  const start = new Date(weekStartStr + 'T00:00:00');
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
-  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
-  const year = end.getFullYear();
-  if (startMonth === endMonth) {
-    return `${startMonth} ${start.getDate()} \u2013 ${end.getDate()}, ${year}`;
-  }
-  return `${startMonth} ${start.getDate()} \u2013 ${endMonth} ${end.getDate()}, ${year}`;
-}
-
-function dateForDay(weekStartStr: string, dayOfWeek: number): Date {
-  const start = new Date(weekStartStr + 'T00:00:00');
-  const offset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const d = new Date(start);
-  d.setDate(start.getDate() + offset);
-  return d;
-}
-
-function timesOverlap(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string,
-): boolean {
-  const toMin = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const aStart = toMin(startA);
-  let aEnd = toMin(endA);
-  const bStart = toMin(startB);
-  let bEnd = toMin(endB);
-  if (aEnd <= aStart) aEnd += 24 * 60;
-  if (bEnd <= bStart) bEnd += 24 * 60;
-  return aStart < bEnd && bStart < aEnd;
-}
+import {
+  COLUMN_DAYS,
+  DAY_SHORT,
+  formatTime,
+  formatWeekRange,
+  dateForDay,
+  timesOverlap,
+} from '@/utils/schedulingHelpers';
 
 // ---------------------------------------------------------------------------
 // Grouped structures
@@ -248,6 +202,7 @@ function SlotAssignPopover({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search..."
+          aria-label="Search employees"
           className="h-7 text-[12px] pl-6 bg-muted/30 border-border/40 rounded-lg"
           autoFocus
         />
@@ -293,8 +248,8 @@ interface ScheduleBoardProps {
 // ---------------------------------------------------------------------------
 
 export function ScheduleBoard({ restaurantId, weekStartDate, onBack }: ScheduleBoardProps) {
-  const { slots, isLoading } = useScheduleSlots(restaurantId, weekStartDate);
-  const { employees } = useEmployees(restaurantId);
+  const { slots, isLoading, error: slotsError } = useScheduleSlots(restaurantId, weekStartDate);
+  const { employees, error: employeesError } = useEmployees(restaurantId);
   const assignMutation = useAssignEmployee();
   const unassignMutation = useUnassignEmployee();
   const bulkAssignMutation = useBulkAssignEmployee();
@@ -462,6 +417,16 @@ export function ScheduleBoard({ restaurantId, weekStartDate, onBack }: ScheduleB
   // Render
   // -----------------------------------------------------------------------
 
+  const hookError = slotsError || employeesError;
+  if (hookError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <p className="text-[14px] font-medium text-destructive">Something went wrong</p>
+        <p className="text-[13px] text-muted-foreground mt-1">{hookError.message}</p>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -584,6 +549,7 @@ export function ScheduleBoard({ restaurantId, weekStartDate, onBack }: ScheduleB
                   value={sidebarSearch}
                   onChange={(e) => setSidebarSearch(e.target.value)}
                   placeholder="Search..."
+                  aria-label="Search employees"
                   className="h-7 text-[12px] pl-6 bg-muted/30 border-border/40 rounded-lg"
                 />
               </div>

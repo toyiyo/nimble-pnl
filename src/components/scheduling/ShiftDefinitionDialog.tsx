@@ -68,6 +68,8 @@ export function ShiftDefinitionDialog({
   const updateMutation = useUpdateShiftDefinition();
   const isPending = createMutation.isPending || updateMutation.isPending;
 
+  const isInvalidTimeRange = startTime === endTime;
+
   // Reset form when dialog opens or definition changes
   useEffect(() => {
     if (open) {
@@ -196,6 +198,9 @@ export function ShiftDefinitionDialog({
               />
             </div>
           </div>
+          {isInvalidTimeRange && (
+            <p className="text-[12px] text-destructive">Start and end time cannot be the same.</p>
+          )}
 
           {/* Break duration */}
           <div className="space-y-1.5">
@@ -217,11 +222,11 @@ export function ShiftDefinitionDialog({
 
           {/* Position */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label htmlFor="def-position" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Position
             </Label>
             <Select value={position} onValueChange={setPosition}>
-              <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+              <SelectTrigger id="def-position" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                 <SelectValue placeholder="Select position" />
               </SelectTrigger>
               <SelectContent>
@@ -237,10 +242,10 @@ export function ShiftDefinitionDialog({
 
           {/* Color */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label htmlFor="def-color" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Color
             </Label>
-            <div className="flex items-center gap-2">
+            <div id="def-color" role="radiogroup" aria-label="Shift color" className="flex items-center gap-2">
               {SHIFT_COLORS.map((c) => (
                 <button
                   key={c}
@@ -289,7 +294,7 @@ export function ShiftDefinitionDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isPending || !name.trim()}
+              disabled={isPending || !name.trim() || isInvalidTimeRange}
               className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
               {isPending

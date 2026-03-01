@@ -113,7 +113,7 @@ export function AddSlotDialog({
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
           {/* Shift Definition */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label htmlFor="slot-shift-definition" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Shift Definition
             </Label>
             {activeDefinitions.length === 0 ? (
@@ -122,7 +122,7 @@ export function AddSlotDialog({
               </p>
             ) : (
               <Select value={shiftTemplateId} onValueChange={setShiftTemplateId}>
-                <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                <SelectTrigger id="slot-shift-definition" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                   <SelectValue placeholder="Select a shift definition" />
                 </SelectTrigger>
                 <SelectContent>
@@ -144,11 +144,11 @@ export function AddSlotDialog({
 
           {/* Position */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label htmlFor="slot-position" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Position
             </Label>
             <Select value={position} onValueChange={setPosition}>
-              <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+              <SelectTrigger id="slot-position" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                 <SelectValue placeholder="Select position" />
               </SelectTrigger>
               <SelectContent>

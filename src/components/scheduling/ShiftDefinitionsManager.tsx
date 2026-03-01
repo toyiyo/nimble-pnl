@@ -32,18 +32,9 @@ import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 
 import { ShiftTemplate } from '@/types/scheduling';
 
+import { formatTime } from '@/utils/schedulingHelpers';
+
 import { ShiftDefinitionDialog } from './ShiftDefinitionDialog';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,7 +55,7 @@ export function ShiftDefinitionsManager({
   onOpenChange,
   restaurantId,
 }: ShiftDefinitionsManagerProps) {
-  const { definitions, isLoading } = useShiftDefinitions(restaurantId);
+  const { definitions, isLoading, error: definitionsError } = useShiftDefinitions(restaurantId);
   const { positions } = useEmployeePositions(restaurantId);
   const deleteMutation = useDeleteShiftDefinition();
   const updateMutation = useUpdateShiftDefinition();
@@ -133,7 +124,12 @@ export function ShiftDefinitionsManager({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
-            {isLoading ? (
+            {definitionsError ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-[14px] font-medium text-destructive">Something went wrong</p>
+                <p className="text-[13px] text-muted-foreground mt-1">{definitionsError.message}</p>
+              </div>
+            ) : isLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <Skeleton key={i} className="h-16 rounded-xl" />
@@ -190,7 +186,7 @@ export function ShiftDefinitionsManager({
                     <button
                       onClick={() => handleEdit(def)}
                       aria-label={`Edit ${def.name}`}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 p-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
@@ -199,7 +195,7 @@ export function ShiftDefinitionsManager({
                     <button
                       onClick={() => setDeleteTarget(def)}
                       aria-label={`Delete ${def.name}`}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-destructive hover:text-destructive/80 transition-all"
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 p-1.5 rounded-lg text-destructive hover:text-destructive/80 transition-all"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

@@ -74,8 +74,10 @@ function calculateDateRange(
       if (!customStartDate || !customEndDate) {
         throw new Error('Custom period requires start_date and end_date');
       }
-      startDate = new Date(customStartDate);
-      endDate = new Date(customEndDate);
+      const [sy, sm, sd] = customStartDate.split('-').map(Number);
+      startDate = new Date(sy, sm - 1, sd);
+      const [ey, em, ed] = customEndDate.split('-').map(Number);
+      endDate = new Date(ey, em - 1, ed);
       break;
     default:
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);

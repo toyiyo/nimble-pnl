@@ -64,7 +64,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
         properties: {
           period: {
             type: 'string',
-            enum: ['today', 'yesterday', 'week', 'month', 'quarter', 'year', 'custom'],
+            enum: ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'quarter', 'year', 'custom'],
             description: 'The time period for the KPIs'
           },
           start_date: {
@@ -467,7 +467,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
           properties: {
             period: {
               type: 'string',
-              enum: ['month', 'quarter', 'year', 'custom'],
+              enum: ['month', 'last_month', 'quarter', 'year', 'custom'],
               description: 'The time period for operating costs analysis'
             },
             start_date: {

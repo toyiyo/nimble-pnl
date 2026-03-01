@@ -36,6 +36,7 @@ import { suggestShiftMappings, SHIFT_FIELD_OPTIONS } from '@/utils/shiftColumnMa
 import { matchEmployees } from '@/utils/shiftEmployeeMatching';
 import { buildShiftImportPreview, getWeekMonday } from '@/utils/shiftImportPreview';
 import { cn } from '@/lib/utils';
+import { localToUTC } from '@/utils/timezoneUtils';
 import { ShiftImportEmployeeReview } from './ShiftImportEmployeeReview';
 import { ShiftImportPreview } from './ShiftImportPreview';
 
@@ -46,6 +47,7 @@ interface ShiftImportSheetProps {
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   employees: Employee[];
+  timezone?: string;
 }
 
 const STEP_LABELS: Record<ImportStep, string> = {
@@ -58,7 +60,15 @@ const STEP_LABELS: Record<ImportStep, string> = {
 
 const STEP_ORDER: ImportStep[] = ['upload', 'mapping', 'employees', 'preview', 'importing'];
 
-function parseDateAndTime(dateStr?: string, timeStr?: string): string | null {
+function parseDateAndTime(dateStr?: string, timeStr?: string, timezone?: string): string | null {
+  if (timezone && dateStr && timeStr) {
+    const d = new Date([dateStr, timeStr].filter(Boolean).join(' ').trim());
+    if (Number.isNaN(d.getTime())) return null;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const dateOnly = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const timeOnly = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return localToUTC(dateOnly, timeOnly, timezone);
+  }
   const combined = [dateStr, timeStr].filter(Boolean).join(' ').trim();
   if (!combined) return null;
   const d = new Date(combined);
@@ -71,16 +81,18 @@ function resolveTime(
   dateVal: string,
   datetimeField: string,
   timeField: string,
+  timezone?: string,
 ): string | null {
   if (fieldMap.has(datetimeField)) {
-    return parseDateAndTime(row[fieldMap.get(datetimeField) ?? '']);
+    return parseDateAndTime(row[fieldMap.get(datetimeField) ?? ''], undefined, timezone);
   }
-  return parseDateAndTime(dateVal, row[fieldMap.get(timeField) ?? '']?.trim());
+  return parseDateAndTime(dateVal, row[fieldMap.get(timeField) ?? '']?.trim(), timezone);
 }
 
 function buildParsedShiftsFromMappings(
   rows: Record<string, string>[],
   mappings: ShiftColumnMapping[],
+  timezone?: string,
 ): ParsedShift[] {
   const fieldMap = new Map<string, string>();
   mappings.forEach(m => {
@@ -94,8 +106,8 @@ function buildParsedShiftsFromMappings(
     if (!employeeName) continue;
 
     const dateVal = row[fieldMap.get('date') ?? '']?.trim() || '';
-    const startTime = resolveTime(fieldMap, row, dateVal, 'start_datetime', 'start_time');
-    const endTime = resolveTime(fieldMap, row, dateVal, 'end_datetime', 'end_time');
+    const startTime = resolveTime(fieldMap, row, dateVal, 'start_datetime', 'start_time', timezone);
+    const endTime = resolveTime(fieldMap, row, dateVal, 'end_datetime', 'end_time', timezone);
 
     if (!startTime || !endTime) continue;
 
@@ -122,6 +134,7 @@ export const ShiftImportSheet = ({
   onOpenChange,
   restaurantId,
   employees,
+  timezone,
 }: ShiftImportSheetProps) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -272,7 +285,7 @@ export const ShiftImportSheet = ({
 
         if (isSlingFormat(parsedHeaders, parsedRows)) {
           setIsSling(true);
-          const shifts = parseSlingCSV(parsedHeaders, parsedRows);
+          const shifts = parseSlingCSV(parsedHeaders, parsedRows, timezone);
           setParsedShifts(shifts);
           runEmployeeMatching(shifts, availableEmployees);
           setStep('employees');
@@ -305,7 +318,7 @@ export const ShiftImportSheet = ({
   };
 
   const handleMappingNext = () => {
-    const shifts = buildParsedShiftsFromMappings(rows, mappings);
+    const shifts = buildParsedShiftsFromMappings(rows, mappings, timezone);
     if (!shifts.length) {
       toast({
         title: 'No shifts parsed',

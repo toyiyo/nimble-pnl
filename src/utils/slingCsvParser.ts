@@ -1,3 +1,5 @@
+import { localToUTC } from '@/utils/timezoneUtils';
+
 export interface ParsedShift {
   employeeName: string;
   startTime: string;  // Local ISO without timezone: 2026-02-28T10:00:00.000
@@ -35,10 +37,15 @@ function parseTime12h(timeStr: string): { hours: number; minutes: number } {
   return { hours, minutes };
 }
 
-function buildLocalISO(dateStr: string, hours: number, minutes: number): string {
+function buildLocalISO(dateStr: string, hours: number, minutes: number, timezone?: string): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const timeHHMM = `${pad(hours)}:${pad(minutes)}`;
+  if (timezone) {
+    return localToUTC(dateStr, timeHHMM, timezone);
+  }
+  // Fallback: local ISO without timezone (backwards compatibility)
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
-  const pad = (n: number) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00.000`;
 }
 
@@ -49,7 +56,7 @@ function addOneDay(dateStr: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function parseSlingShiftCell(cell: string, dateStr: string): ParsedShift[] {
+export function parseSlingShiftCell(cell: string, dateStr: string, timezone?: string): ParsedShift[] {
   if (!cell?.trim()) return [];
 
   const shifts: ParsedShift[] = [];
@@ -65,13 +72,13 @@ export function parseSlingShiftCell(cell: string, dateStr: string): ParsedShift[
     const start = parseTime12h(startTimeStr);
     const end = parseTime12h(endTimeStr);
 
-    const startISO = buildLocalISO(dateStr, start.hours, start.minutes);
+    const startISO = buildLocalISO(dateStr, start.hours, start.minutes, timezone);
 
     let endDateStr = dateStr;
     if (end.hours < start.hours || (end.hours === start.hours && end.minutes < start.minutes)) {
       endDateStr = addOneDay(dateStr);
     }
-    const endISO = buildLocalISO(endDateStr, end.hours, end.minutes);
+    const endISO = buildLocalISO(endDateStr, end.hours, end.minutes, timezone);
 
     shifts.push({
       employeeName: '',
@@ -85,7 +92,7 @@ export function parseSlingShiftCell(cell: string, dateStr: string): ParsedShift[
   return shifts;
 }
 
-export function parseSlingCSV(headers: string[], rows: Record<string, string>[]): ParsedShift[] {
+export function parseSlingCSV(headers: string[], rows: Record<string, string>[], timezone?: string): ParsedShift[] {
   const dateColumns = headers.slice(1).filter(h => DATE_PATTERN.test(h.trim()));
   const nameColumn = headers[0];
   const allShifts: ParsedShift[] = [];
@@ -105,7 +112,7 @@ export function parseSlingCSV(headers: string[], rows: Record<string, string>[])
       const cell = row[dateCol];
       if (!cell) continue;
 
-      const shifts = parseSlingShiftCell(cell, dateCol.trim());
+      const shifts = parseSlingShiftCell(cell, dateCol.trim(), timezone);
       for (const shift of shifts) {
         shift.employeeName = name;
         allShifts.push(shift);

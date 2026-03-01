@@ -118,4 +118,33 @@ describe('slingCsvParser', () => {
       expect(abrahamShifts[1].startTime).toContain('2026-03-01');
     });
   });
+
+  describe('parseSlingShiftCell with timezone', () => {
+    it('converts times using restaurant timezone', () => {
+      const cell = '10:00 AM - 11:00 PM • 13h\nServer • San Antonio\n ';
+      const result = parseSlingShiftCell(cell, '2026-01-15', 'America/Chicago');
+      // CST = UTC-6, so 10:00 AM local = 16:00 UTC
+      expect(result[0].startTime).toBe('2026-01-15T16:00:00.000Z');
+      // 11:00 PM local = 05:00 UTC next day
+      expect(result[0].endTime).toBe('2026-01-16T05:00:00.000Z');
+    });
+
+    it('falls back to local ISO when no timezone provided', () => {
+      const cell = '10:00 AM - 11:00 PM • 13h\nServer • San Antonio\n ';
+      const result = parseSlingShiftCell(cell, '2026-01-15');
+      expect(result[0].startTime).toContain('2026-01-15T10:00');
+    });
+  });
+
+  describe('parseSlingCSV with timezone', () => {
+    it('passes timezone through to all parsed shifts', () => {
+      const headers = ['', '2026-01-15'];
+      const rows = [
+        { '': 'Alice Smith', '2026-01-15': '10:00 AM - 6:00 PM • 8h\nServer • San Antonio\n ' },
+      ];
+      const shifts = parseSlingCSV(headers, rows, 'America/Chicago');
+      expect(shifts[0].startTime).toBe('2026-01-15T16:00:00.000Z');
+      expect(shifts[0].endTime).toBe('2026-01-16T00:00:00.000Z');
+    });
+  });
 });

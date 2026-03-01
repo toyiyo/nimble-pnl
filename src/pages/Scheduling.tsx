@@ -1376,6 +1376,7 @@ const Scheduling = () => {
           onOpenChange={setShiftImportOpen}
           restaurantId={restaurantId}
           employees={allEmployees}
+          timezone={restaurantTimezone}
         />
       )}
     </div>

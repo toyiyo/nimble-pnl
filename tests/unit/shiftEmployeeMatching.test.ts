@@ -50,7 +50,10 @@ describe('shiftEmployeeMatching', () => {
     const result = matchEmployees(csvNames, employees);
     // "gaspar chef vidanez" != "gaspar vidanez" — no exact match but 2 words in common
     expect(result[0].matchConfidence).toBe('partial');
-    expect(result[0].matchedEmployeeId).toBe('emp-2');
+    expect(result[0].matchedEmployeeId).toBeNull();
+    expect(result[0].action).toBe('create');
+    expect(result[0].suggestedEmployeeId).toBe('emp-2');
+    expect(result[0].suggestedEmployeeName).toBe('Gaspar Vidanez');
   });
 
   it('reports completely unknown employees as none', () => {
@@ -82,6 +85,61 @@ describe('shiftEmployeeMatching', () => {
     const result = matchEmployees(csvNames, employees);
     expect(result.find(r => r.csvName === 'Abraham Dominguez')?.action).toBe('link');
     expect(result.find(r => r.csvName === 'Unknown Person')?.action).toBe('create');
+  });
+});
+
+describe('partial match safety', () => {
+  it('partial matches set action to create with suggestion, not link', () => {
+    const emps = [
+      makeEmployee('emp-2', 'Gaspar Vidanez', 'Kitchen Manager'),
+    ];
+    const csvNames = [
+      { name: 'Gaspar Chef Vidanez', position: 'Kitchen Manager' },
+    ];
+    const result = matchEmployees(csvNames, emps);
+    expect(result[0].matchConfidence).toBe('partial');
+    expect(result[0].action).toBe('create');
+    expect(result[0].matchedEmployeeId).toBeNull();
+    expect(result[0].suggestedEmployeeId).toBe('emp-2');
+    expect(result[0].suggestedEmployeeName).toBe('Gaspar Vidanez');
+  });
+
+  it('does not cross-match employees sharing a surname', () => {
+    const employeesWithSharedSurname = [
+      makeEmployee('emp-a', 'Antonio Dominguez', 'Server'),
+      makeEmployee('emp-b', 'Abraham Dominguez', 'Server'),
+    ];
+    const csvNames = [
+      { name: 'Abraham Dominguez', position: 'Server' },
+    ];
+    const result = matchEmployees(csvNames, employeesWithSharedSurname);
+    expect(result[0].matchedEmployeeId).toBe('emp-b');
+    expect(result[0].matchConfidence).toBe('exact');
+  });
+
+  it('rejects low-confidence partial matches below threshold', () => {
+    const threeWordEmployees = [
+      makeEmployee('emp-x', 'José García López', 'Server'),
+      makeEmployee('emp-y', 'María García Rodríguez', 'Server'),
+    ];
+    const csvNames = [
+      { name: 'Carlos García López', position: 'Server' },
+    ];
+    const result = matchEmployees(csvNames, threeWordEmployees);
+    // 2 of 3 words match emp-x ("garcia", "lopez") = 0.67, below 0.8 threshold
+    expect(result[0].matchConfidence).toBe('none');
+    expect(result[0].suggestedEmployeeId).toBeUndefined();
+  });
+
+  it('does not partial-match single-word CSV names', () => {
+    const emps = [
+      makeEmployee('emp-1', 'Abraham Dominguez', 'Server'),
+    ];
+    const csvNames = [
+      { name: 'Dominguez', position: 'Server' },
+    ];
+    const result = matchEmployees(csvNames, emps);
+    expect(result[0].matchConfidence).toBe('none');
   });
 });
 

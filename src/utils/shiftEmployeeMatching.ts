@@ -9,6 +9,8 @@ export interface ShiftImportEmployee {
   matchConfidence: 'exact' | 'partial' | 'none';
   csvPosition: string;
   action: 'link' | 'create' | 'skip';
+  suggestedEmployeeId?: string;
+  suggestedEmployeeName?: string;
 }
 
 function buildEmployeeLookup(employees: Employee[]) {
@@ -45,8 +47,11 @@ function findPartialMatch(normalizedName: string, employees: Employee[]): Employ
   for (const emp of employees) {
     const empWords = normalizeEmployeeKey(emp.name).split(' ').filter(w => w.length > 1);
     const matchingWords = csvWords.filter(w => empWords.includes(w));
-    const score = matchingWords.length / Math.max(csvWords.length, empWords.length);
-    if (score > bestScore && matchingWords.length >= 2) {
+    // Asymmetric: fraction of DB employee's name words found in CSV
+    // "Gaspar Chef Vidanez" vs "Gaspar Vidanez" → 2/2 = 1.0 (good)
+    // "Carlos García López" vs "José García López" → 2/3 = 0.67 (rejected)
+    const score = empWords.length > 0 ? matchingWords.length / empWords.length : 0;
+    if (score >= 0.8 && score > bestScore && matchingWords.length >= 2) {
       bestScore = score;
       bestMatch = emp;
     }
@@ -90,7 +95,17 @@ export function matchEmployees(
     }
     const partialMatch = findPartialMatch(normalizedName, employees);
     if (partialMatch) {
-      results.push({ csvName, normalizedName, matchedEmployeeId: partialMatch.id, matchedEmployeeName: partialMatch.name, matchConfidence: 'partial', csvPosition, action: 'link' });
+      results.push({
+        csvName,
+        normalizedName,
+        matchedEmployeeId: null,
+        matchedEmployeeName: null,
+        matchConfidence: 'partial',
+        csvPosition,
+        action: 'create',
+        suggestedEmployeeId: partialMatch.id,
+        suggestedEmployeeName: partialMatch.name,
+      });
       return;
     }
     results.push({ csvName, normalizedName, matchedEmployeeId: null, matchedEmployeeName: null, matchConfidence: 'none', csvPosition, action: 'create' });

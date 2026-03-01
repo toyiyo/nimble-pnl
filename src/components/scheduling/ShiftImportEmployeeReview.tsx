@@ -55,7 +55,7 @@ export const ShiftImportEmployeeReview = ({
   );
 
   const unmatchedCount = useMemo(
-    () => employeeMatches.filter(m => m.matchConfidence === 'none' && m.action !== 'link').length,
+    () => employeeMatches.filter(m => (m.matchConfidence === 'none' || m.matchConfidence === 'partial') && m.action !== 'link').length,
     [employeeMatches]
   );
 
@@ -114,7 +114,7 @@ export const ShiftImportEmployeeReview = ({
                     {match.csvPosition && (
                       <span className="text-[12px] text-muted-foreground">{match.csvPosition}</span>
                     )}
-                    {match.matchedEmployeeName && match.matchConfidence !== 'none' && (
+                    {match.matchedEmployeeName && match.matchConfidence === 'exact' && (
                       <span className="text-[12px] text-muted-foreground">
                         &rarr; {match.matchedEmployeeName}
                       </span>
@@ -129,6 +129,11 @@ export const ShiftImportEmployeeReview = ({
 
             {(match.matchConfidence === 'partial' || match.matchConfidence === 'none') && (
               <div className="flex flex-wrap items-center gap-2 pl-11">
+                {match.matchConfidence === 'partial' && match.suggestedEmployeeName && (
+                  <span className="text-[12px] text-amber-600">
+                    Did you mean {match.suggestedEmployeeName}?
+                  </span>
+                )}
                 <Select
                   value={match.matchedEmployeeId || ''}
                   onValueChange={(value) => {
@@ -156,7 +161,7 @@ export const ShiftImportEmployeeReview = ({
                     ))}
                   </SelectContent>
                 </Select>
-                {match.matchConfidence === 'none' && match.action !== 'link' && (
+                {match.action !== 'link' && (
                   <Button
                     variant="outline"
                     size="sm"

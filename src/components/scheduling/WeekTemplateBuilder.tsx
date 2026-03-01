@@ -45,6 +45,7 @@ import {
 } from '@/hooks/useWeekTemplates';
 import { useShiftDefinitions } from '@/hooks/useShiftDefinitions';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
+import { useScheduleSlots, useDeleteGeneratedSchedule } from '@/hooks/useScheduleSlots';
 
 import { WeekTemplateSlot } from '@/types/scheduling';
 
@@ -61,6 +62,7 @@ import { ShiftDefinitionsManager } from './ShiftDefinitionsManager';
 interface WeekTemplateBuilderProps {
   restaurantId: string;
   onGenerateSchedule: (templateId: string, weekStartDate: string) => void;
+  onViewSchedule: (weekStartDate: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +72,7 @@ interface WeekTemplateBuilderProps {
 export function WeekTemplateBuilder({
   restaurantId,
   onGenerateSchedule,
+  onViewSchedule,
 }: WeekTemplateBuilderProps) {
   // Data hooks
   const { templates, isLoading: templatesLoading, error: templatesError } = useWeekTemplates(restaurantId);
@@ -99,6 +102,13 @@ export function WeekTemplateBuilder({
   // Slots for current template
   const { slots, isLoading: slotsLoading } = useWeekTemplateSlots(resolvedTemplateId || null);
 
+  // Check if a schedule already exists for the selected week
+  const { slots: existingScheduleSlots } = useScheduleSlots(
+    restaurantId,
+    weekStartDate && new Date(`${weekStartDate}T00:00:00`).getDay() === 1 ? weekStartDate : null,
+  );
+  const scheduleExists = existingScheduleSlots.length > 0;
+
   // Mutations
   const createTemplateMutation = useCreateWeekTemplate();
   const updateTemplateMutation = useUpdateWeekTemplate();
@@ -107,6 +117,7 @@ export function WeekTemplateBuilder({
   const addSlotMutation = useAddTemplateSlot();
   const updateSlotMutation = useUpdateTemplateSlot();
   const removeSlotMutation = useRemoveTemplateSlot();
+  const deleteScheduleMutation = useDeleteGeneratedSchedule();
 
   // UI state
   const [newTemplateDialogOpen, setNewTemplateDialogOpen] = useState(false);
@@ -287,6 +298,25 @@ export function WeekTemplateBuilder({
     if (!resolvedTemplateId || !weekStartDate) return;
     onGenerateSchedule(resolvedTemplateId, weekStartDate);
   }, [resolvedTemplateId, weekStartDate, onGenerateSchedule]);
+
+  // View existing schedule (switch to board without regenerating)
+  const handleViewSchedule = useCallback(() => {
+    if (!weekStartDate) return;
+    onViewSchedule(weekStartDate);
+  }, [weekStartDate, onViewSchedule]);
+
+  // Delete existing schedule then regenerate
+  const handleDeleteAndRegenerate = useCallback(() => {
+    if (!resolvedTemplateId || !weekStartDate) return;
+    deleteScheduleMutation.mutate(
+      { restaurantId, weekStartDate },
+      {
+        onSuccess: () => {
+          onGenerateSchedule(resolvedTemplateId, weekStartDate);
+        },
+      },
+    );
+  }, [resolvedTemplateId, weekStartDate, restaurantId, deleteScheduleMutation, onGenerateSchedule]);
 
   const isLoading = templatesLoading || slotsLoading;
 
@@ -522,15 +552,40 @@ export function WeekTemplateBuilder({
               {weekStartDate && !isMonday && (
                 <p className="text-[12px] text-destructive">Week must start on a Monday.</p>
               )}
+              {weekStartDate && isMonday && scheduleExists && (
+                <p className="text-[12px] text-muted-foreground">
+                  A schedule already exists for this week ({existingScheduleSlots.length} slots).
+                </p>
+              )}
             </div>
-            <Button
-              onClick={handleGenerate}
-              disabled={!resolvedTemplateId || !weekStartDate || slots.length === 0 || !isMonday}
-              className="h-10 px-5 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-            >
-              <CalendarDays className="h-4 w-4 mr-1.5" />
-              Generate Schedule
-            </Button>
+            {scheduleExists && isMonday ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleViewSchedule}
+                  className="h-10 px-5 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                >
+                  <CalendarDays className="h-4 w-4 mr-1.5" />
+                  View Schedule
+                </Button>
+                <Button
+                  onClick={handleDeleteAndRegenerate}
+                  disabled={!resolvedTemplateId || slots.length === 0 || deleteScheduleMutation.isPending}
+                  variant="ghost"
+                  className="h-10 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                >
+                  {deleteScheduleMutation.isPending ? 'Deleting...' : 'Delete & Regenerate'}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={handleGenerate}
+                disabled={!resolvedTemplateId || !weekStartDate || slots.length === 0 || !isMonday}
+                className="h-10 px-5 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              >
+                <CalendarDays className="h-4 w-4 mr-1.5" />
+                Generate Schedule
+              </Button>
+            )}
           </div>
         </>
       ) : (

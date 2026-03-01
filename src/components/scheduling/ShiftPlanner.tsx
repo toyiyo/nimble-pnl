@@ -56,6 +56,15 @@ export function ShiftPlanner({ restaurantId }: ShiftPlannerProps) {
     [restaurantId, generateMutation],
   );
 
+  // View existing schedule (go to board without regenerating)
+  const handleViewSchedule = useCallback(
+    (weekStartDate: string) => {
+      setTargetWeekStart(weekStartDate);
+      setView('board');
+    },
+    [],
+  );
+
   // Back to template view
   const handleBack = useCallback(() => {
     setView('template');
@@ -86,6 +95,7 @@ export function ShiftPlanner({ restaurantId }: ShiftPlannerProps) {
         <WeekTemplateBuilder
           restaurantId={restaurantId}
           onGenerateSchedule={handleGenerateSchedule}
+          onViewSchedule={handleViewSchedule}
         />
       ) : (
         <Suspense

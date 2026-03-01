@@ -1,0 +1,53 @@
+import { DomainError, MIN_SHIFT_MINUTES } from './types';
+import type { ShiftState, Instant } from './types';
+
+function minutesBetween(a: Instant, b: Instant): number {
+  return Math.floor((Date.parse(b) - Date.parse(a)) / 60_000);
+}
+
+export function assertTimeValidity(startAt: Instant, endAt: Instant): void {
+  if (Date.parse(endAt) <= Date.parse(startAt)) {
+    throw new DomainError('CMD_BAD_TIME', 'Shift end must be after start');
+  }
+  if (minutesBetween(startAt, endAt) < MIN_SHIFT_MINUTES) {
+    throw new DomainError('CMD_TOO_SHORT', `Shift must be at least ${MIN_SHIFT_MINUTES} minutes`);
+  }
+}
+
+export function assertIdentityComplete(state: ShiftState): void {
+  if (
+    !state.restaurantId ||
+    !state.locationId ||
+    !state.timezone ||
+    !state.startAt ||
+    !state.endAt ||
+    !state.roleId
+  ) {
+    throw new DomainError('INV_MISSING_FIELDS', 'Shift is missing required identity fields');
+  }
+}
+
+export function assertNotCanceled(state: ShiftState): void {
+  if (state.status === 'Canceled') {
+    throw new DomainError('SHIFT_CANCELED', 'Cannot modify a canceled shift');
+  }
+}
+
+export function assertEditable(state: ShiftState): void {
+  assertNotCanceled(state);
+  if (state.status !== 'Draft' && state.status !== 'Published') {
+    throw new DomainError('BAD_STATUS', `Shift status "${state.status}" does not allow edits`);
+  }
+}
+
+export function assertHasEmployee(state: ShiftState): void {
+  if (!state.employeeId) {
+    throw new DomainError('SHIFT_NOT_ASSIGNED', 'Shift has no employee assigned');
+  }
+}
+
+export function assertIsOpen(state: ShiftState): void {
+  if (state.employeeId) {
+    throw new DomainError('SHIFT_ALREADY_ASSIGNED', 'Shift already has an employee; use ReassignEmployee');
+  }
+}

@@ -8,6 +8,7 @@ import { AlertCircle, CalendarOff, Users } from 'lucide-react';
 
 import { useShiftPlanner, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
+import { useToast } from '@/hooks/use-toast';
 
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
@@ -60,6 +61,9 @@ export function ShiftPlannerTab({
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
 
+  const { toast } = useToast();
+  const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
+
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
     const posSet = new Set<string>();
@@ -106,8 +110,19 @@ export function ShiftPlannerTab({
 
     if (success) {
       clearValidation();
+
+      // Cell highlight
+      const cellId = `${templateId}:${day}`;
+      setHighlightCellId(cellId);
+      setTimeout(() => setHighlightCellId(null), 600);
+
+      // Toast
+      const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+      toast({
+        title: `${employee.name} assigned to ${template.name} — ${dayLabel}`,
+      });
     }
-  }, [templates, validateAndCreate, clearValidation]);
+  }, [templates, validateAndCreate, clearValidation, toast]);
 
   // Template CRUD handlers
   const handleAddTemplate = useCallback(() => {
@@ -233,6 +248,7 @@ export function ShiftPlannerTab({
                 onEditTemplate={handleEditTemplate}
                 onDeleteTemplate={handleDeleteTemplate}
                 onAddTemplate={handleAddTemplate}
+                highlightCellId={highlightCellId}
               />
             )}
           </div>

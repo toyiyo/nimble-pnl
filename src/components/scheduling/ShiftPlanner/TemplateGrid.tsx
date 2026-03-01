@@ -22,6 +22,7 @@ interface TemplateGridProps {
   onEditTemplate: (template: ShiftTemplate) => void;
   onDeleteTemplate: (templateId: string) => void;
   onAddTemplate: () => void;
+  highlightCellId?: string | null;
 }
 
 export function TemplateGrid({
@@ -32,6 +33,7 @@ export function TemplateGrid({
   onEditTemplate,
   onDeleteTemplate,
   onAddTemplate,
+  highlightCellId,
 }: TemplateGridProps) {
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
@@ -89,6 +91,7 @@ export function TemplateGrid({
                     isActiveDay={isActiveDay}
                     shifts={shifts}
                     onRemoveShift={onRemoveShift}
+                    isHighlighted={highlightCellId === `${template.id}:${day}`}
                   />
                 </div>
               );

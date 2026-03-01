@@ -4,6 +4,7 @@ import {
   matchEmployees,
   type ShiftImportEmployee,
 } from '@/utils/shiftEmployeeMatching';
+import { normalizeEmployeeKey } from '@/utils/timePunchImport';
 
 const makeEmployee = (id: string, name: string, position: string): Employee =>
   ({ id, name, position, status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 0 } as Employee);
@@ -81,5 +82,18 @@ describe('shiftEmployeeMatching', () => {
     const result = matchEmployees(csvNames, employees);
     expect(result.find(r => r.csvName === 'Abraham Dominguez')?.action).toBe('link');
     expect(result.find(r => r.csvName === 'Unknown Person')?.action).toBe('create');
+  });
+});
+
+describe('normalizeEmployeeKey — accent handling', () => {
+  it('normalizes accented characters to ASCII equivalents', () => {
+    expect(normalizeEmployeeKey('García')).toBe('garcia');
+    expect(normalizeEmployeeKey('José')).toBe('jose');
+    expect(normalizeEmployeeKey('Müller')).toBe('muller');
+    expect(normalizeEmployeeKey('François')).toBe('francois');
+  });
+
+  it('matches accented and non-accented versions of the same name', () => {
+    expect(normalizeEmployeeKey('María García')).toBe(normalizeEmployeeKey('Maria Garcia'));
   });
 });

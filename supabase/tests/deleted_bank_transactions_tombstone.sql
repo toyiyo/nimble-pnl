@@ -1,9 +1,10 @@
 -- File: supabase/tests/deleted_bank_transactions_tombstone.sql
--- Description: Tests for deleted_bank_transactions tombstone table and
---              compute_transaction_fingerprint function
+-- Description: Tests for deleted_bank_transactions tombstone table,
+--              compute_transaction_fingerprint function,
+--              and delete/restore/permanent-delete functions
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(24);
 
 -- Setup
 SET LOCAL role TO postgres;
@@ -66,6 +67,246 @@ SELECT is(
   public.compute_transaction_fingerprint('2026-01-15'::date, 42.50, 'Restaurant Depot #123!'),
   public.compute_transaction_fingerprint('2026-01-15'::date, 42.50, 'restaurant depot 123'),
   'fingerprint should normalize case and punctuation'
+);
+
+-- ============================================================
+-- TEST: Functional tests for delete/restore/permanent-delete
+-- ============================================================
+
+-- Create test data
+DO $$
+DECLARE
+  v_restaurant_id UUID;
+  v_bank_id UUID;
+BEGIN
+  -- Create a test restaurant
+  INSERT INTO public.restaurants (id, name)
+  VALUES ('a0000000-0000-0000-0000-000000000001'::uuid, 'Test Tombstone Restaurant')
+  ON CONFLICT (id) DO NOTHING;
+
+  v_restaurant_id := 'a0000000-0000-0000-0000-000000000001'::uuid;
+
+  -- Create a test connected_banks row
+  INSERT INTO public.connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name)
+  VALUES (
+    'b0000000-0000-0000-0000-000000000001'::uuid,
+    v_restaurant_id,
+    'test_stripe_fa_tombstone_001',
+    'Test Bank for Tombstones'
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  v_bank_id := 'b0000000-0000-0000-0000-000000000001'::uuid;
+
+  -- Create test bank transactions
+  -- Transaction 1: will be single-deleted
+  INSERT INTO public.bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount, source)
+  VALUES (
+    'c0000000-0000-0000-0000-000000000001'::uuid,
+    v_restaurant_id,
+    v_bank_id,
+    'stripe_txn_tombstone_001',
+    '2026-01-15'::timestamptz,
+    'RESTAURANT DEPOT #123',
+    -42.50,
+    'bank_integration'
+  );
+
+  -- Transaction 2: will be bulk-deleted
+  INSERT INTO public.bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount, source)
+  VALUES (
+    'c0000000-0000-0000-0000-000000000002'::uuid,
+    v_restaurant_id,
+    v_bank_id,
+    'stripe_txn_tombstone_002',
+    '2026-01-16'::timestamptz,
+    'SYSCO FOODS #456',
+    -125.00,
+    'bank_integration'
+  );
+
+  -- Transaction 3: will be bulk-deleted
+  INSERT INTO public.bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount, source)
+  VALUES (
+    'c0000000-0000-0000-0000-000000000003'::uuid,
+    v_restaurant_id,
+    v_bank_id,
+    'stripe_txn_tombstone_003',
+    '2026-01-17'::timestamptz,
+    'US FOODS #789',
+    -200.00,
+    'bank_integration'
+  );
+
+  -- Transaction 4: for restore test
+  INSERT INTO public.bank_transactions (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount, source)
+  VALUES (
+    'c0000000-0000-0000-0000-000000000004'::uuid,
+    v_restaurant_id,
+    v_bank_id,
+    'stripe_txn_tombstone_004',
+    '2026-01-18'::timestamptz,
+    'COSTCO WHOLESALE',
+    -350.00,
+    'bank_integration'
+  );
+END $$;
+
+-- ============================================================
+-- Test 13: delete_bank_transaction creates tombstone and removes active row
+-- ============================================================
+SELECT is(
+  (public.delete_bank_transaction(
+    'c0000000-0000-0000-0000-000000000001'::uuid,
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'true',
+  'delete_bank_transaction should return success'
+);
+
+-- Test 14: Active row is gone
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.bank_transactions
+    WHERE id = 'c0000000-0000-0000-0000-000000000001'::uuid
+  ),
+  'deleted transaction should no longer exist in bank_transactions'
+);
+
+-- Test 15: Tombstone was created
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM public.deleted_bank_transactions
+    WHERE restaurant_id = 'a0000000-0000-0000-0000-000000000001'::uuid
+    AND external_transaction_id = 'stripe_txn_tombstone_001'
+  ),
+  'tombstone should exist in deleted_bank_transactions after delete'
+);
+
+-- ============================================================
+-- Test 16: Delete is idempotent (calling twice succeeds)
+-- ============================================================
+SELECT is(
+  (public.delete_bank_transaction(
+    'c0000000-0000-0000-0000-000000000001'::uuid,
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'false',
+  'second delete should return false (transaction not found)'
+);
+
+-- Only one tombstone should exist for that external_transaction_id
+SELECT is(
+  (SELECT count(*)::int FROM public.deleted_bank_transactions
+   WHERE restaurant_id = 'a0000000-0000-0000-0000-000000000001'::uuid
+   AND external_transaction_id = 'stripe_txn_tombstone_001'),
+  1,
+  'should have exactly one tombstone after double delete (Test 17)'
+);
+
+-- ============================================================
+-- Test 18: Restore moves back to active and removes tombstone
+-- ============================================================
+
+-- First, delete transaction 4 so we have a tombstone to restore
+SELECT is(
+  (public.delete_bank_transaction(
+    'c0000000-0000-0000-0000-000000000004'::uuid,
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'true',
+  'delete transaction 4 for restore test (Test 18)'
+);
+
+-- Get the tombstone ID for transaction 4
+DO $$
+DECLARE
+  v_tombstone_id UUID;
+  v_result JSONB;
+BEGIN
+  SELECT id INTO v_tombstone_id
+  FROM public.deleted_bank_transactions
+  WHERE external_transaction_id = 'stripe_txn_tombstone_004'
+  AND restaurant_id = 'a0000000-0000-0000-0000-000000000001'::uuid;
+
+  -- Store for later tests
+  PERFORM set_config('test.tombstone_id_4', v_tombstone_id::text, true);
+END $$;
+
+-- Test 19: Restore the transaction
+SELECT is(
+  (public.restore_deleted_transaction(
+    (current_setting('test.tombstone_id_4'))::uuid,
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'true',
+  'restore_deleted_transaction should return success (Test 19)'
+);
+
+-- Test 20: Active row should exist again
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM public.bank_transactions
+    WHERE restaurant_id = 'a0000000-0000-0000-0000-000000000001'::uuid
+    AND stripe_transaction_id = 'stripe_txn_tombstone_004'
+  ),
+  'restored transaction should exist in bank_transactions (Test 20)'
+);
+
+-- Test 21: Tombstone should be removed
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.deleted_bank_transactions
+    WHERE id = (current_setting('test.tombstone_id_4'))::uuid
+  ),
+  'tombstone should be removed after restore (Test 21)'
+);
+
+-- ============================================================
+-- Test 22: Permanently delete tombstone removes it
+-- ============================================================
+
+-- Get tombstone ID for transaction 1 (deleted earlier)
+DO $$
+DECLARE
+  v_tombstone_id UUID;
+BEGIN
+  SELECT id INTO v_tombstone_id
+  FROM public.deleted_bank_transactions
+  WHERE external_transaction_id = 'stripe_txn_tombstone_001'
+  AND restaurant_id = 'a0000000-0000-0000-0000-000000000001'::uuid;
+
+  PERFORM set_config('test.tombstone_id_1', v_tombstone_id::text, true);
+END $$;
+
+SELECT is(
+  (public.permanently_delete_tombstone(
+    (current_setting('test.tombstone_id_1'))::uuid,
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'true',
+  'permanently_delete_tombstone should return success (Test 22)'
+);
+
+-- Tombstone should be gone
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.deleted_bank_transactions
+    WHERE id = (current_setting('test.tombstone_id_1'))::uuid
+  ),
+  'tombstone should be removed after permanent delete (Test 23 - verify)'
+);
+
+-- ============================================================
+-- Test 24: Bulk delete creates tombstones for multiple transactions
+-- ============================================================
+SELECT is(
+  (public.bulk_delete_bank_transactions(
+    ARRAY['c0000000-0000-0000-0000-000000000002'::uuid, 'c0000000-0000-0000-0000-000000000003'::uuid],
+    'a0000000-0000-0000-0000-000000000001'::uuid
+  ))->>'success',
+  'true',
+  'bulk_delete_bank_transactions should return success (Test 24)'
 );
 
 -- ============================================================

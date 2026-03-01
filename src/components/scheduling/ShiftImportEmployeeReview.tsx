@@ -4,10 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { Loader2, UserCheck, UserPlus, UserX } from 'lucide-react';
+import { AlertTriangle, Loader2, UserCheck, UserPlus, UserX } from 'lucide-react';
 
 import type { Employee } from '@/types/scheduling';
-import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
+import { getDuplicateEmployeeIds, type ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
 
 interface ShiftImportEmployeeReviewProps {
   employeeMatches: ShiftImportEmployee[];
@@ -55,9 +55,25 @@ export const ShiftImportEmployeeReview = ({
   );
 
   const unmatchedCount = useMemo(
-    () => employeeMatches.filter(m => m.matchConfidence === 'none' && m.action !== 'link').length,
+    () => employeeMatches.filter(m => (m.matchConfidence === 'none' || m.matchConfidence === 'partial') && m.action !== 'link').length,
     [employeeMatches]
   );
+
+  const duplicateIds = useMemo(
+    () => getDuplicateEmployeeIds(employeeMatches),
+    [employeeMatches]
+  );
+
+  // Map of employeeId → csvName that claimed it (for disabling in dropdowns)
+  const takenEmployeeMap = useMemo(() => {
+    const taken = new Map<string, string>();
+    for (const m of employeeMatches) {
+      if (m.matchedEmployeeId && m.action === 'link') {
+        taken.set(m.matchedEmployeeId, m.csvName);
+      }
+    }
+    return taken;
+  }, [employeeMatches]);
 
   if (!employeeMatches.length) {
     return (
@@ -114,7 +130,7 @@ export const ShiftImportEmployeeReview = ({
                     {match.csvPosition && (
                       <span className="text-[12px] text-muted-foreground">{match.csvPosition}</span>
                     )}
-                    {match.matchedEmployeeName && match.matchConfidence !== 'none' && (
+                    {match.matchedEmployeeName && match.matchConfidence === 'exact' && (
                       <span className="text-[12px] text-muted-foreground">
                         &rarr; {match.matchedEmployeeName}
                       </span>
@@ -123,12 +139,23 @@ export const ShiftImportEmployeeReview = ({
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {match.matchedEmployeeId && duplicateIds.has(match.matchedEmployeeId) && (
+                  <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 rounded-md bg-destructive/10 text-destructive border-destructive/20">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    Duplicate
+                  </Badge>
+                )}
                 {confidenceBadge(match.matchConfidence)}
               </div>
             </div>
 
             {(match.matchConfidence === 'partial' || match.matchConfidence === 'none') && (
               <div className="flex flex-wrap items-center gap-2 pl-11">
+                {match.matchConfidence === 'partial' && match.suggestedEmployeeName && (
+                  <span className="text-[12px] text-amber-600">
+                    Did you mean {match.suggestedEmployeeName}?
+                  </span>
+                )}
                 <Select
                   value={match.matchedEmployeeId || ''}
                   onValueChange={(value) => {
@@ -149,14 +176,19 @@ export const ShiftImportEmployeeReview = ({
                     {match.matchedEmployeeId && (
                       <SelectItem value="__clear__">Clear</SelectItem>
                     )}
-                    {existingEmployees.map((emp) => (
-                      <SelectItem key={emp.id} value={emp.id}>
-                        {emp.name} {emp.position ? `(${emp.position})` : ''}
-                      </SelectItem>
-                    ))}
+                    {existingEmployees.map((emp) => {
+                      const claimedBy = takenEmployeeMap.get(emp.id);
+                      const isTaken = !!claimedBy && claimedBy !== match.csvName;
+                      return (
+                        <SelectItem key={emp.id} value={emp.id} disabled={isTaken}>
+                          {emp.name} {emp.position ? `(${emp.position})` : ''}
+                          {isTaken && ` — linked to ${claimedBy}`}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
-                {match.matchConfidence === 'none' && match.action !== 'link' && (
+                {match.action !== 'link' && (
                   <Button
                     variant="outline"
                     size="sm"

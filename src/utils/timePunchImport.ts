@@ -142,6 +142,8 @@ export interface TimePunchImportPreview {
 
 export const normalizeEmployeeKey = (value: string) =>
   value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -209,7 +211,7 @@ const buildEmployeeLookup = (employees: Employee[]) => {
 
   const add = (name: string, employee: Employee) => {
     const normalized = normalizeEmployeeKey(name);
-    if (normalized) {
+    if (normalized && !lookup.has(normalized)) {
       lookup.set(normalized, employee);
     }
   };

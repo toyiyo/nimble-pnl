@@ -9,6 +9,8 @@ export type {
   UUID,
   Instant,
   Actor,
+  EventEnvelope,
+  CommandEnvelope,
   ShiftStatus,
   ShiftState,
   ShiftEvent,

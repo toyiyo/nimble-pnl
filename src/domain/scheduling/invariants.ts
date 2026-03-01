@@ -1,4 +1,4 @@
-import { DomainError, MIN_SHIFT_MINUTES } from './types';
+import { DomainError, MIN_SHIFT_MINUTES, MAX_SHIFT_HOURS } from './types';
 import type { ShiftState, Instant } from './types';
 
 function minutesBetween(a: Instant, b: Instant): number {
@@ -11,6 +11,9 @@ export function assertTimeValidity(startAt: Instant, endAt: Instant): void {
   }
   if (minutesBetween(startAt, endAt) < MIN_SHIFT_MINUTES) {
     throw new DomainError('CMD_TOO_SHORT', `Shift must be at least ${MIN_SHIFT_MINUTES} minutes`);
+  }
+  if (minutesBetween(startAt, endAt) > MAX_SHIFT_HOURS * 60) {
+    throw new DomainError('CMD_TOO_LONG', `Shift must not exceed ${MAX_SHIFT_HOURS} hours`);
   }
 }
 

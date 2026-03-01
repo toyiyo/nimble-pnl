@@ -52,6 +52,19 @@ describe('assertTimeValidity', () => {
       'CMD_TOO_SHORT',
     );
   });
+
+  it('rejects duration > 16 hours', () => {
+    // 14:00 to next day 08:00 = 18 hours
+    expectDomainError(
+      () => assertTimeValidity('2026-02-28T14:00:00Z', '2026-03-01T08:00:00Z'),
+      'CMD_TOO_LONG',
+    );
+  });
+
+  it('allows exactly 16 hours', () => {
+    // 06:00 to 22:00 = 16 hours
+    expect(() => assertTimeValidity('2026-02-28T06:00:00Z', '2026-02-28T22:00:00Z')).not.toThrow();
+  });
 });
 
 describe('assertIdentityComplete', () => {

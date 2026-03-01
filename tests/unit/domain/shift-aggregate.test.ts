@@ -126,6 +126,31 @@ describe('evolve', () => {
     );
     expect(s.notes).toBe('Training shift');
   });
+
+  it('applies ShiftTypeChanged', () => {
+    const s = evolve(
+      { ...emptyState(shiftId), shiftTypeId: 'morning', status: 'Draft', version: 1 },
+      { ...envelope(), type: 'ShiftTypeChanged', payload: { oldShiftTypeId: 'morning', newShiftTypeId: 'evening' } },
+    );
+    expect(s.shiftTypeId).toBe('evening');
+  });
+
+  it('applies ShiftStationsChanged', () => {
+    const s = evolve(
+      { ...emptyState(shiftId), stations: ['bar'], status: 'Draft', version: 1 },
+      { ...envelope(), type: 'ShiftStationsChanged', payload: { oldStations: ['bar'], newStations: ['bar', 'patio'] } },
+    );
+    expect(s.stations).toEqual(['bar', 'patio']);
+  });
+
+  it('applies ShiftUnpublished', () => {
+    const s = evolve(
+      { ...emptyState(shiftId), status: 'Published', publishedAt: now, version: 2 },
+      { ...envelope(), type: 'ShiftUnpublished', payload: { reason: 'Mistake' } },
+    );
+    expect(s.status).toBe('Draft');
+    expect(s.publishedAt).toBeUndefined();
+  });
 });
 
 describe('replay', () => {

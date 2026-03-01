@@ -399,7 +399,7 @@ export const ShiftImportSheet = ({
   };
 
   const handleBulkCreateAll = async () => {
-    const toCreate = employeeMatches.filter(m => m.matchConfidence === 'none' && m.action !== 'link');
+    const toCreate = employeeMatches.filter(m => m.action === 'create');
     if (!toCreate.length) return;
 
     setIsCreatingEmployees(true);

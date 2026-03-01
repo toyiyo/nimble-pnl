@@ -2,7 +2,7 @@ import { localToUTC } from '@/utils/timezoneUtils';
 
 export interface ParsedShift {
   employeeName: string;
-  startTime: string;  // Local ISO without timezone: 2026-02-28T10:00:00.000
+  startTime: string;  // ISO: local (2026-02-28T10:00:00.000) or UTC with Z when timezone provided
   endTime: string;
   position: string;
   location?: string;

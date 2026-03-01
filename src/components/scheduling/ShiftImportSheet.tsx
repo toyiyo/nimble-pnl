@@ -61,18 +61,18 @@ const STEP_LABELS: Record<ImportStep, string> = {
 const STEP_ORDER: ImportStep[] = ['upload', 'mapping', 'employees', 'preview', 'importing'];
 
 function parseDateAndTime(dateStr?: string, timeStr?: string, timezone?: string): string | null {
-  if (timezone && dateStr && timeStr) {
-    const d = new Date([dateStr, timeStr].filter(Boolean).join(' ').trim());
-    if (Number.isNaN(d.getTime())) return null;
+  const combined = [dateStr, timeStr].filter(Boolean).join(' ').trim();
+  if (!combined) return null;
+  const d = new Date(combined);
+  if (Number.isNaN(d.getTime())) return null;
+
+  if (timezone) {
     const pad = (n: number) => n.toString().padStart(2, '0');
     const dateOnly = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const timeOnly = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     return localToUTC(dateOnly, timeOnly, timezone);
   }
-  const combined = [dateStr, timeStr].filter(Boolean).join(' ').trim();
-  if (!combined) return null;
-  const d = new Date(combined);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  return d.toISOString();
 }
 
 function resolveTime(

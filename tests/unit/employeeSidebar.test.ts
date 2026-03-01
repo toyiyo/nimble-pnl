@@ -52,7 +52,10 @@ describe('countShiftsForEmployee', () => {
     expect(countShiftsForEmployee(shifts as Shift[], 'e99')).toBe(0);
   });
 
-  it('excludes cancelled shifts', () => {
-    expect(countShiftsForEmployee(shifts as Shift[], 'e1')).toBe(2);
+  it('returns 0 when all shifts are cancelled', () => {
+    const allCancelled: Partial<Shift>[] = [
+      { id: 's10', employee_id: 'e9', status: 'cancelled' },
+    ];
+    expect(countShiftsForEmployee(allCancelled as Shift[], 'e9')).toBe(0);
   });
 });

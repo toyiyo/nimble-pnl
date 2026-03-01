@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -97,9 +97,17 @@ export const ShiftBlock = memo(
       disabled: shift.locked,
     });
 
-    if (isDragging) {
-      wasDragging.current = true;
-    }
+    useEffect(() => {
+      if (isDragging) {
+        wasDragging.current = true;
+      } else {
+        // Reset after microtask so click handler can check it first
+        const timer = setTimeout(() => {
+          wasDragging.current = false;
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }, [isDragging]);
 
     const handleClick = () => {
       if (wasDragging.current) {

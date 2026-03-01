@@ -303,9 +303,19 @@ export function useShiftPlanner(
       if (!restaurantId) return false;
 
       try {
-        const date = input.newStartTime.split('T')[0];
-        const startHHMM = input.newStartTime.split('T')[1]?.substring(0, 5);
-        const endHHMM = input.newEndTime.split('T')[1]?.substring(0, 5);
+        const [date, startTimePart] = input.newStartTime.split('T');
+        const [, endTimePart] = input.newEndTime.split('T');
+
+        if (!startTimePart || !endTimePart) {
+          setValidationResult(errorToValidationResult(
+            new Error('Invalid time format'),
+            'Invalid shift time',
+          ));
+          return false;
+        }
+
+        const startHHMM = startTimePart.substring(0, 5);
+        const endHHMM = endTimePart.substring(0, 5);
 
         const interval = ShiftInterval.create(date, startHHMM, endHHMM);
 

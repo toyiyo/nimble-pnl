@@ -13,7 +13,7 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { ShiftInterval, formatLocalDate } from '@/lib/shiftInterval';
 import { validateShift, ValidationResult } from '@/lib/shiftValidator';
 
-import type { Shift } from '@/types/scheduling';
+import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (tested without React)
@@ -67,6 +67,65 @@ export function buildGridData(
     }
 
     dayShifts.push(shift);
+  }
+
+  return grid;
+}
+
+/**
+ * Groups shifts into a Map<templateId, Map<dayString, Shift[]>>.
+ * Matches shifts to templates by comparing start_time (HH:MM:SS),
+ * end_time (HH:MM:SS), and position.
+ * Unmatched shifts go under '__unmatched__'. Cancelled shifts are excluded.
+ */
+export function buildTemplateGridData(
+  shifts: Shift[],
+  templates: ShiftTemplate[],
+  weekDays: string[],
+): Map<string, Map<string, Shift[]>> {
+  const weekDaySet = new Set(weekDays);
+  const grid = new Map<string, Map<string, Shift[]>>();
+
+  // Initialize empty maps for each template
+  for (const t of templates) {
+    grid.set(t.id, new Map());
+  }
+  grid.set('__unmatched__', new Map());
+
+  for (const shift of shifts) {
+    if (shift.status === 'cancelled') continue;
+    const dayStr = shift.start_time.split('T')[0];
+    if (!weekDaySet.has(dayStr)) continue;
+
+    // Extract HH:MM:SS from ISO timestamp
+    const shiftStart = shift.start_time.split('T')[1]?.substring(0, 8);
+    const shiftEnd = shift.end_time.split('T')[1]?.substring(0, 8);
+
+    // Find matching template
+    let matched = false;
+    for (const t of templates) {
+      if (t.start_time === shiftStart && t.end_time === shiftEnd && t.position === shift.position) {
+        const templateDays = grid.get(t.id)!;
+        let dayShifts = templateDays.get(dayStr);
+        if (!dayShifts) {
+          dayShifts = [];
+          templateDays.set(dayStr, dayShifts);
+        }
+        dayShifts.push(shift);
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      const unmatched = grid.get('__unmatched__')!;
+      let dayShifts = unmatched.get(dayStr);
+      if (!dayShifts) {
+        dayShifts = [];
+        unmatched.set(dayStr, dayShifts);
+      }
+      dayShifts.push(shift);
+    }
   }
 
   return grid;

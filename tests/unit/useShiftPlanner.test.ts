@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildGridData, getWeekDays } from '@/hooks/useShiftPlanner';
-import type { Shift } from '@/types/scheduling';
+import { buildGridData, buildTemplateGridData, getWeekDays } from '@/hooks/useShiftPlanner';
+import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 function mockShift(overrides: Partial<Shift>): Shift {
   return {
@@ -137,6 +137,53 @@ describe('useShiftPlanner utilities', () => {
       expect(grid.get('e1')?.size).toBe(2); // 2 days with shifts
       expect(grid.get('e2')?.size).toBe(1);
       expect(grid.get('e3')?.size).toBe(1);
+    });
+  });
+
+  describe('buildTemplateGridData', () => {
+    const templates: ShiftTemplate[] = [
+      { id: 't1', start_time: '06:00:00', end_time: '12:00:00', position: 'Server', days: [1, 2, 3, 4, 5], name: 'Morning', restaurant_id: 'r1', break_duration: 0, is_active: true, created_at: '', updated_at: '' },
+      { id: 't2', start_time: '17:00:00', end_time: '23:00:00', position: 'Bartender', days: [0, 6], name: 'Evening', restaurant_id: 'r1', break_duration: 0, is_active: true, created_at: '', updated_at: '' },
+    ];
+
+    const weekDays = ['2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06', '2026-03-07', '2026-03-08'];
+
+    it('should group shifts by template ID and day', () => {
+      const shifts = [
+        mockShift({ id: 's1', employee_id: 'e1', start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00', position: 'Server', status: 'scheduled' }),
+        mockShift({ id: 's2', employee_id: 'e2', start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00', position: 'Server', status: 'scheduled' }),
+      ];
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      const t1Days = grid.get('t1');
+      expect(t1Days).toBeDefined();
+      const monShifts = t1Days!.get('2026-03-02');
+      expect(monShifts).toHaveLength(2);
+    });
+
+    it('should not match shifts to wrong template', () => {
+      const shifts = [
+        mockShift({ id: 's1', employee_id: 'e1', start_time: '2026-03-02T17:00:00', end_time: '2026-03-02T23:00:00', position: 'Bartender', status: 'scheduled' }),
+      ];
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      const t1Days = grid.get('t1');
+      expect(t1Days?.get('2026-03-02') ?? []).toHaveLength(0);
+    });
+
+    it('should put unmatched shifts under __unmatched__', () => {
+      const shifts = [
+        mockShift({ id: 's1', employee_id: 'e1', start_time: '2026-03-02T14:00:00', end_time: '2026-03-02T18:00:00', position: 'Host', status: 'scheduled' }),
+      ];
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      const unmatched = grid.get('__unmatched__');
+      expect(unmatched?.get('2026-03-02')).toHaveLength(1);
+    });
+
+    it('should exclude cancelled shifts', () => {
+      const shifts = [
+        mockShift({ id: 's1', employee_id: 'e1', start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00', position: 'Server', status: 'cancelled' }),
+      ];
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      expect(grid.get('t1')?.get('2026-03-02') ?? []).toHaveLength(0);
     });
   });
 });

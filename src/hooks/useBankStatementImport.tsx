@@ -497,11 +497,32 @@ export function useBankStatementImport() {
         // Mark line as imported
         await supabase
           .from('bank_statement_lines')
-          .update({ 
+          .update({
             is_imported: true,
-            imported_transaction_id: newTransaction.id 
+            imported_transaction_id: newTransaction.id
           })
           .eq('id', line.id);
+
+        // If the user overrode a previously-deleted exclusion, remove the tombstone
+        // so future imports of the same transaction won't be blocked
+        if (line.was_previously_deleted && line.transaction_date && line.amount !== null) {
+          const { data: fpResult } = await supabase.rpc(
+            'compute_transaction_fingerprint' as any,
+            {
+              p_transaction_date: line.transaction_date,
+              p_amount: line.amount,
+              p_description: line.description || '',
+            }
+          );
+
+          if (fpResult) {
+            await supabase
+              .from('deleted_bank_transactions')
+              .delete()
+              .eq('restaurant_id', selectedRestaurant.restaurant_id)
+              .eq('fingerprint', fpResult as string);
+          }
+        }
 
         importedCount++;
       }

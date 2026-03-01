@@ -40,7 +40,7 @@ export function validateShift(
       s.id !== options?.excludeShiftId,
   );
 
-  // Check overlaps
+  // Check overlaps and clopen (rest hours) in a single pass
   for (const existing of employeeShifts) {
     const existingInterval = ShiftInterval.fromTimestamps(
       existing.start_time,
@@ -54,15 +54,6 @@ export function validateShift(
         message: `Overlaps with existing shift (${formatTime(existing.start_time)} - ${formatTime(existing.end_time)})`,
       });
     }
-  }
-
-  // Check clopen (rest hours) - both directions
-  for (const existing of employeeShifts) {
-    const existingInterval = ShiftInterval.fromTimestamps(
-      existing.start_time,
-      existing.end_time,
-      existing.start_time.split('T')[0],
-    );
 
     // Rest after existing shift ends, before proposed starts
     const restAfterExisting =

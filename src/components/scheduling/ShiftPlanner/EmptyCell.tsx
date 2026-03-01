@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core';
 
 import { Plus } from 'lucide-react';
 
+import { formatDayLabel } from '@/lib/shiftInterval';
 import { cn } from '@/lib/utils';
 
 interface EmptyCellProps {
@@ -11,13 +12,6 @@ interface EmptyCellProps {
   employeeName?: string;
   day: string;
   onClickCreate: (employeeId: string, day: string) => void;
-}
-
-/** Format YYYY-MM-DD as a readable date like "Mon, Feb 28". */
-function formatDayLabel(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 export const EmptyCell = memo(function EmptyCell({

@@ -19,6 +19,8 @@ import {
 
 import { Clock } from 'lucide-react';
 
+import { formatDayLabel } from '@/lib/shiftInterval';
+
 interface ShiftQuickCreateProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -33,18 +35,6 @@ interface ShiftQuickCreateProps {
     endTime: string;
     position: string;
   }) => void;
-}
-
-/**
- * Format YYYY-MM-DD into a readable date like "Mon, Mar 3".
- */
-function formatDayLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00'); // noon to avoid timezone shift
-  return d.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 export function ShiftQuickCreate({

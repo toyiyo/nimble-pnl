@@ -119,8 +119,14 @@ export class ShiftInterval {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Format YYYY-MM-DD as a readable label like "Mon, Mar 3". Uses noon anchor to avoid timezone edge cases. */
+export function formatDayLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
 /** Format a Date as YYYY-MM-DD using the local timezone (avoids UTC-shift bugs). */
-function formatLocalDate(date: Date): string {
+export function formatLocalDate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');

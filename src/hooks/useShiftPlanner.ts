@@ -10,7 +10,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useShifts, useCreateShift, useUpdateShift, useDeleteShift } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
 
-import { ShiftInterval } from '@/lib/shiftInterval';
+import { ShiftInterval, formatLocalDate } from '@/lib/shiftInterval';
 import { validateShift, ValidationResult } from '@/lib/shiftValidator';
 
 import type { Shift } from '@/types/scheduling';
@@ -18,14 +18,6 @@ import type { Shift } from '@/types/scheduling';
 // ---------------------------------------------------------------------------
 // Pure utility functions (tested without React)
 // ---------------------------------------------------------------------------
-
-/** Format a Date as YYYY-MM-DD using local timezone (avoids UTC-shift bugs). */
-function formatLocalDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 /**
  * Returns an array of 7 date strings (YYYY-MM-DD) starting from weekStart.
@@ -83,6 +75,15 @@ export function buildGridData(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function errorToValidationResult(err: unknown, fallback: string): ValidationResult {
+  const message = (err as Error).message || fallback;
+  return {
+    valid: false,
+    errors: [{ code: message, message }],
+    warnings: [],
+  };
+}
 
 /**
  * Get the Monday of the week containing the given date.
@@ -285,18 +286,8 @@ export function useShiftPlanner(
 
         setValidationResult(null);
         return true;
-      } catch (error) {
-        // ShiftInterval.create can throw for invalid durations
-        setValidationResult({
-          valid: false,
-          errors: [
-            {
-              code: (error as Error).message || 'UNKNOWN',
-              message: (error as Error).message || 'Invalid shift',
-            },
-          ],
-          warnings: [],
-        });
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Invalid shift'));
         return false;
       }
     },
@@ -336,17 +327,8 @@ export function useShiftPlanner(
 
         setValidationResult(null);
         return true;
-      } catch (error) {
-        setValidationResult({
-          valid: false,
-          errors: [
-            {
-              code: (error as Error).message || 'UNKNOWN',
-              message: (error as Error).message || 'Invalid shift time',
-            },
-          ],
-          warnings: [],
-        });
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Invalid shift time'));
         return false;
       }
     },
@@ -384,18 +366,8 @@ export function useShiftPlanner(
 
         setValidationResult(null);
         return true;
-      } catch (error) {
-        setValidationResult({
-          valid: false,
-          errors: [
-            {
-              code: (error as Error).message || 'UNKNOWN',
-              message:
-                (error as Error).message || 'Cannot reassign this shift',
-            },
-          ],
-          warnings: [],
-        });
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Cannot reassign this shift'));
         return false;
       }
     },

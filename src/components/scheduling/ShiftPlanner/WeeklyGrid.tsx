@@ -12,6 +12,7 @@ import {
 
 import type { Shift, Employee } from '@/types/scheduling';
 
+import { formatLocalDate } from '@/lib/shiftInterval';
 import { cn } from '@/lib/utils';
 
 import { ShiftBlock } from './ShiftBlock';
@@ -27,17 +28,6 @@ interface WeeklyGridProps {
 }
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-/**
- * Get today as YYYY-MM-DD in local timezone.
- */
-function todayStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 /**
  * Format day number from YYYY-MM-DD.
@@ -63,7 +53,7 @@ export function WeeklyGrid({
     }),
   );
 
-  const today = useMemo(() => todayStr(), []);
+  const today = useMemo(() => formatLocalDate(new Date()), []);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {

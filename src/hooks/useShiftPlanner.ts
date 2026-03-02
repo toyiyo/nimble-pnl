@@ -161,7 +161,7 @@ function errorToValidationResult(err: unknown, fallback: string): ValidationResu
  * Get the Monday of the week containing the given date.
  * Sets time to midnight local.
  */
-function getMondayOfWeek(date: Date): Date {
+export function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   const day = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
@@ -173,7 +173,7 @@ function getMondayOfWeek(date: Date): Date {
 /**
  * Compute the end of the week (Sunday 23:59:59.999) from a Monday start.
  */
-function getWeekEnd(monday: Date): Date {
+export function getWeekEnd(monday: Date): Date {
   const end = new Date(monday);
   end.setDate(monday.getDate() + 6);
   end.setHours(23, 59, 59, 999);
@@ -183,7 +183,7 @@ function getWeekEnd(monday: Date): Date {
 /**
  * Compute total scheduled hours across all shifts (excluding breaks).
  */
-function computeTotalHours(shifts: Shift[]): number {
+export function computeTotalHours(shifts: Shift[]): number {
   let total = 0;
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;

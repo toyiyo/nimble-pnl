@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGridData, buildTemplateGridData, getWeekDays } from '@/hooks/useShiftPlanner';
+import { buildGridData, buildTemplateGridData, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime } from '@/hooks/useShiftPlanner';
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 function mockShift(overrides: Partial<Shift>): Shift {
@@ -232,6 +232,136 @@ describe('useShiftPlanner utilities', () => {
       const grid = buildTemplateGridData(shifts, templates, weekDays);
       const t1Days = grid.get('t1');
       expect(t1Days?.get('2026-03-02')).toHaveLength(1);
+    });
+  });
+
+  describe('formatLocalTime', () => {
+    it('should extract local HH:MM:SS from a naive ISO string', () => {
+      expect(formatLocalTime('2026-03-02T06:00:00')).toBe('06:00:00');
+      expect(formatLocalTime('2026-03-02T23:30:45')).toBe('23:30:45');
+    });
+
+    it('should convert UTC timestamp to local time', () => {
+      const localSixAm = new Date('2026-03-02T06:00:00');
+      const utcStr = localSixAm.toISOString();
+      expect(formatLocalTime(utcStr)).toBe('06:00:00');
+    });
+
+    it('should handle +00:00 suffix', () => {
+      const localNoon = new Date('2026-03-02T12:00:00');
+      const offsetStr = localNoon.toISOString().replace('Z', '+00:00');
+      expect(formatLocalTime(offsetStr)).toBe('12:00:00');
+    });
+
+    it('should handle midnight', () => {
+      expect(formatLocalTime('2026-03-02T00:00:00')).toBe('00:00:00');
+    });
+  });
+
+  describe('getMondayOfWeek', () => {
+    it('should return same date when given a Monday', () => {
+      const monday = new Date('2026-03-02T10:30:00');
+      const result = getMondayOfWeek(monday);
+      expect(result.getFullYear()).toBe(2026);
+      expect(result.getMonth()).toBe(2); // March
+      expect(result.getDate()).toBe(2);
+      expect(result.getHours()).toBe(0);
+    });
+
+    it('should go back to Monday when given a Wednesday', () => {
+      const wed = new Date('2026-03-04T14:00:00');
+      const result = getMondayOfWeek(wed);
+      expect(result.getDate()).toBe(2);
+    });
+
+    it('should go back to Monday when given a Sunday', () => {
+      const sun = new Date('2026-03-08T12:00:00');
+      const result = getMondayOfWeek(sun);
+      expect(result.getDate()).toBe(2);
+    });
+
+    it('should go back to Monday when given a Saturday', () => {
+      const sat = new Date('2026-03-07T12:00:00');
+      const result = getMondayOfWeek(sat);
+      expect(result.getDate()).toBe(2);
+    });
+
+    it('should handle month boundary (Sunday in March, Monday in Feb)', () => {
+      const sun = new Date('2026-03-01T12:00:00');
+      const result = getMondayOfWeek(sun);
+      expect(result.getMonth()).toBe(1); // February
+      expect(result.getDate()).toBe(23);
+    });
+
+    it('should set time to midnight', () => {
+      const d = new Date('2026-03-04T15:30:45');
+      const result = getMondayOfWeek(d);
+      expect(result.getHours()).toBe(0);
+      expect(result.getMinutes()).toBe(0);
+      expect(result.getSeconds()).toBe(0);
+      expect(result.getMilliseconds()).toBe(0);
+    });
+  });
+
+  describe('getWeekEnd', () => {
+    it('should return Sunday 23:59:59.999 from a Monday', () => {
+      const monday = new Date('2026-03-02T00:00:00');
+      const end = getWeekEnd(monday);
+      expect(end.getDate()).toBe(8); // Sunday March 8
+      expect(end.getHours()).toBe(23);
+      expect(end.getMinutes()).toBe(59);
+      expect(end.getSeconds()).toBe(59);
+      expect(end.getMilliseconds()).toBe(999);
+    });
+
+    it('should handle month boundary', () => {
+      const monday = new Date('2026-02-23T00:00:00');
+      const end = getWeekEnd(monday);
+      expect(end.getMonth()).toBe(2); // March
+      expect(end.getDate()).toBe(1);
+    });
+  });
+
+  describe('computeTotalHours', () => {
+    it('should compute hours for a single shift', () => {
+      const shifts = [
+        mockShift({ start_time: '2026-03-02T08:00:00', end_time: '2026-03-02T16:00:00', break_duration: 0 }),
+      ];
+      expect(computeTotalHours(shifts)).toBe(8);
+    });
+
+    it('should subtract break duration', () => {
+      const shifts = [
+        mockShift({ start_time: '2026-03-02T08:00:00', end_time: '2026-03-02T16:00:00', break_duration: 30 }),
+      ];
+      expect(computeTotalHours(shifts)).toBe(7.5);
+    });
+
+    it('should exclude cancelled shifts', () => {
+      const shifts = [
+        mockShift({ start_time: '2026-03-02T08:00:00', end_time: '2026-03-02T16:00:00', break_duration: 0, status: 'scheduled' }),
+        mockShift({ start_time: '2026-03-03T08:00:00', end_time: '2026-03-03T16:00:00', break_duration: 0, status: 'cancelled' }),
+      ];
+      expect(computeTotalHours(shifts)).toBe(8);
+    });
+
+    it('should sum multiple shifts', () => {
+      const shifts = [
+        mockShift({ start_time: '2026-03-02T08:00:00', end_time: '2026-03-02T12:00:00', break_duration: 0 }),
+        mockShift({ start_time: '2026-03-02T14:00:00', end_time: '2026-03-02T20:00:00', break_duration: 0 }),
+      ];
+      expect(computeTotalHours(shifts)).toBe(10);
+    });
+
+    it('should return 0 for empty shifts', () => {
+      expect(computeTotalHours([])).toBe(0);
+    });
+
+    it('should handle shifts where break exceeds duration (net 0)', () => {
+      const shifts = [
+        mockShift({ start_time: '2026-03-02T08:00:00', end_time: '2026-03-02T08:30:00', break_duration: 60 }),
+      ];
+      expect(computeTotalHours(shifts)).toBe(0);
     });
   });
 

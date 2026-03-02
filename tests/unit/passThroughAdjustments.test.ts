@@ -90,6 +90,20 @@ describe('classifyPassThroughItem', () => {
 
       expect(classifyPassThroughItem(item)).toBe('other');
     });
+
+    it('does not classify liability with subtype containing "tip" substring as tips', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_tip_related',
+          account_name: 'Some Liability',
+        },
+      });
+      // subtype.includes('tip') would match this, but exact match should not
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
     it('does not classify revenue accounts as pass-through', () => {
       const item = createRow({
         is_categorized: true,

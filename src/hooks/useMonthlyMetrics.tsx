@@ -288,7 +288,7 @@ export function useMonthlyMetrics(
           if ((subtype.includes('sales') && subtype.includes('tax')) ||
               (accountName.includes('sales') && accountName.includes('tax'))) {
             month.sales_tax += Math.round(sale.total_price * 100);
-          } else if (subtype.includes('tip') || hasTipKeyword(accountName)) {
+          } else if (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(accountName)) {
             month.tips += Math.round(sale.total_price * 100);
           } else {
             month.other_liabilities += Math.round(sale.total_price * 100);

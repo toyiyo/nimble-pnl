@@ -86,7 +86,7 @@ export function classifyPassThroughItem(item: PassThroughRow): PassThroughType {
         return 'tax';
       }
       // Check for tip
-      if (subtype.includes('tip') || subtype === 'tips' || hasTipKeyword(accountName)) {
+      if (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(accountName)) {
         return 'tip';
       }
       // Other liabilities (service charges, fees, etc.)

@@ -56,7 +56,7 @@ BEGIN
         WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
         THEN 'tax'
-        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%'
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable')
           OR LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'
         THEN 'tip'
         ELSE 'other_liability'
@@ -79,7 +79,7 @@ BEGIN
         WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
         THEN 'tax'
-        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%'
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable')
           OR LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'
         THEN 'tip'
         ELSE 'other_liability'

@@ -38,7 +38,15 @@ export function useDeletedBankTransactions(restaurantId: string | undefined) {
   });
 }
 
-export function useRestoreTransaction() {
+type TombstoneRpcName = 'restore_deleted_transaction' | 'permanently_delete_tombstone';
+
+function useTombstoneMutation(
+  rpcName: TombstoneRpcName,
+  successTitle: string,
+  successDescription: string,
+  errorTitle: string,
+  extraInvalidations?: string[][],
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -50,67 +58,43 @@ export function useRestoreTransaction() {
       tombstoneId: string;
       restaurantId: string;
     }) => {
-      const { data, error } = await supabase.rpc('restore_deleted_transaction', {
+      const { data, error } = await supabase.rpc(rpcName, {
         p_tombstone_id: tombstoneId,
         p_restaurant_id: restaurantId,
       });
       if (error) throw error;
       const result = data as { success: boolean; error?: string };
-      if (!result.success) throw new Error(result.error || 'Failed to restore');
+      if (!result.success) throw new Error(result.error || `Failed: ${rpcName}`);
       return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deleted-bank-transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
-      toast({
-        title: "Transaction restored",
-        description: "The transaction has been moved back to active.",
-      });
+      for (const key of extraInvalidations ?? []) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
+      toast({ title: successTitle, description: successDescription });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error restoring",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: errorTitle, description: error.message, variant: "destructive" });
     },
   });
 }
 
-export function usePermanentlyDeleteTombstone() {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
+export function useRestoreTransaction() {
+  return useTombstoneMutation(
+    'restore_deleted_transaction',
+    "Transaction restored",
+    "The transaction has been moved back to active.",
+    "Error restoring",
+    [['bank-transactions']],
+  );
+}
 
-  return useMutation({
-    mutationFn: async ({
-      tombstoneId,
-      restaurantId,
-    }: {
-      tombstoneId: string;
-      restaurantId: string;
-    }) => {
-      const { data, error } = await supabase.rpc('permanently_delete_tombstone', {
-        p_tombstone_id: tombstoneId,
-        p_restaurant_id: restaurantId,
-      });
-      if (error) throw error;
-      const result = data as { success: boolean; error?: string };
-      if (!result.success) throw new Error(result.error || 'Failed to permanently delete');
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deleted-bank-transactions'] });
-      toast({
-        title: "Permanently deleted",
-        description: "The transaction record has been permanently removed.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+export function usePermanentlyDeleteTombstone() {
+  return useTombstoneMutation(
+    'permanently_delete_tombstone',
+    "Permanently deleted",
+    "The transaction record has been permanently removed.",
+    "Error",
+  );
 }

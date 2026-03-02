@@ -42,6 +42,53 @@ interface DeletedRowDisplayValues {
   isNegative: boolean;
 }
 
+// Shared action dropdown for both desktop rows and mobile cards
+function TransactionActionsDropdown({
+  transaction,
+  onRestore,
+  onPermanentDelete,
+  isRestoring,
+  triggerClassName,
+}: {
+  transaction: DeletedBankTransaction;
+  onRestore: (transaction: DeletedBankTransaction) => void;
+  onPermanentDelete: (transaction: DeletedBankTransaction) => void;
+  isRestoring: boolean;
+  triggerClassName?: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={triggerClassName ?? "h-8 w-8"}
+          aria-label="Transaction actions"
+          disabled={isRestoring}
+        >
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem
+          onClick={() => onRestore(transaction)}
+          className="text-[13px]"
+        >
+          <RotateCcw className="h-4 w-4 mr-2" />
+          Restore
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => onPermanentDelete(transaction)}
+          className="text-[13px] text-destructive focus:text-destructive"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Permanently Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 // Column widths for consistent layout
 const COLUMN_WIDTHS = {
   date: "w-[110px]",
@@ -119,35 +166,13 @@ const MemoizedDeletedRow = memo(
 
         {/* Actions */}
         <div className={COLUMN_WIDTHS.actions}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label="Transaction actions"
-                disabled={isRestoring}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem
-                onClick={() => onRestore(transaction)}
-                className="text-[13px]"
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Restore
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onPermanentDelete(transaction)}
-                className="text-[13px] text-destructive focus:text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Permanently Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TransactionActionsDropdown
+            transaction={transaction}
+            onRestore={onRestore}
+            onPermanentDelete={onPermanentDelete}
+            isRestoring={isRestoring}
+            triggerClassName="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+          />
         </div>
       </div>
     );
@@ -205,35 +230,13 @@ function DeletedTransactionCard({
           Deleted {displayValues.formattedDeletedAt}
         </div>
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            aria-label="Transaction actions"
-            disabled={isRestoring}
-          >
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem
-            onClick={() => onRestore(transaction)}
-            className="text-[13px]"
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Restore
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => onPermanentDelete(transaction)}
-            className="text-[13px] text-destructive focus:text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Permanently Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <TransactionActionsDropdown
+        transaction={transaction}
+        onRestore={onRestore}
+        onPermanentDelete={onPermanentDelete}
+        isRestoring={isRestoring}
+        triggerClassName="h-8 w-8 shrink-0"
+      />
     </div>
   );
 }
@@ -386,117 +389,85 @@ export function DeletedTransactionsList({
   }
 
   // Mobile card view
-  if (isMobile) {
-    return (
-      <>
-        <div className="space-y-3 px-4">
-          {transactions.map((transaction) => {
-            const displayValues = displayValuesMap.get(transaction.id);
-            if (!displayValues) return null;
+  const mobileView = (
+    <div className="space-y-3 px-4">
+      {transactions.map((transaction) => {
+        const dv = displayValuesMap.get(transaction.id);
+        if (!dv) return null;
+        return (
+          <DeletedTransactionCard
+            key={transaction.id}
+            transaction={transaction}
+            displayValues={dv}
+            onRestore={handleRestore}
+            onPermanentDelete={handlePermanentDelete}
+            isRestoring={restoreMutation.isPending}
+          />
+        );
+      })}
+    </div>
+  );
+
+  // Desktop virtualized view
+  const desktopView = (
+    <div className="w-full overflow-hidden">
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50 font-medium text-sm text-muted-foreground">
+        <div className={COLUMN_WIDTHS.date}>Date</div>
+        <div className={COLUMN_WIDTHS.description}>Description</div>
+        <div className={COLUMN_WIDTHS.merchant}>Merchant</div>
+        <div className={COLUMN_WIDTHS.amount}>Amount</div>
+        <div className={COLUMN_WIDTHS.deletedAt}>Deleted</div>
+        <div className={COLUMN_WIDTHS.actions}>Actions</div>
+      </div>
+
+      {/* Virtualized rows container */}
+      <div ref={parentRef} className="h-[600px] overflow-auto">
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: "100%",
+            position: "relative",
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const transaction = transactions[virtualRow.index];
+            if (!transaction) return null;
+
+            const dv = displayValuesMap.get(transaction.id);
+            if (!dv) return null;
+
             return (
-              <DeletedTransactionCard
+              <div
                 key={transaction.id}
-                transaction={transaction}
-                displayValues={displayValues}
-                onRestore={handleRestore}
-                onPermanentDelete={handlePermanentDelete}
-                isRestoring={restoreMutation.isPending}
-              />
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <MemoizedDeletedRow
+                  transaction={transaction}
+                  displayValues={dv}
+                  onRestore={handleRestore}
+                  onPermanentDelete={handlePermanentDelete}
+                  isRestoring={restoreMutation.isPending}
+                />
+              </div>
             );
           })}
         </div>
+      </div>
+    </div>
+  );
 
-        <AlertDialog
-          open={!!confirmDeleteTransaction}
-          onOpenChange={(open) => !open && setConfirmDeleteTransaction(null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-[17px] font-semibold text-foreground">
-                Permanently delete this transaction?
-              </AlertDialogTitle>
-              <AlertDialogDescription className="text-[13px] text-muted-foreground">
-                This will remove the deletion record. The transaction may be
-                re-imported the next time your bank syncs or you upload a
-                statement. This action cannot be undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="text-[13px]">
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleConfirmPermanentDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-[13px]"
-                disabled={permanentDeleteMutation.isPending}
-              >
-                {permanentDeleteMutation.isPending
-                  ? "Deleting..."
-                  : "Permanently Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </>
-    );
-  }
-
-  // Desktop virtualized view
   return (
     <>
-      <div className="w-full overflow-hidden">
-        {/* Header row */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50 font-medium text-sm text-muted-foreground">
-          <div className={COLUMN_WIDTHS.date}>Date</div>
-          <div className={COLUMN_WIDTHS.description}>Description</div>
-          <div className={COLUMN_WIDTHS.merchant}>Merchant</div>
-          <div className={COLUMN_WIDTHS.amount}>Amount</div>
-          <div className={COLUMN_WIDTHS.deletedAt}>Deleted</div>
-          <div className={COLUMN_WIDTHS.actions}>Actions</div>
-        </div>
-
-        {/* Virtualized rows container */}
-        <div ref={parentRef} className="h-[600px] overflow-auto">
-          <div
-            style={{
-              height: `${virtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
-            }}
-          >
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const transaction = transactions[virtualRow.index];
-              if (!transaction) return null;
-
-              const displayValues = displayValuesMap.get(transaction.id);
-              if (!displayValues) return null;
-
-              return (
-                <div
-                  key={transaction.id}
-                  data-index={virtualRow.index}
-                  ref={virtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                >
-                  <MemoizedDeletedRow
-                    transaction={transaction}
-                    displayValues={displayValues}
-                    onRestore={handleRestore}
-                    onPermanentDelete={handlePermanentDelete}
-                    isRestoring={restoreMutation.isPending}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      {isMobile ? mobileView : desktopView}
 
       {/* Permanent delete confirmation dialog - single instance */}
       <AlertDialog

@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 
-import { DndContext, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
 
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -16,6 +17,7 @@ import { PlannerHeader } from './PlannerHeader';
 import { TemplateGrid } from './TemplateGrid';
 import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
+import { DragOverlayChip } from './DragOverlayChip';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -62,6 +64,7 @@ export function ShiftPlannerTab({
 
   const { toast } = useToast();
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
+  const [activeDragEmployee, setActiveDragEmployee] = useState<{ id: string; name: string } | null>(null);
 
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
@@ -80,7 +83,20 @@ export function ShiftPlannerTab({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const employee = event.active.data.current?.employee;
+    if (employee) {
+      setActiveDragEmployee({ id: employee.id, name: employee.name });
+    }
+  }, []);
+
+  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
+    setActiveDragEmployee(null);
+  }, []);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    setActiveDragEmployee(null);
+
     const { active, over } = event;
     if (!over) return;
 
@@ -216,7 +232,12 @@ export function ShiftPlannerTab({
       )}
 
       {/* Two-panel layout */}
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <div className="flex gap-0">
           <div className="flex-1 min-w-0">
             {templates.length === 0 ? (
@@ -249,6 +270,11 @@ export function ShiftPlannerTab({
           </div>
           <EmployeeSidebar employees={employees} shifts={shifts} />
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeDragEmployee ? (
+            <DragOverlayChip name={activeDragEmployee.name} />
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       {/* Template form dialog */}

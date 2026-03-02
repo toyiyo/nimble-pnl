@@ -59,7 +59,7 @@ export function AssignmentPopover({
             onClick={onAssignAll}
           >
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            All {activeDayCount} days this week
+            All {activeDayCount} {activeDayCount === 1 ? 'day' : 'days'} this week
           </Button>
         </div>
       </DialogContent>

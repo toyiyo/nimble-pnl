@@ -272,7 +272,7 @@ describe('buildExportRows', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('uses "Unassigned" for shifts without template match', () => {
+  it('uses em dash for shifts without template match', () => {
     const shifts = [
       mockShift({
         start_time: '2026-03-02T06:00:00',

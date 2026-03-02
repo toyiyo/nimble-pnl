@@ -112,7 +112,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
       }
       if (defaultEmployee) {
         setEmployeeId(defaultEmployee.id);
-        if (defaultEmployee.position) {
+        if (defaultEmployee.position && POSITIONS.includes(defaultEmployee.position)) {
           setPosition(defaultEmployee.position);
         }
       }

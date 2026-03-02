@@ -1,0 +1,70 @@
+import { describe, it, expect } from 'vitest';
+import { localToUTC } from '@/utils/timezoneUtils';
+
+describe('localToUTC', () => {
+  it('converts America/Chicago 10:00 to UTC 16:00 in standard time', () => {
+    // CST = UTC-6
+    const result = localToUTC('2026-01-15', '10:00', 'America/Chicago');
+    expect(result).toBe('2026-01-15T16:00:00.000Z');
+  });
+
+  it('converts America/Chicago 10:00 to UTC 15:00 in daylight time', () => {
+    // CDT = UTC-5 (DST starts second Sunday of March)
+    const result = localToUTC('2026-07-15', '10:00', 'America/Chicago');
+    expect(result).toBe('2026-07-15T15:00:00.000Z');
+  });
+
+  it('converts America/New_York 09:00 to UTC 14:00 in standard time', () => {
+    // EST = UTC-5
+    const result = localToUTC('2026-01-15', '09:00', 'America/New_York');
+    expect(result).toBe('2026-01-15T14:00:00.000Z');
+  });
+
+  it('handles UTC timezone as no-op', () => {
+    const result = localToUTC('2026-03-01', '14:30', 'UTC');
+    expect(result).toBe('2026-03-01T14:30:00.000Z');
+  });
+
+  it('handles midnight correctly', () => {
+    const result = localToUTC('2026-01-15', '00:00', 'America/Chicago');
+    expect(result).toBe('2026-01-15T06:00:00.000Z');
+  });
+
+  it('handles 23:59 correctly', () => {
+    const result = localToUTC('2026-01-15', '23:59', 'America/Chicago');
+    expect(result).toBe('2026-01-16T05:59:00.000Z');
+  });
+
+  it('handles spring-forward transition day correctly', () => {
+    // 2026-03-08 is spring forward in America/Chicago
+    // 10:00 CDT = UTC-5
+    const result = localToUTC('2026-03-08', '10:00', 'America/Chicago');
+    expect(result).toBe('2026-03-08T15:00:00.000Z');
+  });
+
+  it('throws on invalid dateStr format', () => {
+    expect(() => localToUTC('abc', '10:00', 'UTC')).toThrow('Invalid dateStr format');
+    expect(() => localToUTC('2026/01/15', '10:00', 'UTC')).toThrow('Invalid dateStr format');
+  });
+
+  it('throws on invalid timeHHMM format', () => {
+    expect(() => localToUTC('2026-01-15', '10:00:00', 'UTC')).toThrow('Invalid timeHHMM format');
+    expect(() => localToUTC('2026-01-15', 'abc', 'UTC')).toThrow('Invalid timeHHMM format');
+  });
+
+  it('throws on impossible date values', () => {
+    expect(() => localToUTC('2026-02-31', '12:00', 'UTC')).toThrow('Invalid date value');
+    expect(() => localToUTC('2026-13-01', '12:00', 'UTC')).toThrow('Invalid date value');
+    expect(() => localToUTC('2026-00-15', '12:00', 'UTC')).toThrow('Invalid date value');
+  });
+
+  it('throws on impossible time values', () => {
+    expect(() => localToUTC('2026-03-02', '24:00', 'UTC')).toThrow('Invalid time value');
+    expect(() => localToUTC('2026-03-02', '12:61', 'UTC')).toThrow('Invalid time value');
+  });
+
+  it('validates leap year dates correctly', () => {
+    expect(() => localToUTC('2024-02-29', '12:00', 'UTC')).not.toThrow();
+    expect(() => localToUTC('2026-02-29', '12:00', 'UTC')).toThrow('Invalid date value');
+  });
+});

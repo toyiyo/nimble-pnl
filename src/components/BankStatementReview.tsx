@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useBankStatementImport, isLineImportable, type BankStatementLine, type BankStatementUpload } from '@/hooks/useBankStatementImport';
-import { FileText, Check, Edit, Building2, Loader2, AlertCircle, AlertTriangle, X, Plus, Copy } from 'lucide-react';
+import { FileText, Check, Edit, Building2, Loader2, AlertCircle, AlertTriangle, X, Plus, Copy, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   Table,
@@ -177,6 +177,7 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
   const unimportedLines = lines.filter((line) => !line.is_imported);
   const excludedLines = unimportedLines.filter((line) => line.user_excluded);
   const duplicateLines = unimportedLines.filter((line) => line.is_potential_duplicate);
+  const previouslyDeletedLines = unimportedLines.filter((line) => line.was_previously_deleted);
   // Use the shared isLineImportable predicate to ensure UI count matches actual import behavior
   const validLines = lines.filter((line) => isLineImportable(line));
   const invalidLines = unimportedLines.filter((line) => !isLineImportable(line) && !line.user_excluded);
@@ -192,6 +193,20 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
             <p className="mt-1 text-sm">
               These transactions match existing records by date and amount. High-confidence duplicates have been auto-excluded.
               You can include them using the actions column if needed.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Previously Deleted Alert */}
+      {previouslyDeletedLines.length > 0 && (
+        <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
+          <Trash2 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertDescription className="text-amber-700 dark:text-amber-300">
+            <strong>{previouslyDeletedLines.length} previously deleted transaction{previouslyDeletedLines.length === 1 ? '' : 's'} detected</strong>
+            <p className="mt-1 text-sm">
+              These transactions were previously imported and then deleted. They have been auto-excluded to prevent re-importing.
+              You can include them using the actions column if you want to re-import them.
             </p>
           </AlertDescription>
         </Alert>
@@ -436,6 +451,16 @@ export const BankStatementReview: React.FC<BankStatementReviewProps> = ({
                               >
                                 <Copy className="w-3 h-3" />
                                 Duplicate
+                              </Badge>
+                            )}
+                            {line.was_previously_deleted && (
+                              <Badge
+                                variant="outline"
+                                className="text-[11px] px-1.5 py-0.5 bg-amber-500/10 border-amber-500/20 text-amber-600 gap-1"
+                                title="This transaction was previously imported and then deleted"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Previously deleted
                               </Badge>
                             )}
                           </div>

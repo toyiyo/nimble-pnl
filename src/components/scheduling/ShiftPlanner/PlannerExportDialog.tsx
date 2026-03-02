@@ -67,6 +67,7 @@ export function PlannerExportDialog({
         {/* Content: two buttons */}
         <div className="px-6 py-5 space-y-3">
           <button
+            type="button"
             onClick={handleDownloadPDF}
             className="w-full flex items-center gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
             aria-label="Download PDF"
@@ -83,6 +84,7 @@ export function PlannerExportDialog({
           </button>
 
           <button
+            type="button"
             onClick={handleDownloadCSV}
             className="w-full flex items-center gap-4 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors text-left"
             aria-label="Download CSV"

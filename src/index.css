@@ -302,3 +302,14 @@ iframe[name^="__privateStripe"] {
 .dark .prose blockquote {
   @apply border-primary;
 }
+
+/* Hatched stripe pattern for inactive shift cells */
+.bg-hatched-inactive {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent,
+    transparent 4px,
+    hsl(var(--border) / 0.3) 4px,
+    hsl(var(--border) / 0.3) 5px
+  );
+}

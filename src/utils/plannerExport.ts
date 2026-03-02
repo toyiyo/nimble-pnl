@@ -295,7 +295,8 @@ export function generatePlannerPDF(options: PlannerExportOptions): void {
 
   // Footer
   const pageHeight = doc.internal.pageSize.getHeight();
-  const finalY = (doc as any).lastAutoTable?.finalY || pageHeight - 60;
+  type JsPdfWithAutoTable = jsPDF & { lastAutoTable?: { finalY?: number } };
+  const finalY = (doc as JsPdfWithAutoTable).lastAutoTable?.finalY ?? pageHeight - 60;
 
   doc.setFontSize(9);
   doc.setTextColor(100);

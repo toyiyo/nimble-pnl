@@ -8,11 +8,6 @@ import { cn } from '@/lib/utils';
 
 import { EmployeeChip } from './EmployeeChip';
 
-const INACTIVE_STRIPE_STYLE = {
-  backgroundImage:
-    'repeating-linear-gradient(135deg, transparent, transparent 4px, hsl(var(--border) / 0.3) 4px, hsl(var(--border) / 0.3) 5px)',
-} as const;
-
 interface ShiftCellProps {
   templateId: string;
   day: string;
@@ -40,8 +35,7 @@ export const ShiftCell = memo(
     if (!isActiveDay) {
       return (
         <div
-          className="min-h-[64px] p-1.5 opacity-60"
-          style={INACTIVE_STRIPE_STYLE}
+          className="min-h-[64px] p-1.5 opacity-60 bg-hatched-inactive"
           aria-label={`${day} inactive`}
         />
       );

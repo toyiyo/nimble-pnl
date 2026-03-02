@@ -36,6 +36,8 @@ export interface AdjustmentInput {
   } | null;
 }
 
+const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+
 /**
  * Classify an adjustment (tax, tip, fee, discount) into the appropriate
  * category within a monthly metrics object.
@@ -65,7 +67,7 @@ export function classifyAdjustmentIntoMonth(
     }
     
     // Check for tips
-    if (subtype.includes('tip') || accountName.includes('tip')) {
+    if (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(accountName)) {
       month.tips += priceInCents;
       return;
     }

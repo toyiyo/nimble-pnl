@@ -19,7 +19,7 @@ describe('ShiftCell day indicators', () => {
       />,
     );
     const cell = container.firstChild as HTMLElement;
-    expect(cell.style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(cell.className).toContain('bg-hatched-inactive');
   });
 
   it('renders active indicator border for active days', () => {

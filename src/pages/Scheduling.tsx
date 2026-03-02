@@ -245,6 +245,11 @@ const Scheduling = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
+  const [defaultShiftEmployee, setDefaultShiftEmployee] = useState<{
+    id: string;
+    name: string;
+    position: string | null;
+  } | undefined>();
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
@@ -359,9 +364,10 @@ const Scheduling = () => {
     setEmployeeDialogOpen(true);
   };
 
-  const handleAddShift = (date?: Date) => {
+  const handleAddShift = (date?: Date, employee?: { id: string; name: string; position: string | null }) => {
     setSelectedShift(undefined);
     setDefaultShiftDate(date);
+    setDefaultShiftEmployee(employee);
     setShiftDialogOpen(true);
   };
 
@@ -376,6 +382,7 @@ const Scheduling = () => {
     } else {
       setSelectedShift(shift);
       setDefaultShiftDate(undefined);
+      setDefaultShiftEmployee(undefined);
       setShiftDialogOpen(true);
     }
   };
@@ -1101,7 +1108,7 @@ const Scheduling = () => {
                                   "opacity-0 group-hover:opacity-100 transition-all duration-200",
                                   "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
                                 )}
-                                onClick={() => handleAddShift(day)}
+                                onClick={() => handleAddShift(day, employee)}
                               >
                                 <Plus className="h-3 w-3 mr-1" />
                                 Add
@@ -1246,6 +1253,7 @@ const Scheduling = () => {
             shift={selectedShift}
             restaurantId={restaurantId}
             defaultDate={defaultShiftDate}
+            defaultEmployee={defaultShiftEmployee}
           />
           <TimeOffRequestDialog
             open={timeOffDialogOpen}

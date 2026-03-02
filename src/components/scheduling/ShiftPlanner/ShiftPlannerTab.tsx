@@ -10,6 +10,7 @@ import { AlertCircle, CalendarOff, Users } from 'lucide-react';
 import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
@@ -29,6 +30,9 @@ interface ShiftPlannerTabProps {
 export function ShiftPlannerTab({
   restaurantId,
 }: Readonly<ShiftPlannerTabProps>) {
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantName = selectedRestaurant?.restaurant?.name;
+
   const {
     weekStart,
     weekEnd,
@@ -351,6 +355,7 @@ export function ShiftPlannerTab({
         onOpenChange={setExportDialogOpen}
         shifts={shifts}
         templates={templates}
+        restaurantName={restaurantName}
         weekDays={weekDays}
       />
     </div>

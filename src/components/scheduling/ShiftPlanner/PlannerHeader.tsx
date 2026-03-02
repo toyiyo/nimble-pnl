@@ -2,7 +2,7 @@ import { memo } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Printer } from 'lucide-react';
 
 interface PlannerHeaderProps {
   weekStart: Date;
@@ -11,6 +11,7 @@ interface PlannerHeaderProps {
   onPrevWeek: () => void;
   onNextWeek: () => void;
   onToday: () => void;
+  onExport?: () => void;
 }
 
 /**
@@ -30,6 +31,7 @@ export const PlannerHeader = memo(function PlannerHeader({
   onPrevWeek,
   onNextWeek,
   onToday,
+  onExport,
 }: PlannerHeaderProps) {
   return (
     <div className="flex items-center justify-between px-1 py-2">
@@ -70,11 +72,23 @@ export const PlannerHeader = memo(function PlannerHeader({
         </Button>
       </div>
 
-      {/* Right: summary stat */}
+      {/* Right: summary stat + export */}
       <div className="flex items-center gap-2">
         <span className="text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">{totalHours}h</span> scheduled
         </span>
+        {onExport && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={onExport}
+            aria-label="Export planner"
+          >
+            <Printer className="h-3.5 w-3.5 mr-1" />
+            Export
+          </Button>
+        )}
       </div>
     </div>
   );

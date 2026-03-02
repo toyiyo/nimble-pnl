@@ -20,6 +20,7 @@ import { TemplateGrid } from './TemplateGrid';
 import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
 import { DragOverlayChip } from './DragOverlayChip';
+import { PlannerExportDialog } from './PlannerExportDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -63,6 +64,7 @@ export function ShiftPlannerTab({
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const { toast } = useToast();
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
@@ -208,6 +210,10 @@ export function ShiftPlannerTab({
     }
   }, [editingTemplate, createTemplate, updateTemplate, restaurantId]);
 
+  const handleExport = useCallback(() => {
+    setExportDialogOpen(true);
+  }, []);
+
   // Loading state
   if (isLoading || templatesLoading) {
     return (
@@ -256,6 +262,7 @@ export function ShiftPlannerTab({
         onPrevWeek={goToPrevWeek}
         onNextWeek={goToNextWeek}
         onToday={goToToday}
+        onExport={handleExport}
       />
 
       {/* Validation alerts */}
@@ -337,6 +344,15 @@ export function ShiftPlannerTab({
           onCancel={handleCancelAssignment}
         />
       )}
+
+      {/* Export dialog */}
+      <PlannerExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        shifts={shifts}
+        templates={templates}
+        weekDays={weekDays}
+      />
     </div>
   );
 }

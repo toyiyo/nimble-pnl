@@ -36,9 +36,7 @@ export interface AdjustmentInput {
   } | null;
 }
 
-const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
-const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
-const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
+import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
 
 /**
  * Classify an adjustment (tax, tip, fee, discount) into the appropriate

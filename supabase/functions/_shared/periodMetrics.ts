@@ -111,9 +111,7 @@ function isSalesTaxAccount(account: { account_type: string; account_subtype: str
   return account.account_type === 'liability' && subtype.includes('sales') && subtype.includes('tax');
 }
 
-const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
-const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
-const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
+import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
 
 /**
  * Check if an account is a tip liability

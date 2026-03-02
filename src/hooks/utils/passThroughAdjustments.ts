@@ -8,14 +8,14 @@ const SERVICE_CHARGE_KEYWORDS = ['service charge', 'service fee', 'dual pricing'
 const DISCOUNT_KEYWORDS = ['discount', 'comp', 'coupon', 'promo'];
 const FEE_KEYWORDS = ['delivery fee', 'platform fee', 'processing fee'];
 
-function hasTipKeyword(value: string): boolean {
+export function hasTipKeyword(value: string): boolean {
   return /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
 }
 
 // Subtypes that definitively indicate tips
-const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
+export const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
 // Generic subtypes where name-based matching should apply as fallback
-const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
+export const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
 
 export interface PassThroughRow {
   item_type?: string | null;

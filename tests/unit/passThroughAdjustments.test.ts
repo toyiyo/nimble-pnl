@@ -117,6 +117,78 @@ describe('classifyPassThroughItem', () => {
       // Falls through to 'other' since no adjustment_type or item_name match
       expect(classifyPassThroughItem(item)).toBe('other');
     });
+
+    it('classifies "Tip - CREDIT" as tip (Toast POS format)', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Tip - CREDIT',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies "Gratuity Collected" as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Gratuity Collected',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('does not classify "Participation Fee" as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Participation Fee',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('does not classify "Anticipation Reserve" as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Anticipation Reserve',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('classifies account with subtype "tips" exactly', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'tips',
+          account_name: 'General Liability',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies account with subtype "tips_payable" exactly', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'tips_payable',
+          account_name: 'Tips Payable',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
   });
 
   describe('adjustment_type based classification', () => {

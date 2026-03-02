@@ -22,6 +22,13 @@ interface ShiftDialogProps {
   shift?: Shift & { _editScope?: RecurringActionScope };
   restaurantId: string;
   defaultDate?: Date;
+  defaultEmployee?: DefaultEmployee;
+}
+
+export interface DefaultEmployee {
+  id: string;
+  name: string;
+  position: string | null;
 }
 
 const POSITIONS = [
@@ -36,7 +43,7 @@ const POSITIONS = [
   'Other',
 ];
 
-export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDate }: ShiftDialogProps) => {
+export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDate, defaultEmployee }: ShiftDialogProps) => {
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -103,8 +110,14 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
         setStartDate(dateStr);
         setEndDate(dateStr);
       }
+      if (defaultEmployee) {
+        setEmployeeId(defaultEmployee.id);
+        if (defaultEmployee.position && POSITIONS.includes(defaultEmployee.position)) {
+          setPosition(defaultEmployee.position);
+        }
+      }
     }
-  }, [shift, defaultDate, open]);
+  }, [shift, defaultDate, defaultEmployee, open]);
 
   const resetForm = () => {
     setEmployeeId('');
@@ -279,7 +292,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
               <Label htmlFor="employee">
                 Employee <span className="text-destructive">*</span>
               </Label>
-              <Select value={employeeId} onValueChange={setEmployeeId} required>
+              <Select value={employeeId} onValueChange={setEmployeeId} required disabled={!!defaultEmployee && !shift}>
                 <SelectTrigger id="employee" aria-label="Select employee">
                   <SelectValue placeholder="Select employee" />
                 </SelectTrigger>

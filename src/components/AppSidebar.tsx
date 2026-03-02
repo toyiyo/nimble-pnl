@@ -297,7 +297,7 @@ export function AppSidebar() {
             <div className="flex-1 min-w-0 text-left">
               <div className="font-bold text-sm truncate">EasyShiftHQ</div>
               {selectedRestaurant && (
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="text-xs text-sidebar-foreground/60 truncate">
                   {selectedRestaurant.restaurant.name}
                 </div>
               )}

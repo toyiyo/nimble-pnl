@@ -77,6 +77,19 @@ describe('classifyPassThroughItem', () => {
       expect(classifyPassThroughItem(item)).toBe('other');
     });
 
+
+    it('does not classify non-tip words containing "tip" as tips', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Stipend Liability',
+        },
+      });
+
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
     it('does not classify revenue accounts as pass-through', () => {
       const item = createRow({
         is_categorized: true,

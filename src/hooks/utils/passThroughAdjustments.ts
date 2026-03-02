@@ -8,6 +8,10 @@ const SERVICE_CHARGE_KEYWORDS = ['service charge', 'service fee', 'dual pricing'
 const DISCOUNT_KEYWORDS = ['discount', 'comp', 'coupon', 'promo'];
 const FEE_KEYWORDS = ['delivery fee', 'platform fee', 'processing fee'];
 
+function hasTipKeyword(value: string): boolean {
+  return /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+}
+
 export interface PassThroughRow {
   item_type?: string | null;
   item_name?: string | null;
@@ -82,7 +86,7 @@ export function classifyPassThroughItem(item: PassThroughRow): PassThroughType {
         return 'tax';
       }
       // Check for tip
-      if (subtype.includes('tip') || subtype === 'tips' || accountName.includes('tip')) {
+      if (subtype.includes('tip') || subtype === 'tips' || hasTipKeyword(accountName)) {
         return 'tip';
       }
       // Other liabilities (service charges, fees, etc.)

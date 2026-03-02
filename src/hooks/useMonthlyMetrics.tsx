@@ -6,6 +6,8 @@ import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/mo
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 
+const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+
 // Re-export types/functions from shared module for backwards compatibility
 export { 
   classifyAdjustmentIntoMonth, 
@@ -286,7 +288,7 @@ export function useMonthlyMetrics(
           if ((subtype.includes('sales') && subtype.includes('tax')) ||
               (accountName.includes('sales') && accountName.includes('tax'))) {
             month.sales_tax += Math.round(sale.total_price * 100);
-          } else if (subtype.includes('tip') || accountName.includes('tip')) {
+          } else if (subtype.includes('tip') || hasTipKeyword(accountName)) {
             month.tips += Math.round(sale.total_price * 100);
           } else {
             month.other_liabilities += Math.round(sale.total_price * 100);

@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem } from './utils/passThroughAdjustments';
 import type { PassThroughType } from './utils/passThroughAdjustments';
 
+const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+
 // Re-export for backwards compatibility
 export { classifyPassThroughItem };
 export type { PassThroughType };
@@ -200,7 +202,7 @@ export function useRevenueBreakdown(
         const tipCategories = categories.filter(c => 
           c.account_type === 'liability' && (
             c.account_subtype === 'tips' ||
-            c.account_name.toLowerCase().includes('tip')
+            hasTipKeyword(c.account_name.toLowerCase())
           )
         );
 
@@ -209,7 +211,7 @@ export function useRevenueBreakdown(
           c.account_subtype !== 'sales_tax' &&
           c.account_subtype !== 'tips' &&
           !c.account_name.toLowerCase().includes('tax') &&
-          !c.account_name.toLowerCase().includes('tip')
+          !hasTipKeyword(c.account_name.toLowerCase())
         );
 
         // If no categorized liabilities were found for pass-through amounts,
@@ -523,7 +525,7 @@ export function useRevenueBreakdown(
       const tipCategories = categories.filter(c => 
         c.account_type === 'liability' && (
           c.account_subtype === 'tips' ||
-          c.account_name.toLowerCase().includes('tip')
+          hasTipKeyword(c.account_name.toLowerCase())
         )
       );
 
@@ -533,7 +535,7 @@ export function useRevenueBreakdown(
         c.account_subtype !== 'sales_tax' &&
         c.account_subtype !== 'tips' &&
         !c.account_name.toLowerCase().includes('tax') &&
-        !c.account_name.toLowerCase().includes('tip')
+        !hasTipKeyword(c.account_name.toLowerCase())
       );
 
       // Calculate totals in cents (integers) to eliminate floating-point errors

@@ -319,7 +319,7 @@ test.describe('Shift Planner v2 (Template-First)', () => {
           return { monStr, templateId: tmpl.id };
         })();
       },
-      { restId: restaurantId, empId: (employees as any)[0].id },
+      { restId: restaurantId, empId: (employees as any).find((e: any) => e.name === 'Alice Johnson').id },
     );
 
     if ((seedResult as any).error) {

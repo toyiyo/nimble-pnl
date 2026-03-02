@@ -102,7 +102,7 @@ Two-panel layout within the existing Planner tab:
    - If invalid → show error alert
 4. Remove: click X on chip → `deleteShift(shiftId)`
 
-No shift-to-shift dragging in v1. Employees only drag from sidebar into cells.
+No shift-to-shift dragging in v2. Employees only drag from sidebar into cells.
 
 ## YAGNI — Not building
 

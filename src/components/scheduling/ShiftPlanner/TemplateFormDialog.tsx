@@ -48,6 +48,7 @@ export function TemplateFormDialog({
   const [position, setPosition] = useState('');
   const [days, setDays] = useState<number[]>([]);
   const [breakDuration, setBreakDuration] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Pre-fill form when template changes or dialog opens
   useEffect(() => {
@@ -66,6 +67,7 @@ export function TemplateFormDialog({
       setDays([]);
       setBreakDuration(0);
     }
+    setIsSubmitting(false);
   }, [template, open]);
 
   const toggleDay = (day: number) => {
@@ -78,8 +80,9 @@ export function TemplateFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isValid) return;
+    if (!isValid || isSubmitting) return;
 
+    setIsSubmitting(true);
     try {
       await onSubmit({
         name: name.trim(),
@@ -92,6 +95,8 @@ export function TemplateFormDialog({
       onOpenChange(false);
     } catch {
       // Error handled by mutation's onError toast
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -252,10 +257,10 @@ export function TemplateFormDialog({
             </Button>
             <Button
               type="submit"
-              disabled={!isValid}
+              disabled={!isValid || isSubmitting}
               className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
-              {isEdit ? 'Save Changes' : 'Add Template'}
+              {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Template'}
             </Button>
           </div>
         </form>

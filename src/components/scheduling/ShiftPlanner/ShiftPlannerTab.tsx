@@ -7,11 +7,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { AlertCircle, CalendarOff, Users } from 'lucide-react';
 
-import { useShiftPlanner, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 
 import type { ShiftTemplate } from '@/types/scheduling';
+
+import { AssignmentPopover } from './AssignmentPopover';
 
 import { PlannerHeader } from './PlannerHeader';
 import { TemplateGrid } from './TemplateGrid';
@@ -65,6 +67,11 @@ export function ShiftPlannerTab({
   const { toast } = useToast();
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
   const [activeDragEmployee, setActiveDragEmployee] = useState<{ id: string; name: string } | null>(null);
+  const [pendingAssignment, setPendingAssignment] = useState<{
+    employee: { id: string; name: string };
+    template: ShiftTemplate;
+    day: string;
+  } | null>(null);
 
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
@@ -96,20 +103,25 @@ export function ShiftPlannerTab({
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveDragEmployee(null);
-
     const { active, over } = event;
     if (!over) return;
 
     const employee = active.data.current?.employee;
     if (!employee) return;
 
-    // over.id is "templateId:day"
     const [templateId, day] = String(over.id).split(':');
     if (!templateId || !day) return;
 
-    // Find the template to get times and position
     const template = templates.find((t) => t.id === templateId);
     if (!template) return;
+
+    setPendingAssignment({ employee: { id: employee.id, name: employee.name }, template, day });
+  }, [templates]);
+
+  const handleAssignDay = useCallback(async () => {
+    if (!pendingAssignment) return;
+    const { employee, template, day } = pendingAssignment;
+    setPendingAssignment(null);
 
     const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
     const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
@@ -125,19 +137,44 @@ export function ShiftPlannerTab({
 
     if (success) {
       clearValidation();
-
-      // Cell highlight
-      const cellId = `${templateId}:${day}`;
-      setHighlightCellId(cellId);
+      setHighlightCellId(`${template.id}:${day}`);
       setTimeout(() => setHighlightCellId(null), 600);
-
-      // Toast
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-      toast({
-        title: `${employee.name} assigned to ${template.name} — ${dayLabel}`,
-      });
+      toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
     }
-  }, [templates, validateAndCreate, clearValidation, toast]);
+  }, [pendingAssignment, validateAndCreate, clearValidation, toast]);
+
+  const handleAssignAll = useCallback(async () => {
+    if (!pendingAssignment) return;
+    const { employee, template } = pendingAssignment;
+    setPendingAssignment(null);
+
+    const activeDays = getActiveDaysForWeek(template, weekDays);
+    const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
+    const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
+
+    let successCount = 0;
+    for (const day of activeDays) {
+      const success = await validateAndCreate({
+        employeeId: employee.id,
+        date: day,
+        startTime: startHHMM,
+        endTime: endHHMM,
+        position: template.position,
+        breakDuration: template.break_duration,
+      });
+      if (success) successCount++;
+    }
+
+    clearValidation();
+    toast({
+      title: `${employee.name} assigned to ${template.name} — ${successCount}/${activeDays.length} days`,
+    });
+  }, [pendingAssignment, weekDays, validateAndCreate, clearValidation, toast]);
+
+  const handleCancelAssignment = useCallback(() => {
+    setPendingAssignment(null);
+  }, []);
 
   // Template CRUD handlers
   const handleAddTemplate = useCallback(() => {
@@ -285,6 +322,19 @@ export function ShiftPlannerTab({
         onSubmit={handleTemplateSubmit}
         positions={positions}
       />
+
+      {/* Assignment popover — shown after dropping an employee onto a shift cell */}
+      {pendingAssignment && (
+        <AssignmentPopover
+          open={true}
+          employeeName={pendingAssignment.employee.name}
+          shiftName={pendingAssignment.template.name}
+          activeDayCount={getActiveDaysForWeek(pendingAssignment.template, weekDays).length}
+          onAssignDay={handleAssignDay}
+          onAssignAll={handleAssignAll}
+          onCancel={handleCancelAssignment}
+        />
+      )}
     </div>
   );
 }

@@ -62,7 +62,7 @@ BEGIN
         INNER JOIN chart_of_accounts coa ON uss.category_id = coa.id
         WHERE uss.sale_id = us.id
         AND (
-          LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable')
+          LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable', 'tips payable')
           OR LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'
         )
       )

@@ -184,6 +184,11 @@ export function ShiftPlannerTab({
     setPendingAssignment(null);
   }, []);
 
+  const activeDayCount = useMemo(
+    () => pendingAssignment ? getActiveDaysForWeek(pendingAssignment.template, weekDays).length : 0,
+    [pendingAssignment, weekDays],
+  );
+
   // Template CRUD handlers
   const handleAddTemplate = useCallback(() => {
     setEditingTemplate(undefined);
@@ -342,7 +347,7 @@ export function ShiftPlannerTab({
           open={true}
           employeeName={pendingAssignment.employee.name}
           shiftName={pendingAssignment.template.name}
-          activeDayCount={getActiveDaysForWeek(pendingAssignment.template, weekDays).length}
+          activeDayCount={activeDayCount}
           onAssignDay={handleAssignDay}
           onAssignAll={handleAssignAll}
           onCancel={handleCancelAssignment}

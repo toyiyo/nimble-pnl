@@ -22,11 +22,13 @@ interface ShiftDialogProps {
   shift?: Shift & { _editScope?: RecurringActionScope };
   restaurantId: string;
   defaultDate?: Date;
-  defaultEmployee?: {
-    id: string;
-    name: string;
-    position: string | null;
-  };
+  defaultEmployee?: DefaultEmployee;
+}
+
+export interface DefaultEmployee {
+  id: string;
+  name: string;
+  position: string | null;
 }
 
 const POSITIONS = [

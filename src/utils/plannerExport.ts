@@ -3,6 +3,8 @@ import autoTable from 'jspdf-autotable';
 
 import { formatLocalTime } from '@/hooks/useShiftPlanner';
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
+import { formatLocalDate } from '@/lib/shiftInterval';
+import { exportToCSV } from '@/utils/csvExport';
 
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
@@ -79,9 +81,12 @@ export function findTemplateForShift(
   shift: Shift,
   templates: ShiftTemplate[],
 ): ShiftTemplate | undefined {
-  const shiftStart = formatLocalTime(shift.start_time);
-  const shiftEnd = formatLocalTime(shift.end_time);
-  const dayOfWeek = new Date(shift.start_time).getDay();
+  const startDate = new Date(shift.start_time);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const shiftStart = `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}:${pad(startDate.getSeconds())}`;
+  const endDate = new Date(shift.end_time);
+  const shiftEnd = `${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:${pad(endDate.getSeconds())}`;
+  const dayOfWeek = startDate.getDay();
 
   return templates.find(
     (t) =>
@@ -108,11 +113,7 @@ export function buildExportRows(
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;
 
-    const startDate = new Date(shift.start_time);
-    const y = startDate.getFullYear();
-    const m = String(startDate.getMonth() + 1).padStart(2, '0');
-    const day = String(startDate.getDate()).padStart(2, '0');
-    const dateStr = `${y}-${m}-${day}`;
+    const dateStr = formatLocalDate(new Date(shift.start_time));
 
     if (!weekDaySet.has(dateStr)) continue;
 
@@ -173,19 +174,23 @@ export function generatePlannerCSV(options: PlannerExportOptions): string {
 }
 
 /**
- * Trigger a browser download of a CSV file.
+ * Trigger a browser download of planner CSV data.
+ * Delegates to the shared exportToCSV utility for BOM support and SSR safety.
  */
-export function downloadCSV(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+export function downloadPlannerCSV(options: PlannerExportOptions, filename: string): void {
+  const rows = buildExportRows(options.shifts, options.templates, options.weekDays);
+  const headers = ['Employee', 'Shift', 'Day', 'Date', 'Start', 'End', 'Position', 'Break'];
+  const data = rows.map((row) => ({
+    Employee: row.employee,
+    Shift: row.shift,
+    Day: row.day,
+    Date: row.date,
+    Start: row.start,
+    End: row.end,
+    Position: row.position,
+    Break: row.break,
+  }));
+  exportToCSV({ data, filename, headers });
 }
 
 // ---------------------------------------------------------------------------
@@ -193,15 +198,19 @@ export function downloadCSV(csv: string, filename: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Format a week range string like "March 2 - March 8, 2026".
+ * Format a week range string.
+ * 'long' → "March 2 – March 8, 2026"  (PDF subtitle)
+ * 'short' → "Mar 2 – Mar 8"           (dialog subtitle)
  */
-function formatWeekRange(weekDays: string[]): string {
+export function formatWeekRange(weekDays: string[], monthFormat: 'long' | 'short' = 'long'): string {
   if (weekDays.length === 0) return '';
   const first = new Date(weekDays[0] + 'T12:00:00');
   const last = new Date(weekDays[weekDays.length - 1] + 'T12:00:00');
 
-  const startStr = first.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-  const endStr = last.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const startStr = first.toLocaleDateString('en-US', { month: monthFormat, day: 'numeric' });
+  const endOpts: Intl.DateTimeFormatOptions = { month: monthFormat, day: 'numeric' };
+  if (monthFormat === 'long') endOpts.year = 'numeric';
+  const endStr = last.toLocaleDateString('en-US', endOpts);
   return `${startStr} \u2013 ${endStr}`;
 }
 

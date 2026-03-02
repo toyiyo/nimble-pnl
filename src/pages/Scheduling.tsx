@@ -19,6 +19,7 @@ import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { ShiftDialog } from '@/components/ShiftDialog';
+import type { DefaultEmployee } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';
@@ -245,11 +246,7 @@ const Scheduling = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
-  const [defaultShiftEmployee, setDefaultShiftEmployee] = useState<{
-    id: string;
-    name: string;
-    position: string | null;
-  } | undefined>();
+  const [defaultShiftEmployee, setDefaultShiftEmployee] = useState<DefaultEmployee | undefined>();
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
@@ -364,7 +361,7 @@ const Scheduling = () => {
     setEmployeeDialogOpen(true);
   };
 
-  const handleAddShift = (date?: Date, employee?: { id: string; name: string; position: string | null }) => {
+  const handleAddShift = (date?: Date, employee?: DefaultEmployee) => {
     setSelectedShift(undefined);
     setDefaultShiftDate(date);
     setDefaultShiftEmployee(employee);

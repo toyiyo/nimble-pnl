@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 
 import { Printer, FileDown, FileSpreadsheet } from 'lucide-react';
 
-import { generatePlannerCSV, generatePlannerPDF, downloadCSV } from '@/utils/plannerExport';
+import { generatePlannerPDF, downloadPlannerCSV, formatWeekRange } from '@/utils/plannerExport';
 
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
@@ -20,17 +20,6 @@ interface PlannerExportDialogProps {
   templates: ShiftTemplate[];
   weekDays: string[];
   restaurantName?: string;
-}
-
-/**
- * Format a compact week range like "Mar 2 – Mar 8" for the dialog subtitle.
- */
-function formatWeekRangeShort(weekDays: string[]): string {
-  if (weekDays.length === 0) return '';
-  const first = new Date(weekDays[0] + 'T12:00:00');
-  const last = new Date(weekDays[weekDays.length - 1] + 'T12:00:00');
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  return `${first.toLocaleDateString('en-US', opts)} \u2013 ${last.toLocaleDateString('en-US', opts)}`;
 }
 
 export function PlannerExportDialog({
@@ -49,10 +38,9 @@ export function PlannerExportDialog({
   };
 
   const handleDownloadCSV = () => {
-    const csv = generatePlannerCSV({ shifts, templates, weekDays, restaurantName });
     const startDate = weekDays[0] || 'unknown';
     const endDate = weekDays[weekDays.length - 1] || 'unknown';
-    downloadCSV(csv, `planner_${startDate}_to_${endDate}.csv`);
+    downloadPlannerCSV({ shifts, templates, weekDays, restaurantName }, `planner_${startDate}_to_${endDate}.csv`);
     onOpenChange(false);
   };
 
@@ -70,7 +58,7 @@ export function PlannerExportDialog({
                 Export Planner
               </DialogTitle>
               <p className="text-[13px] text-muted-foreground mt-0.5">
-                {formatWeekRangeShort(weekDays)} &middot; {activeShifts.length} shift{activeShifts.length !== 1 ? 's' : ''}
+                {formatWeekRange(weekDays, 'short')} &middot; {activeShifts.length} shift{activeShifts.length !== 1 ? 's' : ''}
               </p>
             </div>
           </div>

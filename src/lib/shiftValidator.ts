@@ -24,6 +24,49 @@ export interface ValidateOptions {
 
 const MIN_REST_HOURS = 8;
 
+/** Check if rest gap triggers a clopen warning. */
+function checkRestGap(
+  gap: number,
+  direction: 'after' | 'before',
+  warnings: ValidationIssue[],
+): void {
+  if (gap > 0 && gap < MIN_REST_HOURS) {
+    const label = direction === 'after' ? 'after previous shift' : 'before next shift';
+    warnings.push({
+      code: 'CLOPEN',
+      message: `Only ${gap.toFixed(1)}h rest ${label} (minimum ${MIN_REST_HOURS}h)`,
+    });
+  }
+}
+
+/** Check time-off conflicts for an employee. */
+function checkTimeOffConflicts(
+  proposed: { employeeId: string; interval: ShiftInterval },
+  timeOffRequests: TimeOffRequest[],
+  errors: ValidationIssue[],
+): void {
+  const relevant = timeOffRequests.filter(
+    (r) =>
+      r.employee_id === proposed.employeeId &&
+      (r.status === 'approved' || r.status === 'pending'),
+  );
+
+  for (const request of relevant) {
+    const requestStart = new Date(`${request.start_date}T00:00:00`);
+    const requestEnd = new Date(`${request.end_date}T23:59:59`);
+
+    if (
+      proposed.interval.startAt <= requestEnd &&
+      proposed.interval.endAt >= requestStart
+    ) {
+      errors.push({
+        code: 'TIME_OFF',
+        message: `Employee has ${request.status} time-off from ${request.start_date} to ${request.end_date}`,
+      });
+    }
+  }
+}
+
 export function validateShift(
   proposed: { employeeId: string; interval: ShiftInterval },
   existingShifts: Shift[],
@@ -32,7 +75,6 @@ export function validateShift(
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
-  // Filter to same-employee, non-cancelled, non-excluded shifts
   const employeeShifts = existingShifts.filter(
     (s) =>
       s.employee_id === proposed.employeeId &&
@@ -40,7 +82,6 @@ export function validateShift(
       s.id !== options?.excludeShiftId,
   );
 
-  // Check overlaps and clopen (rest hours) in a single pass
   for (const existing of employeeShifts) {
     const existingInterval = ShiftInterval.fromTimestamps(
       existing.start_time,
@@ -55,49 +96,12 @@ export function validateShift(
       });
     }
 
-    // Rest after existing shift ends, before proposed starts
-    const restAfterExisting =
-      existingInterval.restHoursUntil(proposed.interval);
-    if (restAfterExisting > 0 && restAfterExisting < MIN_REST_HOURS) {
-      warnings.push({
-        code: 'CLOPEN',
-        message: `Only ${restAfterExisting.toFixed(1)}h rest after previous shift (minimum ${MIN_REST_HOURS}h)`,
-      });
-    }
-
-    // Rest after proposed ends, before existing starts
-    const restBeforeExisting =
-      proposed.interval.restHoursUntil(existingInterval);
-    if (restBeforeExisting > 0 && restBeforeExisting < MIN_REST_HOURS) {
-      warnings.push({
-        code: 'CLOPEN',
-        message: `Only ${restBeforeExisting.toFixed(1)}h rest before next shift (minimum ${MIN_REST_HOURS}h)`,
-      });
-    }
+    checkRestGap(existingInterval.restHoursUntil(proposed.interval), 'after', warnings);
+    checkRestGap(proposed.interval.restHoursUntil(existingInterval), 'before', warnings);
   }
 
-  // Check time-off conflicts
   if (options?.timeOffRequests) {
-    const relevant = options.timeOffRequests.filter(
-      (r) =>
-        r.employee_id === proposed.employeeId &&
-        (r.status === 'approved' || r.status === 'pending'),
-    );
-
-    for (const request of relevant) {
-      const requestStart = new Date(`${request.start_date}T00:00:00`);
-      const requestEnd = new Date(`${request.end_date}T23:59:59`);
-
-      if (
-        proposed.interval.startAt <= requestEnd &&
-        proposed.interval.endAt >= requestStart
-      ) {
-        errors.push({
-          code: 'TIME_OFF',
-          message: `Employee has ${request.status} time-off from ${request.start_date} to ${request.end_date}`,
-        });
-      }
-    }
+    checkTimeOffConflicts(proposed, options.timeOffRequests, errors);
   }
 
   return {

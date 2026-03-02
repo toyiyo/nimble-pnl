@@ -34,7 +34,7 @@ export function TemplateGrid({
   onDeleteTemplate,
   onAddTemplate,
   highlightCellId,
-}: TemplateGridProps) {
+}: Readonly<TemplateGridProps>) {
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
       <div style={{ display: 'grid', gridTemplateColumns: '200px repeat(7, 1fr)' }}>

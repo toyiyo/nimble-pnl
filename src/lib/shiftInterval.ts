@@ -58,8 +58,8 @@ export class ShiftInterval {
     endAt: Date,
     businessDate: string,
   ): ShiftInterval {
-    if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
-      throw new Error('INVALID_DATE');
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+      throw new TypeError('INVALID_DATE');
     }
 
     const durationMs = endAt.getTime() - startAt.getTime();

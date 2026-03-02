@@ -10,7 +10,7 @@ import { useShiftPlanner, buildTemplateGridData } from '@/hooks/useShiftPlanner'
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 
-import type { Shift, ShiftTemplate } from '@/types/scheduling';
+import type { ShiftTemplate } from '@/types/scheduling';
 
 import { PlannerHeader } from './PlannerHeader';
 import { TemplateGrid } from './TemplateGrid';
@@ -19,12 +19,11 @@ import { TemplateFormDialog } from './TemplateFormDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
-  onShiftClick?: (shift: Shift) => void;
 }
 
 export function ShiftPlannerTab({
   restaurantId,
-}: ShiftPlannerTabProps) {
+}: Readonly<ShiftPlannerTabProps>) {
   const {
     weekStart,
     weekEnd,
@@ -73,7 +72,7 @@ export function ShiftPlannerTab({
     for (const t of templates) {
       if (t.position) posSet.add(t.position);
     }
-    return Array.from(posSet).sort();
+    return Array.from(posSet).sort((a, b) => a.localeCompare(b));
   }, [employees, templates]);
 
   // DnD setup
@@ -213,8 +212,8 @@ export function ShiftPlannerTab({
         <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
           <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
           <div className="space-y-1">
-            {validationResult.errors.map((err, i) => (
-              <p key={i} className="text-[13px] text-destructive">{err.message}</p>
+            {validationResult.errors.map((err) => (
+              <p key={err.code} className="text-[13px] text-destructive">{err.message}</p>
             ))}
           </div>
         </div>

@@ -39,7 +39,7 @@ export function TemplateFormDialog({
   template,
   onSubmit,
   positions,
-}: TemplateFormDialogProps) {
+}: Readonly<TemplateFormDialogProps>) {
   const isEdit = !!template;
 
   const [name, setName] = useState('');
@@ -70,7 +70,7 @@ export function TemplateFormDialog({
 
   const toggleDay = (day: number) => {
     setDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
     );
   };
 
@@ -199,7 +199,7 @@ export function TemplateFormDialog({
             <div className="flex gap-2">
               {DAY_LABELS.map((label, index) => (
                 <button
-                  key={index}
+                  key={['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][index]}
                   type="button"
                   aria-label={
                     ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index]
@@ -235,7 +235,7 @@ export function TemplateFormDialog({
               type="number"
               min={0}
               value={breakDuration}
-              onChange={(e) => setBreakDuration(Math.max(0, parseInt(e.target.value) || 0))}
+              onChange={(e) => setBreakDuration(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
               className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
             />
           </div>

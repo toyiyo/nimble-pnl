@@ -83,6 +83,32 @@ export function buildGridData(
   return grid;
 }
 
+/** Push a shift into the nested Map<dayString, Shift[]> bucket. */
+function pushToGridBucket(
+  bucket: Map<string, Shift[]>,
+  dayStr: string,
+  shift: Shift,
+): void {
+  let dayShifts = bucket.get(dayStr);
+  if (!dayShifts) {
+    dayShifts = [];
+    bucket.set(dayStr, dayShifts);
+  }
+  dayShifts.push(shift);
+}
+
+/** Find the first template that matches a shift's time and position. */
+function findMatchingTemplate(
+  templates: ShiftTemplate[],
+  shiftStart: string,
+  shiftEnd: string,
+  position: string,
+): ShiftTemplate | undefined {
+  return templates.find(
+    (t) => t.start_time === shiftStart && t.end_time === shiftEnd && t.position === position,
+  );
+}
+
 /**
  * Groups shifts into a Map<templateId, Map<dayString, Shift[]>>.
  * Matches shifts to templates by comparing start_time (HH:MM:SS),
@@ -97,7 +123,6 @@ export function buildTemplateGridData(
   const weekDaySet = new Set(weekDays);
   const grid = new Map<string, Map<string, Shift[]>>();
 
-  // Initialize empty maps for each template
   for (const t of templates) {
     grid.set(t.id, new Map());
   }
@@ -108,35 +133,12 @@ export function buildTemplateGridData(
     const dayStr = formatLocalDate(new Date(shift.start_time));
     if (!weekDaySet.has(dayStr)) continue;
 
-    // Extract HH:MM:SS using local timezone (templates store local time)
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
+    const match = findMatchingTemplate(templates, shiftStart, shiftEnd, shift.position);
 
-    // Find matching template
-    let matched = false;
-    for (const t of templates) {
-      if (t.start_time === shiftStart && t.end_time === shiftEnd && t.position === shift.position) {
-        const templateDays = grid.get(t.id)!;
-        let dayShifts = templateDays.get(dayStr);
-        if (!dayShifts) {
-          dayShifts = [];
-          templateDays.set(dayStr, dayShifts);
-        }
-        dayShifts.push(shift);
-        matched = true;
-        break;
-      }
-    }
-
-    if (!matched) {
-      const unmatched = grid.get('__unmatched__')!;
-      let dayShifts = unmatched.get(dayStr);
-      if (!dayShifts) {
-        dayShifts = [];
-        unmatched.set(dayStr, dayShifts);
-      }
-      dayShifts.push(shift);
-    }
+    const bucketKey = match ? match.id : '__unmatched__';
+    pushToGridBucket(grid.get(bucketKey)!, dayStr, shift);
   }
 
   return grid;

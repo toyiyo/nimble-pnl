@@ -119,7 +119,7 @@ const DraggableEmployee = memo(
 // EmployeeSidebar
 // ---------------------------------------------------------------------------
 
-export function EmployeeSidebar({ employees, shifts }: EmployeeSidebarProps) {
+export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarProps>) {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('all');
 
@@ -129,7 +129,7 @@ export function EmployeeSidebar({ employees, shifts }: EmployeeSidebarProps) {
     for (const e of employees) {
       if (e.position) set.add(e.position);
     }
-    return Array.from(set).sort();
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [employees]);
 
   // Pre-compute shift counts

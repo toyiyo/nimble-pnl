@@ -44,6 +44,7 @@ export interface BankStatementLine {
   is_potential_duplicate: boolean;
   duplicate_transaction_id: string | null;
   duplicate_confidence: number | null;
+  was_previously_deleted: boolean;
   source_account?: string | null;
   raw_data?: Record<string, unknown> | null;
   created_at: string;
@@ -496,11 +497,32 @@ export function useBankStatementImport() {
         // Mark line as imported
         await supabase
           .from('bank_statement_lines')
-          .update({ 
+          .update({
             is_imported: true,
-            imported_transaction_id: newTransaction.id 
+            imported_transaction_id: newTransaction.id
           })
           .eq('id', line.id);
+
+        // If the user overrode a previously-deleted exclusion, remove the tombstone
+        // so future imports of the same transaction won't be blocked
+        if (line.was_previously_deleted && line.transaction_date && line.amount !== null) {
+          const { data: fpResult } = await supabase.rpc(
+            'compute_transaction_fingerprint',
+            {
+              p_transaction_date: line.transaction_date,
+              p_amount: line.amount,
+              p_description: line.description || '',
+            }
+          );
+
+          if (fpResult) {
+            await supabase
+              .from('deleted_bank_transactions')
+              .delete()
+              .eq('restaurant_id', selectedRestaurant.restaurant_id)
+              .eq('fingerprint', fpResult as string);
+          }
+        }
 
         importedCount++;
       }
@@ -699,6 +721,43 @@ export function useBankStatementImport() {
           .eq('id', line.id);
 
         flaggedCount++;
+      }
+
+      // Check tombstones for previously deleted transactions
+      const { data: tombstones } = await supabase
+        .from('deleted_bank_transactions')
+        .select('fingerprint')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id);
+
+      if (tombstones && tombstones.length > 0) {
+        const tombstoneFingerprints = new Set(tombstones.map((t) => t.fingerprint));
+
+        // Batch compute fingerprints for all staged lines via individual RPC calls
+        // (compute_transaction_fingerprint is an IMMUTABLE SQL function)
+        for (const line of stagedLines) {
+          if (!line.transaction_date || line.amount === null) continue;
+
+          const { data: fpResult } = await supabase.rpc(
+            'compute_transaction_fingerprint',
+            {
+              p_transaction_date: line.transaction_date,
+              p_amount: line.amount,
+              p_description: line.description || '',
+            },
+          );
+
+          if (fpResult && tombstoneFingerprints.has(fpResult as string)) {
+            await supabase
+              .from('bank_statement_lines')
+              .update({
+                was_previously_deleted: true,
+                user_excluded: true,
+              })
+              .eq('id', line.id);
+
+            flaggedCount++;
+          }
+        }
       }
 
       return flaggedCount;

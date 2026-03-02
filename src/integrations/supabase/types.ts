@@ -1,3 +1,4 @@
+Connecting to db 5432
 export type Json =
   | string
   | number
@@ -7,10 +8,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -569,6 +590,7 @@ export type Database = {
           updated_at: string
           user_excluded: boolean | null
           validation_errors: Json | null
+          was_previously_deleted: boolean | null
         }
         Insert: {
           amount: number
@@ -592,6 +614,7 @@ export type Database = {
           updated_at?: string
           user_excluded?: boolean | null
           validation_errors?: Json | null
+          was_previously_deleted?: boolean | null
         }
         Update: {
           amount?: number
@@ -615,6 +638,7 @@ export type Database = {
           updated_at?: string
           user_excluded?: boolean | null
           validation_errors?: Json | null
+          was_previously_deleted?: boolean | null
         }
         Relationships: [
           {
@@ -994,7 +1018,6 @@ export type Database = {
           restaurant_id: string
           rule_name: string
           split_categories: Json | null
-          split_config: Json | null
           supplier_id: string | null
           transaction_type: string | null
           updated_at: string
@@ -1020,7 +1043,6 @@ export type Database = {
           restaurant_id: string
           rule_name: string
           split_categories?: Json | null
-          split_config?: Json | null
           supplier_id?: string | null
           transaction_type?: string | null
           updated_at?: string
@@ -1046,7 +1068,6 @@ export type Database = {
           restaurant_id?: string
           rule_name?: string
           split_categories?: Json | null
-          split_config?: Json | null
           supplier_id?: string | null
           transaction_type?: string | null
           updated_at?: string
@@ -1939,6 +1960,65 @@ export type Database = {
           },
         ]
       }
+      deleted_bank_transactions: {
+        Row: {
+          amount: number
+          connected_bank_id: string
+          currency: string | null
+          deleted_at: string
+          deleted_by: string | null
+          description: string | null
+          external_transaction_id: string | null
+          fingerprint: string
+          id: string
+          merchant_name: string | null
+          raw: Json | null
+          restaurant_id: string
+          source: string
+          transaction_date: string
+        }
+        Insert: {
+          amount: number
+          connected_bank_id: string
+          currency?: string | null
+          deleted_at?: string
+          deleted_by?: string | null
+          description?: string | null
+          external_transaction_id?: string | null
+          fingerprint: string
+          id?: string
+          merchant_name?: string | null
+          raw?: Json | null
+          restaurant_id: string
+          source?: string
+          transaction_date: string
+        }
+        Update: {
+          amount?: number
+          connected_bank_id?: string
+          currency?: string | null
+          deleted_at?: string
+          deleted_by?: string | null
+          description?: string | null
+          external_transaction_id?: string | null
+          fingerprint?: string
+          id?: string
+          merchant_name?: string | null
+          raw?: Json | null
+          restaurant_id?: string
+          source?: string
+          transaction_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deleted_bank_transactions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_availability: {
         Row: {
           created_at: string | null
@@ -2062,6 +2142,71 @@ export type Database = {
           },
           {
             foreignKeyName: "employee_compensation_history_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_integration_mappings: {
+        Row: {
+          created_at: string
+          employee_id: string
+          external_metadata: Json | null
+          external_user_id: string
+          external_user_name: string | null
+          id: string
+          integration_type: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          employee_id: string
+          external_metadata?: Json | null
+          external_user_id: string
+          external_user_name?: string | null
+          id?: string
+          integration_type: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          employee_id?: string
+          external_metadata?: Json | null
+          external_user_id?: string
+          external_user_name?: string | null
+          id?: string
+          integration_type?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_integration_mappings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_integration_mappings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_integration_mappings_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_integration_mappings_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -2235,10 +2380,13 @@ export type Database = {
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          exempt_changed_at: string | null
+          exempt_changed_by: string | null
           hire_date: string | null
           hourly_rate: number
           id: string
           is_active: boolean
+          is_exempt: boolean
           last_active_date: string | null
           name: string
           notes: string | null
@@ -2269,10 +2417,13 @@ export type Database = {
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
+          exempt_changed_at?: string | null
+          exempt_changed_by?: string | null
           hire_date?: string | null
           hourly_rate?: number
           id?: string
           is_active?: boolean
+          is_exempt?: boolean
           last_active_date?: string | null
           name: string
           notes?: string | null
@@ -2303,10 +2454,13 @@ export type Database = {
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
+          exempt_changed_at?: string | null
+          exempt_changed_by?: string | null
           hire_date?: string | null
           hourly_rate?: number
           id?: string
           is_active?: boolean
+          is_exempt?: boolean
           last_active_date?: string | null
           name?: string
           notes?: string | null
@@ -2453,6 +2607,44 @@ export type Database = {
           },
           {
             foreignKeyName: "expense_invoice_uploads_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_suggestion_dismissals: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          restaurant_id: string
+          snoozed_until: string | null
+          suggestion_key: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          snoozed_until?: string | null
+          suggestion_key: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          snoozed_until?: string | null
+          suggestion_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_suggestion_dismissals_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -3394,6 +3586,121 @@ export type Database = {
           },
         ]
       }
+      overtime_adjustments: {
+        Row: {
+          adjusted_by: string
+          adjustment_type: string
+          created_at: string
+          employee_id: string
+          hours: number
+          id: string
+          punch_date: string
+          reason: string | null
+          restaurant_id: string
+        }
+        Insert: {
+          adjusted_by: string
+          adjustment_type: string
+          created_at?: string
+          employee_id: string
+          hours: number
+          id?: string
+          punch_date: string
+          reason?: string | null
+          restaurant_id: string
+        }
+        Update: {
+          adjusted_by?: string
+          adjustment_type?: string
+          created_at?: string
+          employee_id?: string
+          hours?: number
+          id?: string
+          punch_date?: string
+          reason?: string | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overtime_adjustments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_adjustments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_adjustments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "overtime_adjustments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      overtime_rules: {
+        Row: {
+          created_at: string
+          daily_double_multiplier: number
+          daily_double_threshold_hours: number | null
+          daily_ot_multiplier: number
+          daily_threshold_hours: number | null
+          exclude_tips_from_ot_rate: boolean
+          id: string
+          restaurant_id: string
+          updated_at: string
+          weekly_ot_multiplier: number
+          weekly_threshold_hours: number
+        }
+        Insert: {
+          created_at?: string
+          daily_double_multiplier?: number
+          daily_double_threshold_hours?: number | null
+          daily_ot_multiplier?: number
+          daily_threshold_hours?: number | null
+          exclude_tips_from_ot_rate?: boolean
+          id?: string
+          restaurant_id: string
+          updated_at?: string
+          weekly_ot_multiplier?: number
+          weekly_threshold_hours?: number
+        }
+        Update: {
+          created_at?: string
+          daily_double_multiplier?: number
+          daily_double_threshold_hours?: number | null
+          daily_ot_multiplier?: number
+          daily_threshold_hours?: number | null
+          exclude_tips_from_ot_rate?: boolean
+          id?: string
+          restaurant_id?: string
+          updated_at?: string
+          weekly_ot_multiplier?: number
+          weekly_threshold_hours?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "overtime_rules_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pending_outflows: {
         Row: {
           amount: number
@@ -3987,7 +4294,6 @@ export type Database = {
         Row: {
           barcode_data: Json | null
           brand: string | null
-          bulk_purchase_unit: string | null
           category: string | null
           conversion_factor: number | null
           cost_per_unit: number | null
@@ -3997,14 +4303,10 @@ export type Database = {
           gtin: string | null
           id: string
           image_url: string | null
-          individual_unit: string | null
-          individual_unit_size: number | null
-          items_per_package: number | null
           name: string
           package_qty: number | null
           par_level_max: number | null
           par_level_min: number | null
-          pos_item_name: string | null
           receipt_item_names: string[] | null
           reorder_point: number | null
           restaurant_id: string
@@ -4024,7 +4326,6 @@ export type Database = {
         Insert: {
           barcode_data?: Json | null
           brand?: string | null
-          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -4034,14 +4335,10 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
-          individual_unit?: string | null
-          individual_unit_size?: number | null
-          items_per_package?: number | null
           name: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
-          pos_item_name?: string | null
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id: string
@@ -4061,7 +4358,6 @@ export type Database = {
         Update: {
           barcode_data?: Json | null
           brand?: string | null
-          bulk_purchase_unit?: string | null
           category?: string | null
           conversion_factor?: number | null
           cost_per_unit?: number | null
@@ -4071,14 +4367,10 @@ export type Database = {
           gtin?: string | null
           id?: string
           image_url?: string | null
-          individual_unit?: string | null
-          individual_unit_size?: number | null
-          items_per_package?: number | null
           name?: string
           package_qty?: number | null
           par_level_max?: number | null
           par_level_min?: number | null
-          pos_item_name?: string | null
           receipt_item_names?: string[] | null
           reorder_point?: number | null
           restaurant_id?: string
@@ -4317,6 +4609,7 @@ export type Database = {
           file_name: string | null
           file_size: number | null
           id: string
+          imported_total: number | null
           processed_at: string | null
           processed_by: string | null
           purchase_date: string | null
@@ -4334,6 +4627,7 @@ export type Database = {
           file_name?: string | null
           file_size?: number | null
           id?: string
+          imported_total?: number | null
           processed_at?: string | null
           processed_by?: string | null
           purchase_date?: string | null
@@ -4351,6 +4645,7 @@ export type Database = {
           file_name?: string | null
           file_size?: number | null
           id?: string
+          imported_total?: number | null
           processed_at?: string | null
           processed_by?: string | null
           purchase_date?: string | null
@@ -4731,44 +5026,6 @@ export type Database = {
             foreignKeyName: "restaurant_inventory_settings_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: true
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      expense_suggestion_dismissals: {
-        Row: {
-          action: string
-          created_at: string
-          id: string
-          restaurant_id: string
-          snoozed_until: string | null
-          suggestion_key: string
-          updated_at: string
-        }
-        Insert: {
-          action: string
-          created_at?: string
-          id?: string
-          restaurant_id: string
-          snoozed_until?: string | null
-          suggestion_key: string
-          updated_at?: string
-        }
-        Update: {
-          action?: string
-          created_at?: string
-          id?: string
-          restaurant_id?: string
-          snoozed_until?: string | null
-          suggestion_key?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "expense_suggestion_dismissals_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -5308,12 +5565,12 @@ export type Database = {
       }
       shift_templates: {
         Row: {
-          break_duration: number | null
+          break_duration: number
           created_at: string | null
           day_of_week: number
           end_time: string
           id: string
-          is_active: boolean | null
+          is_active: boolean
           name: string
           position: string
           restaurant_id: string
@@ -5321,12 +5578,12 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          break_duration?: number | null
+          break_duration?: number
           created_at?: string | null
           day_of_week: number
           end_time: string
           id?: string
-          is_active?: boolean | null
+          is_active?: boolean
           name: string
           position: string
           restaurant_id: string
@@ -5334,12 +5591,12 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          break_duration?: number | null
+          break_duration?: number
           created_at?: string | null
           day_of_week?: number
           end_time?: string
           id?: string
-          is_active?: boolean | null
+          is_active?: boolean
           name?: string
           position?: string
           restaurant_id?: string
@@ -5772,6 +6029,8 @@ export type Database = {
           recurrence_parent_id: string | null
           recurrence_pattern: Json | null
           restaurant_id: string
+          source_id: string | null
+          source_type: string | null
           start_time: string
           status: string
           updated_at: string | null
@@ -5792,6 +6051,8 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id: string
+          source_id?: string | null
+          source_type?: string | null
           start_time: string
           status?: string
           updated_at?: string | null
@@ -5812,6 +6073,8 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id?: string
+          source_id?: string | null
+          source_type?: string | null
           start_time?: string
           status?: string
           updated_at?: string | null
@@ -5847,6 +6110,230 @@ export type Database = {
           },
           {
             foreignKeyName: "shifts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sling_connections: {
+        Row: {
+          auth_token: string | null
+          connection_status: string
+          created_at: string
+          email: string
+          id: string
+          initial_sync_done: boolean
+          is_active: boolean
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
+          password_encrypted: string
+          restaurant_id: string
+          sling_org_id: number | null
+          sling_org_name: string | null
+          sync_cursor: number
+          token_fetched_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          auth_token?: string | null
+          connection_status?: string
+          created_at?: string
+          email: string
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          password_encrypted: string
+          restaurant_id: string
+          sling_org_id?: number | null
+          sling_org_name?: string | null
+          sync_cursor?: number
+          token_fetched_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          auth_token?: string | null
+          connection_status?: string
+          created_at?: string
+          email?: string
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          password_encrypted?: string
+          restaurant_id?: string
+          sling_org_id?: number | null
+          sling_org_name?: string | null
+          sync_cursor?: number
+          token_fetched_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sling_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sling_shifts: {
+        Row: {
+          break_duration: number | null
+          created_at: string
+          end_time: string | null
+          id: string
+          location: string | null
+          position: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          shift_date: string | null
+          sling_shift_id: number
+          sling_user_id: number | null
+          start_time: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          break_duration?: number | null
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          location?: string | null
+          position?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          shift_date?: string | null
+          sling_shift_id: number
+          sling_user_id?: number | null
+          start_time?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          break_duration?: number | null
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          location?: string | null
+          position?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          shift_date?: string | null
+          sling_shift_id?: number
+          sling_user_id?: number | null
+          start_time?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sling_shifts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sling_timesheets: {
+        Row: {
+          created_at: string
+          id: string
+          punch_time: string
+          punch_type: string
+          raw_json: Json | null
+          restaurant_id: string
+          sling_shift_id: number | null
+          sling_timesheet_id: number
+          sling_user_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          punch_time: string
+          punch_type: string
+          raw_json?: Json | null
+          restaurant_id: string
+          sling_shift_id?: number | null
+          sling_timesheet_id: number
+          sling_user_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          punch_time?: string
+          punch_type?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+          sling_shift_id?: number | null
+          sling_timesheet_id?: number
+          sling_user_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sling_timesheets_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sling_users: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean | null
+          lastname: string | null
+          name: string | null
+          position: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          sling_user_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          lastname?: string | null
+          name?: string | null
+          position?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          sling_user_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          lastname?: string | null
+          name?: string | null
+          position?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          sling_user_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sling_users_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -6654,6 +7141,8 @@ export type Database = {
           punch_type: string
           restaurant_id: string
           shift_id: string | null
+          source_id: string | null
+          source_type: string | null
           updated_at: string | null
         }
         Insert: {
@@ -6670,6 +7159,8 @@ export type Database = {
           punch_type: string
           restaurant_id: string
           shift_id?: string | null
+          source_id?: string | null
+          source_type?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -6686,6 +7177,8 @@ export type Database = {
           punch_type?: string
           restaurant_id?: string
           shift_id?: string | null
+          source_id?: string | null
+          source_type?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -7889,7 +8382,7 @@ export type Database = {
       unified_sales_splits: {
         Row: {
           amount: number
-          category_id: string | null
+          category_id: string
           created_at: string
           description: string | null
           id: string
@@ -7897,7 +8390,7 @@ export type Database = {
         }
         Insert: {
           amount: number
-          category_id?: string | null
+          category_id: string
           created_at?: string
           description?: string | null
           id?: string
@@ -7905,7 +8398,7 @@ export type Database = {
         }
         Update: {
           amount?: number
-          category_id?: string | null
+          category_id?: string
           created_at?: string
           description?: string | null
           id?: string
@@ -8228,8 +8721,63 @@ export type Database = {
           },
         ]
       }
+      pg_all_foreign_keys: {
+        Row: {
+          fk_columns: unknown[] | null
+          fk_constraint_name: unknown
+          fk_schema_name: unknown
+          fk_table_name: unknown
+          fk_table_oid: unknown
+          is_deferrable: boolean | null
+          is_deferred: boolean | null
+          match_type: string | null
+          on_delete: string | null
+          on_update: string | null
+          pk_columns: unknown[] | null
+          pk_constraint_name: unknown
+          pk_index_name: unknown
+          pk_schema_name: unknown
+          pk_table_name: unknown
+          pk_table_oid: unknown
+        }
+        Relationships: []
+      }
+      tap_funky: {
+        Row: {
+          args: string | null
+          is_definer: boolean | null
+          is_strict: boolean | null
+          is_visible: boolean | null
+          kind: unknown
+          langoid: unknown
+          name: unknown
+          oid: unknown
+          owner: unknown
+          returns: string | null
+          returns_set: boolean | null
+          schema: unknown
+          volatility: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      _cleanup: { Args: never; Returns: boolean }
+      _contract_on: { Args: { "": string }; Returns: unknown }
+      _currtest: { Args: never; Returns: number }
+      _db_privs: { Args: never; Returns: unknown[] }
+      _extensions: { Args: never; Returns: unknown[] }
+      _get: { Args: { "": string }; Returns: number }
+      _get_latest: { Args: { "": string }; Returns: number[] }
+      _get_note: { Args: { "": string }; Returns: string }
+      _is_verbose: { Args: never; Returns: boolean }
+      _prokind: { Args: { p_oid: unknown }; Returns: unknown }
+      _query: { Args: { "": string }; Returns: string }
+      _refine_vol: { Args: { "": string }; Returns: string }
+      _retval: { Args: { "": string }; Returns: string }
+      _table_privs: { Args: never; Returns: unknown[] }
+      _temptypes: { Args: { "": string }; Returns: string }
+      _todo: { Args: never; Returns: string }
       accept_shift_trade: {
         Args: { p_accepting_employee_id: string; p_trade_id: string }
         Returns: Json
@@ -8275,55 +8823,12 @@ export type Database = {
           total_count: number
         }[]
       }
-      apply_rules_to_bank_transactions_debug: {
-        Args: { p_batch_limit?: number; p_restaurant_id: string }
-        Returns: {
-          amount: number
-          description: string
-          error_detail: string
-          is_split_rule: boolean
-          rule_found: boolean
-          rule_name: string
-          split_categories_raw: Json
-          split_message: string
-          split_success: boolean
-          splits_converted: Json
-          transaction_id: string
-        }[]
-      }
       apply_rules_to_pos_sales: {
         Args: { p_batch_limit?: number; p_restaurant_id: string }
         Returns: {
           applied_count: number
           total_count: number
         }[]
-      }
-      apply_rules_to_pos_sales_debug: {
-        Args: { p_batch_limit?: number; p_restaurant_id: string }
-        Returns: {
-          error_detail: string
-          is_split_rule: boolean
-          item_name: string
-          rule_found: boolean
-          rule_name: string
-          sale_id: string
-          split_categories_raw: Json
-          split_message: string
-          split_success: boolean
-          splits_converted: Json
-        }[]
-      }
-      apply_split_rule_to_bank_transaction: {
-        Args: {
-          p_rule_id: string
-          p_transaction_amount: number
-          p_transaction_id: string
-        }
-        Returns: undefined
-      }
-      apply_split_rule_to_pos_sale: {
-        Args: { p_rule_id: string; p_sale_amount: number; p_sale_id: string }
-        Returns: undefined
       }
       approve_shift_trade: {
         Args: {
@@ -8477,6 +8982,42 @@ export type Database = {
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_rate_limit_logs: { Args: never; Returns: undefined }
+      col_is_null:
+        | {
+            Args: {
+              column_name: unknown
+              description?: string
+              schema_name: unknown
+              table_name: unknown
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              column_name: unknown
+              description?: string
+              table_name: unknown
+            }
+            Returns: string
+          }
+      col_not_null:
+        | {
+            Args: {
+              column_name: unknown
+              description?: string
+              schema_name: unknown
+              table_name: unknown
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              column_name: unknown
+              description?: string
+              table_name: unknown
+            }
+            Returns: string
+          }
       complete_production_run: {
         Args: {
           p_actual_yield: number
@@ -8525,6 +9066,14 @@ export type Database = {
         Args: { p_date: string; p_restaurant_id: string }
         Returns: Json
       }
+      compute_transaction_fingerprint: {
+        Args: {
+          p_amount: number
+          p_description: string
+          p_transaction_date: string
+        }
+        Returns: string
+      }
       compute_weekly_variances: {
         Args: { p_restaurant_id: string; p_week_end: string }
         Returns: Json
@@ -8561,10 +9110,13 @@ export type Database = {
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          exempt_changed_at: string | null
+          exempt_changed_by: string | null
           hire_date: string | null
           hourly_rate: number
           id: string
           is_active: boolean
+          is_exempt: boolean
           last_active_date: string | null
           name: string
           notes: string | null
@@ -8617,13 +9169,33 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      diag:
+        | {
+            Args: { msg: unknown }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.diag(msg => text), public.diag(msg => anyelement). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
+        | {
+            Args: { msg: string }
+            Returns: {
+              error: true
+            } & "Could not choose the best candidate function between: public.diag(msg => text), public.diag(msg => anyelement). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
+          }
+      diag_test_name: { Args: { "": string }; Returns: string }
       dmetaphone: { Args: { "": string }; Returns: string }
       dmetaphone_alt: { Args: { "": string }; Returns: string }
+      do_tap:
+        | { Args: never; Returns: string[] }
+        | { Args: { "": string }; Returns: string[] }
       enqueue_weekly_brief_jobs: { Args: never; Returns: Json }
       exclude_bank_transaction: {
         Args: { p_reason?: string; p_transaction_id: string }
         Returns: Json
       }
+      fail:
+        | { Args: never; Returns: string }
+        | { Args: { "": string }; Returns: string }
       find_matching_rules_for_bank_transaction: {
         Args: { p_restaurant_id: string; p_transaction: Json }
         Returns: {
@@ -8656,6 +9228,9 @@ export type Database = {
           name: string
         }[]
       }
+      findfuncs: { Args: { "": string }; Returns: string[] }
+      finish: { Args: { exception_on_failure?: boolean }; Returns: string[] }
+      format_type_string: { Args: { "": string }; Returns: string }
       fulltext_product_search: {
         Args: {
           p_limit?: number
@@ -8837,11 +9412,19 @@ export type Database = {
         Args: { p_feature: string; p_restaurant_id: string }
         Returns: boolean
       }
+      has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
+      in_todo: { Args: never; Returns: boolean }
+      is_current_user_employee: {
+        Args: { p_employee_id: string }
+        Returns: boolean
+      }
+      is_empty: { Args: { "": string }; Returns: string }
       is_restaurant_owner: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: boolean
       }
+      isnt_empty: { Args: { "": string }; Returns: string }
       link_employee_to_user: {
         Args: { p_employee_id: string; p_user_id: string }
         Returns: {
@@ -8851,6 +9434,7 @@ export type Database = {
           success: boolean
         }[]
       }
+      lives_ok: { Args: { "": string }; Returns: string }
       log_security_event: {
         Args: {
           p_details?: Json
@@ -8873,10 +9457,23 @@ export type Database = {
         Args: { p_rule_id: string; p_sale: Json }
         Returns: boolean
       }
+      no_plan: { Args: never; Returns: boolean[] }
+      num_failed: { Args: never; Returns: number }
+      os_name: { Args: never; Returns: string }
+      pass:
+        | { Args: never; Returns: string }
+        | { Args: { "": string }; Returns: string }
+      permanently_delete_tombstone: {
+        Args: { p_restaurant_id: string; p_tombstone_id: string }
+        Returns: Json
+      }
+      pg_version: { Args: never; Returns: string }
+      pg_version_num: { Args: never; Returns: number }
       pgmq_delete_message: {
         Args: { p_msg_id: number; p_queue_name: string }
         Returns: boolean
       }
+      pgtap_version: { Args: never; Returns: number }
       post_asset_depreciation: {
         Args: {
           p_asset_id: string
@@ -8937,10 +9534,13 @@ export type Database = {
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          exempt_changed_at: string | null
+          exempt_changed_by: string | null
           hire_date: string | null
           hourly_rate: number
           id: string
           is_active: boolean
+          is_exempt: boolean
           last_active_date: string | null
           name: string
           notes: string | null
@@ -8977,6 +9577,13 @@ export type Database = {
         }
         Returns: Json
       }
+      restore_deleted_transaction: {
+        Args: { p_restaurant_id: string; p_tombstone_id: string }
+        Returns: Json
+      }
+      runtests:
+        | { Args: never; Returns: string[] }
+        | { Args: { "": string }; Returns: string[] }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
         Returns: {
@@ -8998,6 +9605,9 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      skip:
+        | { Args: { "": string }; Returns: string }
+        | { Args: { how_many: number; why: string }; Returns: string }
       soundex: { Args: { "": string }; Returns: string }
       split_asset: {
         Args: {
@@ -9060,6 +9670,14 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      sync_sling_to_shifts_and_punches: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_start_date?: string
+        }
+        Returns: undefined
+      }
       sync_square_to_unified_sales: {
         Args: { p_restaurant_id: string }
         Returns: number
@@ -9075,10 +9693,20 @@ export type Database = {
             Returns: number
           }
       text_soundex: { Args: { "": string }; Returns: string }
+      throws_ok: { Args: { "": string }; Returns: string }
       toast_sync_financial_breakdown: {
         Args: { p_order_guid: string; p_restaurant_id: string }
         Returns: number
       }
+      todo:
+        | { Args: { how_many: number }; Returns: boolean[] }
+        | { Args: { how_many: number; why: string }; Returns: boolean[] }
+        | { Args: { why: string }; Returns: boolean[] }
+        | { Args: { how_many: number; why: string }; Returns: boolean[] }
+      todo_end: { Args: never; Returns: boolean[] }
+      todo_start:
+        | { Args: never; Returns: boolean[] }
+        | { Args: { "": string }; Returns: boolean[] }
       trigger_square_periodic_sync: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       unpublish_schedule: {
@@ -9096,12 +9724,12 @@ export type Database = {
       }
       update_shift_series: {
         Args: {
-          p_end_time_delta?: unknown
+          p_end_time_delta?: string
           p_from_time?: string
           p_parent_id: string
           p_restaurant_id: string
           p_scope: string
-          p_start_time_delta?: unknown
+          p_start_time_delta?: string
           p_updates: Json
         }
         Returns: {
@@ -9123,6 +9751,10 @@ export type Database = {
         Args: { p_capability: string; p_restaurant_id: string }
         Returns: boolean
       }
+      user_has_restaurant_access: {
+        Args: { p_require_manager_role?: boolean; p_restaurant_id: string }
+        Returns: boolean
+      }
       user_has_role: {
         Args: { p_restaurant_id: string; p_roles: string[] }
         Returns: boolean
@@ -9133,10 +9765,6 @@ export type Database = {
       }
       user_is_internal_team: {
         Args: { p_restaurant_id: string }
-        Returns: boolean
-      }
-      validate_split_config: {
-        Args: { p_split_config: Json }
         Returns: boolean
       }
       verify_employee_can_login: {
@@ -9262,7 +9890,9 @@ export type Database = {
       transaction_status_enum: "pending" | "posted" | "reconciled" | "void"
     }
     CompositeTypes: {
-      [_ in never]: never
+      _time_trial_type: {
+        a_time: number | null
+      }
     }
   }
 }
@@ -9385,6 +10015,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       account_subtype_enum: [
@@ -9496,3 +10129,4 @@ export const Constants = {
     },
   },
 } as const
+

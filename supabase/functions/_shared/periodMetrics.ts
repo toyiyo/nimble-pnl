@@ -24,6 +24,7 @@ export interface SaleRecord {
   chart_account: {
     account_type: string;
     account_subtype: string | null;
+    account_name?: string | null;
   } | null;
 }
 
@@ -110,12 +111,15 @@ function isSalesTaxAccount(account: { account_type: string; account_subtype: str
   return account.account_type === 'liability' && subtype.includes('sales') && subtype.includes('tax');
 }
 
+const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+
 /**
  * Check if an account is a tip liability
  */
-function isTipAccount(account: { account_type: string; account_subtype: string | null }): boolean {
+function isTipAccount(account: { account_type: string; account_subtype: string | null; account_name?: string | null }): boolean {
   const subtype = (account.account_subtype || '').toLowerCase();
-  return account.account_type === 'liability' && subtype.includes('tip');
+  const name = (account.account_name || '').toLowerCase();
+  return account.account_type === 'liability' && (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(name));
 }
 
 /**

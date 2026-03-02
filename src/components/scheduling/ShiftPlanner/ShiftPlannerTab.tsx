@@ -1,21 +1,27 @@
 import { useState, useCallback, useMemo } from 'react';
 
-import { DndContext, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
 
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { AlertCircle, CalendarOff, Users } from 'lucide-react';
 
-import { useShiftPlanner, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
 import type { ShiftTemplate } from '@/types/scheduling';
+
+import { AssignmentPopover } from './AssignmentPopover';
 
 import { PlannerHeader } from './PlannerHeader';
 import { TemplateGrid } from './TemplateGrid';
 import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
+import { DragOverlayChip } from './DragOverlayChip';
+import { PlannerExportDialog } from './PlannerExportDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -24,6 +30,9 @@ interface ShiftPlannerTabProps {
 export function ShiftPlannerTab({
   restaurantId,
 }: Readonly<ShiftPlannerTabProps>) {
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantName = selectedRestaurant?.restaurant?.name;
+
   const {
     weekStart,
     weekEnd,
@@ -59,9 +68,16 @@ export function ShiftPlannerTab({
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const { toast } = useToast();
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
+  const [activeDragEmployee, setActiveDragEmployee] = useState<{ id: string; name: string } | null>(null);
+  const [pendingAssignment, setPendingAssignment] = useState<{
+    employee: { id: string; name: string };
+    template: ShiftTemplate;
+    day: string;
+  } | null>(null);
 
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
@@ -80,20 +96,38 @@ export function ShiftPlannerTab({
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const employee = event.active.data.current?.employee;
+    if (employee) {
+      setActiveDragEmployee({ id: employee.id, name: employee.name });
+    }
+  }, []);
+
+  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
+    setActiveDragEmployee(null);
+  }, []);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    setActiveDragEmployee(null);
     const { active, over } = event;
     if (!over) return;
 
     const employee = active.data.current?.employee;
     if (!employee) return;
 
-    // over.id is "templateId:day"
     const [templateId, day] = String(over.id).split(':');
     if (!templateId || !day) return;
 
-    // Find the template to get times and position
     const template = templates.find((t) => t.id === templateId);
     if (!template) return;
+
+    setPendingAssignment({ employee: { id: employee.id, name: employee.name }, template, day });
+  }, [templates]);
+
+  const handleAssignDay = useCallback(async () => {
+    if (!pendingAssignment) return;
+    const { employee, template, day } = pendingAssignment;
+    setPendingAssignment(null);
 
     const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
     const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
@@ -109,19 +143,51 @@ export function ShiftPlannerTab({
 
     if (success) {
       clearValidation();
-
-      // Cell highlight
-      const cellId = `${templateId}:${day}`;
-      setHighlightCellId(cellId);
+      setHighlightCellId(`${template.id}:${day}`);
       setTimeout(() => setHighlightCellId(null), 600);
-
-      // Toast
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
-      toast({
-        title: `${employee.name} assigned to ${template.name} — ${dayLabel}`,
-      });
+      toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
     }
-  }, [templates, validateAndCreate, clearValidation, toast]);
+  }, [pendingAssignment, validateAndCreate, clearValidation, toast]);
+
+  const handleAssignAll = useCallback(async () => {
+    if (!pendingAssignment) return;
+    const { employee, template } = pendingAssignment;
+    setPendingAssignment(null);
+
+    const activeDays = getActiveDaysForWeek(template, weekDays);
+    const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
+    const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
+
+    let successCount = 0;
+    for (const day of activeDays) {
+      const success = await validateAndCreate({
+        employeeId: employee.id,
+        date: day,
+        startTime: startHHMM,
+        endTime: endHHMM,
+        position: template.position,
+        breakDuration: template.break_duration,
+      });
+      if (success) successCount++;
+    }
+
+    if (successCount === activeDays.length) {
+      clearValidation();
+    }
+    toast({
+      title: `${employee.name} assigned to ${template.name} — ${successCount}/${activeDays.length} days`,
+    });
+  }, [pendingAssignment, weekDays, validateAndCreate, clearValidation, toast]);
+
+  const handleCancelAssignment = useCallback(() => {
+    setPendingAssignment(null);
+  }, []);
+
+  const activeDayCount = useMemo(
+    () => pendingAssignment ? getActiveDaysForWeek(pendingAssignment.template, weekDays).length : 0,
+    [pendingAssignment, weekDays],
+  );
 
   // Template CRUD handlers
   const handleAddTemplate = useCallback(() => {
@@ -152,6 +218,10 @@ export function ShiftPlannerTab({
       });
     }
   }, [editingTemplate, createTemplate, updateTemplate, restaurantId]);
+
+  const handleExport = useCallback(() => {
+    setExportDialogOpen(true);
+  }, []);
 
   // Loading state
   if (isLoading || templatesLoading) {
@@ -201,6 +271,7 @@ export function ShiftPlannerTab({
         onPrevWeek={goToPrevWeek}
         onNextWeek={goToNextWeek}
         onToday={goToToday}
+        onExport={handleExport}
       />
 
       {/* Validation alerts */}
@@ -216,7 +287,12 @@ export function ShiftPlannerTab({
       )}
 
       {/* Two-panel layout */}
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
         <div className="flex gap-0">
           <div className="flex-1 min-w-0">
             {templates.length === 0 ? (
@@ -249,6 +325,11 @@ export function ShiftPlannerTab({
           </div>
           <EmployeeSidebar employees={employees} shifts={shifts} />
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeDragEmployee ? (
+            <DragOverlayChip name={activeDragEmployee.name} />
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       {/* Template form dialog */}
@@ -258,6 +339,29 @@ export function ShiftPlannerTab({
         template={editingTemplate}
         onSubmit={handleTemplateSubmit}
         positions={positions}
+      />
+
+      {/* Assignment popover — shown after dropping an employee onto a shift cell */}
+      {pendingAssignment && (
+        <AssignmentPopover
+          open={true}
+          employeeName={pendingAssignment.employee.name}
+          shiftName={pendingAssignment.template.name}
+          activeDayCount={activeDayCount}
+          onAssignDay={handleAssignDay}
+          onAssignAll={handleAssignAll}
+          onCancel={handleCancelAssignment}
+        />
+      )}
+
+      {/* Export dialog */}
+      <PlannerExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        shifts={shifts}
+        templates={templates}
+        restaurantName={restaurantName}
+        weekDays={weekDays}
       />
     </div>
   );

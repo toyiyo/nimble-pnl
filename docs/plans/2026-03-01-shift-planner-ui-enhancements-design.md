@@ -55,7 +55,7 @@ The popover auto-dismisses on selection or click-outside (cancels the assignment
 - CSV: New `generatePlannerCSV()` utility
 
 **CSV Format:**
-```
+```csv
 Employee,Shift,Day,Date,Start,End,Position,Break
 Sarah,Morning,Mon,2026-03-02,9:00,17:00,Server,30
 John,Morning,Mon,2026-03-02,9:00,17:00,Cook,30

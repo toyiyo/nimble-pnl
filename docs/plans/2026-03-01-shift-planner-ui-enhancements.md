@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: DragOverlay for Visible Drag Ghost
+## Task 1: DragOverlay for Visible Drag Ghost
 
 **Files:**
 - Modify: `src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx`
@@ -147,7 +147,7 @@ shadow and ring styling."
 
 ---
 
-### Task 2: Always-Visible Day Indicators on Shift Rows
+## Task 2: Always-Visible Day Indicators on Shift Rows
 
 **Files:**
 - Modify: `src/components/scheduling/ShiftPlanner/ShiftCell.tsx`
@@ -289,7 +289,7 @@ days a shift covers without needing to drag."
 
 ---
 
-### Task 3: Day-vs-Shift Assignment Popover
+## Task 3: Day-vs-Shift Assignment Popover
 
 **Files:**
 - Create: `src/components/scheduling/ShiftPlanner/AssignmentPopover.tsx`
@@ -595,7 +595,7 @@ assignment loops through active days using getActiveDaysForWeek."
 
 ---
 
-### Task 4: PDF + CSV Export in Planner View
+## Task 4: PDF + CSV Export in Planner View
 
 **Files:**
 - Create: `src/utils/plannerExport.ts`
@@ -1040,7 +1040,7 @@ day, date, start/end times, position, and break duration."
 
 ---
 
-### Task 5: Auto-Select Employee/Position on Add in Schedule View
+## Task 5: Auto-Select Employee/Position on Add in Schedule View
 
 **Files:**
 - Modify: `src/pages/Scheduling.tsx`
@@ -1199,7 +1199,7 @@ Reduces redundant clicks when adding shifts from the grid."
 
 ---
 
-### Task 6: Verify All Tests Pass and Lint
+## Task 6: Verify All Tests Pass and Lint
 
 **Step 1: Run all unit tests**
 

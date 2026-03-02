@@ -35,7 +35,7 @@ export const ShiftCell = memo(
     if (!isActiveDay) {
       return (
         <div
-          className="min-h-[64px] p-1.5 bg-muted/20 opacity-50"
+          className="min-h-[64px] p-1.5 opacity-60 bg-hatched-inactive"
           aria-label={`${day} inactive`}
         />
       );
@@ -45,7 +45,8 @@ export const ShiftCell = memo(
       <div
         ref={setNodeRef}
         className={cn(
-          'min-h-[64px] p-1.5 space-y-1 transition-colors duration-600',
+          'min-h-[64px] p-1.5 space-y-1 transition-colors duration-500',
+          'border-l-2 border-primary/40',
           isOver && 'bg-foreground/5 ring-1 ring-foreground/20 rounded',
           isHighlighted && 'bg-green-500/10',
         )}

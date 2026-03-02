@@ -13,11 +13,23 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { ShiftInterval, formatLocalDate } from '@/lib/shiftInterval';
 import { validateShift, ValidationResult } from '@/lib/shiftValidator';
 
+import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
+
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (tested without React)
 // ---------------------------------------------------------------------------
+
+/**
+ * Returns the subset of weekDays where the template is active.
+ */
+export function getActiveDaysForWeek(
+  template: Pick<ShiftTemplate, 'days'>,
+  weekDays: string[],
+): string[] {
+  return weekDays.filter((day) => templateAppliesToDay(template, day));
+}
 
 /**
  * Extract local-timezone HH:MM:SS from an ISO timestamp string.

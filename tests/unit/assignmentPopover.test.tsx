@@ -41,6 +41,12 @@ describe('AssignmentPopover', () => {
     fireEvent.click(screen.getByText(/All 5 days/));
     expect(defaultProps.onAssignAll).toHaveBeenCalledOnce();
   });
+
+  it('hides all-days button when activeDayCount is 1', () => {
+    render(<AssignmentPopover {...defaultProps} activeDayCount={1} />);
+    expect(screen.queryByText(/All.*days/)).toBeNull();
+    expect(screen.getByText(/This day only/)).toBeTruthy();
+  });
 });
 
 describe('getActiveDaysForWeek', () => {

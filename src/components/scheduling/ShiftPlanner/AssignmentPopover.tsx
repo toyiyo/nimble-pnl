@@ -53,14 +53,16 @@ export function AssignmentPopover({
             <CalendarCheck className="h-4 w-4 text-muted-foreground" />
             This day only
           </Button>
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-2 h-10 text-[13px] font-medium rounded-lg border-border/40"
-            onClick={onAssignAll}
-          >
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            All {activeDayCount} {activeDayCount === 1 ? 'day' : 'days'} this week
-          </Button>
+          {activeDayCount > 1 && (
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 h-10 text-[13px] font-medium rounded-lg border-border/40"
+              onClick={onAssignAll}
+            >
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              All {activeDayCount} days this week
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

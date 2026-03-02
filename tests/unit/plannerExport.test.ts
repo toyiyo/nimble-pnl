@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   generatePlannerCSV,
-  buildExportRows,
+  buildGridExportData,
   formatTime12,
+  formatTemplateTime,
   getDayName,
   findTemplateForShift,
   escapeCSVCell,
@@ -97,6 +98,32 @@ describe('formatTime12', () => {
 
   it('formats 1PM correctly', () => {
     expect(formatTime12('2026-03-02T13:00:00')).toBe('1PM');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatTemplateTime
+// ---------------------------------------------------------------------------
+
+describe('formatTemplateTime', () => {
+  it('formats morning time', () => {
+    expect(formatTemplateTime('09:00:00')).toBe('9AM');
+  });
+
+  it('formats evening time', () => {
+    expect(formatTemplateTime('17:00:00')).toBe('5PM');
+  });
+
+  it('formats noon', () => {
+    expect(formatTemplateTime('12:00:00')).toBe('12PM');
+  });
+
+  it('formats midnight', () => {
+    expect(formatTemplateTime('00:00:00')).toBe('12AM');
+  });
+
+  it('formats time with minutes', () => {
+    expect(formatTemplateTime('09:30:00')).toBe('9:30AM');
   });
 });
 
@@ -213,10 +240,10 @@ describe('findTemplateForShift', () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildExportRows
+// buildGridExportData
 // ---------------------------------------------------------------------------
 
-describe('buildExportRows', () => {
+describe('buildGridExportData', () => {
   const templates = [
     mockTemplate({
       id: 't1',
@@ -228,65 +255,105 @@ describe('buildExportRows', () => {
     }),
   ];
 
-  it('builds rows from shifts with employee and template data', () => {
+  it('produces day headers with name and date', () => {
+    const { dayHeaders } = buildGridExportData([], templates, WEEK_DAYS);
+    expect(dayHeaders[0]).toBe('Mon 3/2');
+    expect(dayHeaders[4]).toBe('Fri 3/6');
+    expect(dayHeaders[5]).toBe('Sat 3/7');
+    expect(dayHeaders).toHaveLength(7);
+  });
+
+  it('produces one row per template', () => {
+    const twoTemplates = [
+      ...templates,
+      mockTemplate({
+        id: 't2',
+        name: 'Evening Cook',
+        start_time: '16:00:00',
+        end_time: '23:00:00',
+        position: 'Cook',
+        days: [1, 2, 3, 4, 5, 6],
+      }),
+    ];
+    const { rows } = buildGridExportData([], twoTemplates, WEEK_DAYS);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].shiftLabel).toContain('Morning Server');
+    expect(rows[1].shiftLabel).toContain('Evening Cook');
+  });
+
+  it('includes hours in shift label', () => {
+    const { rows } = buildGridExportData([], templates, WEEK_DAYS);
+    expect(rows[0].shiftLabel).toBe('Morning Server (9AM\u20135PM)');
+  });
+
+  it('marks inactive days with em dash', () => {
+    // Template is Mon-Fri, so Sat (index 5) and Sun (index 6) are inactive
+    const { rows } = buildGridExportData([], templates, WEEK_DAYS);
+    expect(rows[0].cells[5]).toBe('\u2014'); // Sat
+    expect(rows[0].cells[6]).toBe('\u2014'); // Sun
+  });
+
+  it('shows empty string for active days with no shifts', () => {
+    const { rows } = buildGridExportData([], templates, WEEK_DAYS);
+    expect(rows[0].cells[0]).toBe(''); // Mon, no shifts
+  });
+
+  it('places employee names in correct day cells', () => {
+    const shifts = [
+      mockShift({
+        start_time: '2026-03-02T09:00:00', // Mon
+        end_time: '2026-03-02T17:00:00',
+        position: 'Server',
+        employee: { id: 'e1', name: 'Alice' } as Shift['employee'],
+      }),
+      mockShift({
+        start_time: '2026-03-04T09:00:00', // Wed
+        end_time: '2026-03-04T17:00:00',
+        position: 'Server',
+        employee: { id: 'e2', name: 'Bob' } as Shift['employee'],
+      }),
+    ];
+
+    const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
+    expect(rows[0].cells[0]).toBe('Alice');  // Mon
+    expect(rows[0].cells[1]).toBe('');       // Tue (empty)
+    expect(rows[0].cells[2]).toBe('Bob');    // Wed
+  });
+
+  it('stacks multiple employees in same cell sorted alphabetically', () => {
     const shifts = [
       mockShift({
         start_time: '2026-03-02T09:00:00',
         end_time: '2026-03-02T17:00:00',
         position: 'Server',
-        break_duration: 30,
-        employee: {
-          id: 'e1',
-          name: 'Alice Smith',
-          position: 'Server',
-        } as Shift['employee'],
+        employee: { id: 'e2', name: 'Zelda' } as Shift['employee'],
+      }),
+      mockShift({
+        start_time: '2026-03-02T09:00:00',
+        end_time: '2026-03-02T17:00:00',
+        position: 'Server',
+        employee: { id: 'e1', name: 'Alice' } as Shift['employee'],
       }),
     ];
 
-    const rows = buildExportRows(shifts, templates, WEEK_DAYS);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual({
-      employee: 'Alice Smith',
-      shift: 'Morning Server',
-      day: 'Mon',
-      date: '2026-03-02',
-      start: '9AM',
-      end: '5PM',
-      position: 'Server',
-      break: '30 min',
-    });
+    const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
+    expect(rows[0].cells[0]).toBe('Alice\nZelda');
   });
 
   it('excludes cancelled shifts', () => {
     const shifts = [
-      mockShift({ status: 'cancelled' }),
       mockShift({
-        id: 's2',
-        start_time: '2026-03-03T09:00:00',
-        end_time: '2026-03-03T17:00:00',
-        status: 'scheduled',
+        status: 'cancelled',
+        start_time: '2026-03-02T09:00:00',
+        end_time: '2026-03-02T17:00:00',
       }),
     ];
 
-    const rows = buildExportRows(shifts, templates, WEEK_DAYS);
-    expect(rows).toHaveLength(1);
+    const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
+    expect(rows[0].cells[0]).toBe(''); // cancelled shift excluded
   });
 
-  it('uses em dash for shifts without template match', () => {
-    const shifts = [
-      mockShift({
-        start_time: '2026-03-02T06:00:00',
-        end_time: '2026-03-02T14:00:00',
-        position: 'Prep Cook',
-      }),
-    ];
-
-    const rows = buildExportRows(shifts, templates, WEEK_DAYS);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].shift).toBe('—');
-  });
-
-  it('uses "Unassigned" when employee is missing', () => {
+  it('shows "Unassigned" when employee is missing', () => {
     const shifts = [
       mockShift({
         employee: undefined,
@@ -295,50 +362,27 @@ describe('buildExportRows', () => {
       }),
     ];
 
-    const rows = buildExportRows(shifts, templates, WEEK_DAYS);
-    expect(rows[0].employee).toBe('Unassigned');
+    const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
+    expect(rows[0].cells[0]).toBe('Unassigned');
   });
 
-  it('shows "0 min" when break_duration is 0', () => {
+  it('skips shifts that do not match any template', () => {
     const shifts = [
       mockShift({
-        break_duration: 0,
-        start_time: '2026-03-02T09:00:00',
-        end_time: '2026-03-02T17:00:00',
+        start_time: '2026-03-02T06:00:00', // 6AM, no template match
+        end_time: '2026-03-02T14:00:00',
+        position: 'Prep Cook',
       }),
     ];
 
-    const rows = buildExportRows(shifts, templates, WEEK_DAYS);
-    expect(rows[0].break).toBe('0 min');
-  });
-
-  it('sorts rows by date then employee name', () => {
-    const shifts = [
-      mockShift({
-        start_time: '2026-03-03T09:00:00',
-        end_time: '2026-03-03T17:00:00',
-        employee: { id: 'e1', name: 'Zelda' } as Shift['employee'],
-      }),
-      mockShift({
-        start_time: '2026-03-02T09:00:00',
-        end_time: '2026-03-02T17:00:00',
-        employee: { id: 'e2', name: 'Alice' } as Shift['employee'],
-      }),
-      mockShift({
-        start_time: '2026-03-02T09:00:00',
-        end_time: '2026-03-02T17:00:00',
-        employee: { id: 'e3', name: 'Bob' } as Shift['employee'],
-      }),
-    ];
-
-    const rows = buildExportRows(shifts, templates, WEEK_DAYS);
-    expect(rows.map((r) => r.employee)).toEqual(['Alice', 'Bob', 'Zelda']);
-    expect(rows.map((r) => r.date)).toEqual(['2026-03-02', '2026-03-02', '2026-03-03']);
+    const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
+    // All cells for the one template should be empty (shift didn't match it)
+    expect(rows[0].cells[0]).toBe('');
   });
 });
 
 // ---------------------------------------------------------------------------
-// generatePlannerCSV
+// generatePlannerCSV (grid layout)
 // ---------------------------------------------------------------------------
 
 describe('generatePlannerCSV', () => {
@@ -353,7 +397,7 @@ describe('generatePlannerCSV', () => {
     }),
   ];
 
-  it('generates CSV with header row', () => {
+  it('generates CSV with grid header (Shift + day columns)', () => {
     const csv = generatePlannerCSV({
       shifts: [],
       templates,
@@ -361,100 +405,80 @@ describe('generatePlannerCSV', () => {
     });
 
     const lines = csv.split('\n');
-    expect(lines[0]).toBe('Employee,Shift,Day,Date,Start,End,Position,Break');
+    expect(lines[0]).toBe('Shift,Mon 3/2,Tue 3/3,Wed 3/4,Thu 3/5,Fri 3/6,Sat 3/7,Sun 3/8');
   });
 
-  it('generates CSV with data rows', () => {
+  it('generates one row per template with employee names in day cells', () => {
     const shifts = [
       mockShift({
         start_time: '2026-03-02T09:00:00',
         end_time: '2026-03-02T17:00:00',
         position: 'Server',
-        break_duration: 30,
-        employee: {
-          id: 'e1',
-          name: 'Alice Smith',
-          position: 'Server',
-        } as Shift['employee'],
+        employee: { id: 'e1', name: 'Alice' } as Shift['employee'],
       }),
     ];
 
-    const csv = generatePlannerCSV({
-      shifts,
-      templates,
-      weekDays: WEEK_DAYS,
-    });
-
+    const csv = generatePlannerCSV({ shifts, templates, weekDays: WEEK_DAYS });
     const lines = csv.split('\n');
-    expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe('Alice Smith,Morning Server,Mon,2026-03-02,9AM,5PM,Server,30 min');
+    expect(lines).toHaveLength(2); // header + 1 template row
+    // First column: shift label, then Alice on Mon, empty Tue-Fri, dash Sat/Sun
+    expect(lines[1]).toContain('Alice');
+    expect(lines[1]).toContain('\u2014'); // em-dash for inactive days
   });
 
-  it('escapes CSV cells with commas', () => {
+  it('joins multiple employees with " / " in CSV cells', () => {
     const shifts = [
       mockShift({
         start_time: '2026-03-02T09:00:00',
         end_time: '2026-03-02T17:00:00',
         position: 'Server',
-        employee: {
-          id: 'e1',
-          name: 'Smith, Alice',
-          position: 'Server',
-        } as Shift['employee'],
-      }),
-    ];
-
-    const csv = generatePlannerCSV({
-      shifts,
-      templates,
-      weekDays: WEEK_DAYS,
-    });
-
-    const lines = csv.split('\n');
-    expect(lines[1]).toContain('"Smith, Alice"');
-  });
-
-  it('returns only header when no non-cancelled shifts', () => {
-    const shifts = [mockShift({ status: 'cancelled' })];
-
-    const csv = generatePlannerCSV({
-      shifts,
-      templates,
-      weekDays: WEEK_DAYS,
-    });
-
-    const lines = csv.split('\n').filter(Boolean);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('Employee,Shift,Day,Date,Start,End,Position,Break');
-  });
-
-  it('handles multiple shifts across multiple days', () => {
-    const shifts = [
-      mockShift({
-        start_time: '2026-03-02T09:00:00',
-        end_time: '2026-03-02T17:00:00',
-        employee: { id: 'e1', name: 'Alice' } as Shift['employee'],
-      }),
-      mockShift({
-        start_time: '2026-03-03T09:00:00',
-        end_time: '2026-03-03T17:00:00',
         employee: { id: 'e1', name: 'Alice' } as Shift['employee'],
       }),
       mockShift({
         start_time: '2026-03-02T09:00:00',
         end_time: '2026-03-02T17:00:00',
+        position: 'Server',
         employee: { id: 'e2', name: 'Bob' } as Shift['employee'],
       }),
     ];
 
+    const csv = generatePlannerCSV({ shifts, templates, weekDays: WEEK_DAYS });
+    const lines = csv.split('\n');
+    expect(lines[1]).toContain('Alice / Bob');
+  });
+
+  it('escapes shift labels containing parentheses in CSV', () => {
     const csv = generatePlannerCSV({
-      shifts,
+      shifts: [],
       templates,
       weekDays: WEEK_DAYS,
     });
 
+    const lines = csv.split('\n');
+    // The shift label has parentheses but no commas/quotes, so it stays unquoted
+    expect(lines[1]).toMatch(/^Morning Server \(9AM/);
+  });
+
+  it('shows only template rows when no shifts exist', () => {
+    const twoTemplates = [
+      ...templates,
+      mockTemplate({
+        id: 't2',
+        name: 'Evening Cook',
+        start_time: '16:00:00',
+        end_time: '23:00:00',
+        position: 'Cook',
+        days: [1, 2, 3, 4, 5, 6],
+      }),
+    ];
+
+    const csv = generatePlannerCSV({
+      shifts: [],
+      templates: twoTemplates,
+      weekDays: WEEK_DAYS,
+    });
+
     const lines = csv.split('\n').filter(Boolean);
-    // Header + 3 data rows
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(3); // header + 2 template rows
   });
 });

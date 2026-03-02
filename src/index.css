@@ -14,7 +14,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 30 15% 15%;
 
-    --primary: 16 60% 52%;
+    --primary: 16 60% 46%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 40 30% 94%;
@@ -26,7 +26,7 @@
     --accent: 85 25% 45%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 84.2% 48%;
     --destructive-foreground: 0 0% 100%;
 
     --success: 142 55% 45%;
@@ -40,19 +40,19 @@
 
     --border: 40 20% 88%;
     --input: 40 20% 88%;
-    --ring: 16 60% 52%;
+    --ring: 16 60% 46%;
 
     --radius: 0.75rem;
 
     /* Dark Contrast Sidebar */
     --sidebar-background: 30 15% 12%;
     --sidebar-foreground: 40 20% 92%;
-    --sidebar-primary: 16 60% 52%;
+    --sidebar-primary: 16 60% 46%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 30 12% 18%;
     --sidebar-accent-foreground: 40 20% 92%;
     --sidebar-border: 30 12% 20%;
-    --sidebar-ring: 16 60% 52%;
+    --sidebar-ring: 16 60% 46%;
 
     /* Warm-tinted charts */
     --chart-1: 16 60% 52%;

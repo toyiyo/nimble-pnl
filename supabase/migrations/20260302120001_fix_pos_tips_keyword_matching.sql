@@ -63,7 +63,8 @@ BEGIN
         WHERE uss.sale_id = us.id
         AND (
           LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable', 'tips payable')
-          OR LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'
+          OR (LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('', 'liability', 'other_current_liability', 'other')
+              AND LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)')
         )
       )
     GROUP BY us.sale_date, us.pos_system

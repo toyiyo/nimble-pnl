@@ -166,7 +166,9 @@ export function ShiftPlannerTab({
       if (success) successCount++;
     }
 
-    clearValidation();
+    if (successCount === activeDays.length) {
+      clearValidation();
+    }
     toast({
       title: `${employee.name} assigned to ${template.name} — ${successCount}/${activeDays.length} days`,
     });

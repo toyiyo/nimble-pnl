@@ -15,6 +15,10 @@ describe('AssignmentPopover', () => {
     onCancel: vi.fn(),
   };
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders employee and shift name', () => {
     render(<AssignmentPopover {...defaultProps} />);
     expect(screen.getByText(/Sarah Johnson/)).toBeTruthy();

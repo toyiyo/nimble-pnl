@@ -74,7 +74,7 @@ export function TemplateFormDialog({
     );
   };
 
-  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0 && startTime < endTime;
+  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0 && startTime !== endTime;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

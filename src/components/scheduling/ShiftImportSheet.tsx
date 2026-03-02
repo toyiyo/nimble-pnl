@@ -60,18 +60,41 @@ const STEP_LABELS: Record<ImportStep, string> = {
 
 const STEP_ORDER: ImportStep[] = ['upload', 'mapping', 'employees', 'preview', 'importing'];
 
+/** Normalize time strings like "2:30 PM" or "14:30" to "HH:MM" 24h format. */
+function normalizeTimeToHHMM(raw: string): string | null {
+  const value = raw.trim();
+  const ampm = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value);
+  if (ampm) {
+    let h = Number(ampm[1]) % 12;
+    if (ampm[3].toUpperCase() === 'PM') h += 12;
+    const mm = Number(ampm[2]);
+    if (mm < 0 || mm > 59) return null;
+    return `${h.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
+  }
+  const hhmm = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  return hhmm ? `${hhmm[1]}:${hhmm[2]}` : null;
+}
+
 function parseDateAndTime(dateStr?: string, timeStr?: string, timezone?: string): string | null {
-  const combined = [dateStr, timeStr].filter(Boolean).join(' ').trim();
+  // When timezone is specified, parse date and time components separately
+  // to avoid non-standard Date parsing of "YYYY-MM-DD HH:mm" format
+  if (timezone) {
+    const dateOnly = dateStr?.trim().match(/^\d{4}-\d{2}-\d{2}$/)?.[0];
+    const timeOnly = timeStr ? normalizeTimeToHHMM(timeStr) : null;
+    if (dateOnly && timeOnly) {
+      try {
+        return localToUTC(dateOnly, timeOnly, timezone);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // Fallback: combine and use T separator for standard Date parsing
+  const combined = [dateStr, timeStr].filter(Boolean).join('T').trim();
   if (!combined) return null;
   const d = new Date(combined);
   if (Number.isNaN(d.getTime())) return null;
-
-  if (timezone) {
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    const dateOnly = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const timeOnly = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    return localToUTC(dateOnly, timeOnly, timezone);
-  }
   return d.toISOString();
 }
 

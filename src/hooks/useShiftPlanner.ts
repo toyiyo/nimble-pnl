@@ -97,15 +97,20 @@ function pushToGridBucket(
   dayShifts.push(shift);
 }
 
-/** Find the first template that matches a shift's time and position. */
+/** Find the first template that matches a shift's time, position, and active day. */
 function findMatchingTemplate(
   templates: ShiftTemplate[],
   shiftStart: string,
   shiftEnd: string,
   position: string,
+  dayOfWeek: number,
 ): ShiftTemplate | undefined {
   return templates.find(
-    (t) => t.start_time === shiftStart && t.end_time === shiftEnd && t.position === position,
+    (t) =>
+      t.start_time === shiftStart &&
+      t.end_time === shiftEnd &&
+      t.position === position &&
+      t.days.includes(dayOfWeek),
   );
 }
 
@@ -130,12 +135,14 @@ export function buildTemplateGridData(
 
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;
-    const dayStr = formatLocalDate(new Date(shift.start_time));
+    const shiftStartAt = new Date(shift.start_time);
+    const dayStr = formatLocalDate(shiftStartAt);
     if (!weekDaySet.has(dayStr)) continue;
 
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
-    const match = findMatchingTemplate(templates, shiftStart, shiftEnd, shift.position);
+    const dayOfWeek = shiftStartAt.getDay();
+    const match = findMatchingTemplate(templates, shiftStart, shiftEnd, shift.position, dayOfWeek);
 
     const bucketKey = match ? match.id : '__unmatched__';
     pushToGridBucket(grid.get(bucketKey)!, dayStr, shift);

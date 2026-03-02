@@ -183,7 +183,7 @@ export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarP
       </div>
 
       {/* Scrollable employee list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2" aria-live="polite">
         {filtered.length === 0 ? (
           <p className="text-[12px] text-muted-foreground text-center py-4">No matches</p>
         ) : (

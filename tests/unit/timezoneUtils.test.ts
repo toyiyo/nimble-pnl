@@ -51,4 +51,20 @@ describe('localToUTC', () => {
     expect(() => localToUTC('2026-01-15', '10:00:00', 'UTC')).toThrow('Invalid timeHHMM format');
     expect(() => localToUTC('2026-01-15', 'abc', 'UTC')).toThrow('Invalid timeHHMM format');
   });
+
+  it('throws on impossible date values', () => {
+    expect(() => localToUTC('2026-02-31', '12:00', 'UTC')).toThrow('Invalid date value');
+    expect(() => localToUTC('2026-13-01', '12:00', 'UTC')).toThrow('Invalid date value');
+    expect(() => localToUTC('2026-00-15', '12:00', 'UTC')).toThrow('Invalid date value');
+  });
+
+  it('throws on impossible time values', () => {
+    expect(() => localToUTC('2026-03-02', '24:00', 'UTC')).toThrow('Invalid time value');
+    expect(() => localToUTC('2026-03-02', '12:61', 'UTC')).toThrow('Invalid time value');
+  });
+
+  it('validates leap year dates correctly', () => {
+    expect(() => localToUTC('2024-02-29', '12:00', 'UTC')).not.toThrow();
+    expect(() => localToUTC('2026-02-29', '12:00', 'UTC')).toThrow('Invalid date value');
+  });
 });

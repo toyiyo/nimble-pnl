@@ -26,6 +26,15 @@ export function localToUTC(dateStr: string, timeHHMM: string, timezone: string):
   const [year, month, day] = dateStr.split('-').map(Number);
   const [hours, minutes] = timeHHMM.split(':').map(Number);
 
+  // Validate calendar ranges
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) {
+    throw new Error(`Invalid date value: "${dateStr}"`);
+  }
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    throw new Error(`Invalid time value: "${timeHHMM}"`);
+  }
+
   // Build a Date in UTC first, then compute the offset for the target timezone
   const guessUTC = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0, 0));
 

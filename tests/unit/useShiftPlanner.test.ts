@@ -186,6 +186,25 @@ describe('useShiftPlanner utilities', () => {
       expect(grid.get('t1')?.get('2026-03-02') ?? []).toHaveLength(0);
     });
 
+    it('should not match template when day is not in template.days', () => {
+      // t2 has days=[0,6] (weekends). A Monday (day=1) Bartender shift at t2 times should be unmatched.
+      const shifts = [
+        mockShift({ id: 's1', employee_id: 'e1', start_time: '2026-03-02T17:00:00', end_time: '2026-03-02T23:00:00', position: 'Bartender', status: 'scheduled' }),
+      ];
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      expect(grid.get('t2')?.get('2026-03-02') ?? []).toHaveLength(0);
+      expect(grid.get('__unmatched__')?.get('2026-03-02')).toHaveLength(1);
+    });
+
+    it('should match template when day is in template.days', () => {
+      // t2 has days=[0,6] (weekends). A Saturday (day=6, 2026-03-07) Bartender shift should match t2.
+      const shifts = [
+        mockShift({ id: 's1', employee_id: 'e1', start_time: '2026-03-07T17:00:00', end_time: '2026-03-07T23:00:00', position: 'Bartender', status: 'scheduled' }),
+      ];
+      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      expect(grid.get('t2')?.get('2026-03-07')).toHaveLength(1);
+    });
+
     it('should match shifts with UTC timestamps (Z suffix) to local-time templates', () => {
       // Simulate what Supabase returns: 6am local CST (UTC-6) = noon UTC
       // ShiftInterval.create('2026-03-02', '06:00', '12:00') in CST →

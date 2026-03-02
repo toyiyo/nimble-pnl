@@ -780,6 +780,7 @@ const Scheduling = () => {
           </TabsTrigger>
           <TabsTrigger
             value="planner"
+            aria-label="Planner"
             className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
           >
             <LayoutGrid className="h-4 w-4" />
@@ -1225,7 +1226,6 @@ const Scheduling = () => {
           {restaurantId && (
             <ShiftPlannerTab
               restaurantId={restaurantId}
-              onShiftClick={handleEditShift}
             />
           )}
         </TabsContent>

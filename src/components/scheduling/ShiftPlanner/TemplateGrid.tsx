@@ -37,7 +37,7 @@ export function TemplateGrid({
 }: Readonly<TemplateGridProps>) {
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
-      <div style={{ display: 'grid', gridTemplateColumns: '200px repeat(7, 1fr)' }}>
+      <div className="grid grid-cols-[200px_repeat(7,1fr)]">
         {/* Header row */}
         <div className="p-3 flex items-end">
           <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

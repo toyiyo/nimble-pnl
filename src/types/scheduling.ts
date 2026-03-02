@@ -111,7 +111,7 @@ export interface ShiftTemplate {
   id: string;
   restaurant_id: string;
   name: string;
-  day_of_week: number; // 0 = Sunday, 6 = Saturday
+  days: number[]; // [0,1,2,3,4,5,6] — 0=Sunday, 6=Saturday
   start_time: string;
   end_time: string;
   break_duration: number;

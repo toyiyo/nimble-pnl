@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Papa from 'papaparse';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useBulkCreateShifts } from '@/hooks/useBulkCreateShifts';
 import { useCreateEmployee } from '@/hooks/useEmployees';
 import { useShiftsInRange } from '@/hooks/useShiftsInRange';
-import { useQueryClient } from '@tanstack/react-query';
 
 import type { Employee } from '@/types/scheduling';
 import type { ParsedShift } from '@/utils/slingCsvParser';
@@ -31,11 +31,12 @@ import type { ShiftColumnMapping } from '@/utils/shiftColumnMapping';
 import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
 import type { ShiftImportPreviewResult } from '@/utils/shiftImportPreview';
 
+import { cn } from '@/lib/utils';
 import { isSlingFormat, parseSlingCSV } from '@/utils/slingCsvParser';
 import { suggestShiftMappings, SHIFT_FIELD_OPTIONS } from '@/utils/shiftColumnMapping';
 import { matchEmployees } from '@/utils/shiftEmployeeMatching';
 import { buildShiftImportPreview, getWeekMonday } from '@/utils/shiftImportPreview';
-import { cn } from '@/lib/utils';
+import { localToUTC } from '@/utils/timezoneUtils';
 import { ShiftImportEmployeeReview } from './ShiftImportEmployeeReview';
 import { ShiftImportPreview } from './ShiftImportPreview';
 
@@ -46,6 +47,7 @@ interface ShiftImportSheetProps {
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
   employees: Employee[];
+  timezone?: string;
 }
 
 const STEP_LABELS: Record<ImportStep, string> = {
@@ -58,11 +60,42 @@ const STEP_LABELS: Record<ImportStep, string> = {
 
 const STEP_ORDER: ImportStep[] = ['upload', 'mapping', 'employees', 'preview', 'importing'];
 
-function parseDateAndTime(dateStr?: string, timeStr?: string): string | null {
-  const combined = [dateStr, timeStr].filter(Boolean).join(' ').trim();
+/** Normalize time strings like "2:30 PM" or "14:30" to "HH:MM" 24h format. */
+function normalizeTimeToHHMM(raw: string): string | null {
+  const value = raw.trim();
+  const ampm = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(value);
+  if (ampm) {
+    let h = Number(ampm[1]) % 12;
+    if (ampm[3].toUpperCase() === 'PM') h += 12;
+    const mm = Number(ampm[2]);
+    if (mm < 0 || mm > 59) return null;
+    return `${h.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}`;
+  }
+  const hhmm = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  return hhmm ? `${hhmm[1]}:${hhmm[2]}` : null;
+}
+
+function parseDateAndTime(dateStr?: string, timeStr?: string, timezone?: string): string | null {
+  // When timezone is specified, parse date and time components separately
+  // to avoid non-standard Date parsing of "YYYY-MM-DD HH:mm" format
+  if (timezone) {
+    const dateOnly = dateStr?.trim().match(/^\d{4}-\d{2}-\d{2}$/)?.[0];
+    const timeOnly = timeStr ? normalizeTimeToHHMM(timeStr) : null;
+    if (dateOnly && timeOnly) {
+      try {
+        return localToUTC(dateOnly, timeOnly, timezone);
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // Fallback: combine and use T separator for standard Date parsing
+  const combined = [dateStr, timeStr].filter(Boolean).join('T').trim();
   if (!combined) return null;
   const d = new Date(combined);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 function resolveTime(
@@ -71,21 +104,23 @@ function resolveTime(
   dateVal: string,
   datetimeField: string,
   timeField: string,
+  timezone?: string,
 ): string | null {
   if (fieldMap.has(datetimeField)) {
-    return parseDateAndTime(row[fieldMap.get(datetimeField) ?? '']);
+    return parseDateAndTime(row[fieldMap.get(datetimeField) ?? ''], undefined, timezone);
   }
-  return parseDateAndTime(dateVal, row[fieldMap.get(timeField) ?? '']?.trim());
+  return parseDateAndTime(dateVal, row[fieldMap.get(timeField) ?? '']?.trim(), timezone);
 }
 
 function buildParsedShiftsFromMappings(
   rows: Record<string, string>[],
   mappings: ShiftColumnMapping[],
+  timezone?: string,
 ): ParsedShift[] {
   const fieldMap = new Map<string, string>();
-  mappings.forEach(m => {
+  for (const m of mappings) {
     if (m.targetField) fieldMap.set(m.targetField, m.csvColumn);
-  });
+  }
 
   const shifts: ParsedShift[] = [];
 
@@ -94,8 +129,8 @@ function buildParsedShiftsFromMappings(
     if (!employeeName) continue;
 
     const dateVal = row[fieldMap.get('date') ?? '']?.trim() || '';
-    const startTime = resolveTime(fieldMap, row, dateVal, 'start_datetime', 'start_time');
-    const endTime = resolveTime(fieldMap, row, dateVal, 'end_datetime', 'end_time');
+    const startTime = resolveTime(fieldMap, row, dateVal, 'start_datetime', 'start_time', timezone);
+    const endTime = resolveTime(fieldMap, row, dateVal, 'end_datetime', 'end_time', timezone);
 
     if (!startTime || !endTime) continue;
 
@@ -117,12 +152,13 @@ function buildParsedShiftsFromMappings(
   return shifts;
 }
 
-export const ShiftImportSheet = ({
+export function ShiftImportSheet({
   open,
   onOpenChange,
   restaurantId,
   employees,
-}: ShiftImportSheetProps) => {
+  timezone,
+}: Readonly<ShiftImportSheetProps>) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const bulkCreateShifts = useBulkCreateShifts();
@@ -199,11 +235,11 @@ export const ShiftImportSheet = ({
 
   const mappingValidation = useMemo(() => {
     const mappedFields = new Map<string, number>();
-    mappings.forEach(m => {
+    for (const m of mappings) {
       if (m.targetField) {
         mappedFields.set(m.targetField, (mappedFields.get(m.targetField) || 0) + 1);
       }
-    });
+    }
 
     const duplicates = Array.from(mappedFields.entries())
       .filter(([, count]) => count > 1)
@@ -230,11 +266,11 @@ export const ShiftImportSheet = ({
     setEmployeeMatches(matches);
 
     const map: Record<string, string> = {};
-    matches.forEach(m => {
+    for (const m of matches) {
       if (m.matchedEmployeeId && m.action === 'link') {
         map[m.csvName] = m.matchedEmployeeId;
       }
-    });
+    }
     setEmployeeMap(map);
   }, []);
 
@@ -272,7 +308,7 @@ export const ShiftImportSheet = ({
 
         if (isSlingFormat(parsedHeaders, parsedRows)) {
           setIsSling(true);
-          const shifts = parseSlingCSV(parsedHeaders, parsedRows);
+          const shifts = parseSlingCSV(parsedHeaders, parsedRows, timezone);
           setParsedShifts(shifts);
           runEmployeeMatching(shifts, availableEmployees);
           setStep('employees');
@@ -305,7 +341,7 @@ export const ShiftImportSheet = ({
   };
 
   const handleMappingNext = () => {
-    const shifts = buildParsedShiftsFromMappings(rows, mappings);
+    const shifts = buildParsedShiftsFromMappings(rows, mappings, timezone);
     if (!shifts.length) {
       toast({
         title: 'No shifts parsed',
@@ -788,4 +824,4 @@ export const ShiftImportSheet = ({
       </SheetContent>
     </Sheet>
   );
-};
+}

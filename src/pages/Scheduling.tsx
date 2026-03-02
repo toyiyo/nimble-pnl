@@ -29,6 +29,7 @@ import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
+import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
@@ -54,6 +55,7 @@ import {
   ArrowLeftRight,
   TrendingUp,
   Upload,
+  LayoutGrid,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -231,6 +233,7 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
 const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
@@ -775,6 +778,14 @@ const Scheduling = () => {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger
+            value="planner"
+            aria-label="Planner"
+            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Planner</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule">
@@ -1210,6 +1221,14 @@ const Scheduling = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="planner">
+          {restaurantId && (
+            <ShiftPlannerTab
+              restaurantId={restaurantId}
+            />
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
@@ -1358,6 +1377,7 @@ const Scheduling = () => {
           onOpenChange={setShiftImportOpen}
           restaurantId={restaurantId}
           employees={allEmployees}
+          timezone={restaurantTimezone}
         />
       )}
     </div>

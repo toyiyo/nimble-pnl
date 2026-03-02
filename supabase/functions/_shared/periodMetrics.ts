@@ -112,6 +112,8 @@ function isSalesTaxAccount(account: { account_type: string; account_subtype: str
 }
 
 const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
+const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
 
 /**
  * Check if an account is a tip liability
@@ -119,7 +121,7 @@ const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]
 function isTipAccount(account: { account_type: string; account_subtype: string | null; account_name?: string | null }): boolean {
   const subtype = (account.account_subtype || '').toLowerCase();
   const name = (account.account_name || '').toLowerCase();
-  return account.account_type === 'liability' && (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(name));
+  return account.account_type === 'liability' && (TIP_SUBTYPES.has(subtype) || (GENERIC_SUBTYPES.has(subtype) && hasTipKeyword(name)));
 }
 
 /**

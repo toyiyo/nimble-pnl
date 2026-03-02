@@ -4,6 +4,8 @@ import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPas
 import type { PassThroughType } from './utils/passThroughAdjustments';
 
 const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
+const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
 
 // Re-export for backwards compatibility
 export { classifyPassThroughItem };
@@ -199,19 +201,19 @@ export function useRevenueBreakdown(
           )
         );
 
-        const tipCategories = categories.filter(c => 
+        const tipCategories = categories.filter(c =>
           c.account_type === 'liability' && (
-            c.account_subtype === 'tips' ||
-            hasTipKeyword(c.account_name.toLowerCase())
+            TIP_SUBTYPES.has((c.account_subtype || '').toLowerCase()) ||
+            (GENERIC_SUBTYPES.has((c.account_subtype || '').toLowerCase()) && hasTipKeyword(c.account_name.toLowerCase()))
           )
         );
 
         const otherLiabilityCategories = categories.filter(c =>
           c.account_type === 'liability' &&
           c.account_subtype !== 'sales_tax' &&
-          c.account_subtype !== 'tips' &&
+          !TIP_SUBTYPES.has((c.account_subtype || '').toLowerCase()) &&
           !c.account_name.toLowerCase().includes('tax') &&
-          !hasTipKeyword(c.account_name.toLowerCase())
+          !(GENERIC_SUBTYPES.has((c.account_subtype || '').toLowerCase()) && hasTipKeyword(c.account_name.toLowerCase()))
         );
 
         // If no categorized liabilities were found for pass-through amounts,
@@ -522,10 +524,11 @@ export function useRevenueBreakdown(
         )
       );
 
-      const tipCategories = categories.filter(c => 
+      const tipCategories = categories.filter(c =>
         c.account_type === 'liability' && (
           c.account_subtype === 'tips' ||
-          hasTipKeyword(c.account_name.toLowerCase())
+          c.account_subtype === 'tips_payable' ||
+          ((!c.account_subtype || c.account_subtype === 'other_current_liability') && hasTipKeyword(c.account_name.toLowerCase()))
         )
       );
 
@@ -534,8 +537,9 @@ export function useRevenueBreakdown(
         c.account_type === 'liability' &&
         c.account_subtype !== 'sales_tax' &&
         c.account_subtype !== 'tips' &&
+        c.account_subtype !== 'tips_payable' &&
         !c.account_name.toLowerCase().includes('tax') &&
-        !hasTipKeyword(c.account_name.toLowerCase())
+        !((!c.account_subtype || c.account_subtype === 'other_current_liability') && hasTipKeyword(c.account_name.toLowerCase()))
       );
 
       // Calculate totals in cents (integers) to eliminate floating-point errors

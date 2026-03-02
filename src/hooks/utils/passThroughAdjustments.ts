@@ -12,6 +12,11 @@ function hasTipKeyword(value: string): boolean {
   return /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
 }
 
+// Subtypes that definitively indicate tips
+const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
+// Generic subtypes where name-based matching should apply as fallback
+const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
+
 export interface PassThroughRow {
   item_type?: string | null;
   item_name?: string | null;
@@ -85,8 +90,10 @@ export function classifyPassThroughItem(item: PassThroughRow): PassThroughType {
           accountName.includes('tax')) {
         return 'tax';
       }
-      // Check for tip
-      if (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(accountName)) {
+      // Check for tip — subtype takes precedence; only fall back to name matching
+      // for generic subtypes (e.g., "other_current_liability") to avoid misclassifying
+      // items like "Auto Gratuity" with subtype "service_charge" as tips
+      if (TIP_SUBTYPES.has(subtype) || (GENERIC_SUBTYPES.has(subtype) && hasTipKeyword(accountName))) {
         return 'tip';
       }
       // Other liabilities (service charges, fees, etc.)

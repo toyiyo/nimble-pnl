@@ -104,6 +104,32 @@ describe('classifyPassThroughItem', () => {
       expect(classifyPassThroughItem(item)).toBe('other');
     });
 
+    it('does not classify "Auto Gratuity" with service_charge subtype as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'service_charge',
+          account_name: 'Auto Gratuity',
+        },
+      });
+      // "Gratuity" matches hasTipKeyword, but subtype "service_charge" takes precedence
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('classifies "Gratuity" with generic subtype as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Gratuity Collected',
+        },
+      });
+      // Generic subtype allows name-based matching
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
     it('does not classify revenue accounts as pass-through', () => {
       const item = createRow({
         is_categorized: true,

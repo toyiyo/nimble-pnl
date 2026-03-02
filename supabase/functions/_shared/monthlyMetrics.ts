@@ -37,6 +37,8 @@ export interface AdjustmentInput {
 }
 
 const hasTipKeyword = (value: string) => /(^|[^a-z])(?:tip|tips|gratuity)([^a-z]|$)/i.test(value);
+const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
+const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other']);
 
 /**
  * Classify an adjustment (tax, tip, fee, discount) into the appropriate
@@ -66,8 +68,8 @@ export function classifyAdjustmentIntoMonth(
       return;
     }
     
-    // Check for tips
-    if (subtype === 'tips' || subtype === 'tips_payable' || hasTipKeyword(accountName)) {
+    // Check for tips — subtype takes precedence over name matching
+    if (TIP_SUBTYPES.has(subtype) || (GENERIC_SUBTYPES.has(subtype) && hasTipKeyword(accountName))) {
       month.tips += priceInCents;
       return;
     }

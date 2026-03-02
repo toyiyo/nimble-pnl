@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -7,6 +7,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+
 import type { ShiftTemplate } from '@/types/scheduling';
 
 interface TemplateRowHeaderProps {

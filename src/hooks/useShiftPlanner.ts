@@ -44,6 +44,20 @@ export function getWeekDays(weekStart: Date): string[] {
   return days;
 }
 
+/** Push a shift into the nested Map<dayString, Shift[]> bucket. */
+function pushToGridBucket(
+  bucket: Map<string, Shift[]>,
+  dayStr: string,
+  shift: Shift,
+): void {
+  let dayShifts = bucket.get(dayStr);
+  if (!dayShifts) {
+    dayShifts = [];
+    bucket.set(dayStr, dayShifts);
+  }
+  dayShifts.push(shift);
+}
+
 /**
  * Groups shifts into a Map<employeeId, Map<dayString, Shift[]>>.
  * Shifts without an employee_id are grouped under '__open__'.
@@ -57,44 +71,15 @@ export function buildGridData(
   const grid = new Map<string, Map<string, Shift[]>>();
 
   for (const shift of shifts) {
-    // Extract the date portion from start_time using local timezone
     const dayStr = formatLocalDate(new Date(shift.start_time));
-
-    // Only include shifts that fall within the week
     if (!weekDaySet.has(dayStr)) continue;
 
     const empId = shift.employee_id || '__open__';
-
-    let employeeDays = grid.get(empId);
-    if (!employeeDays) {
-      employeeDays = new Map<string, Shift[]>();
-      grid.set(empId, employeeDays);
-    }
-
-    let dayShifts = employeeDays.get(dayStr);
-    if (!dayShifts) {
-      dayShifts = [];
-      employeeDays.set(dayStr, dayShifts);
-    }
-
-    dayShifts.push(shift);
+    if (!grid.has(empId)) grid.set(empId, new Map());
+    pushToGridBucket(grid.get(empId)!, dayStr, shift);
   }
 
   return grid;
-}
-
-/** Push a shift into the nested Map<dayString, Shift[]> bucket. */
-function pushToGridBucket(
-  bucket: Map<string, Shift[]>,
-  dayStr: string,
-  shift: Shift,
-): void {
-  let dayShifts = bucket.get(dayStr);
-  if (!dayShifts) {
-    dayShifts = [];
-    bucket.set(dayStr, dayShifts);
-  }
-  dayShifts.push(shift);
 }
 
 /** Find the first template that matches a shift's time, position, and active day. */

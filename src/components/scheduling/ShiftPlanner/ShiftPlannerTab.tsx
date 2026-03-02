@@ -134,10 +134,6 @@ export function ShiftPlannerTab({
     setTemplateDialogOpen(true);
   }, []);
 
-  const handleDeleteTemplate = useCallback(async (templateId: string) => {
-    await deleteTemplate(templateId);
-  }, [deleteTemplate]);
-
   const handleTemplateSubmit = useCallback(async (data: {
     name: string;
     start_time: string;
@@ -245,7 +241,7 @@ export function ShiftPlannerTab({
                 gridData={templateGridData}
                 onRemoveShift={deleteShift}
                 onEditTemplate={handleEditTemplate}
-                onDeleteTemplate={handleDeleteTemplate}
+                onDeleteTemplate={deleteTemplate}
                 onAddTemplate={handleAddTemplate}
                 highlightCellId={highlightCellId}
               />

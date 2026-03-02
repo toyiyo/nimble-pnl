@@ -1,8 +1,11 @@
-import type { ShiftTemplate, Shift } from '@/types/scheduling';
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
+
+import type { ShiftTemplate, Shift } from '@/types/scheduling';
+
+import { cn } from '@/lib/utils';
+
 import { TemplateRowHeader } from './TemplateRowHeader';
 import { ShiftCell } from './ShiftCell';
-import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 

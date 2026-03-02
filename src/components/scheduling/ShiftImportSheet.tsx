@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Papa from 'papaparse';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useBulkCreateShifts } from '@/hooks/useBulkCreateShifts';
 import { useCreateEmployee } from '@/hooks/useEmployees';
 import { useShiftsInRange } from '@/hooks/useShiftsInRange';
-import { useQueryClient } from '@tanstack/react-query';
 
 import type { Employee } from '@/types/scheduling';
 import type { ParsedShift } from '@/utils/slingCsvParser';
@@ -31,11 +31,11 @@ import type { ShiftColumnMapping } from '@/utils/shiftColumnMapping';
 import type { ShiftImportEmployee } from '@/utils/shiftEmployeeMatching';
 import type { ShiftImportPreviewResult } from '@/utils/shiftImportPreview';
 
+import { cn } from '@/lib/utils';
 import { isSlingFormat, parseSlingCSV } from '@/utils/slingCsvParser';
 import { suggestShiftMappings, SHIFT_FIELD_OPTIONS } from '@/utils/shiftColumnMapping';
 import { matchEmployees } from '@/utils/shiftEmployeeMatching';
 import { buildShiftImportPreview, getWeekMonday } from '@/utils/shiftImportPreview';
-import { cn } from '@/lib/utils';
 import { localToUTC } from '@/utils/timezoneUtils';
 import { ShiftImportEmployeeReview } from './ShiftImportEmployeeReview';
 import { ShiftImportPreview } from './ShiftImportPreview';
@@ -118,9 +118,9 @@ function buildParsedShiftsFromMappings(
   timezone?: string,
 ): ParsedShift[] {
   const fieldMap = new Map<string, string>();
-  mappings.forEach(m => {
+  for (const m of mappings) {
     if (m.targetField) fieldMap.set(m.targetField, m.csvColumn);
-  });
+  }
 
   const shifts: ParsedShift[] = [];
 
@@ -152,13 +152,13 @@ function buildParsedShiftsFromMappings(
   return shifts;
 }
 
-export const ShiftImportSheet = ({
+export function ShiftImportSheet({
   open,
   onOpenChange,
   restaurantId,
   employees,
   timezone,
-}: ShiftImportSheetProps) => {
+}: Readonly<ShiftImportSheetProps>) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const bulkCreateShifts = useBulkCreateShifts();
@@ -235,11 +235,11 @@ export const ShiftImportSheet = ({
 
   const mappingValidation = useMemo(() => {
     const mappedFields = new Map<string, number>();
-    mappings.forEach(m => {
+    for (const m of mappings) {
       if (m.targetField) {
         mappedFields.set(m.targetField, (mappedFields.get(m.targetField) || 0) + 1);
       }
-    });
+    }
 
     const duplicates = Array.from(mappedFields.entries())
       .filter(([, count]) => count > 1)
@@ -266,11 +266,11 @@ export const ShiftImportSheet = ({
     setEmployeeMatches(matches);
 
     const map: Record<string, string> = {};
-    matches.forEach(m => {
+    for (const m of matches) {
       if (m.matchedEmployeeId && m.action === 'link') {
         map[m.csvName] = m.matchedEmployeeId;
       }
-    });
+    }
     setEmployeeMap(map);
   }, []);
 
@@ -824,4 +824,4 @@ export const ShiftImportSheet = ({
       </SheetContent>
     </Sheet>
   );
-};
+}

@@ -1,9 +1,11 @@
+import type { PaymentMethod } from '@/types/pending-outflows';
+
 export interface LinkedInfoInput {
   linked_outflows?: Array<{
     vendor_name: string;
     notes: string | null;
     reference_number: string | null;
-    payment_method: string;
+    payment_method: PaymentMethod;
   }> | null;
   expense_invoice_upload?: {
     vendor_name: string | null;

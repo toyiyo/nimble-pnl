@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
 import type { BankTransactionSort, TransactionFilters } from "@/types/transactions";
+import type { PaymentMethod } from "@/types/pending-outflows";
 
 export type TransactionStatus = 'for_review' | 'categorized' | 'excluded' | 'reconciled';
 
@@ -62,7 +63,7 @@ export interface BankTransaction {
     vendor_name: string;
     notes: string | null;
     reference_number: string | null;
-    payment_method: string;
+    payment_method: PaymentMethod;
   }> | null;
   expense_invoice_upload?: {
     vendor_name: string | null;

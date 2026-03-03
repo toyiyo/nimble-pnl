@@ -29,6 +29,7 @@ import { CriticalAlertsBar } from '@/components/dashboard/CriticalAlertsBar';
 import { OwnerSnapshotWidget } from '@/components/dashboard/OwnerSnapshotWidget';
 import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
+import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { WelcomeModal } from '@/components/subscription';
@@ -38,7 +39,7 @@ import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart'
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { useOpsInboxCount } from '@/hooks/useOpsInbox';
 import { useSubscription } from '@/hooks/useSubscription';
-import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
   TrendingUp,
@@ -245,6 +246,29 @@ const Index = () => {
     selectedRestaurant?.restaurant_id || null,
     14 // 14 days of history
   );
+
+  // Unified COGS for actual vs target comparison — match break-even 14-day range
+  const beToday = useMemo(() => startOfDay(new Date()), []);
+  const beStart = useMemo(() => subDays(beToday, 13), [beToday]);
+  const { totalCOGS: beTotalCOGS, isLoading: beCogsLoading } = useUnifiedCOGS(
+    selectedRestaurant?.restaurant_id || null,
+    beStart,
+    beToday,
+  );
+
+  const actualCOGSPercentage = useMemo(() => {
+    if (!breakEvenData?.history || breakEvenData.history.length === 0 || beCogsLoading) return undefined;
+    const totalRevenue = breakEvenData.history.reduce((sum, h) => sum + h.sales, 0);
+    if (totalRevenue <= 0 || beTotalCOGS <= 0) return undefined;
+    return (beTotalCOGS / totalRevenue) * 100;
+  }, [breakEvenData, beTotalCOGS, beCogsLoading]);
+
+  const targetCOGSPercentage = useMemo(() => {
+    const foodCostItem = breakEvenData?.variableCosts.items.find(
+      (item) => item.category === 'food_cost'
+    );
+    return foodCostItem?.percentage;  // already in % form (e.g. 28)
+  }, [breakEvenData]);
 
   const { data: opsInboxCounts } = useOpsInboxCount(selectedRestaurant?.restaurant_id);
   const { hasFeature } = useSubscription();
@@ -643,7 +667,12 @@ const Index = () => {
               />
 
               {/* Sales vs Break-Even Chart */}
-              <SalesVsBreakEvenChart data={breakEvenData ?? null} isLoading={breakEvenLoading} />
+              <SalesVsBreakEvenChart
+                data={breakEvenData ?? null}
+                isLoading={breakEvenLoading}
+                actualCOGSPercentage={actualCOGSPercentage}
+                targetCOGSPercentage={targetCOGSPercentage}
+              />
 
               {/* AI Insights */}
               <DashboardInsights insights={insights} />

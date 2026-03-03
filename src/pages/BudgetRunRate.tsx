@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { startOfDay, subDays } from 'date-fns';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useOperatingCosts } from '@/hooks/useOperatingCosts';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
+import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { BreakEvenHeroCard } from '@/components/budget/BreakEvenHeroCard';
 import { CostBlock } from '@/components/budget/CostBlock';
 import { CostItemDialog } from '@/components/budget/CostItemDialog';
@@ -34,6 +36,27 @@ export default function BudgetRunRate() {
   } = useOperatingCosts(restaurantId);
   
   const { data: breakEvenData, isLoading: analysisLoading } = useBreakEvenAnalysis(restaurantId);
+
+  // Unified COGS for actual vs target comparison — match break-even 14-day range
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const historyStart = useMemo(() => subDays(today, 13), [today]);
+  const { totalCOGS, isLoading: cogsLoading } = useUnifiedCOGS(restaurantId, historyStart, today);
+
+  // Compute actual COGS % = totalCOGS / totalRevenue over the same period
+  const actualCOGSPercentage = useMemo(() => {
+    if (!breakEvenData?.history || breakEvenData.history.length === 0 || cogsLoading) return undefined;
+    const totalRevenue = breakEvenData.history.reduce((sum, h) => sum + h.sales, 0);
+    if (totalRevenue <= 0 || totalCOGS <= 0) return undefined;
+    return (totalCOGS / totalRevenue) * 100;
+  }, [breakEvenData, totalCOGS, cogsLoading]);
+
+  // Target COGS % from the food_cost variable cost item
+  const targetCOGSPercentage = useMemo(() => {
+    const foodCostItem = breakEvenData?.variableCosts.items.find(
+      (item) => item.category === 'food_cost'
+    );
+    return foodCostItem?.percentage;  // already in % form (e.g. 28)
+  }, [breakEvenData]);
 
   const {
     suggestions,
@@ -202,7 +225,12 @@ export default function BudgetRunRate() {
       </Card>
       
       {/* Sales vs Cost Reality Chart */}
-      <SalesVsBreakEvenChart data={breakEvenData} isLoading={isLoading} />
+      <SalesVsBreakEvenChart
+        data={breakEvenData}
+        isLoading={isLoading}
+        actualCOGSPercentage={actualCOGSPercentage}
+        targetCOGSPercentage={targetCOGSPercentage}
+      />
       
       {/* Cost Item Dialog */}
       <CostItemDialog

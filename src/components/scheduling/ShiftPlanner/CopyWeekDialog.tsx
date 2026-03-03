@@ -79,7 +79,7 @@ export function CopyWeekDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-sm p-0 gap-0 border-border/40">
+      <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto p-0 gap-0 border-border/40">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
@@ -129,6 +129,12 @@ export function CopyWeekDialog({
                   {activeShiftCount}
                 </span>
               </div>
+
+              {!isSameWeek && !isPastWeek && (
+                <p className="text-[12px] text-muted-foreground">
+                  Existing unlocked shifts in the target week will be replaced.
+                </p>
+              )}
 
               {isSameWeek && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">

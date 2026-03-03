@@ -103,6 +103,7 @@ export function useOperatingCosts(restaurantId: string | null) {
       const updateData: Record<string, any> = {};
       
       if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.costType !== undefined) updateData.cost_type = updates.costType;
       if (updates.entryType !== undefined) updateData.entry_type = updates.entryType;
       if (updates.monthlyValue !== undefined) updateData.monthly_value = updates.monthlyValue;
       if (updates.percentageValue !== undefined) updateData.percentage_value = updates.percentageValue;

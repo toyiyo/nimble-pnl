@@ -91,6 +91,7 @@ export default function BudgetRunRate() {
       updateCost({
         id: editingItem.id,
         name: data.name,
+        costType: data.costType,
         entryType: data.entryType,
         monthlyValue: data.monthlyValue,
         percentageValue: data.percentageValue,
@@ -177,7 +178,7 @@ export default function BudgetRunRate() {
                 onEditItem={handleEditItem}
                 onDeleteItem={deleteCost}
                 showAddButton
-                suggestions={suggestions.filter(s => s.costType === 'fixed' || s.costType === 'semi_variable' || s.costType === 'custom')}
+                suggestions={suggestions.filter(s => s.costType !== 'variable')}
                 {...suggestionHandlers}
               />
 

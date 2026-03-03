@@ -8,7 +8,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================================
 -- TEST CATEGORY 1: Table and Column Structure (Tests 1-6)
@@ -191,6 +191,30 @@ SELECT throws_ok(
   '42501',
   NULL,
   'Staff should NOT be able to INSERT financial settings'
+);
+
+-- ============================================================================
+-- Test 16: Staff UPDATE silently affects 0 rows (RLS filters out the row)
+-- ============================================================================
+
+SET LOCAL role TO authenticated;
+SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000020", "role": "authenticated"}';
+
+-- Staff can SELECT but not UPDATE — the ALL policy hides rows from UPDATE
+-- so the UPDATE silently affects 0 rows (value stays 'inventory', not 'financials')
+UPDATE restaurant_financial_settings SET cogs_calculation_method = 'financials'
+  WHERE restaurant_id = 'f0000000-0000-0000-0000-000000000001';
+
+-- Verify the value was NOT changed (still 'inventory' or whatever owner set it to)
+-- Switch to owner to read the actual value
+SET LOCAL role TO authenticated;
+SET LOCAL "request.jwt.claims" TO '{"sub": "f0000000-0000-0000-0000-000000000010", "role": "authenticated"}';
+
+SELECT is(
+  (SELECT cogs_calculation_method FROM restaurant_financial_settings
+   WHERE restaurant_id = 'f0000000-0000-0000-0000-000000000001'),
+  'combined',
+  'Staff should NOT be able to UPDATE financial settings (value unchanged from owner update)'
 );
 
 -- ============================================================================

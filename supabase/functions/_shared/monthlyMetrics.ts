@@ -9,6 +9,8 @@
  * - Tests: tests/unit/monthlyMetrics.test.ts
  */
 
+import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
+
 export type MonthlyMapMonth = {
   period: string;
   gross_revenue: number; // cents
@@ -64,8 +66,8 @@ export function classifyAdjustmentIntoMonth(
       return;
     }
     
-    // Check for tips
-    if (subtype.includes('tip') || accountName.includes('tip')) {
+    // Check for tips — subtype takes precedence over name matching
+    if (TIP_SUBTYPES.has(subtype) || (GENERIC_SUBTYPES.has(subtype) && hasTipKeyword(accountName))) {
       month.tips += priceInCents;
       return;
     }

@@ -312,6 +312,10 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     if (!restaurantId) return false;
 
     try {
+      // Map adjustment_type to item_type; revenue rows get 'sale'
+      const adjType = saleData.adjustmentType || null;
+      const itemType = adjType === 'fee' ? 'other' : (adjType || 'sale');
+
       const { error } = await supabase
         .from('unified_sales')
         .insert({
@@ -319,7 +323,8 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
           pos_system: 'manual',
           external_order_id: `manual_${Date.now()}`,
           item_name: saleData.itemName,
-          adjustment_type: saleData.adjustmentType || null,
+          item_type: itemType,
+          adjustment_type: adjType,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
           total_price: saleData.totalPrice,
@@ -375,6 +380,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
         pos_system: 'manual',
         external_order_id: orderId,
         item_name: saleData.itemName,
+        item_type: 'sale',
         adjustment_type: null,
         quantity: saleData.quantity,
         unit_price: saleData.unitPrice,
@@ -391,6 +397,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
             pos_system: 'manual',
             external_order_id: orderId,
             item_name: 'Sales Tax',
+            item_type: 'tax',
             adjustment_type: 'tax',
             quantity: 1,
             unit_price: saleData.adjustments.tax,
@@ -405,6 +412,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
             pos_system: 'manual',
             external_order_id: orderId,
             item_name: 'Tip',
+            item_type: 'tip',
             adjustment_type: 'tip',
             quantity: 1,
             unit_price: saleData.adjustments.tip,
@@ -419,6 +427,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
             pos_system: 'manual',
             external_order_id: orderId,
             item_name: 'Service Charge',
+            item_type: 'service_charge',
             adjustment_type: 'service_charge',
             quantity: 1,
             unit_price: saleData.adjustments.serviceCharge,
@@ -433,6 +442,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
             pos_system: 'manual',
             external_order_id: orderId,
             item_name: 'Discount',
+            item_type: 'discount',
             adjustment_type: 'discount',
             quantity: 1,
             unit_price: saleData.adjustments.discount,
@@ -447,6 +457,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
             pos_system: 'manual',
             external_order_id: orderId,
             item_name: 'Platform Fee',
+            item_type: 'other',
             adjustment_type: 'fee',
             quantity: 1,
             unit_price: saleData.adjustments.fee,

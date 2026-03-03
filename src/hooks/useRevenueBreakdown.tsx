@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem } from './utils/passThroughAdjustments';
+import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem, isTipLiability } from './utils/passThroughAdjustments';
 import type { PassThroughType } from './utils/passThroughAdjustments';
 
 // Re-export for backwards compatibility
@@ -197,23 +197,24 @@ export function useRevenueBreakdown(
           )
         );
 
-        const tipCategories = categories.filter(c => 
-          c.account_type === 'liability' && (
-            c.account_subtype === 'tips' ||
-            c.account_name.toLowerCase().includes('tip')
-          )
+        const tipCategories = categories.filter(c =>
+          c.account_type === 'liability' && isTipLiability(c.account_subtype || '', c.account_name)
         );
 
         const otherLiabilityCategories = categories.filter(c =>
           c.account_type === 'liability' &&
           c.account_subtype !== 'sales_tax' &&
-          c.account_subtype !== 'tips' &&
           !c.account_name.toLowerCase().includes('tax') &&
-          !c.account_name.toLowerCase().includes('tip')
+          !isTipLiability(c.account_subtype || '', c.account_name)
         );
 
         // If no categorized liabilities were found for pass-through amounts,
         // synthesize display categories from adjustment totals to surface names in the UI.
+        // Track whether real categorized entries existed BEFORE synthesizing, so we
+        // don't double-count adjustment amounts that are already in the synthetic category.
+        const hadCategorizedTax = taxCategories.length > 0;
+        const hadCategorizedTips = tipCategories.length > 0;
+
         const ensureCategory = (
           list: RevenueCategory[],
           adjustmentType: string,
@@ -253,9 +254,11 @@ export function useRevenueBreakdown(
         const totalTipsC = tipCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
         const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
 
-        // Combine categorized amounts with adjustment amounts
-        const combinedTaxC = totalTaxC + adjustmentTaxC;
-        const combinedTipsC = totalTipsC + adjustmentTipsC;
+        // Combine categorized amounts with adjustment amounts.
+        // When ensureCategory created a synthetic entry (hadCategorized* was false),
+        // totalTaxC/totalTipsC already includes the adjustment amount — don't add again.
+        const combinedTaxC = hadCategorizedTax ? totalTaxC + adjustmentTaxC : totalTaxC;
+        const combinedTipsC = hadCategorizedTips ? totalTipsC + adjustmentTipsC : totalTipsC;
         const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
         const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
 
@@ -520,20 +523,16 @@ export function useRevenueBreakdown(
         )
       );
 
-      const tipCategories = categories.filter(c => 
-        c.account_type === 'liability' && (
-          c.account_subtype === 'tips' ||
-          c.account_name.toLowerCase().includes('tip')
-        )
+      const tipCategories = categories.filter(c =>
+        c.account_type === 'liability' && isTipLiability(c.account_subtype || '', c.account_name)
       );
 
       // Other liability accounts (franchise fees, notes payable, etc.)
       const otherLiabilityCategories = categories.filter(c =>
         c.account_type === 'liability' &&
         c.account_subtype !== 'sales_tax' &&
-        c.account_subtype !== 'tips' &&
         !c.account_name.toLowerCase().includes('tax') &&
-        !c.account_name.toLowerCase().includes('tip')
+        !isTipLiability(c.account_subtype || '', c.account_name)
       );
 
       // Calculate totals in cents (integers) to eliminate floating-point errors
@@ -547,70 +546,66 @@ export function useRevenueBreakdown(
       // Add adjustments from pass-through items (Square, Clover, Shift4, etc.)
       // Use classifyPassThroughItem to properly classify items based on chart_account
       // This ensures categorized liability items (like sales tax) are correctly counted
-      const adjustmentTaxC = (allAdjustments || [])
-        .filter(a => classifyPassThroughItem(a) === 'tax')
-        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
-      
-      const adjustmentTipsC = (allAdjustments || [])
-        .filter(a => classifyPassThroughItem(a) === 'tip')
-        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
-      
-      const adjustmentServiceChargeC = (allAdjustments || [])
-        .filter(a => classifyPassThroughItem(a) === 'service_charge')
-        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
-      
-      const adjustmentDiscountsC = (allAdjustments || [])
-        .filter(a => classifyPassThroughItem(a) === 'discount')
-        .reduce((sum, a) => sum + Math.abs(toC(a.total_price || 0)), 0);
-      
-      const adjustmentFeesC = (allAdjustments || [])
-        .filter(a => classifyPassThroughItem(a) === 'fee')
-        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
-      
-      const adjustmentOtherC = (allAdjustments || [])
-        .filter(a => classifyPassThroughItem(a) === 'other')
-        .reduce((sum, a) => sum + toC(a.total_price || 0), 0);
+      // Single-pass classification: classify each adjustment once and bucket results
+      // Only bucket uncategorized adjustments — categorized ones are already merged
+      // into categoryMap via mergeCategorizedAdjustments (line 490) and included
+      // in totalTaxC/totalTipsC/totalOtherLiabilitiesC above.
+      const adjBuckets = new Map<PassThroughType, { totalC: number; count: number }>();
+      (allAdjustments || []).filter(a => !a.is_categorized || !a.chart_account).forEach(a => {
+        const type = classifyPassThroughItem(a);
+        const entry = adjBuckets.get(type) || { totalC: 0, count: 0 };
+        entry.totalC += type === 'discount' ? Math.abs(toC(a.total_price || 0)) : toC(a.total_price || 0);
+        entry.count += 1;
+        adjBuckets.set(type, entry);
+      });
+
+      const adjustmentTaxC = adjBuckets.get('tax')?.totalC || 0;
+      const adjustmentTipsC = adjBuckets.get('tip')?.totalC || 0;
+      const adjustmentServiceChargeC = adjBuckets.get('service_charge')?.totalC || 0;
+      const adjustmentDiscountsC = adjBuckets.get('discount')?.totalC || 0;
+      const adjustmentFeesC = adjBuckets.get('fee')?.totalC || 0;
+      const adjustmentOtherC = adjBuckets.get('other')?.totalC || 0;
 
       // Build adjustments breakdown array
       const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
-      
+
       if (adjustmentTaxC > 0) {
         adjustmentsBreakdown.push({
           adjustment_type: 'tax',
           total_amount: fromC(adjustmentTaxC),
-          transaction_count: (allAdjustments || []).filter(a => classifyPassThroughItem(a) === 'tax').length,
+          transaction_count: adjBuckets.get('tax')?.count || 0,
         });
       }
-      
+
       if (adjustmentTipsC > 0) {
         adjustmentsBreakdown.push({
           adjustment_type: 'tip',
           total_amount: fromC(adjustmentTipsC),
-          transaction_count: (allAdjustments || []).filter(a => classifyPassThroughItem(a) === 'tip').length,
+          transaction_count: adjBuckets.get('tip')?.count || 0,
         });
       }
-      
+
       if (adjustmentServiceChargeC > 0) {
         adjustmentsBreakdown.push({
           adjustment_type: 'service_charge',
           total_amount: fromC(adjustmentServiceChargeC),
-          transaction_count: (allAdjustments || []).filter(a => classifyPassThroughItem(a) === 'service_charge').length,
+          transaction_count: adjBuckets.get('service_charge')?.count || 0,
         });
       }
-      
+
       if (adjustmentFeesC > 0) {
         adjustmentsBreakdown.push({
           adjustment_type: 'fee',
           total_amount: fromC(adjustmentFeesC),
-          transaction_count: (allAdjustments || []).filter(a => classifyPassThroughItem(a) === 'fee').length,
+          transaction_count: adjBuckets.get('fee')?.count || 0,
         });
       }
-      
+
       if (adjustmentDiscountsC > 0) {
         adjustmentsBreakdown.push({
           adjustment_type: 'discount',
           total_amount: fromC(adjustmentDiscountsC),
-          transaction_count: (allAdjustments || []).filter(a => classifyPassThroughItem(a) === 'discount').length,
+          transaction_count: adjBuckets.get('discount')?.count || 0,
         });
       }
 

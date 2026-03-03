@@ -103,6 +103,7 @@ export function useOperatingCosts(restaurantId: string | null) {
       const updateData: Record<string, any> = {};
       
       if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.costType !== undefined) updateData.cost_type = updates.costType;
       if (updates.entryType !== undefined) updateData.entry_type = updates.entryType;
       if (updates.monthlyValue !== undefined) updateData.monthly_value = updates.monthlyValue;
       if (updates.percentageValue !== undefined) updateData.percentage_value = updates.percentageValue;
@@ -188,18 +189,14 @@ export function useOperatingCosts(restaurantId: string | null) {
     },
   });
 
-  // Group costs by type for easier consumption
-  const fixedCosts = costs.filter(c => c.costType === 'fixed');
-  const semiVariableCosts = costs.filter(c => c.costType === 'semi_variable');
-  const variableCosts = costs.filter(c => c.costType === 'variable');
-  const customCosts = costs.filter(c => c.costType === 'custom');
+  // Group by entry type: dollar amounts = fixed, percentages = variable
+  const fixedCosts = costs.filter(c => c.entryType === 'value');
+  const variableCosts = costs.filter(c => c.entryType === 'percentage');
 
   return {
     costs,
     fixedCosts,
-    semiVariableCosts,
     variableCosts,
-    customCosts,
     isLoading,
     error,
     refetch,

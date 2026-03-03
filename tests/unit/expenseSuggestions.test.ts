@@ -110,8 +110,8 @@ describe('detectRecurringExpenses', () => {
     expect(result[0].id).toBe('landlord llc:rent');
   });
 
-  // ------- 3. Does NOT flag one-time transactions ------- //
-  it('does NOT flag a one-time transaction', () => {
+  // ------- 3. Single-month transactions are now detected with lower confidence ------- //
+  it('detects a single-month transaction with low confidence', () => {
     const transactions: ExpenseTransaction[] = [
       tx({
         normalized_payee: 'one-time vendor',
@@ -122,7 +122,9 @@ describe('detectRecurringExpenses', () => {
     ];
 
     const result = detectRecurringExpenses(transactions, [], []);
-    expect(result).toEqual([]);
+    expect(result.length).toBe(1);
+    expect(result[0].matchedMonths).toBe(1);
+    expect(result[0].confidence).toBeCloseTo(0.4, 2);
   });
 
   // ------- 4. Allows up to 20% variance (exactly at boundary) ------- //
@@ -580,6 +582,24 @@ describe('detectRecurringExpenses', () => {
     const result = detectRecurringExpenses(transactions, [], []);
     expect(result).toHaveLength(1);
     expect(result[0].matchedMonths).toBe(2);
+  });
+
+  // ------- Additional: detects single-month recurring payee ------- //
+  it('detects a single-month recurring payee with lower confidence', () => {
+    const transactions: ExpenseTransaction[] = [
+      tx({
+        normalized_payee: 'new vendor',
+        amount: -200,
+        transaction_date: '2026-01-15',
+        chart_of_accounts: { account_name: 'Software', account_subtype: 'software' },
+      }),
+    ];
+
+    const result = detectRecurringExpenses(transactions, [], []);
+    expect(result.length).toBe(1);
+    expect(result[0].matchedMonths).toBe(1);
+    expect(result[0].confidence).toBeCloseTo(0.4, 2);
+    expect(result[0].costType).toBe('fixed');
   });
 
   // ------- Additional: payee with colon in name extracts subtype correctly ------- //

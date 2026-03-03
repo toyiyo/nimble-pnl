@@ -11,6 +11,7 @@ interface BreakEvenHeroCardProps {
 }
 
 function formatCurrency(amount: number): string {
+  if (!isFinite(amount)) return '—';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -19,10 +20,14 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 export function BreakEvenHeroCard({ data, isLoading }: BreakEvenHeroCardProps) {
   const statusConfig = useMemo(() => {
     if (!data) return null;
-    
+
     switch (data.todayStatus) {
       case 'above':
         return {
@@ -64,7 +69,7 @@ export function BreakEvenHeroCard({ data, isLoading }: BreakEvenHeroCardProps) {
           <Skeleton className="h-6 w-40" />
         </CardHeader>
         <CardContent className="pt-4">
-          <Skeleton className="h-16 w-48 mb-4" />
+          <Skeleton className="h-16 w-full mb-4" />
           <Skeleton className="h-5 w-64" />
         </CardContent>
       </Card>
@@ -75,14 +80,14 @@ export function BreakEvenHeroCard({ data, isLoading }: BreakEvenHeroCardProps) {
     return (
       <Card className="bg-gradient-to-br from-muted/30 via-background to-muted/20">
         <CardHeader>
-          <CardTitle className="text-xl">Daily Break-Even</CardTitle>
+          <CardTitle className="text-xl">Break-Even Analysis</CardTitle>
           <CardDescription>
-            Set up your operating costs to see your daily break-even target
+            Set up your operating costs to see your break-even targets
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            Add your fixed costs (rent, insurance) and variable costs (food %, labor %) to calculate your daily break-even point.
+            Add your fixed costs (rent, insurance) and variable costs (food %, labor %) to calculate your break-even point.
           </p>
         </CardContent>
       </Card>
@@ -92,35 +97,71 @@ export function BreakEvenHeroCard({ data, isLoading }: BreakEvenHeroCardProps) {
   const StatusIcon = statusConfig.icon;
   const DeltaIcon = statusConfig.deltaIcon;
 
+  const periods = [
+    { label: 'Daily', breakEven: data.dailyBreakEven, fixed: data.fixedCosts.totalDaily },
+    { label: 'Monthly', breakEven: data.monthlyBreakEven, fixed: data.fixedCosts.totalMonthly },
+    { label: 'Yearly', breakEven: data.yearlyBreakEven, fixed: data.fixedCosts.totalYearly },
+  ];
+
   return (
     <Card className={cn('bg-gradient-to-br', statusConfig.bgClass, statusConfig.borderClass)}>
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <StatusIcon className={cn('h-5 w-5', statusConfig.iconClass)} />
-          <CardTitle className="text-xl">Daily Break-Even</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-4">
-        {/* Main break-even number */}
-        <div className="mb-6">
-          <div className="text-5xl font-bold tracking-tight text-foreground">
-            {formatCurrency(data.dailyBreakEven)}
-            <span className="text-xl font-normal text-muted-foreground ml-2">/ day</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <StatusIcon className={cn('h-5 w-5', statusConfig.iconClass)} />
+            <CardTitle className="text-xl">Break-Even Analysis</CardTitle>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your average cost to keep the business running
-          </p>
-        </div>
-        
-        {/* Today's comparison */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="text-sm text-muted-foreground">
-            Today's sales: <span className="font-semibold text-foreground">{formatCurrency(data.todaySales)}</span>
-          </div>
-          
           <div className={cn('inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium', statusConfig.badgeClass)}>
             <DeltaIcon className="h-4 w-4" />
             {statusConfig.label} ({data.todayDelta >= 0 ? '+' : ''}{formatCurrency(data.todayDelta)})
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-4">
+        {/* 3-column period grid */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {periods.map((period) => (
+            <div key={period.label} className="text-center space-y-1">
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                {period.label}
+              </p>
+              <p className="text-2xl font-bold tracking-tight text-foreground">
+                {formatCurrency(period.breakEven)}
+              </p>
+              <p className="text-[13px] text-muted-foreground">
+                {formatCurrency(period.fixed)} fixed
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Contribution Margin row */}
+        <div className="flex items-center justify-between py-3 border-t border-border/40">
+          <div className="flex items-center gap-6">
+            <div>
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                Variable Costs
+              </p>
+              <p className="text-[17px] font-semibold text-foreground">
+                {formatPercent(data.totalVariablePercent)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                Contribution Margin
+              </p>
+              <p className="text-[17px] font-semibold text-foreground">
+                {formatPercent(data.contributionMargin)}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[13px] text-muted-foreground">
+              Today's sales
+            </p>
+            <p className="text-[17px] font-semibold text-foreground">
+              {formatCurrency(data.todaySales)}
+            </p>
           </div>
         </div>
       </CardContent>

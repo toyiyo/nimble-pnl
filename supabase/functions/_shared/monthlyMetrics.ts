@@ -9,6 +9,8 @@
  * - Tests: tests/unit/monthlyMetrics.test.ts
  */
 
+import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
+
 export type MonthlyMapMonth = {
   period: string;
   gross_revenue: number; // cents
@@ -35,8 +37,6 @@ export interface AdjustmentInput {
     account_name: string | null;
   } | null;
 }
-
-import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
 
 /**
  * Classify an adjustment (tax, tip, fee, discount) into the appropriate

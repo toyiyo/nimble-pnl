@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem, hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './utils/passThroughAdjustments';
+import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem, isTipLiability } from './utils/passThroughAdjustments';
 import type { PassThroughType } from './utils/passThroughAdjustments';
 
 // Re-export for backwards compatibility
@@ -198,18 +198,14 @@ export function useRevenueBreakdown(
         );
 
         const tipCategories = categories.filter(c =>
-          c.account_type === 'liability' && (
-            TIP_SUBTYPES.has((c.account_subtype || '').toLowerCase()) ||
-            (GENERIC_SUBTYPES.has((c.account_subtype || '').toLowerCase()) && hasTipKeyword(c.account_name.toLowerCase()))
-          )
+          c.account_type === 'liability' && isTipLiability(c.account_subtype || '', c.account_name)
         );
 
         const otherLiabilityCategories = categories.filter(c =>
           c.account_type === 'liability' &&
           c.account_subtype !== 'sales_tax' &&
-          !TIP_SUBTYPES.has((c.account_subtype || '').toLowerCase()) &&
           !c.account_name.toLowerCase().includes('tax') &&
-          !(GENERIC_SUBTYPES.has((c.account_subtype || '').toLowerCase()) && hasTipKeyword(c.account_name.toLowerCase()))
+          !isTipLiability(c.account_subtype || '', c.account_name)
         );
 
         // If no categorized liabilities were found for pass-through amounts,
@@ -521,19 +517,15 @@ export function useRevenueBreakdown(
       );
 
       const tipCategories = categories.filter(c =>
-        c.account_type === 'liability' && (
-          TIP_SUBTYPES.has((c.account_subtype || '').toLowerCase()) ||
-          (GENERIC_SUBTYPES.has((c.account_subtype || '').toLowerCase()) && hasTipKeyword(c.account_name.toLowerCase()))
-        )
+        c.account_type === 'liability' && isTipLiability(c.account_subtype || '', c.account_name)
       );
 
       // Other liability accounts (franchise fees, notes payable, etc.)
       const otherLiabilityCategories = categories.filter(c =>
         c.account_type === 'liability' &&
         c.account_subtype !== 'sales_tax' &&
-        !TIP_SUBTYPES.has((c.account_subtype || '').toLowerCase()) &&
         !c.account_name.toLowerCase().includes('tax') &&
-        !(GENERIC_SUBTYPES.has((c.account_subtype || '').toLowerCase()) && hasTipKeyword(c.account_name.toLowerCase()))
+        !isTipLiability(c.account_subtype || '', c.account_name)
       );
 
       // Calculate totals in cents (integers) to eliminate floating-point errors

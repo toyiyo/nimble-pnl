@@ -13,6 +13,8 @@
  * - supabase/functions/_shared/inventoryTransactions.ts
  */
 
+import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
+
 // ===== TYPE DEFINITIONS =====
 
 export interface SaleRecord {
@@ -110,8 +112,6 @@ function isSalesTaxAccount(account: { account_type: string; account_subtype: str
   const subtype = (account.account_subtype || '').toLowerCase();
   return account.account_type === 'liability' && subtype.includes('sales') && subtype.includes('tax');
 }
-
-import { hasTipKeyword, TIP_SUBTYPES, GENERIC_SUBTYPES } from './tipClassification.ts';
 
 /**
  * Check if an account is a tip liability

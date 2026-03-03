@@ -637,6 +637,22 @@ export function PnLIntelligenceReport({ restaurantId, dateFrom, dateTo }: PnLInt
                             ${revenueBreakdown.totals.tips.toLocaleString()}
                           </p>
                           <Badge variant="outline" className="mt-2 text-xs">Liability</Badge>
+                          {(revenueBreakdown.tip_categories?.length > 0 || revenueBreakdown.adjustments?.some(a => a.adjustment_type === 'tip')) && (
+                            <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+                              {revenueBreakdown.tip_categories?.map((cat) => (
+                                <div key={cat.account_id} className="flex justify-between">
+                                  <span>{cat.account_name}</span>
+                                  <span>${cat.total_amount.toLocaleString()}</span>
+                                </div>
+                              ))}
+                              {revenueBreakdown.adjustments?.filter(a => a.adjustment_type === 'tip').map((adj, idx) => (
+                                <div key={`adj-${idx}`} className="flex justify-between">
+                                  <span>POS Tip Adjustments</span>
+                                  <span>${adj.total_amount.toLocaleString()}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

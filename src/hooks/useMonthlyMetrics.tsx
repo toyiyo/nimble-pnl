@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
-import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
+import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, isTipLiability } from './utils/passThroughAdjustments';
 import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import type { TimePunch } from '@/types/timeTracking';
@@ -286,7 +286,7 @@ export function useMonthlyMetrics(
           if ((subtype.includes('sales') && subtype.includes('tax')) ||
               (accountName.includes('sales') && accountName.includes('tax'))) {
             month.sales_tax += Math.round(sale.total_price * 100);
-          } else if (subtype.includes('tip') || accountName.includes('tip')) {
+          } else if (isTipLiability(subtype, accountName)) {
             month.tips += Math.round(sale.total_price * 100);
           } else {
             month.other_liabilities += Math.round(sale.total_price * 100);

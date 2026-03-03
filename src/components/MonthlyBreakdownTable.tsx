@@ -629,16 +629,34 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                       </div>
                                     )}
                                     {breakdown.totals.tips > 0 && (
-                                      <div className="flex items-center justify-between p-2 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 text-xs">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-medium">Tips Collected</span>
-                                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-600">
-                                            Liability
-                                          </Badge>
+                                      <div className="space-y-1">
+                                        <div className="flex items-center justify-between p-2 rounded bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 text-xs">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-medium">Tips Collected</span>
+                                            <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-600">
+                                              Liability
+                                            </Badge>
+                                          </div>
+                                          <span className="font-semibold text-blue-700">
+                                            {formatCurrency(breakdown.totals.tips)}
+                                          </span>
                                         </div>
-                                        <span className="font-semibold text-blue-700">
-                                          {formatCurrency(breakdown.totals.tips)}
-                                        </span>
+                                        {(breakdown.tip_categories?.length > 0 || breakdown.adjustments?.some(a => a.adjustment_type === 'tip')) && (
+                                          <div className="ml-4 space-y-0.5">
+                                            {breakdown.tip_categories?.map((category) => (
+                                              <div key={category.account_id} className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground">
+                                                <span>{category.account_name}</span>
+                                                <span>{formatCurrency(category.total_amount)}</span>
+                                              </div>
+                                            ))}
+                                            {breakdown.adjustments?.filter(a => a.adjustment_type === 'tip').map((adj, idx) => (
+                                              <div key={`adj-tip-${idx}`} className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground">
+                                                <span>POS Tip Adjustments</span>
+                                                <span>{formatCurrency(adj.total_amount)}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                     {breakdown.totals.other_liabilities > 0 && breakdown.adjustments

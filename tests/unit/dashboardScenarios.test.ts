@@ -505,7 +505,7 @@ describe('Scenario: Complex Liability Classification', () => {
       createSale({
         id: 'tip-1',
         total_price: 22.50,
-        chart_account: { account_type: 'liability', account_subtype: 'tip' },
+        chart_account: { account_type: 'liability', account_subtype: 'tips' },
       }),
       // Delivery fee
       createSale({

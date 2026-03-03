@@ -1,12 +1,16 @@
 import type { PaymentMethod } from '@/types/pending-outflows';
 
+export interface LinkedOutflow {
+  vendor_name: string;
+  notes: string | null;
+  reference_number: string | null;
+  payment_method: PaymentMethod;
+  status?: string;
+  created_at?: string;
+}
+
 export interface LinkedInfoInput {
-  linked_outflows?: Array<{
-    vendor_name: string;
-    notes: string | null;
-    reference_number: string | null;
-    payment_method: PaymentMethod;
-  }> | null;
+  linked_outflows?: LinkedOutflow[] | null;
   expense_invoice_upload?: {
     vendor_name: string | null;
     invoice_number: string | null;
@@ -29,8 +33,20 @@ function truncate(text: string | null): string | null {
   return text.slice(0, MAX_DETAIL_LENGTH) + '...';
 }
 
+/**
+ * Pick the most relevant outflow: exclude voided, sort by created_at desc for determinism.
+ */
+function pickOutflow(outflows: LinkedOutflow[] | null | undefined): LinkedOutflow | undefined {
+  if (!outflows || outflows.length === 0) return undefined;
+  const active = outflows.filter(o => o.status !== 'voided');
+  if (active.length === 0) return undefined;
+  if (active.length === 1) return active[0];
+  // Deterministic: most recently created first
+  return active.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))[0];
+}
+
 export function computeLinkedInfo(input: LinkedInfoInput): LinkedInfoResult | null {
-  const outflow = input.linked_outflows?.[0];
+  const outflow = pickOutflow(input.linked_outflows);
 
   if (outflow) {
     const method = outflow.payment_method;

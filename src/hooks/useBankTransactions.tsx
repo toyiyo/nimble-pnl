@@ -64,6 +64,8 @@ export interface BankTransaction {
     notes: string | null;
     reference_number: string | null;
     payment_method: PaymentMethod;
+    status: string;
+    created_at: string;
   }> | null;
   expense_invoice_upload?: {
     vendor_name: string | null;
@@ -143,7 +145,9 @@ const buildBaseQuery = (restaurantId: string) =>
         vendor_name,
         notes,
         reference_number,
-        payment_method
+        payment_method,
+        status,
+        created_at
       ),
       expense_invoice_upload:expense_invoice_uploads!expense_invoice_upload_id(
         vendor_name,

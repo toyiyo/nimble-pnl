@@ -15,7 +15,7 @@ interface LinkedInfoSubtitleProps {
 
 export function LinkedInfoSubtitle({ info }: LinkedInfoSubtitleProps) {
   return (
-    <div className="flex items-center gap-1.5 mt-1 text-[13px] text-muted-foreground">
+    <div className="flex items-center gap-1.5 mt-1 text-[13px] text-muted-foreground min-w-0">
       <Badge
         variant="outline"
         className="text-[11px] px-1.5 py-0 h-5 font-medium bg-muted/50 border-border/60 shrink-0"
@@ -23,7 +23,7 @@ export function LinkedInfoSubtitle({ info }: LinkedInfoSubtitleProps) {
         {ICONS[info.type]}
         {info.badge}
       </Badge>
-      <span className="truncate">
+      <span className="truncate min-w-0">
         {[info.vendor, info.detail].filter(Boolean).join(' — ')}
       </span>
     </div>

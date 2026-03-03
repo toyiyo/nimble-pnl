@@ -26,7 +26,7 @@ Add `expense_invoice_upload_id` to the SELECT column list (already exists on tab
 
 When a transaction has `linked_outflow` or `expense_invoice_upload`:
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │ 03/01  Check #5                              -$1,200.00     │
 │        [Check #5] Brand LLC — Accounting svcs  ✓ Matched    │

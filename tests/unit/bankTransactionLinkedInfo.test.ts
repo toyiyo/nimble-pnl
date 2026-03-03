@@ -148,6 +148,72 @@ describe('computeLinkedInfo', () => {
     });
   });
 
+  it('returns null when all fields are undefined (empty object)', () => {
+    const result = computeLinkedInfo({});
+    expect(result).toBeNull();
+  });
+
+  it('excludes voided outflows', () => {
+    const result = computeLinkedInfo({
+      linked_outflows: [{
+        vendor_name: 'Voided Vendor',
+        notes: 'Should not show',
+        reference_number: '99',
+        payment_method: 'check',
+        status: 'voided',
+      }],
+      expense_invoice_upload: null,
+      expense_invoice_upload_id: null,
+    });
+    expect(result).toBeNull();
+  });
+
+  it('picks the most recently created outflow when multiple exist', () => {
+    const result = computeLinkedInfo({
+      linked_outflows: [
+        {
+          vendor_name: 'Old Vendor',
+          notes: 'First',
+          reference_number: '1',
+          payment_method: 'check',
+          status: 'pending',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+        {
+          vendor_name: 'New Vendor',
+          notes: 'Second',
+          reference_number: '2',
+          payment_method: 'check',
+          status: 'cleared',
+          created_at: '2026-02-01T00:00:00Z',
+        },
+      ],
+      expense_invoice_upload: null,
+      expense_invoice_upload_id: null,
+    });
+    expect(result?.vendor).toBe('New Vendor');
+    expect(result?.badge).toBe('Check #2');
+  });
+
+  it('falls back to invoice when all outflows are voided', () => {
+    const result = computeLinkedInfo({
+      linked_outflows: [{
+        vendor_name: 'Voided',
+        notes: null,
+        reference_number: null,
+        payment_method: 'check',
+        status: 'voided',
+      }],
+      expense_invoice_upload: {
+        vendor_name: 'Invoice Vendor',
+        invoice_number: 'INV-100',
+      },
+      expense_invoice_upload_id: 'some-uuid',
+    });
+    expect(result?.type).toBe('invoice');
+    expect(result?.vendor).toBe('Invoice Vendor');
+  });
+
   it('truncates long detail text to 80 chars', () => {
     const longNotes = 'A'.repeat(100);
     const result = computeLinkedInfo({

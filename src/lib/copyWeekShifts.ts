@@ -14,12 +14,47 @@ export interface BulkShiftInsert {
 }
 
 /**
+ * Offset a timestamp to a target week while preserving local wall-clock time.
+ * Computes the calendar-day offset from sourceMonday, then reconstructs the
+ * date using local Date constructor so hours/minutes/seconds are preserved
+ * even across DST boundaries.
+ */
+function offsetPreservingLocalTime(
+  isoString: string,
+  sourceMonday: Date,
+  targetMonday: Date,
+): Date {
+  const src = new Date(isoString);
+
+  // Calendar-day offset from source Monday (0 = Monday, 1 = Tuesday, etc.)
+  const srcMidnight = new Date(src.getFullYear(), src.getMonth(), src.getDate());
+  const srcMondayMidnight = new Date(
+    sourceMonday.getFullYear(), sourceMonday.getMonth(), sourceMonday.getDate(),
+  );
+  const dayOffset = Math.round(
+    (srcMidnight.getTime() - srcMondayMidnight.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  // Reconstruct in local time on the target week's equivalent day
+  const targetDate = new Date(targetMonday);
+  targetDate.setDate(targetMonday.getDate() + dayOffset);
+
+  return new Date(
+    targetDate.getFullYear(),
+    targetDate.getMonth(),
+    targetDate.getDate(),
+    src.getHours(),
+    src.getMinutes(),
+    src.getSeconds(),
+    src.getMilliseconds(),
+  );
+}
+
+/**
  * Transform source week shifts into insert payloads for a target week.
- * Offsets dates by the week delta, strips metadata (IDs, timestamps, recurrence),
- * resets publish/lock state. Excludes cancelled shifts.
- *
- * Uses .toISOString() for timestamps to match the codebase convention
- * (shifts.start_time is timestamptz in the database).
+ * Preserves local wall-clock time per shift (DST-safe), strips metadata
+ * (IDs, timestamps, recurrence), resets publish/lock state.
+ * Excludes cancelled shifts.
  */
 export function buildCopyPayload(
   sourceShifts: Shift[],
@@ -27,13 +62,11 @@ export function buildCopyPayload(
   targetMonday: Date,
   restaurantId: string,
 ): BulkShiftInsert[] {
-  const offsetMs = targetMonday.getTime() - sourceMonday.getTime();
-
   return sourceShifts
     .filter((s) => s.status !== 'cancelled')
     .map((shift) => {
-      const newStart = new Date(new Date(shift.start_time).getTime() + offsetMs);
-      const newEnd = new Date(new Date(shift.end_time).getTime() + offsetMs);
+      const newStart = offsetPreservingLocalTime(shift.start_time, sourceMonday, targetMonday);
+      const newEnd = offsetPreservingLocalTime(shift.end_time, sourceMonday, targetMonday);
 
       return {
         restaurant_id: restaurantId,

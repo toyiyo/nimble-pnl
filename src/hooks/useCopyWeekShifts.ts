@@ -30,43 +30,27 @@ export function useCopyWeekShifts() {
       targetMonday,
       restaurantId,
     }: CopyWeekParams): Promise<CopyWeekResult> => {
-      // 1. Build insert payloads from source shifts
       const inserts = buildCopyPayload(sourceShifts, sourceMonday, targetMonday, restaurantId);
 
       if (inserts.length === 0) {
         throw new Error('No shifts to copy. The source week has no active shifts.');
       }
 
-      // 2. Delete existing non-locked shifts in target week
       const targetEnd = getWeekEnd(targetMonday);
-      const { data: deletedData, error: deleteError } = await supabase
-        .from('shifts')
-        .delete()
-        .eq('restaurant_id', restaurantId)
-        .eq('locked', false)
-        .gte('start_time', targetMonday.toISOString())
-        .lte('start_time', targetEnd.toISOString())
-        .select('id');
 
-      if (deleteError) throw deleteError;
+      // Atomic: delete target-week unlocked shifts + insert new ones in one transaction
+      const { data, error } = await supabase.rpc('copy_week_shifts', {
+        p_restaurant_id: restaurantId,
+        p_target_start: targetMonday.toISOString(),
+        p_target_end: targetEnd.toISOString(),
+        p_shifts: inserts,
+      });
 
-      // 3. Bulk insert cloned shifts (chunked at 500)
-      const chunkSize = 500;
-      let totalInserted = 0;
-
-      for (let i = 0; i < inserts.length; i += chunkSize) {
-        const chunk = inserts.slice(i, i + chunkSize);
-        const { error: insertError } = await supabase
-          .from('shifts')
-          .insert(chunk);
-
-        if (insertError) throw insertError;
-        totalInserted += chunk.length;
-      }
+      if (error) throw error;
 
       return {
-        copiedCount: totalInserted,
-        deletedCount: deletedData?.length ?? 0,
+        copiedCount: (data as any)?.copied_count ?? inserts.length,
+        deletedCount: (data as any)?.deleted_count ?? 0,
       };
     },
     onSuccess: (data, variables) => {

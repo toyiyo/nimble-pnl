@@ -139,6 +139,29 @@ describe('buildCopyPayload', () => {
     expect(startDate.getMonth()).toBe(2); // March
   });
 
+  it('should preserve local wall-clock time across DST boundaries', () => {
+    // US Spring Forward: Mar 8 2026 at 2am → clocks skip to 3am
+    // Source: Mon Mar 2 (before DST), Target: Mon Mar 9 (after DST)
+    // A shift at 10:00 local on Mar 2 should copy to 10:00 local on Mar 9,
+    // NOT 11:00 (which would happen with a naive ms offset).
+    const preDstMonday = new Date(2026, 2, 2); // Mar 2
+    const postDstMonday = new Date(2026, 2, 9); // Mar 9
+
+    const shifts = [mockShift({
+      start_time: new Date(2026, 2, 2, 10, 0, 0).toISOString(),
+      end_time: new Date(2026, 2, 2, 16, 0, 0).toISOString(),
+    })];
+
+    const result = buildCopyPayload(shifts, preDstMonday, postDstMonday, restaurantId);
+    const startDate = new Date(result[0].start_time);
+    const endDate = new Date(result[0].end_time);
+
+    // Hours should be preserved regardless of DST
+    expect(startDate.getHours()).toBe(10);
+    expect(endDate.getHours()).toBe(16);
+    expect(startDate.getDate()).toBe(9);
+  });
+
   it('should produce ISO strings (matching codebase convention)', () => {
     const shifts = [mockShift()];
     const result = buildCopyPayload(shifts, sourceMonday, targetMonday, restaurantId);

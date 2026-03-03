@@ -138,8 +138,8 @@ test.describe('Copy Week Shifts', () => {
     const dayButton = dialog.getByRole('gridcell', { name: String(targetDay) }).first();
     await dayButton.click();
 
-    // Overwrite warning should appear
-    await expect(dialog.getByText(/existing unlocked shifts.*will be replaced/i)).toBeVisible({ timeout: 3000 });
+    // Target week info should appear (no existing shifts = fresh copy message)
+    await expect(dialog.getByText(/no existing shifts|will be permanently deleted/i)).toBeVisible({ timeout: 3000 });
 
     // 6. Set up response listener for shift creation (POST always occurs)
     const postResponse = page.waitForResponse(

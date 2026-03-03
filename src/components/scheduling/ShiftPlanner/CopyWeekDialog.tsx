@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 import {
   Dialog,
@@ -11,6 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 
 import { Copy, AlertTriangle } from 'lucide-react';
 
+import { supabase } from '@/integrations/supabase/client';
 import { getMondayOfWeek, getWeekEnd } from '@/hooks/useShiftPlanner';
 import type { Shift } from '@/types/scheduling';
 
@@ -20,6 +21,7 @@ interface CopyWeekDialogProps {
   sourceWeekStart: Date;
   sourceWeekEnd: Date;
   shifts: Shift[];
+  restaurantId: string | null;
   onConfirm: (targetMonday: Date) => void;
   isPending: boolean;
 }
@@ -35,10 +37,12 @@ export function CopyWeekDialog({
   sourceWeekStart,
   sourceWeekEnd,
   shifts,
+  restaurantId,
   onConfirm,
   isPending,
 }: Readonly<CopyWeekDialogProps>) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [targetShiftCount, setTargetShiftCount] = useState<number | null>(null);
 
   const targetMonday = useMemo(
     () => (selectedDate ? getMondayOfWeek(selectedDate) : null),
@@ -65,6 +69,32 @@ export function CopyWeekDialog({
     return targetSunday < today;
   }, [targetMonday]);
 
+  // Query existing shift count in target week when selection changes
+  useEffect(() => {
+    if (!targetMonday || !targetEnd || !restaurantId || isSameWeek || isPastWeek) {
+      setTargetShiftCount(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const { count, error } = await supabase
+        .from('shifts')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .eq('locked', false)
+        .gte('start_time', targetMonday.toISOString())
+        .lte('start_time', targetEnd.toISOString());
+
+      if (!cancelled && !error) {
+        setTargetShiftCount(count ?? 0);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [targetMonday, targetEnd, restaurantId, isSameWeek, isPastWeek]);
+
   const canConfirm = targetMonday && !isSameWeek && !isPastWeek && activeShiftCount > 0;
 
   const handleConfirm = () => {
@@ -73,7 +103,10 @@ export function CopyWeekDialog({
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) setSelectedDate(undefined);
+    if (!nextOpen) {
+      setSelectedDate(undefined);
+      setTargetShiftCount(null);
+    }
     onOpenChange(nextOpen);
   };
 
@@ -129,16 +162,26 @@ export function CopyWeekDialog({
                 </span>
               </div>
 
-              {!isSameWeek && !isPastWeek && (
+              {/* Warning: existing shifts will be deleted */}
+              {!isSameWeek && !isPastWeek && targetShiftCount !== null && targetShiftCount > 0 && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-[12px] text-destructive">
+                    {targetShiftCount} existing unlocked {targetShiftCount === 1 ? 'shift' : 'shifts'} in the target week will be permanently deleted and replaced.
+                  </p>
+                </div>
+              )}
+
+              {!isSameWeek && !isPastWeek && (targetShiftCount === null || targetShiftCount === 0) && (
                 <p className="text-[12px] text-muted-foreground">
-                  Existing unlocked shifts in the target week will be replaced.
+                  No existing shifts in the target week. Shifts will be created fresh.
                 </p>
               )}
 
               {(isSameWeek || isPastWeek) && (
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                  <p className="text-[12px] text-amber-700 dark:text-amber-400">
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                  <p className="text-[12px] text-destructive">
                     {isSameWeek ? 'Cannot copy to the same week.' : 'Cannot copy to a past week.'}
                   </p>
                 </div>

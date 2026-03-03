@@ -113,7 +113,6 @@ export function CopyWeekDialog({
             </div>
           </div>
 
-          {/* Preview */}
           {targetMonday && targetEnd && (
             <div className="space-y-2">
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/40">
@@ -136,20 +135,11 @@ export function CopyWeekDialog({
                 </p>
               )}
 
-              {isSameWeek && (
+              {(isSameWeek || isPastWeek) && (
                 <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
                   <p className="text-[12px] text-amber-700 dark:text-amber-400">
-                    Cannot copy to the same week.
-                  </p>
-                </div>
-              )}
-
-              {isPastWeek && (
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                  <p className="text-[12px] text-amber-700 dark:text-amber-400">
-                    Cannot copy to a past week.
+                    {isSameWeek ? 'Cannot copy to the same week.' : 'Cannot copy to a past week.'}
                   </p>
                 </div>
               )}

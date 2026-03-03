@@ -2,7 +2,7 @@ import { memo } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import { ChevronLeft, ChevronRight, Calendar, Printer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Printer, Copy } from 'lucide-react';
 
 interface PlannerHeaderProps {
   weekStart: Date;
@@ -12,6 +12,7 @@ interface PlannerHeaderProps {
   onNextWeek: () => void;
   onToday: () => void;
   onExport?: () => void;
+  onCopyWeek?: () => void;
 }
 
 /**
@@ -32,6 +33,7 @@ export const PlannerHeader = memo(function PlannerHeader({
   onNextWeek,
   onToday,
   onExport,
+  onCopyWeek,
 }: PlannerHeaderProps) {
   return (
     <div className="flex items-center justify-between px-1 py-2">
@@ -77,6 +79,18 @@ export const PlannerHeader = memo(function PlannerHeader({
         <span className="text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">{totalHours}h</span> scheduled
         </span>
+        {onCopyWeek && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={onCopyWeek}
+            aria-label="Copy week"
+          >
+            <Copy className="h-3.5 w-3.5 mr-1" />
+            Copy Week
+          </Button>
+        )}
         {onExport && (
           <Button
             variant="ghost"

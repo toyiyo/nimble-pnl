@@ -60,7 +60,7 @@ function suggestedNameForSubtype(
  * 1. Group transactions by payee (normalized_payee, fallback merchant_name).
  * 2. Bucket each payee's transactions by calendar month (YYYY-MM).
  * 3. Sum amounts per month per payee (multiple payments in one month are combined).
- * 4. Flag as recurring if 2+ months AND monthly amounts within 20% variance.
+ * 4. Flag as recurring if 1+ months (single-month gets lower confidence) AND monthly amounts within 20% variance.
  * 5. Compute average monthly amount (in cents, positive).
  * 6. Map account_subtype to cost block type.
  * 7. Exclude already-tracked operating costs.
@@ -85,16 +85,16 @@ export function detectRecurringExpenses(
     const monthBuckets = bucketByMonth(txns);
     const monthCount = monthBuckets.size;
 
-    // Must appear in at least 2 months
-    if (monthCount < 2) continue;
+    // Must appear in at least 1 month
+    if (monthCount < 1) continue;
 
     // Sum amounts per month (absolute values in dollars)
     const monthlyTotals = Array.from(monthBuckets.values()).map((monthTxns) =>
       monthTxns.reduce((sum, t) => sum + Math.abs(t.amount), 0),
     );
 
-    // Check variance: all monthly totals must be within 20% of the average
-    if (!isWithinVariance(monthlyTotals, 0.2)) continue;
+    // Check variance: all monthly totals must be within 20% of the average (skip for single-month)
+    if (monthCount >= 2 && !isWithinVariance(monthlyTotals, 0.2)) continue;
 
     const avgMonthlyDollars =
       monthlyTotals.reduce((a, b) => a + b, 0) / monthlyTotals.length;
@@ -229,6 +229,7 @@ function computeVariance(values: number[]): number {
  * - Capped at [0, 1]
  */
 function computeConfidence(matchedMonths: number, cv: number): number {
+  if (matchedMonths === 1) return 0.4;
   const base = 0.6;
   const monthBonus = Math.max(0, (matchedMonths - 2) * 0.2);
   const variancePenalty = Math.min(cv, 0.3);

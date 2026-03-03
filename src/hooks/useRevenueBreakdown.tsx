@@ -210,6 +210,11 @@ export function useRevenueBreakdown(
 
         // If no categorized liabilities were found for pass-through amounts,
         // synthesize display categories from adjustment totals to surface names in the UI.
+        // Track whether real categorized entries existed BEFORE synthesizing, so we
+        // don't double-count adjustment amounts that are already in the synthetic category.
+        const hadCategorizedTax = taxCategories.length > 0;
+        const hadCategorizedTips = tipCategories.length > 0;
+
         const ensureCategory = (
           list: RevenueCategory[],
           adjustmentType: string,
@@ -249,9 +254,11 @@ export function useRevenueBreakdown(
         const totalTipsC = tipCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
         const totalOtherLiabilitiesC = otherLiabilityCategories.reduce((sum, c) => sum + toC(c.total_amount || 0), 0);
 
-        // Combine categorized amounts with adjustment amounts
-        const combinedTaxC = totalTaxC + adjustmentTaxC;
-        const combinedTipsC = totalTipsC + adjustmentTipsC;
+        // Combine categorized amounts with adjustment amounts.
+        // When ensureCategory created a synthetic entry (hadCategorized* was false),
+        // totalTaxC/totalTipsC already includes the adjustment amount — don't add again.
+        const combinedTaxC = hadCategorizedTax ? totalTaxC + adjustmentTaxC : totalTaxC;
+        const combinedTipsC = hadCategorizedTips ? totalTipsC + adjustmentTipsC : totalTipsC;
         const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
         const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
 

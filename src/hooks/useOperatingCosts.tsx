@@ -188,18 +188,14 @@ export function useOperatingCosts(restaurantId: string | null) {
     },
   });
 
-  // Group costs by type for easier consumption
-  const fixedCosts = costs.filter(c => c.costType === 'fixed');
-  const semiVariableCosts = costs.filter(c => c.costType === 'semi_variable');
-  const variableCosts = costs.filter(c => c.costType === 'variable');
-  const customCosts = costs.filter(c => c.costType === 'custom');
+  // Group by entry type: dollar amounts = fixed, percentages = variable
+  const fixedCosts = costs.filter(c => c.entryType === 'value');
+  const variableCosts = costs.filter(c => c.entryType === 'percentage');
 
   return {
     costs,
     fixedCosts,
-    semiVariableCosts,
     variableCosts,
-    customCosts,
     isLoading,
     error,
     refetch,

@@ -3,7 +3,8 @@ import { BankTransaction } from "@/hooks/useBankTransactions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Check, Edit, Trash2, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2 } from "lucide-react";
+import { Check, Edit, Trash2, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2, Hash, ArrowRightLeft } from "lucide-react";
+import { LinkedInfoResult } from "@/lib/bankTransactionLinkedInfo";
 import { BankAccountInfo } from "./BankAccountInfo";
 import { TransactionBadges } from "./TransactionBadges";
 import { AIConfidenceBadge } from "./AIConfidenceBadge";
@@ -22,6 +23,7 @@ export interface TransactionDisplayValues {
   suggestedCategoryName?: string;
   currentCategoryName?: string;
   hasSuggestion: boolean;
+  linkedInfo?: LinkedInfoResult | null;
 }
 
 export interface MemoizedTransactionRowProps {
@@ -128,6 +130,25 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
       <div className={COLUMN_WIDTHS.description}>
         <div className="flex flex-col">
           <span className="font-medium truncate">{transaction.description}</span>
+          {displayValues.linkedInfo && (
+            <div className="flex items-center gap-1.5 mt-1 text-[13px] text-muted-foreground">
+              <Badge
+                variant="outline"
+                className="text-[11px] px-1.5 py-0 h-5 font-medium bg-muted/50 border-border/60 shrink-0"
+              >
+                {displayValues.linkedInfo.type === 'invoice' && <FileText className="h-3 w-3 mr-1" />}
+                {displayValues.linkedInfo.type === 'check' && <Hash className="h-3 w-3 mr-1" />}
+                {displayValues.linkedInfo.type === 'ach' && <ArrowRightLeft className="h-3 w-3 mr-1" />}
+                {displayValues.linkedInfo.type === 'other' && <FileText className="h-3 w-3 mr-1" />}
+                {displayValues.linkedInfo.badge}
+              </Badge>
+              <span className="truncate">
+                {[displayValues.linkedInfo.vendor, displayValues.linkedInfo.detail]
+                  .filter(Boolean)
+                  .join(' — ')}
+              </span>
+            </div>
+          )}
           <TransactionBadges
             isTransfer={transaction.is_transfer}
             isSplit={transaction.is_split}

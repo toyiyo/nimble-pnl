@@ -2,13 +2,14 @@ import { BankTransaction } from "@/hooks/useBankTransactions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, Trash2, FileText, Split, CheckCircle2, Sparkles, Settings2 } from "lucide-react";
+import { Check, Edit, Trash2, FileText, Split, CheckCircle2, Sparkles, Settings2, Hash, ArrowRightLeft } from "lucide-react";
 import { BankAccountInfo } from "./BankAccountInfo";
 import { TransactionBadges } from "./TransactionBadges";
 import { TransactionDialogs } from "./TransactionDialogs";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useBankTransactionActions } from "@/hooks/useBankTransactionActions";
 import { AIConfidenceBadge } from "./AIConfidenceBadge";
+import { computeLinkedInfo } from "@/lib/bankTransactionLinkedInfo";
 
 interface BankTransactionCardProps {
   transaction: BankTransaction;
@@ -31,6 +32,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
 
   const { isDetailOpen, isSplitOpen, showRulesDialog, showDeleteConfirm, setIsDetailOpen, setIsSplitOpen, setShowRulesDialog, setShowDeleteConfirm } = state;
   const { isNegative, formattedAmount, suggestedCategory, currentCategory, hasSuggestion } = computed;
+  const linkedInfo = computeLinkedInfo(transaction);
   const { categorize, deleteTransaction, reconcile, unreconcile } = mutations;
 
   return (
@@ -46,6 +48,25 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
               <div className="font-semibold text-base">
                 {transaction.description}
               </div>
+              {linkedInfo && (
+                <div className="flex items-center gap-1.5 mt-1 text-[13px] text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] px-1.5 py-0 h-5 font-medium bg-muted/50 border-border/60 shrink-0"
+                  >
+                    {linkedInfo.type === 'invoice' && <FileText className="h-3 w-3 mr-1" />}
+                    {linkedInfo.type === 'check' && <Hash className="h-3 w-3 mr-1" />}
+                    {linkedInfo.type === 'ach' && <ArrowRightLeft className="h-3 w-3 mr-1" />}
+                    {linkedInfo.type === 'other' && <FileText className="h-3 w-3 mr-1" />}
+                    {linkedInfo.badge}
+                  </Badge>
+                  <span className="truncate">
+                    {[linkedInfo.vendor, linkedInfo.detail]
+                      .filter(Boolean)
+                      .join(' — ')}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="text-right ml-4">
               <div className={`text-lg font-bold ${isNegative ? "text-destructive" : "text-success"}`}>

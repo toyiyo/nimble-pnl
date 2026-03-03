@@ -17,7 +17,8 @@ test.describe('POS Sale with Tip — No Doubling', () => {
     // Seed unified_sales rows: sale $50, tip $10, tax $4
     await exposeSupabaseHelpers(page);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     await page.evaluate(async ({ saleDate }) => {
       const supabase = (window as any).__supabase;

@@ -46,11 +46,11 @@ BEGIN
       END
     ), 0)::NUMERIC AS revenue,
 
-    -- Discounts: adjustment_type='discount' OR legacy item_type='discount' (non-void)
+    -- Discounts: adjustment_type='discount' OR legacy item_type='discount' (only when no adjustment_type)
     COALESCE(SUM(
       CASE
         WHEN us.adjustment_type = 'discount' THEN ABS(us.total_price)
-        WHEN us.item_type = 'discount' AND COALESCE(us.adjustment_type, 'discount') != 'void' THEN ABS(us.total_price)
+        WHEN us.adjustment_type IS NULL AND us.item_type = 'discount' THEN ABS(us.total_price)
         ELSE 0
       END
     ), 0)::NUMERIC AS discounts,

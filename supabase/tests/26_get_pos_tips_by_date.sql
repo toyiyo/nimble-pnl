@@ -28,9 +28,9 @@ INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
 ON CONFLICT (user_id, restaurant_id) DO NOTHING;
 
 INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance) VALUES
-  ('00000000-0000-0000-0000-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'TIP001', 'Tips Payable', 'liability', 'tips', 'credit'),
+  ('00000000-0000-0000-0000-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'TIP001', 'Tips Payable', 'liability', 'payroll_liabilities', 'credit'),
   ('00000000-0000-0000-0000-000000000011'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'OTH001', 'Other Income', 'revenue', 'other_income', 'credit'),
-  ('00000000-0000-0000-0000-000000000012'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'FOOD01', 'Food Sales', 'revenue', 'sales', 'credit')
+  ('00000000-0000-0000-0000-000000000012'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'FOOD01', 'Food Sales', 'revenue', 'food_sales', 'credit')
 ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
 
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date) VALUES

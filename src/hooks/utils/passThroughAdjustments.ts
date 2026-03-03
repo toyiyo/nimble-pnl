@@ -15,7 +15,7 @@ export function hasTipKeyword(value: string): boolean {
 // Subtypes that definitively indicate tips
 export const TIP_SUBTYPES = new Set(['tips', 'tips_payable', 'tips payable']);
 // Generic subtypes where name-based matching should apply as fallback
-export const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other_current_liabilities', 'other_liabilities', 'other']);
+export const GENERIC_SUBTYPES = new Set(['', 'liability', 'other_current_liability', 'other_current_liabilities', 'other_liabilities', 'payroll_liabilities', 'other']);
 
 export interface PassThroughRow {
   item_type?: string | null;

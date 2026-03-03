@@ -99,10 +99,14 @@ test.describe('Copy Week Shifts', () => {
       },
       {
         restId: restaurantId,
-        aliceId: (employees as any).find((e: any) => e.name === 'Alice Johnson').id,
-        bobId: (employees as any).find((e: any) => e.name === 'Bob Smith').id,
+        aliceId: (employees as any).find((e: any) => e.name === 'Alice Johnson')?.id,
+        bobId: (employees as any).find((e: any) => e.name === 'Bob Smith')?.id,
       },
     );
+
+    if (!(employees as any)?.length) {
+      throw new Error('Employee seeding returned empty results');
+    }
 
     if ((seedResult as any).error) {
       throw new Error(`Seed failed: ${(seedResult as any).error}`);
@@ -212,25 +216,32 @@ test.describe('Copy Week Shifts', () => {
     );
 
     // Seed a template so the planner grid shows shifts
-    await page.evaluate(
+    const templateResult = await page.evaluate(
       ({ restId }) => {
         const supabase = (window as any).__supabase;
-        return supabase.from('shift_templates').insert({
-          restaurant_id: restId,
-          name: 'Morning',
-          start_time: '08:00:00',
-          end_time: '14:00:00',
-          position: 'Server',
-          days: [0, 1, 2, 3, 4, 5, 6],
-          break_duration: 30,
-          is_active: true,
-        });
+        return (async () => {
+          const { error } = await supabase.from('shift_templates').insert({
+            restaurant_id: restId,
+            name: 'Morning',
+            start_time: '08:00:00',
+            end_time: '14:00:00',
+            position: 'Server',
+            days: [0, 1, 2, 3, 4, 5, 6],
+            break_duration: 30,
+            is_active: true,
+          });
+          if (error) return { error: error.message };
+          return { success: true };
+        })();
       },
       { restId: restaurantId },
     );
+    if ((templateResult as any).error) {
+      throw new Error(`Template seed failed: ${(templateResult as any).error}`);
+    }
 
     // Use .toISOString() for timezone-correct shift timestamps
-    await page.evaluate(
+    const shiftResult = await page.evaluate(
       ({ restId, empId }) => {
         const supabase = (window as any).__supabase;
         const now = new Date();
@@ -241,23 +252,30 @@ test.describe('Copy Week Shifts', () => {
         const monStart = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate(), 8, 0, 0).toISOString();
         const monEnd = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate(), 14, 0, 0).toISOString();
 
-        return supabase.from('shifts').insert({
-          restaurant_id: restId,
-          employee_id: empId,
-          start_time: monStart,
-          end_time: monEnd,
-          position: 'Server',
-          status: 'scheduled',
-          break_duration: 0,
-          is_published: false,
-          locked: false,
-        });
+        return (async () => {
+          const { error } = await supabase.from('shifts').insert({
+            restaurant_id: restId,
+            employee_id: empId,
+            start_time: monStart,
+            end_time: monEnd,
+            position: 'Server',
+            status: 'scheduled',
+            break_duration: 0,
+            is_published: false,
+            locked: false,
+          });
+          if (error) return { error: error.message };
+          return { success: true };
+        })();
       },
       {
         restId: restaurantId,
         empId: (employees as any)[0].id,
       },
     );
+    if ((shiftResult as any).error) {
+      throw new Error(`Shift seed failed: ${(shiftResult as any).error}`);
+    }
 
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });

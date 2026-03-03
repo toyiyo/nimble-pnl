@@ -165,7 +165,7 @@ export function CopyWeekDialog({
             disabled={!canConfirm || isPending}
             aria-label="Confirm copy week"
           >
-            {isPending ? 'Copying...' : `Copy ${activeShiftCount} Shifts`}
+            {isPending ? 'Copying...' : `Copy ${activeShiftCount} ${activeShiftCount === 1 ? 'Shift' : 'Shifts'}`}
           </Button>
         </div>
       </DialogContent>

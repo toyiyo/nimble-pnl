@@ -309,7 +309,7 @@ export function useShiftPlanner(
   }, []);
 
   const goToWeek = useCallback((monday: Date) => {
-    setWeekStart(monday);
+    setWeekStart(getMondayOfWeek(monday));
   }, []);
 
   // Validation helper

@@ -35,10 +35,10 @@ SELECT ok(
   'Regex does NOT match "stipend liability"'
 );
 
--- Test 6: Verify regex does NOT match "Participation Fee" (false positive)
+-- Test 6: Verify regex does NOT match "overtipped" (embedded "tip" in larger word)
 SELECT ok(
-  NOT ('participation fee' ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'),
-  'Regex does NOT match "participation fee"'
+  NOT ('overtipped' ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'),
+  'Regex does NOT match "overtipped"'
 );
 
 SELECT * FROM finish();

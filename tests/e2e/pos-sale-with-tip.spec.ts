@@ -82,8 +82,6 @@ test.describe('POS Sale with Tip — No Doubling', () => {
     await expect(passThroughText).toBeVisible({ timeout: 5000 });
 
     // Verify the bad value ($64) does NOT appear as revenue
-    // Look for the Revenue label and its adjacent value
-    const revenueStat = page.locator('text=Revenue').first();
-    await expect(revenueStat).toBeVisible();
+    await expect(page.locator('text=$64.00')).toHaveCount(0);
   });
 });

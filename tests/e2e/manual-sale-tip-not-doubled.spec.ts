@@ -72,8 +72,7 @@ test.describe('Manual Sale Tip Not Doubled', () => {
       tax: '4',
     });
 
-    // Wait for the page to refresh and data to load
-    await page.waitForTimeout(2000);
+    // Reload to ensure fresh data from server
     await page.reload();
     await expect(page.getByRole('heading', { name: /^sales$/i })).toBeVisible({ timeout: 15000 });
 
@@ -132,18 +131,18 @@ test.describe('Manual Sale Tip Not Doubled', () => {
     expect(saleRow).toBeTruthy();
     expect(saleRow.item_type).toBe('sale'); // Bug: currently null
     expect(saleRow.adjustment_type).toBeNull();
-    expect(saleRow.total_price).toBe(100);
+    expect(Number(saleRow.total_price)).toBe(100);
 
     // Verify the tip row has item_type='tip', NOT default 'sale'
     const tipRow = results.find((r: any) => r.adjustment_type === 'tip');
     expect(tipRow).toBeTruthy();
     expect(tipRow.item_type).toBe('tip'); // Bug: currently null (or 'sale' default)
-    expect(tipRow.total_price).toBe(20);
+    expect(Number(tipRow.total_price)).toBe(20);
 
     // Verify the tax row has item_type='tax', NOT default 'sale'
     const taxRow = results.find((r: any) => r.adjustment_type === 'tax');
     expect(taxRow).toBeTruthy();
     expect(taxRow.item_type).toBe('tax'); // Bug: currently null (or 'sale' default)
-    expect(taxRow.total_price).toBe(8);
+    expect(Number(taxRow.total_price)).toBe(8);
   });
 });

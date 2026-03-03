@@ -59,7 +59,7 @@ SELECT function_returns(
   'get_pos_tips_by_date should return setof record'
 );
 
--- Test 2: Filters by account_subtype = 'tips' (exact match)
+-- Test 2: Filters by tip subtype or generic subtype with tip keyword in account_name
 
 SELECT ok(
   (SELECT COUNT(*) FROM get_pos_tips_by_date(

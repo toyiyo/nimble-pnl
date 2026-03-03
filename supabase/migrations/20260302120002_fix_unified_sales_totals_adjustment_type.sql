@@ -55,11 +55,10 @@ BEGIN
       END
     ), 0)::NUMERIC AS discounts,
 
-    -- Voids: adjustment_type='void' OR legacy item_type='discount' with adjustment_type='void'
+    -- Voids: adjustment_type='void'
     COALESCE(SUM(
       CASE
         WHEN us.adjustment_type = 'void' THEN ABS(us.total_price)
-        WHEN us.item_type = 'discount' AND us.adjustment_type = 'void' THEN ABS(us.total_price)
         ELSE 0
       END
     ), 0)::NUMERIC AS voids,

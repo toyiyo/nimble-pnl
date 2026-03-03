@@ -233,14 +233,18 @@ export function ShiftPlannerTab({
   }, []);
 
   const handleCopyWeekConfirm = useCallback(async (targetMonday: Date) => {
-    await copyWeekMutation.mutateAsync({
-      sourceShifts: shifts,
-      sourceMonday: weekStart,
-      targetMonday,
-      restaurantId,
-    });
-    setCopyDialogOpen(false);
-    goToWeek(targetMonday);
+    try {
+      await copyWeekMutation.mutateAsync({
+        sourceShifts: shifts,
+        sourceMonday: weekStart,
+        targetMonday,
+        restaurantId,
+      });
+      setCopyDialogOpen(false);
+      goToWeek(targetMonday);
+    } catch {
+      // onError in useCopyWeekShifts already shows a toast
+    }
   }, [copyWeekMutation, shifts, weekStart, restaurantId, goToWeek]);
 
   // Loading state

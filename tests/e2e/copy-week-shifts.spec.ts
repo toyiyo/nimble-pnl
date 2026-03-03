@@ -164,9 +164,9 @@ test.describe('Copy Week Shifts', () => {
     // Overwrite warning should appear
     await expect(dialog.getByText(/existing unlocked shifts.*will be replaced/i)).toBeVisible({ timeout: 3000 });
 
-    // 6. Set up response listener for shifts API calls
-    const deleteResponse = page.waitForResponse(
-      resp => resp.url().includes('rest/v1/shifts') && resp.request().method() === 'DELETE',
+    // 6. Set up response listener for shift creation (POST always occurs)
+    const postResponse = page.waitForResponse(
+      resp => resp.url().includes('rest/v1/shifts') && resp.request().method() === 'POST',
       { timeout: 15000 },
     );
 
@@ -175,8 +175,8 @@ test.describe('Copy Week Shifts', () => {
     await expect(confirmButton).toBeEnabled();
     await confirmButton.click();
 
-    // Wait for delete to complete
-    await deleteResponse;
+    // Wait for insert to complete
+    await postResponse;
 
     // 7. Dialog should close
     await expect(dialog).not.toBeVisible({ timeout: 10000 });

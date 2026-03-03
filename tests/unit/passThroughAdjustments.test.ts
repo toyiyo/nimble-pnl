@@ -215,6 +215,30 @@ describe('classifyPassThroughItem', () => {
       });
       expect(classifyPassThroughItem(item)).toBe('tip');
     });
+
+    it('classifies tip by name when subtype is "other_current_liabilities" (plural)', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liabilities',
+          account_name: 'Gratuity Collected',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies tip by name when subtype is "other_liabilities"', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_liabilities',
+          account_name: 'Tips Collected',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
   });
 
   describe('adjustment_type based classification', () => {

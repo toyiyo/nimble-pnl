@@ -548,8 +548,11 @@ export function useRevenueBreakdown(
       // Use classifyPassThroughItem to properly classify items based on chart_account
       // This ensures categorized liability items (like sales tax) are correctly counted
       // Single-pass classification: classify each adjustment once and bucket results
+      // Only bucket uncategorized adjustments — categorized ones are already merged
+      // into categoryMap via mergeCategorizedAdjustments (line 490) and included
+      // in totalTaxC/totalTipsC/totalOtherLiabilitiesC above.
       const adjBuckets = new Map<PassThroughType, { totalC: number; count: number }>();
-      (allAdjustments || []).forEach(a => {
+      (allAdjustments || []).filter(a => !a.is_categorized || !a.chart_account).forEach(a => {
         const type = classifyPassThroughItem(a);
         const entry = adjBuckets.get(type) || { totalC: 0, count: 0 };
         entry.totalC += type === 'discount' ? Math.abs(toC(a.total_price || 0)) : toC(a.total_price || 0);

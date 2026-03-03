@@ -14,9 +14,9 @@ import { useExpenseSuggestions } from '@/hooks/useExpenseSuggestions';
 
 const COST_TYPE_LABELS: Record<CostType, string> = {
   fixed: 'Add Fixed Cost',
-  semi_variable: 'Add Semi-Variable Cost',
+  semi_variable: 'Add Fixed Cost',
   variable: 'Add Variable Cost',
-  custom: 'Add Custom Cost',
+  custom: 'Add Fixed Cost',
 };
 
 export default function BudgetRunRate() {
@@ -167,55 +167,32 @@ export default function BudgetRunRate() {
             </div>
           ) : (
             <>
-              {/* Fixed Costs */}
+              {/* Fixed Costs (all dollar-amount items) */}
               <CostBlock
                 title="Fixed Costs"
-                subtitle="Costs that don't change with sales"
+                subtitle="Dollar amounts that don't scale with sales"
                 totalDaily={breakEvenData?.fixedCosts.totalDaily || 0}
                 items={breakEvenData?.fixedCosts.items || []}
                 onAddItem={() => handleAddItem('fixed')}
                 onEditItem={handleEditItem}
                 onDeleteItem={deleteCost}
                 showAddButton
-                suggestions={suggestions.filter(s => s.costType === 'fixed')}
+                suggestions={suggestions.filter(s => s.costType === 'fixed' || s.costType === 'semi_variable' || s.costType === 'custom')}
                 {...suggestionHandlers}
               />
 
-              {/* Semi-Variable (Utilities) */}
-              <CostBlock
-                title="Utilities (Averaged)"
-                subtitle="Estimated from historical usage"
-                totalDaily={breakEvenData?.semiVariableCosts.totalDaily || 0}
-                items={breakEvenData?.semiVariableCosts.items || []}
-                onEditItem={handleEditItem}
-                infoText={`Smoothed from last ${breakEvenData?.semiVariableCosts.monthsAveraged || 3} months of transactions. Override any value to set manually.`}
-                suggestions={suggestions.filter(s => s.costType === 'semi_variable')}
-                {...suggestionHandlers}
-              />
-
-              {/* Variable Costs */}
+              {/* Variable Costs (all percentage items) */}
               <CostBlock
                 title="Variable Costs"
-                subtitle="Costs that scale with sales"
+                subtitle="Percentages that scale with sales"
                 totalDaily={breakEvenData?.variableCosts.totalDaily || 0}
                 items={breakEvenData?.variableCosts.items || []}
-                onEditItem={handleEditItem}
-                showPercentages
-                suggestions={suggestions.filter(s => s.costType === 'variable')}
-                {...suggestionHandlers}
-              />
-
-              {/* Custom Costs */}
-              <CostBlock
-                title="Custom / Other Costs"
-                subtitle="Franchise fees, marketing, etc."
-                totalDaily={breakEvenData?.customCosts.totalDaily || 0}
-                items={breakEvenData?.customCosts.items || []}
-                onAddItem={() => handleAddItem('custom')}
+                onAddItem={() => handleAddItem('variable')}
                 onEditItem={handleEditItem}
                 onDeleteItem={deleteCost}
                 showAddButton
-                suggestions={suggestions.filter(s => s.costType === 'custom')}
+                showPercentages
+                suggestions={suggestions.filter(s => s.costType === 'variable')}
                 {...suggestionHandlers}
               />
             </>

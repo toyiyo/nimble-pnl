@@ -12,7 +12,7 @@ describe('BreakEvenData type', () => {
       todaySales: 1000,
       todayStatus: 'above',
       todayDelta: 146,
-      fixedCosts: { items: [], totalDaily: 333, totalMonthly: 10000, totalYearly: 121667 },
+      fixedCosts: { items: [], totalDaily: 333.33, totalMonthly: 10000, totalYearly: 120000 },
       variableCosts: { items: [], totalDaily: 0, avgDailySales: 0 },
       history: [],
       daysAbove: 0,
@@ -25,6 +25,6 @@ describe('BreakEvenData type', () => {
     expect(data.yearlyBreakEven).toBe(307692);
     expect(data.totalVariablePercent).toBe(0.61);
     expect(data.fixedCosts.totalMonthly).toBe(10000);
-    expect(data.fixedCosts.totalYearly).toBe(121667);
+    expect(data.fixedCosts.totalYearly).toBe(120000);
   });
 });

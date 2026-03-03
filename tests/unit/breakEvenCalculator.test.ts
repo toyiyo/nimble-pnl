@@ -136,6 +136,41 @@ describe('calculateBreakEven', () => {
     expect(result.fixedCosts.totalMonthly).toBeCloseTo(500, 0);
   });
 
+  it('classifies status as below when break-even is Infinity', () => {
+    const costs = [
+      makeCost({ entryType: 'percentage', percentageValue: 1.0, costType: 'variable', name: 'Everything' }),
+      makeCost({ entryType: 'value', monthlyValue: 100000, costType: 'fixed', name: 'Rent' }),
+    ];
+    const salesData = [{ date: '2026-01-01', netRevenue: 5000, transactionCount: 10 }];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-01');
+
+    expect(result.monthlyBreakEven).toBe(Infinity);
+    expect(result.todayStatus).toBe('below');
+    expect(result.history[0].status).toBe('below');
+  });
+
+  it('classifies status as at when break-even and sales are both zero', () => {
+    const costs: OperatingCost[] = [];
+    const salesData = [{ date: '2026-01-01', netRevenue: 0, transactionCount: 0 }];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-01');
+
+    expect(result.dailyBreakEven).toBe(0);
+    expect(result.todayStatus).toBe('at');
+    expect(result.history[0].status).toBe('at');
+  });
+
+  it('classifies status as above when break-even is zero but sales are positive', () => {
+    const costs: OperatingCost[] = [];
+    const salesData = [{ date: '2026-01-01', netRevenue: 500, transactionCount: 5 }];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-01');
+
+    expect(result.dailyBreakEven).toBe(0);
+    expect(result.todayStatus).toBe('above');
+  });
+
   it('builds correct history with daily BEP', () => {
     const costs = [
       makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),

@@ -5,7 +5,8 @@ type BreakEvenStatus = 'above' | 'at' | 'below';
 const BREAK_EVEN_TOLERANCE = 0.05;
 
 function classifyDelta(delta: number, breakEven: number): BreakEvenStatus {
-  if (breakEven === 0) return delta >= 0 ? 'above' : 'below';
+  if (!isFinite(breakEven)) return 'below';
+  if (breakEven === 0) return delta > 0 ? 'above' : delta < 0 ? 'below' : 'at';
   const threshold = breakEven * BREAK_EVEN_TOLERANCE;
   if (delta > threshold) return 'above';
   if (delta < -threshold) return 'below';

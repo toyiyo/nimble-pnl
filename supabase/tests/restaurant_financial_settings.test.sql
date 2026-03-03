@@ -4,7 +4,7 @@
 -- Verifies table structure, constraints, defaults, and RLS policies for the
 -- per-restaurant COGS calculation preference table.
 --
--- Migration: 20260303120000_create_restaurant_financial_settings.sql
+-- Migration: 20260303130000_create_restaurant_financial_settings.sql
 -- ============================================================================
 
 BEGIN;

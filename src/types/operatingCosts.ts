@@ -46,34 +46,33 @@ export interface CostBreakdownItem {
 }
 
 export interface BreakEvenData {
-  // Core daily number
+  // Break-even by period
   dailyBreakEven: number;
-  
+  monthlyBreakEven: number;
+  yearlyBreakEven: number;
+
+  // Contribution margin
+  totalVariablePercent: number;  // sum of all percentage-based costs (0.61 = 61%)
+  contributionMargin: number;    // 1 - totalVariablePercent (0.39 = 39%)
+
   // Today's comparison
   todaySales: number;
   todayStatus: 'above' | 'at' | 'below';
   todayDelta: number;
-  
-  // Cost breakdown by type
+
+  // Cost breakdown — 2 groups only
   fixedCosts: {
     items: CostBreakdownItem[];
     totalDaily: number;
-  };
-  semiVariableCosts: {
-    items: CostBreakdownItem[];
-    totalDaily: number;
-    monthsAveraged: number;
+    totalMonthly: number;
+    totalYearly: number;
   };
   variableCosts: {
     items: CostBreakdownItem[];
     totalDaily: number;
     avgDailySales: number;
   };
-  customCosts: {
-    items: CostBreakdownItem[];
-    totalDaily: number;
-  };
-  
+
   // Historical comparison (configurable days)
   history: {
     date: string;
@@ -82,7 +81,7 @@ export interface BreakEvenData {
     delta: number;
     status: 'above' | 'at' | 'below';
   }[];
-  
+
   // Summary stats
   daysAbove: number;
   daysBelow: number;

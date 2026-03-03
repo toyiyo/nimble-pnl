@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useFoodCosts } from './useFoodCosts';
+import { useUnifiedCOGS } from './useUnifiedCOGS';
 import { useLaborCostsFromTimeTracking } from './useLaborCostsFromTimeTracking';
 import { useLaborCostsFromTransactions } from './useLaborCostsFromTransactions';
 
@@ -25,18 +25,20 @@ export interface CostsFromSourceResult {
 }
 
 /**
- * Combined hook that queries food costs from inventory_transactions, 
- * pending labor costs from daily_labor_costs (time punches - scheduled/accrued), 
- * and actual labor costs from bank transactions/pending outflows (paid labor).
- * 
+ * Combined hook that queries COGS via the unified COGS orchestrator
+ * (which reads the restaurant's cogs_method preference and delegates to
+ * inventory, financials, or both), pending labor costs from
+ * daily_labor_costs (time punches - scheduled/accrued), and actual labor
+ * costs from bank transactions/pending outflows (paid labor).
+ *
  * This follows the same pattern as pending outflows vs actual expenses:
  * - Pending Labor: Time punches showing scheduled/accrued labor costs
  * - Actual Labor: Bank transactions showing money actually paid out
- * 
+ *
  * Both sources are shown separately to give owners visibility into:
  * - What labor costs are scheduled/owed (pending)
  * - What labor costs have actually been paid (actual)
- * 
+ *
  * @param restaurantId - Restaurant ID to filter costs
  * @param dateFrom - Start date for the period
  * @param dateTo - End date for the period
@@ -47,26 +49,26 @@ export function useCostsFromSource(
   dateFrom: Date,
   dateTo: Date
 ): CostsFromSourceResult {
-  const foodCosts = useFoodCosts(restaurantId, dateFrom, dateTo);
+  const unifiedCOGS = useUnifiedCOGS(restaurantId, dateFrom, dateTo);
   const laborCosts = useLaborCostsFromTimeTracking(restaurantId, dateFrom, dateTo);
   const transactionLaborCosts = useLaborCostsFromTransactions(restaurantId, dateFrom, dateTo);
 
-  const isLoading = foodCosts.isLoading || laborCosts.isLoading || transactionLaborCosts.isLoading;
-  const error = foodCosts.error || laborCosts.error || transactionLaborCosts.error;
+  const isLoading = unifiedCOGS.isLoading || laborCosts.isLoading || transactionLaborCosts.isLoading;
+  const error = unifiedCOGS.error || laborCosts.error || transactionLaborCosts.error;
 
   // Combine daily costs from all sources
   const dailyCosts = useMemo(() => {
     const dateMap = new Map<string, DailyCostData>();
 
-    // Add food costs
-    foodCosts.dailyCosts.forEach((day) => {
+    // Add COGS (unified: inventory, financials, or combined per restaurant setting)
+    unifiedCOGS.dailyCOGS.forEach((day) => {
       dateMap.set(day.date, {
         date: day.date,
-        food_cost: day.total_cost,
+        food_cost: day.amount,
         labor_cost: 0,
         pending_labor_cost: 0,
         actual_labor_cost: 0,
-        total_cost: day.total_cost,
+        total_cost: day.amount,
       });
     });
 
@@ -110,10 +112,10 @@ export function useCostsFromSource(
 
     // Convert to array and sort by date
     return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [foodCosts.dailyCosts, laborCosts.dailyCosts, transactionLaborCosts.dailyCosts]);
+  }, [unifiedCOGS.dailyCOGS, laborCosts.dailyCosts, transactionLaborCosts.dailyCosts]);
 
   const refetch = () => {
-    foodCosts.refetch(); 
+    // useUnifiedCOGS relies on React Query auto-refetch (no manual refetch exposed)
     laborCosts.refetch();
     transactionLaborCosts.refetch();
   };
@@ -122,11 +124,11 @@ export function useCostsFromSource(
 
   return {
     dailyCosts,
-    totalFoodCost: foodCosts.totalCost,
+    totalFoodCost: unifiedCOGS.totalCOGS,
     totalLaborCost,
     pendingLaborCost: laborCosts.totalCost,
     actualLaborCost: transactionLaborCosts.totalCost,
-    totalCost: foodCosts.totalCost + totalLaborCost,
+    totalCost: unifiedCOGS.totalCOGS + totalLaborCost,
     isLoading,
     error,
     refetch,

@@ -312,6 +312,10 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     if (!restaurantId) return false;
 
     try {
+      // Map adjustment_type to item_type; revenue rows get 'sale'
+      const adjType = saleData.adjustmentType || null;
+      const itemType = adjType === 'fee' ? 'other' : (adjType || 'sale');
+
       const { error } = await supabase
         .from('unified_sales')
         .insert({
@@ -319,7 +323,8 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
           pos_system: 'manual',
           external_order_id: `manual_${Date.now()}`,
           item_name: saleData.itemName,
-          adjustment_type: saleData.adjustmentType || null,
+          item_type: itemType,
+          adjustment_type: adjType,
           quantity: saleData.quantity,
           unit_price: saleData.unitPrice,
           total_price: saleData.totalPrice,
@@ -375,6 +380,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
         pos_system: 'manual',
         external_order_id: orderId,
         item_name: saleData.itemName,
+        item_type: 'sale',
         adjustment_type: null,
         quantity: saleData.quantity,
         unit_price: saleData.unitPrice,

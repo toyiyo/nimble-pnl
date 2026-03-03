@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
+import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { calculateSalaryForPeriod, calculateContractorPayForPeriod } from '@/utils/compensationCalculations';
 import type { Employee } from '@/types/scheduling';
 import { useState } from 'react';
@@ -43,7 +44,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       {
         id: 'inventory-usage',
         account_code: 'COGS-INV',
-        account_name: 'Inventory Usage (unposted)',
+        account_name: 'COGS (from tracking)',
         account_type: 'cogs',
         account_subtype: 'cost_of_goods_sold',
         normal_balance: 'debit',
@@ -59,6 +60,9 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     dateFrom,
     dateTo
   );
+
+  // Unified COGS from inventory tracking, financials, or both (per restaurant settings)
+  const unifiedCOGS = useUnifiedCOGS(restaurantId, dateFrom, dateTo);
 
   // Fetch restaurant name for exports
   const { data: restaurant } = useQuery({
@@ -76,7 +80,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   });
 
   const { data: incomeData, isLoading } = useQuery({
-    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode],
+    queryKey: ['income-statement', restaurantId, dateFrom, dateTo, glOnly, accrualMode, unifiedCOGS.totalCOGS],
     queryFn: async () => {
       // Fetch all chart of accounts for this restaurant
       const { data: accounts, error: accountsError } = await supabase
@@ -145,40 +149,20 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         };
       }) || [];
 
-      // If no journaled COGS, pull inventory usage as accrual COGS and append a synthetic entry
+      // If no journaled COGS and not in GL-only mode, use unified COGS
       const totalJournalCOGS = accountsWithBalances
         .filter(a => a.account_type === 'cogs')
         .reduce((sum, acc) => sum + acc.current_balance, 0);
 
-      if (!glOnly && totalJournalCOGS === 0) {
-        const { data: inventoryAgg, error: inventoryError } = await supabase
-          .from('inventory_transactions')
-          .select('sum:sum(total_cost)')
-          .eq('restaurant_id', restaurantId)
-          .eq('transaction_type', 'usage')
-          .gte('transaction_date', dateFrom.toISOString().split('T')[0])
-          .lte('transaction_date', dateTo.toISOString().split('T')[0])
-          .maybeSingle();
-
-        if (inventoryError) {
-          if (import.meta.env.DEV) {
-            console.warn('Failed to fetch inventory usage for COGS:', inventoryError);
-          }
-        } else {
-          const inventoryCOGSTotal = Math.abs(Number(inventoryAgg?.sum) || 0);
-
-          if (inventoryCOGSTotal > 0) {
-            const mergedCogs = mergeInventoryCOGS(
-              accountsWithBalances.filter(a => a.account_type === 'cogs'),
-              inventoryCOGSTotal
-            );
-
-            accountsWithBalances = [
-              ...accountsWithBalances.filter(a => a.account_type !== 'cogs'),
-              ...mergedCogs,
-            ];
-          }
-        }
+      if (!glOnly && totalJournalCOGS === 0 && unifiedCOGS.totalCOGS > 0) {
+        const mergedCogs = mergeInventoryCOGS(
+          accountsWithBalances.filter(a => a.account_type === 'cogs'),
+          unifiedCOGS.totalCOGS
+        );
+        accountsWithBalances = [
+          ...accountsWithBalances.filter(a => a.account_type !== 'cogs'),
+          ...mergedCogs,
+        ];
       }
 
       // Payroll expense fallback: if no payroll expense JE exists, include hourly punches + salary/contractor allocations
@@ -543,7 +527,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     });
   };
 
-  if (isLoading || revenueLoading) {
+  if (isLoading || revenueLoading || unifiedCOGS.isLoading) {
     return (
       <Card>
         <CardContent className="pt-6 flex items-center justify-center py-12">

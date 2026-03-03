@@ -12,6 +12,12 @@ vi.mock('@/hooks/useRevenueBreakdown', () => ({
   useRevenueBreakdown: (...args: any[]) => mockUseRevenueBreakdown(...args),
 }));
 
+// Mock unified COGS hook — defaults to zero COGS (no tracking data)
+const mockUseUnifiedCOGS = vi.fn();
+vi.mock('@/hooks/useUnifiedCOGS', () => ({
+  useUnifiedCOGS: (...args: any[]) => mockUseUnifiedCOGS(...args),
+}));
+
 // Mock react-query useQuery to return deterministic data (no network/Supabase)
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
@@ -47,6 +53,16 @@ const renderIncomeStatement = () =>
 describe('IncomeStatement P&L behavior', () => {
   beforeEach(() => {
     mockUseRevenueBreakdown.mockReset();
+    mockUseUnifiedCOGS.mockReset();
+    // Default: no unified COGS data (hook loaded but zero total)
+    mockUseUnifiedCOGS.mockReturnValue({
+      totalCOGS: 0,
+      dailyCOGS: [],
+      breakdown: { inventory: 0, financials: 0 },
+      method: 'inventory',
+      isLoading: false,
+      error: null,
+    });
   });
 
   it('uses POS revenue breakdown, nets discounts/refunds, and excludes pass-through from profit', () => {

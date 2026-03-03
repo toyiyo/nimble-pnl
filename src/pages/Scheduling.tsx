@@ -32,6 +32,9 @@ import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
+import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
+import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
+import { getMondayOfWeek } from '@/hooks/useShiftPlanner';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { cn } from '@/lib/utils';
@@ -57,6 +60,7 @@ import {
   TrendingUp,
   Upload,
   LayoutGrid,
+  Copy,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -252,6 +256,7 @@ const Scheduling = () => {
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [shiftImportOpen, setShiftImportOpen] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [recurringActionDialog, setRecurringActionDialog] = useState<{
     open: boolean;
     shift: Shift | null;
@@ -270,6 +275,7 @@ const Scheduling = () => {
   const updateShiftSeries = useUpdateShiftSeries();
   const publishSchedule = usePublishSchedule();
   const unpublishSchedule = useUnpublishSchedule();
+  const copyWeekMutation = useCopyWeekShifts();
   const { publication, isPublished, loading: publicationLoading } = useWeekPublicationStatus(
     restaurantId,
     currentWeekStart,
@@ -307,6 +313,22 @@ const Scheduling = () => {
       setEmployeeDialogOpen(true);
     }
   }, [allEmployees]);
+
+  const handleCopyWeekConfirm = useCallback(async (targetMonday: Date) => {
+    if (!restaurantId) return;
+    try {
+      await copyWeekMutation.mutateAsync({
+        sourceShifts: shifts,
+        sourceMonday: currentWeekStart,
+        targetMonday,
+        restaurantId,
+      });
+      setCopyDialogOpen(false);
+      setCurrentWeekStart(getMondayOfWeek(targetMonday));
+    } catch {
+      // onError in useCopyWeekShifts already shows a toast
+    }
+  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId]);
 
   // Apply position filter to active employees for new shift creation
   const filteredActiveEmployees = positionFilter && positionFilter !== 'all'
@@ -925,6 +947,18 @@ const Scheduling = () => {
                   Import
                 </Button>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCopyDialogOpen(true)}
+                  disabled={shifts.length === 0}
+                  className="h-9 text-xs"
+                  aria-label="Copy week"
+                >
+                  <Copy className="h-3.5 w-3.5 mr-1.5" />
+                  Copy Week
+                </Button>
+
                 <div className="h-6 w-px bg-border hidden sm:block" />
 
                 <Button
@@ -1385,6 +1419,17 @@ const Scheduling = () => {
           timezone={restaurantTimezone}
         />
       )}
+
+      {/* Copy Week Dialog */}
+      <CopyWeekDialog
+        open={copyDialogOpen}
+        onOpenChange={setCopyDialogOpen}
+        sourceWeekStart={currentWeekStart}
+        sourceWeekEnd={weekEnd}
+        shifts={shifts}
+        onConfirm={handleCopyWeekConfirm}
+        isPending={copyWeekMutation.isPending}
+      />
     </div>
     </FeatureGate>
   );

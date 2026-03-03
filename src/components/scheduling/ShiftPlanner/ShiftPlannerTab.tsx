@@ -22,8 +22,6 @@ import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
 import { DragOverlayChip } from './DragOverlayChip';
 import { PlannerExportDialog } from './PlannerExportDialog';
-import { CopyWeekDialog } from './CopyWeekDialog';
-import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -42,7 +40,6 @@ export function ShiftPlannerTab({
     goToNextWeek,
     goToPrevWeek,
     goToToday,
-    goToWeek,
     shifts,
     employees,
     isLoading,
@@ -72,8 +69,6 @@ export function ShiftPlannerTab({
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
-  const copyWeekMutation = useCopyWeekShifts();
 
   const { toast } = useToast();
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
@@ -228,25 +223,6 @@ export function ShiftPlannerTab({
     setExportDialogOpen(true);
   }, []);
 
-  const handleCopyWeek = useCallback(() => {
-    setCopyDialogOpen(true);
-  }, []);
-
-  const handleCopyWeekConfirm = useCallback(async (targetMonday: Date) => {
-    try {
-      await copyWeekMutation.mutateAsync({
-        sourceShifts: shifts,
-        sourceMonday: weekStart,
-        targetMonday,
-        restaurantId,
-      });
-      setCopyDialogOpen(false);
-      goToWeek(targetMonday);
-    } catch {
-      // onError in useCopyWeekShifts already shows a toast
-    }
-  }, [copyWeekMutation, shifts, weekStart, restaurantId, goToWeek]);
-
   // Loading state
   if (isLoading || templatesLoading) {
     return (
@@ -296,7 +272,6 @@ export function ShiftPlannerTab({
         onNextWeek={goToNextWeek}
         onToday={goToToday}
         onExport={handleExport}
-        onCopyWeek={handleCopyWeek}
       />
 
       {/* Validation alerts */}
@@ -389,16 +364,6 @@ export function ShiftPlannerTab({
         weekDays={weekDays}
       />
 
-      {/* Copy week dialog */}
-      <CopyWeekDialog
-        open={copyDialogOpen}
-        onOpenChange={setCopyDialogOpen}
-        sourceWeekStart={weekStart}
-        sourceWeekEnd={weekEnd}
-        shifts={shifts}
-        onConfirm={handleCopyWeekConfirm}
-        isPending={copyWeekMutation.isPending}
-      />
     </div>
   );
 }

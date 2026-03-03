@@ -3,7 +3,7 @@ import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } fr
 
 test.describe('Copy Week Shifts', () => {
   test('copies shifts from current week to next week via dialog', async ({ page }) => {
-    // 1. Setup: create user, restaurant, employees, template, and shifts
+    // 1. Setup: create user, restaurant, employees, and shifts
     const testUser = generateTestUser('copy-week');
     await signUpAndCreateRestaurant(page, testUser);
     await exposeSupabaseHelpers(page);
@@ -23,12 +23,21 @@ test.describe('Copy Week Shifts', () => {
       },
     );
 
-    // Seed template + 2 shifts for the current week (one per employee)
+    if (!(employees as any)?.length) {
+      throw new Error('Employee seeding returned empty results');
+    }
+
+    const aliceId = (employees as any).find((e: any) => e.name === 'Alice Johnson')?.id;
+    const bobId = (employees as any).find((e: any) => e.name === 'Bob Smith')?.id;
+    if (!aliceId || !bobId) {
+      throw new Error('Could not find seeded employee IDs');
+    }
+
+    // Seed 2 shifts for the current week (one per employee)
     // IMPORTANT: Use .toISOString() for shift timestamps so that local hours
-    // match the template's HH:MM:SS. The planner matches shifts to templates
-    // by comparing local-time hours extracted from ISO timestamps.
+    // round-trip correctly through Supabase timestamptz columns.
     const seedResult = await page.evaluate(
-      ({ restId, aliceId, bobId }) => {
+      ({ restId, aId, bId }) => {
         const supabase = (window as any).__supabase;
 
         // Compute Monday of the current week
@@ -42,36 +51,17 @@ test.describe('Copy Week Shifts', () => {
         tue.setDate(mon.getDate() + 1);
 
         // Create timestamps at 08:00 and 14:00 LOCAL time using Date constructor
-        // .toISOString() converts to UTC, preserving the intended local time
         const monStart = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate(), 8, 0, 0).toISOString();
         const monEnd = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate(), 14, 0, 0).toISOString();
         const tueStart = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate(), 8, 0, 0).toISOString();
         const tueEnd = new Date(tue.getFullYear(), tue.getMonth(), tue.getDate(), 14, 0, 0).toISOString();
 
         return (async () => {
-          // Insert template (all 7 days active)
-          const { data: tmpl, error: tmplErr } = await supabase
-            .from('shift_templates')
-            .insert({
-              restaurant_id: restId,
-              name: 'Morning',
-              start_time: '08:00:00',
-              end_time: '14:00:00',
-              position: 'Server',
-              days: [0, 1, 2, 3, 4, 5, 6],
-              break_duration: 30,
-              is_active: true,
-            })
-            .select()
-            .single();
-
-          if (tmplErr) return { error: `template: ${tmplErr.message}` };
-
           // Insert 2 shifts: Alice on Monday, Bob on Tuesday
           const { error: shiftErr } = await supabase.from('shifts').insert([
             {
               restaurant_id: restId,
-              employee_id: aliceId,
+              employee_id: aId,
               start_time: monStart,
               end_time: monEnd,
               position: 'Server',
@@ -82,10 +72,10 @@ test.describe('Copy Week Shifts', () => {
             },
             {
               restaurant_id: restId,
-              employee_id: bobId,
+              employee_id: bId,
               start_time: tueStart,
               end_time: tueEnd,
-              position: 'Server',
+              position: 'Cook',
               status: 'scheduled',
               break_duration: 30,
               is_published: false,
@@ -94,46 +84,29 @@ test.describe('Copy Week Shifts', () => {
           ]);
 
           if (shiftErr) return { error: `shift: ${shiftErr.message}` };
-          return { templateId: tmpl.id };
+          return { success: true };
         })();
       },
-      {
-        restId: restaurantId,
-        aliceId: (employees as any).find((e: any) => e.name === 'Alice Johnson')?.id,
-        bobId: (employees as any).find((e: any) => e.name === 'Bob Smith')?.id,
-      },
+      { restId: restaurantId, aId: aliceId, bId: bobId },
     );
-
-    if (!(employees as any)?.length) {
-      throw new Error('Employee seeding returned empty results');
-    }
 
     if ((seedResult as any).error) {
       throw new Error(`Seed failed: ${(seedResult as any).error}`);
     }
 
-    // 2. Navigate to Scheduling → Planner tab
+    // 2. Navigate to Scheduling (Schedule tab is the default)
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });
 
-    const plannerTab = page.getByRole('tab', { name: /planner/i });
-    await expect(plannerTab).toBeVisible({ timeout: 10000 });
-    await plannerTab.click();
+    // Wait for the schedule grid to load and show employee names
+    await expect(page.getByText('Alice Johnson').first()).toBeVisible({ timeout: 10000 });
 
-    // Wait for template to render
-    await expect(page.getByText('Morning')).toBeVisible({ timeout: 10000 });
+    // Capture current week header text for later comparison
+    const weekHeader = page.locator('h2.text-lg.font-semibold');
+    await expect(weekHeader).toBeVisible();
+    const sourceWeekText = await weekHeader.textContent();
 
-    // Verify shifts are present (employee chips in grid)
-    await expect(
-      page.getByRole('button', { name: /remove alice johnson from shift/i }),
-    ).toBeVisible({ timeout: 10000 });
-
-    // Capture current date range for later comparison
-    const dateRange = page.locator('.text-\\[15px\\].font-semibold');
-    await expect(dateRange).toBeVisible();
-    const sourceWeekText = await dateRange.textContent();
-
-    // 3. Click "Copy Week" button
+    // 3. Click "Copy Week" button in the Schedule tab toolbar
     const copyWeekButton = page.getByRole('button', { name: /copy week/i });
     await expect(copyWeekButton).toBeVisible({ timeout: 5000 });
     await copyWeekButton.click();
@@ -188,13 +161,11 @@ test.describe('Copy Week Shifts', () => {
     // Toast should appear
     await expect(page.getByText('Schedule copied', { exact: true })).toBeVisible({ timeout: 10000 });
 
-    // 8. Planner should navigate to the target week (date range should change)
-    await expect(dateRange).not.toHaveText(sourceWeekText!, { timeout: 10000 });
+    // 8. Schedule should navigate to the target week (header should change)
+    await expect(weekHeader).not.toHaveText(sourceWeekText!, { timeout: 10000 });
 
-    // The copied shifts should be visible in the target week
-    await expect(
-      page.getByRole('button', { name: /remove alice johnson from shift/i }),
-    ).toBeVisible({ timeout: 10000 });
+    // The copied shifts should be visible in the target week (employee names in grid)
+    await expect(page.getByText('Alice Johnson').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('dialog prevents copying to same week', async ({ page }) => {
@@ -214,31 +185,6 @@ test.describe('Copy Week Shifts', () => {
         restId: restaurantId,
       },
     );
-
-    // Seed a template so the planner grid shows shifts
-    const templateResult = await page.evaluate(
-      ({ restId }) => {
-        const supabase = (window as any).__supabase;
-        return (async () => {
-          const { error } = await supabase.from('shift_templates').insert({
-            restaurant_id: restId,
-            name: 'Morning',
-            start_time: '08:00:00',
-            end_time: '14:00:00',
-            position: 'Server',
-            days: [0, 1, 2, 3, 4, 5, 6],
-            break_duration: 30,
-            is_active: true,
-          });
-          if (error) return { error: error.message };
-          return { success: true };
-        })();
-      },
-      { restId: restaurantId },
-    );
-    if ((templateResult as any).error) {
-      throw new Error(`Template seed failed: ${(templateResult as any).error}`);
-    }
 
     // Use .toISOString() for timezone-correct shift timestamps
     const shiftResult = await page.evaluate(
@@ -270,24 +216,19 @@ test.describe('Copy Week Shifts', () => {
       },
       {
         restId: restaurantId,
-        empId: (employees as any)[0].id,
+        empId: (employees as any).find((e: any) => e.name === 'Alice Johnson')?.id,
       },
     );
     if ((shiftResult as any).error) {
       throw new Error(`Shift seed failed: ${(shiftResult as any).error}`);
     }
 
+    // Navigate to Scheduling (Schedule tab is the default)
     await page.goto('/scheduling');
     await page.waitForURL(/\/scheduling/, { timeout: 8000 });
 
-    const plannerTab = page.getByRole('tab', { name: /planner/i });
-    await expect(plannerTab).toBeVisible({ timeout: 10000 });
-    await plannerTab.click();
-
-    // Wait for shift chip to render in planner grid
-    await expect(
-      page.getByRole('button', { name: /remove alice johnson from shift/i }),
-    ).toBeVisible({ timeout: 10000 });
+    // Wait for the schedule grid to show the shift
+    await expect(page.getByText('Alice Johnson').first()).toBeVisible({ timeout: 10000 });
 
     // Open Copy Week dialog
     await page.getByRole('button', { name: /copy week/i }).click();

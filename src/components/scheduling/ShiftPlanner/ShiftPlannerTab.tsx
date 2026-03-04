@@ -294,7 +294,7 @@ export function ShiftPlannerTab({
         onDragCancel={handleDragCancel}
       >
         <div className="flex gap-0">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 overflow-x-auto">
             {templates.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-border/40">
                 <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
@@ -363,6 +363,7 @@ export function ShiftPlannerTab({
         restaurantName={restaurantName}
         weekDays={weekDays}
       />
+
     </div>
   );
 }

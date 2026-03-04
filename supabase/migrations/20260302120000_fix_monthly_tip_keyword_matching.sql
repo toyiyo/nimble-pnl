@@ -16,10 +16,18 @@ RETURNS TABLE (
   discounts DECIMAL
 )
 LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
+SECURITY INVOKER
 AS $function$
 BEGIN
+  -- Authorization check
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+    AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Access denied: User does not have access to restaurant %', p_restaurant_id;
+  END IF;
+
   RETURN QUERY
   WITH monthly_revenue AS (
     SELECT 
@@ -56,8 +64,9 @@ BEGIN
         WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
         THEN 'tax'
-        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%'
-          OR LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable', 'tips payable')
+          OR (LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('', 'liability', 'other_current_liability', 'other_current_liabilities', 'other_liabilities', 'payroll_liabilities', 'other')
+              AND LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)')
         THEN 'tip'
         ELSE 'other_liability'
       END as liability_type,
@@ -79,8 +88,9 @@ BEGIN
         WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tax%' 
           OR LOWER(COALESCE(coa.account_name, '')) LIKE '%tax%' 
         THEN 'tax'
-        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) LIKE '%tip%'
-          OR LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)'
+        WHEN LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable', 'tips payable')
+          OR (LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('', 'liability', 'other_current_liability', 'other_current_liabilities', 'other_liabilities', 'payroll_liabilities', 'other')
+              AND LOWER(COALESCE(coa.account_name, '')) ~ '(^|[^a-z])(tip|tips|gratuity)([^a-z]|$)')
         THEN 'tip'
         ELSE 'other_liability'
       END

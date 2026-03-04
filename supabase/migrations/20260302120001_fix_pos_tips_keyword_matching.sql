@@ -39,6 +39,7 @@ BEGIN
     WHERE us.restaurant_id = p_restaurant_id
       AND us.sale_date >= p_start_date
       AND us.sale_date <= p_end_date
+      AND coa.account_type = 'liability'
       AND (
         LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable', 'tips payable')
         OR (LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('', 'liability', 'other_current_liability', 'other_current_liabilities', 'other_liabilities', 'payroll_liabilities', 'other')
@@ -61,6 +62,7 @@ BEGIN
         SELECT 1 FROM unified_sales_splits uss
         INNER JOIN chart_of_accounts coa ON uss.category_id = coa.id
         WHERE uss.sale_id = us.id
+        AND coa.account_type = 'liability'
         AND (
           LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('tips', 'tips_payable', 'tips payable')
           OR (LOWER(COALESCE(coa.account_subtype::TEXT, '')) IN ('', 'liability', 'other_current_liability', 'other_current_liabilities', 'other_liabilities', 'payroll_liabilities', 'other')

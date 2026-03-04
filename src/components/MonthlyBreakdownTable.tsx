@@ -644,13 +644,13 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                         {(breakdown.tip_categories?.length > 0 || breakdown.adjustments?.some(a => a.adjustment_type === 'tip')) && (
                                           <div className="ml-4 space-y-0.5">
                                             {breakdown.tip_categories?.map((category) => (
-                                              <div key={category.account_id} className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground">
+                                              <div key={`${category.account_id}-${category.account_subtype}`} className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground">
                                                 <span>{category.account_name}</span>
                                                 <span>{formatCurrency(category.total_amount)}</span>
                                               </div>
                                             ))}
-                                            {breakdown.adjustments?.filter(a => a.adjustment_type === 'tip').map((adj, idx) => (
-                                              <div key={`adj-tip-${idx}`} className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground">
+                                            {breakdown.adjustments?.filter(a => a.adjustment_type === 'tip').map((adj) => (
+                                              <div key={`adj-${adj.adjustment_type}-${adj.total_amount}`} className="flex items-center justify-between px-2 py-1 text-[11px] text-muted-foreground">
                                                 <span>POS Tip Adjustments</span>
                                                 <span>{formatCurrency(adj.total_amount)}</span>
                                               </div>

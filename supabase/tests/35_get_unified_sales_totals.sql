@@ -26,31 +26,38 @@ ON CONFLICT (user_id, restaurant_id) DO NOTHING;
 -- Fixture: unified_sales rows mimicking manual POS entry
 -- Sale row: $50 food sale (item_type defaults to 'sale', no adjustment_type)
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date)
-VALUES ('00000000-0000-0000-0000-000000000100'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Burger', 1, 50.00, '2024-06-15');
+VALUES ('00000000-0000-0000-0000-000000000100'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Burger', 1, 50.00, '2024-06-15')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, adjustment_type = NULL;
 
 -- Tip row: $10 tip — has adjustment_type='tip' but item_type defaults to 'sale' (the bug)
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, adjustment_type)
-VALUES ('00000000-0000-0000-0000-000000000101'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Tip', 1, 10.00, '2024-06-15', 'tip');
+VALUES ('00000000-0000-0000-0000-000000000101'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Tip', 1, 10.00, '2024-06-15', 'tip')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, adjustment_type = EXCLUDED.adjustment_type;
 
 -- Tax row: $4 tax — has adjustment_type='tax' but item_type defaults to 'sale'
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, adjustment_type)
-VALUES ('00000000-0000-0000-0000-000000000102'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Sales Tax', 1, 4.00, '2024-06-15', 'tax');
+VALUES ('00000000-0000-0000-0000-000000000102'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Sales Tax', 1, 4.00, '2024-06-15', 'tax')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, adjustment_type = EXCLUDED.adjustment_type;
 
 -- Service charge row: $3 — has adjustment_type='service_charge', item_type defaults to 'sale'
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, adjustment_type)
-VALUES ('00000000-0000-0000-0000-000000000103'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Service Charge', 1, 3.00, '2024-06-15', 'service_charge');
+VALUES ('00000000-0000-0000-0000-000000000103'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Service Charge', 1, 3.00, '2024-06-15', 'service_charge')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, adjustment_type = EXCLUDED.adjustment_type;
 
 -- Discount row: -$5 discount — has adjustment_type='discount', item_type defaults to 'sale'
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, adjustment_type)
-VALUES ('00000000-0000-0000-0000-000000000104'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Discount', 1, -5.00, '2024-06-15', 'discount');
+VALUES ('00000000-0000-0000-0000-000000000104'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Discount', 1, -5.00, '2024-06-15', 'discount')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, adjustment_type = EXCLUDED.adjustment_type;
 
 -- Fee row: $2 — has adjustment_type='fee', item_type defaults to 'sale'
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, adjustment_type)
-VALUES ('00000000-0000-0000-0000-000000000105'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Platform Fee', 1, 2.00, '2024-06-15', 'fee');
+VALUES ('00000000-0000-0000-0000-000000000105'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'manual', 'ord-totals-1', 'Platform Fee', 1, 2.00, '2024-06-15', 'fee')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, adjustment_type = EXCLUDED.adjustment_type;
 
 -- Also add a properly-typed tip row (item_type='tip') to verify it still works
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, item_type, adjustment_type)
-VALUES ('00000000-0000-0000-0000-000000000106'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'toast', 'ord-totals-2', 'Toast Tip', 1, 8.00, '2024-06-15', 'tip', 'tip');
+VALUES ('00000000-0000-0000-0000-000000000106'::uuid, '00000000-0000-0000-0000-000000000099'::uuid, 'toast', 'ord-totals-2', 'Toast Tip', 1, 8.00, '2024-06-15', 'tip', 'tip')
+ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, item_type = EXCLUDED.item_type, adjustment_type = EXCLUDED.adjustment_type;
 
 -- Test 1: Function exists
 SELECT has_function(

@@ -106,25 +106,24 @@ test.describe('Manual Sale Tip Not Doubled', () => {
       tax: '8',
     });
 
-    // Wait for data to be inserted
-    await page.waitForTimeout(1000);
+    // Poll the database until all 3 rows are inserted (1 sale + 1 tip + 1 tax)
+    let results: any[] = [];
+    await expect(async () => {
+      results = await page.evaluate(async () => {
+        const supabase = (window as any).__supabase;
+        const restaurantId = await (window as any).__getRestaurantId();
 
-    // Query the database to verify item_type is set correctly on adjustment rows
-    const results = await page.evaluate(async () => {
-      const supabase = (window as any).__supabase;
-      const restaurantId = await (window as any).__getRestaurantId();
+        const { data, error } = await supabase
+          .from('unified_sales')
+          .select('item_name, item_type, adjustment_type, total_price')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', { ascending: true });
 
-      const { data, error } = await supabase
-        .from('unified_sales')
-        .select('item_name, item_type, adjustment_type, total_price')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: true });
-
-      if (error) throw new Error(error.message);
-      return data;
-    });
-
-    expect(results.length).toBe(3); // 1 sale + 1 tip + 1 tax
+        if (error) throw new Error(error.message);
+        return data;
+      });
+      expect(results.length).toBe(3);
+    }).toPass({ timeout: 10000 });
 
     // Verify the sale row has item_type='sale'
     const saleRow = results.find((r: any) => r.item_name === 'DB Check Burger');

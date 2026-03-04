@@ -10,6 +10,8 @@
 
 ---
 
+## Tasks
+
 ### Task 1: Create worktree and branch with existing changes
 
 **Files:**

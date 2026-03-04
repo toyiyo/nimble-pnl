@@ -31,7 +31,7 @@ INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, ac
   ('00000000-0000-0000-0000-000000000010'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'TIP001', 'Tips Payable', 'liability', 'payroll_liabilities', 'credit'),
   ('00000000-0000-0000-0000-000000000011'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'OTH001', 'Other Income', 'revenue', 'other_income', 'credit'),
   ('00000000-0000-0000-0000-000000000012'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'FOOD01', 'Food Sales', 'revenue', 'food_sales', 'credit')
-ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
+ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name, account_type = EXCLUDED.account_type, account_subtype = EXCLUDED.account_subtype;
 
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date) VALUES
   ('00000000-0000-0000-0000-000000000020'::uuid, '00000000-0000-0000-0000-000000000001'::uuid, 'square', 'order-001', 'Tip Item 1', 1, 50.00, '2024-01-15'),

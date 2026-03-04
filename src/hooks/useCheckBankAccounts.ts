@@ -57,11 +57,12 @@ export function useCheckBankAccounts() {
 
       // When setting as default, unset other defaults first
       if (rest.is_default) {
-        await supabase
+        const { error: unsetError } = await supabase
           .from('check_bank_accounts' as any)
           .update({ is_default: false })
           .eq('restaurant_id', restaurantId)
           .eq('is_default', true);
+        if (unsetError) throw unsetError;
       }
 
       if (id) {
@@ -96,9 +97,12 @@ export function useCheckBankAccounts() {
     mutationFn: async (accountId: string) => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
-      // Check if the account being deleted is the default
-      const currentAccounts = queryClient.getQueryData<CheckBankAccount[]>(['check-bank-accounts', restaurantId]);
-      const deletedAccount = currentAccounts?.find((a) => a.id === accountId);
+      // Fetch fresh state to check if account is the default
+      const { data: deletedAccount } = await supabase
+        .from('check_bank_accounts' as any)
+        .select('is_default')
+        .eq('id', accountId)
+        .single();
       const wasDefault = deletedAccount?.is_default ?? false;
 
       // Soft-delete: set is_active=false so audit log references stay valid
@@ -110,12 +114,19 @@ export function useCheckBankAccounts() {
 
       // Promote another account to default if we just deleted the default
       if (wasDefault) {
-        const remaining = currentAccounts?.filter((a) => a.id !== accountId && a.is_active);
+        const { data: remaining } = await supabase
+          .from('check_bank_accounts' as any)
+          .select('id')
+          .eq('restaurant_id', restaurantId)
+          .eq('is_active', true)
+          .neq('id', accountId)
+          .limit(1);
         if (remaining?.length) {
-          await supabase
+          const { error: promoteError } = await supabase
             .from('check_bank_accounts' as any)
             .update({ is_default: true })
             .eq('id', remaining[0].id);
+          if (promoteError) throw promoteError;
         }
       }
     },

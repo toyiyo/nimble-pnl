@@ -163,7 +163,7 @@ SELECT
   cs.restaurant_id,
   COALESCE(NULLIF(cs.bank_name, ''), 'Primary Account') AS account_name,
   cs.bank_name,
-  cs.next_check_number,
+  COALESCE(cs.next_check_number, 1001),
   true
 FROM public.check_settings cs;
 

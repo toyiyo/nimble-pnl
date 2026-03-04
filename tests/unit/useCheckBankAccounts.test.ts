@@ -265,7 +265,11 @@ describe('useCheckBankAccounts', () => {
 
   describe('deleteAccount mutation', () => {
     it('soft-deletes an account by setting is_active to false', async () => {
-      mockFromChain.eq.mockResolvedValue({ error: null });
+      // Fresh-read: .select().eq().single() returns non-default account
+      mockFromChain.single.mockResolvedValue({ data: { is_default: false }, error: null });
+      // Soft-delete: .update() returns a chain whose .eq() resolves
+      const updateChain = { eq: vi.fn().mockResolvedValue({ error: null }) };
+      mockFromChain.update.mockReturnValue(updateChain);
 
       const { result } = renderHook(() => useCheckBankAccounts(), {
         wrapper: createWrapper(),
@@ -280,12 +284,14 @@ describe('useCheckBankAccounts', () => {
       });
 
       expect(mockFromChain.update).toHaveBeenCalledWith({ is_active: false });
-      expect(mockFromChain.eq).toHaveBeenCalledWith('id', 'acc-1');
+      expect(updateChain.eq).toHaveBeenCalledWith('id', 'acc-1');
     });
 
     it('handles delete errors', async () => {
-      // For soft-delete path: .update().eq() should return error
-      mockFromChain.eq.mockResolvedValue({ error: new Error('Delete failed') });
+      // Fresh-read succeeds, but soft-delete fails
+      mockFromChain.single.mockResolvedValue({ data: { is_default: false }, error: null });
+      const updateChain = { eq: vi.fn().mockResolvedValue({ error: new Error('Delete failed') }) };
+      mockFromChain.update.mockReturnValue(updateChain);
 
       const { result } = renderHook(() => useCheckBankAccounts(), {
         wrapper: createWrapper(),

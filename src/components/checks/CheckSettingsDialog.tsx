@@ -346,7 +346,7 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -494,8 +494,10 @@ function AccountInlineForm({ initial, isSaving, onSave, onCancel }: AccountInlin
               min="1"
               value={local.next_check_number}
               onChange={(e) => {
-                const parsed = parseInt(e.target.value);
-                updateLocal('next_check_number', parsed > 0 ? parsed : 1001);
+                const parsed = parseInt(e.target.value, 10);
+                if (!isNaN(parsed) && parsed > 0) {
+                  updateLocal('next_check_number', parsed);
+                }
               }}
               className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
             />

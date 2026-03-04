@@ -97,13 +97,23 @@ export function TipPayoutSheet({
   // Track raw input strings so we don't reformat while typing
   const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
 
-  // Re-initialise entries when the sheet opens or the split/payouts change
+  // Stable key for existingPayouts – only re-init when payout IDs actually change,
+  // not on every parent re-render that produces a new array reference.
+  const existingPayoutIds = useMemo(
+    () => existingPayouts.map((p) => p.id).sort().join(','),
+    [existingPayouts],
+  );
+
+  // Re-initialise entries when the sheet opens or actual payouts change.
+  // `split` is omitted from deps because the component is keyed by split.id
+  // in the parent, so a new split causes a full remount.
   useEffect(() => {
     if (open) {
       setEntries(buildInitialEntries(split, existingPayouts));
       setRawInputs({});
     }
-  }, [open, split, existingPayouts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existingPayoutIds]);
 
   // ------ Derived values ---------------------------------------------------
 

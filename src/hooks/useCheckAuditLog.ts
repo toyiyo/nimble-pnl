@@ -14,6 +14,7 @@ export interface CheckAuditEntry {
   performed_by: string | null;
   performed_at: string;
   pending_outflow_id: string | null;
+  check_bank_account_id: string | null;
   void_reason: string | null;
   created_at: string;
 }
@@ -26,6 +27,7 @@ export interface LogCheckActionInput {
   memo?: string | null;
   action: 'printed' | 'voided' | 'reprinted';
   pending_outflow_id?: string | null;
+  check_bank_account_id?: string | null;
   void_reason?: string | null;
 }
 
@@ -40,7 +42,7 @@ export function useCheckAuditLog() {
 
       const { data, error } = await supabase
         .from('check_audit_log' as any)
-        .select('id, restaurant_id, check_number, payee_name, amount, issue_date, memo, action, performed_by, performed_at, pending_outflow_id, void_reason, created_at')
+        .select('id, restaurant_id, check_number, payee_name, amount, issue_date, memo, action, performed_by, performed_at, pending_outflow_id, check_bank_account_id, void_reason, created_at')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('performed_at', { ascending: false })
         .limit(500);

@@ -11,7 +11,6 @@ import { useCheckSettings } from '../../src/hooks/useCheckSettings';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
-  rpc: vi.fn(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -75,7 +74,10 @@ describe('useCheckSettings', () => {
         id: 'set-1',
         restaurant_id: 'rest-123',
         business_name: 'Test Restaurant',
-        next_check_number: 1001,
+        business_address_line1: '123 Main St',
+        business_city: 'Springfield',
+        business_state: 'IL',
+        business_zip: '62701',
       };
       mockFromChain.maybeSingle.mockResolvedValue({ data: mockSettings, error: null });
 
@@ -123,7 +125,7 @@ describe('useCheckSettings', () => {
 
   describe('saveSettings mutation', () => {
     it('upserts settings and returns saved data', async () => {
-      const savedData = { id: 'set-1', business_name: 'New Name', next_check_number: 1001 };
+      const savedData = { id: 'set-1', business_name: 'New Name' };
       mockFromChain.single.mockResolvedValue({ data: savedData, error: null });
 
       const { result } = renderHook(() => useCheckSettings(), {
@@ -165,63 +167,6 @@ describe('useCheckSettings', () => {
       await expect(
         act(() => result.current.saveSettings.mutateAsync({ business_name: 'Test' })),
       ).rejects.toThrow();
-    });
-  });
-
-  describe('claimCheckNumbers mutation', () => {
-    it('calls RPC and returns the starting check number', async () => {
-      mockSupabase.rpc.mockResolvedValue({ data: 1001, error: null });
-
-      const { result } = renderHook(() => useCheckSettings(), {
-        wrapper: createWrapper(),
-      });
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      let startNumber: number | undefined;
-      await act(async () => {
-        startNumber = await result.current.claimCheckNumbers.mutateAsync(3);
-      });
-
-      expect(startNumber).toBe(1001);
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('claim_check_numbers', {
-        p_restaurant_id: 'rest-123',
-        p_count: 3,
-      });
-    });
-
-    it('throws when RPC returns an error', async () => {
-      mockSupabase.rpc.mockResolvedValue({ data: null, error: new Error('RPC failed') });
-
-      const { result } = renderHook(() => useCheckSettings(), {
-        wrapper: createWrapper(),
-      });
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      await expect(
-        act(() => result.current.claimCheckNumbers.mutateAsync(1)),
-      ).rejects.toThrow();
-    });
-
-    it('throws when RPC returns non-number data', async () => {
-      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
-
-      const { result } = renderHook(() => useCheckSettings(), {
-        wrapper: createWrapper(),
-      });
-
-      await waitFor(() => {
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      await expect(
-        act(() => result.current.claimCheckNumbers.mutateAsync(1)),
-      ).rejects.toThrow('Failed to claim check numbers');
     });
   });
 });

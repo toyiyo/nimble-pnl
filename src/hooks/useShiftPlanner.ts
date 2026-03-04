@@ -214,6 +214,7 @@ export interface UseShiftPlannerReturn {
   goToNextWeek: () => void;
   goToPrevWeek: () => void;
   goToToday: () => void;
+  goToWeek: (monday: Date) => void;
 
   // Data
   shifts: Shift[];
@@ -305,6 +306,10 @@ export function useShiftPlanner(
 
   const goToToday = useCallback(() => {
     setWeekStart(getMondayOfWeek(new Date()));
+  }, []);
+
+  const goToWeek = useCallback((monday: Date) => {
+    setWeekStart(getMondayOfWeek(monday));
   }, []);
 
   // Validation helper
@@ -469,6 +474,7 @@ export function useShiftPlanner(
     goToNextWeek,
     goToPrevWeek,
     goToToday,
+    goToWeek,
     shifts,
     employees,
     isLoading,

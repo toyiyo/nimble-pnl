@@ -6,10 +6,10 @@ import { format, parseISO } from 'date-fns';
 import { BreakEvenData } from '@/types/operatingCosts';
 
 interface SalesVsBreakEvenChartProps {
-  data: BreakEvenData | null;
-  isLoading: boolean;
-  actualCOGSPercentage?: number;
-  targetCOGSPercentage?: number;
+  readonly data: BreakEvenData | null;
+  readonly isLoading: boolean;
+  readonly actualCOGSPercentage?: number;
+  readonly targetCOGSPercentage?: number;
 }
 
 function formatCurrency(amount: number): string {
@@ -195,7 +195,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
         <div className="grid grid-cols-2 gap-px bg-border/40 border-t border-border/40">
           <div className="bg-background p-3 text-center">
             <p className="text-[14px] font-semibold text-foreground">
-              {targetCOGSPercentage !== undefined ? `${targetCOGSPercentage.toFixed(1)}%` : '-'}
+              {targetCOGSPercentage === undefined ? '-' : `${targetCOGSPercentage.toFixed(1)}%`}
             </p>
             <p className="text-[11px] text-muted-foreground">Target COGS %</p>
           </div>
@@ -204,7 +204,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
               actualCOGSPercentage !== undefined && targetCOGSPercentage !== undefined && actualCOGSPercentage > targetCOGSPercentage
                 ? 'text-destructive' : 'text-green-600'
             }`}>
-              {actualCOGSPercentage !== undefined ? `${actualCOGSPercentage.toFixed(1)}%` : '-'}
+              {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
             </p>
             <p className="text-[11px] text-muted-foreground">Actual COGS %</p>
           </div>

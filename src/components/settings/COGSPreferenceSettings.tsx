@@ -11,7 +11,7 @@ import { useFinancialSettings, COGSMethod } from '@/hooks/useFinancialSettings';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 
 interface COGSPreferenceSettingsProps {
-  restaurantId: string;
+  readonly restaurantId: string;
 }
 
 const COGS_OPTIONS: {

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 
-const COGS_SUBTYPES = ['food_cost', 'cost_of_goods_sold', 'beverage_cost', 'packaging_cost'];
+const COGS_SUBTYPES = new Set(['food_cost', 'cost_of_goods_sold', 'beverage_cost', 'packaging_cost']);
 
 export interface FinancialCOGSData {
   date: string;
@@ -127,7 +127,7 @@ export function useCOGSFromFinancials(
       // Source 1: Non-split bank transactions
       (bankTxns || []).forEach((txn) => {
         const account = txn.chart_of_accounts as { account_subtype?: string } | null;
-        if (account?.account_subtype && COGS_SUBTYPES.includes(account.account_subtype)) {
+        if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
           const date = format(new Date(txn.transaction_date), 'yyyy-MM-dd');
           const cost = Math.abs(txn.amount);
           dateMap.set(date, (dateMap.get(date) || 0) + cost);
@@ -137,7 +137,7 @@ export function useCOGSFromFinancials(
       // Source 2: Split line items
       splitItems.forEach((split) => {
         const account = split.chart_of_accounts as { account_subtype?: string } | null;
-        if (account?.account_subtype && COGS_SUBTYPES.includes(account.account_subtype)) {
+        if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
           const date = parentDateMap.get(split.transaction_id);
           if (date) {
             const cost = Math.abs(split.amount);
@@ -149,7 +149,7 @@ export function useCOGSFromFinancials(
       // Source 3: Pending outflows
       (pendingTxns || []).forEach((txn) => {
         const account = txn.chart_of_accounts as { account_subtype?: string } | null;
-        if (account?.account_subtype && COGS_SUBTYPES.includes(account.account_subtype)) {
+        if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
           const date = txn.issue_date;
           const cost = Math.abs(txn.amount);
           dateMap.set(date, (dateMap.get(date) || 0) + cost);
@@ -175,7 +175,7 @@ export function useCOGSFromFinancials(
     dailyCosts: data?.dailyCosts || [],
     totalCost: data?.totalCost || 0,
     isLoading,
-    error: error as Error | null,
-    refetch,
+    error,
+    refetch: () => { void refetch(); },
   };
 }

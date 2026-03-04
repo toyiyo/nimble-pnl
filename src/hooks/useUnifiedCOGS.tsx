@@ -88,7 +88,7 @@ export function useUnifiedCOGS(
       method: cogsMethod,
       isLoading:
         settingsLoading || inventoryCosts.isLoading || financialCosts.isLoading,
-      error: (inventoryCosts.error || financialCosts.error) as Error | null,
+      error: inventoryCosts.error || financialCosts.error,
     };
   }, [cogsMethod, inventoryCosts, financialCosts, settingsLoading]);
 }

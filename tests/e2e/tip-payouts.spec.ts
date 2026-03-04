@@ -366,8 +366,10 @@ test.describe('Tip Payouts - Manager Journey', () => {
     await payOutButton.click();
     await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 5000 });
 
-    // Cancel without saving
-    await page.getByRole('button', { name: /cancel/i }).click();
+    // Cancel without saving — scroll into view first (button may be below viewport in sheet)
+    const cancelBtn = page.getByRole('button', { name: /cancel/i });
+    await cancelBtn.scrollIntoViewIfNeeded();
+    await cancelBtn.click();
     await expect(page.getByText(/record tip payouts/i)).not.toBeVisible({ timeout: 3000 });
 
     // "Pay out" button should still be visible (nothing was saved)

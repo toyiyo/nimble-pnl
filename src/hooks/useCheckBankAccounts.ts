@@ -70,6 +70,7 @@ export function useCheckBankAccounts() {
           .from('check_bank_accounts' as any)
           .update(rest)
           .eq('id', id)
+          .eq('restaurant_id', restaurantId)
           .select()
           .single();
         if (error) throw error;
@@ -102,14 +103,16 @@ export function useCheckBankAccounts() {
         .from('check_bank_accounts' as any)
         .select('is_default')
         .eq('id', accountId)
+        .eq('restaurant_id', restaurantId)
         .single();
       const wasDefault = deletedAccount?.is_default ?? false;
 
-      // Soft-delete: set is_active=false so audit log references stay valid
+      // Soft-delete: set is_active=false and clear is_default to avoid unique constraint conflict
       const { error } = await supabase
         .from('check_bank_accounts' as any)
-        .update({ is_active: false })
-        .eq('id', accountId);
+        .update({ is_active: false, is_default: false })
+        .eq('id', accountId)
+        .eq('restaurant_id', restaurantId);
       if (error) throw error;
 
       // Promote another account to default if we just deleted the default
@@ -125,7 +128,8 @@ export function useCheckBankAccounts() {
           const { error: promoteError } = await supabase
             .from('check_bank_accounts' as any)
             .update({ is_default: true })
-            .eq('id', remaining[0].id);
+            .eq('id', remaining[0].id)
+            .eq('restaurant_id', restaurantId);
           if (promoteError) throw promoteError;
         }
       }
@@ -155,14 +159,14 @@ export function useCheckBankAccounts() {
   });
 
   // Auto-create check bank accounts from connected banks when none exist
-  const autoCreatedRef = useRef(false);
+  const autoCreatedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (autoCreatedRef.current) return;
     if (query.isLoading || !restaurantId) return;
+    if (autoCreatedRef.current === restaurantId) return;
     if ((query.data?.length ?? 0) > 0) return;
 
-    autoCreatedRef.current = true;
+    autoCreatedRef.current = restaurantId;
     let cancelled = false;
 
     (async () => {

@@ -264,12 +264,13 @@ describe('useCheckBankAccounts', () => {
   });
 
   describe('deleteAccount mutation', () => {
-    it('soft-deletes an account by setting is_active to false', async () => {
-      // Fresh-read: .select().eq().single() returns non-default account
+    it('soft-deletes an account by setting is_active and is_default to false', async () => {
+      // Fresh-read: .select().eq().eq().single() returns non-default account
       mockFromChain.single.mockResolvedValue({ data: { is_default: false }, error: null });
-      // Soft-delete: .update() returns a chain whose .eq() resolves
-      const updateChain = { eq: vi.fn().mockResolvedValue({ error: null }) };
-      mockFromChain.update.mockReturnValue(updateChain);
+      // Soft-delete: .update().eq('id').eq('restaurant_id') resolves
+      const updateEq2 = vi.fn().mockResolvedValue({ error: null });
+      const updateEq1 = vi.fn().mockReturnValue({ eq: updateEq2 });
+      mockFromChain.update.mockReturnValue({ eq: updateEq1 });
 
       const { result } = renderHook(() => useCheckBankAccounts(), {
         wrapper: createWrapper(),
@@ -283,15 +284,17 @@ describe('useCheckBankAccounts', () => {
         await result.current.deleteAccount.mutateAsync('acc-1');
       });
 
-      expect(mockFromChain.update).toHaveBeenCalledWith({ is_active: false });
-      expect(updateChain.eq).toHaveBeenCalledWith('id', 'acc-1');
+      expect(mockFromChain.update).toHaveBeenCalledWith({ is_active: false, is_default: false });
+      expect(updateEq1).toHaveBeenCalledWith('id', 'acc-1');
+      expect(updateEq2).toHaveBeenCalledWith('restaurant_id', 'rest-123');
     });
 
     it('handles delete errors', async () => {
       // Fresh-read succeeds, but soft-delete fails
       mockFromChain.single.mockResolvedValue({ data: { is_default: false }, error: null });
-      const updateChain = { eq: vi.fn().mockResolvedValue({ error: new Error('Delete failed') }) };
-      mockFromChain.update.mockReturnValue(updateChain);
+      const updateEq2 = vi.fn().mockResolvedValue({ error: new Error('Delete failed') });
+      const updateEq1 = vi.fn().mockReturnValue({ eq: updateEq2 });
+      mockFromChain.update.mockReturnValue({ eq: updateEq1 });
 
       const { result } = renderHook(() => useCheckBankAccounts(), {
         wrapper: createWrapper(),

@@ -45,7 +45,7 @@ export function useCheckSettings() {
       return data as unknown as CheckSettings | null;
     },
     enabled: !!restaurantId,
-    staleTime: 300_000,
+    staleTime: 60_000,
   });
 
   const saveSettings = useMutation({

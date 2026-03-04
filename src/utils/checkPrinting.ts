@@ -23,15 +23,7 @@ export function buildPrintConfig(
   settings: Omit<CheckPrintConfig, 'bank_name'>,
   bankName: string | null,
 ): CheckPrintConfig {
-  return {
-    business_name: settings.business_name,
-    business_address_line1: settings.business_address_line1,
-    business_address_line2: settings.business_address_line2,
-    business_city: settings.business_city,
-    business_state: settings.business_state,
-    business_zip: settings.business_zip,
-    bank_name: bankName,
-  };
+  return { ...settings, bank_name: bankName };
 }
 
 // --- Number to words conversion ---

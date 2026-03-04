@@ -52,13 +52,17 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  // Reset state when dialog opens
+  // Reset memo only when opening (or expense changes before opening)
   useEffect(() => {
-    if (open) {
-      setMemo(expense.notes ?? '');
-      setSelectedAccountId(defaultAccount?.id ?? null);
-    }
-  }, [open, defaultAccount?.id, expense.notes]);
+    if (!open) return;
+    setMemo(expense.notes ?? '');
+  }, [open, expense.notes]);
+
+  // Initialize account selection once per open cycle
+  useEffect(() => {
+    if (!open) return;
+    setSelectedAccountId((current) => current ?? defaultAccount?.id ?? null);
+  }, [open, defaultAccount?.id]);
 
   // Don't show if settings aren't configured
   if (!settings) return null;
@@ -87,6 +91,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
           payment_method: 'check',
           reference_number: String(checkNumber),
           notes: memo.trim() || expense.notes,
+          check_bank_account_id: selectedAccount.id,
         },
       });
 

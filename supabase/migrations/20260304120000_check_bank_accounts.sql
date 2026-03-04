@@ -19,13 +19,13 @@ CREATE TABLE public.check_bank_accounts (
 );
 
 -- 2. Indexes
--- Prevent duplicate account names per restaurant
+-- Prevent duplicate account names per restaurant (scoped to active rows for soft-delete)
 CREATE UNIQUE INDEX idx_check_bank_accounts_restaurant_name
-  ON public.check_bank_accounts(restaurant_id, account_name);
+  ON public.check_bank_accounts(restaurant_id, account_name) WHERE is_active = true;
 
--- Enforce at most one default account per restaurant
+-- Enforce at most one default account per restaurant (scoped to active rows for soft-delete)
 CREATE UNIQUE INDEX idx_check_bank_accounts_one_default
-  ON public.check_bank_accounts(restaurant_id) WHERE is_default = true;
+  ON public.check_bank_accounts(restaurant_id) WHERE is_default = true AND is_active = true;
 
 -- Regular lookup index
 CREATE INDEX idx_check_bank_accounts_restaurant
@@ -105,10 +105,11 @@ BEGIN
     RAISE EXCEPTION 'Check count must be between 1 and 100';
   END IF;
 
-  -- Look up restaurant_id from the account
+  -- Look up restaurant_id from the account (must be active)
   SELECT restaurant_id INTO v_restaurant_id
   FROM public.check_bank_accounts
-  WHERE id = p_account_id;
+  WHERE id = p_account_id
+    AND is_active = true;
 
   IF v_restaurant_id IS NULL THEN
     RAISE EXCEPTION 'Check bank account not found: %', p_account_id;
@@ -129,6 +130,7 @@ BEGIN
   SET next_check_number = next_check_number + p_count,
       updated_at = NOW()
   WHERE id = p_account_id
+    AND is_active = true
   RETURNING next_check_number - p_count INTO v_start_number;
 
   IF v_start_number IS NULL THEN

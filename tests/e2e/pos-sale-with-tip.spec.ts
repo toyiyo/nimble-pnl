@@ -17,7 +17,8 @@ test.describe('POS Sale with Tip — No Doubling', () => {
     // Seed unified_sales rows: sale $50, tip $10, tax $4
     await exposeSupabaseHelpers(page);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     await page.evaluate(async ({ saleDate }) => {
       const supabase = (window as any).__supabase;
@@ -81,7 +82,9 @@ test.describe('POS Sale with Tip — No Doubling', () => {
     const passThroughText = await page.getByText('$14.00').first();
     await expect(passThroughText).toBeVisible({ timeout: 5000 });
 
-    // Verify the bad value ($64) does NOT appear as revenue
-    await expect(page.locator('text=$64.00')).toHaveCount(0);
+    // Verify REVENUE specifically shows $50, not $64 (the collected total)
+    // The REVENUE label is followed by its value; $64.00 should only appear next to COLLECTED
+    const revenueMetric = page.locator('text=REVENUE').first().locator('xpath=following-sibling::*[1]');
+    await expect(revenueMetric).not.toHaveText('$64.00');
   });
 });

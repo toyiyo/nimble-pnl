@@ -136,11 +136,17 @@ export function useRevenueBreakdown(
           });
         });
 
+        const knownTypes = new Set(['tax', 'tip', 'service_charge', 'discount', 'fee']);
         const adjustmentTaxC = toC(passThroughMap.get('tax')?.total_amount || 0);
         const adjustmentTipsC = toC(passThroughMap.get('tip')?.total_amount || 0);
         const adjustmentServiceChargeC = toC(passThroughMap.get('service_charge')?.total_amount || 0);
         const adjustmentDiscountsC = toC(Math.abs(passThroughMap.get('discount')?.total_amount || 0));
         const adjustmentFeesC = toC(passThroughMap.get('fee')?.total_amount || 0);
+        // Catch any adjustment types not explicitly handled (parity with all-months path)
+        let adjustmentOtherC = 0;
+        passThroughMap.forEach((val, key) => {
+          if (!knownTypes.has(key)) adjustmentOtherC += toC(val.total_amount);
+        });
 
         // Process revenue by account
         const categories: RevenueCategory[] = [];
@@ -259,7 +265,7 @@ export function useRevenueBreakdown(
         // totalTaxC/totalTipsC already includes the adjustment amount — don't add again.
         const combinedTaxC = hadCategorizedTax ? totalTaxC + adjustmentTaxC : totalTaxC;
         const combinedTipsC = hadCategorizedTips ? totalTipsC + adjustmentTipsC : totalTipsC;
-        const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
+        const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC + adjustmentOtherC;
         const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
 
         // Calculate final totals

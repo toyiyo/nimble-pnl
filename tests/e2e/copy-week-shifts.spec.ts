@@ -141,9 +141,9 @@ test.describe('Copy Week Shifts', () => {
     // Target week info should appear (no existing shifts = fresh copy message)
     await expect(dialog.getByText(/no existing shifts|will be permanently deleted/i)).toBeVisible({ timeout: 3000 });
 
-    // 6. Set up response listener for shift creation (POST always occurs)
+    // 6. Set up response listener for RPC call (copy_week_shifts)
     const postResponse = page.waitForResponse(
-      resp => resp.url().includes('rest/v1/shifts') && resp.request().method() === 'POST',
+      resp => resp.url().includes('rest/v1/rpc/copy_week_shifts') && resp.request().method() === 'POST',
       { timeout: 15000 },
     );
 
@@ -152,7 +152,7 @@ test.describe('Copy Week Shifts', () => {
     await expect(confirmButton).toBeEnabled();
     await confirmButton.click();
 
-    // Wait for insert to complete
+    // Wait for RPC to complete
     await postResponse;
 
     // 7. Dialog should close

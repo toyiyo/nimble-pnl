@@ -123,7 +123,7 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
   const handleSaveAccount = useCallback(
     async (formData: AccountFormState) => {
       const input: UpsertCheckBankAccountInput = {
-        ...(formData.id ? { id: formData.id } : {}),
+        id: formData.id,
         account_name: formData.account_name,
         bank_name: formData.bank_name || null,
         next_check_number: formData.next_check_number,

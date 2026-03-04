@@ -38,6 +38,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCheckSettings } from '@/hooks/useCheckSettings';
 import { useCheckBankAccounts } from '@/hooks/useCheckBankAccounts';
 import { useCheckAuditLog } from '@/hooks/useCheckAuditLog';
+import type { CheckAuditEntry } from '@/hooks/useCheckAuditLog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { FeatureGate } from '@/components/subscription';
@@ -46,12 +47,19 @@ import { CheckSettingsDialog } from '@/components/checks/CheckSettingsDialog';
 import {
   generateCheckPDF,
   generateCheckFilename,
+  buildPrintConfig,
   numberToWords,
 } from '@/utils/checkPrinting';
-import type { CheckData, CheckPrintConfig } from '@/utils/checkPrinting';
+import type { CheckData } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+
+const ACTION_BADGE_CLASSES: Record<string, string> = {
+  printed: 'text-green-700 border-green-300',
+  voided: 'text-red-700 border-red-300',
+  reprinted: 'text-blue-700 border-blue-300',
+};
 
 interface CheckRow {
   id: string;
@@ -73,6 +81,7 @@ function createEmptyRow(): CheckRow {
   };
 }
 
+
 export default function PrintChecks() {
   return (
     <FeatureGate featureKey="expenses">
@@ -83,7 +92,6 @@ export default function PrintChecks() {
 
 function PrintChecksContent() {
   const { selectedRestaurant } = useRestaurantContext();
-  const restaurantId = selectedRestaurant?.restaurant_id || null;
   const { settings, isLoading: settingsLoading } = useCheckSettings();
   const { accounts, defaultAccount, isLoading: accountsLoading, claimCheckNumbers } = useCheckBankAccounts();
   const { auditLog, isLoading: auditLoading, logCheckAction } = useCheckAuditLog();
@@ -187,17 +195,7 @@ function PrintChecksContent() {
         });
       }
 
-      // Generate & save PDF after all records are committed
-      const printConfig: CheckPrintConfig = {
-        business_name: settings.business_name,
-        business_address_line1: settings.business_address_line1,
-        business_address_line2: settings.business_address_line2,
-        business_city: settings.business_city,
-        business_state: settings.business_state,
-        business_zip: settings.business_zip,
-        bank_name: selectedAccount.bank_name,
-      };
-      const pdf = generateCheckPDF(printConfig, checks);
+      const pdf = generateCheckPDF(buildPrintConfig(settings, selectedAccount.bank_name), checks);
       const filename = generateCheckFilename(
         selectedRestaurant.restaurant.name,
         checks.map((c) => c.checkNumber),
@@ -216,21 +214,11 @@ function PrintChecksContent() {
     }
   };
 
-  // --- Reprint ---
-  const handleReprint = async (entry: { id: string; check_number: number; payee_name: string; amount: number; issue_date: string; memo: string | null; check_bank_account_id: string | null }) => {
+  const handleReprint = async (entry: Pick<CheckAuditEntry, 'id' | 'check_number' | 'payee_name' | 'amount' | 'issue_date' | 'memo' | 'check_bank_account_id'>) => {
     if (!settings || !selectedRestaurant) return;
 
     setReprintingId(entry.id);
     try {
-      const checkData: CheckData[] = [{
-        checkNumber: entry.check_number,
-        payeeName: entry.payee_name,
-        amount: entry.amount,
-        issueDate: entry.issue_date,
-        memo: entry.memo ?? undefined,
-      }];
-
-      // Look up bank name from the audit entry's account, or fall back to selected account
       const reprintAccount = entry.check_bank_account_id
         ? accounts.find((a) => a.id === entry.check_bank_account_id)
         : selectedAccount;
@@ -245,16 +233,16 @@ function PrintChecksContent() {
         check_bank_account_id: entry.check_bank_account_id ?? selectedAccount?.id ?? null,
       });
 
-      const printConfig: CheckPrintConfig = {
-        business_name: settings.business_name,
-        business_address_line1: settings.business_address_line1,
-        business_address_line2: settings.business_address_line2,
-        business_city: settings.business_city,
-        business_state: settings.business_state,
-        business_zip: settings.business_zip,
-        bank_name: reprintAccount?.bank_name ?? null,
-      };
-      const pdf = generateCheckPDF(printConfig, checkData);
+      const pdf = generateCheckPDF(
+        buildPrintConfig(settings, reprintAccount?.bank_name ?? null),
+        [{
+          checkNumber: entry.check_number,
+          payeeName: entry.payee_name,
+          amount: entry.amount,
+          issueDate: entry.issue_date,
+          memo: entry.memo ?? undefined,
+        }],
+      );
       const filename = generateCheckFilename(
         selectedRestaurant.restaurant.name,
         [entry.check_number],
@@ -660,13 +648,7 @@ function PrintChecksContent() {
                           <TableCell>
                             <Badge
                               variant="outline"
-                              className={
-                                entry.action === 'printed'
-                                  ? 'text-green-700 border-green-300'
-                                  : entry.action === 'voided'
-                                    ? 'text-red-700 border-red-300'
-                                    : 'text-blue-700 border-blue-300'
-                              }
+                              className={ACTION_BADGE_CLASSES[entry.action]}
                             >
                               {entry.action}
                             </Badge>

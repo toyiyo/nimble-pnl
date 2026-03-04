@@ -27,38 +27,35 @@ export interface UpsertCheckSettingsInput {
 
 export function useCheckSettings() {
   const { selectedRestaurant } = useRestaurantContext();
+  const restaurantId = selectedRestaurant?.restaurant_id;
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['check-settings', selectedRestaurant?.restaurant_id],
+    queryKey: ['check-settings', restaurantId],
     queryFn: async () => {
-      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
+      if (!restaurantId) throw new Error('No restaurant selected');
 
       const { data, error } = await supabase
         .from('check_settings' as any)
         .select('id, restaurant_id, business_name, business_address_line1, business_address_line2, business_city, business_state, business_zip, created_at, updated_at')
-        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
       if (error) throw error;
       return data as unknown as CheckSettings | null;
     },
-    enabled: !!selectedRestaurant?.restaurant_id,
-    staleTime: 5 * 60 * 1000, // 5 minutes — settings rarely change
+    enabled: !!restaurantId,
+    staleTime: 300_000,
   });
 
   const saveSettings = useMutation({
     mutationFn: async (input: UpsertCheckSettingsInput) => {
-      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
+      if (!restaurantId) throw new Error('No restaurant selected');
 
-      // Upsert: insert if no row exists, update if one does
       const { data, error } = await supabase
         .from('check_settings' as any)
         .upsert(
-          {
-            restaurant_id: selectedRestaurant.restaurant_id,
-            ...input,
-          },
+          { restaurant_id: restaurantId, ...input },
           { onConflict: 'restaurant_id' },
         )
         .select()

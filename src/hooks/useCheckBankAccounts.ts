@@ -57,7 +57,7 @@ export function useCheckBankAccounts() {
       if (id) {
         const { data, error } = await supabase
           .from('check_bank_accounts' as any)
-          .update({ ...rest })
+          .update(rest)
           .eq('id', id)
           .select()
           .single();
@@ -135,8 +135,7 @@ export function useCheckBankAccounts() {
 
         if (!connectedBanks?.length) return;
 
-        for (let i = 0; i < connectedBanks.length; i++) {
-          const bank = connectedBanks[i] as any;
+        for (const [i, bank] of (connectedBanks as any[]).entries()) {
           await saveAccount.mutateAsync({
             account_name: bank.institution_name,
             bank_name: bank.institution_name,

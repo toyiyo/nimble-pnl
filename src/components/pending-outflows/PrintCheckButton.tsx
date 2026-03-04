@@ -28,9 +28,9 @@ import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
 import {
   generateCheckPDF,
   generateCheckFilename,
+  buildPrintConfig,
   numberToWords,
 } from '@/utils/checkPrinting';
-import type { CheckPrintConfig } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
 import { toast } from 'sonner';
 
@@ -102,17 +102,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
         check_bank_account_id: selectedAccount.id,
       });
 
-      // Generate & save PDF after records are committed
-      const printConfig: CheckPrintConfig = {
-        business_name: settings.business_name,
-        business_address_line1: settings.business_address_line1,
-        business_address_line2: settings.business_address_line2,
-        business_city: settings.business_city,
-        business_state: settings.business_state,
-        business_zip: settings.business_zip,
-        bank_name: selectedAccount.bank_name,
-      };
-      const pdf = generateCheckPDF(printConfig, [
+      const pdf = generateCheckPDF(buildPrintConfig(settings, selectedAccount.bank_name), [
         {
           checkNumber,
           payeeName: expense.vendor_name,

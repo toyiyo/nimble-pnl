@@ -19,6 +19,21 @@ export interface CheckData {
   memo?: string;
 }
 
+export function buildPrintConfig(
+  settings: Omit<CheckPrintConfig, 'bank_name'>,
+  bankName: string | null,
+): CheckPrintConfig {
+  return {
+    business_name: settings.business_name,
+    business_address_line1: settings.business_address_line1,
+    business_address_line2: settings.business_address_line2,
+    business_city: settings.business_city,
+    business_state: settings.business_state,
+    business_zip: settings.business_zip,
+    bank_name: bankName,
+  };
+}
+
 // --- Number to words conversion ---
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
@@ -83,9 +98,6 @@ function formatCheckAmount(amount: number): string {
   }).format(amount);
 }
 
-/**
- * Build the city/state/zip line from check settings.
- */
 function buildCityStateZip(settings: CheckPrintConfig): string {
   const parts: string[] = [];
   if (settings.business_city) parts.push(settings.business_city);
@@ -279,9 +291,6 @@ function renderStub(
   doc.setDrawColor(0, 0, 0);
 }
 
-/**
- * Generate a multi-page check PDF. One check per page, top check layout.
- */
 export function generateCheckPDF(
   settings: CheckPrintConfig,
   checks: CheckData[],
@@ -300,9 +309,6 @@ export function generateCheckPDF(
   return doc;
 }
 
-/**
- * Generate a filename for the check PDF.
- */
 export function generateCheckFilename(
   restaurantName: string,
   checkNumbers: number[],

@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -112,6 +113,41 @@ export function useCheckBankAccounts() {
       queryClient.invalidateQueries({ queryKey: ['check-bank-accounts'] });
     },
   });
+
+  // Auto-create check bank accounts from connected banks when none exist
+  const autoCreatedRef = useRef(false);
+
+  useEffect(() => {
+    if (autoCreatedRef.current) return;
+    if (query.isLoading || !restaurantId) return;
+    if ((query.data?.length ?? 0) > 0) return;
+
+    autoCreatedRef.current = true;
+
+    (async () => {
+      try {
+        const { data: connectedBanks } = await supabase
+          .from('connected_banks' as any)
+          .select('id, institution_name')
+          .eq('restaurant_id', restaurantId)
+          .eq('status', 'connected');
+
+        if (!connectedBanks?.length) return;
+
+        for (let i = 0; i < connectedBanks.length; i++) {
+          const bank = connectedBanks[i] as any;
+          await saveAccount.mutateAsync({
+            account_name: bank.institution_name,
+            bank_name: bank.institution_name,
+            connected_bank_id: bank.id,
+            is_default: i === 0,
+          });
+        }
+      } catch (err) {
+        console.error('Auto-create check bank accounts failed:', err);
+      }
+    })();
+  }, [query.isLoading, query.data?.length, restaurantId]);
 
   const defaultAccount = query.data?.find((a) => a.is_default) ?? query.data?.[0] ?? null;
 

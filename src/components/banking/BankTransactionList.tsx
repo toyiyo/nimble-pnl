@@ -11,6 +11,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useReconcileTransaction, useUnreconcileTransaction } from "@/hooks/useBankReconciliation";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { computeLinkedInfo } from "@/lib/bankTransactionLinkedInfo";
 
 interface BankTransactionListProps {
   transactions: BankTransaction[];
@@ -140,6 +141,7 @@ export function BankTransactionList({
         suggestedCategoryName: suggestedCategory?.account_name,
         currentCategoryName: currentCategory?.account_name,
         hasSuggestion: !txn.is_categorized && !!suggestedCategory,
+        linkedInfo: computeLinkedInfo(txn),
       });
     }
     return map;

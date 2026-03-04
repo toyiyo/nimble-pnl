@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { BankTransaction } from "@/hooks/useBankTransactions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,9 +7,11 @@ import { Check, Edit, Trash2, FileText, Split, CheckCircle2, Sparkles, Settings2
 import { BankAccountInfo } from "./BankAccountInfo";
 import { TransactionBadges } from "./TransactionBadges";
 import { TransactionDialogs } from "./TransactionDialogs";
+import { LinkedInfoSubtitle } from "./LinkedInfoSubtitle";
 import { ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useBankTransactionActions } from "@/hooks/useBankTransactionActions";
 import { AIConfidenceBadge } from "./AIConfidenceBadge";
+import { computeLinkedInfo } from "@/lib/bankTransactionLinkedInfo";
 
 interface BankTransactionCardProps {
   transaction: BankTransaction;
@@ -31,6 +34,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
 
   const { isDetailOpen, isSplitOpen, showRulesDialog, showDeleteConfirm, setIsDetailOpen, setIsSplitOpen, setShowRulesDialog, setShowDeleteConfirm } = state;
   const { isNegative, formattedAmount, suggestedCategory, currentCategory, hasSuggestion } = computed;
+  const linkedInfo = useMemo(() => computeLinkedInfo(transaction), [transaction]);
   const { categorize, deleteTransaction, reconcile, unreconcile } = mutations;
 
   return (
@@ -46,6 +50,7 @@ export function BankTransactionCard({ transaction, status, accounts }: BankTrans
               <div className="font-semibold text-base">
                 {transaction.description}
               </div>
+              {linkedInfo && <LinkedInfoSubtitle info={linkedInfo} />}
             </div>
             <div className="text-right ml-4">
               <div className={`text-lg font-bold ${isNegative ? "text-destructive" : "text-success"}`}>

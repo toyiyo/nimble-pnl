@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SplitLine, invalidateSplitQueries } from "./useSplitTransactionHelpers";
 import type { BankTransactionSort, TransactionFilters } from "@/types/transactions";
+import type { PaymentMethod } from "@/types/pending-outflows";
 
 export type TransactionStatus = 'for_review' | 'categorized' | 'excluded' | 'reconciled';
 
@@ -35,6 +36,7 @@ export interface BankTransaction {
   suggested_category_id: string | null;
   suggested_payee: string | null;
   supplier_id: string | null;
+  expense_invoice_upload_id: string | null;
   status: TransactionStatus;
   is_categorized: boolean;
   is_reconciled: boolean;
@@ -56,20 +58,27 @@ export interface BankTransaction {
     id: string;
     account_name: string;
   } | null;
+  // Linked outflow data (pending_outflows via reverse FK)
+  linked_outflows?: Array<{
+    vendor_name: string;
+    notes: string | null;
+    reference_number: string | null;
+    payment_method: PaymentMethod;
+    status: string;
+    created_at: string;
+  }> | null;
+  expense_invoice_upload?: {
+    vendor_name: string | null;
+    invoice_number: string | null;
+  } | null;
   // Fields below are NOT fetched in list query (fetch on-demand if needed)
   // Kept in interface for compatibility with detail views
   stripe_transaction_id?: string;
   match_confidence?: number | null;
   receipt_id?: string | null;
-  expense_invoice_upload_id?: string | null;
   supplier?: {
     id: string;
     name: string;
-  } | null;
-  expense_invoice_upload?: {
-    id: string;
-    raw_file_url: string | null;
-    file_name: string | null;
   } | null;
   // raw_data is excluded from queries for performance
   raw_data?: Record<string, unknown>;
@@ -93,8 +102,7 @@ const SORT_COLUMN_MAP: Record<BankTransactionSort, string> = {
 // - Excludes raw_data (large JSON blob only needed for debugging)
 // - Excludes bank_account_balances nested join (fetch on-demand if needed)
 // - Excludes supplier join (~5% of transactions have suppliers, fetch on-demand)
-// - Excludes expense_invoice_upload join (rarely used, fetch on-demand)
-// Expected payload reduction: ~60-70%
+// - Includes linked_outflows + expense_invoice_upload (lightweight joins for linked-info display)
 const buildBaseQuery = (restaurantId: string) =>
   supabase
     .from('bank_transactions')
@@ -112,6 +120,7 @@ const buildBaseQuery = (restaurantId: string) =>
       suggested_category_id,
       suggested_payee,
       supplier_id,
+      expense_invoice_upload_id,
       status,
       is_categorized,
       is_reconciled,
@@ -131,6 +140,18 @@ const buildBaseQuery = (restaurantId: string) =>
       chart_account:chart_of_accounts!category_id(
         id,
         account_name
+      ),
+      linked_outflows:pending_outflows!linked_bank_transaction_id(
+        vendor_name,
+        notes,
+        reference_number,
+        payment_method,
+        status,
+        created_at
+      ),
+      expense_invoice_upload:expense_invoice_uploads!expense_invoice_upload_id(
+        vendor_name,
+        invoice_number
       )
     `, { count: 'exact' })
     .eq('restaurant_id', restaurantId);

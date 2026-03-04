@@ -17,7 +17,7 @@ import { SecuritySettings } from '@/components/SecuritySettings';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { SubscriptionPlans, TrialBanner } from '@/components/subscription';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock } from 'lucide-react';
+import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock, DollarSign } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { COGSPreferenceSettings } from '@/components/settings/COGSPreferenceSettings';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -301,6 +302,7 @@ export default function RestaurantSettings() {
       'general',
       ...(canEdit ? ['business'] : []),
       ...(canEdit ? ['payroll'] : []),
+      ...(canEdit ? ['financial'] : []),
       ...(isOwner ? ['subscription'] : []),
       ...(canEdit ? ['notifications'] : []),
       'security',
@@ -316,6 +318,7 @@ export default function RestaurantSettings() {
 
   // Compute grid columns class based on visible tab count
   const gridColsMap: Record<number, string> = {
+    7: 'grid-cols-7',
     6: 'grid-cols-6',
     5: 'grid-cols-5',
     4: 'grid-cols-4',
@@ -421,6 +424,12 @@ export default function RestaurantSettings() {
             <TabsTrigger value="payroll">
               <Clock className="h-4 w-4 mr-2" />
               Payroll
+            </TabsTrigger>
+          )}
+          {canEdit && (
+            <TabsTrigger value="financial">
+              <DollarSign className="h-4 w-4 mr-2" />
+              Financial
             </TabsTrigger>
           )}
           {isOwner && (
@@ -994,6 +1003,13 @@ export default function RestaurantSettings() {
                 </Button>
               </CardFooter>
             </Card>
+          </TabsContent>
+        )}
+
+        {/* Financial Tab - COGS settings */}
+        {canEdit && (
+          <TabsContent value="financial">
+            <COGSPreferenceSettings restaurantId={selectedRestaurant.restaurant_id} />
           </TabsContent>
         )}
 

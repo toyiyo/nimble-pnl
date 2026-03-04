@@ -264,7 +264,7 @@ describe('useCheckBankAccounts', () => {
   });
 
   describe('deleteAccount mutation', () => {
-    it('deletes an account by id', async () => {
+    it('soft-deletes an account by setting is_active to false', async () => {
       mockFromChain.eq.mockResolvedValue({ error: null });
 
       const { result } = renderHook(() => useCheckBankAccounts(), {
@@ -279,12 +279,12 @@ describe('useCheckBankAccounts', () => {
         await result.current.deleteAccount.mutateAsync('acc-1');
       });
 
-      expect(mockFromChain.delete).toHaveBeenCalled();
+      expect(mockFromChain.update).toHaveBeenCalledWith({ is_active: false });
       expect(mockFromChain.eq).toHaveBeenCalledWith('id', 'acc-1');
     });
 
     it('handles delete errors', async () => {
-      // For delete path: .delete().eq() should return error
+      // For soft-delete path: .update().eq() should return error
       mockFromChain.eq.mockResolvedValue({ error: new Error('Delete failed') });
 
       const { result } = renderHook(() => useCheckBankAccounts(), {

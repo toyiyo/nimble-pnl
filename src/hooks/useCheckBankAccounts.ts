@@ -84,9 +84,10 @@ export function useCheckBankAccounts() {
 
   const deleteAccount = useMutation({
     mutationFn: async (accountId: string) => {
+      // Soft-delete: set is_active=false so audit log references stay valid
       const { error } = await supabase
         .from('check_bank_accounts' as any)
-        .delete()
+        .update({ is_active: false })
         .eq('id', accountId);
       if (error) throw error;
     },

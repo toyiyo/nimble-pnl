@@ -52,12 +52,13 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  // Auto-select default account when dialog opens
+  // Reset state when dialog opens
   useEffect(() => {
-    if (open && defaultAccount && !selectedAccountId) {
-      setSelectedAccountId(defaultAccount.id);
+    if (open) {
+      setMemo(expense.notes ?? '');
+      setSelectedAccountId(defaultAccount?.id ?? null);
     }
-  }, [open, defaultAccount, selectedAccountId]);
+  }, [open]);
 
   // Don't show if settings aren't configured
   if (!settings) return null;
@@ -188,11 +189,11 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
             {/* Bank account selector — only shown when multiple accounts exist */}
             {accounts.length > 1 && (
               <div className="space-y-2">
-                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                <Label htmlFor="print-check-account" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                   Bank Account
                 </Label>
                 <Select value={selectedAccountId ?? ''} onValueChange={setSelectedAccountId}>
-                  <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                  <SelectTrigger id="print-check-account" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>

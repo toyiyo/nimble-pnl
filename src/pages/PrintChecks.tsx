@@ -379,11 +379,11 @@ function PrintChecksContent() {
             {/* Bank account selector — only shown when multiple accounts exist */}
             {accounts.length > 1 && (
               <div className="flex items-center gap-3">
-                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                <Label htmlFor="check-bank-account" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   Bank Account
                 </Label>
                 <Select value={selectedAccountId ?? ''} onValueChange={setSelectedAccountId}>
-                  <SelectTrigger className="h-9 w-64 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                  <SelectTrigger id="check-bank-account" className="h-9 w-64 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                     <SelectValue placeholder="Select account" />
                   </SelectTrigger>
                   <SelectContent>

@@ -131,6 +131,10 @@ BEGIN
   WHERE id = p_account_id
   RETURNING next_check_number - p_count INTO v_start_number;
 
+  IF v_start_number IS NULL THEN
+    RAISE EXCEPTION 'Check bank account was deleted during operation: %', p_account_id;
+  END IF;
+
   RETURN v_start_number;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;

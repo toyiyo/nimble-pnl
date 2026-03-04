@@ -54,6 +54,16 @@ export function useCheckBankAccounts() {
     mutationFn: async (input: UpsertCheckBankAccountInput) => {
       if (!restaurantId) throw new Error('No restaurant selected');
       const { id, ...rest } = input;
+
+      // When setting as default, unset other defaults first
+      if (rest.is_default) {
+        await supabase
+          .from('check_bank_accounts' as any)
+          .update({ is_default: false })
+          .eq('restaurant_id', restaurantId)
+          .eq('is_default', true);
+      }
+
       if (id) {
         const { data, error } = await supabase
           .from('check_bank_accounts' as any)
@@ -84,12 +94,30 @@ export function useCheckBankAccounts() {
 
   const deleteAccount = useMutation({
     mutationFn: async (accountId: string) => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // Check if the account being deleted is the default
+      const currentAccounts = queryClient.getQueryData<CheckBankAccount[]>(['check-bank-accounts', restaurantId]);
+      const deletedAccount = currentAccounts?.find((a) => a.id === accountId);
+      const wasDefault = deletedAccount?.is_default ?? false;
+
       // Soft-delete: set is_active=false so audit log references stay valid
       const { error } = await supabase
         .from('check_bank_accounts' as any)
         .update({ is_active: false })
         .eq('id', accountId);
       if (error) throw error;
+
+      // Promote another account to default if we just deleted the default
+      if (wasDefault) {
+        const remaining = currentAccounts?.filter((a) => a.id !== accountId && a.is_active);
+        if (remaining?.length) {
+          await supabase
+            .from('check_bank_accounts' as any)
+            .update({ is_default: true })
+            .eq('id', remaining[0].id);
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['check-bank-accounts'] });
@@ -124,6 +152,7 @@ export function useCheckBankAccounts() {
     if ((query.data?.length ?? 0) > 0) return;
 
     autoCreatedRef.current = true;
+    let cancelled = false;
 
     (async () => {
       try {
@@ -133,9 +162,10 @@ export function useCheckBankAccounts() {
           .eq('restaurant_id', restaurantId)
           .eq('status', 'connected');
 
-        if (!connectedBanks?.length) return;
+        if (!connectedBanks?.length || cancelled) return;
 
         for (const [i, bank] of (connectedBanks as any[]).entries()) {
+          if (cancelled) return;
           await saveAccount.mutateAsync({
             account_name: bank.institution_name,
             bank_name: bank.institution_name,
@@ -147,7 +177,9 @@ export function useCheckBankAccounts() {
         console.error('Auto-create check bank accounts failed:', err);
       }
     })();
-  }, [query.isLoading, query.data?.length, restaurantId]);
+
+    return () => { cancelled = true; };
+  }, [query.isLoading, query.data?.length, restaurantId, saveAccount]);
 
   const defaultAccount = query.data?.find((a) => a.is_default) ?? query.data?.[0] ?? null;
 

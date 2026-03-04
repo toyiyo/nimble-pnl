@@ -58,7 +58,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
       setMemo(expense.notes ?? '');
       setSelectedAccountId(defaultAccount?.id ?? null);
     }
-  }, [open]);
+  }, [open, defaultAccount?.id, expense.notes]);
 
   // Don't show if settings aren't configured
   if (!settings) return null;

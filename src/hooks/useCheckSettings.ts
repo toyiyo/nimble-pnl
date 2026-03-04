@@ -12,8 +12,6 @@ export interface CheckSettings {
   business_city: string | null;
   business_state: string | null;
   business_zip: string | null;
-  bank_name: string | null;
-  next_check_number: number;
   created_at: string;
   updated_at: string;
 }
@@ -25,8 +23,6 @@ export interface UpsertCheckSettingsInput {
   business_city?: string | null;
   business_state?: string | null;
   business_zip?: string | null;
-  bank_name?: string | null;
-  next_check_number?: number;
 }
 
 export function useCheckSettings() {
@@ -40,7 +36,7 @@ export function useCheckSettings() {
 
       const { data, error } = await supabase
         .from('check_settings' as any)
-        .select('id, restaurant_id, business_name, business_address_line1, business_address_line2, business_city, business_state, business_zip, bank_name, next_check_number, created_at, updated_at')
+        .select('id, restaurant_id, business_name, business_address_line1, business_address_line2, business_city, business_state, business_zip, created_at, updated_at')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .maybeSingle();
 
@@ -80,29 +76,10 @@ export function useCheckSettings() {
     },
   });
 
-  const claimCheckNumbers = useMutation({
-    mutationFn: async (count: number = 1) => {
-      if (!selectedRestaurant?.restaurant_id) throw new Error('No restaurant selected');
-
-      const { data, error } = await (supabase.rpc as any)('claim_check_numbers', {
-        p_restaurant_id: selectedRestaurant.restaurant_id,
-        p_count: count,
-      });
-
-      if (error) throw error;
-      if (typeof data !== 'number') throw new Error('Failed to claim check numbers');
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['check-settings'] });
-    },
-  });
-
   return {
     settings: query.data ?? null,
     isLoading: query.isLoading,
     error: query.error,
     saveSettings,
-    claimCheckNumbers,
   };
 }

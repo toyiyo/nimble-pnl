@@ -1,7 +1,15 @@
 import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
 
-import type { CheckSettings } from '@/hooks/useCheckSettings';
+export interface CheckPrintConfig {
+  business_name: string;
+  business_address_line1: string | null;
+  business_address_line2: string | null;
+  business_city: string | null;
+  business_state: string | null;
+  business_zip: string | null;
+  bank_name: string | null;
+}
 
 export interface CheckData {
   checkNumber: number;
@@ -78,7 +86,7 @@ function formatCheckAmount(amount: number): string {
 /**
  * Build the city/state/zip line from check settings.
  */
-function buildCityStateZip(settings: CheckSettings): string {
+function buildCityStateZip(settings: CheckPrintConfig): string {
   const parts: string[] = [];
   if (settings.business_city) parts.push(settings.business_city);
   if (settings.business_state) {
@@ -97,7 +105,7 @@ function buildCityStateZip(settings: CheckSettings): string {
  *  - Middle third: payee record stub
  *  - Bottom third: company record stub
  */
-function renderCheckPage(doc: jsPDF, settings: CheckSettings, check: CheckData) {
+function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
   const pageWidth = 8.5;
   const margin = 0.5;
   const checkHeight = 3.5; // Standard check-on-top height in inches
@@ -275,7 +283,7 @@ function renderStub(
  * Generate a multi-page check PDF. One check per page, top check layout.
  */
 export function generateCheckPDF(
-  settings: CheckSettings,
+  settings: CheckPrintConfig,
   checks: CheckData[],
 ): jsPDF {
   const doc = new jsPDF({

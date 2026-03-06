@@ -212,7 +212,10 @@ describe('IncomeStatement P&L behavior', () => {
     expect(screen.getByText('Gross Profit')).toBeInTheDocument();
     expect(screen.getByText('$650.00')).toBeInTheDocument(); // 1050 - 400
     expect(screen.getByText('Net Income')).toBeInTheDocument();
-    expect(screen.getByText('$350.00')).toBeInTheDocument(); // 650 - 300
+    // $350 appears for both Operating Income and Net Income (same value when no labor/fixed)
+    const netIncomeRow = screen.getByText('Net Income').closest('div');
+    expect(netIncomeRow).not.toBeNull();
+    expect(within(netIncomeRow as HTMLElement).getByText('$350.00')).toBeInTheDocument(); // 650 - 300
   });
 
   it('includes uncategorized POS revenue in net sales and profit calculations', () => {
@@ -378,7 +381,10 @@ describe('IncomeStatement P&L behavior', () => {
 
     // Profit math from journal entries
     expect(screen.getByText('$1,200.00')).toBeInTheDocument(); // Gross Profit: 2000 - 800
-    expect(screen.getByText('$300.00')).toBeInTheDocument(); // Net Income: 1200 - 900
+    // $300 appears for both Operating Income and Net Income (same value when no labor/fixed)
+    const netIncomeRow = screen.getByText('Net Income').closest('div');
+    expect(netIncomeRow).not.toBeNull();
+    expect(within(netIncomeRow as HTMLElement).getByText('$300.00')).toBeInTheDocument(); // Net Income: 1200 - 900
     expect(screen.queryByText(/Net Sales Revenue/i)).not.toBeInTheDocument();
   });
 
@@ -459,8 +465,9 @@ describe('IncomeStatement P&L behavior', () => {
     const totalRevenueRow = screen.getByText('Total Revenue').closest('div');
     expect(totalRevenueRow).not.toBeNull();
     expect(within(totalRevenueRow as HTMLElement).getByText('$0.00')).toBeInTheDocument();
-    expect(screen.getByText('Total Expenses')).toBeInTheDocument();
-    expect(screen.getAllByText('$100.00')).toHaveLength(2); // expense line + total
+    expect(screen.getByText('Total Controllable')).toBeInTheDocument();
+    // $100 appears: expense line + Total Controllable + Total Operating Expenses
+    expect(screen.getAllByText('$100.00')).toHaveLength(3);
     const netIncomeRow = screen.getByText('Net Income').closest('div');
     expect(netIncomeRow).not.toBeNull();
     expect(within(netIncomeRow as HTMLElement).getByText('-$100.00')).toBeInTheDocument();

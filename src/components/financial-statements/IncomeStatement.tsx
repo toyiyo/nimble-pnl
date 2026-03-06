@@ -330,85 +330,115 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     effectiveRevenue > 0 ? ((amount / effectiveRevenue) * 100).toFixed(1) + '%' : '—';
 
   const handleExportCSV = () => {
-    const csvRows = [
+    const csvRows: string[][] = [
       ['Income Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
+      ['', '', 'Amount', '% of Revenue'],
       [''],
     ];
-    
+
     // Revenue Section - Use revenueBreakdown if available, otherwise fall back to incomeData
     if (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) {
       csvRows.push(['REVENUE']);
-      
-      // Revenue Categories from POS Sales
+
       revenueBreakdown.revenue_categories.forEach((category) => {
-        csvRows.push([category.account_code, category.account_name, String(category.total_amount)]);
+        csvRows.push([category.account_code, category.account_name, String(category.total_amount), pctOfRevenue(category.total_amount)]);
       });
-      
-      csvRows.push(['', 'Gross Revenue', String(revenueBreakdown.totals.gross_revenue)]);
-      
-      // Discounts, Refunds & Comps
+
+      if (uncatRevenue > 0) {
+        csvRows.push(['', 'Uncategorized Revenue', String(uncatRevenue), pctOfRevenue(uncatRevenue)]);
+      }
+
+      csvRows.push(['', 'Gross Revenue', String(revenueBreakdown.totals.gross_revenue), pctOfRevenue(revenueBreakdown.totals.gross_revenue)]);
+
       if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
         csvRows.push(['']);
         csvRows.push(['Less: Deductions']);
-        
+
         revenueBreakdown.discount_categories.forEach((category) => {
-          csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount))]);
+          csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount)), pctOfRevenue(-Math.abs(category.total_amount))]);
         });
-        
+
         if (revenueBreakdown.refund_categories) {
           revenueBreakdown.refund_categories.forEach((category) => {
-            csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount))]);
+            csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount)), pctOfRevenue(-Math.abs(category.total_amount))]);
           });
         }
       }
-      
-      // Net Revenue
-      csvRows.push(['', 'Net Sales Revenue', String(revenueBreakdown.totals.net_revenue)]);
-      
-      // Pass-Through Collections (if any)
+
+      csvRows.push(['', 'Net Sales Revenue', String(revenueBreakdown.totals.net_revenue), pctOfRevenue(revenueBreakdown.totals.net_revenue)]);
+
       if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
         csvRows.push(['']);
         csvRows.push(['OTHER COLLECTIONS (Pass-Through)']);
-        
+
         revenueBreakdown.tax_categories.forEach((category) => {
-          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount)]);
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount), pctOfRevenue(category.total_amount)]);
         });
-        
+
         revenueBreakdown.tip_categories.forEach((category) => {
-          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount)]);
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount), pctOfRevenue(category.total_amount)]);
         });
       }
     } else {
-      // Fallback to journal entries if no POS categorization
       csvRows.push(['Revenue']);
       incomeData!.revenue.forEach(acc => {
-        csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
+        csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
       });
-      csvRows.push(['', 'Total Revenue', String(totalRevenue)]);
+      csvRows.push(['', 'Total Revenue', String(totalRevenue), pctOfRevenue(totalRevenue)]);
     }
-    
+
     csvRows.push(['']);
-    
+
     // COGS Section
-    csvRows.push(['Cost of Goods Sold']);
+    csvRows.push(['COST OF GOODS SOLD']);
     incomeData!.cogs.forEach(acc => {
-      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
     });
-    csvRows.push(['', 'Total COGS', String(totalCOGS)]);
+    csvRows.push(['', 'Total COGS', String(totalCOGS), pctOfRevenue(totalCOGS)]);
     csvRows.push(['']);
-    csvRows.push(['', 'Gross Profit', String(grossProfit)]);
+    csvRows.push(['', 'Gross Profit', String(grossProfit), pctOfRevenue(grossProfit)]);
     csvRows.push(['']);
-    
-    // Expenses Section
-    csvRows.push(['Operating Expenses']);
-    incomeData!.expenses.forEach(acc => {
-      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
+
+    // Labor Section
+    csvRows.push(['LABOR COSTS']);
+    laborAccounts.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
     });
-    csvRows.push(['', 'Total Expenses', String(totalExpenses)]);
+    csvRows.push(['', 'Total Labor', String(totalLabor), pctOfRevenue(totalLabor)]);
     csvRows.push(['']);
-    csvRows.push(['', 'Net Income', String(netIncome)]);
-    
+    csvRows.push(['', 'Prime Cost (COGS + Labor)', String(primeCost), pctOfRevenue(primeCost)]);
+    csvRows.push(['']);
+
+    // Controllable Expenses Section
+    csvRows.push(['CONTROLLABLE EXPENSES']);
+    controllableAccounts.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
+    });
+    if (uncatExpenses > 0) {
+      csvRows.push(['', 'Uncategorized Expenses', String(uncatExpenses), pctOfRevenue(uncatExpenses)]);
+    }
+    csvRows.push(['', 'Total Controllable', String(totalControllableWithUncat), pctOfRevenue(totalControllableWithUncat)]);
+    csvRows.push(['']);
+
+    // Fixed Expenses Section
+    csvRows.push(['NON-CONTROLLABLE / FIXED']);
+    fixedAccounts.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
+    });
+    csvRows.push(['', 'Total Fixed', String(totalFixed), pctOfRevenue(totalFixed)]);
+    csvRows.push(['']);
+
+    csvRows.push(['', 'Total Operating Expenses', String(totalOperatingExpenses), pctOfRevenue(totalOperatingExpenses)]);
+    csvRows.push(['', 'Operating Income', String(operatingIncome), pctOfRevenue(operatingIncome)]);
+
+    if (ebitda !== null) {
+      csvRows.push(['', 'EBITDA', String(ebitda), pctOfRevenue(ebitda)]);
+    }
+
+    csvRows.push(['']);
+    csvRows.push(['', 'Net Income', String(netIncome), pctOfRevenue(netIncome)]);
+
     const csvContent = csvRows.map(row => row.join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -435,111 +465,168 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
   const handleExportPDF = () => {
     const data = [];
-    
-    // Revenue Section - Use revenueBreakdown if available, otherwise fall back to incomeData
+
+    // Revenue Section
     if (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) {
       data.push({ label: 'REVENUE', amount: undefined, isBold: true });
-      
-      // Revenue Categories from POS Sales
+
       revenueBreakdown.revenue_categories.forEach((category) => {
         data.push({
           label: `${category.account_code} - ${category.account_name}`,
           amount: category.total_amount,
           indent: 1,
+          pct: pctOfRevenue(category.total_amount),
         });
       });
-      
-      data.push({ label: 'Gross Revenue', amount: revenueBreakdown.totals.gross_revenue, isSubtotal: true });
-      
-      // Discounts, Refunds & Comps
+
+      if (uncatRevenue > 0) {
+        data.push({
+          label: 'Uncategorized Revenue',
+          amount: uncatRevenue,
+          indent: 1,
+          pct: pctOfRevenue(uncatRevenue),
+        });
+      }
+
+      data.push({ label: 'Gross Revenue', amount: revenueBreakdown.totals.gross_revenue, isSubtotal: true, pct: pctOfRevenue(revenueBreakdown.totals.gross_revenue) });
+
       if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
         data.push({ label: '', amount: undefined });
         data.push({ label: 'Less: Deductions', amount: undefined, isBold: true });
-        
+
         revenueBreakdown.discount_categories.forEach((category) => {
           data.push({
             label: `${category.account_code} - ${category.account_name}`,
             amount: -Math.abs(category.total_amount),
             indent: 1,
+            pct: pctOfRevenue(-Math.abs(category.total_amount)),
           });
         });
-        
+
         if (revenueBreakdown.refund_categories) {
           revenueBreakdown.refund_categories.forEach((category) => {
             data.push({
               label: `${category.account_code} - ${category.account_name}`,
               amount: -Math.abs(category.total_amount),
               indent: 1,
+              pct: pctOfRevenue(-Math.abs(category.total_amount)),
             });
           });
         }
       }
-      
-      // Net Revenue
-      data.push({ label: 'Net Sales Revenue', amount: revenueBreakdown.totals.net_revenue, isSubtotal: true });
-      
-      // Pass-Through Collections (if any)
+
+      data.push({ label: 'Net Sales Revenue', amount: revenueBreakdown.totals.net_revenue, isSubtotal: true, pct: pctOfRevenue(revenueBreakdown.totals.net_revenue) });
+
       if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
         data.push({ label: '', amount: undefined });
         data.push({ label: 'OTHER COLLECTIONS (Pass-Through)', amount: undefined, isBold: true });
-        
+
         revenueBreakdown.tax_categories.forEach((category) => {
           data.push({
             label: `${category.account_code} - ${category.account_name} (Liability)`,
             amount: category.total_amount,
             indent: 1,
+            pct: pctOfRevenue(category.total_amount),
           });
         });
-        
+
         revenueBreakdown.tip_categories.forEach((category) => {
           data.push({
             label: `${category.account_code} - ${category.account_name} (Liability)`,
             amount: category.total_amount,
             indent: 1,
+            pct: pctOfRevenue(category.total_amount),
           });
         });
       }
     } else {
-      // Fallback to journal entries if no POS categorization
       data.push({ label: 'REVENUE', amount: undefined, isBold: true });
       incomeData!.revenue.forEach(acc => {
         data.push({
           label: `${acc.account_code} - ${acc.account_name}`,
           amount: acc.current_balance,
           indent: 1,
+          pct: pctOfRevenue(acc.current_balance),
         });
       });
-      data.push({ label: 'Total Revenue', amount: totalRevenue, isSubtotal: true });
+      data.push({ label: 'Total Revenue', amount: totalRevenue, isSubtotal: true, pct: pctOfRevenue(totalRevenue) });
     }
-    
+
     data.push({ label: '', amount: undefined });
-    
+
     // COGS Section
-    data.push({ label: 'Cost of Goods Sold', amount: undefined, isBold: true });
+    data.push({ label: 'COST OF GOODS SOLD', amount: undefined, isBold: true });
     incomeData!.cogs.forEach(acc => {
       data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,
         indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
       });
     });
-    data.push({ label: 'Total COGS', amount: totalCOGS, isSubtotal: true });
+    data.push({ label: 'Total COGS', amount: totalCOGS, isSubtotal: true, pct: pctOfRevenue(totalCOGS) });
     data.push({ label: '', amount: undefined });
-    data.push({ label: 'Gross Profit', amount: grossProfit, isTotal: true });
+    data.push({ label: 'Gross Profit', amount: grossProfit, isTotal: true, pct: pctOfRevenue(grossProfit) });
     data.push({ label: '', amount: undefined });
-    
-    // Expenses Section
-    data.push({ label: 'Operating Expenses', amount: undefined, isBold: true });
-    incomeData!.expenses.forEach(acc => {
+
+    // Labor Section
+    data.push({ label: 'LABOR COSTS', amount: undefined, isBold: true });
+    laborAccounts.forEach(acc => {
       data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,
         indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
       });
     });
-    data.push({ label: 'Total Expenses', amount: totalExpenses, isSubtotal: true });
+    data.push({ label: 'Total Labor', amount: totalLabor, isSubtotal: true, pct: pctOfRevenue(totalLabor) });
     data.push({ label: '', amount: undefined });
-    data.push({ label: 'Net Income', amount: netIncome, isTotal: true });
+    data.push({ label: 'Prime Cost (COGS + Labor)', amount: primeCost, isTotal: true, pct: pctOfRevenue(primeCost) });
+    data.push({ label: '', amount: undefined });
+
+    // Controllable Expenses Section
+    data.push({ label: 'CONTROLLABLE EXPENSES', amount: undefined, isBold: true });
+    controllableAccounts.forEach(acc => {
+      data.push({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
+      });
+    });
+    if (uncatExpenses > 0) {
+      data.push({
+        label: 'Uncategorized Expenses',
+        amount: uncatExpenses,
+        indent: 1,
+        pct: pctOfRevenue(uncatExpenses),
+      });
+    }
+    data.push({ label: 'Total Controllable', amount: totalControllableWithUncat, isSubtotal: true, pct: pctOfRevenue(totalControllableWithUncat) });
+    data.push({ label: '', amount: undefined });
+
+    // Fixed Expenses Section
+    data.push({ label: 'NON-CONTROLLABLE / FIXED', amount: undefined, isBold: true });
+    fixedAccounts.forEach(acc => {
+      data.push({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
+      });
+    });
+    data.push({ label: 'Total Fixed', amount: totalFixed, isSubtotal: true, pct: pctOfRevenue(totalFixed) });
+    data.push({ label: '', amount: undefined });
+
+    data.push({ label: 'Total Operating Expenses', amount: totalOperatingExpenses, isSubtotal: true, pct: pctOfRevenue(totalOperatingExpenses) });
+    data.push({ label: 'Operating Income', amount: operatingIncome, isTotal: true, pct: pctOfRevenue(operatingIncome) });
+
+    if (ebitda !== null) {
+      data.push({ label: 'EBITDA', amount: ebitda, isTotal: true, pct: pctOfRevenue(ebitda) });
+    }
+
+    data.push({ label: '', amount: undefined });
+    data.push({ label: 'Net Income', amount: netIncome, isTotal: true, pct: pctOfRevenue(netIncome) });
 
     const filename = generateStandardFilename(
       'income-statement',
@@ -610,12 +697,29 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          {/* Revenue Section - Enhanced with POS Sales Breakdown */}
+          {/* 1. Completeness Banner */}
+          {!glOnly && uncategorized.uncategorizedCount > 0 && (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span className="text-[13px] text-amber-700">
+                  <strong>{uncategorized.uncategorizedCount}</strong> transactions ({formatCurrency(uncategorized.uncategorizedOutflows + uncategorized.uncategorizedInflows)}) are uncategorized.
+                  Uncategorized amounts are included in totals below.
+                </span>
+              </div>
+              <button
+                onClick={() => navigate('/transactions')}
+                className="text-[13px] font-medium text-amber-700 hover:text-amber-900 underline whitespace-nowrap"
+                aria-label="Review uncategorized transactions"
+              >
+                Review Transactions
+              </button>
+            </div>
+          )}
+
+          {/* 2. REVENUE */}
           <div>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-              <div className="h-1 w-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full" />
-              REVENUE
-            </h3>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">REVENUE</h3>
             <div className="space-y-2">
               {revenueBreakdown && revenueBreakdown.revenue_categories.length > 0 ? (
                 <>
@@ -626,12 +730,33 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                         <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
                         <span>{category.account_name}</span>
                       </div>
-                      <span className="font-medium">{formatCurrency(category.total_amount)}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium">{formatCurrency(category.total_amount)}</span>
+                        <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(category.total_amount)}</span>
+                      </div>
                     </div>
                   ))}
-                  <div className="flex justify-between items-center py-2 px-3 border-t text-sm">
+
+                  {/* Uncategorized revenue amber row */}
+                  {uncatRevenue > 0 && (
+                    <div className="flex justify-between items-center py-2 px-3 rounded-lg bg-amber-500/10">
+                      <div className="flex items-center gap-3">
+                        <span className="text-amber-600 text-[14px]">Uncategorized Revenue</span>
+                        <span className="text-[11px] text-amber-600 font-medium">(uncategorized)</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium text-amber-600">{formatCurrency(uncatRevenue)}</span>
+                        <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(uncatRevenue)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
                     <span>Gross Revenue</span>
-                    <span className="font-semibold">{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
+                    <div className="flex items-center gap-4">
+                      <span>{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
+                      <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(revenueBreakdown.totals.gross_revenue)}</span>
+                    </div>
                   </div>
 
                   {/* Discounts, Refunds & Comps */}
@@ -644,7 +769,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                             <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
                             <span className="text-sm text-red-600">{category.account_name}</span>
                           </div>
-                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
+                          <div className="flex items-center gap-4">
+                            <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
+                            <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(-Math.abs(category.total_amount))}</span>
+                          </div>
                         </div>
                       ))}
                       {revenueBreakdown.refund_categories?.map((category) => (
@@ -653,7 +781,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                             <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
                             <span className="text-sm text-red-600">{category.account_name}</span>
                           </div>
-                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
+                          <div className="flex items-center gap-4">
+                            <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
+                            <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(-Math.abs(category.total_amount))}</span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -662,7 +793,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                   {/* Net Revenue */}
                   <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold">
                     <span>Net Sales Revenue</span>
-                    <span>{formatCurrency(revenueBreakdown.totals.net_revenue)}</span>
+                    <div className="flex items-center gap-4">
+                      <span>{formatCurrency(revenueBreakdown.totals.net_revenue)}</span>
+                      <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(revenueBreakdown.totals.net_revenue)}</span>
+                    </div>
                   </div>
 
                   {/* Pass-Through Collections */}
@@ -679,7 +813,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                               <span className="text-sm">{category.account_name}</span>
                               <span className="text-xs text-amber-600 font-medium">(Liability)</span>
                             </div>
-                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
+                            <div className="flex items-center gap-4">
+                              <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
+                              <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(category.total_amount)}</span>
+                            </div>
                           </div>
                         ))}
                         {revenueBreakdown.tip_categories.map((category) => (
@@ -689,7 +826,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                               <span className="text-sm">{category.account_name}</span>
                               <span className="text-xs text-amber-600 font-medium">(Liability)</span>
                             </div>
-                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
+                            <div className="flex items-center gap-4">
+                              <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
+                              <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(category.total_amount)}</span>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -705,21 +845,27 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                         <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
                         <span>{account.account_name}</span>
                       </div>
-                      <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                        <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
+                      </div>
                     </div>
                   ))}
                   <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
                     <span>Total Revenue</span>
-                    <span>{formatCurrency(totalRevenue)}</span>
+                    <div className="flex items-center gap-4">
+                      <span>{formatCurrency(totalRevenue)}</span>
+                      <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalRevenue)}</span>
+                    </div>
                   </div>
                 </>
               )}
             </div>
           </div>
 
-          {/* COGS Section */}
+          {/* 3. COGS */}
           <div>
-            <h3 className="font-semibold text-lg mb-3">Cost of Goods Sold</h3>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">COST OF GOODS SOLD</h3>
             <div className="space-y-2">
               {incomeData?.cogs.map((account) => (
                 <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
@@ -727,50 +873,175 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                     <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
                     <span>{account.account_name}</span>
                   </div>
-                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
+                  </div>
                 </div>
               ))}
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
                 <span>Total COGS</span>
-                <span>{formatCurrency(totalCOGS)}</span>
+                <div className="flex items-center gap-4">
+                  <span>{formatCurrency(totalCOGS)}</span>
+                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalCOGS)}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Gross Profit */}
+          {/* 4. Gross Profit highlight */}
           <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
             <span>Gross Profit</span>
-            <span className={grossProfit >= 0 ? 'text-success' : 'text-destructive'}>
-              {formatCurrency(grossProfit)}
-            </span>
+            <div className="flex items-center gap-4">
+              <span className={grossProfit >= 0 ? 'text-success' : 'text-destructive'}>
+                {formatCurrency(grossProfit)}
+              </span>
+              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(grossProfit)}</span>
+            </div>
           </div>
 
-          {/* Expenses Section */}
+          {/* 5. LABOR COSTS */}
           <div>
-            <h3 className="font-semibold text-lg mb-3">Operating Expenses</h3>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">LABOR COSTS</h3>
             <div className="space-y-2">
-              {incomeData?.expenses.map((account) => (
+              {laborAccounts.map((account) => (
                 <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
                     <span>{account.account_name}</span>
                   </div>
-                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
+                  </div>
                 </div>
               ))}
               <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total Expenses</span>
-                <span>{formatCurrency(totalExpenses)}</span>
+                <span>Total Labor</span>
+                <div className="flex items-center gap-4">
+                  <span>{formatCurrency(totalLabor)}</span>
+                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalLabor)}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Net Income */}
-          <div className="flex justify-between items-center py-4 px-3 bg-primary/10 border border-primary/20 rounded-lg font-bold text-xl">
+          {/* 6. PRIME COST highlight */}
+          <div className="flex justify-between items-center py-3 px-3 rounded-lg font-bold text-lg bg-amber-500/5 border border-amber-500/10">
+            <span>Prime Cost (COGS + Labor)</span>
+            <div className="flex items-center gap-4">
+              <span>{formatCurrency(primeCost)}</span>
+              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(primeCost)}</span>
+            </div>
+          </div>
+
+          {/* 7. CONTROLLABLE EXPENSES */}
+          <div>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">CONTROLLABLE EXPENSES</h3>
+            <div className="space-y-2">
+              {controllableAccounts.map((account) => (
+                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
+                    <span>{account.account_name}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
+                  </div>
+                </div>
+              ))}
+              {/* Uncategorized expenses amber row */}
+              {uncatExpenses > 0 && (
+                <div className="flex justify-between items-center py-2 px-3 rounded-lg bg-amber-500/10">
+                  <div className="flex items-center gap-3">
+                    <span className="text-amber-600 text-[14px]">Uncategorized Expenses</span>
+                    <span className="text-[11px] text-amber-600 font-medium">(uncategorized)</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium text-amber-600">{formatCurrency(uncatExpenses)}</span>
+                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(uncatExpenses)}</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
+                <span>Total Controllable</span>
+                <div className="flex items-center gap-4">
+                  <span>{formatCurrency(totalControllableWithUncat)}</span>
+                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalControllableWithUncat)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 8. NON-CONTROLLABLE / FIXED */}
+          <div>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">NON-CONTROLLABLE / FIXED</h3>
+            <div className="space-y-2">
+              {fixedAccounts.map((account) => (
+                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
+                    <span>{account.account_name}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
+                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
+                <span>Total Fixed</span>
+                <div className="flex items-center gap-4">
+                  <span>{formatCurrency(totalFixed)}</span>
+                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalFixed)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 9. Total Operating Expenses */}
+          <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold text-base">
+            <span>Total Operating Expenses</span>
+            <div className="flex items-center gap-4">
+              <span>{formatCurrency(totalOperatingExpenses)}</span>
+              <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalOperatingExpenses)}</span>
+            </div>
+          </div>
+
+          {/* 10. Operating Income highlight */}
+          <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
+            <span>Operating Income</span>
+            <div className="flex items-center gap-4">
+              <span className={operatingIncome >= 0 ? 'text-success' : 'text-destructive'}>
+                {formatCurrency(operatingIncome)}
+              </span>
+              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(operatingIncome)}</span>
+            </div>
+          </div>
+
+          {/* 11. EBITDA (only if depreciation accounts exist) */}
+          {ebitda !== null && (
+            <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
+              <span>EBITDA</span>
+              <div className="flex items-center gap-4">
+                <span className={ebitda >= 0 ? 'text-success' : 'text-destructive'}>
+                  {formatCurrency(ebitda)}
+                </span>
+                <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(ebitda)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* 12. Net Income highlight */}
+          <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
             <span>Net Income</span>
-            <span className={netIncome >= 0 ? 'text-success' : 'text-destructive'}>
-              {formatCurrency(netIncome)}
-            </span>
+            <div className="flex items-center gap-4">
+              <span className={netIncome >= 0 ? 'text-success' : 'text-destructive'}>
+                {formatCurrency(netIncome)}
+              </span>
+              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(netIncome)}</span>
+            </div>
           </div>
         </div>
       </CardContent>

@@ -15,12 +15,108 @@ import type { Employee } from '@/types/scheduling';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import type { ChartAccount } from '@/hooks/useChartOfAccounts';
-
 // USAR-aligned expense grouping by account_subtype
 const LABOR_SUBTYPES = new Set(['labor', 'payroll']);
 const FIXED_SUBTYPES = new Set(['rent', 'insurance', 'depreciation']);
 // Everything else in 'expense' type that isn't labor or fixed → controllable
+
+interface LineItemProps {
+  code: string;
+  name: string;
+  amount: number;
+  pct: string;
+  formatCurrency: (n: number) => string;
+  variant?: 'default' | 'deduction' | 'liability';
+}
+
+function LineItem({ code, name, amount, pct, formatCurrency, variant = 'default' }: LineItemProps) {
+  if (variant === 'deduction') {
+    return (
+      <div className="flex justify-between items-center py-1 px-3">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-muted-foreground">{code}</span>
+          <span className="text-sm text-destructive">{name}</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-destructive">({formatCurrency(Math.abs(amount))})</span>
+          <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'liability') {
+    return (
+      <div className="flex justify-between items-center py-1">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-muted-foreground">{code}</span>
+          <span className="text-sm">{name}</span>
+          <span className="text-xs text-amber-600 font-medium">(Liability)</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-sm">{formatCurrency(amount)}</span>
+          <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-mono text-muted-foreground">{code}</span>
+        <span>{name}</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="font-medium">{formatCurrency(amount)}</span>
+        <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+      </div>
+    </div>
+  );
+}
+
+interface SubtotalRowProps {
+  label: string;
+  amount: number;
+  pct: string;
+  formatCurrency: (n: number) => string;
+  borderClass?: string;
+}
+
+function SubtotalRow({ label, amount, pct, formatCurrency, borderClass = 'border-t' }: SubtotalRowProps) {
+  return (
+    <div className={`flex justify-between items-center py-2 px-3 ${borderClass} font-semibold`}>
+      <span>{label}</span>
+      <div className="flex items-center gap-4">
+        <span>{formatCurrency(amount)}</span>
+        <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+      </div>
+    </div>
+  );
+}
+
+interface HighlightRowProps {
+  label: string;
+  amount: number;
+  pct: string;
+  formatCurrency: (n: number) => string;
+  colorBySign?: boolean;
+  className?: string;
+}
+
+function HighlightRow({ label, amount, pct, formatCurrency, colorBySign = false, className = '' }: HighlightRowProps) {
+  return (
+    <div className={`flex justify-between items-center py-3 px-3 rounded-lg font-bold text-lg ${className}`}>
+      <span>{label}</span>
+      <div className="flex items-center gap-4">
+        <span className={colorBySign ? (amount >= 0 ? 'text-success' : 'text-destructive') : ''}>
+          {formatCurrency(amount)}
+        </span>
+        <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pct}</span>
+      </div>
+    </div>
+  );
+}
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -725,16 +821,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                 <>
                   {/* Revenue Categories from POS Sales */}
                   {revenueBreakdown.revenue_categories.map((category) => (
-                    <div key={category.account_id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                        <span>{category.account_name}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-medium">{formatCurrency(category.total_amount)}</span>
-                        <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(category.total_amount)}</span>
-                      </div>
-                    </div>
+                    <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(category.total_amount)} formatCurrency={formatCurrency} />
                   ))}
 
                   {/* Uncategorized revenue amber row */}
@@ -751,53 +838,23 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                    <span>Gross Revenue</span>
-                    <div className="flex items-center gap-4">
-                      <span>{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
-                      <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(revenueBreakdown.totals.gross_revenue)}</span>
-                    </div>
-                  </div>
+                  <SubtotalRow label="Gross Revenue" amount={revenueBreakdown.totals.gross_revenue} pct={pctOfRevenue(revenueBreakdown.totals.gross_revenue)} formatCurrency={formatCurrency} />
 
                   {/* Discounts, Refunds & Comps */}
                   {(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) && (
                     <div className="mt-2">
                       <div className="text-sm text-muted-foreground mb-1 px-3">Less: Deductions</div>
                       {revenueBreakdown.discount_categories.map((category) => (
-                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                            <span className="text-sm text-red-600">{category.account_name}</span>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
-                            <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(-Math.abs(category.total_amount))}</span>
-                          </div>
-                        </div>
+                        <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(-Math.abs(category.total_amount))} formatCurrency={formatCurrency} variant="deduction" />
                       ))}
                       {revenueBreakdown.refund_categories?.map((category) => (
-                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                            <span className="text-sm text-red-600">{category.account_name}</span>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
-                            <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(-Math.abs(category.total_amount))}</span>
-                          </div>
-                        </div>
+                        <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(-Math.abs(category.total_amount))} formatCurrency={formatCurrency} variant="deduction" />
                       ))}
                     </div>
                   )}
 
                   {/* Net Revenue */}
-                  <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold">
-                    <span>Net Sales Revenue</span>
-                    <div className="flex items-center gap-4">
-                      <span>{formatCurrency(revenueBreakdown.totals.net_revenue)}</span>
-                      <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(revenueBreakdown.totals.net_revenue)}</span>
-                    </div>
-                  </div>
+                  <SubtotalRow label="Net Sales Revenue" amount={revenueBreakdown.totals.net_revenue} pct={pctOfRevenue(revenueBreakdown.totals.net_revenue)} formatCurrency={formatCurrency} borderClass="border-t-2" />
 
                   {/* Pass-Through Collections */}
                   {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
@@ -807,30 +864,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                       </div>
                       <div className="bg-muted/30 rounded-lg p-3 space-y-1">
                         {revenueBreakdown.tax_categories.map((category) => (
-                          <div key={category.account_id} className="flex justify-between items-center py-1">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                              <span className="text-sm">{category.account_name}</span>
-                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
-                              <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(category.total_amount)}</span>
-                            </div>
-                          </div>
+                          <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(category.total_amount)} formatCurrency={formatCurrency} variant="liability" />
                         ))}
                         {revenueBreakdown.tip_categories.map((category) => (
-                          <div key={category.account_id} className="flex justify-between items-center py-1">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                              <span className="text-sm">{category.account_name}</span>
-                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
-                              <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(category.total_amount)}</span>
-                            </div>
-                          </div>
+                          <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(category.total_amount)} formatCurrency={formatCurrency} variant="liability" />
                         ))}
                       </div>
                     </div>
@@ -840,24 +877,9 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                 /* Fallback to journal entries if no POS categorization */
                 <>
                   {incomeData?.revenue.map((account) => (
-                    <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                        <span>{account.account_name}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                        <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
-                      </div>
-                    </div>
+                    <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
                   ))}
-                  <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                    <span>Total Revenue</span>
-                    <div className="flex items-center gap-4">
-                      <span>{formatCurrency(totalRevenue)}</span>
-                      <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalRevenue)}</span>
-                    </div>
-                  </div>
+                  <SubtotalRow label="Total Revenue" amount={totalRevenue} pct={pctOfRevenue(totalRevenue)} formatCurrency={formatCurrency} />
                 </>
               )}
             </div>
@@ -868,88 +890,35 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             <h3 className="text-[17px] font-semibold text-foreground mb-3">COST OF GOODS SOLD</h3>
             <div className="space-y-2">
               {incomeData?.cogs.map((account) => (
-                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                    <span>{account.account_name}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
-                  </div>
-                </div>
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
               ))}
-              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total COGS</span>
-                <div className="flex items-center gap-4">
-                  <span>{formatCurrency(totalCOGS)}</span>
-                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalCOGS)}</span>
-                </div>
-              </div>
+              <SubtotalRow label="Total COGS" amount={totalCOGS} pct={pctOfRevenue(totalCOGS)} formatCurrency={formatCurrency} />
             </div>
           </div>
 
           {/* 4. Gross Profit highlight */}
-          <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
-            <span>Gross Profit</span>
-            <div className="flex items-center gap-4">
-              <span className={grossProfit >= 0 ? 'text-success' : 'text-destructive'}>
-                {formatCurrency(grossProfit)}
-              </span>
-              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(grossProfit)}</span>
-            </div>
-          </div>
+          <HighlightRow label="Gross Profit" amount={grossProfit} pct={pctOfRevenue(grossProfit)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
 
           {/* 5. LABOR COSTS */}
           <div>
             <h3 className="text-[17px] font-semibold text-foreground mb-3">LABOR COSTS</h3>
             <div className="space-y-2">
               {laborAccounts.map((account) => (
-                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                    <span>{account.account_name}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
-                  </div>
-                </div>
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
               ))}
-              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total Labor</span>
-                <div className="flex items-center gap-4">
-                  <span>{formatCurrency(totalLabor)}</span>
-                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalLabor)}</span>
-                </div>
-              </div>
+              <SubtotalRow label="Total Labor" amount={totalLabor} pct={pctOfRevenue(totalLabor)} formatCurrency={formatCurrency} />
             </div>
           </div>
 
           {/* 6. PRIME COST highlight */}
-          <div className="flex justify-between items-center py-3 px-3 rounded-lg font-bold text-lg bg-amber-500/5 border border-amber-500/10">
-            <span>Prime Cost (COGS + Labor)</span>
-            <div className="flex items-center gap-4">
-              <span>{formatCurrency(primeCost)}</span>
-              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(primeCost)}</span>
-            </div>
-          </div>
+          <HighlightRow label="Prime Cost (COGS + Labor)" amount={primeCost} pct={pctOfRevenue(primeCost)} formatCurrency={formatCurrency} className="bg-amber-500/5 border border-amber-500/10" />
 
           {/* 7. CONTROLLABLE EXPENSES */}
           <div>
             <h3 className="text-[17px] font-semibold text-foreground mb-3">CONTROLLABLE EXPENSES</h3>
             <div className="space-y-2">
               {controllableAccounts.map((account) => (
-                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                    <span>{account.account_name}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
-                  </div>
-                </div>
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
               ))}
               {/* Uncategorized expenses amber row */}
               {uncatExpenses > 0 && (
@@ -964,13 +933,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                   </div>
                 </div>
               )}
-              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total Controllable</span>
-                <div className="flex items-center gap-4">
-                  <span>{formatCurrency(totalControllableWithUncat)}</span>
-                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalControllableWithUncat)}</span>
-                </div>
-              </div>
+              <SubtotalRow label="Total Controllable" amount={totalControllableWithUncat} pct={pctOfRevenue(totalControllableWithUncat)} formatCurrency={formatCurrency} />
             </div>
           </div>
 
@@ -979,70 +942,25 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
             <h3 className="text-[17px] font-semibold text-foreground mb-3">NON-CONTROLLABLE / FIXED</h3>
             <div className="space-y-2">
               {fixedAccounts.map((account) => (
-                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                    <span>{account.account_name}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(account.current_balance)}</span>
-                  </div>
-                </div>
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
               ))}
-              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total Fixed</span>
-                <div className="flex items-center gap-4">
-                  <span>{formatCurrency(totalFixed)}</span>
-                  <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalFixed)}</span>
-                </div>
-              </div>
+              <SubtotalRow label="Total Fixed" amount={totalFixed} pct={pctOfRevenue(totalFixed)} formatCurrency={formatCurrency} />
             </div>
           </div>
 
           {/* 9. Total Operating Expenses */}
-          <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold text-base">
-            <span>Total Operating Expenses</span>
-            <div className="flex items-center gap-4">
-              <span>{formatCurrency(totalOperatingExpenses)}</span>
-              <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(totalOperatingExpenses)}</span>
-            </div>
-          </div>
+          <SubtotalRow label="Total Operating Expenses" amount={totalOperatingExpenses} pct={pctOfRevenue(totalOperatingExpenses)} formatCurrency={formatCurrency} borderClass="border-t-2 text-base" />
 
           {/* 10. Operating Income highlight */}
-          <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
-            <span>Operating Income</span>
-            <div className="flex items-center gap-4">
-              <span className={operatingIncome >= 0 ? 'text-success' : 'text-destructive'}>
-                {formatCurrency(operatingIncome)}
-              </span>
-              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(operatingIncome)}</span>
-            </div>
-          </div>
+          <HighlightRow label="Operating Income" amount={operatingIncome} pct={pctOfRevenue(operatingIncome)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
 
           {/* 11. EBITDA (only if depreciation accounts exist) */}
           {ebitda !== null && (
-            <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
-              <span>EBITDA</span>
-              <div className="flex items-center gap-4">
-                <span className={ebitda >= 0 ? 'text-success' : 'text-destructive'}>
-                  {formatCurrency(ebitda)}
-                </span>
-                <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(ebitda)}</span>
-              </div>
-            </div>
+            <HighlightRow label="EBITDA" amount={ebitda} pct={pctOfRevenue(ebitda)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
           )}
 
           {/* 12. Net Income highlight */}
-          <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
-            <span>Net Income</span>
-            <div className="flex items-center gap-4">
-              <span className={netIncome >= 0 ? 'text-success' : 'text-destructive'}>
-                {formatCurrency(netIncome)}
-              </span>
-              <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pctOfRevenue(netIncome)}</span>
-            </div>
-          </div>
+          <HighlightRow label="Net Income" amount={netIncome} pct={pctOfRevenue(netIncome)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
         </div>
       </CardContent>
     </Card>

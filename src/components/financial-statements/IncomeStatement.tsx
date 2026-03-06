@@ -535,7 +535,8 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     csvRows.push(['']);
     csvRows.push(['', 'Net Income', String(netIncome), pctOfRevenue(netIncome)]);
 
-    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    const escapeCSV = (val: string) => (val.includes(',') || val.includes('"')) ? `"${val.replace(/"/g, '""')}"` : val;
+    const csvContent = csvRows.map(row => row.map(escapeCSV).join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);

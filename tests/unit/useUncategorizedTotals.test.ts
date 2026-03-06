@@ -90,9 +90,7 @@ describe('fetchUncategorizedTotals', () => {
     });
   });
 
-  it('warns on errors but still returns partial data', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+  it('throws on query errors so React Query can handle retries', async () => {
     outflowMock = createChainableMock({
       data: null,
       error: { message: 'db error' },
@@ -102,13 +100,7 @@ describe('fetchUncategorizedTotals', () => {
       error: null,
     });
 
-    const result = await fetchUncategorizedTotals('rest-1', '2026-01-01', '2026-01-31');
-
-    expect(warnSpy).toHaveBeenCalledOnce();
-    expect(result.uncategorizedInflows).toBe(500);
-    expect(result.uncategorizedOutflows).toBe(0);
-    expect(result.uncategorizedCount).toBe(2);
-
-    warnSpy.mockRestore();
+    await expect(fetchUncategorizedTotals('rest-1', '2026-01-01', '2026-01-31'))
+      .rejects.toThrow('Failed to fetch uncategorized outflows: db error');
   });
 });

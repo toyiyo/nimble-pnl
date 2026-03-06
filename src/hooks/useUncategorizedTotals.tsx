@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface UncategorizedTotals {
@@ -33,7 +34,7 @@ export async function fetchUncategorizedTotals(
     .lte('transaction_date', toStr)
     .maybeSingle();
 
-  if (outErr) console.warn('Failed to fetch uncategorized outflows:', outErr);
+  if (outErr) throw new Error(`Failed to fetch uncategorized outflows: ${outErr.message}`);
 
   // Inflows (revenue) — amount > 0, no category
   const { data: inData, error: inErr } = await supabase
@@ -48,7 +49,7 @@ export async function fetchUncategorizedTotals(
     .lte('transaction_date', toStr)
     .maybeSingle();
 
-  if (inErr) console.warn('Failed to fetch uncategorized inflows:', inErr);
+  if (inErr) throw new Error(`Failed to fetch uncategorized inflows: ${inErr.message}`);
 
   const outTotal = Math.abs(Number(outData?.total) || 0);
   const outCount = Number(outData?.count) || 0;
@@ -67,8 +68,8 @@ export function useUncategorizedTotals(
   dateFrom: Date,
   dateTo: Date,
 ) {
-  const fromStr = dateFrom.toISOString().split('T')[0];
-  const toStr = dateTo.toISOString().split('T')[0];
+  const fromStr = format(dateFrom, 'yyyy-MM-dd');
+  const toStr = format(dateTo, 'yyyy-MM-dd');
 
   const { data, isLoading } = useQuery({
     queryKey: ['uncategorized-totals', restaurantId, fromStr, toStr],

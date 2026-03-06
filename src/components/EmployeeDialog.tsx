@@ -231,7 +231,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     }
   };
 
-  const insertCompensationHistoryEntry = async (params: {
+  const upsertCompensationHistoryEntry = async (params: {
     employeeId: string;
     payload: CompensationHistoryPayload | null;
     effectiveDate: string;
@@ -264,7 +264,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       const newEmployee = await createEmployee.mutateAsync(employeePayload);
 
       try {
-        await insertCompensationHistoryEntry({
+        await upsertCompensationHistoryEntry({
           employeeId: newEmployee.id,
           payload: historyPayload,
           effectiveDate: historyEffectiveDate,
@@ -483,7 +483,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setSavingCompHistory(true);
     try {
       await updateEmployee.mutateAsync(pendingCompChange.updatePayload);
-      await insertCompensationHistoryEntry({
+      await upsertCompensationHistoryEntry({
         employeeId: pendingCompChange.employeeId,
         payload: pendingCompChange.historyPayload,
         effectiveDate,

@@ -21,45 +21,33 @@ export async function fetchUncategorizedTotals(
 ): Promise<UncategorizedTotals> {
   if (!restaurantId) return EMPTY;
 
-  // Outflows (expenses) — amount < 0, no category
-  const { data: outData, error: outErr } = await supabase
+  // Fetch all uncategorized, non-transfer transactions in date range
+  const { data, error } = await supabase
     .from('bank_transactions')
-    .select('total:amount.sum(), count:amount.count()')
+    .select('amount')
     .eq('restaurant_id', restaurantId)
     .is('category_id', null)
     .eq('is_transfer', false)
     .in('status', ['posted', 'pending'])
-    .lt('amount', 0)
     .gte('transaction_date', fromStr)
-    .lte('transaction_date', toStr)
-    .maybeSingle();
+    .lte('transaction_date', toStr);
 
-  if (outErr) throw new Error(`Failed to fetch uncategorized outflows: ${outErr.message}`);
+  if (error) throw new Error(`Failed to fetch uncategorized transactions: ${error.message}`);
 
-  // Inflows (revenue) — amount > 0, no category
-  const { data: inData, error: inErr } = await supabase
-    .from('bank_transactions')
-    .select('total:amount.sum(), count:amount.count()')
-    .eq('restaurant_id', restaurantId)
-    .is('category_id', null)
-    .eq('is_transfer', false)
-    .in('status', ['posted', 'pending'])
-    .gt('amount', 0)
-    .gte('transaction_date', fromStr)
-    .lte('transaction_date', toStr)
-    .maybeSingle();
+  let inflows = 0;
+  let outflows = 0;
+  const rows = data || [];
 
-  if (inErr) throw new Error(`Failed to fetch uncategorized inflows: ${inErr.message}`);
-
-  const outTotal = Math.abs(Number(outData?.total) || 0);
-  const outCount = Number(outData?.count) || 0;
-  const inTotal = Number(inData?.total) || 0;
-  const inCount = Number(inData?.count) || 0;
+  for (const row of rows) {
+    const amt = Number(row.amount) || 0;
+    if (amt > 0) inflows += amt;
+    else if (amt < 0) outflows += Math.abs(amt);
+  }
 
   return {
-    uncategorizedInflows: inTotal,
-    uncategorizedOutflows: outTotal,
-    uncategorizedCount: outCount + inCount,
+    uncategorizedInflows: inflows,
+    uncategorizedOutflows: outflows,
+    uncategorizedCount: rows.length,
   };
 }
 

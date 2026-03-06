@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -8,12 +9,114 @@ import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
+import { useUncategorizedTotals } from '@/hooks/useUncategorizedTotals';
 import { calculateSalaryForPeriod, calculateContractorPayForPeriod } from '@/utils/compensationCalculations';
 import type { Employee } from '@/types/scheduling';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import type { ChartAccount } from '@/hooks/useChartOfAccounts';
+// USAR-aligned expense grouping by account_subtype
+const LABOR_SUBTYPES = new Set(['labor', 'payroll']);
+const FIXED_SUBTYPES = new Set(['rent', 'insurance', 'depreciation']);
+// Everything else in 'expense' type that isn't labor or fixed → controllable
+
+interface LineItemProps {
+  code: string;
+  name: string;
+  amount: number;
+  pct: string;
+  formatCurrency: (n: number) => string;
+  variant?: 'default' | 'deduction' | 'liability';
+}
+
+function LineItem({ code, name, amount, pct, formatCurrency, variant = 'default' }: LineItemProps) {
+  if (variant === 'deduction') {
+    return (
+      <div className="flex justify-between items-center py-1 px-3">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-muted-foreground">{code}</span>
+          <span className="text-sm text-destructive">{name}</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-destructive">({formatCurrency(Math.abs(amount))})</span>
+          <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'liability') {
+    return (
+      <div className="flex justify-between items-center py-1">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-mono text-muted-foreground">{code}</span>
+          <span className="text-sm">{name}</span>
+          <span className="text-xs text-amber-600 font-medium">(Liability)</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="font-medium text-sm">{formatCurrency(amount)}</span>
+          <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-mono text-muted-foreground">{code}</span>
+        <span>{name}</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <span className="font-medium">{formatCurrency(amount)}</span>
+        <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+      </div>
+    </div>
+  );
+}
+
+interface SubtotalRowProps {
+  label: string;
+  amount: number;
+  pct: string;
+  formatCurrency: (n: number) => string;
+  borderClass?: string;
+}
+
+function SubtotalRow({ label, amount, pct, formatCurrency, borderClass = 'border-t' }: SubtotalRowProps) {
+  return (
+    <div className={`flex justify-between items-center py-2 px-3 ${borderClass} font-semibold`}>
+      <span>{label}</span>
+      <div className="flex items-center gap-4">
+        <span>{formatCurrency(amount)}</span>
+        <span className="text-xs text-muted-foreground w-14 text-right">{pct}</span>
+      </div>
+    </div>
+  );
+}
+
+interface HighlightRowProps {
+  label: string;
+  amount: number;
+  pct: string;
+  formatCurrency: (n: number) => string;
+  colorBySign?: boolean;
+  className?: string;
+}
+
+function HighlightRow({ label, amount, pct, formatCurrency, colorBySign = false, className = '' }: HighlightRowProps) {
+  return (
+    <div className={`flex justify-between items-center py-3 px-3 rounded-lg font-bold text-lg ${className}`}>
+      <span>{label}</span>
+      <div className="flex items-center gap-4">
+        <span className={colorBySign ? (amount >= 0 ? 'text-success' : 'text-destructive') : ''}>
+          {formatCurrency(amount)}
+        </span>
+        <span className="text-xs text-muted-foreground w-14 text-right font-medium">{pct}</span>
+      </div>
+    </div>
+  );
+}
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -31,13 +134,12 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   today.setHours(23, 59, 59, 999);
   const periodIncludesFuture = dateTo > today;
 
-  // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
+  // Merge inventory usage into COGS accounts (additive — always adds if inventory COGS > 0)
   const mergeInventoryCOGS = <T extends { current_balance?: number }>(
     cogsAccounts: T[],
     inventoryUsageTotal: number
   ): T[] => {
-    const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
-    if (existingCOGSTotal > 0 || inventoryUsageTotal <= 0) return cogsAccounts;
+    if (inventoryUsageTotal <= 0) return cogsAccounts;
 
     return [
       ...cogsAccounts,
@@ -63,6 +165,8 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
   // Unified COGS from inventory tracking, financials, or both (per restaurant settings)
   const unifiedCOGS = useUnifiedCOGS(restaurantId, dateFrom, dateTo);
+  const uncategorized = useUncategorizedTotals(restaurantId, dateFrom, dateTo);
+  const navigate = useNavigate();
 
   // Fetch restaurant name for exports
   const { data: restaurant } = useQuery({
@@ -149,12 +253,8 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         };
       }) || [];
 
-      // If no journaled COGS and not in GL-only mode, use unified COGS
-      const totalJournalCOGS = accountsWithBalances
-        .filter(a => a.account_type === 'cogs')
-        .reduce((sum, acc) => sum + acc.current_balance, 0);
-
-      if (!glOnly && totalJournalCOGS === 0 && unifiedCOGS.totalCOGS > 0) {
+      // Add inventory COGS (additive with any journaled COGS)
+      if (!glOnly && unifiedCOGS.totalCOGS > 0) {
         const mergedCogs = mergeInventoryCOGS(
           accountsWithBalances.filter(a => a.account_type === 'cogs'),
           unifiedCOGS.totalCOGS
@@ -251,7 +351,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
               account_code: 'PAYROLL-EXP',
               account_name: 'Payroll Expense (unposted)',
               account_type: 'expense' as const,
-              account_subtype: 'operating_expenses' as const,
+              account_subtype: 'payroll' as const,
               normal_balance: 'debit',
               current_balance: payrollFallback,
             },
@@ -282,99 +382,166 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     }).format(amount);
   };
 
+  // Group expenses by USAR category
+  const laborAccounts = incomeData?.expenses.filter(a => LABOR_SUBTYPES.has(a.account_subtype)) || [];
+  const fixedAccounts = incomeData?.expenses.filter(a => FIXED_SUBTYPES.has(a.account_subtype)) || [];
+  const controllableAccounts = incomeData?.expenses.filter(a =>
+    !LABOR_SUBTYPES.has(a.account_subtype) && !FIXED_SUBTYPES.has(a.account_subtype)
+  ) || [];
+
+  const totalLabor = laborAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+  const totalControllable = controllableAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+  const totalFixed = fixedAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+
+  // Include uncategorized amounts (not in GL-only mode)
+  const uncatExpenses = glOnly ? 0 : uncategorized.uncategorizedOutflows;
+  const uncatRevenue = glOnly ? 0 : (revenueBreakdown?.uncategorized_revenue || 0);
+
+  // Core totals
   const totalRevenue = incomeData?.revenue.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalCOGS = incomeData?.cogs.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  const totalExpenses = incomeData?.expenses.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  
-  // Use revenue breakdown data if available, otherwise fall back to journal entries
-  const effectiveRevenue = (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) 
-    ? revenueBreakdown.totals.net_revenue 
+  const totalExpenses = totalLabor + totalControllable + totalFixed + uncatExpenses;
+
+  const effectiveRevenue = (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0)
+    ? revenueBreakdown.totals.net_revenue
     : totalRevenue;
-  
+
+  // USAR subtotals
   const grossProfit = effectiveRevenue - totalCOGS;
+  const primeCost = totalCOGS + totalLabor;
+  const totalControllableWithUncat = totalControllable + uncatExpenses;
+  const totalOperatingExpenses = totalLabor + totalControllableWithUncat + totalFixed;
+  const operatingIncome = grossProfit - totalOperatingExpenses;
+
+  // EBITDA: only meaningful if depreciation/amortization accounts exist
+  const depreciationTotal = fixedAccounts
+    .filter(a => a.account_subtype === 'depreciation')
+    .reduce((sum, acc) => sum + acc.current_balance, 0);
+  const amortizationTotal = fixedAccounts
+    .filter(a => a.account_subtype === 'amortization')
+    .reduce((sum, acc) => sum + acc.current_balance, 0);
+  const depAndAmort = depreciationTotal + amortizationTotal;
+  const ebitda = depAndAmort > 0 ? operatingIncome + depAndAmort : null;
+
   const netIncome = grossProfit - totalExpenses;
 
+  // % of revenue helper
+  const pctOfRevenue = (amount: number) =>
+    effectiveRevenue > 0 ? ((amount / effectiveRevenue) * 100).toFixed(1) + '%' : '—';
+
   const handleExportCSV = () => {
-    const csvRows = [
+    if (!incomeData) return;
+    const csvRows: string[][] = [
       ['Income Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
+      ['', '', 'Amount', '% of Revenue'],
       [''],
     ];
-    
+
     // Revenue Section - Use revenueBreakdown if available, otherwise fall back to incomeData
     if (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) {
       csvRows.push(['REVENUE']);
-      
-      // Revenue Categories from POS Sales
+
       revenueBreakdown.revenue_categories.forEach((category) => {
-        csvRows.push([category.account_code, category.account_name, String(category.total_amount)]);
+        csvRows.push([category.account_code, category.account_name, String(category.total_amount), pctOfRevenue(category.total_amount)]);
       });
-      
-      csvRows.push(['', 'Gross Revenue', String(revenueBreakdown.totals.gross_revenue)]);
-      
-      // Discounts, Refunds & Comps
+
+      if (uncatRevenue > 0) {
+        csvRows.push(['', 'Uncategorized Revenue', String(uncatRevenue), pctOfRevenue(uncatRevenue)]);
+      }
+
+      csvRows.push(['', 'Gross Revenue', String(revenueBreakdown.totals.gross_revenue), pctOfRevenue(revenueBreakdown.totals.gross_revenue)]);
+
       if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
         csvRows.push(['']);
         csvRows.push(['Less: Deductions']);
-        
+
         revenueBreakdown.discount_categories.forEach((category) => {
-          csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount))]);
+          csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount)), pctOfRevenue(-Math.abs(category.total_amount))]);
         });
-        
+
         if (revenueBreakdown.refund_categories) {
           revenueBreakdown.refund_categories.forEach((category) => {
-            csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount))]);
+            csvRows.push([category.account_code, category.account_name, String(-Math.abs(category.total_amount)), pctOfRevenue(-Math.abs(category.total_amount))]);
           });
         }
       }
-      
-      // Net Revenue
-      csvRows.push(['', 'Net Sales Revenue', String(revenueBreakdown.totals.net_revenue)]);
-      
-      // Pass-Through Collections (if any)
+
+      csvRows.push(['', 'Net Sales Revenue', String(revenueBreakdown.totals.net_revenue), pctOfRevenue(revenueBreakdown.totals.net_revenue)]);
+
       if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
         csvRows.push(['']);
         csvRows.push(['OTHER COLLECTIONS (Pass-Through)']);
-        
+
         revenueBreakdown.tax_categories.forEach((category) => {
-          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount)]);
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount), pctOfRevenue(category.total_amount)]);
         });
-        
+
         revenueBreakdown.tip_categories.forEach((category) => {
-          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount)]);
+          csvRows.push([category.account_code, `${category.account_name} (Liability)`, String(category.total_amount), pctOfRevenue(category.total_amount)]);
         });
       }
     } else {
-      // Fallback to journal entries if no POS categorization
       csvRows.push(['Revenue']);
-      incomeData!.revenue.forEach(acc => {
-        csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
+      incomeData.revenue.forEach(acc => {
+        csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
       });
-      csvRows.push(['', 'Total Revenue', String(totalRevenue)]);
+      csvRows.push(['', 'Total Revenue', String(totalRevenue), pctOfRevenue(totalRevenue)]);
     }
-    
+
     csvRows.push(['']);
-    
+
     // COGS Section
-    csvRows.push(['Cost of Goods Sold']);
-    incomeData!.cogs.forEach(acc => {
-      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
+    csvRows.push(['COST OF GOODS SOLD']);
+    incomeData.cogs.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
     });
-    csvRows.push(['', 'Total COGS', String(totalCOGS)]);
+    csvRows.push(['', 'Total COGS', String(totalCOGS), pctOfRevenue(totalCOGS)]);
     csvRows.push(['']);
-    csvRows.push(['', 'Gross Profit', String(grossProfit)]);
+    csvRows.push(['', 'Gross Profit', String(grossProfit), pctOfRevenue(grossProfit)]);
     csvRows.push(['']);
-    
-    // Expenses Section
-    csvRows.push(['Operating Expenses']);
-    incomeData!.expenses.forEach(acc => {
-      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance)]);
+
+    // Labor Section
+    csvRows.push(['LABOR COSTS']);
+    laborAccounts.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
     });
-    csvRows.push(['', 'Total Expenses', String(totalExpenses)]);
+    csvRows.push(['', 'Total Labor', String(totalLabor), pctOfRevenue(totalLabor)]);
     csvRows.push(['']);
-    csvRows.push(['', 'Net Income', String(netIncome)]);
-    
-    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    csvRows.push(['', 'Prime Cost (COGS + Labor)', String(primeCost), pctOfRevenue(primeCost)]);
+    csvRows.push(['']);
+
+    // Controllable Expenses Section
+    csvRows.push(['CONTROLLABLE EXPENSES']);
+    controllableAccounts.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
+    });
+    if (uncatExpenses > 0) {
+      csvRows.push(['', 'Uncategorized Expenses', String(uncatExpenses), pctOfRevenue(uncatExpenses)]);
+    }
+    csvRows.push(['', 'Total Controllable', String(totalControllableWithUncat), pctOfRevenue(totalControllableWithUncat)]);
+    csvRows.push(['']);
+
+    // Fixed Expenses Section
+    csvRows.push(['NON-CONTROLLABLE / FIXED']);
+    fixedAccounts.forEach(acc => {
+      csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
+    });
+    csvRows.push(['', 'Total Fixed', String(totalFixed), pctOfRevenue(totalFixed)]);
+    csvRows.push(['']);
+
+    csvRows.push(['', 'Total Operating Expenses', String(totalOperatingExpenses), pctOfRevenue(totalOperatingExpenses)]);
+    csvRows.push(['', 'Operating Income', String(operatingIncome), pctOfRevenue(operatingIncome)]);
+
+    if (ebitda !== null) {
+      csvRows.push(['', 'EBITDA', String(ebitda), pctOfRevenue(ebitda)]);
+    }
+
+    csvRows.push(['']);
+    csvRows.push(['', 'Net Income', String(netIncome), pctOfRevenue(netIncome)]);
+
+    const escapeCSV = (val: string) => (val.includes(',') || val.includes('"')) ? `"${val.replace(/"/g, '""')}"` : val;
+    const csvContent = csvRows.map(row => row.map(escapeCSV).join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -399,112 +566,170 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   };
 
   const handleExportPDF = () => {
+    if (!incomeData) return;
     const data = [];
-    
-    // Revenue Section - Use revenueBreakdown if available, otherwise fall back to incomeData
+
+    // Revenue Section
     if (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) {
       data.push({ label: 'REVENUE', amount: undefined, isBold: true });
-      
-      // Revenue Categories from POS Sales
+
       revenueBreakdown.revenue_categories.forEach((category) => {
         data.push({
           label: `${category.account_code} - ${category.account_name}`,
           amount: category.total_amount,
           indent: 1,
+          pct: pctOfRevenue(category.total_amount),
         });
       });
-      
-      data.push({ label: 'Gross Revenue', amount: revenueBreakdown.totals.gross_revenue, isSubtotal: true });
-      
-      // Discounts, Refunds & Comps
+
+      if (uncatRevenue > 0) {
+        data.push({
+          label: 'Uncategorized Revenue',
+          amount: uncatRevenue,
+          indent: 1,
+          pct: pctOfRevenue(uncatRevenue),
+        });
+      }
+
+      data.push({ label: 'Gross Revenue', amount: revenueBreakdown.totals.gross_revenue, isSubtotal: true, pct: pctOfRevenue(revenueBreakdown.totals.gross_revenue) });
+
       if (revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) {
         data.push({ label: '', amount: undefined });
         data.push({ label: 'Less: Deductions', amount: undefined, isBold: true });
-        
+
         revenueBreakdown.discount_categories.forEach((category) => {
           data.push({
             label: `${category.account_code} - ${category.account_name}`,
             amount: -Math.abs(category.total_amount),
             indent: 1,
+            pct: pctOfRevenue(-Math.abs(category.total_amount)),
           });
         });
-        
+
         if (revenueBreakdown.refund_categories) {
           revenueBreakdown.refund_categories.forEach((category) => {
             data.push({
               label: `${category.account_code} - ${category.account_name}`,
               amount: -Math.abs(category.total_amount),
               indent: 1,
+              pct: pctOfRevenue(-Math.abs(category.total_amount)),
             });
           });
         }
       }
-      
-      // Net Revenue
-      data.push({ label: 'Net Sales Revenue', amount: revenueBreakdown.totals.net_revenue, isSubtotal: true });
-      
-      // Pass-Through Collections (if any)
+
+      data.push({ label: 'Net Sales Revenue', amount: revenueBreakdown.totals.net_revenue, isSubtotal: true, pct: pctOfRevenue(revenueBreakdown.totals.net_revenue) });
+
       if (revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) {
         data.push({ label: '', amount: undefined });
         data.push({ label: 'OTHER COLLECTIONS (Pass-Through)', amount: undefined, isBold: true });
-        
+
         revenueBreakdown.tax_categories.forEach((category) => {
           data.push({
             label: `${category.account_code} - ${category.account_name} (Liability)`,
             amount: category.total_amount,
             indent: 1,
+            pct: pctOfRevenue(category.total_amount),
           });
         });
-        
+
         revenueBreakdown.tip_categories.forEach((category) => {
           data.push({
             label: `${category.account_code} - ${category.account_name} (Liability)`,
             amount: category.total_amount,
             indent: 1,
+            pct: pctOfRevenue(category.total_amount),
           });
         });
       }
     } else {
-      // Fallback to journal entries if no POS categorization
       data.push({ label: 'REVENUE', amount: undefined, isBold: true });
-      incomeData!.revenue.forEach(acc => {
+      incomeData.revenue.forEach(acc => {
         data.push({
           label: `${acc.account_code} - ${acc.account_name}`,
           amount: acc.current_balance,
           indent: 1,
+          pct: pctOfRevenue(acc.current_balance),
         });
       });
-      data.push({ label: 'Total Revenue', amount: totalRevenue, isSubtotal: true });
+      data.push({ label: 'Total Revenue', amount: totalRevenue, isSubtotal: true, pct: pctOfRevenue(totalRevenue) });
     }
-    
+
     data.push({ label: '', amount: undefined });
-    
+
     // COGS Section
-    data.push({ label: 'Cost of Goods Sold', amount: undefined, isBold: true });
-    incomeData!.cogs.forEach(acc => {
+    data.push({ label: 'COST OF GOODS SOLD', amount: undefined, isBold: true });
+    incomeData.cogs.forEach(acc => {
       data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,
         indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
       });
     });
-    data.push({ label: 'Total COGS', amount: totalCOGS, isSubtotal: true });
+    data.push({ label: 'Total COGS', amount: totalCOGS, isSubtotal: true, pct: pctOfRevenue(totalCOGS) });
     data.push({ label: '', amount: undefined });
-    data.push({ label: 'Gross Profit', amount: grossProfit, isTotal: true });
+    data.push({ label: 'Gross Profit', amount: grossProfit, isTotal: true, pct: pctOfRevenue(grossProfit) });
     data.push({ label: '', amount: undefined });
-    
-    // Expenses Section
-    data.push({ label: 'Operating Expenses', amount: undefined, isBold: true });
-    incomeData!.expenses.forEach(acc => {
+
+    // Labor Section
+    data.push({ label: 'LABOR COSTS', amount: undefined, isBold: true });
+    laborAccounts.forEach(acc => {
       data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,
         indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
       });
     });
-    data.push({ label: 'Total Expenses', amount: totalExpenses, isSubtotal: true });
+    data.push({ label: 'Total Labor', amount: totalLabor, isSubtotal: true, pct: pctOfRevenue(totalLabor) });
     data.push({ label: '', amount: undefined });
-    data.push({ label: 'Net Income', amount: netIncome, isTotal: true });
+    data.push({ label: 'Prime Cost (COGS + Labor)', amount: primeCost, isTotal: true, pct: pctOfRevenue(primeCost) });
+    data.push({ label: '', amount: undefined });
+
+    // Controllable Expenses Section
+    data.push({ label: 'CONTROLLABLE EXPENSES', amount: undefined, isBold: true });
+    controllableAccounts.forEach(acc => {
+      data.push({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
+      });
+    });
+    if (uncatExpenses > 0) {
+      data.push({
+        label: 'Uncategorized Expenses',
+        amount: uncatExpenses,
+        indent: 1,
+        pct: pctOfRevenue(uncatExpenses),
+      });
+    }
+    data.push({ label: 'Total Controllable', amount: totalControllableWithUncat, isSubtotal: true, pct: pctOfRevenue(totalControllableWithUncat) });
+    data.push({ label: '', amount: undefined });
+
+    // Fixed Expenses Section
+    data.push({ label: 'NON-CONTROLLABLE / FIXED', amount: undefined, isBold: true });
+    fixedAccounts.forEach(acc => {
+      data.push({
+        label: `${acc.account_code} - ${acc.account_name}`,
+        amount: acc.current_balance,
+        indent: 1,
+        pct: pctOfRevenue(acc.current_balance),
+      });
+    });
+    data.push({ label: 'Total Fixed', amount: totalFixed, isSubtotal: true, pct: pctOfRevenue(totalFixed) });
+    data.push({ label: '', amount: undefined });
+
+    data.push({ label: 'Total Operating Expenses', amount: totalOperatingExpenses, isSubtotal: true, pct: pctOfRevenue(totalOperatingExpenses) });
+    data.push({ label: 'Operating Income', amount: operatingIncome, isTotal: true, pct: pctOfRevenue(operatingIncome) });
+
+    if (ebitda !== null) {
+      data.push({ label: 'EBITDA', amount: ebitda, isTotal: true, pct: pctOfRevenue(ebitda) });
+    }
+
+    data.push({ label: '', amount: undefined });
+    data.push({ label: 'Net Income', amount: netIncome, isTotal: true, pct: pctOfRevenue(netIncome) });
 
     const filename = generateStandardFilename(
       'income-statement',
@@ -527,7 +752,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     });
   };
 
-  if (isLoading || revenueLoading || unifiedCOGS.isLoading) {
+  if (isLoading || revenueLoading || unifiedCOGS.isLoading || uncategorized.isLoading) {
     return (
       <Card>
         <CardContent className="pt-6 flex items-center justify-center py-12">
@@ -575,60 +800,68 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
-          {/* Revenue Section - Enhanced with POS Sales Breakdown */}
+          {/* 1. Completeness Banner */}
+          {!glOnly && uncategorized.uncategorizedCount > 0 && (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                <span className="text-[13px] text-amber-700">
+                  <strong>{uncategorized.uncategorizedCount}</strong> transactions ({formatCurrency(uncategorized.uncategorizedOutflows + uncategorized.uncategorizedInflows)}) are uncategorized.
+                  Uncategorized amounts are included in totals below.
+                </span>
+              </div>
+              <button
+                onClick={() => navigate('/transactions')}
+                className="text-[13px] font-medium text-amber-700 hover:text-amber-900 underline whitespace-nowrap"
+                aria-label="Review uncategorized transactions"
+              >
+                Review Transactions
+              </button>
+            </div>
+          )}
+
+          {/* 2. REVENUE */}
           <div>
-            <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-              <div className="h-1 w-8 bg-gradient-to-r from-green-500 to-emerald-600 rounded-full" />
-              REVENUE
-            </h3>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">REVENUE</h3>
             <div className="space-y-2">
               {revenueBreakdown && revenueBreakdown.revenue_categories.length > 0 ? (
                 <>
                   {/* Revenue Categories from POS Sales */}
                   {revenueBreakdown.revenue_categories.map((category) => (
-                    <div key={category.account_id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                        <span>{category.account_name}</span>
-                      </div>
-                      <span className="font-medium">{formatCurrency(category.total_amount)}</span>
-                    </div>
+                    <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(category.total_amount)} formatCurrency={formatCurrency} />
                   ))}
-                  <div className="flex justify-between items-center py-2 px-3 border-t text-sm">
-                    <span>Gross Revenue</span>
-                    <span className="font-semibold">{formatCurrency(revenueBreakdown.totals.gross_revenue)}</span>
-                  </div>
+
+                  {/* Uncategorized revenue amber row */}
+                  {uncatRevenue > 0 && (
+                    <div className="flex justify-between items-center py-2 px-3 rounded-lg bg-amber-500/10">
+                      <div className="flex items-center gap-3">
+                        <span className="text-amber-600 text-[14px]">Uncategorized Revenue</span>
+                        <span className="text-[11px] text-amber-600 font-medium">(uncategorized)</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium text-amber-600">{formatCurrency(uncatRevenue)}</span>
+                        <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(uncatRevenue)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <SubtotalRow label="Gross Revenue" amount={revenueBreakdown.totals.gross_revenue} pct={pctOfRevenue(revenueBreakdown.totals.gross_revenue)} formatCurrency={formatCurrency} />
 
                   {/* Discounts, Refunds & Comps */}
                   {(revenueBreakdown.discount_categories.length > 0 || revenueBreakdown.refund_categories?.length > 0) && (
                     <div className="mt-2">
                       <div className="text-sm text-muted-foreground mb-1 px-3">Less: Deductions</div>
                       {revenueBreakdown.discount_categories.map((category) => (
-                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                            <span className="text-sm text-red-600">{category.account_name}</span>
-                          </div>
-                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
-                        </div>
+                        <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(-Math.abs(category.total_amount))} formatCurrency={formatCurrency} variant="deduction" />
                       ))}
                       {revenueBreakdown.refund_categories?.map((category) => (
-                        <div key={category.account_id} className="flex justify-between items-center py-1 px-3">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                            <span className="text-sm text-red-600">{category.account_name}</span>
-                          </div>
-                          <span className="font-medium text-red-600">({formatCurrency(Math.abs(category.total_amount))})</span>
-                        </div>
+                        <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(-Math.abs(category.total_amount))} formatCurrency={formatCurrency} variant="deduction" />
                       ))}
                     </div>
                   )}
 
                   {/* Net Revenue */}
-                  <div className="flex justify-between items-center py-2 px-3 border-t-2 font-semibold">
-                    <span>Net Sales Revenue</span>
-                    <span>{formatCurrency(revenueBreakdown.totals.net_revenue)}</span>
-                  </div>
+                  <SubtotalRow label="Net Sales Revenue" amount={revenueBreakdown.totals.net_revenue} pct={pctOfRevenue(revenueBreakdown.totals.net_revenue)} formatCurrency={formatCurrency} borderClass="border-t-2" />
 
                   {/* Pass-Through Collections */}
                   {(revenueBreakdown.totals.sales_tax > 0 || revenueBreakdown.totals.tips > 0) && (
@@ -638,24 +871,10 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                       </div>
                       <div className="bg-muted/30 rounded-lg p-3 space-y-1">
                         {revenueBreakdown.tax_categories.map((category) => (
-                          <div key={category.account_id} className="flex justify-between items-center py-1">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                              <span className="text-sm">{category.account_name}</span>
-                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
-                            </div>
-                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
-                          </div>
+                          <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(category.total_amount)} formatCurrency={formatCurrency} variant="liability" />
                         ))}
                         {revenueBreakdown.tip_categories.map((category) => (
-                          <div key={category.account_id} className="flex justify-between items-center py-1">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-muted-foreground">{category.account_code}</span>
-                              <span className="text-sm">{category.account_name}</span>
-                              <span className="text-xs text-amber-600 font-medium">(Liability)</span>
-                            </div>
-                            <span className="font-medium text-sm">{formatCurrency(category.total_amount)}</span>
-                          </div>
+                          <LineItem key={category.account_id} code={category.account_code} name={category.account_name} amount={category.total_amount} pct={pctOfRevenue(category.total_amount)} formatCurrency={formatCurrency} variant="liability" />
                         ))}
                       </div>
                     </div>
@@ -665,78 +884,90 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
                 /* Fallback to journal entries if no POS categorization */
                 <>
                   {incomeData?.revenue.map((account) => (
-                    <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                        <span>{account.account_name}</span>
-                      </div>
-                      <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                    </div>
+                    <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
                   ))}
-                  <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                    <span>Total Revenue</span>
-                    <span>{formatCurrency(totalRevenue)}</span>
-                  </div>
+                  <SubtotalRow label="Total Revenue" amount={totalRevenue} pct={pctOfRevenue(totalRevenue)} formatCurrency={formatCurrency} />
                 </>
               )}
             </div>
           </div>
 
-          {/* COGS Section */}
+          {/* 3. COGS */}
           <div>
-            <h3 className="font-semibold text-lg mb-3">Cost of Goods Sold</h3>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">COST OF GOODS SOLD</h3>
             <div className="space-y-2">
               {incomeData?.cogs.map((account) => (
-                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                    <span>{account.account_name}</span>
-                  </div>
-                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                </div>
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
               ))}
-              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total COGS</span>
-                <span>{formatCurrency(totalCOGS)}</span>
-              </div>
+              <SubtotalRow label="Total COGS" amount={totalCOGS} pct={pctOfRevenue(totalCOGS)} formatCurrency={formatCurrency} />
             </div>
           </div>
 
-          {/* Gross Profit */}
-          <div className="flex justify-between items-center py-3 px-3 bg-muted rounded-lg font-bold text-lg">
-            <span>Gross Profit</span>
-            <span className={grossProfit >= 0 ? 'text-success' : 'text-destructive'}>
-              {formatCurrency(grossProfit)}
-            </span>
-          </div>
+          {/* 4. Gross Profit highlight */}
+          <HighlightRow label="Gross Profit" amount={grossProfit} pct={pctOfRevenue(grossProfit)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
 
-          {/* Expenses Section */}
+          {/* 5. LABOR COSTS */}
           <div>
-            <h3 className="font-semibold text-lg mb-3">Operating Expenses</h3>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">LABOR COSTS</h3>
             <div className="space-y-2">
-              {incomeData?.expenses.map((account) => (
-                <div key={account.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground">{account.account_code}</span>
-                    <span>{account.account_name}</span>
-                  </div>
-                  <span className="font-medium">{formatCurrency(account.current_balance)}</span>
-                </div>
+              {laborAccounts.map((account) => (
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
               ))}
-              <div className="flex justify-between items-center py-2 px-3 border-t font-semibold">
-                <span>Total Expenses</span>
-                <span>{formatCurrency(totalExpenses)}</span>
-              </div>
+              <SubtotalRow label="Total Labor" amount={totalLabor} pct={pctOfRevenue(totalLabor)} formatCurrency={formatCurrency} />
             </div>
           </div>
 
-          {/* Net Income */}
-          <div className="flex justify-between items-center py-4 px-3 bg-primary/10 border border-primary/20 rounded-lg font-bold text-xl">
-            <span>Net Income</span>
-            <span className={netIncome >= 0 ? 'text-success' : 'text-destructive'}>
-              {formatCurrency(netIncome)}
-            </span>
+          {/* 6. PRIME COST highlight */}
+          <HighlightRow label="Prime Cost (COGS + Labor)" amount={primeCost} pct={pctOfRevenue(primeCost)} formatCurrency={formatCurrency} className="bg-amber-500/5 border border-amber-500/10" />
+
+          {/* 7. CONTROLLABLE EXPENSES */}
+          <div>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">CONTROLLABLE EXPENSES</h3>
+            <div className="space-y-2">
+              {controllableAccounts.map((account) => (
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
+              ))}
+              {/* Uncategorized expenses amber row */}
+              {uncatExpenses > 0 && (
+                <div className="flex justify-between items-center py-2 px-3 rounded-lg bg-amber-500/10">
+                  <div className="flex items-center gap-3">
+                    <span className="text-amber-600 text-[14px]">Uncategorized Expenses</span>
+                    <span className="text-[11px] text-amber-600 font-medium">(uncategorized)</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="font-medium text-amber-600">{formatCurrency(uncatExpenses)}</span>
+                    <span className="text-xs text-muted-foreground w-14 text-right">{pctOfRevenue(uncatExpenses)}</span>
+                  </div>
+                </div>
+              )}
+              <SubtotalRow label="Total Controllable" amount={totalControllableWithUncat} pct={pctOfRevenue(totalControllableWithUncat)} formatCurrency={formatCurrency} />
+            </div>
           </div>
+
+          {/* 8. NON-CONTROLLABLE / FIXED */}
+          <div>
+            <h3 className="text-[17px] font-semibold text-foreground mb-3">NON-CONTROLLABLE / FIXED</h3>
+            <div className="space-y-2">
+              {fixedAccounts.map((account) => (
+                <LineItem key={account.id} code={account.account_code} name={account.account_name} amount={account.current_balance} pct={pctOfRevenue(account.current_balance)} formatCurrency={formatCurrency} />
+              ))}
+              <SubtotalRow label="Total Fixed" amount={totalFixed} pct={pctOfRevenue(totalFixed)} formatCurrency={formatCurrency} />
+            </div>
+          </div>
+
+          {/* 9. Total Operating Expenses */}
+          <SubtotalRow label="Total Operating Expenses" amount={totalOperatingExpenses} pct={pctOfRevenue(totalOperatingExpenses)} formatCurrency={formatCurrency} borderClass="border-t-2 text-base" />
+
+          {/* 10. Operating Income highlight */}
+          <HighlightRow label="Operating Income" amount={operatingIncome} pct={pctOfRevenue(operatingIncome)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
+
+          {/* 11. EBITDA (only if depreciation accounts exist) */}
+          {ebitda !== null && (
+            <HighlightRow label="EBITDA" amount={ebitda} pct={pctOfRevenue(ebitda)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
+          )}
+
+          {/* 12. Net Income highlight */}
+          <HighlightRow label="Net Income" amount={netIncome} pct={pctOfRevenue(netIncome)} formatCurrency={formatCurrency} colorBySign className="bg-muted" />
         </div>
       </CardContent>
     </Card>

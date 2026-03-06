@@ -58,8 +58,7 @@ SELECT lives_ok(
     ON CONFLICT (employee_id, effective_date)
     DO UPDATE SET
       compensation_type = EXCLUDED.compensation_type,
-      amount_cents = EXCLUDED.amount_cents,
-      pay_period_type = EXCLUDED.pay_period_type
+      amount_cents = EXCLUDED.amount_cents
   $$,
   'Upsert on existing date should succeed without constraint violation'
 );

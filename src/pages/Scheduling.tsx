@@ -34,7 +34,7 @@ import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { cn } from '@/lib/utils';
@@ -360,6 +360,8 @@ const Scheduling = () => {
   const totalScheduledHours = shifts
     .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
+
+  const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -1097,7 +1099,14 @@ const Scheduling = () => {
                                   </Badge>
                                 )}
                               </div>
-                              <div className="text-xs text-muted-foreground">{employee.position}</div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                {employee.position}
+                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
+                                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
+                                    {hoursPerEmployee.get(employee.id)}h
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <Button

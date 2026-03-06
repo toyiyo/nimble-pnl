@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 import {
   Dialog,
@@ -10,16 +10,25 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 import { Printer, FileText, Loader2 } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCheckSettings } from '@/hooks/useCheckSettings';
+import { useCheckBankAccounts } from '@/hooks/useCheckBankAccounts';
 import { useCheckAuditLog } from '@/hooks/useCheckAuditLog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
 import {
   generateCheckPDF,
   generateCheckFilename,
+  buildPrintConfig,
   numberToWords,
 } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
@@ -33,13 +42,27 @@ interface PrintCheckButtonProps {
 
 export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const { settings, claimCheckNumbers } = useCheckSettings();
+  const { settings } = useCheckSettings();
+  const { accounts, defaultAccount, claimCheckNumbers: claimForAccount } = useCheckBankAccounts();
   const { logCheckAction } = useCheckAuditLog();
   const { updatePendingOutflow } = usePendingOutflowMutations();
 
   const [open, setOpen] = useState(false);
   const [memo, setMemo] = useState(expense.notes ?? '');
   const [isPrinting, setIsPrinting] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  // Reset memo only when opening (or expense changes before opening)
+  useEffect(() => {
+    if (!open) return;
+    setMemo(expense.notes ?? '');
+  }, [open, expense.notes]);
+
+  // Initialize account selection once per open cycle
+  useEffect(() => {
+    if (!open) return;
+    setSelectedAccountId((current) => current ?? defaultAccount?.id ?? null);
+  }, [open, defaultAccount?.id]);
 
   // Don't show if settings aren't configured
   if (!settings) return null;
@@ -47,10 +70,19 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const handlePrint = async () => {
     if (!settings || !selectedRestaurant) return;
 
+    const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? defaultAccount;
+    if (!selectedAccount) {
+      toast.error('Please select a bank account');
+      return;
+    }
+
     setIsPrinting(true);
     try {
       // Claim one check number via hook
-      const checkNumber = await claimCheckNumbers.mutateAsync(1);
+      const checkNumber = await claimForAccount.mutateAsync({
+        accountId: selectedAccount.id,
+        count: 1,
+      });
 
       // Update the existing pending outflow with check info BEFORE generating PDF
       await updatePendingOutflow.mutateAsync({
@@ -59,6 +91,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
           payment_method: 'check',
           reference_number: String(checkNumber),
           notes: memo.trim() || expense.notes,
+          check_bank_account_id: selectedAccount.id,
         },
       });
 
@@ -71,10 +104,10 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
         memo: memo.trim() || null,
         action: 'printed',
         pending_outflow_id: expense.id,
+        check_bank_account_id: selectedAccount.id,
       });
 
-      // Generate & save PDF after records are committed
-      const pdf = generateCheckPDF(settings, [
+      const pdf = generateCheckPDF(buildPrintConfig(settings, selectedAccount.bank_name), [
         {
           checkNumber,
           payeeName: expense.vendor_name,
@@ -147,6 +180,27 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
                 </div>
               </div>
             </div>
+
+            {/* Bank account selector — only shown when multiple accounts exist */}
+            {accounts.length > 1 && (
+              <div className="space-y-2">
+                <Label htmlFor="print-check-account" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Bank Account
+                </Label>
+                <Select value={selectedAccountId ?? ''} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger id="print-check-account" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_name}{account.bank_name ? ` (${account.bank_name})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Memo */}
             <div className="space-y-2">

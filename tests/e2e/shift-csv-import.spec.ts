@@ -119,7 +119,7 @@ test.describe('Shift CSV Import', () => {
     await importShiftsButton.click();
 
     // Verify success toast
-    await expect(page.getByText(/import complete/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Import complete', { exact: true })).toBeVisible({ timeout: 10000 });
   });
 
   test('individual Create button creates employee and matches shifts', async ({ page }, testInfo) => {
@@ -242,7 +242,7 @@ test.describe('Shift CSV Import', () => {
     const importBtn = page.getByRole('button', { name: /import \d+ shifts/i });
     await expect(importBtn).toBeVisible({ timeout: 5000 });
     await importBtn.click();
-    await expect(page.getByText(/import complete/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Import complete', { exact: true })).toBeVisible({ timeout: 10000 });
 
     // --- Second import with same CSV ---
     await page.getByRole('button', { name: 'Import', exact: true }).click();

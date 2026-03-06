@@ -55,4 +55,5 @@ export interface UpdatePendingOutflowInput {
   reference_number?: string | null;
   status?: PendingOutflowStatus;
   voided_reason?: string | null;
+  check_bank_account_id?: string | null;
 }

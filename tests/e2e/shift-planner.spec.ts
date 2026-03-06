@@ -267,7 +267,7 @@ test.describe('Shift Planner v2 (Template-First)', () => {
     );
 
     // Seed a template + shift for Alice via Supabase
-    // Use explicit UTC timestamps so grid matching works (template time = shift time extraction)
+    // Use local timezone offset so formatLocalTime() extracts matching HH:MM:SS
     const seedResult = await page.evaluate(
       ({ restId, empId }) => {
         const supabase = (window as any).__supabase;
@@ -280,6 +280,12 @@ test.describe('Shift Planner v2 (Template-First)', () => {
         mon.setDate(mon.getDate() + diff);
         const pad = (n: number) => n.toString().padStart(2, '0');
         const monStr = `${mon.getFullYear()}-${pad(mon.getMonth() + 1)}-${pad(mon.getDate())}`;
+
+        // Compute local timezone offset string (e.g., "-05:00", "+00:00")
+        const tzOffset = now.getTimezoneOffset(); // minutes, negative = ahead of UTC
+        const sign = tzOffset <= 0 ? '+' : '-';
+        const absOffset = Math.abs(tzOffset);
+        const tzStr = `${sign}${pad(Math.floor(absOffset / 60))}:${pad(absOffset % 60)}`;
 
         return (async () => {
           // Insert template (all 7 days active)
@@ -300,14 +306,13 @@ test.describe('Shift Planner v2 (Template-First)', () => {
 
           if (tmplErr) return { error: `template: ${tmplErr.message}` };
 
-          // Insert shift using explicit UTC timestamps
-          // buildTemplateGridData extracts HH:MM:SS from the T-split, so the UTC time
-          // must match the template's start_time/end_time for proper grid placement
+          // Insert shift using local timezone offset so that formatLocalTime()
+          // (which uses new Date().getHours()) extracts 06:00:00 matching the template
           const { error: shiftErr } = await supabase.from('shifts').insert({
             restaurant_id: restId,
             employee_id: empId,
-            start_time: `${monStr}T06:00:00+00:00`,
-            end_time: `${monStr}T12:00:00+00:00`,
+            start_time: `${monStr}T06:00:00${tzStr}`,
+            end_time: `${monStr}T12:00:00${tzStr}`,
             position: 'Server',
             status: 'scheduled',
             break_duration: 0,

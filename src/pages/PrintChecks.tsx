@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -29,7 +36,9 @@ import {
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCheckSettings } from '@/hooks/useCheckSettings';
+import { useCheckBankAccounts } from '@/hooks/useCheckBankAccounts';
 import { useCheckAuditLog } from '@/hooks/useCheckAuditLog';
+import type { CheckAuditEntry } from '@/hooks/useCheckAuditLog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { FeatureGate } from '@/components/subscription';
@@ -38,12 +47,19 @@ import { CheckSettingsDialog } from '@/components/checks/CheckSettingsDialog';
 import {
   generateCheckPDF,
   generateCheckFilename,
+  buildPrintConfig,
   numberToWords,
 } from '@/utils/checkPrinting';
 import type { CheckData } from '@/utils/checkPrinting';
 import { formatCurrency } from '@/utils/pdfExport';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+
+const ACTION_BADGE_CLASSES: Record<string, string> = {
+  printed: 'text-green-700 border-green-300',
+  voided: 'text-red-700 border-red-300',
+  reprinted: 'text-blue-700 border-blue-300',
+};
 
 interface CheckRow {
   id: string;
@@ -65,6 +81,7 @@ function createEmptyRow(): CheckRow {
   };
 }
 
+
 export default function PrintChecks() {
   return (
     <FeatureGate featureKey="expenses">
@@ -75,8 +92,8 @@ export default function PrintChecks() {
 
 function PrintChecksContent() {
   const { selectedRestaurant } = useRestaurantContext();
-  const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const { settings, isLoading: settingsLoading, claimCheckNumbers } = useCheckSettings();
+  const { settings, isLoading: settingsLoading } = useCheckSettings();
+  const { accounts, defaultAccount, isLoading: accountsLoading, claimCheckNumbers } = useCheckBankAccounts();
   const { auditLog, isLoading: auditLoading, logCheckAction } = useCheckAuditLog();
   const { createPendingOutflow } = usePendingOutflowMutations();
   const { suppliers } = useSuppliers();
@@ -86,6 +103,16 @@ function PrintChecksContent() {
   const [isPrinting, setIsPrinting] = useState(false);
   const [reprintingId, setReprintingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'write' | 'history'>('write');
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  // Auto-select default account when accounts load
+  useEffect(() => {
+    if (defaultAccount && !selectedAccountId) {
+      setSelectedAccountId(defaultAccount.id);
+    }
+  }, [defaultAccount, selectedAccountId]);
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? defaultAccount;
 
   // --- Row helpers ---
   const updateRow = useCallback((id: string, field: keyof CheckRow, value: string | boolean) => {
@@ -109,6 +136,10 @@ function PrintChecksContent() {
   // --- Print ---
   const handlePrint = async () => {
     if (!settings || !selectedRestaurant) return;
+    if (!selectedAccount) {
+      toast.error('Please select a bank account');
+      return;
+    }
 
     // Validate
     for (const row of selectedRows) {
@@ -127,7 +158,10 @@ function PrintChecksContent() {
 
     try {
       // Claim check numbers atomically via hook
-      const startNumber = await claimCheckNumbers.mutateAsync(selectedRows.length);
+      const startNumber = await claimCheckNumbers.mutateAsync({
+        accountId: selectedAccount.id,
+        count: selectedRows.length,
+      });
 
       // Build check data
       const checks: CheckData[] = selectedRows.map((row, i) => ({
@@ -157,11 +191,11 @@ function PrintChecksContent() {
           memo: check.memo ?? null,
           action: 'printed',
           pending_outflow_id: outflow.id,
+          check_bank_account_id: selectedAccount.id,
         });
       }
 
-      // Generate & save PDF after all records are committed
-      const pdf = generateCheckPDF(settings, checks);
+      const pdf = generateCheckPDF(buildPrintConfig(settings, selectedAccount.bank_name), checks);
       const filename = generateCheckFilename(
         selectedRestaurant.restaurant.name,
         checks.map((c) => c.checkNumber),
@@ -180,19 +214,14 @@ function PrintChecksContent() {
     }
   };
 
-  // --- Reprint ---
-  const handleReprint = async (entry: { id: string; check_number: number; payee_name: string; amount: number; issue_date: string; memo: string | null }) => {
+  const handleReprint = async (entry: Pick<CheckAuditEntry, 'id' | 'check_number' | 'payee_name' | 'amount' | 'issue_date' | 'memo' | 'check_bank_account_id'>) => {
     if (!settings || !selectedRestaurant) return;
 
     setReprintingId(entry.id);
     try {
-      const checkData: CheckData[] = [{
-        checkNumber: entry.check_number,
-        payeeName: entry.payee_name,
-        amount: entry.amount,
-        issueDate: entry.issue_date,
-        memo: entry.memo ?? undefined,
-      }];
+      const reprintAccount = entry.check_bank_account_id
+        ? accounts.find((a) => a.id === entry.check_bank_account_id)
+        : selectedAccount;
 
       await logCheckAction.mutateAsync({
         check_number: entry.check_number,
@@ -201,9 +230,19 @@ function PrintChecksContent() {
         issue_date: entry.issue_date,
         memo: entry.memo,
         action: 'reprinted',
+        check_bank_account_id: entry.check_bank_account_id ?? selectedAccount?.id ?? null,
       });
 
-      const pdf = generateCheckPDF(settings, checkData);
+      const pdf = generateCheckPDF(
+        buildPrintConfig(settings, reprintAccount?.bank_name ?? null),
+        [{
+          checkNumber: entry.check_number,
+          payeeName: entry.payee_name,
+          amount: entry.amount,
+          issueDate: entry.issue_date,
+          memo: entry.memo ?? undefined,
+        }],
+      );
       const filename = generateCheckFilename(
         selectedRestaurant.restaurant.name,
         [entry.check_number],
@@ -235,7 +274,7 @@ function PrintChecksContent() {
     );
   }
 
-  if (settingsLoading) {
+  if (settingsLoading || accountsLoading) {
     return (
       <div className="min-h-screen bg-background">
         <PageHeader icon={Printer} title="Print Checks" />
@@ -282,7 +321,7 @@ function PrintChecksContent() {
       <PageHeader
         icon={Printer}
         title="Print Checks"
-        subtitle={`${settings.business_name} · Next check #${settings.next_check_number}`}
+        subtitle={`${settings.business_name}${selectedAccount ? ` · Next check #${selectedAccount.next_check_number}` : ''}`}
         actions={
           <Button
             variant="outline"
@@ -325,6 +364,45 @@ function PrintChecksContent() {
 
         {activeTab === 'write' && (
           <>
+            {/* Bank account selector — only shown when multiple accounts exist */}
+            {accounts.length > 1 && (
+              <div className="flex items-center gap-3">
+                <Label htmlFor="check-bank-account" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                  Bank Account
+                </Label>
+                <Select value={selectedAccountId ?? ''} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger id="check-bank-account" className="h-9 w-64 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                    <SelectValue placeholder="Select account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.account_name}{account.bank_name ? ` (${account.bank_name})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* No accounts prompt */}
+            {accounts.length === 0 && (
+              <div className="rounded-xl border border-border/40 bg-muted/30 p-6 text-center">
+                <p className="text-[14px] text-muted-foreground mb-3">
+                  No bank accounts configured. Add a bank account in Settings to start printing checks.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowSettings(true)}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Open Settings
+                </Button>
+              </div>
+            )}
+
             {/* Check entry table */}
             <Card className="border-border/40">
               <CardHeader className="border-b border-border/40 pb-4">
@@ -379,7 +457,7 @@ function PrintChecksContent() {
                           .slice(0, rowIndex)
                           .filter((r) => r.selected).length;
                         const checkNum = row.selected
-                          ? settings.next_check_number + selectedBefore
+                          ? (selectedAccount?.next_check_number ?? 1001) + selectedBefore
                           : null;
                         const amt = parseFloat(row.amount) || 0;
 
@@ -531,6 +609,11 @@ function PrintChecksContent() {
                       <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                         Date
                       </TableHead>
+                      {accounts.length > 1 && (
+                        <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Account
+                        </TableHead>
+                      )}
                       <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                         Action
                       </TableHead>
@@ -541,52 +624,56 @@ function PrintChecksContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {auditLog.map((entry) => (
-                      <TableRow key={entry.id} className="border-border/40">
-                        <TableCell className="text-[14px] font-medium tabular-nums">
-                          {entry.check_number}
-                        </TableCell>
-                        <TableCell className="text-[14px]">{entry.payee_name}</TableCell>
-                        <TableCell className="text-[14px] text-right tabular-nums">
-                          {formatCurrency(entry.amount)}
-                        </TableCell>
-                        <TableCell className="text-[13px] text-muted-foreground">
-                          {format(new Date(entry.issue_date), 'MMM d, yyyy')}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={
-                              entry.action === 'printed'
-                                ? 'text-green-700 border-green-300'
-                                : entry.action === 'voided'
-                                  ? 'text-red-700 border-red-300'
-                                  : 'text-blue-700 border-blue-300'
-                            }
-                          >
-                            {entry.action}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-[13px] text-muted-foreground">
-                          {format(new Date(entry.performed_at), 'MMM d, yyyy h:mm a')}
-                        </TableCell>
-                        <TableCell>
-                          {(entry.action === 'printed' || entry.action === 'reprinted') && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleReprint(entry)}
-                              disabled={reprintingId === entry.id}
-                              aria-label={`Reprint check ${entry.check_number}`}
-                              className="h-7 px-2 text-[12px] text-muted-foreground hover:text-foreground"
-                            >
-                              <RotateCcw className={`h-3.5 w-3.5 mr-1 ${reprintingId === entry.id ? 'animate-spin' : ''}`} />
-                              {reprintingId === entry.id ? 'Printing...' : 'Reprint'}
-                            </Button>
+                    {auditLog.map((entry) => {
+                      const entryAccount = entry.check_bank_account_id
+                        ? accounts.find((a) => a.id === entry.check_bank_account_id)
+                        : null;
+                      return (
+                        <TableRow key={entry.id} className="border-border/40">
+                          <TableCell className="text-[14px] font-medium tabular-nums">
+                            {entry.check_number}
+                          </TableCell>
+                          <TableCell className="text-[14px]">{entry.payee_name}</TableCell>
+                          <TableCell className="text-[14px] text-right tabular-nums">
+                            {formatCurrency(entry.amount)}
+                          </TableCell>
+                          <TableCell className="text-[13px] text-muted-foreground">
+                            {format(new Date(entry.issue_date), 'MMM d, yyyy')}
+                          </TableCell>
+                          {accounts.length > 1 && (
+                            <TableCell className="text-[13px] text-muted-foreground">
+                              {entryAccount?.account_name ?? '—'}
+                            </TableCell>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={ACTION_BADGE_CLASSES[entry.action]}
+                            >
+                              {entry.action}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-[13px] text-muted-foreground">
+                            {format(new Date(entry.performed_at), 'MMM d, yyyy h:mm a')}
+                          </TableCell>
+                          <TableCell>
+                            {(entry.action === 'printed' || entry.action === 'reprinted') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleReprint(entry)}
+                                disabled={reprintingId === entry.id}
+                                aria-label={`Reprint check ${entry.check_number}`}
+                                className="h-7 px-2 text-[12px] text-muted-foreground hover:text-foreground"
+                              >
+                                <RotateCcw className={`h-3.5 w-3.5 mr-1 ${reprintingId === entry.id ? 'animate-spin' : ''}`} />
+                                {reprintingId === entry.id ? 'Printing...' : 'Reprint'}
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}

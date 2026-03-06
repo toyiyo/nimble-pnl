@@ -15,7 +15,7 @@ export default defineConfig({
     : process.env.CI
       ? 4
       : 2,
-  reporter: 'html',
+  reporter: process.env.CI ? 'blob' : 'html',
   
   use: {
     baseURL: 'http://localhost:4173', // Vite dev server (override port to avoid sandbox restrictions)

@@ -49,7 +49,7 @@ test('Income Statement shows seeded POS + journal data', async ({ page }) => {
   await expect(page.getByText(/\d+\.\d+%/).first()).toBeVisible();
 
   // EBITDA should NOT appear (no depreciation accounts seeded)
-  await expect(page.getByText('EBITDA')).not.toBeVisible();
+  await expect(page.getByText('EBITDA')).not.toBeVisible({ timeout: 5000 });
 
   // Scope Net Income to its row to avoid duplicate amounts elsewhere
   const netIncomeRow = page.getByText('Net Income').locator('xpath=ancestor::div[1]');

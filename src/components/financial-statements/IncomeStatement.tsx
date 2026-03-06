@@ -413,11 +413,15 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   const totalOperatingExpenses = totalLabor + totalControllableWithUncat + totalFixed;
   const operatingIncome = grossProfit - totalOperatingExpenses;
 
-  // EBITDA: only meaningful if depreciation accounts exist
+  // EBITDA: only meaningful if depreciation/amortization accounts exist
   const depreciationTotal = fixedAccounts
     .filter(a => a.account_subtype === 'depreciation')
     .reduce((sum, acc) => sum + acc.current_balance, 0);
-  const ebitda = depreciationTotal > 0 ? operatingIncome + depreciationTotal : null;
+  const amortizationTotal = fixedAccounts
+    .filter(a => a.account_subtype === 'amortization')
+    .reduce((sum, acc) => sum + acc.current_balance, 0);
+  const depAndAmort = depreciationTotal + amortizationTotal;
+  const ebitda = depAndAmort > 0 ? operatingIncome + depAndAmort : null;
 
   const netIncome = grossProfit - totalExpenses;
 
@@ -426,6 +430,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     effectiveRevenue > 0 ? ((amount / effectiveRevenue) * 100).toFixed(1) + '%' : '—';
 
   const handleExportCSV = () => {
+    if (!incomeData) return;
     const csvRows: string[][] = [
       ['Income Statement'],
       [`Period: ${format(dateFrom, 'MMM dd, yyyy')} - ${format(dateTo, 'MMM dd, yyyy')}`],
@@ -478,7 +483,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       }
     } else {
       csvRows.push(['Revenue']);
-      incomeData!.revenue.forEach(acc => {
+      incomeData.revenue.forEach(acc => {
         csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
       });
       csvRows.push(['', 'Total Revenue', String(totalRevenue), pctOfRevenue(totalRevenue)]);
@@ -488,7 +493,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
     // COGS Section
     csvRows.push(['COST OF GOODS SOLD']);
-    incomeData!.cogs.forEach(acc => {
+    incomeData.cogs.forEach(acc => {
       csvRows.push([acc.account_code, acc.account_name, String(acc.current_balance), pctOfRevenue(acc.current_balance)]);
     });
     csvRows.push(['', 'Total COGS', String(totalCOGS), pctOfRevenue(totalCOGS)]);
@@ -561,6 +566,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   };
 
   const handleExportPDF = () => {
+    if (!incomeData) return;
     const data = [];
 
     // Revenue Section
@@ -638,7 +644,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
       }
     } else {
       data.push({ label: 'REVENUE', amount: undefined, isBold: true });
-      incomeData!.revenue.forEach(acc => {
+      incomeData.revenue.forEach(acc => {
         data.push({
           label: `${acc.account_code} - ${acc.account_name}`,
           amount: acc.current_balance,
@@ -653,7 +659,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
     // COGS Section
     data.push({ label: 'COST OF GOODS SOLD', amount: undefined, isBold: true });
-    incomeData!.cogs.forEach(acc => {
+    incomeData.cogs.forEach(acc => {
       data.push({
         label: `${acc.account_code} - ${acc.account_name}`,
         amount: acc.current_balance,

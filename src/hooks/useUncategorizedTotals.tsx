@@ -71,7 +71,7 @@ export function useUncategorizedTotals(
   const fromStr = format(dateFrom, 'yyyy-MM-dd');
   const toStr = format(dateTo, 'yyyy-MM-dd');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, isError } = useQuery({
     queryKey: ['uncategorized-totals', restaurantId, fromStr, toStr],
     queryFn: () => fetchUncategorizedTotals(restaurantId, fromStr, toStr),
     enabled: !!restaurantId,
@@ -81,5 +81,7 @@ export function useUncategorizedTotals(
   return {
     ...(data || EMPTY),
     isLoading,
+    error,
+    isError,
   };
 }

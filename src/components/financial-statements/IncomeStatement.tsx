@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -8,12 +9,18 @@ import { ExportDropdown } from './shared/ExportDropdown';
 import { generateFinancialReportPDF, generateStandardFilename } from '@/utils/pdfExport';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
+import { useUncategorizedTotals } from '@/hooks/useUncategorizedTotals';
 import { calculateSalaryForPeriod, calculateContractorPayForPeriod } from '@/utils/compensationCalculations';
 import type { Employee } from '@/types/scheduling';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import type { ChartAccount } from '@/hooks/useChartOfAccounts';
+
+// USAR-aligned expense grouping by account_subtype
+const LABOR_SUBTYPES = new Set(['labor', 'payroll']);
+const FIXED_SUBTYPES = new Set(['rent', 'insurance', 'depreciation']);
+// Everything else in 'expense' type that isn't labor or fixed → controllable
 
 interface IncomeStatementProps {
   restaurantId: string;
@@ -31,13 +38,12 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
   today.setHours(23, 59, 59, 999);
   const periodIncludesFuture = dateTo > today;
 
-  // Merge inventory usage (source of truth for COGS) into COGS accounts when no journaled COGS exist
+  // Merge inventory usage into COGS accounts (additive — always adds if inventory COGS > 0)
   const mergeInventoryCOGS = <T extends { current_balance?: number }>(
     cogsAccounts: T[],
     inventoryUsageTotal: number
   ): T[] => {
-    const existingCOGSTotal = cogsAccounts.reduce((sum, acc) => sum + (acc.current_balance || 0), 0);
-    if (existingCOGSTotal > 0 || inventoryUsageTotal <= 0) return cogsAccounts;
+    if (inventoryUsageTotal <= 0) return cogsAccounts;
 
     return [
       ...cogsAccounts,
@@ -63,6 +69,8 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
 
   // Unified COGS from inventory tracking, financials, or both (per restaurant settings)
   const unifiedCOGS = useUnifiedCOGS(restaurantId, dateFrom, dateTo);
+  const uncategorized = useUncategorizedTotals(restaurantId, dateFrom, dateTo);
+  const navigate = useNavigate();
 
   // Fetch restaurant name for exports
   const { data: restaurant } = useQuery({
@@ -149,12 +157,8 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
         };
       }) || [];
 
-      // If no journaled COGS and not in GL-only mode, use unified COGS
-      const totalJournalCOGS = accountsWithBalances
-        .filter(a => a.account_type === 'cogs')
-        .reduce((sum, acc) => sum + acc.current_balance, 0);
-
-      if (!glOnly && totalJournalCOGS === 0 && unifiedCOGS.totalCOGS > 0) {
+      // Add inventory COGS (additive with any journaled COGS)
+      if (!glOnly && unifiedCOGS.totalCOGS > 0) {
         const mergedCogs = mergeInventoryCOGS(
           accountsWithBalances.filter(a => a.account_type === 'cogs'),
           unifiedCOGS.totalCOGS
@@ -251,7 +255,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
               account_code: 'PAYROLL-EXP',
               account_name: 'Payroll Expense (unposted)',
               account_type: 'expense' as const,
-              account_subtype: 'operating_expenses' as const,
+              account_subtype: 'payroll' as const,
               normal_balance: 'debit',
               current_balance: payrollFallback,
             },
@@ -282,17 +286,48 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     }).format(amount);
   };
 
+  // Group expenses by USAR category
+  const laborAccounts = incomeData?.expenses.filter(a => LABOR_SUBTYPES.has(a.account_subtype)) || [];
+  const fixedAccounts = incomeData?.expenses.filter(a => FIXED_SUBTYPES.has(a.account_subtype)) || [];
+  const controllableAccounts = incomeData?.expenses.filter(a =>
+    !LABOR_SUBTYPES.has(a.account_subtype) && !FIXED_SUBTYPES.has(a.account_subtype)
+  ) || [];
+
+  const totalLabor = laborAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+  const totalControllable = controllableAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+  const totalFixed = fixedAccounts.reduce((sum, acc) => sum + acc.current_balance, 0);
+
+  // Include uncategorized amounts (not in GL-only mode)
+  const uncatExpenses = glOnly ? 0 : uncategorized.uncategorizedOutflows;
+  const uncatRevenue = glOnly ? 0 : (revenueBreakdown?.uncategorized_revenue || 0);
+
+  // Core totals
   const totalRevenue = incomeData?.revenue.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
   const totalCOGS = incomeData?.cogs.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  const totalExpenses = incomeData?.expenses.reduce((sum, acc) => sum + acc.current_balance, 0) || 0;
-  
-  // Use revenue breakdown data if available, otherwise fall back to journal entries
-  const effectiveRevenue = (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0) 
-    ? revenueBreakdown.totals.net_revenue 
+  const totalExpenses = totalLabor + totalControllable + totalFixed + uncatExpenses;
+
+  const effectiveRevenue = (revenueBreakdown && revenueBreakdown.revenue_categories.length > 0)
+    ? revenueBreakdown.totals.net_revenue
     : totalRevenue;
-  
+
+  // USAR subtotals
   const grossProfit = effectiveRevenue - totalCOGS;
+  const primeCost = totalCOGS + totalLabor;
+  const totalControllableWithUncat = totalControllable + uncatExpenses;
+  const totalOperatingExpenses = totalLabor + totalControllableWithUncat + totalFixed;
+  const operatingIncome = grossProfit - totalOperatingExpenses;
+
+  // EBITDA: only meaningful if depreciation accounts exist
+  const depreciationTotal = fixedAccounts
+    .filter(a => a.account_subtype === 'depreciation')
+    .reduce((sum, acc) => sum + acc.current_balance, 0);
+  const ebitda = depreciationTotal > 0 ? operatingIncome + depreciationTotal : null;
+
   const netIncome = grossProfit - totalExpenses;
+
+  // % of revenue helper
+  const pctOfRevenue = (amount: number) =>
+    effectiveRevenue > 0 ? ((amount / effectiveRevenue) * 100).toFixed(1) + '%' : '—';
 
   const handleExportCSV = () => {
     const csvRows = [
@@ -527,7 +562,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     });
   };
 
-  if (isLoading || revenueLoading || unifiedCOGS.isLoading) {
+  if (isLoading || revenueLoading || unifiedCOGS.isLoading || uncategorized.isLoading) {
     return (
       <Card>
         <CardContent className="pt-6 flex items-center justify-center py-12">

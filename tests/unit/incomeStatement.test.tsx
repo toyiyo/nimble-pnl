@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { IncomeStatement } from '@/components/financial-statements/IncomeStatement';
 
 // Keep track of income statement data returned by useQuery mock
@@ -16,6 +17,12 @@ vi.mock('@/hooks/useRevenueBreakdown', () => ({
 const mockUseUnifiedCOGS = vi.fn();
 vi.mock('@/hooks/useUnifiedCOGS', () => ({
   useUnifiedCOGS: (...args: any[]) => mockUseUnifiedCOGS(...args),
+}));
+
+// Mock uncategorized totals hook — defaults to zero
+const mockUseUncategorizedTotals = vi.fn();
+vi.mock('@/hooks/useUncategorizedTotals', () => ({
+  useUncategorizedTotals: (...args: any[]) => mockUseUncategorizedTotals(...args),
 }));
 
 // Mock react-query useQuery to return deterministic data (no network/Supabase)
@@ -43,17 +50,20 @@ vi.mock('@/hooks/use-toast', () => ({
 
 const renderIncomeStatement = () =>
   render(
-    <IncomeStatement
-      restaurantId="resto-1"
-      dateFrom={new Date('2024-01-01')}
-      dateTo={new Date('2024-01-31')}
-    />
+    <MemoryRouter>
+      <IncomeStatement
+        restaurantId="resto-1"
+        dateFrom={new Date('2024-01-01')}
+        dateTo={new Date('2024-01-31')}
+      />
+    </MemoryRouter>
   );
 
 describe('IncomeStatement P&L behavior', () => {
   beforeEach(() => {
     mockUseRevenueBreakdown.mockReset();
     mockUseUnifiedCOGS.mockReset();
+    mockUseUncategorizedTotals.mockReset();
     // Default: no unified COGS data (hook loaded but zero total)
     mockUseUnifiedCOGS.mockReturnValue({
       totalCOGS: 0,
@@ -62,6 +72,13 @@ describe('IncomeStatement P&L behavior', () => {
       method: 'inventory',
       isLoading: false,
       error: null,
+    });
+    // Default: no uncategorized transactions
+    mockUseUncategorizedTotals.mockReturnValue({
+      uncategorizedInflows: 0,
+      uncategorizedOutflows: 0,
+      uncategorizedCount: 0,
+      isLoading: false,
     });
   });
 
@@ -169,6 +186,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 300,
         },
       ],
@@ -291,6 +309,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 400,
         },
       ],
@@ -345,6 +364,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 900,
         },
       ],
@@ -428,6 +448,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 100,
         },
       ],

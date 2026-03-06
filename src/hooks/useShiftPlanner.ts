@@ -202,6 +202,29 @@ export function computeTotalHours(shifts: Shift[]): number {
   return Math.round(total * 100) / 100; // Round to 2 decimal places
 }
 
+/**
+ * Compute scheduled hours per employee (excluding cancelled shifts and breaks).
+ * Returns a Map<employeeId, roundedHours>.
+ */
+export function computeHoursPerEmployee(shifts: Shift[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const shift of shifts) {
+    if (shift.status === 'cancelled' || !shift.employee_id) continue;
+    const startMs = new Date(shift.start_time).getTime();
+    const endMs = new Date(shift.end_time).getTime();
+    const durationMinutes = (endMs - startMs) / 60_000;
+    const netMinutes = durationMinutes - (shift.break_duration || 0);
+    if (netMinutes > 0) {
+      map.set(shift.employee_id, (map.get(shift.employee_id) ?? 0) + netMinutes / 60);
+    }
+  }
+  // Round all values
+  for (const [id, hours] of map) {
+    map.set(id, Math.round(hours));
+  }
+  return map;
+}
+
 // ---------------------------------------------------------------------------
 // The hook
 // ---------------------------------------------------------------------------

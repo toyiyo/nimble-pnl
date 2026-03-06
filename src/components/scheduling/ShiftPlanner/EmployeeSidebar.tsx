@@ -10,6 +10,8 @@ import { Search } from 'lucide-react';
 
 import type { Shift } from '@/types/scheduling';
 
+import { computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
+
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -59,10 +61,11 @@ export interface EmployeeSidebarProps {
 interface DraggableEmployeeProps {
   employee: Employee;
   shiftCount: number;
+  hours: number;
 }
 
 const DraggableEmployee = memo(
-  function DraggableEmployee({ employee, shiftCount }: DraggableEmployeeProps) {
+  function DraggableEmployee({ employee, shiftCount, hours }: DraggableEmployeeProps) {
     const {
       attributes,
       listeners,
@@ -96,7 +99,7 @@ const DraggableEmployee = memo(
           </p>
           {shiftCount > 0 && (
             <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
-              {shiftCount}
+              {shiftCount} · {hours}h
             </span>
           )}
         </div>
@@ -112,7 +115,8 @@ const DraggableEmployee = memo(
     prev.employee.id === next.employee.id &&
     prev.employee.name === next.employee.name &&
     prev.employee.position === next.employee.position &&
-    prev.shiftCount === next.shiftCount,
+    prev.shiftCount === next.shiftCount &&
+    prev.hours === next.hours,
 );
 
 // ---------------------------------------------------------------------------
@@ -132,7 +136,7 @@ export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarP
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [employees]);
 
-  // Pre-compute shift counts
+  // Pre-compute shift counts and hours per employee
   const shiftCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of shifts) {
@@ -141,6 +145,8 @@ export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarP
     }
     return map;
   }, [shifts]);
+
+  const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
 
   const filtered = useMemo(
     () => filterEmployees(employees, search, role),
@@ -192,6 +198,7 @@ export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarP
               key={employee.id}
               employee={employee}
               shiftCount={shiftCounts.get(employee.id) ?? 0}
+              hours={hoursPerEmployee.get(employee.id) ?? 0}
             />
           ))
         )}

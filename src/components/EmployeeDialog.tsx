@@ -240,7 +240,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       return;
     }
 
-    const { error } = await supabase.from('employee_compensation_history').insert({
+    const { error } = await supabase.from('employee_compensation_history').upsert({
       employee_id: params.employeeId,
       restaurant_id: params.payload.restaurantId,
       compensation_type: params.payload.compensationType,
@@ -248,7 +248,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       pay_period_type:
         params.payload.compensationType === 'salary' ? params.payload.payPeriodType : null,
       effective_date: params.effectiveDate,
-    });
+    }, { onConflict: 'employee_id,effective_date' });
 
     if (error) {
       throw error;

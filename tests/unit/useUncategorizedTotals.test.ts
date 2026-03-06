@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fetchUncategorizedTotals } from '@/hooks/useUncategorizedTotals';
 
-// Build a chainable mock query builder (single query, no maybeSingle)
+// Build a chainable mock query builder with pagination support
 function createChainableMock(resolvedValue: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {};
-  const methods = ['select', 'eq', 'is', 'in', 'gte', 'lte'];
+  const methods = ['select', 'eq', 'is', 'in', 'gte', 'lte', 'range'];
 
   for (const method of methods) {
     chain[method] = vi.fn().mockReturnValue(chain);

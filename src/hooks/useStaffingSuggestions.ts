@@ -6,6 +6,7 @@ import { useEmployees } from './useEmployees';
 import {
   buildHourlyRecommendations,
   consolidateIntoShiftBlocks,
+  computeAvgHourlyRateCents,
 } from '@/lib/staffingCalculator';
 
 import type {
@@ -90,16 +91,10 @@ export function useStaffingSuggestions(restaurantId: string | null, day: string)
   );
   const { employees } = useEmployees(restaurantId);
 
-  const avgHourlyRateCents = useMemo(() => {
-    if (!employees?.length) return 1500; // $15/hr default
-    const hourlyEmployees = employees.filter(
-      (e) => e.compensation_type === 'hourly' && e.is_active,
-    );
-    if (hourlyEmployees.length === 0) return 1500;
-    return Math.round(
-      hourlyEmployees.reduce((sum, e) => sum + e.hourly_rate, 0) / hourlyEmployees.length,
-    );
-  }, [employees]);
+  const avgHourlyRateCents = useMemo(
+    () => computeAvgHourlyRateCents(employees),
+    [employees],
+  );
 
   const suggestions = useMemo(
     () =>

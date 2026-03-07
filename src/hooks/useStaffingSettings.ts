@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
@@ -25,7 +27,7 @@ export function useStaffingSettings(restaurantId: string | null) {
       // so we cast to `any` for the query and type the result manually.
       const { data, error } = await (supabase
         .from('staffing_settings') as any)
-        .select('*')
+        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
@@ -55,10 +57,10 @@ export function useStaffingSettings(restaurantId: string | null) {
     },
   });
 
-  const effectiveSettings = {
+  const effectiveSettings = useMemo(() => ({
     ...DEFAULTS,
     ...(settings ?? {}),
-  };
+  }), [settings]);
 
   return {
     settings,

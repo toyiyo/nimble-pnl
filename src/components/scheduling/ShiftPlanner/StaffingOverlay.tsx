@@ -5,12 +5,15 @@ import { useQuery } from '@tanstack/react-query';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { ChevronDown, Users } from 'lucide-react';
+import { AlertCircle, ChevronDown, Users } from 'lucide-react';
+
+import { useToast } from '@/hooks/use-toast';
 
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
 import { aggregateHourlySales } from '@/hooks/useHourlySalesPattern';
 import { computeStaffingSuggestions } from '@/hooks/useStaffingSuggestions';
+import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
 import { supabase } from '@/integrations/supabase/client';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
@@ -27,18 +30,12 @@ function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: strin
   const { effectiveSettings, isLoading: settingsLoading, updateSettings, isSaving } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);
 
-  const avgHourlyRateCents = useMemo(() => {
-    if (!employees?.length) return 1500;
-    const hourlyEmployees = employees.filter(
-      (e: any) => e.compensation_type === 'hourly' && e.is_active,
-    );
-    if (hourlyEmployees.length === 0) return 1500;
-    return Math.round(
-      hourlyEmployees.reduce((sum: number, e: any) => sum + e.hourly_rate, 0) / hourlyEmployees.length,
-    );
-  }, [employees]);
+  const avgHourlyRateCents = useMemo(
+    () => computeAvgHourlyRateCents(employees),
+    [employees],
+  );
 
-  const { data: allSales, isLoading: salesLoading } = useQuery({
+  const { data: allSales, isLoading: salesLoading, error: salesError } = useQuery({
     queryKey: ['hourly-sales-all', restaurantId, effectiveSettings.lookback_weeks],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -67,7 +64,7 @@ function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: strin
     const result = new Map<string, StaffingSuggestionsResult>();
     for (const day of weekDays) {
       const dayOfWeek = new Date(day + 'T12:00:00').getDay();
-      const filtered = allSales.filter((sale: any) => {
+      const filtered = allSales.filter((sale) => {
         const d = new Date(sale.sale_date + 'T12:00:00');
         return d.getDay() === dayOfWeek;
       });
@@ -86,6 +83,7 @@ function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: strin
   return {
     daySuggestions,
     isLoading: settingsLoading || salesLoading,
+    error: salesError,
     hasSalesData: (allSales?.length ?? 0) > 0,
     effectiveSettings,
     updateSettings,
@@ -98,10 +96,12 @@ export function StaffingOverlay({
   weekDays,
 }: Readonly<StaffingOverlayProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { toast } = useToast();
 
   const {
     daySuggestions,
     isLoading,
+    error,
     hasSalesData,
     effectiveSettings,
     updateSettings,
@@ -117,14 +117,19 @@ export function StaffingOverlay({
 
   const handleSaveDefaults = useCallback(async () => {
     if (!localSettings) return;
-    await updateSettings({
-      target_splh: localSettings.target_splh,
-      avg_ticket_size: localSettings.avg_ticket_size,
-      target_labor_pct: localSettings.target_labor_pct,
-      min_staff: localSettings.min_staff,
-    });
-    setLocalSettings(null);
-  }, [localSettings, updateSettings]);
+    try {
+      await updateSettings({
+        target_splh: localSettings.target_splh,
+        avg_ticket_size: localSettings.avg_ticket_size,
+        target_labor_pct: localSettings.target_labor_pct,
+        min_staff: localSettings.min_staff,
+      });
+      setLocalSettings(null);
+      toast({ title: 'Staffing defaults saved' });
+    } catch {
+      toast({ title: 'Failed to save defaults', variant: 'destructive' });
+    }
+  }, [localSettings, updateSettings, toast]);
 
   // Compute summary across all days
   const summary = useMemo(() => {
@@ -180,6 +185,11 @@ export function StaffingOverlay({
           {isLoading ? (
             <div className="px-4 py-6">
               <Skeleton className="h-32 w-full rounded-lg" />
+            </div>
+          ) : error ? (
+            <div className="px-4 py-6 flex items-center gap-2 text-[13px] text-muted-foreground">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+              <span>Failed to load sales data. Try again later.</span>
             </div>
           ) : (
             <>

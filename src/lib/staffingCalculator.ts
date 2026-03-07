@@ -1,6 +1,18 @@
-import type { HourlySalesData, HourlyStaffingRecommendation, ShiftBlock } from '@/types/scheduling';
+import type { Employee, HourlySalesData, HourlyStaffingRecommendation, ShiftBlock } from '@/types/scheduling';
 
 const MAX_SHIFT_HOURS = 8;
+const DEFAULT_HOURLY_RATE_CENTS = 1500; // $15/hr
+
+export function computeAvgHourlyRateCents(employees: Employee[] | undefined): number {
+  if (!employees?.length) return DEFAULT_HOURLY_RATE_CENTS;
+  const hourlyEmployees = employees.filter(
+    (e) => e.compensation_type === 'hourly' && e.is_active,
+  );
+  if (hourlyEmployees.length === 0) return DEFAULT_HOURLY_RATE_CENTS;
+  return Math.round(
+    hourlyEmployees.reduce((sum, e) => sum + e.hourly_rate, 0) / hourlyEmployees.length,
+  );
+}
 
 export function calculateRecommendedStaff(
   projectedSales: number,

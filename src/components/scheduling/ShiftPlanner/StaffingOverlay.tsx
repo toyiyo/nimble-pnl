@@ -218,9 +218,9 @@ export function StaffingOverlay({
                     We look at your last {activeSettings.lookback_weeks} weeks of sales for each day of the week.{' '}
                     {hasHourlyBreakdown
                       ? 'Each bar shows the recommended number of staff for that hour based on your sales history.'
-                      : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am\u201310pm). The actual busy and slow hours may vary.'
+                      : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am–10pm). The actual busy and slow hours may vary.'
                     }{' '}
-                    Staff per hour = projected sales \u00F7 ${activeSettings.target_splh} target.{' '}
+                    Staff per hour = projected sales ÷ ${activeSettings.target_splh} target.{' '}
                     {activeSettings.min_staff > 1 && `A minimum of ${activeSettings.min_staff} staff is always shown. `}
                     Amber bars mean labor cost exceeds your {activeSettings.target_labor_pct}% target.
                   </div>

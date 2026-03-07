@@ -120,7 +120,7 @@ export const StaffingDayColumn = memo(function StaffingDayColumn({
                   </div>
                   <div className={isOverTarget ? 'text-amber-500' : 'text-muted-foreground'}>
                     Labor cost: {rec.laborPct.toFixed(0)}% of sales
-                    {isOverTarget ? ' \u2014 over target' : ''}
+                    {isOverTarget ? ' — over target' : ''}
                   </div>
                 </TooltipContent>
               </Tooltip>

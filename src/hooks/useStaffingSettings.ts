@@ -23,10 +23,8 @@ export function useStaffingSettings(restaurantId: string | null) {
     queryKey,
     queryFn: async () => {
       if (!restaurantId) return null;
-      // Generated types may not have the `staffing_settings` table yet (migration ahead of codegen),
-      // so we cast to `any` for the query and type the result manually.
-      const { data, error } = await (supabase
-        .from('staffing_settings') as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+      const { data, error } = await (supabase.from as any)('staffing_settings')
         .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
@@ -41,8 +39,8 @@ export function useStaffingSettings(restaurantId: string | null) {
   const upsertMutation = useMutation({
     mutationFn: async (updates: Partial<StaffingSettings>) => {
       if (!restaurantId) throw new Error('No restaurant selected');
-      const { data, error } = await (supabase
-        .from('staffing_settings') as any)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+      const { data, error } = await (supabase.from as any)('staffing_settings')
         .upsert(
           { restaurant_id: restaurantId, ...updates },
           { onConflict: 'restaurant_id' },

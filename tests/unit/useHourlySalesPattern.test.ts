@@ -27,7 +27,7 @@ describe('aggregateHourlySales', () => {
 
   it('skips sales with null sale_time', () => {
     const rawSales = [
-      { sale_date: '2026-02-24', sale_time: null as any, total_price: 50 },
+      { sale_date: '2026-02-24', sale_time: null as unknown as string, total_price: 50 },
       { sale_date: '2026-02-24', sale_time: '11:00:00', total_price: 30 },
     ];
     const result = aggregateHourlySales(rawSales);

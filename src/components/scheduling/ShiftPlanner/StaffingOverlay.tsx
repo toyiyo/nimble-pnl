@@ -54,20 +54,6 @@ function useWeekStaffingSuggestions(
       startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
-      console.log('[StaffingOverlay] querying unified_sales', { restaurantId, startStr, endStr, lookback: activeSettings.lookback_weeks });
-
-      // Debug: count with ALL filters combined
-      const { count: allFiltersCount } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('item_type', 'sale').gte('sale_date', startStr).lte('sale_date', endStr).not('sale_time', 'is', null);
-      // Debug: pairs of filters
-      const { count: typeAndDate } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('item_type', 'sale').gte('sale_date', startStr).lte('sale_date', endStr);
-      const { count: typeAndTime } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('item_type', 'sale').not('sale_time', 'is', null);
-      const { count: dateAndTime } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('sale_date', startStr).lte('sale_date', endStr).not('sale_time', 'is', null);
-      console.log('[StaffingOverlay] combined filters:', { allFiltersCount, typeAndDate, typeAndTime, dateAndTime });
-
-      // Debug: sample rows with sale_type within date range
-      const { data: sampleRows } = await supabase.from('unified_sales').select('item_type, sale_date, sale_time, total_price').eq('restaurant_id', restaurantId).eq('item_type', 'sale').gte('sale_date', startStr).limit(5);
-      console.log('[StaffingOverlay] sample sale rows in range:', JSON.stringify(sampleRows));
-
       const { data, error } = await supabase
         .from('unified_sales')
         .select('sale_date, sale_time, total_price')
@@ -75,13 +61,8 @@ function useWeekStaffingSuggestions(
         .eq('item_type', 'sale')
         .gte('sale_date', startStr)
         .lte('sale_date', endStr)
-        .not('sale_time', 'is', null)
         .order('sale_date');
-      if (error) {
-        console.error('[StaffingOverlay] sales query error', error);
-        throw error;
-      }
-      console.log('[StaffingOverlay] filtered query returned', data?.length, 'rows');
+      if (error) throw error;
       return data ?? [];
     },
     enabled: !!restaurantId,
@@ -138,8 +119,6 @@ export function StaffingOverlay({
   const [isExpanded, setIsExpanded] = useState(false);
   const { toast } = useToast();
   const [localSettings, setLocalSettings] = useState<Record<string, number> | null>(null);
-
-  console.log('[StaffingOverlay] render', { restaurantId, weekDays, isExpanded });
 
   const {
     daySuggestions,

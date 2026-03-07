@@ -48,6 +48,7 @@ function useWeekStaffingSuggestions(
   const { data: allSales, isLoading: salesLoading, error: salesError } = useQuery({
     queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
     queryFn: async () => {
+      console.log('[StaffingOverlay] queryFn called', { restaurantId, lookback: activeSettings.lookback_weeks });
       if (!restaurantId) return [];
       const endDate = new Date();
       const startDate = new Date();
@@ -61,7 +62,11 @@ function useWeekStaffingSuggestions(
         .lte('sale_date', endDate.toISOString().split('T')[0])
         .not('sale_time', 'is', null)
         .order('sale_date');
-      if (error) throw error;
+      if (error) {
+        console.error('[StaffingOverlay] sales query error', error);
+        throw error;
+      }
+      console.log('[StaffingOverlay] sales query returned', data?.length, 'rows');
       return data ?? [];
     },
     enabled: !!restaurantId,
@@ -118,6 +123,8 @@ export function StaffingOverlay({
   const [isExpanded, setIsExpanded] = useState(false);
   const { toast } = useToast();
   const [localSettings, setLocalSettings] = useState<Record<string, number> | null>(null);
+
+  console.log('[StaffingOverlay] render', { restaurantId, weekDays, isExpanded });
 
   const {
     daySuggestions,

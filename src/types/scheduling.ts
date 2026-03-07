@@ -259,6 +259,10 @@ export interface LaborCostBreakdown {
 }
 
 // Staffing suggestions
+export interface MinCrew {
+  [position: string]: number;
+}
+
 export interface StaffingSettings {
   id: string;
   restaurant_id: string;
@@ -268,6 +272,7 @@ export interface StaffingSettings {
   min_staff: number;
   lookback_weeks: number;
   manual_projections: ManualProjections | null;
+  min_crew: MinCrew | null;
   created_at: string;
   updated_at: string;
 }

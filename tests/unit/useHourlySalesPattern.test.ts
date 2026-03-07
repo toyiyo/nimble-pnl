@@ -10,7 +10,8 @@ describe('aggregateHourlySales', () => {
       { sale_date: '2026-02-24', sale_time: '12:00:00', total_price: 100 },
       { sale_date: '2026-03-03', sale_time: '12:30:00', total_price: 120 },
     ];
-    const result = aggregateHourlySales(rawSales);
+    const { data: result, hasHourlyBreakdown } = aggregateHourlySales(rawSales);
+    expect(hasHourlyBreakdown).toBe(true);
     // Hour 11: day1=80 (50+30), day2=40 → avg=60, count=2
     const hour11 = result.find(h => h.hour === 11);
     expect(hour11?.avgSales).toBe(60);
@@ -22,17 +23,37 @@ describe('aggregateHourlySales', () => {
   });
 
   it('returns empty array for no sales', () => {
-    expect(aggregateHourlySales([])).toEqual([]);
+    const { data, hasHourlyBreakdown } = aggregateHourlySales([]);
+    expect(data).toEqual([]);
+    expect(hasHourlyBreakdown).toBe(false);
   });
 
-  it('skips sales with null sale_time', () => {
+  it('skips null sale_time when some rows have times', () => {
     const rawSales = [
       { sale_date: '2026-02-24', sale_time: null as unknown as string, total_price: 50 },
       { sale_date: '2026-02-24', sale_time: '11:00:00', total_price: 30 },
     ];
-    const result = aggregateHourlySales(rawSales);
+    const { data: result, hasHourlyBreakdown } = aggregateHourlySales(rawSales);
+    expect(hasHourlyBreakdown).toBe(true);
     expect(result).toHaveLength(1);
     expect(result[0].hour).toBe(11);
+  });
+
+  it('falls back to daily spread when all sale_time values are null', () => {
+    const rawSales = [
+      { sale_date: '2026-02-24', sale_time: null as unknown as string, total_price: 100 },
+      { sale_date: '2026-02-24', sale_time: null as unknown as string, total_price: 200 },
+      { sale_date: '2026-02-25', sale_time: null as unknown as string, total_price: 390 },
+    ];
+    const { data: result, hasHourlyBreakdown } = aggregateHourlySales(rawSales);
+    expect(hasHourlyBreakdown).toBe(false);
+    // 13 business hours (9am–10pm), day1=300, day2=390, avg=345
+    // 345/13 ≈ 26.54 per hour
+    expect(result).toHaveLength(13);
+    expect(result[0].hour).toBe(9);
+    expect(result[result.length - 1].hour).toBe(21);
+    expect(result[0].avgSales).toBeCloseTo(26.54, 1);
+    expect(result[0].sampleCount).toBe(2);
   });
 
   it('sorts results by hour', () => {
@@ -41,7 +62,8 @@ describe('aggregateHourlySales', () => {
       { sale_date: '2026-02-24', sale_time: '09:00:00', total_price: 30 },
       { sale_date: '2026-02-24', sale_time: '11:00:00', total_price: 40 },
     ];
-    const result = aggregateHourlySales(rawSales);
+    const { data: result, hasHourlyBreakdown } = aggregateHourlySales(rawSales);
+    expect(hasHourlyBreakdown).toBe(true);
     expect(result.map(r => r.hour)).toEqual([9, 11, 14]);
   });
 });

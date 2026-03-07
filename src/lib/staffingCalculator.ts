@@ -1,4 +1,4 @@
-import type { Employee, HourlySalesData, HourlyStaffingRecommendation, ShiftBlock } from '@/types/scheduling';
+import type { Employee, HourlySalesData, HourlyStaffingRecommendation, MinCrew, ShiftBlock } from '@/types/scheduling';
 
 const MAX_SHIFT_HOURS = 8;
 const DEFAULT_HOURLY_RATE_CENTS = 1500; // $15/hr
@@ -12,6 +12,18 @@ export function computeAvgHourlyRateCents(employees: Employee[] | undefined): nu
   return Math.round(
     hourlyEmployees.reduce((sum, e) => sum + e.hourly_rate, 0) / hourlyEmployees.length,
   );
+}
+
+/**
+ * Compute the effective minimum staff from position-based min_crew.
+ * Falls back to the global min_staff when min_crew is null or empty.
+ */
+export function computeMinStaffFromCrew(minCrew: MinCrew | null, fallbackMinStaff: number): number {
+  if (!minCrew) return fallbackMinStaff;
+  const values = Object.values(minCrew);
+  if (values.length === 0) return fallbackMinStaff;
+  const sum = values.reduce((total, v) => total + v, 0);
+  return sum > 0 ? sum : fallbackMinStaff;
 }
 
 export function calculateRecommendedStaff(

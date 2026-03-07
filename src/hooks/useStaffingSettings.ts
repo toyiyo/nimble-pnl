@@ -13,6 +13,7 @@ const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | '
   min_staff: 1,
   lookback_weeks: 4,
   manual_projections: null,
+  min_crew: null,
 };
 
 export function useStaffingSettings(restaurantId: string | null) {
@@ -25,7 +26,7 @@ export function useStaffingSettings(restaurantId: string | null) {
       if (!restaurantId) return null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
       const { data, error } = await (supabase.from as any)('staffing_settings')
-        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, created_at, updated_at')
+        .select('id, restaurant_id, target_splh, avg_ticket_size, target_labor_pct, min_staff, lookback_weeks, manual_projections, min_crew, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 

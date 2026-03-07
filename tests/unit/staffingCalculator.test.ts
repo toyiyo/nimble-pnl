@@ -4,6 +4,7 @@ import {
   checkLaborGuardrail,
   consolidateIntoShiftBlocks,
   buildHourlyRecommendations,
+  computeMinStaffFromCrew,
 } from '@/lib/staffingCalculator';
 
 describe('calculateRecommendedStaff', () => {
@@ -80,6 +81,28 @@ describe('consolidateIntoShiftBlocks', () => {
     expect(blocks).toEqual([
       { startHour: 12, endHour: 13, headcount: 3, day: '2026-03-10' },
     ]);
+  });
+});
+
+describe('computeMinStaffFromCrew', () => {
+  it('returns fallback when min_crew is null', () => {
+    expect(computeMinStaffFromCrew(null, 2)).toBe(2);
+  });
+
+  it('returns fallback when min_crew is empty', () => {
+    expect(computeMinStaffFromCrew({}, 2)).toBe(2);
+  });
+
+  it('sums position minimums', () => {
+    expect(computeMinStaffFromCrew({ Cook: 2, Server: 1, Bartender: 1, Dishwasher: 1 }, 1)).toBe(5);
+  });
+
+  it('returns fallback when all values are zero', () => {
+    expect(computeMinStaffFromCrew({ Cook: 0, Server: 0 }, 2)).toBe(2);
+  });
+
+  it('handles single position', () => {
+    expect(computeMinStaffFromCrew({ Cook: 3 }, 1)).toBe(3);
   });
 });
 

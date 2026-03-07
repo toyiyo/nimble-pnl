@@ -1,12 +1,6 @@
-import { useMemo } from 'react';
-
-import { useHourlySalesPattern } from './useHourlySalesPattern';
-import { useStaffingSettings } from './useStaffingSettings';
-import { useEmployees } from './useEmployees';
 import {
   buildHourlyRecommendations,
   consolidateIntoShiftBlocks,
-  computeAvgHourlyRateCents,
 } from '@/lib/staffingCalculator';
 
 import type {
@@ -75,43 +69,5 @@ export function computeStaffingSuggestions(
     totalProjectedSales,
     totalEstimatedLaborCost,
     overallLaborPct,
-  };
-}
-
-/**
- * Hook: fetches hourly sales pattern + staffing settings, computes suggestions for a given day.
- */
-export function useStaffingSuggestions(restaurantId: string | null, day: string) {
-  const dayOfWeek = new Date(day + 'T12:00:00').getDay();
-  const { effectiveSettings, isLoading: settingsLoading } = useStaffingSettings(restaurantId);
-  const { data: hourlySales, isLoading: salesLoading } = useHourlySalesPattern(
-    restaurantId,
-    dayOfWeek,
-    effectiveSettings.lookback_weeks,
-  );
-  const { employees } = useEmployees(restaurantId);
-
-  const avgHourlyRateCents = useMemo(
-    () => computeAvgHourlyRateCents(employees),
-    [employees],
-  );
-
-  const suggestions = useMemo(
-    () =>
-      computeStaffingSuggestions(hourlySales ?? [], {
-        targetSplh: effectiveSettings.target_splh,
-        minStaff: effectiveSettings.min_staff,
-        targetLaborPct: effectiveSettings.target_labor_pct,
-        avgHourlyRateCents,
-        day,
-      }),
-    [hourlySales, effectiveSettings, avgHourlyRateCents, day],
-  );
-
-  return {
-    ...suggestions,
-    isLoading: settingsLoading || salesLoading,
-    hasSalesData: (hourlySales?.length ?? 0) > 0,
-    effectiveSettings,
   };
 }

@@ -26,7 +26,11 @@ interface StaffingOverlayProps {
   weekDays: string[];
 }
 
-function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: string[]) {
+function useWeekStaffingSuggestions(
+  restaurantId: string | null,
+  weekDays: string[],
+  settingsOverrides: Partial<StaffingSuggestionsResult> | null,
+) {
   const { effectiveSettings, isLoading: settingsLoading, updateSettings, isSaving } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);
 
@@ -35,13 +39,19 @@ function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: strin
     [employees],
   );
 
+  // Merge DB settings with local overrides for live preview
+  const activeSettings = useMemo(() => ({
+    ...effectiveSettings,
+    ...(settingsOverrides ?? {}),
+  }), [effectiveSettings, settingsOverrides]);
+
   const { data: allSales, isLoading: salesLoading, error: salesError } = useQuery({
-    queryKey: ['hourly-sales-all', restaurantId, effectiveSettings.lookback_weeks],
+    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
     queryFn: async () => {
       if (!restaurantId) return [];
       const endDate = new Date();
       const startDate = new Date();
-      startDate.setDate(endDate.getDate() - effectiveSettings.lookback_weeks * 7);
+      startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
       const { data, error } = await supabase
         .from('unified_sales')
         .select('sale_date, sale_time, total_price')
@@ -58,27 +68,36 @@ function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: strin
     staleTime: 60000,
   });
 
+  // Pre-group sales by day-of-week in a single pass (avoids 7x Date allocations)
+  const salesByDow = useMemo(() => {
+    if (!allSales?.length) return new Map<number, typeof allSales>();
+    const grouped = new Map<number, typeof allSales>();
+    for (const sale of allSales) {
+      const dow = new Date(sale.sale_date + 'T12:00:00').getDay();
+      if (!grouped.has(dow)) grouped.set(dow, []);
+      grouped.get(dow)!.push(sale);
+    }
+    return grouped;
+  }, [allSales]);
+
   const daySuggestions = useMemo(() => {
     if (!allSales?.length) return new Map<string, StaffingSuggestionsResult>();
 
     const result = new Map<string, StaffingSuggestionsResult>();
     for (const day of weekDays) {
       const dayOfWeek = new Date(day + 'T12:00:00').getDay();
-      const filtered = allSales.filter((sale) => {
-        const d = new Date(sale.sale_date + 'T12:00:00');
-        return d.getDay() === dayOfWeek;
-      });
+      const filtered = salesByDow.get(dayOfWeek) ?? [];
       const hourlySales = aggregateHourlySales(filtered);
       result.set(day, computeStaffingSuggestions(hourlySales, {
-        targetSplh: effectiveSettings.target_splh,
-        minStaff: effectiveSettings.min_staff,
-        targetLaborPct: effectiveSettings.target_labor_pct,
+        targetSplh: activeSettings.target_splh,
+        minStaff: activeSettings.min_staff,
+        targetLaborPct: activeSettings.target_labor_pct,
         avgHourlyRateCents,
         day,
       }));
     }
     return result;
-  }, [allSales, weekDays, effectiveSettings, avgHourlyRateCents]);
+  }, [allSales, salesByDow, weekDays, activeSettings, avgHourlyRateCents]);
 
   return {
     daySuggestions,
@@ -86,6 +105,7 @@ function useWeekStaffingSuggestions(restaurantId: string | null, weekDays: strin
     error: salesError,
     hasSalesData: (allSales?.length ?? 0) > 0,
     effectiveSettings,
+    activeSettings,
     updateSettings,
     isSaving,
   };
@@ -97,33 +117,26 @@ export function StaffingOverlay({
 }: Readonly<StaffingOverlayProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { toast } = useToast();
+  const [localSettings, setLocalSettings] = useState<Record<string, number> | null>(null);
 
   const {
     daySuggestions,
     isLoading,
     error,
     hasSalesData,
-    effectiveSettings,
+    activeSettings,
     updateSettings,
     isSaving,
-  } = useWeekStaffingSuggestions(restaurantId, weekDays);
+  } = useWeekStaffingSuggestions(restaurantId, weekDays, localSettings);
 
-  const [localSettings, setLocalSettings] = useState<typeof effectiveSettings | null>(null);
-  const activeSettings = localSettings ?? effectiveSettings;
-
-  const handleSettingsChange = useCallback((updates: Partial<typeof effectiveSettings>) => {
-    setLocalSettings((prev) => ({ ...(prev ?? effectiveSettings), ...updates }));
-  }, [effectiveSettings]);
+  const handleSettingsChange = useCallback((updates: Record<string, number>) => {
+    setLocalSettings((prev) => ({ ...(prev ?? {}), ...updates }));
+  }, []);
 
   const handleSaveDefaults = useCallback(async () => {
     if (!localSettings) return;
     try {
-      await updateSettings({
-        target_splh: localSettings.target_splh,
-        avg_ticket_size: localSettings.avg_ticket_size,
-        target_labor_pct: localSettings.target_labor_pct,
-        min_staff: localSettings.min_staff,
-      });
+      await updateSettings(localSettings);
       setLocalSettings(null);
       toast({ title: 'Staffing defaults saved' });
     } catch {
@@ -131,7 +144,7 @@ export function StaffingOverlay({
     }
   }, [localSettings, updateSettings, toast]);
 
-  // Compute summary across all days
+  // Compute summary + peak in a single pass
   const summary = useMemo(() => {
     let totalSales = 0;
     let totalLabor = 0;
@@ -145,15 +158,6 @@ export function StaffingOverlay({
 
     const laborPct = totalSales > 0 ? (totalLabor / totalSales) * 100 : 0;
     return { totalSales, totalLabor, peakStaff, laborPct };
-  }, [daySuggestions]);
-
-  // Global peak for normalizing bar heights
-  const globalPeak = useMemo(() => {
-    let peak = 0;
-    for (const suggestions of daySuggestions.values()) {
-      if (suggestions.peakStaff > peak) peak = suggestions.peakStaff;
-    }
-    return peak;
   }, [daySuggestions]);
 
   return (
@@ -214,7 +218,7 @@ export function StaffingOverlay({
                       key={day}
                       day={day}
                       recommendations={daySugg?.recommendations ?? []}
-                      peakStaff={globalPeak}
+                      peakStaff={summary.peakStaff}
                       hasSalesData={hasSalesData && (daySugg?.recommendations.length ?? 0) > 0}
                     />
                   );

@@ -6,7 +6,6 @@ import { Label } from '@/components/ui/label';
 interface StaffingConfigPanelProps {
   settings: {
     target_splh: number;
-    avg_ticket_size: number;
     target_labor_pct: number;
     min_staff: number;
   };
@@ -35,20 +34,6 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
           onChange={(e) => onSettingsChange({ target_splh: Number(e.target.value) || 1 })}
           className="h-8 w-20 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
           aria-label="Sales per labor hour target"
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="ticket-input" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-          Avg Ticket ($)
-        </Label>
-        <Input
-          id="ticket-input"
-          type="number"
-          min={1}
-          value={settings.avg_ticket_size}
-          onChange={(e) => onSettingsChange({ avg_ticket_size: Number(e.target.value) || 1 })}
-          className="h-8 w-20 text-[13px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
-          aria-label="Average ticket size"
         />
       </div>
       <div className="flex flex-col gap-1">

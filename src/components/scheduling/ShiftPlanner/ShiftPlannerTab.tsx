@@ -17,6 +17,7 @@ import type { ShiftTemplate } from '@/types/scheduling';
 import { AssignmentPopover } from './AssignmentPopover';
 
 import { PlannerHeader } from './PlannerHeader';
+import { StaffingOverlay } from './StaffingOverlay';
 import { TemplateGrid } from './TemplateGrid';
 import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
@@ -285,6 +286,9 @@ export function ShiftPlannerTab({
           </div>
         </div>
       )}
+
+      {/* Staffing suggestions overlay */}
+      <StaffingOverlay restaurantId={restaurantId} weekDays={weekDays} />
 
       {/* Two-panel layout */}
       <DndContext

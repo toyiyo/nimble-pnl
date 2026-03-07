@@ -17,7 +17,7 @@ import { SecuritySettings } from '@/components/SecuritySettings';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { SubscriptionPlans, TrialBanner } from '@/components/subscription';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock, DollarSign } from 'lucide-react';
+import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock, DollarSign, Target } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { COGSPreferenceSettings } from '@/components/settings/COGSPreferenceSettings';
+import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -77,6 +78,23 @@ export default function RestaurantSettings() {
   const [otExcludeTips, setOtExcludeTips] = useState(true);
   const [otRulesLoading, setOtRulesLoading] = useState(false);
   const [otSaving, setOtSaving] = useState(false);
+
+  // Labor planning state (staffing settings)
+  const { effectiveSettings: staffDefaults, updateSettings: saveStaffingSettings, isSaving: staffingSaving, isLoading: staffingLoading } = useStaffingSettings(selectedRestaurant?.restaurant_id ?? null);
+  const [lpTargetSplh, setLpTargetSplh] = useState('60');
+  const [lpAvgTicket, setLpAvgTicket] = useState('8');
+  const [lpTargetLaborPct, setLpTargetLaborPct] = useState('22');
+  const [lpMinStaff, setLpMinStaff] = useState('1');
+  const [lpLookbackWeeks, setLpLookbackWeeks] = useState('4');
+
+  // Sync labor planning form when staffing defaults load
+  useEffect(() => {
+    setLpTargetSplh(String(staffDefaults.target_splh));
+    setLpAvgTicket(String(staffDefaults.avg_ticket_size));
+    setLpTargetLaborPct(String(staffDefaults.target_labor_pct));
+    setLpMinStaff(String(staffDefaults.min_staff));
+    setLpLookbackWeeks(String(staffDefaults.lookback_weeks));
+  }, [staffDefaults.target_splh, staffDefaults.avg_ticket_size, staffDefaults.target_labor_pct, staffDefaults.min_staff, staffDefaults.lookback_weeks]);
 
   // Update form when selected restaurant changes
   useEffect(() => {
@@ -293,6 +311,36 @@ export default function RestaurantSettings() {
     }
   };
 
+  const handleSaveLaborPlanning = async () => {
+    if (!selectedRestaurant) return;
+    const targetSplh = Number.parseFloat(lpTargetSplh);
+    const avgTicket = Number.parseFloat(lpAvgTicket);
+    const targetLaborPct = Number.parseFloat(lpTargetLaborPct);
+    const minStaff = Number.parseInt(lpMinStaff, 10);
+    const lookbackWeeks = Number.parseInt(lpLookbackWeeks, 10);
+
+    if ([targetSplh, avgTicket, targetLaborPct, minStaff, lookbackWeeks].some(Number.isNaN)) {
+      toast({ title: 'Invalid values', description: 'Please enter valid numbers for all fields.', variant: 'destructive' });
+      return;
+    }
+    if (targetSplh <= 0 || avgTicket <= 0 || targetLaborPct <= 0 || minStaff < 1) {
+      toast({ title: 'Invalid values', description: 'All values must be greater than zero.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await saveStaffingSettings({
+        target_splh: targetSplh,
+        avg_ticket_size: avgTicket,
+        target_labor_pct: targetLaborPct,
+        min_staff: minStaff,
+        lookback_weeks: lookbackWeeks,
+      });
+      toast({ title: 'Labor planning saved', description: 'Staffing settings have been updated.' });
+    } catch (err) {
+      toast({ title: 'Failed to save', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    }
+  };
+
   const canEdit = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
   const isOwner = selectedRestaurant?.role === 'owner';
 
@@ -302,6 +350,7 @@ export default function RestaurantSettings() {
       'general',
       ...(canEdit ? ['business'] : []),
       ...(canEdit ? ['payroll'] : []),
+      ...(canEdit ? ['labor-planning'] : []),
       ...(canEdit ? ['financial'] : []),
       ...(isOwner ? ['subscription'] : []),
       ...(canEdit ? ['notifications'] : []),
@@ -318,6 +367,7 @@ export default function RestaurantSettings() {
 
   // Compute grid columns class based on visible tab count
   const gridColsMap: Record<number, string> = {
+    8: 'grid-cols-8',
     7: 'grid-cols-7',
     6: 'grid-cols-6',
     5: 'grid-cols-5',
@@ -424,6 +474,12 @@ export default function RestaurantSettings() {
             <TabsTrigger value="payroll">
               <Clock className="h-4 w-4 mr-2" />
               Payroll
+            </TabsTrigger>
+          )}
+          {canEdit && (
+            <TabsTrigger value="labor-planning">
+              <Target className="h-4 w-4 mr-2" />
+              Labor
             </TabsTrigger>
           )}
           {canEdit && (
@@ -1000,6 +1056,176 @@ export default function RestaurantSettings() {
                 >
                   <Save className="h-4 w-4 mr-2" aria-hidden="true" />
                   {otSaving ? 'Saving...' : 'Save Rules'}
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Labor Planning Tab */}
+        {canEdit && (
+          <TabsContent value="labor-planning">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" aria-hidden="true" />
+                  Labor Planning
+                </CardTitle>
+                <CardDescription>
+                  Configure targets used for staffing suggestions and labor cost analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {staffingLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Revenue Targets */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Revenue Targets</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Set goals for sales productivity per labor hour
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="lpTargetSplh" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Target SPLH ($)
+                            </Label>
+                            <Input
+                              id="lpTargetSplh"
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={lpTargetSplh}
+                              onChange={(e) => setLpTargetSplh(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpTargetSplh-help"
+                            />
+                            <p id="lpTargetSplh-help" className="text-[13px] text-muted-foreground">
+                              Sales Per Labor Hour — the revenue each staff member should generate per hour
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="lpAvgTicket" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Average Ticket Size ($)
+                            </Label>
+                            <Input
+                              id="lpAvgTicket"
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={lpAvgTicket}
+                              onChange={(e) => setLpAvgTicket(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpAvgTicket-help"
+                            />
+                            <p id="lpAvgTicket-help" className="text-[13px] text-muted-foreground">
+                              Average revenue per transaction, used to convert guest counts into projected revenue
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Labor Constraints */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Labor Constraints</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Limits and targets for scheduling decisions
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="lpTargetLaborPct" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Target Labor %
+                            </Label>
+                            <Input
+                              id="lpTargetLaborPct"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={lpTargetLaborPct}
+                              onChange={(e) => setLpTargetLaborPct(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpTargetLaborPct-help"
+                            />
+                            <p id="lpTargetLaborPct-help" className="text-[13px] text-muted-foreground">
+                              Maximum percentage of revenue that should go to labor costs
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="lpMinStaff" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Minimum Staff Per Hour
+                            </Label>
+                            <Input
+                              id="lpMinStaff"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={lpMinStaff}
+                              onChange={(e) => setLpMinStaff(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpMinStaff-help"
+                            />
+                            <p id="lpMinStaff-help" className="text-[13px] text-muted-foreground">
+                              Minimum number of employees scheduled for any open hour, regardless of projected demand
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Forecasting */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Forecasting</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Controls how historical data is used for demand projections
+                        </p>
+                      </div>
+                      <div className="p-4">
+                        <div className="max-w-xs space-y-2">
+                          <Label htmlFor="lpLookbackWeeks" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                            Historical Lookback
+                          </Label>
+                          <Select value={lpLookbackWeeks} onValueChange={setLpLookbackWeeks}>
+                            <SelectTrigger id="lpLookbackWeeks" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                              <SelectValue placeholder="Select period" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="2">2 weeks</SelectItem>
+                              <SelectItem value="4">4 weeks</SelectItem>
+                              <SelectItem value="8">8 weeks</SelectItem>
+                              <SelectItem value="12">12 weeks</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p id="lpLookbackWeeks-help" className="text-[13px] text-muted-foreground">
+                            Number of past weeks used to calculate average sales patterns for staffing projections
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+              <CardFooter className="flex justify-end border-t px-6 py-4">
+                <Button
+                  onClick={handleSaveLaborPlanning}
+                  disabled={staffingSaving || staffingLoading}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label={staffingSaving ? 'Saving labor planning settings' : 'Save labor planning settings'}
+                >
+                  <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {staffingSaving ? 'Saving...' : 'Save Settings'}
                 </Button>
               </CardFooter>
             </Card>

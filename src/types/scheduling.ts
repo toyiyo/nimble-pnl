@@ -257,3 +257,43 @@ export interface LaborCostBreakdown {
   contractor_payments: number; // In cents
   total: number; // In cents
 }
+
+// Staffing suggestions
+export interface StaffingSettings {
+  id: string;
+  restaurant_id: string;
+  target_splh: number;
+  avg_ticket_size: number;
+  target_labor_pct: number;
+  min_staff: number;
+  lookback_weeks: number;
+  manual_projections: ManualProjections | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManualProjections {
+  [dayOfWeek: string]: number;
+}
+
+export interface HourlySalesData {
+  hour: number;
+  avgSales: number;
+  sampleCount: number;
+}
+
+export interface HourlyStaffingRecommendation {
+  hour: number;
+  projectedSales: number;
+  recommendedStaff: number;
+  estimatedLaborCost: number;
+  laborPct: number;
+  overTarget: boolean;
+}
+
+export interface ShiftBlock {
+  startHour: number;
+  endHour: number;
+  headcount: number;
+  day: string;
+}

@@ -56,12 +56,16 @@ function useWeekStaffingSuggestions(
       const endStr = endDate.toISOString().split('T')[0];
       console.log('[StaffingOverlay] querying unified_sales', { restaurantId, startStr, endStr, lookback: activeSettings.lookback_weeks });
 
-      // Debug: try without filters first
-      const { count } = await supabase
-        .from('unified_sales')
-        .select('*', { count: 'exact', head: true })
-        .eq('restaurant_id', restaurantId);
-      console.log('[StaffingOverlay] total rows for restaurant (no filters):', count);
+      // Debug: test each filter individually
+      const { count: total } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId);
+      const { count: withItemType } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).eq('item_type', 'sale');
+      const { count: withDateRange } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).gte('sale_date', startStr).lte('sale_date', endStr);
+      const { count: withTime } = await supabase.from('unified_sales').select('*', { count: 'exact', head: true }).eq('restaurant_id', restaurantId).not('sale_time', 'is', null);
+      console.log('[StaffingOverlay] filter breakdown:', { total, withItemType, withDateRange, withTime });
+
+      // Debug: check actual item_type values
+      const { data: sampleRows } = await supabase.from('unified_sales').select('item_type, sale_date, sale_time').eq('restaurant_id', restaurantId).limit(5);
+      console.log('[StaffingOverlay] sample rows:', sampleRows);
 
       const { data, error } = await supabase
         .from('unified_sales')

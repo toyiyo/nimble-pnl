@@ -24,6 +24,8 @@ interface StaffingConfigPanelProps {
   onSaveDefaults: () => void;
   isSaving: boolean;
   employeePositions: string[];
+  actualSplh: number | null;
+  lookbackWeeks: number;
 }
 
 function HelpTip({ text }: Readonly<{ text: string }>) {
@@ -47,6 +49,8 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
   onSaveDefaults,
   isSaving,
   employeePositions,
+  actualSplh,
+  lookbackWeeks,
 }: Readonly<StaffingConfigPanelProps>) {
   const [newPosition, setNewPosition] = useState('');
 
@@ -106,6 +110,12 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
               aria-label="Sales per labor hour target in dollars"
             />
           </div>
+          {actualSplh !== null && (
+            <span className="text-[11px] text-muted-foreground/80">
+              Your actual: ${actualSplh}/hr{' '}
+              <span className="text-muted-foreground/50">(last {lookbackWeeks} wks)</span>
+            </span>
+          )}
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1">

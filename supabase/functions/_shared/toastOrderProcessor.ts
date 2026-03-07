@@ -35,8 +35,6 @@ function parseOrderDateTime(order: any): OrderDateTime {
   // Prefer businessDate (restaurant's business day, YYYYMMDD integer) over UTC closedDate
   const bizDate = parseBusinessDate(order.businessDate);
   if (bizDate) {
-    // businessDate is a pure date (no time). orderTime is left null here;
-    // the sync RPC derives sale_time from closedDate using restaurant timezone.
     return { orderDate: bizDate, orderTime: null };
   }
 

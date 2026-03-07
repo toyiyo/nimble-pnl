@@ -13,10 +13,11 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
 import { aggregateHourlySales } from '@/hooks/useHourlySalesPattern';
 import { computeStaffingSuggestions } from '@/hooks/useStaffingSuggestions';
-import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
+import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
 import { supabase } from '@/integrations/supabase/client';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
+import type { MinCrew } from '@/types/scheduling';
 
 import { StaffingDayColumn } from './StaffingDayColumn';
 import { StaffingConfigPanel } from './StaffingConfigPanel';
@@ -38,6 +39,15 @@ function useWeekStaffingSuggestions(
     () => computeAvgHourlyRateCents(employees),
     [employees],
   );
+
+  const employeePositions = useMemo(() => {
+    if (!employees?.length) return [];
+    const positions = new Set<string>();
+    for (const emp of employees) {
+      if (emp.position) positions.add(emp.position);
+    }
+    return Array.from(positions).sort();
+  }, [employees]);
 
   // Merge DB settings with local overrides for live preview
   const activeSettings = useMemo(() => ({
@@ -93,7 +103,7 @@ function useWeekStaffingSuggestions(
       if (aggregated.hasHourlyBreakdown) anyHourly = true;
       result.set(day, computeStaffingSuggestions(aggregated.data, {
         targetSplh: activeSettings.target_splh,
-        minStaff: activeSettings.min_staff,
+        minStaff: computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff),
         targetLaborPct: activeSettings.target_labor_pct,
         avgHourlyRateCents,
         day,
@@ -112,6 +122,7 @@ function useWeekStaffingSuggestions(
     activeSettings,
     updateSettings,
     isSaving,
+    employeePositions,
   };
 }
 
@@ -121,7 +132,8 @@ export function StaffingOverlay({
 }: Readonly<StaffingOverlayProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { toast } = useToast();
-  const [localSettings, setLocalSettings] = useState<Record<string, number> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mixed types for settings overrides
+  const [localSettings, setLocalSettings] = useState<Record<string, any> | null>(null);
 
   const {
     daySuggestions,
@@ -132,9 +144,10 @@ export function StaffingOverlay({
     activeSettings,
     updateSettings,
     isSaving,
+    employeePositions,
   } = useWeekStaffingSuggestions(restaurantId, weekDays, localSettings);
 
-  const handleSettingsChange = useCallback((updates: Record<string, number>) => {
+  const handleSettingsChange = useCallback((updates: Record<string, unknown>) => {
     setLocalSettings((prev) => ({ ...(prev ?? {}), ...updates }));
   }, []);
 
@@ -207,6 +220,7 @@ export function StaffingOverlay({
                 onSettingsChange={handleSettingsChange}
                 onSaveDefaults={handleSaveDefaults}
                 isSaving={isSaving}
+                employeePositions={employeePositions}
               />
 
               {/* How it works explainer */}
@@ -221,7 +235,16 @@ export function StaffingOverlay({
                       : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am–10pm). The actual busy and slow hours may vary.'
                     }{' '}
                     Staff per hour = projected sales ÷ ${activeSettings.target_splh} target.{' '}
-                    {activeSettings.min_staff > 1 && `A minimum of ${activeSettings.min_staff} staff is always shown. `}
+                    {(() => {
+                      const crewFloor = computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff);
+                      if (activeSettings.min_crew && Object.keys(activeSettings.min_crew).length > 0) {
+                        return `Your minimum crew (${Object.entries(activeSettings.min_crew).map(([pos, n]) => `${n} ${pos}`).join(', ')}) sets a floor of ${crewFloor} staff per hour. `;
+                      }
+                      if (crewFloor > 1) {
+                        return `A minimum of ${crewFloor} staff is always shown. `;
+                      }
+                      return null;
+                    })()}
                     Amber bars mean labor cost exceeds your {activeSettings.target_labor_pct}% target.
                   </div>
                 </div>

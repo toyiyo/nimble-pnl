@@ -176,7 +176,7 @@ export function StaffingOverlay({
               <span className="text-[14px] font-medium text-foreground">Staffing Suggestions</span>
               {!isExpanded && hasSalesData && summary.peakStaff > 0 && (
                 <span className="text-[12px] text-muted-foreground ml-2">
-                  Peak: {summary.peakStaff} staff &middot; Est. labor: {summary.laborPct.toFixed(1)}%
+                  Peak {summary.peakStaff} staff/hr &middot; Labor {summary.laborPct.toFixed(1)}% of sales
                 </span>
               )}
             </div>
@@ -207,10 +207,20 @@ export function StaffingOverlay({
 
               {/* Day columns grid — matches TemplateGrid layout */}
               <div className="grid grid-cols-[200px_repeat(7,1fr)] min-w-[1000px]">
-                <div className="px-3 py-2 flex items-center">
+                <div className="px-3 py-2 flex flex-col justify-center gap-1">
                   <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Hourly
+                    Staff per Hour
                   </span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <div className="h-[8px] w-[14px] rounded-sm bg-blue-500/20 border border-blue-500/30" />
+                      <span className="text-[10px] text-muted-foreground">On target</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="h-[8px] w-[14px] rounded-sm bg-amber-500/30 border border-amber-500/40" />
+                      <span className="text-[10px] text-muted-foreground">Over budget</span>
+                    </div>
+                  </div>
                 </div>
                 {weekDays.map((day) => {
                   const daySugg = daySuggestions.get(day);
@@ -230,19 +240,19 @@ export function StaffingOverlay({
               {hasSalesData && summary.totalSales > 0 && (
                 <div className="flex items-center gap-6 px-4 py-2.5 border-t border-border/40 bg-muted/20">
                   <div className="text-[12px] text-muted-foreground">
-                    Projected sales:{' '}
+                    Projected weekly sales:{' '}
                     <span className="font-medium text-foreground">
                       ${Math.round(summary.totalSales).toLocaleString()}
                     </span>
                   </div>
                   <div className="text-[12px] text-muted-foreground">
-                    Est. labor:{' '}
+                    Estimated labor cost:{' '}
                     <span className="font-medium text-foreground">
                       ${Math.round(summary.totalLabor).toLocaleString()}
                     </span>
                   </div>
                   <div className="text-[12px] text-muted-foreground">
-                    Labor %:{' '}
+                    Labor as % of sales:{' '}
                     <span className={`font-medium ${summary.laborPct > activeSettings.target_labor_pct ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
                       {summary.laborPct.toFixed(1)}%
                     </span>

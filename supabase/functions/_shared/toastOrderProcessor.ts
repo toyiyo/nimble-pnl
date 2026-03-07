@@ -32,25 +32,25 @@ function parseBusinessDate(bizDate: number | undefined): string | null {
 }
 
 function parseOrderDateTime(order: any): OrderDateTime {
+  // Extract closedDate for time (and fallback date)
+  let closedDate = order.closedDate ? new Date(order.closedDate) : null;
+  if (!closedDate && order.checks?.[0]?.closedDate) {
+    closedDate = new Date(order.checks[0].closedDate);
+  }
+
+  const orderTime = closedDate
+    ? closedDate.toISOString().split('T')[1].split('.')[0]
+    : null;
+
   // Prefer businessDate (restaurant's business day, YYYYMMDD integer) over UTC closedDate
   const bizDate = parseBusinessDate(order.businessDate);
   if (bizDate) {
-    return { orderDate: bizDate, orderTime: null };
-  }
-
-  let closedDate = order.closedDate ? new Date(order.closedDate) : null;
-
-  if (!closedDate && order.checks?.[0]?.closedDate) {
-    closedDate = new Date(order.checks[0].closedDate);
+    return { orderDate: bizDate, orderTime };
   }
 
   const orderDate = closedDate
     ? closedDate.toISOString().split('T')[0]
     : new Date().toISOString().split('T')[0];
-
-  const orderTime = closedDate
-    ? closedDate.toISOString().split('T')[1].split('.')[0]
-    : null;
 
   return { orderDate, orderTime };
 }

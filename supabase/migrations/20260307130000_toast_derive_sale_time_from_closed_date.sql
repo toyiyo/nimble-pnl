@@ -29,6 +29,7 @@ JOIN public.restaurants r ON r.id = too.restaurant_id
 WHERE us.pos_system = 'toast'
   AND us.external_order_id = too.toast_order_guid
   AND us.restaurant_id = too.restaurant_id
+  AND us.item_type NOT IN ('tip', 'refund')
   AND us.sale_time IS NULL
   AND too.raw_json->>'closedDate' IS NOT NULL;
 

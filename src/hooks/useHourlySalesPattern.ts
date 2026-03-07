@@ -14,6 +14,12 @@ interface RawSale {
 const DEFAULT_OPEN_HOUR = 9;
 const DEFAULT_CLOSE_HOUR = 22; // 10pm
 
+export interface AggregatedSalesResult {
+  data: HourlySalesData[];
+  /** True when we have actual per-hour timestamps, false when using daily spread */
+  hasHourlyBreakdown: boolean;
+}
+
 /**
  * Pure function: aggregate raw sales into hourly averages.
  * Groups by hour, sums per day (sale_date), then averages across days.
@@ -22,8 +28,8 @@ const DEFAULT_CLOSE_HOUR = 22; // 10pm
  * evenly across assumed business hours (9am–10pm).
  * Exported for testing.
  */
-export function aggregateHourlySales(rawSales: RawSale[]): HourlySalesData[] {
-  if (rawSales.length === 0) return [];
+export function aggregateHourlySales(rawSales: RawSale[]): AggregatedSalesResult {
+  if (rawSales.length === 0) return { data: [], hasHourlyBreakdown: false };
 
   // Group by hour → by date → sum
   const hourDateMap = new Map<number, Map<string, number>>();
@@ -50,7 +56,7 @@ export function aggregateHourlySales(rawSales: RawSale[]): HourlySalesData[] {
         sampleCount: dailyTotals.length,
       });
     }
-    return result.sort((a, b) => a.hour - b.hour);
+    return { data: result.sort((a, b) => a.hour - b.hour), hasHourlyBreakdown: true };
   }
 
   // Fallback: no sale_time data — spread daily totals across business hours
@@ -68,7 +74,7 @@ export function aggregateHourlySales(rawSales: RawSale[]): HourlySalesData[] {
   for (let hour = DEFAULT_OPEN_HOUR; hour < DEFAULT_CLOSE_HOUR; hour++) {
     result.push({ hour, avgSales: avgPerHour, sampleCount: days.length });
   }
-  return result;
+  return { data: result, hasHourlyBreakdown: false };
 }
 
 /**
@@ -110,7 +116,7 @@ export function useHourlySalesPattern(
         return d.getDay() === dayOfWeek;
       });
 
-      return aggregateHourlySales(filtered);
+      return aggregateHourlySales(filtered).data;
     },
     enabled: !!restaurantId,
     staleTime: 60000,

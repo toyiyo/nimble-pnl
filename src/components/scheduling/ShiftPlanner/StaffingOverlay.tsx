@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { AlertCircle, ChevronDown, Users } from 'lucide-react';
+import { AlertCircle, ChevronDown, Info, Users } from 'lucide-react';
 
 import { useToast } from '@/hooks/use-toast';
 
@@ -81,15 +81,17 @@ function useWeekStaffingSuggestions(
     return grouped;
   }, [allSales]);
 
-  const daySuggestions = useMemo(() => {
-    if (!allSales?.length) return new Map<string, StaffingSuggestionsResult>();
+  const { daySuggestions, hasHourlyBreakdown } = useMemo(() => {
+    if (!allSales?.length) return { daySuggestions: new Map<string, StaffingSuggestionsResult>(), hasHourlyBreakdown: false };
 
     const result = new Map<string, StaffingSuggestionsResult>();
+    let anyHourly = false;
     for (const day of weekDays) {
       const dayOfWeek = new Date(day + 'T12:00:00').getDay();
       const filtered = salesByDow.get(dayOfWeek) ?? [];
-      const hourlySales = aggregateHourlySales(filtered);
-      result.set(day, computeStaffingSuggestions(hourlySales, {
+      const aggregated = aggregateHourlySales(filtered);
+      if (aggregated.hasHourlyBreakdown) anyHourly = true;
+      result.set(day, computeStaffingSuggestions(aggregated.data, {
         targetSplh: activeSettings.target_splh,
         minStaff: activeSettings.min_staff,
         targetLaborPct: activeSettings.target_labor_pct,
@@ -97,7 +99,7 @@ function useWeekStaffingSuggestions(
         day,
       }));
     }
-    return result;
+    return { daySuggestions: result, hasHourlyBreakdown: anyHourly };
   }, [allSales, salesByDow, weekDays, activeSettings, avgHourlyRateCents]);
 
   return {
@@ -105,6 +107,7 @@ function useWeekStaffingSuggestions(
     isLoading: settingsLoading || salesLoading,
     error: salesError,
     hasSalesData: (allSales?.length ?? 0) > 0,
+    hasHourlyBreakdown,
     effectiveSettings,
     activeSettings,
     updateSettings,
@@ -125,6 +128,7 @@ export function StaffingOverlay({
     isLoading,
     error,
     hasSalesData,
+    hasHourlyBreakdown,
     activeSettings,
     updateSettings,
     isSaving,
@@ -205,6 +209,24 @@ export function StaffingOverlay({
                 isSaving={isSaving}
               />
 
+              {/* How it works explainer */}
+              {hasSalesData && (
+                <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/40 bg-blue-500/5">
+                  <Info className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                  <div className="text-[12px] text-muted-foreground leading-relaxed">
+                    <span className="font-medium text-foreground">How this works:</span>{' '}
+                    We look at your last {activeSettings.lookback_weeks} weeks of sales for each day of the week.{' '}
+                    {hasHourlyBreakdown
+                      ? 'Each bar shows the recommended number of staff for that hour based on your sales history.'
+                      : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am\u201310pm). The actual busy and slow hours may vary.'
+                    }{' '}
+                    Staff per hour = projected sales \u00F7 ${activeSettings.target_splh} target.{' '}
+                    {activeSettings.min_staff > 1 && `A minimum of ${activeSettings.min_staff} staff is always shown. `}
+                    Amber bars mean labor cost exceeds your {activeSettings.target_labor_pct}% target.
+                  </div>
+                </div>
+              )}
+
               {/* Day columns grid — matches TemplateGrid layout */}
               <div className="grid grid-cols-[200px_repeat(7,1fr)] min-w-[1000px]">
                 <div className="px-3 py-2 flex flex-col justify-center gap-1">
@@ -231,6 +253,7 @@ export function StaffingOverlay({
                       recommendations={daySugg?.recommendations ?? []}
                       peakStaff={summary.peakStaff}
                       hasSalesData={hasSalesData && (daySugg?.recommendations.length ?? 0) > 0}
+                      hasHourlyBreakdown={hasHourlyBreakdown}
                     />
                   );
                 })}

@@ -14,6 +14,7 @@ interface StaffingDayColumnProps {
   recommendations: HourlyStaffingRecommendation[];
   peakStaff: number;
   hasSalesData: boolean;
+  hasHourlyBreakdown: boolean;
 }
 
 function formatHourLabel(hour: number): string {
@@ -32,6 +33,7 @@ export const StaffingDayColumn = memo(function StaffingDayColumn({
   recommendations,
   peakStaff,
   hasSalesData,
+  hasHourlyBreakdown,
 }: Readonly<StaffingDayColumnProps>) {
   if (!hasSalesData || recommendations.length === 0) {
     return (
@@ -53,15 +55,36 @@ export const StaffingDayColumn = memo(function StaffingDayColumn({
       className="flex flex-col border-l border-border/40 px-1 py-1"
       aria-label={`Staffing recommendations for ${day}`}
     >
-      {/* Day summary */}
-      <div className="flex items-center justify-between px-0.5 pb-1 mb-0.5 border-b border-border/20">
-        <span className="text-[10px] text-muted-foreground">{formatCurrency(totalSales)}</span>
-        <span className="text-[10px] font-medium text-foreground">{totalStaffHours}h</span>
-      </div>
+      {/* Day summary with labeled values */}
+      <TooltipProvider delayDuration={150}>
+        <div className="flex items-center justify-between px-0.5 pb-1 mb-0.5 border-b border-border/20">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-[10px] text-muted-foreground cursor-default">
+                {formatCurrency(totalSales)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[12px]">
+              {hasHourlyBreakdown
+                ? 'Projected sales based on historical hourly data'
+                : 'Projected sales based on daily average'
+              }
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-[10px] font-medium text-foreground cursor-default">
+                {totalStaffHours} hrs
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[12px]">
+              Total recommended staff-hours for this day
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
-      {/* Hourly bars */}
-      <div className="flex flex-col gap-px">
-        <TooltipProvider delayDuration={150}>
+        {/* Hourly bars */}
+        <div className="flex flex-col gap-px">
           {recommendations.map((rec) => {
             const widthPct = Math.max((rec.recommendedStaff / maxStaff) * 100, 12);
             const isOverTarget = rec.overTarget;
@@ -88,20 +111,23 @@ export const StaffingDayColumn = memo(function StaffingDayColumn({
                   </div>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-[12px] space-y-0.5">
-                  <div className="font-medium">{formatHourLabel(rec.hour)} — {rec.recommendedStaff} staff</div>
+                  <div className="font-medium">
+                    {formatHourLabel(rec.hour)} &mdash; {rec.recommendedStaff} staff recommended
+                  </div>
                   <div className="text-muted-foreground">
-                    Projected sales: {formatCurrency(rec.projectedSales)}
+                    {formatCurrency(rec.projectedSales)} projected sales{' '}
+                    {!hasHourlyBreakdown && '(daily estimate)'}
                   </div>
                   <div className={isOverTarget ? 'text-amber-500' : 'text-muted-foreground'}>
                     Labor cost: {rec.laborPct.toFixed(0)}% of sales
-                    {isOverTarget ? ' (over target)' : ''}
+                    {isOverTarget ? ' \u2014 over target' : ''}
                   </div>
                 </TooltipContent>
               </Tooltip>
             );
           })}
-        </TooltipProvider>
-      </div>
+        </div>
+      </TooltipProvider>
     </div>
   );
 });

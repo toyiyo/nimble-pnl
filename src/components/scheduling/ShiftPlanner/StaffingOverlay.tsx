@@ -48,25 +48,35 @@ function useWeekStaffingSuggestions(
   const { data: allSales, isLoading: salesLoading, error: salesError } = useQuery({
     queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
     queryFn: async () => {
-      console.log('[StaffingOverlay] queryFn called', { restaurantId, lookback: activeSettings.lookback_weeks });
       if (!restaurantId) return [];
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+      console.log('[StaffingOverlay] querying unified_sales', { restaurantId, startStr, endStr, lookback: activeSettings.lookback_weeks });
+
+      // Debug: try without filters first
+      const { count } = await supabase
+        .from('unified_sales')
+        .select('*', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId);
+      console.log('[StaffingOverlay] total rows for restaurant (no filters):', count);
+
       const { data, error } = await supabase
         .from('unified_sales')
         .select('sale_date, sale_time, total_price')
         .eq('restaurant_id', restaurantId)
         .eq('item_type', 'sale')
-        .gte('sale_date', startDate.toISOString().split('T')[0])
-        .lte('sale_date', endDate.toISOString().split('T')[0])
+        .gte('sale_date', startStr)
+        .lte('sale_date', endStr)
         .not('sale_time', 'is', null)
         .order('sale_date');
       if (error) {
         console.error('[StaffingOverlay] sales query error', error);
         throw error;
       }
-      console.log('[StaffingOverlay] sales query returned', data?.length, 'rows');
+      console.log('[StaffingOverlay] filtered query returned', data?.length, 'rows');
       return data ?? [];
     },
     enabled: !!restaurantId,

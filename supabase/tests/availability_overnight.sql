@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(10);
+SELECT plan(11);
 
 -- Setup: create restaurant, employee
 INSERT INTO restaurants (id, name, timezone)
@@ -106,6 +106,21 @@ SELECT is(
   ))::integer,
   1,
   'Shift 03:00-14:00 UTC spanning gap in overnight avail — conflict'
+);
+
+-- Test 11: Cross-midnight shift within overnight window — no conflict
+-- Shift: Mon 22:00 UTC to Tue 02:00 UTC — crosses midnight but within 13:00-04:00 window
+-- The function splits this into two days: Mon 22:00-23:59 and Tue 00:00-02:00
+-- Mon (DOW=1) has availability 13:00-04:00; Tue (DOW=2) has no availability (allow)
+SELECT is(
+  (SELECT count(*) FROM check_availability_conflict(
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '2026-04-06 22:00:00+00'::timestamptz,
+    '2026-04-07 02:00:00+00'::timestamptz
+  ))::integer,
+  0,
+  'Cross-midnight shift 22:00-02:00 UTC within overnight avail — no conflict'
 );
 
 SELECT * FROM finish();

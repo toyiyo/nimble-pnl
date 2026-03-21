@@ -13,9 +13,28 @@ ALTER TABLE availability_exceptions ADD CONSTRAINT valid_exception_time CHECK (
   (start_time IS NOT NULL AND end_time IS NOT NULL AND end_time != start_time)
 );
 
+-- Helper: check if a shift time range falls within an availability window.
+-- For overnight windows (end < start, e.g. 13:00-04:00), the unavailable gap
+-- is [end_time, start_time]. The shift is within the window if it doesn't
+-- overlap the gap: shift_start >= window_start OR shift_end <= window_end.
+CREATE OR REPLACE FUNCTION time_within_window(
+  p_shift_start TIME,
+  p_shift_end TIME,
+  p_window_start TIME,
+  p_window_end TIME
+) RETURNS BOOLEAN AS $$
+BEGIN
+  IF p_window_end < p_window_start THEN
+    -- Overnight window: shift must not overlap the gap [end, start]
+    RETURN p_shift_start >= p_window_start OR p_shift_end <= p_window_end;
+  ELSE
+    -- Normal window
+    RETURN p_shift_start >= p_window_start AND p_shift_end <= p_window_end;
+  END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 -- Replace conflict detection function to handle overnight UTC windows.
--- When end_time < start_time, the window wraps around midnight:
---   shift is within window if shift_time >= start_time OR shift_time <= end_time.
 CREATE OR REPLACE FUNCTION check_availability_conflict(
   p_employee_id UUID,
   p_restaurant_id UUID,
@@ -72,30 +91,12 @@ BEGIN
           COALESCE(' (' || v_exception.reason || ')', '');
         RETURN;
       ELSIF v_exception.start_time IS NOT NULL THEN
-        -- Check if shift is within exception availability window
-        IF v_exception.end_time < v_exception.start_time THEN
-          -- Overnight window: two contiguous portions (start_time→midnight, midnight→end_time)
-          -- Shift must be entirely within one portion to avoid spanning the gap
-          IF NOT (
-            -- Entirely in before-midnight portion (both times >= start_time)
-            (v_shift_start_time >= v_exception.start_time AND v_shift_end_time >= v_exception.start_time)
-            OR
-            -- Entirely in after-midnight portion (both times <= end_time)
-            (v_shift_start_time <= v_exception.end_time AND v_shift_end_time <= v_exception.end_time)
-          ) THEN
-            RETURN QUERY SELECT true, 'exception'::TEXT,
-              'Shift on ' || v_current_date::TEXT || ' is outside employee availability window (' ||
-              v_exception.start_time::TEXT || ' - ' || v_exception.end_time::TEXT || ')';
-            RETURN;
-          END IF;
-        ELSE
-          -- Normal window: start_time <= shift <= end_time
-          IF NOT (v_shift_start_time >= v_exception.start_time AND v_shift_end_time <= v_exception.end_time) THEN
-            RETURN QUERY SELECT true, 'exception'::TEXT,
-              'Shift on ' || v_current_date::TEXT || ' is outside employee availability window (' ||
-              v_exception.start_time::TEXT || ' - ' || v_exception.end_time::TEXT || ')';
-            RETURN;
-          END IF;
+        IF NOT time_within_window(v_shift_start_time, v_shift_end_time,
+                                  v_exception.start_time, v_exception.end_time) THEN
+          RETURN QUERY SELECT true, 'exception'::TEXT,
+            'Shift on ' || v_current_date::TEXT || ' is outside employee availability window (' ||
+            v_exception.start_time::TEXT || ' - ' || v_exception.end_time::TEXT || ')';
+          RETURN;
         END IF;
       END IF;
     ELSE
@@ -113,36 +114,14 @@ BEGIN
           RETURN;
         END IF;
 
-        -- Check if shift is within availability window
-        IF v_availability.end_time < v_availability.start_time THEN
-          -- Overnight window: two contiguous portions (start_time→midnight, midnight→end_time)
-          -- Shift must be entirely within one portion to avoid spanning the gap
-          IF NOT (
-            -- Entirely in before-midnight portion (both times >= start_time)
-            (v_shift_start_time >= v_availability.start_time AND v_shift_end_time >= v_availability.start_time)
-            OR
-            -- Entirely in after-midnight portion (both times <= end_time)
-            (v_shift_start_time <= v_availability.end_time AND v_shift_end_time <= v_availability.end_time)
-          ) THEN
-            RETURN QUERY SELECT true, 'recurring'::TEXT,
-              'Shift on ' || v_current_date::TEXT || ' is outside employee availability (' ||
-              v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';
-            RETURN;
-          END IF;
-        ELSE
-          -- Normal window
-          IF NOT (v_shift_start_time >= v_availability.start_time AND v_shift_end_time <= v_availability.end_time) THEN
-            RETURN QUERY SELECT true, 'recurring'::TEXT,
-              'Shift on ' || v_current_date::TEXT || ' is outside employee availability (' ||
-              v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';
-            RETURN;
-          END IF;
+        IF NOT time_within_window(v_shift_start_time, v_shift_end_time,
+                                  v_availability.start_time, v_availability.end_time) THEN
+          RETURN QUERY SELECT true, 'recurring'::TEXT,
+            'Shift on ' || v_current_date::TEXT || ' is outside employee availability (' ||
+            v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';
+          RETURN;
         END IF;
       END LOOP;
-
-      IF NOT v_has_availability THEN
-        NULL;
-      END IF;
     END IF;
 
     v_current_date := v_current_date + INTERVAL '1 day';

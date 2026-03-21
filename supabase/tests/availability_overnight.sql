@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(11);
+SELECT plan(13);
 
 -- Setup: create restaurant, employee
 INSERT INTO restaurants (id, name, timezone)
@@ -121,6 +121,35 @@ SELECT is(
   ))::integer,
   0,
   'Cross-midnight shift 22:00-02:00 UTC within overnight avail — no conflict'
+);
+
+-- Test 12: Multiple availability windows — shift in second window should pass
+-- Add a second window for Sunday (day_of_week=0): 18:00-22:00 UTC
+-- (Test 1 already added 09:00-17:00 for Sunday)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 0, true, '18:00:00', '22:00:00');
+-- April 5, 2026 is a Sunday (DOW=0)
+SELECT is(
+  (SELECT count(*) FROM check_availability_conflict(
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '2026-04-05 19:00:00+00'::timestamptz,
+    '2026-04-05 21:00:00+00'::timestamptz
+  ))::integer,
+  0,
+  'Shift in second availability window (18:00-22:00) — no conflict'
+);
+
+-- Test 13: Multiple availability windows — shift outside all windows should conflict
+SELECT is(
+  (SELECT count(*) FROM check_availability_conflict(
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '2026-04-05 23:00:00+00'::timestamptz,
+    '2026-04-05 23:30:00+00'::timestamptz
+  ))::integer,
+  1,
+  'Shift outside all availability windows — conflict'
 );
 
 SELECT * FROM finish();

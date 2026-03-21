@@ -55,6 +55,7 @@ DECLARE
   v_exception RECORD;
   v_availability RECORD;
   v_has_availability BOOLEAN;
+  v_match_found BOOLEAN;
 BEGIN
   v_current_date := DATE(p_start_time);
   v_end_date := DATE(p_end_time);
@@ -101,6 +102,7 @@ BEGIN
       END IF;
     ELSE
       v_has_availability := false;
+      v_match_found := false;
       FOR v_availability IN
         SELECT * FROM employee_availability
         WHERE employee_id = p_employee_id
@@ -114,14 +116,19 @@ BEGIN
           RETURN;
         END IF;
 
-        IF NOT time_within_window(v_shift_start_time, v_shift_end_time,
-                                  v_availability.start_time, v_availability.end_time) THEN
-          RETURN QUERY SELECT true, 'recurring'::TEXT,
-            'Shift on ' || v_current_date::TEXT || ' is outside employee availability (' ||
-            v_availability.start_time::TEXT || ' - ' || v_availability.end_time::TEXT || ')';
-          RETURN;
+        -- Shift fits within at least one availability window → no conflict
+        IF time_within_window(v_shift_start_time, v_shift_end_time,
+                              v_availability.start_time, v_availability.end_time) THEN
+          v_match_found := true;
+          EXIT;
         END IF;
       END LOOP;
+
+      IF v_has_availability AND NOT v_match_found THEN
+        RETURN QUERY SELECT true, 'recurring'::TEXT,
+          'Shift on ' || v_current_date::TEXT || ' is outside employee availability';
+        RETURN;
+      END IF;
     END IF;
 
     v_current_date := v_current_date + INTERVAL '1 day';

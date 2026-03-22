@@ -184,6 +184,8 @@ export interface ConflictCheck {
   start_date?: string;
   end_date?: string;
   status?: string;
+  available_start?: string; // TIME format (HH:MM:SS) in UTC
+  available_end?: string;   // TIME format (HH:MM:SS) in UTC
 }
 
 export interface NotificationSettings {

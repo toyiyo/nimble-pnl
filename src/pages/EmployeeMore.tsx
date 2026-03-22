@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Clock, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight } from 'lucide-react';
+import { Clock, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { LucideIcon } from 'lucide-react';
 
 interface NavItem {
   path: string;
@@ -17,7 +16,7 @@ const mainItems: NavItem[] = [
   { path: '/employee/tips', label: 'Tips', description: 'Tip history & breakdown', icon: Coins },
 ];
 
-const EmployeeMore = () => {
+function EmployeeMore() {
   const { signOut } = useAuth();
 
   return (
@@ -71,6 +70,6 @@ const EmployeeMore = () => {
       </div>
     </div>
   );
-};
+}
 
 export default EmployeeMore;

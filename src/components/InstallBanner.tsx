@@ -11,7 +11,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-export const InstallBanner = () => {
+export function InstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
   const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | null>(null);
@@ -66,10 +66,7 @@ export const InstallBanner = () => {
   const handleInstallClick = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-      }
+      await deferredPrompt.userChoice;
       setDeferredPrompt(null);
       setShowBanner(false);
     }
@@ -163,4 +160,4 @@ export const InstallBanner = () => {
       </div>
     </Card>
   );
-};
+}

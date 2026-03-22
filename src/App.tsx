@@ -75,7 +75,7 @@ const queryClient = new QueryClient(queryClientConfig);
 const enableSpeedInsights = import.meta.env.VITE_ENABLE_SPEED_INSIGHTS === "true";
 
 // Layout switcher - chooses between mobile employee layout, desktop layout, or no-chrome
-const LayoutSwitcher = ({ children, noChrome, isMobile }: { children: React.ReactNode; noChrome: boolean; isMobile: boolean }) => {
+function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.ReactNode; noChrome: boolean; isMobile: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
   const isStaff = selectedRestaurant?.role === 'staff';
 
@@ -105,12 +105,12 @@ const LayoutSwitcher = ({ children, noChrome, isMobile }: { children: React.Reac
       <AiChatPanel />
     </>
   );
-};
+}
 
 // Protected Route Component with staff restrictions
-const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { children: React.ReactNode; allowStaff?: boolean; noChrome?: boolean }) => {
+function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { children: React.ReactNode; allowStaff?: boolean; noChrome?: boolean }) {
   const { user, loading } = useAuth();
-  const location = useLocation();
+  const { pathname } = useLocation();
   const isMobile = useIsMobile();
 
   if (loading) {
@@ -130,7 +130,7 @@ const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { ch
   return (
     <RestaurantProvider>
       <AiChatProvider>
-        <StaffRoleChecker allowStaff={allowStaff} currentPath={location.pathname}>
+        <StaffRoleChecker allowStaff={allowStaff} currentPath={pathname}>
           <LayoutSwitcher noChrome={noChrome} isMobile={isMobile}>
             {children}
           </LayoutSwitcher>
@@ -138,7 +138,7 @@ const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { ch
       </AiChatProvider>
     </RestaurantProvider>
   );
-};
+}
 
 // Collaborator route configurations
 // Each collaborator role has a landing page and list of allowed paths
@@ -183,7 +183,7 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
 };
 
 // Role Route Checker Component - handles staff, kiosk, and collaborator routing
-const StaffRoleChecker = ({
+function StaffRoleChecker({
   children,
   allowStaff,
   currentPath
@@ -191,7 +191,7 @@ const StaffRoleChecker = ({
   children: React.ReactNode;
   allowStaff: boolean;
   currentPath: string;
-}) => {
+}) {
   const { selectedRestaurant } = useRestaurantContext();
 
   const role = selectedRestaurant?.role;
@@ -228,7 +228,7 @@ const StaffRoleChecker = ({
   }
 
   return <>{children}</>;
-};
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

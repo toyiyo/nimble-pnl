@@ -3,6 +3,8 @@ import { X, Download, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Capacitor } from '@capacitor/core';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -13,6 +15,7 @@ export const InstallBanner = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
   const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | null>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     // Don't show banner if already in Capacitor native app
@@ -80,7 +83,10 @@ export const InstallBanner = () => {
   if (!showBanner) return null;
 
   return (
-    <Card className="fixed bottom-4 left-4 right-4 z-50 border-primary/20 bg-card/95 backdrop-blur-sm shadow-lg md:left-auto md:right-4 md:max-w-md">
+    <Card className={cn(
+      "fixed left-4 right-4 z-50 border-primary/20 bg-card/95 backdrop-blur-sm shadow-lg md:left-auto md:right-4 md:max-w-md",
+      isMobile ? "bottom-20" : "bottom-4"
+    )}>
       <div className="flex items-start gap-3 p-4">
         <div className="flex-shrink-0 rounded-full bg-primary/10 p-2">
           {platform === 'ios' ? (

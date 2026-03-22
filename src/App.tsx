@@ -236,10 +236,10 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <InstallBanner />
         <Analytics />
         {enableSpeedInsights && <SpeedInsights />}
         <BrowserRouter>
+          <InstallBanner />
           <Routes>
             <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/auth" element={<Auth />} />

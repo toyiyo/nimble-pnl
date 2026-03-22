@@ -12,7 +12,9 @@ import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
-import type { ShiftTemplate } from '@/types/scheduling';
+import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
+import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
+import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { AssignmentPopover } from './AssignmentPopover';
 
@@ -23,6 +25,8 @@ import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
 import { DragOverlayChip } from './DragOverlayChip';
 import { PlannerExportDialog } from './PlannerExportDialog';
+import { AvailabilityConflictDialog } from './AvailabilityConflictDialog';
+import type { ConflictDialogData } from './AvailabilityConflictDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -46,6 +50,7 @@ export function ShiftPlannerTab({
     isLoading,
     error,
     validateAndCreate,
+    forceCreate,
     deleteShift,
     validationResult,
     clearValidation,
@@ -79,6 +84,10 @@ export function ShiftPlannerTab({
     template: ShiftTemplate;
     day: string;
   } | null>(null);
+
+  const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
+  const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
@@ -133,21 +142,30 @@ export function ShiftPlannerTab({
     const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
     const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
 
-    const success = await validateAndCreate({
+    const input: ShiftCreateInput = {
       employeeId: employee.id,
       date: day,
       startTime: startHHMM,
       endTime: endHHMM,
       position: template.position,
       breakDuration: template.break_duration,
-    });
+    };
 
-    if (success) {
+    const result = await validateAndCreate(input);
+
+    if (result.created) {
       clearValidation();
       setHighlightCellId(`${template.id}:${day}`);
       setTimeout(() => setHighlightCellId(null), 600);
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
       toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
+    } else if (result.pendingConflicts || result.pendingWarnings) {
+      setConflictDialogData({
+        employeeName: employee.name,
+        conflicts: result.pendingConflicts || [],
+        warnings: result.pendingWarnings || [],
+      });
+      setConflictPendingInputs([input]);
     }
   }, [pendingAssignment, validateAndCreate, clearValidation, toast]);
 
@@ -160,29 +178,70 @@ export function ShiftPlannerTab({
     const startHHMM = template.start_time.split(':').slice(0, 2).join(':');
     const endHHMM = template.end_time.split(':').slice(0, 2).join(':');
 
-    let successCount = 0;
-    for (const day of activeDays) {
-      const success = await validateAndCreate({
-        employeeId: employee.id,
-        date: day,
-        startTime: startHHMM,
-        endTime: endHHMM,
-        position: template.position,
-        breakDuration: template.break_duration,
-      });
-      if (success) successCount++;
+    const allInputs: ShiftCreateInput[] = activeDays.map((day) => ({
+      employeeId: employee.id,
+      date: day,
+      startTime: startHHMM,
+      endTime: endHHMM,
+      position: template.position,
+      breakDuration: template.break_duration,
+    }));
+
+    const allConflicts: ConflictCheck[] = [];
+    const allWarnings: ValidationIssue[] = [];
+    const conflictedInputs: ShiftCreateInput[] = [];
+    let createdCount = 0;
+
+    for (const input of allInputs) {
+      const result = await validateAndCreate(input);
+      if (result.created) {
+        createdCount++;
+      } else if (result.pendingConflicts || result.pendingWarnings) {
+        allConflicts.push(...(result.pendingConflicts || []));
+        allWarnings.push(...(result.pendingWarnings || []));
+        conflictedInputs.push(input);
+      }
     }
 
-    if (successCount === activeDays.length) {
+    if (conflictedInputs.length > 0) {
+      setConflictDialogData({
+        employeeName: employee.name,
+        conflicts: allConflicts,
+        warnings: allWarnings,
+      });
+      setConflictPendingInputs(conflictedInputs);
+      if (createdCount > 0) {
+        toast({ title: `${createdCount} day(s) assigned, ${conflictedInputs.length} day(s) need confirmation` });
+      }
+    } else {
       clearValidation();
+      toast({
+        title: `${employee.name} assigned to ${template.name} — ${createdCount}/${allInputs.length} days`,
+      });
     }
-    toast({
-      title: `${employee.name} assigned to ${template.name} — ${successCount}/${activeDays.length} days`,
-    });
   }, [pendingAssignment, weekDays, validateAndCreate, clearValidation, toast]);
 
   const handleCancelAssignment = useCallback(() => {
     setPendingAssignment(null);
+  }, []);
+
+  const handleConflictConfirm = useCallback(async () => {
+    let successCount = 0;
+    for (const input of conflictPendingInputs) {
+      const success = await forceCreate(input);
+      if (success) successCount++;
+    }
+    setConflictDialogData(null);
+    setConflictPendingInputs([]);
+    clearValidation();
+    if (successCount > 0) {
+      toast({ title: `${successCount} shift${successCount > 1 ? 's' : ''} assigned despite warnings` });
+    }
+  }, [conflictPendingInputs, forceCreate, clearValidation, toast]);
+
+  const handleConflictCancel = useCallback(() => {
+    setConflictDialogData(null);
+    setConflictPendingInputs([]);
   }, []);
 
   const activeDayCount = useMemo(
@@ -366,6 +425,15 @@ export function ShiftPlannerTab({
         templates={templates}
         restaurantName={restaurantName}
         weekDays={weekDays}
+      />
+
+      {/* Availability conflict confirmation dialog */}
+      <AvailabilityConflictDialog
+        open={conflictDialogData !== null}
+        data={conflictDialogData}
+        timezone={restaurantTimezone}
+        onConfirm={handleConflictConfirm}
+        onCancel={handleConflictCancel}
       />
 
     </div>

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(15);
+SELECT plan(16);
 
 -- Setup: create restaurant, employee
 INSERT INTO restaurants (id, name, timezone)
@@ -182,6 +182,20 @@ SELECT is(
   ))::integer,
   1,
   'Tue 05:00-06:00 UTC outside all windows (carry-over ends at 04:00) — conflict'
+);
+
+-- Test 16: Shift ending exactly at midnight should not check next day
+-- Monday availability is 13:00-04:00 UTC. Shift Mon 18:00 to Tue 00:00 UTC
+-- should NOT iterate into Tuesday (zero-length slice would cause false conflict)
+SELECT is(
+  (SELECT count(*) FROM check_availability_conflict(
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '2026-04-06 18:00:00+00'::timestamptz,
+    '2026-04-07 00:00:00+00'::timestamptz
+  ))::integer,
+  0,
+  'Shift ending at midnight should not iterate into next day — no conflict'
 );
 
 SELECT * FROM finish();

@@ -68,7 +68,13 @@ BEGIN
   v_start_utc := p_start_time AT TIME ZONE 'UTC';
   v_end_utc := p_end_time AT TIME ZONE 'UTC';
   v_current_date := v_start_utc::DATE;
-  v_end_date := v_end_utc::DATE;
+  -- Avoid iterating an extra day when shift ends exactly at midnight
+  -- (e.g., 18:00→00:00 would create a zero-length slice on the next day)
+  IF v_end_utc::TIME = '00:00:00'::TIME AND v_end_utc > v_start_utc THEN
+    v_end_date := (v_end_utc - INTERVAL '1 day')::DATE;
+  ELSE
+    v_end_date := v_end_utc::DATE;
+  END IF;
 
   WHILE v_current_date <= v_end_date LOOP
     v_day_of_week := EXTRACT(DOW FROM v_current_date);

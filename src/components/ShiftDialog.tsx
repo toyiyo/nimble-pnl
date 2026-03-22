@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
+import { Shift, RecurrencePattern, RecurrenceType, ConflictCheck } from '@/types/scheduling';
+import { formatConflictLine } from '@/lib/conflictFormatUtils';
 import { useCreateShift, useUpdateShift, useUpdateShiftSeries } from '@/hooks/useShifts';
 import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -21,6 +22,7 @@ interface ShiftDialogProps {
   onOpenChange: (open: boolean) => void;
   shift?: Shift & { _editScope?: RecurringActionScope };
   restaurantId: string;
+  timezone?: string; // Restaurant timezone for formatting availability times
   defaultDate?: Date;
   defaultEmployee?: DefaultEmployee;
 }
@@ -43,7 +45,7 @@ const POSITIONS = [
   'Other',
 ];
 
-export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDate, defaultEmployee }: ShiftDialogProps) => {
+export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee }: ShiftDialogProps) => {
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -426,7 +428,7 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
                         ? `timeoff-${conflict.time_off_id}`
                         : `${conflict.conflict_type}-${conflict.message}`;
                       return (
-                        <p key={conflictKey} className="text-sm">• {conflict.message}</p>
+                        <p key={conflictKey} className="text-sm">• {formatConflictLine(conflict, timezone)}</p>
                       );
                     })}
                   </div>

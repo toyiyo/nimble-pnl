@@ -39,7 +39,7 @@ export function MobileTabBar() {
               aria-current={active ? 'page' : undefined}
               aria-label={tab.label}
               className={cn(
-                'flex flex-col items-center gap-0.5 px-3 py-1 text-[10px] font-medium transition-colors min-w-[64px]',
+                'flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors min-w-[64px] min-h-[44px]',
                 active ? 'text-foreground' : 'text-muted-foreground'
               )}
             >

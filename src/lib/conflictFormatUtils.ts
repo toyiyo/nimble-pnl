@@ -15,6 +15,14 @@ export function formatUTCTimeToLocal(utcTime: string, timezone: string): string 
   });
 }
 
+/** Extract an ISO date from a message and format it as a short day label (e.g. "Mon, Mar 22"). */
+function extractDayLabel(message: string | undefined, timezone: string): string | null {
+  const dateMatch = message?.match(/\d{4}-\d{2}-\d{2}/);
+  if (!dateMatch) return null;
+  const date = new Date(dateMatch[0] + 'T00:00:00Z');
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: timezone });
+}
+
 export function formatConflictLine(conflict: ConflictCheck, timezone: string): string {
   if (conflict.conflict_type === 'time-off') {
     return conflict.message || 'Time-off conflict';
@@ -23,20 +31,16 @@ export function formatConflictLine(conflict: ConflictCheck, timezone: string): s
   if (conflict.available_start && conflict.available_end) {
     const start = formatUTCTimeToLocal(conflict.available_start, timezone);
     const end = formatUTCTimeToLocal(conflict.available_end, timezone);
-    const dateMatch = conflict.message?.match(/\d{4}-\d{2}-\d{2}/);
-    if (dateMatch) {
-      const date = new Date(dateMatch[0] + 'T00:00:00');
-      const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const dayLabel = extractDayLabel(conflict.message, timezone);
+    if (dayLabel) {
       return `Shift on ${dayLabel} is outside availability (available ${start} – ${end})`;
     }
     return `Outside availability window (available ${start} – ${end})`;
   }
 
-  const dateMatch = conflict.message?.match(/\d{4}-\d{2}-\d{2}/);
-  if (dateMatch) {
-    const date = new Date(dateMatch[0] + 'T00:00:00');
-    const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    return conflict.message!.replace(dateMatch[0], dayLabel);
+  const dayLabel = extractDayLabel(conflict.message, timezone);
+  if (dayLabel && conflict.message) {
+    return conflict.message.replace(/\d{4}-\d{2}-\d{2}/, dayLabel);
   }
 
   return conflict.message || 'Scheduling conflict';

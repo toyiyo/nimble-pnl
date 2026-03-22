@@ -159,7 +159,7 @@ export function ShiftPlannerTab({
       setTimeout(() => setHighlightCellId(null), 600);
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
       toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
-    } else if (result.pendingConflicts || result.pendingWarnings) {
+    } else if (result.pendingConflicts?.length || result.pendingWarnings?.length) {
       setConflictDialogData({
         employeeName: employee.name,
         conflicts: result.pendingConflicts || [],
@@ -196,7 +196,7 @@ export function ShiftPlannerTab({
       const result = await validateAndCreate(input);
       if (result.created) {
         createdCount++;
-      } else if (result.pendingConflicts || result.pendingWarnings) {
+      } else if (result.pendingConflicts?.length || result.pendingWarnings?.length) {
         allConflicts.push(...(result.pendingConflicts || []));
         allWarnings.push(...(result.pendingWarnings || []));
         conflictedInputs.push(input);

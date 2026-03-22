@@ -163,6 +163,26 @@ function errorToValidationResult(err: unknown, fallback: string): ValidationResu
   };
 }
 
+/** Build the mutation payload for creating a shift from validated inputs. */
+function buildShiftPayload(
+  restaurantId: string,
+  input: ShiftCreateInput,
+  interval: ShiftInterval,
+) {
+  return {
+    restaurant_id: restaurantId,
+    employee_id: input.employeeId,
+    start_time: interval.startAt.toISOString(),
+    end_time: interval.endAt.toISOString(),
+    position: input.position,
+    break_duration: input.breakDuration ?? 0,
+    notes: input.notes,
+    status: 'scheduled' as const,
+    is_published: false,
+    locked: false,
+  };
+}
+
 /**
  * Get the Monday of the week containing the given date.
  * Sets time to midnight local.
@@ -391,18 +411,7 @@ export function useShiftPlanner(
         }
 
         // No issues — create immediately
-        await createShift.mutateAsync({
-          restaurant_id: restaurantId,
-          employee_id: input.employeeId,
-          start_time: interval.startAt.toISOString(),
-          end_time: interval.endAt.toISOString(),
-          position: input.position,
-          break_duration: input.breakDuration ?? 0,
-          notes: input.notes,
-          status: 'scheduled',
-          is_published: false,
-          locked: false,
-        });
+        await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
 
         setValidationResult(null);
         return { created: true };
@@ -425,18 +434,7 @@ export function useShiftPlanner(
           input.endTime,
         );
 
-        await createShift.mutateAsync({
-          restaurant_id: restaurantId,
-          employee_id: input.employeeId,
-          start_time: interval.startAt.toISOString(),
-          end_time: interval.endAt.toISOString(),
-          position: input.position,
-          break_duration: input.breakDuration ?? 0,
-          notes: input.notes,
-          status: 'scheduled',
-          is_published: false,
-          locked: false,
-        });
+        await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
 
         setValidationResult(null);
         return true;

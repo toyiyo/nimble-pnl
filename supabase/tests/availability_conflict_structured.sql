@@ -19,7 +19,7 @@ VALUES ('00000000-0000-0000-0000-000000000299', '00000000-0000-0000-0000-0000000
 -- Setup: recurring unavailable Tue (dow=2)
 INSERT INTO employee_availability (employee_id, restaurant_id, day_of_week, start_time, end_time, is_available)
 VALUES ('00000000-0000-0000-0000-000000000299', '00000000-0000-0000-0000-000000000099',
-        2, '00:00:00', '23:59:00', false);
+        2, '00:00:00', '23:59:59', false);
 
 -- Test 1: Recurring conflict returns available_start/end for the window
 SELECT results_eq(

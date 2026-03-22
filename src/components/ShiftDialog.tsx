@@ -44,7 +44,14 @@ const POSITIONS = [
   'Other',
 ];
 
-export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee }: ShiftDialogProps) => {
+function getSubmitLabel(isSaving: boolean, isLocked: boolean, isEditing: boolean): string {
+  if (isSaving) return 'Saving...';
+  if (isLocked) return 'Locked';
+  if (isEditing) return 'Update Shift';
+  return 'Create Shift';
+}
+
+export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee }: ShiftDialogProps) {
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -481,13 +488,11 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, timezone 
               type="submit"
               disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending || shift?.locked}
             >
-              {createShift.isPending || updateShift.isPending || updateShiftSeries.isPending
-                ? 'Saving...'
-                : shift?.locked
-                ? 'Locked'
-                : shift
-                ? 'Update Shift'
-                : 'Create Shift'}
+              {getSubmitLabel(
+                createShift.isPending || updateShift.isPending || updateShiftSeries.isPending,
+                shift?.locked ?? false,
+                !!shift,
+              )}
             </Button>
           </DialogFooter>
         </form>
@@ -503,4 +508,4 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, timezone 
       />
     </Dialog>
   );
-};
+}

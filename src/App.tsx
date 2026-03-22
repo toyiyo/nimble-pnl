@@ -14,6 +14,8 @@ import { AppHeader } from "@/components/AppHeader";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileLayout } from '@/components/employee/MobileLayout';
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -56,6 +58,7 @@ import PurchaseOrderEditor from "./pages/PurchaseOrderEditor";
 import KioskMode from "./pages/KioskMode";
 import Tips from "./pages/Tips";
 import EmployeeTips from "./pages/EmployeeTips";
+import EmployeeMore from "./pages/EmployeeMore";
 import Customers from "./pages/Customers";
 import Invoices from "./pages/Invoices";
 import InvoiceForm from "./pages/InvoiceForm";
@@ -71,10 +74,44 @@ import { queryClientConfig } from "@/lib/react-query-config";
 const queryClient = new QueryClient(queryClientConfig);
 const enableSpeedInsights = import.meta.env.VITE_ENABLE_SPEED_INSIGHTS === "true";
 
+// Layout switcher - chooses between mobile employee layout, desktop layout, or no-chrome
+const LayoutSwitcher = ({ children, noChrome, isMobile }: { children: React.ReactNode; noChrome: boolean; isMobile: boolean }) => {
+  const { selectedRestaurant } = useRestaurantContext();
+  const isStaff = selectedRestaurant?.role === 'staff';
+
+  if (noChrome) {
+    return <div className="min-h-screen bg-background">{children}</div>;
+  }
+
+  if (isStaff && isMobile) {
+    return <MobileLayout>{children}</MobileLayout>;
+  }
+
+  return (
+    <>
+      <SidebarProvider defaultOpen={true}>
+        <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
+          <AppSidebar />
+          <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+            <AppHeader />
+            <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
+              {children}
+            </main>
+          </div>
+        </div>
+      </SidebarProvider>
+      {/* Floating AI Chat - only for non-kiosk authenticated pages */}
+      <AiChatBubble />
+      <AiChatPanel />
+    </>
+  );
+};
+
 // Protected Route Component with staff restrictions
 const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { children: React.ReactNode; allowStaff?: boolean; noChrome?: boolean }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const isMobile = useIsMobile();
 
   if (loading) {
     return (
@@ -94,26 +131,9 @@ const ProtectedRoute = ({ children, allowStaff = false, noChrome = false }: { ch
     <RestaurantProvider>
       <AiChatProvider>
         <StaffRoleChecker allowStaff={allowStaff} currentPath={location.pathname}>
-          {noChrome ? (
-            <div className="min-h-screen bg-background">{children}</div>
-          ) : (
-            <>
-              <SidebarProvider defaultOpen={true}>
-                <div className="min-h-screen flex w-full bg-background overflow-x-hidden">
-                  <AppSidebar />
-                  <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-                    <AppHeader />
-                    <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
-                      {children}
-                    </main>
-                  </div>
-                </div>
-              </SidebarProvider>
-              {/* Floating AI Chat - only for non-kiosk authenticated pages */}
-              <AiChatBubble />
-              <AiChatPanel />
-            </>
-          )}
+          <LayoutSwitcher noChrome={noChrome} isMobile={isMobile}>
+            {children}
+          </LayoutSwitcher>
         </StaffRoleChecker>
       </AiChatProvider>
     </RestaurantProvider>
@@ -199,12 +219,12 @@ const StaffRoleChecker = ({
   }
 
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
-  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/employee/shifts', '/settings'];
+  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/employee/shifts', '/employee/tips', '/employee/more', '/settings'];
   const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
 
   // If user is staff and trying to access restricted route
   if (isStaff && !allowStaff && !isStaffAllowedPath) {
-    return <Navigate to="/employee/clock" replace />;
+    return <Navigate to="/employee/schedule" replace />;
   }
 
   return <>{children}</>;
@@ -250,6 +270,7 @@ const App = () => (
           <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />
           <Route path="/tips" element={<ProtectedRoute><Tips /></ProtectedRoute>} />
           <Route path="/employee/tips" element={<ProtectedRoute allowStaff={true}><EmployeeTips /></ProtectedRoute>} />
+          <Route path="/employee/more" element={<ProtectedRoute allowStaff={true}><EmployeeMore /></ProtectedRoute>} />
           <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
           <Route path="/invoices/new" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />

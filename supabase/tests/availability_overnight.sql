@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(13);
+SELECT plan(15);
 
 -- Setup: create restaurant, employee
 INSERT INTO restaurants (id, name, timezone)
@@ -150,6 +150,38 @@ SELECT is(
   ))::integer,
   1,
   'Shift outside all availability windows — conflict'
+);
+
+-- Test 14: Previous-day overnight carry-over — shift in Tuesday's early hours
+-- covered by Monday's overnight window even when Tuesday has its own availability.
+-- Add Tuesday availability (day_of_week=2): 13:00-22:00 UTC (normal daytime)
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 2, true, '13:00:00', '22:00:00');
+-- April 7, 2026 is a Tuesday (DOW=2)
+-- Shift Tue 02:00-03:00 UTC should be covered by Monday's 13:00-04:00 carry-over
+SELECT is(
+  (SELECT count(*) FROM check_availability_conflict(
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '2026-04-07 02:00:00+00'::timestamptz,
+    '2026-04-07 03:00:00+00'::timestamptz
+  ))::integer,
+  0,
+  'Tue 02:00-03:00 UTC covered by Mon overnight carry-over — no conflict'
+);
+
+-- Test 15: Previous-day overnight carry-over — shift outside carry-over range
+-- Shift Tue 05:00-06:00 UTC is past Monday's 04:00 end, should check Tuesday only
+-- Tuesday has 13:00-22:00, so 05:00-06:00 is outside → conflict
+SELECT is(
+  (SELECT count(*) FROM check_availability_conflict(
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    '2026-04-07 05:00:00+00'::timestamptz,
+    '2026-04-07 06:00:00+00'::timestamptz
+  ))::integer,
+  1,
+  'Tue 05:00-06:00 UTC outside all windows (carry-over ends at 04:00) — conflict'
 );
 
 SELECT * FROM finish();

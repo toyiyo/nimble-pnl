@@ -35,6 +35,10 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 -- Replace conflict detection function to handle overnight UTC windows.
+-- Key improvements:
+--   1. Explicit UTC normalization (session-timezone independent)
+--   2. Previous-day overnight carry-over for recurring availability
+--   3. Match-any-window logic for multiple windows per day
 CREATE OR REPLACE FUNCTION check_availability_conflict(
   p_employee_id UUID,
   p_restaurant_id UUID,
@@ -47,9 +51,12 @@ RETURNS TABLE (
   message TEXT
 ) AS $$
 DECLARE
+  v_start_utc TIMESTAMP WITHOUT TIME ZONE;
+  v_end_utc TIMESTAMP WITHOUT TIME ZONE;
   v_current_date DATE;
   v_end_date DATE;
   v_day_of_week INTEGER;
+  v_prev_day_of_week INTEGER;
   v_shift_start_time TIME;
   v_shift_end_time TIME;
   v_exception RECORD;
@@ -57,21 +64,25 @@ DECLARE
   v_has_availability BOOLEAN;
   v_match_found BOOLEAN;
 BEGIN
-  v_current_date := DATE(p_start_time);
-  v_end_date := DATE(p_end_time);
+  -- Normalize to UTC to avoid session-timezone-dependent casts
+  v_start_utc := p_start_time AT TIME ZONE 'UTC';
+  v_end_utc := p_end_time AT TIME ZONE 'UTC';
+  v_current_date := v_start_utc::DATE;
+  v_end_date := v_end_utc::DATE;
 
   WHILE v_current_date <= v_end_date LOOP
     v_day_of_week := EXTRACT(DOW FROM v_current_date);
+    v_prev_day_of_week := EXTRACT(DOW FROM v_current_date - INTERVAL '1 day');
 
-    IF v_current_date = DATE(p_start_time) AND v_current_date = DATE(p_end_time) THEN
-      v_shift_start_time := (p_start_time)::TIME;
-      v_shift_end_time := (p_end_time)::TIME;
-    ELSIF v_current_date = DATE(p_start_time) THEN
-      v_shift_start_time := (p_start_time)::TIME;
+    IF v_current_date = v_start_utc::DATE AND v_current_date = v_end_utc::DATE THEN
+      v_shift_start_time := v_start_utc::TIME;
+      v_shift_end_time := v_end_utc::TIME;
+    ELSIF v_current_date = v_start_utc::DATE THEN
+      v_shift_start_time := v_start_utc::TIME;
       v_shift_end_time := '23:59:59'::TIME;
-    ELSIF v_current_date = DATE(p_end_time) THEN
+    ELSIF v_current_date = v_end_utc::DATE THEN
       v_shift_start_time := '00:00:00'::TIME;
-      v_shift_end_time := (p_end_time)::TIME;
+      v_shift_end_time := v_end_utc::TIME;
     ELSE
       v_shift_start_time := '00:00:00'::TIME;
       v_shift_end_time := '23:59:59'::TIME;
@@ -103,6 +114,8 @@ BEGIN
     ELSE
       v_has_availability := false;
       v_match_found := false;
+
+      -- Check current day's availability windows
       FOR v_availability IN
         SELECT * FROM employee_availability
         WHERE employee_id = p_employee_id
@@ -116,13 +129,32 @@ BEGIN
           RETURN;
         END IF;
 
-        -- Shift fits within at least one availability window → no conflict
         IF time_within_window(v_shift_start_time, v_shift_end_time,
                               v_availability.start_time, v_availability.end_time) THEN
           v_match_found := true;
           EXIT;
         END IF;
       END LOOP;
+
+      -- If no match yet, check previous day's overnight windows that carry into today
+      -- e.g., Monday 13:00-04:00 carries its after-midnight portion into Tuesday
+      IF NOT v_match_found THEN
+        FOR v_availability IN
+          SELECT * FROM employee_availability
+          WHERE employee_id = p_employee_id
+            AND restaurant_id = p_restaurant_id
+            AND day_of_week = v_prev_day_of_week
+            AND is_available = true
+            AND end_time < start_time  -- overnight windows only
+        LOOP
+          v_has_availability := true;
+          -- For the carry-over portion, the shift must be within [00:00, end_time]
+          IF v_shift_start_time >= '00:00:00'::TIME AND v_shift_end_time <= v_availability.end_time THEN
+            v_match_found := true;
+            EXIT;
+          END IF;
+        END LOOP;
+      END IF;
 
       IF v_has_availability AND NOT v_match_found THEN
         RETURN QUERY SELECT true, 'recurring'::TEXT,

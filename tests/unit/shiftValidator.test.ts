@@ -74,9 +74,9 @@ describe('validateShift', () => {
     });
   });
 
-  // 2. Overlap — overlapping shifts produce OVERLAP error
+  // 2. Overlap — overlapping shifts produce OVERLAP warning (non-blocking)
   describe('overlap detection', () => {
-    it('returns OVERLAP error when proposed shift overlaps an existing shift', () => {
+    it('returns OVERLAP warning when proposed shift overlaps an existing shift', () => {
       const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00');
       const existing = mockShift({
         employee_id: 'e1',
@@ -89,10 +89,8 @@ describe('validateShift', () => {
         [existing],
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'OVERLAP' }),
-      );
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'OVERLAP')).toBe(true);
     });
   });
 
@@ -204,10 +202,8 @@ describe('validateShift', () => {
         { excludeShiftId: 'shift-being-edited' },
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'OVERLAP' }),
-      );
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'OVERLAP')).toBe(true);
     });
   });
 
@@ -252,9 +248,9 @@ describe('validateShift', () => {
         [cancelledShift, confirmedShift],
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].code).toBe('OVERLAP');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'OVERLAP')).toBe(true);
+      expect(result.warnings.filter((w) => w.code === 'OVERLAP')).toHaveLength(1);
     });
   });
 
@@ -279,9 +275,9 @@ describe('validateShift', () => {
     });
   });
 
-  // 8. Time-off conflict — approved time-off blocks shift
+  // 8. Time-off conflict — approved time-off produces TIME_OFF warning (non-blocking)
   describe('time-off conflict (approved)', () => {
-    it('returns TIME_OFF error when shift falls during approved time-off', () => {
+    it('returns TIME_OFF warning when shift falls during approved time-off', () => {
       const proposed = ShiftInterval.create('2026-03-15', '09:00', '17:00');
       const timeOff = mockTimeOff({
         employee_id: 'e1',
@@ -296,17 +292,15 @@ describe('validateShift', () => {
         { timeOffRequests: [timeOff] },
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'TIME_OFF' }),
-      );
-      const timeOffError = result.errors.find((e) => e.code === 'TIME_OFF');
-      expect(timeOffError?.message).toContain('approved');
-      expect(timeOffError?.message).toContain('2026-03-14');
-      expect(timeOffError?.message).toContain('2026-03-16');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'TIME_OFF')).toBe(true);
+      const timeOffWarning = result.warnings.find((w) => w.code === 'TIME_OFF');
+      expect(timeOffWarning?.message).toContain('approved');
+      expect(timeOffWarning?.message).toContain('2026-03-14');
+      expect(timeOffWarning?.message).toContain('2026-03-16');
     });
 
-    it('returns TIME_OFF error when shift is on a single-day approved time-off', () => {
+    it('returns TIME_OFF warning when shift is on a single-day approved time-off', () => {
       const proposed = ShiftInterval.create('2026-03-15', '10:00', '16:00');
       const timeOff = mockTimeOff({
         employee_id: 'e1',
@@ -321,16 +315,14 @@ describe('validateShift', () => {
         { timeOffRequests: [timeOff] },
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'TIME_OFF' }),
-      );
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'TIME_OFF')).toBe(true);
     });
   });
 
   // 9. Pending time-off conflict
   describe('time-off conflict (pending)', () => {
-    it('returns TIME_OFF error when shift falls during pending time-off', () => {
+    it('returns TIME_OFF warning when shift falls during pending time-off', () => {
       const proposed = ShiftInterval.create('2026-03-15', '09:00', '17:00');
       const timeOff = mockTimeOff({
         employee_id: 'e1',
@@ -345,12 +337,10 @@ describe('validateShift', () => {
         { timeOffRequests: [timeOff] },
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'TIME_OFF' }),
-      );
-      const timeOffError = result.errors.find((e) => e.code === 'TIME_OFF');
-      expect(timeOffError?.message).toContain('pending');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'TIME_OFF')).toBe(true);
+      const timeOffWarning = result.warnings.find((w) => w.code === 'TIME_OFF');
+      expect(timeOffWarning?.message).toContain('pending');
     });
   });
 
@@ -395,9 +385,9 @@ describe('validateShift', () => {
     });
   });
 
-  // 11. Multiple overlaps — multiple errors returned
+  // 11. Multiple overlaps — multiple warnings returned
   describe('multiple overlaps', () => {
-    it('returns multiple OVERLAP errors when proposed conflicts with several existing shifts', () => {
+    it('returns multiple OVERLAP warnings when proposed conflicts with several existing shifts', () => {
       const shift1 = mockShift({
         employee_id: 'e1',
         start_time: '2026-03-10T09:00:00',
@@ -416,12 +406,12 @@ describe('validateShift', () => {
         [shift1, shift2],
       );
 
-      expect(result.valid).toBe(false);
-      const overlapErrors = result.errors.filter((e) => e.code === 'OVERLAP');
-      expect(overlapErrors).toHaveLength(2);
+      expect(result.valid).toBe(true);
+      const overlapWarnings = result.warnings.filter((w) => w.code === 'OVERLAP');
+      expect(overlapWarnings).toHaveLength(2);
     });
 
-    it('returns both OVERLAP and TIME_OFF errors simultaneously', () => {
+    it('returns both OVERLAP and TIME_OFF warnings simultaneously', () => {
       const overlappingShift = mockShift({
         employee_id: 'e1',
         start_time: '2026-03-15T10:00:00',
@@ -441,10 +431,10 @@ describe('validateShift', () => {
         { timeOffRequests: [timeOff] },
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.code === 'OVERLAP')).toBe(true);
-      expect(result.errors.some((e) => e.code === 'TIME_OFF')).toBe(true);
-      expect(result.errors.length).toBeGreaterThanOrEqual(2);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'OVERLAP')).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'TIME_OFF')).toBe(true);
+      expect(result.warnings.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -539,10 +529,8 @@ describe('validateShift', () => {
         [existing],
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'OVERLAP' }),
-      );
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'OVERLAP')).toBe(true);
     });
 
     it('does not flag overlap when time-off requests are not provided in options', () => {
@@ -572,10 +560,8 @@ describe('validateShift', () => {
         [completedShift],
       );
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContainEqual(
-        expect.objectContaining({ code: 'OVERLAP' }),
-      );
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.code === 'OVERLAP')).toBe(true);
     });
   });
 });

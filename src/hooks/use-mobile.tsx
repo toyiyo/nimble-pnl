@@ -6,21 +6,13 @@ export function useIsMobile() {
   const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
-    const viewportMql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const standaloneMql = window.matchMedia('(display-mode: standalone)');
-
-    const update = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT || standaloneMql.matches);
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
     };
-
-    viewportMql.addEventListener("change", update);
-    standaloneMql.addEventListener("change", update);
-    update();
-
-    return () => {
-      viewportMql.removeEventListener("change", update);
-      standaloneMql.removeEventListener("change", update);
-    };
+    mql.addEventListener("change", onChange);
+    onChange();
+    return () => mql.removeEventListener("change", onChange);
   }, []);
 
   return !!isMobile;

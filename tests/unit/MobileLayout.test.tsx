@@ -29,6 +29,6 @@ describe('MobileLayout', () => {
     );
 
     const main = screen.getByRole('main');
-    expect(main.className).toContain('pb-20');
+    expect(main.style.paddingBottom).toContain('5rem');
   });
 });

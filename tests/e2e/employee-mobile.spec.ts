@@ -1,6 +1,10 @@
 import { test, expect, Page } from '@playwright/test';
 import { generateTestUser, signUpAndCreateRestaurant, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
+// Mobile viewport dimensions
+const MOBILE_WIDTH = 375;
+const MOBILE_HEIGHT = 812;
+
 // Helper to update a user's role via the database and reload
 async function setUserRole(page: Page, role: string): Promise<void> {
   await exposeSupabaseHelpers(page);
@@ -26,19 +30,25 @@ async function setUserRole(page: Page, role: string): Promise<void> {
   await page.waitForLoadState('networkidle');
 }
 
+// Helper: sign up at desktop width (avoids OnboardingDrawer overlap),
+// then set staff role and resize to mobile viewport
+async function setupStaffMobile(page: Page, prefix: string): Promise<void> {
+  const user = generateTestUser(prefix);
+  await signUpAndCreateRestaurant(page, user);
+  await setUserRole(page, 'staff');
+  await page.setViewportSize({ width: MOBILE_WIDTH, height: MOBILE_HEIGHT });
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+}
+
 // ============================================================
 // EMPLOYEE MOBILE EXPERIENCE TESTS
 // ============================================================
 
 test.describe('Employee Mobile Experience', () => {
-  test.use({ viewport: { width: 375, height: 812 } });
-
   test('staff user sees bottom tab bar on mobile, not sidebar', async ({ page }) => {
-    const user = generateTestUser('staff-mobile');
-    await signUpAndCreateRestaurant(page, user);
-    await setUserRole(page, 'staff');
+    await setupStaffMobile(page, 'staff-mobile');
 
-    // Should be redirected to /employee/schedule
     await expect(page).toHaveURL('/employee/schedule', { timeout: 10000 });
 
     // Should see tab bar with correct aria-label
@@ -49,17 +59,13 @@ test.describe('Employee Mobile Experience', () => {
   });
 
   test('default landing page is Schedule', async ({ page }) => {
-    const user = generateTestUser('staff-landing');
-    await signUpAndCreateRestaurant(page, user);
-    await setUserRole(page, 'staff');
+    await setupStaffMobile(page, 'staff-landing');
 
     await expect(page).toHaveURL('/employee/schedule', { timeout: 10000 });
   });
 
   test('can navigate between tabs', async ({ page }) => {
-    const user = generateTestUser('staff-tabs');
-    await signUpAndCreateRestaurant(page, user);
-    await setUserRole(page, 'staff');
+    await setupStaffMobile(page, 'staff-tabs');
     await expect(page).toHaveURL('/employee/schedule', { timeout: 10000 });
 
     // Navigate to Pay
@@ -76,9 +82,7 @@ test.describe('Employee Mobile Experience', () => {
   });
 
   test('More page shows all sub-navigation items', async ({ page }) => {
-    const user = generateTestUser('staff-more');
-    await signUpAndCreateRestaurant(page, user);
-    await setUserRole(page, 'staff');
+    await setupStaffMobile(page, 'staff-more');
     await page.goto('/employee/more', { waitUntil: 'networkidle' });
 
     await expect(page.getByText('Timecard')).toBeVisible();
@@ -90,9 +94,7 @@ test.describe('Employee Mobile Experience', () => {
   });
 
   test('More page links navigate to correct pages', async ({ page }) => {
-    const user = generateTestUser('staff-more-nav');
-    await signUpAndCreateRestaurant(page, user);
-    await setUserRole(page, 'staff');
+    await setupStaffMobile(page, 'staff-more-nav');
     await page.goto('/employee/more', { waitUntil: 'networkidle' });
 
     await page.getByText('Timecard').click();

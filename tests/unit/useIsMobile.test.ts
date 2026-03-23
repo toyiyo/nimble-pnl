@@ -42,12 +42,12 @@ describe('useIsMobile', () => {
     expect(result.current).toBe(true);
   });
 
-  it('returns true in standalone PWA mode regardless of viewport width', async () => {
+  it('returns false in standalone PWA mode on desktop viewport', async () => {
     matchMediaResults.set('(display-mode: standalone)', true);
     Object.defineProperty(window, 'innerWidth', { value: 1024 });
     const { useIsMobile } = await import('@/hooks/use-mobile');
     const { result } = renderHook(() => useIsMobile());
-    expect(result.current).toBe(true);
+    expect(result.current).toBe(false);
   });
 
   it('reacts to viewport changes', async () => {

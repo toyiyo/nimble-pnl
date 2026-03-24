@@ -227,10 +227,10 @@ const EmployeeClock = () => {
       <Card>
         <CardContent className="pt-6">
           <div className="text-center space-y-4">
-            <div className="text-6xl font-bold tabular-nums">
+            <div className="text-4xl sm:text-6xl font-bold tabular-nums">
               {format(currentTime, 'h:mm:ss a')}
             </div>
-            <div className="text-xl text-muted-foreground">
+            <div className="text-base sm:text-xl text-muted-foreground">
               {format(currentTime, 'EEEE, MMMM d, yyyy')}
             </div>
             

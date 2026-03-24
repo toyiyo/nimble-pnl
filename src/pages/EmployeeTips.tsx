@@ -258,12 +258,12 @@ function EmployeeTips() {
             return (
               <Card key={tip.id} className="rounded-xl border-border/40 hover:border-border transition-colors">
                 <div className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
                       <p className="text-[14px] font-medium text-foreground">
                         {format(new Date(tip.date), 'EEEE, MMM d')}
                       </p>
-                      <div className="flex items-center gap-3 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-2 mt-0.5">
                         {Boolean(tip.hours) && (
                           <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
                             <Clock className="h-3 w-3" />
@@ -273,7 +273,7 @@ function EmployeeTips() {
                         {tip.role && <span className="text-[13px] text-muted-foreground">{tip.role}</span>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end gap-1 shrink-0">
                       {payoutLookup.has(tip.date) && (
                         <Badge
                           variant="outline"
@@ -291,7 +291,7 @@ function EmployeeTips() {
                   {/* Server earnings breakdown for percentage contribution model */}
                   {serverEarning && (
                     <div className="mt-3 pt-3 border-t border-border/40">
-                      <div className="grid grid-cols-4 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div>
                           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Earned</p>
                           <p className="text-[13px] font-medium text-foreground mt-0.5">

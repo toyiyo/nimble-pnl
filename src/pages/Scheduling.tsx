@@ -1292,6 +1292,7 @@ const Scheduling = () => {
             onOpenChange={setShiftDialogOpen}
             shift={selectedShift}
             restaurantId={restaurantId}
+            timezone={restaurantTimezone}
             defaultDate={defaultShiftDate}
             defaultEmployee={defaultShiftEmployee}
           />

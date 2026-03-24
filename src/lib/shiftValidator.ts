@@ -43,7 +43,7 @@ function checkRestGap(
 function checkTimeOffConflicts(
   proposed: { employeeId: string; interval: ShiftInterval },
   timeOffRequests: TimeOffRequest[],
-  errors: ValidationIssue[],
+  warnings: ValidationIssue[],
 ): void {
   const relevant = timeOffRequests.filter(
     (r) =>
@@ -59,7 +59,7 @@ function checkTimeOffConflicts(
       proposed.interval.startAt <= requestEnd &&
       proposed.interval.endAt >= requestStart
     ) {
-      errors.push({
+      warnings.push({
         code: 'TIME_OFF',
         message: `Employee has ${request.status} time-off from ${request.start_date} to ${request.end_date}`,
       });
@@ -90,7 +90,7 @@ export function validateShift(
     );
 
     if (proposed.interval.overlapsWith(existingInterval)) {
-      errors.push({
+      warnings.push({
         code: 'OVERLAP',
         message: `Overlaps with existing shift (${formatTime(existing.start_time)} - ${formatTime(existing.end_time)})`,
       });
@@ -101,7 +101,7 @@ export function validateShift(
   }
 
   if (options?.timeOffRequests) {
-    checkTimeOffConflicts(proposed, options.timeOffRequests, errors);
+    checkTimeOffConflicts(proposed, options.timeOffRequests, warnings);
   }
 
   return {

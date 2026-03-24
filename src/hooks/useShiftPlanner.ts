@@ -12,10 +12,12 @@ import { useEmployees } from '@/hooks/useEmployees';
 
 import { ShiftInterval, formatLocalDate } from '@/lib/shiftInterval';
 import { validateShift, ValidationResult } from '@/lib/shiftValidator';
+import { checkConflictsImperative } from '@/hooks/useConflictDetection';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
-import type { Shift, ShiftTemplate } from '@/types/scheduling';
+import type { Shift, ShiftTemplate, ConflictCheck } from '@/types/scheduling';
+import type { ValidationIssue } from '@/lib/shiftValidator';
 
 // ---------------------------------------------------------------------------
 // Pure utility functions (tested without React)
@@ -161,6 +163,26 @@ function errorToValidationResult(err: unknown, fallback: string): ValidationResu
   };
 }
 
+/** Build the mutation payload for creating a shift from validated inputs. */
+function buildShiftPayload(
+  restaurantId: string,
+  input: ShiftCreateInput,
+  interval: ShiftInterval,
+) {
+  return {
+    restaurant_id: restaurantId,
+    employee_id: input.employeeId,
+    start_time: interval.startAt.toISOString(),
+    end_time: interval.endAt.toISOString(),
+    position: input.position,
+    break_duration: input.breakDuration ?? 0,
+    notes: input.notes,
+    status: 'scheduled' as const,
+    is_published: false,
+    locked: false,
+  };
+}
+
 /**
  * Get the Monday of the week containing the given date.
  * Sets time to midnight local.
@@ -229,6 +251,16 @@ export function computeHoursPerEmployee(shifts: Shift[]): Map<string, number> {
 // The hook
 // ---------------------------------------------------------------------------
 
+export interface ShiftCreateInput {
+  employeeId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  position: string;
+  breakDuration?: number;
+  notes?: string;
+}
+
 export interface UseShiftPlannerReturn {
   // Week navigation
   weekStart: Date;
@@ -246,15 +278,13 @@ export interface UseShiftPlannerReturn {
   error: Error | null;
 
   // Mutations
-  validateAndCreate: (input: {
-    employeeId: string;
-    date: string;
-    startTime: string;
-    endTime: string;
-    position: string;
-    breakDuration?: number;
-    notes?: string;
-  }) => Promise<boolean>;
+  validateAndCreate: (input: ShiftCreateInput) => Promise<{
+    created: boolean;
+    pendingConflicts?: ConflictCheck[];
+    pendingWarnings?: ValidationIssue[];
+    pendingInput?: ShiftCreateInput;
+  }>;
+  forceCreate: (input: ShiftCreateInput) => Promise<boolean>;
   validateAndUpdateTime: (input: {
     shift: Shift;
     newStartTime: string;
@@ -342,16 +372,8 @@ export function useShiftPlanner(
 
   // Validated mutations
   const validateAndCreate = useCallback(
-    async (input: {
-      employeeId: string;
-      date: string;
-      startTime: string;
-      endTime: string;
-      position: string;
-      breakDuration?: number;
-      notes?: string;
-    }): Promise<boolean> => {
-      if (!restaurantId) return false;
+    async (input: ShiftCreateInput) => {
+      if (!restaurantId) return { created: false };
 
       try {
         const interval = ShiftInterval.create(
@@ -367,29 +389,61 @@ export function useShiftPlanner(
 
         setValidationResult(result);
 
-        if (!result.valid) return false;
+        // Collect client-side warnings
+        const clientWarnings = [...result.warnings];
 
-        await createShift.mutateAsync({
-          restaurant_id: restaurantId,
-          employee_id: input.employeeId,
-          start_time: interval.startAt.toISOString(),
-          end_time: interval.endAt.toISOString(),
-          position: input.position,
-          break_duration: input.breakDuration ?? 0,
-          notes: input.notes,
-          status: 'scheduled',
-          is_published: false,
-          locked: false,
+        // Check availability/time-off conflicts via RPC
+        const { conflicts } = await checkConflictsImperative({
+          employeeId: input.employeeId,
+          restaurantId,
+          startTime: interval.startAt.toISOString(),
+          endTime: interval.endAt.toISOString(),
         });
+
+        // If any warnings or conflicts, return them for confirmation dialog
+        if (clientWarnings.length > 0 || conflicts.length > 0) {
+          return {
+            created: false,
+            pendingConflicts: conflicts,
+            pendingWarnings: clientWarnings,
+            pendingInput: input,
+          };
+        }
+
+        // No issues — create immediately
+        await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
+
+        setValidationResult(null);
+        return { created: true };
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Invalid shift'));
+        return { created: false };
+      }
+    },
+    [restaurantId, shifts, createShift],
+  );
+
+  const forceCreate = useCallback(
+    async (input: ShiftCreateInput): Promise<boolean> => {
+      if (!restaurantId) return false;
+
+      try {
+        const interval = ShiftInterval.create(
+          input.date,
+          input.startTime,
+          input.endTime,
+        );
+
+        await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
 
         setValidationResult(null);
         return true;
       } catch (err) {
-        setValidationResult(errorToValidationResult(err, 'Invalid shift'));
+        setValidationResult(errorToValidationResult(err, 'Failed to create shift'));
         return false;
       }
     },
-    [restaurantId, shifts, createShift],
+    [restaurantId, createShift],
   );
 
   const validateAndUpdateTime = useCallback(
@@ -503,6 +557,7 @@ export function useShiftPlanner(
     isLoading,
     error,
     validateAndCreate,
+    forceCreate,
     validateAndUpdateTime,
     validateAndReassign,
     deleteShift: handleDeleteShift,

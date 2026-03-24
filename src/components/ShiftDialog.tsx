@@ -5,8 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shift, RecurrencePattern, RecurrenceType } from '@/types/scheduling';
+import { Shift, RecurrencePattern, RecurrenceType, ConflictCheck } from '@/types/scheduling';
+import { formatConflictLine } from '@/lib/conflictFormatUtils';
 import { useCreateShift, useUpdateShift, useUpdateShiftSeries } from '@/hooks/useShifts';
 import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -21,6 +21,7 @@ interface ShiftDialogProps {
   onOpenChange: (open: boolean) => void;
   shift?: Shift & { _editScope?: RecurringActionScope };
   restaurantId: string;
+  timezone?: string; // Restaurant timezone for formatting availability times
   defaultDate?: Date;
   defaultEmployee?: DefaultEmployee;
 }
@@ -43,7 +44,14 @@ const POSITIONS = [
   'Other',
 ];
 
-export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDate, defaultEmployee }: ShiftDialogProps) => {
+function getSubmitLabel(isSaving: boolean, isLocked: boolean, isEditing: boolean): string {
+  if (isSaving) return 'Saving...';
+  if (isLocked) return 'Locked';
+  if (isEditing) return 'Update Shift';
+  return 'Create Shift';
+}
+
+export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone = 'UTC', defaultDate, defaultEmployee }: ShiftDialogProps) {
   const [employeeId, setEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -416,22 +424,20 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
 
             {/* Conflict Warnings */}
             {hasConflicts && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  <div className="space-y-1">
-                    <p className="font-semibold">Scheduling conflicts detected:</p>
-                    {conflicts.map((conflict) => {
-                      const conflictKey = conflict.time_off_id
-                        ? `timeoff-${conflict.time_off_id}`
-                        : `${conflict.conflict_type}-${conflict.message}`;
-                      return (
-                        <p key={conflictKey} className="text-sm">• {conflict.message}</p>
-                      );
-                    })}
-                  </div>
-                </AlertDescription>
-              </Alert>
+              <div className="space-y-2">
+                <p className="text-[13px] font-semibold text-foreground">Scheduling conflicts detected:</p>
+                {conflicts.map((conflict) => {
+                  const conflictKey = conflict.time_off_id
+                    ? `timeoff-${conflict.time_off_id}`
+                    : `${conflict.conflict_type}-${conflict.message}`;
+                  return (
+                    <div key={conflictKey} className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                      <p className="text-[13px] text-foreground">{formatConflictLine(conflict, timezone)}</p>
+                    </div>
+                  );
+                })}
+              </div>
             )}
 
             {/* Recurrence Selection - Only show for new shifts */}
@@ -482,13 +488,11 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
               type="submit"
               disabled={createShift.isPending || updateShift.isPending || updateShiftSeries.isPending || shift?.locked}
             >
-              {createShift.isPending || updateShift.isPending || updateShiftSeries.isPending
-                ? 'Saving...'
-                : shift?.locked
-                ? 'Locked'
-                : shift
-                ? 'Update Shift'
-                : 'Create Shift'}
+              {getSubmitLabel(
+                createShift.isPending || updateShift.isPending || updateShiftSeries.isPending,
+                shift?.locked ?? false,
+                !!shift,
+              )}
             </Button>
           </DialogFooter>
         </form>
@@ -504,4 +508,4 @@ export const ShiftDialog = ({ open, onOpenChange, shift, restaurantId, defaultDa
       />
     </Dialog>
   );
-};
+}

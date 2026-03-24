@@ -106,6 +106,33 @@ export async function exposeSupabaseHelpers(page: Page) {
       return (count || 0) > 0;
     };
 
+    (window as any).__insertAvailability = async (rows: any[], restaurantId: string) => {
+      const { data, error } = await supabase
+        .from('employee_availability')
+        .insert(rows.map(r => ({ ...r, restaurant_id: restaurantId })))
+        .select();
+      if (error) throw new Error(error.message);
+      return data;
+    };
+
+    (window as any).__insertAvailabilityExceptions = async (rows: any[], restaurantId: string) => {
+      const { data, error } = await supabase
+        .from('availability_exceptions')
+        .insert(rows.map(r => ({ ...r, restaurant_id: restaurantId })))
+        .select();
+      if (error) throw new Error(error.message);
+      return data;
+    };
+
+    (window as any).__insertShifts = async (rows: any[], restaurantId: string) => {
+      const { data, error } = await supabase
+        .from('shifts')
+        .insert(rows.map(r => ({ ...r, restaurant_id: restaurantId })))
+        .select();
+      if (error) throw new Error(error.message);
+      return data;
+    };
+
     (window as any).__insertDispute = async (dispute: any) => {
       const { error } = await supabase.from('tip_disputes').insert(dispute);
       if (error) {

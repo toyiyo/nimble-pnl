@@ -110,7 +110,7 @@ const EmployeePay = () => {
 
       {/* Pay Summary */}
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
               <CardContent className="pt-6">
@@ -146,7 +146,7 @@ const EmployeePay = () => {
             </Alert>
           )}
 
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
@@ -258,55 +258,55 @@ const EmployeePay = () => {
                   </h4>
                   <div className="space-y-2 pl-6">
                     {myPayroll.compensationType === 'daily_rate' && (
-                      <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
-                        <div>
+                      <div className="flex justify-between items-center gap-2 p-3 rounded-lg bg-muted/50">
+                        <div className="min-w-0">
                           <span className="font-medium">Daily Rate Pay</span>
                           <p className="text-sm text-muted-foreground">
                             {myPayroll.daysWorked ?? 0} day{(myPayroll.daysWorked ?? 0) !== 1 ? 's' : ''} × {formatCurrency(myPayroll.hourlyRate)}/day
                           </p>
                         </div>
-                        <span className="font-medium">{formatCurrency(myPayroll.dailyRatePay)}</span>
+                        <span className="font-medium shrink-0">{formatCurrency(myPayroll.dailyRatePay)}</span>
                       </div>
                     )}
                     {myPayroll.compensationType === 'salary' && (
-                      <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
-                        <div>
+                      <div className="flex justify-between items-center gap-2 p-3 rounded-lg bg-muted/50">
+                        <div className="min-w-0">
                           <span className="font-medium">Salary</span>
                           <p className="text-sm text-muted-foreground">Prorated for this period</p>
                         </div>
-                        <span className="font-medium">{formatCurrency(myPayroll.salaryPay)}</span>
+                        <span className="font-medium shrink-0">{formatCurrency(myPayroll.salaryPay)}</span>
                       </div>
                     )}
                     {myPayroll.compensationType === 'contractor' && (
-                      <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
-                        <div>
+                      <div className="flex justify-between items-center gap-2 p-3 rounded-lg bg-muted/50">
+                        <div className="min-w-0">
                           <span className="font-medium">Contract Pay</span>
                           <p className="text-sm text-muted-foreground">Prorated for this period</p>
                         </div>
-                        <span className="font-medium">{formatCurrency(myPayroll.contractorPay + myPayroll.manualPaymentsTotal)}</span>
+                        <span className="font-medium shrink-0">{formatCurrency(myPayroll.contractorPay + myPayroll.manualPaymentsTotal)}</span>
                       </div>
                     )}
                     {myPayroll.compensationType === 'hourly' && (
                       <>
-                        <div className="flex justify-between items-center p-3 rounded-lg bg-muted/50">
-                          <div>
+                        <div className="flex justify-between items-center gap-2 p-3 rounded-lg bg-muted/50">
+                          <div className="min-w-0">
                             <span className="font-medium">Regular Pay</span>
                             <p className="text-sm text-muted-foreground">
                               {formatHours(myPayroll.regularHours)} hrs × {formatCurrency(myPayroll.hourlyRate)}/hr
                             </p>
                           </div>
-                          <span className="font-medium">{formatCurrency(myPayroll.regularPay)}</span>
+                          <span className="font-medium shrink-0">{formatCurrency(myPayroll.regularPay)}</span>
                         </div>
 
                         {myPayroll.overtimeHours > 0 && (
-                          <div className="flex justify-between items-center p-3 rounded-lg bg-amber-500/10">
-                            <div>
+                          <div className="flex justify-between items-center gap-2 p-3 rounded-lg bg-amber-500/10">
+                            <div className="min-w-0">
                               <span className="font-medium">Overtime Pay</span>
                               <p className="text-sm text-muted-foreground">
                                 {formatHours(myPayroll.overtimeHours)} hrs × {formatCurrency(myPayroll.hourlyRate * 1.5)}/hr (1.5×)
                               </p>
                             </div>
-                            <span className="font-medium text-amber-600">
+                            <span className="font-medium text-amber-600 shrink-0">
                               {formatCurrency(myPayroll.overtimePay)}
                             </span>
                           </div>

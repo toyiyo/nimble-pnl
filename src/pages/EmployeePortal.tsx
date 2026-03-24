@@ -279,12 +279,12 @@ const EmployeePortal = () => {
         {availability.map((avail) => (
           <div
             key={avail.id}
-            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+            className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-24 font-medium">{daysOfWeek[avail.day_of_week]}</div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+              <div className="w-20 sm:w-24 font-medium shrink-0">{daysOfWeek[avail.day_of_week]}</div>
               {avail.is_available ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
                     Available
                   </Badge>
@@ -298,7 +298,7 @@ const EmployeePortal = () => {
                 </Badge>
               )}
               {avail.notes && (
-                <span className="text-sm text-muted-foreground">({avail.notes})</span>
+                <span className="text-sm text-muted-foreground truncate">({avail.notes})</span>
               )}
             </div>
             <Button
@@ -346,14 +346,14 @@ const EmployeePortal = () => {
         {exceptions.map((exception) => (
           <div
             key={exception.id}
-            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
+            className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-card hover:bg-accent/5 transition-colors"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-32 font-medium">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
+              <div className="font-medium shrink-0">
                 {format(new Date(exception.date), 'MMM d, yyyy')}
               </div>
               {exception.is_available ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
                     Available
                   </Badge>
@@ -369,7 +369,7 @@ const EmployeePortal = () => {
                 </Badge>
               )}
               {exception.reason && (
-                <span className="text-sm text-muted-foreground">({exception.reason})</span>
+                <span className="text-sm text-muted-foreground truncate">({exception.reason})</span>
               )}
             </div>
             <Button
@@ -421,12 +421,12 @@ const EmployeePortal = () => {
         <TabsContent value="time-off" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <CardTitle>My Time-Off Requests</CardTitle>
                   <CardDescription>Request time off and view your pending/approved requests</CardDescription>
                 </div>
-                <Button onClick={handleNewTimeOffRequest}>
+                <Button onClick={handleNewTimeOffRequest} className="w-full sm:w-auto">
                   <Plus className="mr-2 h-4 w-4" />
                   New Request
                 </Button>
@@ -451,12 +451,12 @@ const EmployeePortal = () => {
           {/* Weekly Availability */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <CardTitle>Weekly Availability</CardTitle>
                   <CardDescription>Set your regular weekly availability</CardDescription>
                 </div>
-                <Button onClick={handleNewAvailability}>
+                <Button onClick={handleNewAvailability} className="w-full sm:w-auto">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Availability
                 </Button>
@@ -470,12 +470,12 @@ const EmployeePortal = () => {
           {/* Availability Exceptions */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <CardTitle>Availability Exceptions</CardTitle>
                   <CardDescription>Set specific dates when you're unavailable or have different hours</CardDescription>
                 </div>
-                <Button onClick={handleNewException}>
+                <Button onClick={handleNewException} className="w-full sm:w-auto">
                   <Plus className="mr-2 h-4 w-4" />
                   Add Exception
                 </Button>

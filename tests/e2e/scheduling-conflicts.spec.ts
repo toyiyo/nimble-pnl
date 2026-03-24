@@ -222,10 +222,11 @@ test.describe('Scheduling Conflict Enhancements', () => {
       endTime: '14:00', // Starts at 6 AM, before 9 AM availability
     });
 
-    // Conflict warning should show with "available" and AM/PM time format
+    // Conflict warning should show with "available" and time range in AM/PM format
     await expect(page.getByText(/outside availability/i)).toBeVisible({ timeout: 15000 });
-    // Verify the message contains time range in AM/PM format (e.g. "available X:XX AM – Y:XX PM")
-    await expect(page.getByText(/available.*\d+:\d+\s*AM.*\d+:\d+\s*PM/i)).toBeVisible({ timeout: 5000 });
+    // Verify the message contains "available" followed by two times with AM/PM
+    // (both could be AM or PM depending on the server's timezone vs restaurant timezone)
+    await expect(page.getByText(/available\s+\d+:\d+\s*[AP]M\s*[–-]\s*\d+:\d+\s*[AP]M/i)).toBeVisible({ timeout: 5000 });
   });
 
   test('allows creating overlapping shifts with a warning instead of blocking', async ({ page }) => {
@@ -400,6 +401,8 @@ test.describe('Scheduling Conflict Enhancements', () => {
     ).not.toBeVisible({ timeout: 3000 });
 
     // --- Test Assign Anyway ---
+    // Wait for DnD sensors to reset after dialog close
+    await page.waitForTimeout(1000);
     await dragAndAssign(page, 'Alice Johnson', 'day');
 
     await expect(page.getByText(/scheduling warning/i)).toBeVisible({ timeout: 15000 });

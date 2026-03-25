@@ -8,7 +8,7 @@ SELECT has_column('public', 'employees', 'area', 'employees table has area colum
 SELECT col_is_null('public', 'employees', 'area', 'area column is nullable');
 
 -- Test 3: index exists for area lookups
-SELECT has_index('public', 'employees', 'idx_employees_area', 'index on restaurant_id + area exists');
+SELECT has_index('public', 'employees', 'idx_employees_area', 'index idx_employees_area exists');
 
 SELECT * FROM finish();
 ROLLBACK;

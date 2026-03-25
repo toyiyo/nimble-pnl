@@ -94,10 +94,21 @@ export function AreaCombobox({
           </span>
           <div className="flex items-center gap-1 ml-2">
             {value && (
-              <X
-                className="h-3.5 w-3.5 shrink-0 opacity-50 hover:opacity-100"
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Clear area selection"
+                className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={handleClear}
-              />
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleClear(e as unknown as React.MouseEvent);
+                  }
+                }}
+              >
+                <X className="h-3.5 w-3.5 shrink-0 opacity-50 hover:opacity-100" />
+              </span>
             )}
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </div>

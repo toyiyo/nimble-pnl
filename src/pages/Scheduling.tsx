@@ -18,7 +18,6 @@ import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
-import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
@@ -297,7 +296,6 @@ const Scheduling = () => {
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
-  const { areas: employeeAreas } = useEmployeeAreas(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
   const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
     try {

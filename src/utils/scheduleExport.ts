@@ -12,6 +12,7 @@ export interface ScheduleExportOptions {
   includePositions?: boolean;
   includeHoursSummary?: boolean;
   positionFilter?: string;
+  selectedEmployeeIds?: Set<string>;
 }
 
 /**
@@ -68,6 +69,7 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
     includePositions = true,
     includeHoursSummary = false,
     positionFilter,
+    selectedEmployeeIds,
   } = options;
 
   // Get days of the week
@@ -85,6 +87,7 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   const shiftEmployeeIds = new Set(filteredShifts.map(s => s.employee_id));
   const employeesWithShifts = employees
     .filter(emp => shiftEmployeeIds.has(emp.id))
+    .filter(emp => !selectedEmployeeIds || selectedEmployeeIds.has(emp.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Create PDF in landscape orientation

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Printer, FileDown, Calendar } from "lucide-react";
+import { Printer, FileDown } from "lucide-react";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { generateSchedulePDF } from "@/utils/scheduleExport";
 import type { Shift, Employee } from "@/types/scheduling";
@@ -38,29 +38,73 @@ export const ScheduleExportDialog = ({
 }: ScheduleExportDialogProps) => {
   const [includePositions, setIncludePositions] = useState(true);
   const [includeHoursSummary, setIncludeHoursSummary] = useState(false);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
 
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Filter shifts for preview
-  const filteredShifts = positionFilter && positionFilter !== "all"
-    ? shifts.filter(s => {
-        const emp = employees.find(e => e.id === s.employee_id);
-        return emp?.position === positionFilter;
-      })
-    : shifts;
+  // Filter shifts by position
+  const positionFilteredShifts = useMemo(() =>
+    positionFilter && positionFilter !== "all"
+      ? shifts.filter(s => {
+          const emp = employees.find(e => e.id === s.employee_id);
+          return emp?.position === positionFilter;
+        })
+      : shifts,
+    [shifts, employees, positionFilter]
+  );
 
-  const shiftEmployeeIds = new Set(filteredShifts.map(s => s.employee_id));
-  const employeesWithShifts = employees
-    .filter(emp => shiftEmployeeIds.has(emp.id))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, 4); // Preview only shows first 4
+  // All employees who have shifts (after position filter)
+  const allEmployeesWithShifts = useMemo(() => {
+    const ids = new Set(positionFilteredShifts.map(s => s.employee_id));
+    return employees
+      .filter(emp => ids.has(emp.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [positionFilteredShifts, employees]);
+
+  // Initialize selection to all employees when dialog opens or list changes
+  useEffect(() => {
+    if (open) {
+      setSelectedEmployeeIds(new Set(allEmployeesWithShifts.map(e => e.id)));
+    }
+  }, [open, allEmployeesWithShifts]);
+
+  const toggleEmployee = useCallback((empId: string) => {
+    setSelectedEmployeeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(empId)) {
+        next.delete(empId);
+      } else {
+        next.add(empId);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedEmployeeIds(new Set(allEmployeesWithShifts.map(e => e.id)));
+  }, [allEmployeesWithShifts]);
+
+  const deselectAll = useCallback(() => {
+    setSelectedEmployeeIds(new Set());
+  }, []);
+
+  // Preview: only selected employees, capped at 4
+  const previewEmployees = useMemo(() =>
+    allEmployeesWithShifts
+      .filter(emp => selectedEmployeeIds.has(emp.id))
+      .slice(0, 4),
+    [allEmployeesWithShifts, selectedEmployeeIds]
+  );
+
+  const selectedCount = selectedEmployeeIds.size;
+  const totalAvailable = allEmployeesWithShifts.length;
 
   const getShiftDisplay = (employeeId: string, day: Date): string => {
-    const dayShifts = filteredShifts.filter(
+    const dayShifts = positionFilteredShifts.filter(
       s => s.employee_id === employeeId && isSameDay(parseISO(s.start_time), day)
     );
     if (dayShifts.length === 0) return "OFF";
-    
+
     return dayShifts.map(s => {
       const start = parseISO(s.start_time);
       const end = parseISO(s.end_time);
@@ -85,15 +129,14 @@ export const ScheduleExportDialog = ({
       includePositions,
       includeHoursSummary,
       positionFilter,
+      selectedEmployeeIds,
     });
     onOpenChange(false);
   };
 
-  const totalStaff = new Set(filteredShifts.map(s => s.employee_id)).size;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Printer className="h-5 w-5 text-primary" />
@@ -133,7 +176,7 @@ export const ScheduleExportDialog = ({
                 </tr>
               </thead>
               <tbody>
-                {employeesWithShifts.map(emp => (
+                {previewEmployees.map(emp => (
                   <tr key={emp.id} className="border-b border-border/50">
                     <td className="p-1.5">
                       <div className="font-medium truncate max-w-[80px]">{emp.name.split(" ")[0]}</div>
@@ -145,8 +188,8 @@ export const ScheduleExportDialog = ({
                       const display = getShiftDisplay(emp.id, day);
                       const isOff = display === "OFF";
                       return (
-                        <td 
-                          key={day.toISOString()} 
+                        <td
+                          key={day.toISOString()}
                           className={`text-center p-1.5 ${isOff ? "text-muted-foreground italic" : "font-medium"}`}
                         >
                           {display}
@@ -155,10 +198,17 @@ export const ScheduleExportDialog = ({
                     })}
                   </tr>
                 ))}
-                {totalStaff > 4 && (
+                {selectedCount === 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-center p-4 text-muted-foreground italic">
+                      No employees selected
+                    </td>
+                  </tr>
+                )}
+                {selectedCount > 4 && (
                   <tr>
                     <td colSpan={8} className="text-center p-2 text-muted-foreground italic">
-                      ... and {totalStaff - 4} more employees
+                      ... and {selectedCount - 4} more employees
                     </td>
                   </tr>
                 )}
@@ -168,7 +218,59 @@ export const ScheduleExportDialog = ({
 
           <div className="flex items-center justify-between mt-3 pt-2 border-t border-border text-xs text-muted-foreground">
             <span>Generated {format(new Date(), "MMM d, yyyy")}</span>
-            <span>{totalStaff} staff scheduled</span>
+            <span>{selectedCount} staff scheduled</span>
+          </div>
+        </div>
+
+        {/* Employee Selection */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              Select Employees
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[12px]"
+                onClick={selectAll}
+                disabled={selectedCount === totalAvailable}
+                aria-label="Select all employees"
+              >
+                Select All
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[12px]"
+                onClick={deselectAll}
+                disabled={selectedCount === 0}
+                aria-label="Deselect all employees"
+              >
+                Deselect All
+              </Button>
+              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                {selectedCount} of {totalAvailable}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto rounded-lg border border-border/40 p-2">
+            {allEmployeesWithShifts.map(emp => (
+              <div key={emp.id} className="flex items-center space-x-2 py-1 px-1 rounded hover:bg-muted/50">
+                <Checkbox
+                  id={`emp-${emp.id}`}
+                  checked={selectedEmployeeIds.has(emp.id)}
+                  onCheckedChange={() => toggleEmployee(emp.id)}
+                  aria-label={`Include ${emp.name}`}
+                />
+                <Label
+                  htmlFor={`emp-${emp.id}`}
+                  className="text-[13px] cursor-pointer truncate"
+                >
+                  {emp.name}
+                </Label>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -200,7 +302,7 @@ export const ScheduleExportDialog = ({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleExport} className="gap-2">
+          <Button onClick={handleExport} className="gap-2" disabled={selectedCount === 0}>
             <FileDown className="h-4 w-4" />
             Download PDF
           </Button>

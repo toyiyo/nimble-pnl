@@ -1,20 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractLocalTime, buildCopyPayload, shouldAllowDrop } from '@/components/scheduling/useShiftCopyDnd';
-
-describe('extractLocalTime', () => {
-  it('extracts HH:MM from a Date in local timezone', () => {
-    const date = new Date(2026, 2, 24, 9, 30, 0);
-    expect(extractLocalTime(date)).toBe('09:30');
-  });
-  it('handles midnight correctly', () => {
-    const date = new Date(2026, 2, 24, 0, 0, 0);
-    expect(extractLocalTime(date)).toBe('00:00');
-  });
-  it('handles PM times', () => {
-    const date = new Date(2026, 2, 24, 22, 15, 0);
-    expect(extractLocalTime(date)).toBe('22:15');
-  });
-});
+import { buildCopyPayload, shouldAllowDrop } from '@/components/scheduling/useShiftCopyDnd';
 
 describe('shouldAllowDrop', () => {
   it('returns false when dropping on the same day', () => {

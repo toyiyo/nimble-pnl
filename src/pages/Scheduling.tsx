@@ -301,7 +301,7 @@ const Scheduling = () => {
     handleDragStart,
     handleDragEnd,
     handleDragCancel,
-  } = useShiftCopyDnd({ restaurantId: restaurantId || '', restaurantTimezone });
+  } = useShiftCopyDnd();
 
   const pendingTradeCount = pendingTrades.length;
 

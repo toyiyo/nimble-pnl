@@ -11,16 +11,6 @@ import type { ConflictDialogData } from '@/components/scheduling/ShiftPlanner/Av
 // Pure helpers (exported for unit tests)
 // ---------------------------------------------------------------------------
 
-/**
- * Return the local-timezone HH:MM of the given Date.
- * Uses getHours()/getMinutes() so the result is independent of any UTC offset.
- */
-export function extractLocalTime(date: Date): string {
-  const hh = String(date.getHours()).padStart(2, '0');
-  const mm = String(date.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-
 export interface ShouldAllowDropParams {
   sourceEmployeeId: string;
   sourceDay: string;
@@ -96,11 +86,6 @@ export function buildCopyPayload(shift: Shift, targetDay: string): ShiftInput {
 // Hook
 // ---------------------------------------------------------------------------
 
-interface UseShiftCopyDndOptions {
-  restaurantId: string;
-  restaurantTimezone: string;
-}
-
 interface ConflictDialogState {
   open: boolean;
   data: ConflictDialogData | null;
@@ -119,9 +104,7 @@ export interface UseShiftCopyDndReturn {
   sensors: ReturnType<typeof useSensors>;
 }
 
-export function useShiftCopyDnd({
-  restaurantTimezone,
-}: UseShiftCopyDndOptions): UseShiftCopyDndReturn {
+export function useShiftCopyDnd(): UseShiftCopyDndReturn {
   const { mutate: executeCreate } = useCreateShift();
 
   const [activeDragShift, setActiveDragShift] = useState<Shift | null>(null);
@@ -130,6 +113,7 @@ export function useShiftCopyDnd({
     data: null,
   });
   const [pendingPayload, setPendingPayload] = useState<ShiftInput | null>(null);
+  const [pendingCellId, setPendingCellId] = useState<string | null>(null);
   const [highlightedCellId, setHighlightedCellId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -187,24 +171,29 @@ export function useShiftCopyDnd({
       const cellId = `${targetEmployeeId}:${targetDay}`;
 
       // Check for conflicts before creating
-      const { conflicts, hasConflicts } = await checkConflictsImperative({
-        employeeId: shift.employee_id,
-        restaurantId: shift.restaurant_id,
-        startTime: payload.start_time,
-        endTime: payload.end_time,
-      });
-
-      if (hasConflicts) {
-        setPendingPayload(payload);
-        setConflictDialog({
-          open: true,
-          data: {
-            employeeName: shift.employee?.name ?? shift.employee_id,
-            conflicts,
-            warnings: [],
-          },
+      try {
+        const { conflicts, hasConflicts } = await checkConflictsImperative({
+          employeeId: shift.employee_id,
+          restaurantId: shift.restaurant_id,
+          startTime: payload.start_time,
+          endTime: payload.end_time,
         });
-        return;
+
+        if (hasConflicts) {
+          setPendingPayload(payload);
+          setPendingCellId(cellId);
+          setConflictDialog({
+            open: true,
+            data: {
+              employeeName: shift.employee?.name ?? shift.employee_id,
+              conflicts,
+              warnings: [],
+            },
+          });
+          return;
+        }
+      } catch {
+        // If conflict check fails, proceed with creation (server will validate)
       }
 
       executeCreate(payload, {
@@ -216,18 +205,19 @@ export function useShiftCopyDnd({
 
   const handleConflictConfirm = useCallback(() => {
     if (!pendingPayload) return;
-    const targetDay = pendingPayload.start_time.slice(0, 10); // YYYY-MM-DD from ISO
-    const cellId = `${pendingPayload.employee_id}:${targetDay}`;
+    const cellId = pendingCellId;
     setConflictDialog({ open: false, data: null });
     executeCreate(pendingPayload, {
-      onSuccess: () => flashCell(cellId),
+      onSuccess: () => { if (cellId) flashCell(cellId); },
     });
     setPendingPayload(null);
-  }, [pendingPayload, executeCreate, flashCell]);
+    setPendingCellId(null);
+  }, [pendingPayload, pendingCellId, executeCreate, flashCell]);
 
   const handleConflictCancel = useCallback(() => {
     setConflictDialog({ open: false, data: null });
     setPendingPayload(null);
+    setPendingCellId(null);
   }, []);
 
   return {

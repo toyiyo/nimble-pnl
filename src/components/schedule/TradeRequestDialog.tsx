@@ -54,7 +54,7 @@ export const TradeRequestDialog = ({
 
   // Filter out current employee and inactive employees
   const availableEmployees = employees.filter(
-    (emp) => emp.id !== currentEmployeeId && emp.is_active && emp.status === 'active'
+    (emp) => emp.id !== currentEmployeeId && emp.is_active
   );
 
   const handleSubmit = () => {

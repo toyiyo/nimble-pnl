@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import type { Shift, Employee } from "@/types/scheduling";
+import { groupEmployees, type GroupByMode } from "@/lib/scheduleGrouping";
 
 export interface ScheduleExportOptions {
   shifts: Shift[];
@@ -12,6 +13,7 @@ export interface ScheduleExportOptions {
   includePositions?: boolean;
   includeHoursSummary?: boolean;
   positionFilter?: string;
+  groupBy?: GroupByMode;
 }
 
 /**
@@ -68,6 +70,7 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
     includePositions = true,
     includeHoursSummary = false,
     positionFilter,
+    groupBy = 'none',
   } = options;
 
   // Get days of the week
@@ -86,6 +89,9 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   const employeesWithShifts = employees
     .filter(emp => shiftEmployeeIds.has(emp.id))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Group employees
+  const groups = groupEmployees(employeesWithShifts, groupBy);
 
   // Create PDF in landscape orientation
   const doc = new jsPDF({
@@ -109,13 +115,21 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   const weekRange = `Week of ${format(weekStart, "MMMM d")} - ${format(weekEnd, "MMMM d, yyyy")}`;
   doc.text(weekRange, pageWidth / 2, margin + 20, { align: "center" });
 
-  // Position filter indicator
+  // Filter/grouping indicators
+  let subtitleY = margin + 35;
   if (positionFilter && positionFilter !== "all") {
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Filtered: ${positionFilter}`, pageWidth / 2, margin + 35, { align: "center" });
-    doc.setTextColor(0);
+    doc.text(`Filtered: ${positionFilter}`, pageWidth / 2, subtitleY, { align: "center" });
+    subtitleY += 14;
   }
+  if (groupBy !== 'none') {
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Grouped by: ${groupBy === 'area' ? 'Area' : 'Position'}`, pageWidth / 2, subtitleY, { align: "center" });
+    subtitleY += 14;
+  }
+  doc.setTextColor(0);
 
   // Build table data
   const tableHeaders = [
@@ -135,66 +149,86 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   }
 
   const tableBody: any[][] = [];
+  const colCount = weekDays.length + 1 + (includeHoursSummary ? 1 : 0);
 
-  employeesWithShifts.forEach(employee => {
-    const row: any[] = [];
-    
-    // Employee name (and position if enabled)
-    const nameCell = includePositions
-      ? `${employee.name}\n${employee.position}`
-      : employee.name;
-    row.push({
-      content: nameCell,
-      styles: { 
-        halign: "left" as const, 
-        fontStyle: "bold" as const,
-        cellPadding: { top: 8, bottom: 8, left: 6, right: 6 },
-      },
-    });
-
-    let totalHours = 0;
-
-    // Add shift for each day
-    weekDays.forEach(day => {
-      const dayShifts = filteredShifts.filter(
-        s => s.employee_id === employee.id && isSameDay(parseISO(s.start_time), day)
-      );
-
-      if (dayShifts.length === 0) {
-        row.push({
-          content: "OFF",
-          styles: { 
-            halign: "center" as const, 
-            textColor: [150, 150, 150],
-            fontStyle: "italic" as const,
-          },
-        });
-      } else {
-        const shiftTexts = dayShifts.map(s => formatKitchenTime(s.start_time, s.end_time));
-        const hours = dayShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
-        totalHours += hours;
-        
-        row.push({
-          content: shiftTexts.join("\n"),
-          styles: { halign: "center" as const, fontStyle: "bold" as const },
-        });
-      }
-    });
-
-    // Add hours total if requested
-    if (includeHoursSummary) {
-      row.push({
-        content: totalHours > 0 ? totalHours.toFixed(1) : "-",
-        styles: { halign: "center" as const },
-      });
+  groups.forEach(group => {
+    // Group header row
+    if (groupBy !== 'none' && group.label) {
+      const headerRow: any[] = [{
+        content: `${group.label} (${group.employees.length})`,
+        colSpan: colCount,
+        styles: {
+          halign: "left" as const,
+          fontStyle: "bold" as const,
+          fillColor: [230, 230, 230],
+          textColor: [50, 50, 50],
+          fontSize: 10,
+          cellPadding: { top: 6, bottom: 6, left: 6, right: 6 },
+        },
+      }];
+      tableBody.push(headerRow);
     }
 
-    tableBody.push(row);
+    group.employees.forEach(employee => {
+      const row: any[] = [];
+
+      // Employee name (and position if enabled)
+      const nameCell = includePositions
+        ? `${employee.name}\n${employee.position}`
+        : employee.name;
+      row.push({
+        content: nameCell,
+        styles: {
+          halign: "left" as const,
+          fontStyle: "bold" as const,
+          cellPadding: { top: 8, bottom: 8, left: 6, right: 6 },
+        },
+      });
+
+      let totalHours = 0;
+
+      // Add shift for each day
+      weekDays.forEach(day => {
+        const dayShifts = filteredShifts.filter(
+          s => s.employee_id === employee.id && isSameDay(parseISO(s.start_time), day)
+        );
+
+        if (dayShifts.length === 0) {
+          row.push({
+            content: "OFF",
+            styles: {
+              halign: "center" as const,
+              textColor: [150, 150, 150],
+              fontStyle: "italic" as const,
+            },
+          });
+        } else {
+          const shiftTexts = dayShifts.map(s => formatKitchenTime(s.start_time, s.end_time));
+          const hours = dayShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
+          totalHours += hours;
+
+          row.push({
+            content: shiftTexts.join("\n"),
+            styles: { halign: "center" as const, fontStyle: "bold" as const },
+          });
+        }
+      });
+
+      // Add hours total if requested
+      if (includeHoursSummary) {
+        row.push({
+          content: totalHours > 0 ? totalHours.toFixed(1) : "-",
+          styles: { halign: "center" as const },
+        });
+      }
+
+      tableBody.push(row);
+    });
   });
 
   // Generate table
   autoTable(doc, {
-    startY: positionFilter && positionFilter !== "all" ? margin + 50 : margin + 40,
+    startY: subtitleY > margin + 35 ? subtitleY + 5 : margin + 40,
     head: [tableHeaders],
     body: tableBody,
     theme: "grid",

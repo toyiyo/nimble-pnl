@@ -14,6 +14,7 @@ import { Printer, FileDown, Calendar } from "lucide-react";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { generateSchedulePDF } from "@/utils/scheduleExport";
 import type { Shift, Employee } from "@/types/scheduling";
+import type { GroupByMode } from "@/lib/scheduleGrouping";
 
 interface ScheduleExportDialogProps {
   open: boolean;
@@ -24,6 +25,7 @@ interface ScheduleExportDialogProps {
   weekEnd: Date;
   restaurantName?: string;
   positionFilter?: string;
+  groupBy?: GroupByMode;
 }
 
 export const ScheduleExportDialog = ({
@@ -35,6 +37,7 @@ export const ScheduleExportDialog = ({
   weekEnd,
   restaurantName = "Restaurant",
   positionFilter,
+  groupBy = 'none',
 }: ScheduleExportDialogProps) => {
   const [includePositions, setIncludePositions] = useState(true);
   const [includeHoursSummary, setIncludeHoursSummary] = useState(false);
@@ -85,6 +88,7 @@ export const ScheduleExportDialog = ({
       includePositions,
       includeHoursSummary,
       positionFilter,
+      groupBy,
     });
     onOpenChange(false);
   };
@@ -114,6 +118,11 @@ export const ScheduleExportDialog = ({
             {positionFilter && positionFilter !== "all" && (
               <div className="text-xs text-muted-foreground mt-1">
                 Filtered: {positionFilter}
+              </div>
+            )}
+            {groupBy !== 'none' && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Grouped by: {groupBy === 'area' ? 'Area' : 'Position'}
               </div>
             )}
           </div>

@@ -22,6 +22,7 @@ export interface Employee {
   email?: string;
   phone?: string;
   position: string;
+  area?: string;
   status: 'active' | 'inactive' | 'terminated';
   hire_date?: string;
   termination_date?: string; // Date when employee was terminated/inactivated

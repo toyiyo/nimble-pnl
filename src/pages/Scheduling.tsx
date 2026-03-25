@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,11 @@ import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDial
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
+import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
+import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
+import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
+import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
+import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
@@ -287,6 +293,16 @@ const Scheduling = () => {
     weekEnd
   );
   
+  const {
+    sensors,
+    activeDragShift,
+    highlightedCellId,
+    conflictDialog,
+    handleDragStart,
+    handleDragEnd,
+    handleDragCancel,
+  } = useShiftCopyDnd({ restaurantId: restaurantId || '', restaurantTimezone });
+
   const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
@@ -1032,6 +1048,12 @@ const Scheduling = () => {
               </Button>
             </div>
           ) : (
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
             <div className="overflow-x-auto">
               <table className="w-full border-collapse min-w-[900px]">
                 <thead>
@@ -1124,21 +1146,27 @@ const Scheduling = () => {
                         const dayShifts = getShiftsForEmployee(employee.id, day);
                         const dayIsToday = isToday(day);
                         return (
-                          <td
+                          <DroppableDayCell
                             key={day.toISOString()}
-                            className={cn(
-                              "p-2 align-top transition-colors",
-                              dayIsToday && "bg-primary/5"
-                            )}
+                            employeeId={employee.id}
+                            day={format(day, 'yyyy-MM-dd')}
+                            isToday={dayIsToday}
+                            isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
                           >
                             <div className="space-y-1.5 min-h-[60px]">
                               {dayShifts.map((shift) => (
-                                <ShiftCard
+                                <DraggableShiftCard
                                   key={shift.id}
                                   shift={shift}
-                                  onEdit={handleEditShift}
-                                  onDelete={handleDeleteShift}
-                                />
+                                  employeeId={employee.id}
+                                  day={format(day, 'yyyy-MM-dd')}
+                                >
+                                  <ShiftCard
+                                    shift={shift}
+                                    onEdit={handleEditShift}
+                                    onDelete={handleDeleteShift}
+                                  />
+                                </DraggableShiftCard>
                               ))}
                               <Button
                                 variant="ghost"
@@ -1154,7 +1182,7 @@ const Scheduling = () => {
                                 Add
                               </Button>
                             </div>
-                          </td>
+                          </DroppableDayCell>
                         );
                       })}
                     </tr>
@@ -1162,7 +1190,18 @@ const Scheduling = () => {
                 </tbody>
               </table>
             </div>
+            <DragOverlay dropAnimation={null}>
+              {activeDragShift && <ShiftDragOverlay shift={activeDragShift} />}
+            </DragOverlay>
+            </DndContext>
           )}
+          <AvailabilityConflictDialog
+            open={conflictDialog.open}
+            data={conflictDialog.data}
+            timezone={restaurantTimezone}
+            onConfirm={conflictDialog.onConfirm}
+            onCancel={conflictDialog.onCancel}
+          />
         </CardContent>
       </Card>
         </TabsContent>

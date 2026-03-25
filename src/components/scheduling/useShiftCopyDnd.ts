@@ -192,8 +192,9 @@ export function useShiftCopyDnd(): UseShiftCopyDndReturn {
           });
           return;
         }
-      } catch {
+      } catch (err) {
         // If conflict check fails, proceed with creation (server will validate)
+        console.warn('Conflict check failed, proceeding with shift copy:', err);
       }
 
       executeCreate(payload, {

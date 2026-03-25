@@ -92,6 +92,23 @@ export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boole
   return 'border-l-primary/50';
 };
 
+/** Filter employees for the weekly schedule grid:
+ *  - Active employees always shown (so managers can schedule them)
+ *  - Inactive employees shown only if they have shifts this week */
+export function filterEmployeesForScheduleView(
+  allEmployees: Employee[],
+  shiftEmployeeIds: Set<string>,
+  positionFilter: string | null,
+): Employee[] {
+  const filtered = allEmployees.filter(emp =>
+    emp.is_active || shiftEmployeeIds.has(emp.id)
+  );
+  if (positionFilter && positionFilter !== 'all') {
+    return filtered.filter(emp => emp.position === positionFilter);
+  }
+  return filtered;
+}
+
 type ShiftCardProps = {
   shift: Shift;
   onEdit: (shift: Shift) => void;
@@ -335,16 +352,10 @@ const Scheduling = () => {
     ? activeEmployees.filter(emp => emp.position === positionFilter)
     : activeEmployees;
 
-  // For displaying shifts, include ALL employees with shifts this week (including inactive)
-  // Apply position filter to all employees with shifts
+  // For displaying the schedule grid: show active employees + inactive employees with shifts this week
   const filteredEmployeesWithShifts = useMemo(() => {
     const shiftEmployeeIds = new Set(shifts.map(s => s.employee_id));
-    const employeesWithShifts = allEmployees.filter(emp => shiftEmployeeIds.has(emp.id));
-    
-    if (positionFilter && positionFilter !== 'all') {
-      return employeesWithShifts.filter(emp => emp.position === positionFilter);
-    }
-    return employeesWithShifts;
+    return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter);
   }, [allEmployees, shifts, positionFilter]);
 
   // Calculate labor metrics

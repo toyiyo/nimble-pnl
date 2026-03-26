@@ -249,7 +249,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
     return getRecurrencePresetsForDate(currentDate);
   }, [startDate]);
 
-  const activeEmployees = employees.filter((emp) => emp.status === 'active');
+  const activeEmployees = employees.filter((emp) => emp.is_active);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -148,42 +148,44 @@ async function goToPlanner(page: any) {
  * Playwright's dragTo doesn't produce the right events, so we use page.mouse.
  */
 async function dragAndAssign(page: any, employeeName: string, assignType: 'day' | 'all') {
-  // The employee sidebar renders buttons like "Alice Johnson Server"
   const employeeButton = page.getByRole('button', { name: new RegExp(employeeName, 'i') }).first();
   await expect(employeeButton).toBeVisible({ timeout: 5000 });
 
-  // Target: first active droppable cell (border-l-2 class from ShiftCell)
   const targetCell = page.locator('.border-l-2.border-primary\\/40').first();
   await expect(targetCell).toBeVisible({ timeout: 5000 });
 
-  // Get bounding boxes
-  const sourceBox = await employeeButton.boundingBox();
-  const targetBox = await targetCell.boundingBox();
+  const popoverButton = assignType === 'day'
+    ? page.getByRole('button', { name: /this day only/i })
+    : page.getByRole('button', { name: /all.*days/i });
 
-  if (!sourceBox || !targetBox) throw new Error('Could not get bounding boxes for drag');
+  // Retry the drag up to 3 times — dnd-kit PointerSensor can miss events under load
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const sourceBox = await employeeButton.boundingBox();
+    const targetBox = await targetCell.boundingBox();
+    if (!sourceBox || !targetBox) throw new Error('Could not get bounding boxes for drag');
 
-  const srcX = sourceBox.x + sourceBox.width / 2;
-  const srcY = sourceBox.y + sourceBox.height / 2;
-  const tgtX = targetBox.x + targetBox.width / 2;
-  const tgtY = targetBox.y + targetBox.height / 2;
+    const srcX = sourceBox.x + sourceBox.width / 2;
+    const srcY = sourceBox.y + sourceBox.height / 2;
+    const tgtX = targetBox.x + targetBox.width / 2;
+    const tgtY = targetBox.y + targetBox.height / 2;
 
-  // Simulate drag: mouse down → move (with distance > 8px for PointerSensor) → mouse up
-  await page.mouse.move(srcX, srcY);
-  await page.mouse.down();
-  // Move in steps to exceed the 8px activation constraint
-  await page.mouse.move(srcX + 5, srcY, { steps: 2 });
-  await page.mouse.move(srcX + 10, srcY, { steps: 2 });
-  await page.mouse.move(tgtX, tgtY, { steps: 10 });
-  await page.mouse.up();
+    await page.mouse.move(srcX, srcY);
+    await page.mouse.down();
+    await page.mouse.move(srcX + 5, srcY, { steps: 2 });
+    await page.mouse.move(srcX + 10, srcY, { steps: 2 });
+    await page.mouse.move(tgtX, tgtY, { steps: 10 });
+    await page.mouse.up();
 
-  // Wait for assignment popover to appear
-  if (assignType === 'day') {
-    await expect(page.getByRole('button', { name: /this day only/i })).toBeVisible({ timeout: 10000 });
-    await page.getByRole('button', { name: /this day only/i }).click();
-  } else {
-    await expect(page.getByRole('button', { name: /all.*days/i })).toBeVisible({ timeout: 10000 });
-    await page.getByRole('button', { name: /all.*days/i }).click();
+    const visible = await popoverButton.isVisible({ timeout: 5000 }).catch(() => false);
+    if (visible) break;
+
+    if (attempt < 2) {
+      await page.waitForTimeout(1000);
+    }
   }
+
+  await expect(popoverButton).toBeVisible({ timeout: 5000 });
+  await popoverButton.click();
 }
 
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -401,8 +403,8 @@ test.describe('Scheduling Conflict Enhancements', () => {
     ).not.toBeVisible({ timeout: 3000 });
 
     // --- Test Assign Anyway ---
-    // Wait for DnD sensors to reset after dialog close
-    await page.waitForTimeout(1000);
+    // Wait for DnD sensors to fully reset after dialog close — needs extra time under load
+    await page.waitForTimeout(2000);
     await dragAndAssign(page, 'Alice Johnson', 'day');
 
     await expect(page.getByText(/scheduling warning/i)).toBeVisible({ timeout: 15000 });

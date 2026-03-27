@@ -36,7 +36,7 @@ test.describe('Complete Payroll Journey', () => {
 
     // 1.1: Create hourly employee
     await page.getByRole('button', { name: /employee/i }).first().click();
-    let dialog = page.getByRole('dialog');
+    let dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     
     const hourlyEmployee = {
       name: `Hourly Server ${Date.now()}`,
@@ -65,7 +65,7 @@ test.describe('Complete Payroll Journey', () => {
 
     // 1.2: Create salaried employee
     await page.getByRole('button', { name: /employee/i }).first().click();
-    dialog = page.getByRole('dialog');
+    dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     
     const salaryEmployee = {
       name: `Salary Manager ${Date.now()}`,
@@ -104,7 +104,7 @@ test.describe('Complete Payroll Journey', () => {
 
     // 1.3: Create contractor
     await page.getByRole('button', { name: /employee/i }).first().click();
-    dialog = page.getByRole('dialog');
+    dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     
     const contractor = {
       name: `Contractor ${Date.now()}`,
@@ -220,7 +220,7 @@ test.describe('Complete Payroll Journey', () => {
     await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
     await page.getByRole('button', { name: /employee/i }).first().click();
-    const dialog = page.getByRole('dialog');
+    const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     
     const employeeEmail = `employee-${Date.now()}@test.com`;
     const employeeName = `Employee ${Date.now()}`;
@@ -285,7 +285,7 @@ test.describe('Complete Payroll Journey', () => {
     await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 10000 });
 
     await page.getByRole('button', { name: /employee/i }).first().click();
-    let dialog = page.getByRole('dialog');
+    let dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     
     const employeeName = `Termination Test ${Date.now()}`;
     
@@ -376,7 +376,7 @@ test.describe('Complete Payroll Journey', () => {
     await expect(editButton).toBeVisible({ timeout: 2000 });
     await editButton.click();
 
-    dialog = page.getByRole('dialog');
+    dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     await expect(dialog).toBeVisible();
 
     // Change status to "Terminated"
@@ -437,7 +437,7 @@ test.describe('Complete Payroll Journey', () => {
 
     for (const emp of employees) {
       await page.getByRole('button', { name: /employee/i }).first().click();
-      const dialog = page.getByRole('dialog');
+      const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
       
       await dialog.getByLabel(/name/i).first().fill(emp.name);
       

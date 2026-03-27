@@ -125,10 +125,10 @@ test.describe('Employee Payroll - Happy Paths', () => {
       await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
       // Scheduling view hides employees until they have a shift; dialog closure is our success signal.
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
-      // Navigate to payroll and wait for network to settle
-      await page.goto('/payroll', { waitUntil: 'networkidle' });
+      // Navigate to payroll
+      await page.goto('/payroll');
       
       // Wait for page to load - use exact heading match to avoid ambiguity
       await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 15000 });

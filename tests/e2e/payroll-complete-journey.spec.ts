@@ -326,11 +326,11 @@ test.describe('Complete Payroll Journey', () => {
     const shiftDialog = page.getByRole('dialog');
     const openShiftDialog = async () => {
       const headerShiftBtn = page.getByRole('button', { name: /^shift$/i }).first();
-      if (await headerShiftBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await headerShiftBtn.isVisible({ timeout: 10000 }).catch(() => false)) {
         await headerShiftBtn.click();
       } else {
         const addBtn = page.getByRole('button', { name: /create first shift|add/i }).first();
-        if (await addBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        if (await addBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
           await addBtn.click();
         }
       }

@@ -47,7 +47,7 @@ async function createEmployee(
   await addButton.click();
 
   // Fill employee form
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
   await expect(dialog).toBeVisible();
 
   // Fill basic employee info
@@ -102,7 +102,7 @@ async function createEmployeePin(page: Page, employeeName: string, pin: string) 
   await editButton.click();
 
   // Now we should be in the EmployeeDialog
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
   await expect(dialog).toBeVisible();
 
   // Look for PIN input field

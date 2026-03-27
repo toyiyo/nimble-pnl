@@ -73,15 +73,17 @@ async function openShiftDialog(page: any) {
   await page.goto('/scheduling');
   await page.waitForURL(/\/scheduling/, { timeout: 8000 });
 
-  // Wait for the schedule tab content to render before looking for buttons
+  // Wait for the schedule card to render before looking for buttons
+  await expect(page.getByRole('heading', { name: /staff schedule/i })).toBeVisible({ timeout: 15000 });
+
   // The "Shift" button is in the toolbar; "Create First Shift" is in the empty state
   const shiftButton = page.getByRole('button', { name: /^shift$/i });
   const createFirstButton = page.getByRole('button', { name: /create first shift/i });
 
-  if (await shiftButton.isVisible({ timeout: 10000 }).catch(() => false)) {
+  if (await shiftButton.isVisible({ timeout: 5000 }).catch(() => false)) {
     await shiftButton.click();
   } else {
-    await createFirstButton.click({ timeout: 10000 });
+    await createFirstButton.click({ timeout: 5000 });
   }
 
   const dialog = page.getByRole('dialog');

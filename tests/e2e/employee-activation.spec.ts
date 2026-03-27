@@ -218,27 +218,24 @@ test.describe('Employee Activation/Deactivation', () => {
 
   const deactivateModal = page.getByRole('dialog');
   await deactivateModal.getByRole('button', { name: /deactivate|confirm/i }).click();
-  
-  // Wait for modal to close after deactivation
-  await expect(deactivateModal).not.toBeVisible({ timeout: 5000 });
-  
+
+  // Wait for modal to close and deactivation to complete
+  await expect(deactivateModal).not.toBeVisible({ timeout: 10000 });
+  // Wait for the employee to disappear from the active list (confirms API completed)
+  await expect(page.getByRole('heading', { name: employeeData.name })).not.toBeVisible({ timeout: 10000 });
+
     // === TEST: Navigate to inactive employees ===
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
+    // Wait for the employee list to load, then switch to inactive tab
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
-    if (await inactiveTab.isVisible().catch(() => false)) {
-      await inactiveTab.click();
-      // Wait for tab content by checking for employee name
-      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 15000 });
-    } else {
-      // If no tab, just check employee is visible
-      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 15000 });
-    }
+    await expect(inactiveTab).toBeVisible({ timeout: 10000 });
+    await inactiveTab.click();
 
-    // === TEST: Find inactive employee card ===
-    await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible();
-    
+    // Wait for inactive employee to appear
+    await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 15000 });
+
     // === TEST: Verify inactive badge visible (should be near the heading) ===
     await expect(page.getByText(/inactive/i).first()).toBeVisible();
 

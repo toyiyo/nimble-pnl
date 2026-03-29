@@ -36,7 +36,9 @@ Update `capacitor.config.ts`:
 - `@capacitor/push-notifications` — push notification registration and handling
 - `@capacitor/camera` — native camera access for clock-in photos
 - `@capacitor/geolocation` — location for geofenced clock-in
-- `@capacitor-community/biometrics` — Face ID / fingerprint authentication
+- `@aparajita/capacitor-biometric-auth` — Face ID / fingerprint authentication (verified Capacitor 7.x compatible)
+- `@capacitor/status-bar` — status bar styling to match app theme
+- `@capacitor/preferences` — local device storage for biometric preference
 
 ### Build Scripts (package.json)
 - `build:mobile` — `npm run build && npx cap sync`
@@ -44,7 +46,12 @@ Update `capacitor.config.ts`:
 - `build:android` — `npm run build:mobile && npx cap open android`
 
 ### Vite Config
-- Ensure base path works with Capacitor's `file://` protocol (may need `base: './'` or conditionally set based on build target)
+- Set `base: './'` in `vite.config.ts` — required for Capacitor's `file://` protocol (absolute paths like `/assets/chunk.js` fail on native). This is safe for web deployment too.
+
+### Environment Variables
+- Supabase URL and anon key are baked into the build via `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+- Native builds use the same production `.env` values — no special handling needed
+- Ensure `.env.local` (local dev) is NOT used for native builds — build scripts should use `.env.production`
 
 ## 2. Push Notifications
 
@@ -56,8 +63,14 @@ New table: `device_tokens`
 - `token` (text, the device push token)
 - `platform` (text: 'ios' | 'android')
 - `created_at` (timestamptz)
-- `updated_at` (timestamptz)
+- `updated_at` (timestamptz, with moddatetime trigger)
+- `UNIQUE(user_id, token)` — prevents duplicate registrations on repeated app launches
 - RLS: users can only read/write their own tokens
+
+### Token Lifecycle
+- On registration, upsert by `(user_id, token)` — if token exists, update `updated_at`
+- When push send fails with "invalid token" error (APNs/FCM), delete the stale token
+- Old tokens for the same user on different devices are kept (multi-device support)
 
 ### Registration Flow
 1. On app launch (native only), call `PushNotifications.requestPermissions()`
@@ -70,16 +83,23 @@ New table: `device_tokens`
 New edge function: `send-push-notification`
 - Accepts: `user_id`, `title`, `body`, `data` (optional deep link info)
 - Looks up device tokens for the user
-- Sends via APNs (iOS) and FCM (Android)
-- Requires: APNs key (Apple Developer), FCM server key (Firebase project)
+- **Delivery mechanism: FCM HTTP v1 API for both iOS and Android** — iOS supports FCM via Firebase, so a single API handles both platforms. This avoids maintaining separate APNs JWT signing logic in Deno.
+- FCM HTTP v1 call from Deno edge function: `POST https://fcm.googleapis.com/v1/projects/{project}/messages:send`
+- Requires: Firebase project with Cloud Messaging enabled, service account key stored as Supabase secret
+- On send failure with "NOT_FOUND" or "UNREGISTERED" error, delete the stale device token
 
 ### Notification Triggers
-Integrate into existing business logic edge functions:
-- Shift reminder (30 min before shift start)
-- Time-off request approved/denied
-- New shift posted to marketplace
-- Schedule published/changed
-- Clock-in reminder if late
+
+**Phase 1 (event-driven, ship with initial release):**
+- Time-off request approved/denied — hook into existing edge function
+- Schedule published/changed — hook into existing edge function
+- New shift posted to marketplace — hook into existing edge function
+
+**Phase 2 (time-based, requires pg_cron, deferred):**
+- Shift reminder (30 min before shift start) — needs a pg_cron job that queries upcoming shifts and calls the push edge function
+- Clock-in reminder if late — needs a pg_cron job that checks for missing punches after shift start time
+
+Phase 2 triggers are significant backend infrastructure and should be implemented as a separate follow-up.
 
 ### Receiving Notifications
 - `PushNotifications.addListener('pushNotificationReceived')` — handle foreground
@@ -89,19 +109,26 @@ Integrate into existing business logic edge functions:
 
 ### Flow
 1. After first successful login, prompt: "Enable Face ID / Fingerprint for faster access?"
-2. If accepted, store flag in Supabase user metadata (`biometrics_enabled: true`)
-3. On app resume (from background), if biometrics enabled:
+2. If accepted, store flag locally on device via `@capacitor/preferences` (biometric capability is device-specific — a user may have Face ID on iPhone but no biometrics on their Android tablet)
+3. On app resume (from background), if biometrics enabled on this device:
+   - Show a lock screen overlay (blocks UI)
    - Call `BiometricAuth.authenticate({ reason: 'Verify your identity' })`
-   - On success: show app content
-   - On failure: fall back to email/password login
+   - On success: dismiss lock screen, show app content
+   - On failure (3 attempts): sign out the Supabase session, redirect to login
 4. New hook: `useBiometricAuth()` — manages enable/disable, verification on resume
+
+### Session Security
+- Supabase refresh token remains in WebView storage (standard Capacitor behavior)
+- Biometric check is a UI gate — it prevents casual access if someone picks up an unlocked phone
+- For higher security (e.g., financial apps), tokens could be moved to native Keychain/Keystore, but this is unnecessary for a scheduling app
+- After 3 failed biometric attempts, the session is fully cleared (not just UI-blocked)
 
 ### Clock-In Enhancement
 - Offer biometric verification as alternative to photo capture during clock-in
 - Manager configures per-restaurant: require photo, biometric, or either
 
 ### Storage
-- Biometric preference stored in Supabase user metadata (syncs across devices)
+- Biometric preference stored locally on device via `@capacitor/preferences` (device-specific, not synced)
 - No biometric data is stored — only the preference flag; the OS handles actual biometric matching
 
 ## 4. Enhanced Camera
@@ -146,10 +173,12 @@ Add columns to `restaurants` table:
    - If outside radius + enforcement = 'block': deny clock-in with message
 3. New hook: `useGeofenceCheck(restaurantId)` — returns `{ checkLocation, isWithinGeofence, distance }`
 
-### Time Entry Flagging
-Add column to `time_entries` table:
-- `clock_in_location` (jsonb, nullable) — `{ lat, lng, distance_meters, within_geofence }`
-- Managers can see flagged entries in timecard review
+### Time Punch Location Data
+The `time_punches` table already has a `location` JSONB column storing `{ latitude, longitude }`. Extend this schema to include geofence data:
+- `location` (jsonb) — `{ latitude, longitude, distance_meters, within_geofence }`
+- No new column needed — extend the existing one
+- Managers can see flagged entries in `TimePunchesManager.tsx` (timecard review)
+- New utility: `src/lib/haversine.ts` — pure function for distance calculation (also usable server-side)
 
 ### Restaurant Settings UI
 Add a section to restaurant settings (manager-only):
@@ -161,9 +190,9 @@ Add a section to restaurant settings (manager-only):
 
 ### App Identity
 - **App name:** EasyShiftHQ
-- **Bundle ID (iOS):** com.easyshifthq.app
-- **Package name (Android):** com.easyshifthq.app
-- **App ID in capacitor.config.ts:** Update from lovable default to `com.easyshifthq.app`
+- **Bundle ID (iOS):** com.easyshifthq.employee
+- **Package name (Android):** com.easyshifthq.employee
+- **App ID in capacitor.config.ts:** Update from lovable default to `com.easyshifthq.employee`
 
 ### Required Accounts (Manual, Not Part of Implementation)
 - Apple Developer Program ($99/year) — for App Store + APNs
@@ -200,7 +229,8 @@ Add a section to restaurant settings (manager-only):
 
 ## 8. Testing Strategy
 
-- **Unit tests:** New hooks (`useDeviceToken`, `useBiometricAuth`, `useNativeCamera`, `useGeofenceCheck`)
-- **pgTAP tests:** `device_tokens` RLS policies, restaurant geofence columns, time entry location column
+- **Unit tests:** New hooks (`useDeviceToken`, `useBiometricAuth`, `useNativeCamera`, `useGeofenceCheck`), `haversine.ts` utility
+- **Capacitor mocking:** All hooks that depend on Capacitor plugins will be tested with `vi.mock('@capacitor/core')` returning `isNativePlatform: false` and individual plugin mocks. Hooks should be structured so business logic is testable independently of the native bridge.
+- **pgTAP tests:** `device_tokens` RLS policies, restaurant geofence columns, `time_punches.location` schema
 - **Manual testing:** Native features require physical devices (push notifications don't work in simulators for iOS)
 - **E2E:** Existing Playwright tests continue to pass (web experience unchanged)

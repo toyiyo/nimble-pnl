@@ -73,7 +73,7 @@ serve(async (req) => {
     // Get all employees for this restaurant
     const { data: employees, error: empError } = await supabase
       .from("employees")
-      .select("id, name, email")
+      .select("id, name, email, user_id")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
 
@@ -221,6 +221,28 @@ serve(async (req) => {
       (r) => r.status === "fulfilled" && r.value.success
     ).length;
     const failureCount = results.length - successCount;
+
+    // Send push notifications to all scheduled employees
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const pushPromises = scheduledEmployees
+      .filter((emp) => emp.user_id)
+      .map((employee) =>
+        fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            user_id: employee.user_id,
+            title: "Schedule Updated",
+            body: "A new schedule has been published",
+            data: { route: "/employee/schedule" },
+          }),
+        }).catch((e) => console.error(`Push notification failed for employee ${employee.id}:`, e))
+      );
+    await Promise.allSettled(pushPromises);
 
     // Update the publication record to mark notifications as sent
     await supabase

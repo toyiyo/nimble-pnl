@@ -119,7 +119,8 @@ const handler = async (req: Request): Promise<Response> => {
         employee:employees(
           id,
           name,
-          email
+          email,
+          user_id
         )
       `)
       .eq('id', timeOffRequestId)
@@ -289,6 +290,30 @@ const handler = async (req: Request): Promise<Response> => {
 
       const results = await Promise.all(emailPromises);
       console.log(`Sent ${results.length} notification emails`);
+
+      // Send push notification to the employee for approved/rejected actions
+      if ((action === 'approved' || action === 'rejected') && timeOffRequest.employee?.user_id) {
+        try {
+          await fetch(
+            `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              },
+              body: JSON.stringify({
+                user_id: timeOffRequest.employee.user_id,
+                title: 'Time-Off Update',
+                body: `Your time-off request has been ${action}`,
+                data: { route: '/employee/portal' },
+              }),
+            }
+          );
+        } catch (e) {
+          console.error('Push notification failed:', e);
+        }
+      }
 
       return new Response(
         JSON.stringify({ 

@@ -5,8 +5,19 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { MobileLayout } from '@/components/employee/MobileLayout';
 
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => false },
+}));
+
+vi.mock('@capacitor/push-notifications', () => ({
+  PushNotifications: {
+    addListener: vi.fn(),
+    removeAllListeners: vi.fn(),
+  },
+}));
+
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ signOut: vi.fn() }),
+  useAuth: () => ({ signOut: vi.fn(), user: null, loading: false }),
 }));
 
 vi.mock('@/hooks/useDeviceToken', () => ({

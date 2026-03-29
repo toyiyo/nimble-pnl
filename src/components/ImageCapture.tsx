@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera, Image as ImageIcon, Upload, X, Zap } from 'lucide-react';
+import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { cn } from '@/lib/utils';
 
 interface ImageCaptureProps {
@@ -27,6 +28,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   onCaptureRef,
   preferredFacingMode = 'environment',
 }) => {
+  const { isNative, takePhoto: takeNativePhoto } = useNativeCamera();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -182,6 +184,24 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
     }
   }, [capturedImage]);
 
+  const handleNativeCapture = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const blob = await takeNativePhoto();
+      if (blob) {
+        const imageUrl = URL.createObjectURL(blob);
+        setCapturedImage(imageUrl);
+        onImageCaptured(blob, imageUrl);
+      } else {
+        onError?.('Failed to capture photo');
+      }
+    } catch (error: any) {
+      onError?.(error.message ?? 'Camera error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [takeNativePhoto, onImageCaptured, onError]);
+
   // Auto-start camera when requested
   React.useEffect(() => {
     if (autoStart && !isStreaming && hasPermission !== false && !isLoading) {
@@ -205,7 +225,53 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {capturedImage ? (
+        {isNative ? (
+          <div className="space-y-4">
+            {capturedImage ? (
+              <div className="relative">
+                <img
+                  src={capturedImage}
+                  alt="Captured photo"
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={resetCapture}
+                  className="absolute top-2 right-2"
+                  aria-label="Remove captured photo"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <Camera className="h-12 w-12 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Use native camera to take a photo</p>
+              </div>
+            )}
+            {!hideControls && !capturedImage && (
+              <Button
+                onClick={handleNativeCapture}
+                disabled={disabled || isLoading}
+                className="w-full"
+                aria-label="Take photo with native camera"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Capturing...
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-4 w-4 mr-2" />
+                    Take Photo
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        ) : capturedImage ? (
           <div className="space-y-4">
             <div className="relative">
               <img

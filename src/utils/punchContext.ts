@@ -1,5 +1,26 @@
 type LocationResult = { latitude: number; longitude: number } | undefined;
 
+export interface PunchLocation {
+  latitude: number;
+  longitude: number;
+  distance_meters?: number;
+  within_geofence?: boolean;
+}
+
+export function mergePunchLocation(
+  baseLocation: { latitude: number; longitude: number } | undefined,
+  geofenceResult?: { distanceMeters?: number; within?: boolean }
+): PunchLocation | undefined {
+  if (!baseLocation) return undefined;
+  return {
+    ...baseLocation,
+    ...(geofenceResult?.distanceMeters != null && {
+      distance_meters: geofenceResult.distanceMeters,
+      within_geofence: geofenceResult.within,
+    }),
+  };
+}
+
 const DEFAULT_LOCATION_TIMEOUT = 3000;
 const DEFAULT_DEVICE_INFO_MAX = 100;
 

@@ -18,14 +18,16 @@ describe('ShiftInterval.create', () => {
       expect(si.durationInHours).toBe(4);
     });
 
-    it('creates a short 15-minute shift (boundary)', () => {
+    it('creates a short 15-minute shift (boundary) with no warnings', () => {
       const si = ShiftInterval.create('2026-06-10', '10:00', '10:15');
       expect(si.durationInMinutes).toBe(15);
+      expect(si.durationWarnings).toHaveLength(0);
     });
 
-    it('creates a 16-hour shift (max boundary)', () => {
+    it('creates a 16-hour shift (max boundary) with no warnings', () => {
       const si = ShiftInterval.create('2026-04-01', '06:00', '22:00');
       expect(si.durationInHours).toBe(16);
+      expect(si.durationWarnings).toHaveLength(0);
     });
   });
 
@@ -74,22 +76,30 @@ describe('ShiftInterval.create — validation', () => {
     expect(() => ShiftInterval.create('2026-03-01', '09:00', '09:00')).toThrow('INVALID_DURATION');
   });
 
-  it('throws TOO_SHORT for a 10-minute shift', () => {
-    expect(() => ShiftInterval.create('2026-03-01', '09:00', '09:10')).toThrow('TOO_SHORT');
+  it('returns TOO_SHORT warning for a 10-minute shift', () => {
+    const si = ShiftInterval.create('2026-03-01', '09:00', '09:10');
+    expect(si.durationWarnings).toHaveLength(1);
+    expect(si.durationWarnings[0].code).toBe('TOO_SHORT');
   });
 
-  it('throws TOO_SHORT for a 14-minute shift (just under boundary)', () => {
-    expect(() => ShiftInterval.create('2026-03-01', '09:00', '09:14')).toThrow('TOO_SHORT');
+  it('returns TOO_SHORT warning for a 14-minute shift (just under boundary)', () => {
+    const si = ShiftInterval.create('2026-03-01', '09:00', '09:14');
+    expect(si.durationWarnings).toHaveLength(1);
+    expect(si.durationWarnings[0].code).toBe('TOO_SHORT');
   });
 
-  it('throws MAX_ENDURANCE for a shift longer than 16 hours', () => {
+  it('returns MAX_ENDURANCE warning for a shift longer than 16 hours', () => {
     // 06:00 - 22:01 = 16h01m
-    expect(() => ShiftInterval.create('2026-03-01', '06:00', '22:01')).toThrow('MAX_ENDURANCE');
+    const si = ShiftInterval.create('2026-03-01', '06:00', '22:01');
+    expect(si.durationWarnings).toHaveLength(1);
+    expect(si.durationWarnings[0].code).toBe('MAX_ENDURANCE');
   });
 
-  it('throws MAX_ENDURANCE for an extremely long overnight shift', () => {
+  it('returns MAX_ENDURANCE warning for an extremely long overnight shift', () => {
     // 05:00 to 04:00 next day = 23 hours
-    expect(() => ShiftInterval.create('2026-03-01', '05:00', '04:00')).toThrow('MAX_ENDURANCE');
+    const si = ShiftInterval.create('2026-03-01', '05:00', '04:00');
+    expect(si.durationWarnings).toHaveLength(1);
+    expect(si.durationWarnings[0].code).toBe('MAX_ENDURANCE');
   });
 });
 
@@ -141,24 +151,24 @@ describe('ShiftInterval.fromTimestamps', () => {
     ).toThrow('INVALID_DURATION');
   });
 
-  it('throws TOO_SHORT for timestamps less than 15 minutes apart', () => {
-    expect(() =>
-      ShiftInterval.fromTimestamps(
-        '2026-05-10T08:30:00',
-        '2026-05-10T08:40:00',
-        '2026-05-10'
-      )
-    ).toThrow('TOO_SHORT');
+  it('returns TOO_SHORT warning for timestamps less than 15 minutes apart', () => {
+    const si = ShiftInterval.fromTimestamps(
+      '2026-05-10T08:30:00',
+      '2026-05-10T08:40:00',
+      '2026-05-10'
+    );
+    expect(si.durationWarnings).toHaveLength(1);
+    expect(si.durationWarnings[0].code).toBe('TOO_SHORT');
   });
 
-  it('throws MAX_ENDURANCE for timestamps more than 16 hours apart', () => {
-    expect(() =>
-      ShiftInterval.fromTimestamps(
-        '2026-05-10T06:00:00',
-        '2026-05-10T22:01:00',
-        '2026-05-10'
-      )
-    ).toThrow('MAX_ENDURANCE');
+  it('returns MAX_ENDURANCE warning for timestamps more than 16 hours apart', () => {
+    const si = ShiftInterval.fromTimestamps(
+      '2026-05-10T06:00:00',
+      '2026-05-10T22:01:00',
+      '2026-05-10'
+    );
+    expect(si.durationWarnings).toHaveLength(1);
+    expect(si.durationWarnings[0].code).toBe('MAX_ENDURANCE');
   });
 });
 

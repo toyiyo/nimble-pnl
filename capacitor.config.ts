@@ -1,13 +1,9 @@
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.e67913e655e24c9f9e7f3f0b0f6d1da6',
-  appName: 'easyshifthq',
+  appId: 'com.easyshifthq.employee',
+  appName: 'EasyShiftHQ',
   webDir: 'dist',
-  server: {
-    url: 'https://e67913e6-55e2-4c9f-9e7f-3f0b0f6d1da6.lovableproject.com?forceHideBadge=true',
-    cleartext: true
-  },
   plugins: {
     BluetoothLe: {
       displayStrings: {
@@ -16,7 +12,11 @@ const config: CapacitorConfig = {
         availableDevices: "Available devices",
         noDeviceFound: "No device found"
       }
-    }
+    },
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"]
+    },
+    Camera: {}
   }
 };
 

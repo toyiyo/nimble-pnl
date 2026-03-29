@@ -2,8 +2,30 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MobileLayout } from '@/components/employee/MobileLayout';
+
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ signOut: vi.fn() }),
+}));
+
+vi.mock('@/hooks/useDeviceToken', () => ({
+  useDeviceToken: () => undefined,
+}));
+
+vi.mock('@/hooks/useBiometricAuth', () => ({
+  useBiometricAuth: () => ({
+    isAvailable: false,
+    isEnabled: false,
+    isLocked: false,
+    shouldSignOut: false,
+    failedAttempts: 0,
+    enable: vi.fn(),
+    disable: vi.fn(),
+    authenticate: vi.fn(),
+    lock: vi.fn(),
+  }),
+}));
 
 describe('MobileLayout', () => {
   it('renders children and the tab bar', () => {

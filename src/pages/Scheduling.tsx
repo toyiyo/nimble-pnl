@@ -92,6 +92,16 @@ export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boole
   return 'border-l-primary/50';
 };
 
+/** Build set of employee IDs who have at least one non-cancelled shift.
+ *  Cancelled shifts should not keep inactive employees visible in the grid. */
+export function buildActiveShiftEmployeeIds(
+  shifts: { employee_id: string; status: string }[],
+): Set<string> {
+  return new Set(
+    shifts.filter(s => s.status !== 'cancelled').map(s => s.employee_id)
+  );
+}
+
 /** Filter employees for the weekly schedule grid:
  *  - Active employees always shown (so managers can schedule them)
  *  - Inactive employees shown only if they have shifts this week */
@@ -352,9 +362,9 @@ const Scheduling = () => {
     ? activeEmployees.filter(emp => emp.position === positionFilter)
     : activeEmployees;
 
-  // For displaying the schedule grid: show active employees + inactive employees with shifts this week
+  // For displaying the schedule grid: show active employees + inactive employees with non-cancelled shifts
   const filteredEmployeesWithShifts = useMemo(() => {
-    const shiftEmployeeIds = new Set(shifts.map(s => s.employee_id));
+    const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter);
   }, [allEmployees, shifts, positionFilter]);
 
@@ -1095,7 +1105,7 @@ const Scheduling = () => {
                             {/* Avatar placeholder */}
                             <div className={cn(
                               "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
-                              employee.status === 'active'
+                              employee.is_active
                                 ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
                                 : "bg-muted text-muted-foreground"
                             )}>
@@ -1104,7 +1114,7 @@ const Scheduling = () => {
                             <div>
                               <div className="font-medium text-sm flex items-center gap-2">
                                 {employee.name}
-                                {employee.status !== 'active' && (
+                                {!employee.is_active && (
                                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
                                     Inactive
                                   </Badge>

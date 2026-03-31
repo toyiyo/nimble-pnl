@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useOnboardingStatus, OnboardingStep } from '@/hooks/useOnboardingStatus';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import type { LucideIcon } from 'lucide-react';
 
 interface OnboardingCategory {
@@ -41,10 +42,15 @@ const ONBOARDING_CATEGORIES: OnboardingCategory[] = [
 ];
 
 export const OnboardingDrawer = () => {
+  const { selectedRestaurant } = useRestaurantContext();
   const { steps, completedCount, totalCount, percentage, isLoading, error, refetch } = useOnboardingStatus();
   const { hasFeature } = useSubscription();
   const [isOpen, setIsOpen] = useState(true);
   const navigate = useNavigate();
+
+  // Don't show onboarding for staff/employees
+  const isStaff = selectedRestaurant?.role === 'staff';
+  if (isStaff) return null;
 
   // Load dismissed state from local storage on mount
   useEffect(() => {

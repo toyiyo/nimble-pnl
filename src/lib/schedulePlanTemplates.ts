@@ -1,12 +1,6 @@
 import type { Shift, TemplateShiftSnapshot } from '@/types/scheduling';
 import type { BulkShiftInsert } from '@/lib/copyWeekShifts';
-
-function formatTimeLocal(date: Date): string {
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  const s = String(date.getSeconds()).padStart(2, '0');
-  return `${h}:${m}:${s}`;
-}
+import { formatLocalTime } from '@/hooks/useShiftPlanner';
 
 function computeDayOffset(isoString: string, weekStart: Date): number {
   const d = new Date(isoString);
@@ -26,21 +20,16 @@ export function buildTemplateSnapshot(
 ): TemplateShiftSnapshot[] {
   return shifts
     .filter((s) => s.status !== 'cancelled')
-    .map((shift) => {
-      const start = new Date(shift.start_time);
-      const end = new Date(shift.end_time);
-
-      return {
+    .map((shift) => ({
         day_offset: computeDayOffset(shift.start_time, weekStart),
-        start_time: formatTimeLocal(start),
-        end_time: formatTimeLocal(end),
+        start_time: formatLocalTime(shift.start_time),
+        end_time: formatLocalTime(shift.end_time),
         break_duration: shift.break_duration,
         position: shift.position,
         employee_id: shift.employee_id,
         employee_name: shift.employee?.name ?? 'Unknown',
         notes: shift.notes ?? null,
-      };
-    });
+    }));
 }
 
 export function buildShiftsFromTemplate(

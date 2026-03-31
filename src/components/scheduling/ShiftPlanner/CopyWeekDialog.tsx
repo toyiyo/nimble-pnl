@@ -12,12 +12,11 @@ import { Input } from '@/components/ui/input';
 
 import { Copy, AlertTriangle, Save, Trash2, Layers } from 'lucide-react';
 
+import { supabase } from '@/integrations/supabase/client';
 import { useSchedulePlanTemplates } from '@/hooks/useSchedulePlanTemplates';
+import { getMondayOfWeek, getWeekEnd } from '@/hooks/useShiftPlanner';
 
 import type { Shift, SchedulePlanTemplate } from '@/types/scheduling';
-
-import { supabase } from '@/integrations/supabase/client';
-import { getMondayOfWeek, getWeekEnd } from '@/hooks/useShiftPlanner';
 
 interface CopyWeekDialogProps {
   open: boolean;
@@ -43,6 +42,13 @@ function formatRange(start: Date, end: Date): string {
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function checkIsPastWeek(monday: Date | null): boolean {
+  if (!monday) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return getWeekEnd(monday) < today;
 }
 
 export function CopyWeekDialog({
@@ -87,10 +93,7 @@ export function CopyWeekDialog({
     [selectedDate],
   );
 
-  const targetEnd = useMemo(
-    () => (targetMonday ? getWeekEnd(targetMonday) : null),
-    [targetMonday],
-  );
+  const targetEnd = targetMonday ? getWeekEnd(targetMonday) : null;
 
   const activeShiftCount = useMemo(
     () => shifts.filter((s) => s.status !== 'cancelled').length,
@@ -98,14 +101,7 @@ export function CopyWeekDialog({
   );
 
   const isSameWeek = targetMonday?.getTime() === sourceWeekStart.getTime();
-
-  const isPastWeek = useMemo(() => {
-    if (!targetMonday) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const targetSunday = getWeekEnd(targetMonday);
-    return targetSunday < today;
-  }, [targetMonday]);
+  const isPastWeek = checkIsPastWeek(targetMonday);
 
   // --- Derived values (template tab) ---
   const templateTargetMonday = useMemo(
@@ -113,18 +109,8 @@ export function CopyWeekDialog({
     [templateSelectedDate],
   );
 
-  const templateTargetEnd = useMemo(
-    () => (templateTargetMonday ? getWeekEnd(templateTargetMonday) : null),
-    [templateTargetMonday],
-  );
-
-  const isTemplatePastWeek = useMemo(() => {
-    if (!templateTargetMonday) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const targetSunday = getWeekEnd(templateTargetMonday);
-    return targetSunday < today;
-  }, [templateTargetMonday]);
+  const templateTargetEnd = templateTargetMonday ? getWeekEnd(templateTargetMonday) : null;
+  const isTemplatePastWeek = checkIsPastWeek(templateTargetMonday);
 
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId) ?? null,
@@ -164,10 +150,10 @@ export function CopyWeekDialog({
 
   const canConfirm = targetMonday && !isSameWeek && !isPastWeek && activeShiftCount > 0;
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     if (!targetMonday) return;
     onConfirm(targetMonday);
-  };
+  }, [targetMonday, onConfirm]);
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {

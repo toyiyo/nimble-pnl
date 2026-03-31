@@ -169,7 +169,7 @@ export function CopyWeekDialog({
     onConfirm(targetMonday);
   };
 
-  const handleOpenChange = (nextOpen: boolean) => {
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
       setSelectedDate(undefined);
       setTargetShiftCount(null);
@@ -182,7 +182,7 @@ export function CopyWeekDialog({
       setTemplateName('');
     }
     onOpenChange(nextOpen);
-  };
+  }, [onOpenChange]);
 
   // --- Save template ---
   const handleSaveTemplate = useCallback(() => {
@@ -211,7 +211,7 @@ export function CopyWeekDialog({
         },
       },
     );
-  }, [selectedTemplate, templateTargetMonday, mergeMode, applyTemplate]);
+  }, [selectedTemplate, templateTargetMonday, mergeMode, applyTemplate, handleOpenChange]);
 
   // --- Delete template ---
   const handleDeleteTemplate = useCallback((templateId: string) => {

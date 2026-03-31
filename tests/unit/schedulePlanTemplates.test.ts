@@ -15,7 +15,7 @@ function makeShift(overrides: Partial<Shift> & { start_time: string; end_time: s
     locked: false,
     created_at: '2026-03-30T00:00:00Z',
     updated_at: '2026-03-30T00:00:00Z',
-    employee: { id: 'emp-1', restaurant_id: 'rest-1', name: 'Alice', position: 'Server', status: 'active', hourly_rate: 15, created_at: '', updated_at: '' } as any,
+    employee: { id: 'emp-1', restaurant_id: 'rest-1', name: 'Alice', position: 'Server', status: 'active', hourly_rate: 15, created_at: '', updated_at: '' } as Shift['employee'],
     ...overrides,
   };
 }

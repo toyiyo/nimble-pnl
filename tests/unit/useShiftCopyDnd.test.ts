@@ -5,8 +5,11 @@ describe('shouldAllowDrop', () => {
   it('returns false when dropping on the same day', () => {
     expect(shouldAllowDrop({ sourceEmployeeId: 'emp-1', sourceDay: '2026-03-24', targetEmployeeId: 'emp-1', targetDay: '2026-03-24' })).toBe(false);
   });
-  it('returns false when dropping on a different employee', () => {
-    expect(shouldAllowDrop({ sourceEmployeeId: 'emp-1', sourceDay: '2026-03-24', targetEmployeeId: 'emp-2', targetDay: '2026-03-25' })).toBe(false);
+  it('returns true when dropping on a different employee, different day', () => {
+    expect(shouldAllowDrop({ sourceEmployeeId: 'emp-1', sourceDay: '2026-03-24', targetEmployeeId: 'emp-2', targetDay: '2026-03-25' })).toBe(true);
+  });
+  it('returns true when dropping on a different employee, same day', () => {
+    expect(shouldAllowDrop({ sourceEmployeeId: 'emp-1', sourceDay: '2026-03-24', targetEmployeeId: 'emp-2', targetDay: '2026-03-24' })).toBe(true);
   });
   it('returns true for same employee, different day', () => {
     expect(shouldAllowDrop({ sourceEmployeeId: 'emp-1', sourceDay: '2026-03-24', targetEmployeeId: 'emp-1', targetDay: '2026-03-25' })).toBe(true);
@@ -58,6 +61,17 @@ describe('buildCopyPayload', () => {
     expect(payload.status).toBe('scheduled');
     expect(payload.locked).toBe(false);
     expect(payload.is_published).toBe(false);
+  });
+
+  it('uses target employee ID when provided', () => {
+    const payload = buildCopyPayload(baseShift, '2026-03-26', 'emp-2');
+    expect(payload.employee_id).toBe('emp-2');
+    expect(payload.position).toBe('Server'); // keeps source position
+  });
+
+  it('defaults to source employee when no target employee provided', () => {
+    const payload = buildCopyPayload(baseShift, '2026-03-26');
+    expect(payload.employee_id).toBe('emp-1');
   });
 
   it('handles overnight shifts (end time next day)', () => {

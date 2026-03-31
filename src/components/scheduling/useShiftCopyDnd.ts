@@ -19,7 +19,9 @@ export interface ShouldAllowDropParams {
 }
 
 /**
- * A drop is valid only when dragging to the SAME employee on a DIFFERENT day.
+ * A drop is valid when dragging to a different day (same employee) or
+ * to any cell of a different employee (same or different day).
+ * Only rejected: same employee + same day (no-op).
  */
 export function shouldAllowDrop({
   sourceEmployeeId,
@@ -27,7 +29,8 @@ export function shouldAllowDrop({
   targetEmployeeId,
   targetDay,
 }: ShouldAllowDropParams): boolean {
-  return sourceEmployeeId === targetEmployeeId && sourceDay !== targetDay;
+  if (sourceEmployeeId !== targetEmployeeId) return true;
+  return sourceDay !== targetDay;
 }
 
 type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
@@ -42,7 +45,7 @@ type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
  *
  * Always strips recurrence, resets status/locked/published.
  */
-export function buildCopyPayload(shift: Shift, targetDay: string): ShiftInput {
+export function buildCopyPayload(shift: Shift, targetDay: string, targetEmployeeId?: string): ShiftInput {
   const srcStart = new Date(shift.start_time);
   const srcEnd = new Date(shift.end_time);
   const durationMs = srcEnd.getTime() - srcStart.getTime();
@@ -65,7 +68,7 @@ export function buildCopyPayload(shift: Shift, targetDay: string): ShiftInput {
 
   return {
     restaurant_id: shift.restaurant_id,
-    employee_id: shift.employee_id,
+    employee_id: targetEmployeeId ?? shift.employee_id,
     start_time: newStart.toISOString(),
     end_time: newEnd.toISOString(),
     break_duration: shift.break_duration,
@@ -167,13 +170,13 @@ export function useShiftCopyDnd(): UseShiftCopyDndReturn {
         return;
       }
 
-      const payload = buildCopyPayload(shift, targetDay);
+      const payload = buildCopyPayload(shift, targetDay, targetEmployeeId);
       const cellId = `${targetEmployeeId}:${targetDay}`;
 
-      // Check for conflicts before creating
+      // Check for conflicts before creating — validate against the TARGET employee
       try {
         const { conflicts, hasConflicts } = await checkConflictsImperative({
-          employeeId: shift.employee_id,
+          employeeId: targetEmployeeId,
           restaurantId: shift.restaurant_id,
           startTime: payload.start_time,
           endTime: payload.end_time,

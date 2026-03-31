@@ -1,4 +1,3 @@
-Connecting to db 5432
 export type Json =
   | string
   | number
@@ -1175,6 +1174,7 @@ export type Database = {
         Row: {
           action: string
           amount: number
+          check_bank_account_id: string | null
           check_number: number
           created_at: string
           id: string
@@ -1190,6 +1190,7 @@ export type Database = {
         Insert: {
           action: string
           amount: number
+          check_bank_account_id?: string | null
           check_number: number
           created_at?: string
           id?: string
@@ -1205,6 +1206,7 @@ export type Database = {
         Update: {
           action?: string
           amount?: number
+          check_bank_account_id?: string | null
           check_number?: number
           created_at?: string
           id?: string
@@ -1218,6 +1220,13 @@ export type Database = {
           void_reason?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "check_audit_log_check_bank_account_id_fkey"
+            columns: ["check_bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "check_bank_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "check_audit_log_pending_outflow_id_fkey"
             columns: ["pending_outflow_id"]
@@ -1234,9 +1243,62 @@ export type Database = {
           },
         ]
       }
+      check_bank_accounts: {
+        Row: {
+          account_name: string
+          bank_name: string | null
+          connected_bank_id: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          next_check_number: number
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_name: string
+          bank_name?: string | null
+          connected_bank_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          next_check_number?: number
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string
+          bank_name?: string | null
+          connected_bank_id?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          next_check_number?: number
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "check_bank_accounts_connected_bank_id_fkey"
+            columns: ["connected_bank_id"]
+            isOneToOne: false
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "check_bank_accounts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       check_settings: {
         Row: {
-          bank_name: string | null
           business_address_line1: string | null
           business_address_line2: string | null
           business_city: string | null
@@ -1245,12 +1307,10 @@ export type Database = {
           business_zip: string | null
           created_at: string
           id: string
-          next_check_number: number
           restaurant_id: string
           updated_at: string
         }
         Insert: {
-          bank_name?: string | null
           business_address_line1?: string | null
           business_address_line2?: string | null
           business_city?: string | null
@@ -1259,12 +1319,10 @@ export type Database = {
           business_zip?: string | null
           created_at?: string
           id?: string
-          next_check_number?: number
           restaurant_id: string
           updated_at?: string
         }
         Update: {
-          bank_name?: string | null
           business_address_line1?: string | null
           business_address_line2?: string | null
           business_city?: string | null
@@ -1273,7 +1331,6 @@ export type Database = {
           business_zip?: string | null
           created_at?: string
           id?: string
-          next_check_number?: number
           restaurant_id?: string
           updated_at?: string
         }
@@ -3705,6 +3762,7 @@ export type Database = {
         Row: {
           amount: number
           category_id: string | null
+          check_bank_account_id: string | null
           cleared_at: string | null
           created_at: string
           due_date: string | null
@@ -3724,6 +3782,7 @@ export type Database = {
         Insert: {
           amount: number
           category_id?: string | null
+          check_bank_account_id?: string | null
           cleared_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -3743,6 +3802,7 @@ export type Database = {
         Update: {
           amount?: number
           category_id?: string | null
+          check_bank_account_id?: string | null
           cleared_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -3765,6 +3825,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_outflows_check_bank_account_id_fkey"
+            columns: ["check_bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "check_bank_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -4996,6 +5063,38 @@ export type Database = {
           },
         ]
       }
+      restaurant_financial_settings: {
+        Row: {
+          cogs_calculation_method: string
+          created_at: string
+          id: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cogs_calculation_method?: string
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cogs_calculation_method?: string
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_financial_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_inventory_settings: {
         Row: {
           created_at: string
@@ -5328,6 +5427,44 @@ export type Database = {
           },
         ]
       }
+      schedule_plan_templates: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          restaurant_id: string
+          shift_count: number
+          shifts: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          restaurant_id: string
+          shift_count: number
+          shifts: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          restaurant_id?: string
+          shift_count?: number
+          shifts?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_plan_templates_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_publications: {
         Row: {
           created_at: string | null
@@ -5567,7 +5704,7 @@ export type Database = {
         Row: {
           break_duration: number
           created_at: string | null
-          day_of_week: number
+          days: number[]
           end_time: string
           id: string
           is_active: boolean
@@ -5580,7 +5717,7 @@ export type Database = {
         Insert: {
           break_duration?: number
           created_at?: string | null
-          day_of_week: number
+          days?: number[]
           end_time: string
           id?: string
           is_active?: boolean
@@ -5593,7 +5730,7 @@ export type Database = {
         Update: {
           break_duration?: number
           created_at?: string | null
-          day_of_week?: number
+          days?: number[]
           end_time?: string
           id?: string
           is_active?: boolean
@@ -6840,6 +6977,56 @@ export type Database = {
             foreignKeyName: "square_team_members_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staffing_settings: {
+        Row: {
+          avg_ticket_size: number
+          created_at: string
+          id: string
+          lookback_weeks: number
+          manual_projections: Json | null
+          min_crew: Json | null
+          min_staff: number
+          restaurant_id: string
+          target_labor_pct: number
+          target_splh: number
+          updated_at: string
+        }
+        Insert: {
+          avg_ticket_size?: number
+          created_at?: string
+          id?: string
+          lookback_weeks?: number
+          manual_projections?: Json | null
+          min_crew?: Json | null
+          min_staff?: number
+          restaurant_id: string
+          target_labor_pct?: number
+          target_splh?: number
+          updated_at?: string
+        }
+        Update: {
+          avg_ticket_size?: number
+          created_at?: string
+          id?: string
+          lookback_weeks?: number
+          manual_projections?: Json | null
+          min_crew?: Json | null
+          min_staff?: number
+          restaurant_id?: string
+          target_labor_pct?: number
+          target_splh?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staffing_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8830,6 +9017,16 @@ export type Database = {
           total_count: number
         }[]
       }
+      apply_schedule_plan_template: {
+        Args: {
+          p_merge_mode?: string
+          p_restaurant_id: string
+          p_shifts: Json
+          p_target_end: string
+          p_target_start: string
+        }
+        Returns: Json
+      }
       approve_shift_trade: {
         Args: {
           p_manager_note?: string
@@ -8942,6 +9139,8 @@ export type Database = {
           p_start_time: string
         }
         Returns: {
+          available_end: string
+          available_start: string
           conflict_type: string
           has_conflict: boolean
           message: string
@@ -8975,8 +9174,8 @@ export type Database = {
           time_off_id: string
         }[]
       }
-      claim_check_numbers: {
-        Args: { p_count?: number; p_restaurant_id: string }
+      claim_check_numbers_for_account: {
+        Args: { p_account_id: string; p_count?: number }
         Returns: number
       }
       cleanup_expired_invitations: { Args: never; Returns: undefined }
@@ -9078,6 +9277,15 @@ export type Database = {
         Args: { p_restaurant_id: string; p_week_end: string }
         Returns: Json
       }
+      copy_week_shifts: {
+        Args: {
+          p_restaurant_id: string
+          p_shifts: Json
+          p_target_end: string
+          p_target_start: string
+        }
+        Returns: Json
+      }
       create_restaurant_with_owner: {
         Args: {
           restaurant_address?: string
@@ -9144,6 +9352,10 @@ export type Database = {
       delete_bank_transaction: {
         Args: { p_restaurant_id: string; p_transaction_id: string }
         Returns: Json
+      }
+      delete_schedule_plan_template: {
+        Args: { p_restaurant_id: string; p_template_id: string }
+        Returns: undefined
       }
       delete_shift_series: {
         Args: {
@@ -9584,6 +9796,10 @@ export type Database = {
       runtests:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }
+      save_schedule_plan_template: {
+        Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
+        Returns: Json
+      }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
         Returns: {
@@ -9694,6 +9910,15 @@ export type Database = {
           }
       text_soundex: { Args: { "": string }; Returns: string }
       throws_ok: { Args: { "": string }; Returns: string }
+      time_within_window: {
+        Args: {
+          p_shift_end: string
+          p_shift_start: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: boolean
+      }
       toast_sync_financial_breakdown: {
         Args: { p_order_guid: string; p_restaurant_id: string }
         Returns: number

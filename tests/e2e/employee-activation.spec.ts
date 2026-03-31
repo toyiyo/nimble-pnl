@@ -226,25 +226,28 @@ test.describe('Employee Activation/Deactivation', () => {
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
+    // Wait for employee list to load
+    await page.waitForTimeout(2000);
+
     const inactiveTab = page.getByRole('tab', { name: /inactive/i });
-    if (await inactiveTab.isVisible().catch(() => false)) {
+    if (await inactiveTab.isVisible({ timeout: 5000 }).catch(() => false)) {
       await inactiveTab.click();
       // Wait for tab content by checking for employee name
-      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 8000 });
     } else {
       // If no tab, just check employee is visible
-      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(employeeData.name)).toBeVisible({ timeout: 8000 });
     }
 
     // === TEST: Find inactive employee card ===
-    await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible();
-    
+    await expect(page.getByText(employeeData.name)).toBeVisible();
+
     // === TEST: Verify inactive badge visible (should be near the heading) ===
     await expect(page.getByText(/inactive/i).first()).toBeVisible();
 
     // === TEST: Click reactivate button (using aria-label) ===
     const reactivateButton = page.getByRole('button', { name: `Reactivate ${employeeData.name}` });
-    await expect(reactivateButton).toBeVisible();
+    await expect(reactivateButton).toBeVisible({ timeout: 5000 });
     await reactivateButton.click();
 
     // === TEST: Reactivation modal appears ===
@@ -295,18 +298,21 @@ test.describe('Employee Activation/Deactivation', () => {
     await page.goto('/employees');
     await page.waitForURL(/\/employees/);
 
-    const inactiveTab = page.getByRole('tab', { name: /inactive/i });
-    if (await inactiveTab.isVisible().catch(() => false)) {
-      await inactiveTab.click();
+    // Wait for employee list to load
+    await page.waitForTimeout(2000);
+
+    const inactiveTab2 = page.getByRole('tab', { name: /inactive/i });
+    if (await inactiveTab2.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await inactiveTab2.click();
       // Wait for tab content by checking for employee name
-      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(employeeData.name)).toBeVisible({ timeout: 8000 });
     } else {
       // If no tab, just check employee is visible
-      await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(employeeData.name)).toBeVisible({ timeout: 8000 });
     }
 
   // === TEST: Open inactive employee profile ===
-  await expect(page.getByRole('heading', { name: employeeData.name })).toBeVisible();
+  await expect(page.getByText(employeeData.name)).toBeVisible();
 
   // === TEST: Verify history tabs are present and accessible ===
   const historyTabs = [

@@ -9,7 +9,7 @@
     "dev:full:sequential": "npm run db:start && sleep 3 && concurrently \"npm run functions:serve\" \"npm run dev\"",
     "build": "node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build",
     "build:dev": "node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build --mode development",
-    "build:mobile": "npm run build && npx cap sync",
+    "build:mobile": "mv .env.local .env.local.bak 2>/dev/null; npm run build; EXIT=$?; mv .env.local.bak .env.local 2>/dev/null; [ $EXIT -eq 0 ] && npx cap sync",
     "build:ios": "npm run build:mobile && npx cap open ios",
     "build:android": "npm run build:mobile && npx cap open android",
     "lint": "eslint .",

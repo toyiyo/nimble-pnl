@@ -19,23 +19,37 @@ export function useDeviceToken() {
     if (!shouldRegisterForPush(isNative) || !user || !selectedRestaurant) return;
 
     const registerToken = async () => {
-      const permission = await PushNotifications.requestPermissions();
-      if (permission.receive !== 'granted') return;
+      try {
+        const permission = await PushNotifications.requestPermissions();
+        if (permission.receive !== 'granted') return;
 
-      await PushNotifications.register();
+        // Listen for registration success/failure before calling register()
+        PushNotifications.addListener('registration', async ({ value: token }) => {
+          try {
+            const platform = Capacitor.getPlatform() as 'ios' | 'android';
+            await supabase.from('device_tokens').upsert(
+              {
+                user_id: user.id,
+                restaurant_id: selectedRestaurant.id,
+                token,
+                platform,
+              },
+              { onConflict: 'user_id,token' }
+            );
+          } catch (e) {
+            console.warn('Failed to save device token:', e);
+          }
+        });
 
-      PushNotifications.addListener('registration', async ({ value: token }) => {
-        const platform = Capacitor.getPlatform() as 'ios' | 'android';
-        await supabase.from('device_tokens').upsert(
-          {
-            user_id: user.id,
-            restaurant_id: selectedRestaurant.id,
-            token,
-            platform,
-          },
-          { onConflict: 'user_id,token' }
-        );
-      });
+        PushNotifications.addListener('registrationError', (error) => {
+          console.warn('Push registration failed (Firebase not configured?):', error);
+        });
+
+        await PushNotifications.register();
+      } catch (e) {
+        // FCM not configured (missing google-services.json) — silently skip
+        console.warn('Push notifications unavailable:', e);
+      }
     };
 
     registerToken();

@@ -46,15 +46,23 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      const route = action.notification.data?.route as string | undefined;
-      if (route) {
-        navigate(route);
-      }
-    });
+    try {
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        const route = action.notification.data?.route as string | undefined;
+        if (route) {
+          navigate(route);
+        }
+      });
+    } catch (e) {
+      console.warn('Push notification listeners unavailable:', e);
+    }
 
     return () => {
-      PushNotifications.removeAllListeners();
+      try {
+        PushNotifications.removeAllListeners();
+      } catch {
+        // ignore cleanup errors
+      }
     };
   }, [navigate]);
 

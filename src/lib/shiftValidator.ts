@@ -75,6 +75,11 @@ export function validateShift(
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
+  // Surface duration warnings from the proposed shift interval
+  for (const dw of proposed.interval.durationWarnings) {
+    warnings.push({ code: dw.code, message: dw.message });
+  }
+
   const employeeShifts = existingShifts.filter(
     (s) =>
       s.employee_id === proposed.employeeId &&

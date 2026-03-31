@@ -91,7 +91,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       if (data.skipped_count > 0) parts.push(`${data.skipped_count} skipped`);
       if (data.deleted_count > 0) parts.push(`${data.deleted_count} replaced`);
 
-      toast({ title: 'Template applied', description: parts.join(', ') + '.' });
+      toast({ title: 'Template applied', description: parts.length > 0 ? parts.join(', ') + '.' : 'No changes made.' });
     },
     onError: (error: Error) => {
       toast({ title: 'Failed to apply template', description: error.message, variant: 'destructive' });

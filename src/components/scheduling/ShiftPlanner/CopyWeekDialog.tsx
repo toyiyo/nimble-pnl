@@ -306,6 +306,7 @@ export function CopyWeekDialog({
         {/* Apple-style underline tabs */}
         <div className="px-6 pt-3 border-b border-border/40" role="tablist" aria-label="Schedule options">
           <button
+            id="tab-copy"
             role="tab"
             aria-selected={activeTab === 'copy'}
             aria-controls="panel-copy"
@@ -320,6 +321,7 @@ export function CopyWeekDialog({
             )}
           </button>
           <button
+            id="tab-templates"
             role="tab"
             aria-selected={activeTab === 'templates'}
             aria-controls="panel-templates"
@@ -501,7 +503,7 @@ export function CopyWeekDialog({
                               e.stopPropagation();
                               setDeletingTemplateId(tmpl.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10"
+                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-destructive/10"
                             aria-label={`Delete template ${tmpl.name}`}
                           >
                             <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />

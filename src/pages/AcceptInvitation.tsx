@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { getOAuthRedirectUrl } from '@/utils/nativeRedirect';
 import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
@@ -158,8 +159,8 @@ export const AcceptInvitation = () => {
   const handleGoogleAuth = async () => {
     setAuthLoading2(true);
     try {
-      const redirectUrl = `${window.location.origin}/accept-invitation?token=${encodeURIComponent(token)}`;
-      
+      const redirectUrl = getOAuthRedirectUrl(`/accept-invitation?token=${encodeURIComponent(token)}`);
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getOAuthRedirectUrl } from '@/utils/nativeRedirect';
 
 interface SSOConfig {
   sso_enabled: boolean;
@@ -75,7 +76,7 @@ export const useSSO = () => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: oauthProvider,
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: getOAuthRedirectUrl('/'),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

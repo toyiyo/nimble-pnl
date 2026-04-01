@@ -13,6 +13,7 @@ import { SSOProviderButtons } from '@/components/SSOProviderButtons';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Building, ArrowRight, Shield, CalendarCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { getOAuthRedirectUrl } from '@/utils/nativeRedirect';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -138,7 +139,7 @@ const Auth = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: getOAuthRedirectUrl('/'),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

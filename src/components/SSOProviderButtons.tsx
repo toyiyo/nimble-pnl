@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import { getOAuthRedirectUrl } from '@/utils/nativeRedirect';
 
 interface SSOProviderButtonsProps {
   onSuccess?: () => void;
@@ -17,7 +18,7 @@ export const SSOProviderButtons = ({ onSuccess }: SSOProviderButtonsProps) => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: getOAuthRedirectUrl('/'),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

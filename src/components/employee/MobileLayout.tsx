@@ -1,9 +1,5 @@
 // src/components/employee/MobileLayout.tsx
 import { ReactNode, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
-
 import { useAuth } from '@/hooks/useAuth';
 import { useDeviceToken } from '@/hooks/useDeviceToken';
 import { useBiometricAuth } from '@/hooks/useBiometricAuth';
@@ -16,7 +12,6 @@ interface MobileLayoutProps {
 
 export function MobileLayout({ children }: MobileLayoutProps) {
   const { signOut } = useAuth();
-  const navigate = useNavigate();
   const bio = useBiometricAuth();
 
   // Register push notification token on mount
@@ -43,28 +38,9 @@ export function MobileLayout({ children }: MobileLayoutProps) {
   }, [bio.shouldSignOut, signOut]);
 
   // Handle push notification deep links (native only)
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-
-    try {
-      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-        const route = action.notification.data?.route as string | undefined;
-        if (route) {
-          navigate(route);
-        }
-      });
-    } catch (e) {
-      console.warn('Push notification listeners unavailable:', e);
-    }
-
-    return () => {
-      try {
-        PushNotifications.removeAllListeners();
-      } catch {
-        // ignore cleanup errors
-      }
-    };
-  }, [navigate]);
+  // Disabled until Firebase is configured — the PushNotifications plugin
+  // crashes Android if google-services.json is missing.
+  // TODO: Re-enable when PUSH_NOTIFICATIONS_ENABLED is set to true in useDeviceToken.ts
 
   return (
     <>

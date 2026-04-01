@@ -83,8 +83,8 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
       return data as unknown as ApplyTemplateResult;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts'] });
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['employees', restaurantId] });
 
       const parts: string[] = [];
       if (data.inserted_count > 0) parts.push(`${data.inserted_count} shifts created`);

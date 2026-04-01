@@ -124,11 +124,12 @@ export function CopyWeekDialog({
 
   // Query existing shift count in target week when selection changes
   useEffect(() => {
-    if (!targetMonday || !targetEnd || !restaurantId || isSameWeek || isPastWeek) {
+    if (!targetMonday || !restaurantId || isSameWeek || isPastWeek) {
       setTargetShiftCount(null);
       return;
     }
 
+    const end = getWeekEnd(targetMonday);
     let cancelled = false;
 
     (async () => {
@@ -138,7 +139,7 @@ export function CopyWeekDialog({
         .eq('restaurant_id', restaurantId)
         .eq('locked', false)
         .gte('start_time', targetMonday.toISOString())
-        .lte('start_time', targetEnd.toISOString());
+        .lte('start_time', end.toISOString());
 
       if (!cancelled && !error) {
         setTargetShiftCount(count ?? 0);
@@ -146,7 +147,7 @@ export function CopyWeekDialog({
     })();
 
     return () => { cancelled = true; };
-  }, [targetMonday, targetEnd, restaurantId, isSameWeek, isPastWeek]);
+  }, [targetMonday, restaurantId, isSameWeek, isPastWeek]);
 
   const canConfirm = targetMonday && !isSameWeek && !isPastWeek && activeShiftCount > 0;
 

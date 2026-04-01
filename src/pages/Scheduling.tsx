@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +35,11 @@ import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDial
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
+import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
+import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
+import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
+import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
+import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
@@ -95,6 +101,16 @@ export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boole
   }
   return 'border-l-primary/50';
 };
+
+/** Build set of employee IDs who have at least one non-cancelled shift.
+ *  Cancelled shifts should not keep inactive employees visible in the grid. */
+export function buildActiveShiftEmployeeIds(
+  shifts: { employee_id: string; status: string }[],
+): Set<string> {
+  return new Set(
+    shifts.filter(s => s.status !== 'cancelled').map(s => s.employee_id)
+  );
+}
 
 /** Filter employees for the weekly schedule grid:
  *  - Active employees always shown (so managers can schedule them)
@@ -308,6 +324,16 @@ const Scheduling = () => {
     weekEnd
   );
   
+  const {
+    sensors,
+    activeDragShift,
+    highlightedCellId,
+    conflictDialog,
+    handleDragStart,
+    handleDragEnd,
+    handleDragCancel,
+  } = useShiftCopyDnd();
+
   const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
@@ -364,9 +390,9 @@ const Scheduling = () => {
     ? activeEmployees.filter(emp => emp.position === positionFilter)
     : activeEmployees;
 
-  // For displaying the schedule grid: show active employees + inactive employees with shifts this week
+  // For displaying the schedule grid: show active employees + inactive employees with non-cancelled shifts
   const filteredEmployeesWithShifts = useMemo(() => {
-    const shiftEmployeeIds = new Set(shifts.map(s => s.employee_id));
+    const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter);
   }, [allEmployees, shifts, positionFilter]);
 
@@ -1095,6 +1121,12 @@ const Scheduling = () => {
               </Button>
             </div>
           ) : (
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
             <div className="overflow-x-auto">
               <table className="w-full border-collapse min-w-[900px]">
                 <thead>
@@ -1180,7 +1212,7 @@ const Scheduling = () => {
                                 <div className="flex items-center gap-3">
                                   <div className={cn(
                                     "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
-                                    employee.status === 'active'
+                                    employee.is_active
                                       ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
                                       : "bg-muted text-muted-foreground"
                                   )}>
@@ -1189,7 +1221,7 @@ const Scheduling = () => {
                                   <div>
                                     <div className="font-medium text-sm flex items-center gap-2">
                                       {employee.name}
-                                      {employee.status !== 'active' && (
+                                      {!employee.is_active && (
                                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
                                           Inactive
                                         </Badge>
@@ -1220,21 +1252,27 @@ const Scheduling = () => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
                               const dayIsToday = isToday(day);
                               return (
-                                <td
+                                <DroppableDayCell
                                   key={day.toISOString()}
-                                  className={cn(
-                                    "p-2 align-top transition-colors",
-                                    dayIsToday && "bg-primary/5"
-                                  )}
+                                  employeeId={employee.id}
+                                  day={format(day, 'yyyy-MM-dd')}
+                                  isToday={dayIsToday}
+                                  isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
                                 >
                                   <div className="space-y-1.5 min-h-[60px]">
                                     {dayShifts.map((shift) => (
-                                      <ShiftCard
+                                      <DraggableShiftCard
                                         key={shift.id}
                                         shift={shift}
-                                        onEdit={handleEditShift}
-                                        onDelete={handleDeleteShift}
-                                      />
+                                        employeeId={employee.id}
+                                        day={format(day, 'yyyy-MM-dd')}
+                                      >
+                                        <ShiftCard
+                                          shift={shift}
+                                          onEdit={handleEditShift}
+                                          onDelete={handleDeleteShift}
+                                        />
+                                      </DraggableShiftCard>
                                     ))}
                                     <Button
                                       variant="ghost"
@@ -1250,7 +1288,7 @@ const Scheduling = () => {
                                       Add
                                     </Button>
                                   </div>
-                                </td>
+                                </DroppableDayCell>
                               );
                             })}
                           </tr>
@@ -1261,7 +1299,18 @@ const Scheduling = () => {
                 </tbody>
               </table>
             </div>
+            <DragOverlay dropAnimation={null}>
+              {activeDragShift && <ShiftDragOverlay shift={activeDragShift} />}
+            </DragOverlay>
+            </DndContext>
           )}
+          <AvailabilityConflictDialog
+            open={conflictDialog.open}
+            data={conflictDialog.data}
+            timezone={restaurantTimezone}
+            onConfirm={conflictDialog.onConfirm}
+            onCancel={conflictDialog.onCancel}
+          />
         </CardContent>
       </Card>
         </TabsContent>

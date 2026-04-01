@@ -83,7 +83,8 @@ async function openShiftDialog(page: any) {
   if (await shiftButton.isVisible({ timeout: 5000 }).catch(() => false)) {
     await shiftButton.click();
   } else {
-    await createFirstButton.click({ timeout: 5000 });
+    await expect(createFirstButton).toBeVisible({ timeout: 5000 });
+    await createFirstButton.click();
   }
 
   const dialog = page.getByRole('dialog');

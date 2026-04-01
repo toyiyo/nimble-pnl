@@ -4,15 +4,22 @@
  * Handles standard and midnight-crossing shifts, validates duration
  * constraints, detects overlaps, and computes rest-hour gaps.
  */
+export interface DurationWarning {
+  code: 'TOO_SHORT' | 'MAX_ENDURANCE';
+  message: string;
+}
+
 export class ShiftInterval {
   readonly startAt: Date;
   readonly endAt: Date;
   readonly businessDate: string; // YYYY-MM-DD
+  readonly durationWarnings: DurationWarning[];
 
-  private constructor(startAt: Date, endAt: Date, businessDate: string) {
+  private constructor(startAt: Date, endAt: Date, businessDate: string, durationWarnings: DurationWarning[] = []) {
     this.startAt = startAt;
     this.endAt = endAt;
     this.businessDate = businessDate;
+    this.durationWarnings = durationWarnings;
   }
 
   // ---------------------------------------------------------------------------
@@ -68,14 +75,16 @@ export class ShiftInterval {
     if (durationMs <= 0) {
       throw new Error('INVALID_DURATION');
     }
+
+    const warnings: DurationWarning[] = [];
     if (durationMinutes < 15) {
-      throw new Error('TOO_SHORT');
+      warnings.push({ code: 'TOO_SHORT', message: `Shift is only ${durationMinutes} minutes (minimum 15)` });
     }
     if (durationMinutes > 16 * 60) {
-      throw new Error('MAX_ENDURANCE');
+      warnings.push({ code: 'MAX_ENDURANCE', message: `Shift is ${(durationMinutes / 60).toFixed(1)}h (maximum 16h)` });
     }
 
-    return new ShiftInterval(startAt, endAt, businessDate);
+    return new ShiftInterval(startAt, endAt, businessDate, warnings);
   }
 
   // ---------------------------------------------------------------------------

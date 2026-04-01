@@ -67,6 +67,14 @@ DECLARE
   v_shift_count INT;
   v_result schedule_plan_templates%ROWTYPE;
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_id = auth.uid()
+      AND restaurant_id = p_restaurant_id
+  ) THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
   v_shift_count := jsonb_array_length(p_shifts);
   IF v_shift_count = 0 THEN
     RAISE EXCEPTION 'Cannot save an empty schedule template';
@@ -116,6 +124,14 @@ DECLARE
   v_inserted_count INT := 0;
   v_total INT;
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_id = auth.uid()
+      AND restaurant_id = p_restaurant_id
+  ) THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
   v_total := jsonb_array_length(p_shifts);
 
   -- Replace mode: delete unlocked shifts in target range (same as copy_week_shifts)
@@ -197,6 +213,14 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_id = auth.uid()
+      AND restaurant_id = p_restaurant_id
+  ) THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
   DELETE FROM schedule_plan_templates
   WHERE id = p_template_id AND restaurant_id = p_restaurant_id;
 

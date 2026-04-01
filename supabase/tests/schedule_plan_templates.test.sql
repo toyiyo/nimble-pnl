@@ -3,21 +3,43 @@
 
 BEGIN;
 
-SELECT plan(16);
+SELECT plan(19);
 
 -- ============================================
--- Setup: test restaurant and employees
+-- Setup: disable RLS for test data creation
 -- ============================================
+
+SET LOCAL role TO postgres;
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE employees DISABLE ROW LEVEL SECURITY;
+ALTER TABLE shifts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE schedule_plan_templates DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
+
+-- Create test users
+INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+VALUES
+  ('aaaaaaaa-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'owner@tmpltest.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+  ('aaaaaaaa-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'other@tmpltest.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO restaurants (id, name)
 VALUES ('aaaaaaaa-0000-0000-0000-000000000001', 'Template Test Restaurant')
 ON CONFLICT (id) DO NOTHING;
+
+-- Link owner user to restaurant
+INSERT INTO user_restaurants (user_id, restaurant_id, role)
+VALUES ('aaaaaaaa-0000-0000-0000-000000000010', 'aaaaaaaa-0000-0000-0000-000000000001', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 
 INSERT INTO employees (id, restaurant_id, name, email, position, status, is_active)
 VALUES
   ('aaaaaaaa-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000001', 'Alice', 'alice@test.com', 'Server', 'active', true),
   ('aaaaaaaa-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000001', 'Bob',   'bob@test.com',   'Cook',   'active', true)
 ON CONFLICT (id) DO NOTHING;
+
+-- Authenticate as the owner for all subsequent RPC calls
+SET LOCAL "request.jwt.claims" TO '{"sub": "aaaaaaaa-0000-0000-0000-000000000010"}';
 
 -- ============================================
 -- save_schedule_plan_template — happy path
@@ -158,6 +180,58 @@ SELECT throws_ok(
 );
 
 -- ============================================
+-- Authorization checks
+-- ============================================
+
+-- Test 7: unauthorized user cannot save a template
+SET LOCAL "request.jwt.claims" TO '{"sub": "aaaaaaaa-0000-0000-0000-000000000011"}';
+
+SELECT throws_ok(
+  $$SELECT save_schedule_plan_template(
+      'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
+      'Unauthorized Template',
+      jsonb_build_array(jsonb_build_object(
+        'employee_id', 'aaaaaaaa-0000-0000-0000-000000000002',
+        'start_time', '2026-04-13T09:00:00+00:00',
+        'end_time',   '2026-04-13T17:00:00+00:00',
+        'break_duration', 30,
+        'position', 'Server'
+      ))
+    )$$,
+  'P0001',
+  'Not authorized',
+  'save_schedule_plan_template blocks unauthorized user'
+);
+
+-- Test 8: unauthorized user cannot apply a template
+SELECT throws_ok(
+  $$SELECT apply_schedule_plan_template(
+      'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
+      '2026-05-01T00:00:00+00:00'::timestamptz,
+      '2026-05-07T23:59:59+00:00'::timestamptz,
+      '[]'::jsonb,
+      'replace'
+    )$$,
+  'P0001',
+  'Not authorized',
+  'apply_schedule_plan_template blocks unauthorized user'
+);
+
+-- Test 9: unauthorized user cannot delete a template
+SELECT throws_ok(
+  $$SELECT delete_schedule_plan_template(
+      'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
+      '99999999-9999-9999-9999-999999999999'::uuid
+    )$$,
+  'P0001',
+  'Not authorized',
+  'delete_schedule_plan_template blocks unauthorized user'
+);
+
+-- Switch back to authorized user for remaining tests
+SET LOCAL "request.jwt.claims" TO '{"sub": "aaaaaaaa-0000-0000-0000-000000000010"}';
+
+-- ============================================
 -- apply_schedule_plan_template — replace mode
 -- ============================================
 
@@ -172,7 +246,7 @@ VALUES
    '2026-04-14T10:00:00+00:00', '2026-04-14T18:00:00+00:00', 0,  'Cook',   'scheduled', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Test 7: replace mode returns correct inserted_count
+-- Test 10: replace mode returns correct inserted_count
 SELECT is(
   (
     SELECT (apply_schedule_plan_template(
@@ -195,7 +269,7 @@ SELECT is(
   'apply replace mode inserts the provided shifts'
 );
 
--- Test 8: replace mode deleted the unlocked pre-existing shift
+-- Test 11: replace mode deleted the unlocked pre-existing shift
 SELECT is(
   (SELECT count(*)::integer FROM shifts
    WHERE id = 'bbbbbbbb-0000-0000-0000-000000000001'),
@@ -203,7 +277,7 @@ SELECT is(
   'apply replace mode deletes unlocked shifts in target range'
 );
 
--- Test 9: replace mode preserved the locked shift
+-- Test 12: replace mode preserved the locked shift
 SELECT is(
   (SELECT count(*)::integer FROM shifts
    WHERE id = 'bbbbbbbb-0000-0000-0000-000000000002'),
@@ -223,7 +297,7 @@ VALUES
    '2026-04-22T09:00:00+00:00', '2026-04-22T17:00:00+00:00', 30, 'Server', 'scheduled', false)
 ON CONFLICT (id) DO NOTHING;
 
--- Test 10: merge mode skips overlapping shifts (Alice already has one)
+-- Test 13: merge mode skips overlapping shifts (Alice already has one)
 SELECT is(
   (
     SELECT (apply_schedule_plan_template(
@@ -255,7 +329,7 @@ SELECT is(
   'apply merge mode inserts only non-overlapping shifts'
 );
 
--- Test 11: merge mode skipped_count reflects the overlapping shift
+-- Test 14: merge mode skipped_count reflects the overlapping shift
 SELECT is(
   (
     SELECT (apply_schedule_plan_template(
@@ -286,7 +360,7 @@ SELECT is(
   'apply merge mode skipped_count is 0 when no overlaps exist'
 );
 
--- Test 12: merge mode does not delete existing shifts
+-- Test 15: merge mode does not delete existing shifts
 SELECT is(
   (SELECT count(*)::integer FROM shifts
    WHERE id = 'cccccccc-0000-0000-0000-000000000001'),
@@ -294,7 +368,7 @@ SELECT is(
   'apply merge mode leaves existing shifts intact'
 );
 
--- Test 13: invalid merge_mode raises exception
+-- Test 16: invalid merge_mode raises exception
 SELECT throws_ok(
   $$SELECT apply_schedule_plan_template(
       'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
@@ -319,7 +393,7 @@ CREATE TEMP TABLE _tmpl_ids AS
   ORDER BY created_at
   LIMIT 1;
 
--- Test 14: deleting an existing template via RPC succeeds
+-- Test 17: deleting an existing template via RPC succeeds
 SELECT lives_ok(
   $$SELECT delete_schedule_plan_template(
       'aaaaaaaa-0000-0000-0000-000000000001'::uuid,
@@ -328,7 +402,7 @@ SELECT lives_ok(
   'delete_schedule_plan_template happy path succeeds'
 );
 
--- Test 15: verify the row count decreased by 1 (from 5 to 4)
+-- Test 18: verify the row count decreased by 1 (from 5 to 4)
 SELECT is(
   (SELECT count(*)::integer FROM schedule_plan_templates
    WHERE restaurant_id = 'aaaaaaaa-0000-0000-0000-000000000001'),
@@ -336,7 +410,7 @@ SELECT is(
   'delete_schedule_plan_template removes the template from the table'
 );
 
--- Test 16: deleting a non-existent template raises exception
+-- Test 19: deleting a non-existent template raises exception
 SELECT throws_ok(
   $$SELECT delete_schedule_plan_template(
       'aaaaaaaa-0000-0000-0000-000000000001'::uuid,

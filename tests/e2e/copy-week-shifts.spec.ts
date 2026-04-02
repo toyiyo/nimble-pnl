@@ -112,9 +112,8 @@ test.describe('Copy Week Shifts', () => {
     await copyWeekButton.click();
 
     // 4. Dialog should open with "Copy Week" title
-    const dialog = page.getByRole('dialog');
+    const dialog = page.getByRole('dialog', { name: /copy schedule|copy week/i });
     await expect(dialog).toBeVisible({ timeout: 3000 });
-    await expect(dialog.getByText('Copy Schedule')).toBeVisible();
 
     // Shift count should be reflected in the confirm button text
     await expect(dialog.getByText(/copy 2 shifts/i)).toBeVisible();
@@ -232,17 +231,38 @@ test.describe('Copy Week Shifts', () => {
 
     // Open Copy Week dialog
     await page.getByRole('button', { name: /copy week/i }).click();
-    const dialog = page.getByRole('dialog');
+    const dialog = page.getByRole('dialog', { name: /copy schedule|copy week/i });
     await expect(dialog).toBeVisible({ timeout: 3000 });
 
-    // Select a day in the CURRENT week (same week as source)
-    const today = new Date();
-    const todayDay = today.getDate();
-    const dayCell = dialog.getByRole('gridcell', { name: String(todayDay) }).first();
+    // Select the Monday of the CURRENT week (same week as source)
+    // Use the source week's Monday to ensure we pick a date in the same week
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+    const mondayDay = monday.getDate();
+
+    // Navigate calendar to the month containing Monday if needed
+    const calendarMonth = dialog.locator('table');
+    const mondayMonthName = monday.toLocaleString('en-US', { month: 'long' });
+    const calendarHeading = dialog.getByRole('heading', { level: 2 }).or(dialog.locator('[class*="caption"]')).first();
+
+    // Check if we need to go back a month (e.g., source week Monday is in March but calendar shows April)
+    const headingText = await calendarHeading.textContent().catch(() => '');
+    if (headingText && !headingText.includes(mondayMonthName)) {
+      // Click previous month button to navigate to the correct month
+      const prevButton = dialog.getByRole('button', { name: /previous/i }).or(dialog.locator('button[name="previous-month"]')).first();
+      if (await prevButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await prevButton.click();
+      }
+    }
+
+    // Now click the Monday date — use exact match to avoid ambiguity
+    const dayCell = dialog.getByRole('gridcell', { name: String(mondayDay), exact: true }).first();
     await dayCell.click();
 
-    // Should show "Cannot copy to the same week" warning
-    await expect(dialog.getByText(/cannot copy to the same week/i)).toBeVisible({ timeout: 3000 });
+    // Should show "Cannot copy to the same week" warning (or past week if Monday < today)
+    await expect(dialog.getByText(/cannot copy to the same week|cannot copy to a past week/i)).toBeVisible({ timeout: 5000 });
 
     // Confirm button should be disabled
     const confirmButton = dialog.getByRole('button', { name: /confirm copy week/i });

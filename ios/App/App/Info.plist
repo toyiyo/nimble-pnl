@@ -45,5 +45,22 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Used for clock-in photo verification</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used to verify you're at the restaurant when clocking in</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Used for quick, secure login</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.easyshifthq.employee</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.easyshifthq.employee</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

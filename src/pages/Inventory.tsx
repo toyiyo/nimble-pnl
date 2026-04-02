@@ -1770,7 +1770,7 @@ export const Inventory: React.FC = () => {
           product={wasteProduct}
           restaurantId={selectedRestaurant.restaurant_id}
           onWasteReported={() => {
-            window.location.reload();
+            refetchProducts();
           }}
         />
       )}
@@ -1783,7 +1783,7 @@ export const Inventory: React.FC = () => {
           product={transferProduct}
           restaurantId={selectedRestaurant.restaurant_id}
           onTransferCompleted={() => {
-            window.location.reload();
+            refetchProducts();
           }}
         />
       )}

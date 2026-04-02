@@ -12,7 +12,6 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
 import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
-import { useNativeCamera } from '@/hooks/useNativeCamera';
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -34,7 +33,6 @@ const EmployeeClock = () => {
   const createPunch = useCreateTimePunch();
   const { punches } = useTimePunches(restaurantId, employee?.id || undefined, new Date(new Date().setHours(0, 0, 0, 0)));
   const { checkLocation, checking: geofenceChecking } = useGeofenceCheck(selectedRestaurant?.restaurant ?? null);
-  const { isNative, takePhoto: takeNativePhoto } = useNativeCamera();
 
   // Update current time every second
   useEffect(() => {
@@ -61,26 +59,6 @@ const EmployeeClock = () => {
   }, [cameraStream, showCameraDialog]);
 
   const startCamera = async () => {
-    if (isNative) {
-      // On native, use Capacitor camera — opens native camera app directly
-      try {
-        const blob = await takeNativePhoto();
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          setCapturedPhoto(url);
-        }
-      } catch (error) {
-        console.error('Native camera error:', error);
-        toast({
-          title: 'Camera Not Available',
-          description: 'Unable to access camera. You can still clock in without a photo.',
-          variant: 'default',
-        });
-      }
-      return;
-    }
-
-    // Web fallback — getUserMedia
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 640, height: 480 }

@@ -11,7 +11,9 @@ import { Capacitor } from '@capacitor/core';
  */
 export function getOAuthRedirectUrl(path: string = '/'): string {
   if (Capacitor.isNativePlatform()) {
-    return `com.easyshifthq.employee://${path}`;
+    // Strip leading slash to avoid triple-slash (scheme:///path)
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    return `com.easyshifthq.employee://callback/${cleanPath}`;
   }
   return `${window.location.origin}${path}`;
 }

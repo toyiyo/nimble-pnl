@@ -305,3 +305,32 @@ export interface ShiftBlock {
   headcount: number;
   day: string;
 }
+
+// --- Schedule Plan Templates ---
+
+export interface TemplateShiftSnapshot {
+  day_offset: number;       // 0=Monday through 6=Sunday (Monday-anchored)
+  start_time: string;       // HH:MM:SS
+  end_time: string;         // HH:MM:SS
+  break_duration: number;
+  position: string;
+  employee_id: string;
+  employee_name: string;
+  notes: string | null;
+}
+
+export interface SchedulePlanTemplate {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  shifts: TemplateShiftSnapshot[];
+  shift_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplyTemplateResult {
+  inserted_count: number;
+  skipped_count: number;
+  deleted_count: number;
+}

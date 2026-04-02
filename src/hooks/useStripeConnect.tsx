@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 export interface StripeConnectedAccount {
   id: string;
@@ -117,9 +119,13 @@ export const useStripeConnect = (restaurantId: string | null) => {
 
       return data as { url?: string };
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data?.url) {
-        window.open(data.url, '_blank', 'noopener,noreferrer');
+        if (Capacitor.isNativePlatform()) {
+          await Browser.open({ url: data.url });
+        } else {
+          window.open(data.url, '_blank', 'noopener,noreferrer');
+        }
       } else {
         toast({
           title: "Dashboard Link Unavailable",

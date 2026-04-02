@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { getOAuthRedirectUrl } from '@/utils/nativeRedirect';
+import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 
 interface SSOConfig {
   sso_enabled: boolean;
@@ -73,16 +73,7 @@ export const useSSO = () => {
           break;
       }
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: oauthProvider,
-        options: {
-          redirectTo: getOAuthRedirectUrl('/'),
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        }
-      });
+      const { error } = await signInWithOAuthNative(oauthProvider as 'google' | 'github' | 'azure' | 'linkedin_oidc', '/');
 
       if (error) {
         throw error;

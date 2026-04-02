@@ -1,12 +1,13 @@
 import { Capacitor } from '@capacitor/core';
 import { App, URLOpenListenerEvent } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * Listens for deep link callbacks from OAuth (e.g. com.easyshifthq.employee://#access_token=...)
- * and completes the Supabase auth session.
+ * Listens for deep link callbacks from OAuth and completes the Supabase auth session.
+ * Also closes the Chrome Custom Tab after auth completes.
  *
- * Call this once at app startup (e.g. in App.tsx or main.tsx).
+ * Call this once at app startup (in main.tsx).
  */
 export function setupDeepLinkAuth() {
   if (!Capacitor.isNativePlatform()) return;
@@ -14,9 +15,14 @@ export function setupDeepLinkAuth() {
   App.addListener('appUrlOpen', async (event: URLOpenListenerEvent) => {
     const url = event.url;
 
-    // OAuth redirects come back as: com.easyshifthq.employee://#access_token=...&refresh_token=...
-    // or: com.easyshifthq.employee:///?code=...
     if (!url.startsWith('com.easyshifthq.employee://')) return;
+
+    // Close the Chrome Custom Tab that was used for auth
+    try {
+      await Browser.close();
+    } catch {
+      // Browser may already be closed
+    }
 
     // Extract the fragment (after #) which contains the tokens
     const hashIndex = url.indexOf('#');

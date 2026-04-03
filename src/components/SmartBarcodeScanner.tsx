@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { MLKitBarcodeScanner } from './MLKitBarcodeScanner';
 import { NativeBarcodeScanner } from './NativeBarcodeScanner';
 import { Html5QrcodeScanner } from './Html5QrcodeScanner';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,6 +23,25 @@ export const SmartBarcodeScanner = ({
   autoStart = false,
 }: SmartBarcodeScannerProps) => {
   const [scannerType, setScannerType] = useState<ScannerType>('checking');
+
+  // On native Capacitor, use ML Kit scanner (bypasses web camera entirely)
+  if (Capacitor.isNativePlatform()) {
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-center">
+          <Badge className="bg-gradient-to-r from-green-500 to-emerald-600">
+            <Sparkles className="w-3 h-3 mr-1" />
+            ML Kit Native Scanner
+          </Badge>
+        </div>
+        <MLKitBarcodeScanner
+          onScan={onScan}
+          onError={onError}
+          className={className}
+        />
+      </div>
+    );
+  }
 
   useEffect(() => {
     // Check if native BarcodeDetector is available

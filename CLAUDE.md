@@ -82,7 +82,7 @@ const { data, isLoading } = useQuery({
 ## Critical Rules
 
 ### Mandatory Development Workflow
-**Every task MUST follow the `development-workflow` skill.** Before starting any implementation work, invoke the development-workflow skill from `.claude/skills/development-workflow.md`. This is non-negotiable. The skill orchestrates: brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → finish.
+**Every task MUST follow the `development-workflow` skill.** Before starting any implementation work, invoke the development-workflow skill from `.claude/skills/development-workflow.md`. This is non-negotiable. The skill orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → PR → CI feedback loop → retrospective. After the user approves the plan, execution is **fully autonomous** through PR creation and CI green.
 
 ### No Manual Caching
 ```typescript

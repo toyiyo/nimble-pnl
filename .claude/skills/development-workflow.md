@@ -168,26 +168,34 @@ This phase is **fully autonomous**. Do not ask the user what to do — push, ope
 ### 9a: Push & Create PR
 
 1. Push branch: `git push -u origin <branch-name>`
-2. Create PR using the GitHub MCP tools (`mcp__github__create_pull_request`) with:
+2. Create PR using `gh pr create` with:
    - Concise title (< 70 chars)
    - Body with `## Summary` (1-3 bullets from the plan), `## Test plan`, and link to the design doc
 3. Update `progress.md` with the PR number
 
-### 9b: Subscribe to PR Activity
+### 9b: Wait for CI & Poll
 
-1. Use `subscribe_pr_activity` to watch the PR for CI check results and review comments
-2. This enables automatic notification when checks complete or reviews are posted
+After pushing, poll CI status until all checks complete:
+
+```bash
+# Poll CI checks (run every 2-3 minutes until all complete)
+gh pr checks <PR_NUMBER>
+```
+
+- If checks are still `pending`, wait and poll again (use `Bash` with `run_in_background` and check back)
+- Once all checks report a result, proceed based on pass/fail
 
 ### 9c: CI Feedback Loop (max 5 iterations)
 
 ```text
 Iteration N:
-  Wait for CI checks to complete (via PR activity events)
+  Poll CI checks: gh pr checks <PR_NUMBER>
   │
   ├── ALL checks pass → Update progress.md, proceed to Phase 9d
   │
   └── Checks fail →
-      1. Read failure details from CI check output (use mcp__github__get_pull_request_checks or similar)
+      1. Read failure details: gh pr checks <PR_NUMBER> --json name,conclusion,detailsUrl
+         Then fetch logs: gh run view <RUN_ID> --log-failed
       2. Re-read the plan (docs/plans/YYYY-MM-DD-*-plan.md) to stay spec-anchored
       3. Diagnose root cause from error logs
       4. Fix the issue locally
@@ -205,7 +213,13 @@ Iteration N:
 
 ### 9d: Handle Review Comments
 
-When review comments arrive (via PR activity events or after CI passes):
+After CI passes, check for review comments:
+
+```bash
+# Get PR reviews and inline comments
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/reviews --jq '.[] | {author: .user.login, state: .state, body: .body[:200]}'
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER>/comments --jq '.[] | {author: .user.login, path: .path, line: .line, body: .body[:300]}'
+```
 
 1. Read all review comments
 2. Classify each as:
@@ -215,7 +229,7 @@ When review comments arrive (via PR activity events or after CI passes):
 3. For **actionable** items: fix, commit, push (re-enters CI loop 9c)
 4. For **clarification needed**: Ask the user via `AskUserQuestion` with enough context to answer without scrolling back
 5. For **informational**: Reply on the PR acknowledging, explain if not implementing and why
-6. After addressing all comments, confirm CI is still green
+6. After addressing all comments, confirm CI is still green by polling again
 
 ### 9e: Done
 

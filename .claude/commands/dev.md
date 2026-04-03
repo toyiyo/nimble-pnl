@@ -14,7 +14,11 @@ Invoke the `development-workflow` skill from `.claude/skills/development-workflo
 
 ## Instructions
 
-1. **Check for in-progress work:** If `progress.md` exists above, this is a resumed session. Read the plan file referenced in it, check git log, and resume from the last incomplete phase. Do NOT restart from scratch.
+1. **Check for in-progress work:** If `progress.md` exists above, validate it before resuming:
+   - Current branch matches the branch/task context in `progress.md`
+   - Status is **not** `Complete` or `Ready for merge`
+   - Referenced plan file exists and is accessible
+   If all checks pass, read the plan file, check git log, and resume from the last incomplete phase. If validation fails (stale file, wrong branch, completed run), treat as a fresh start and delete the stale `progress.md`.
 
 2. **Fresh start:** If no `progress.md`, use the Skill tool to invoke the development-workflow skill, then follow every phase in order. Ask the user what they want to build if no task was provided alongside this command.
 

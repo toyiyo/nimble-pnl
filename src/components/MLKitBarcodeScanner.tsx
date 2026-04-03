@@ -24,23 +24,32 @@ const SUPPORTED_FORMATS = [
   BarcodeFormat.Codabar,
 ];
 
+const TRANSPARENT_CLASS = 'mlkit-scanning';
+
 /**
- * Makes the WebView background transparent so the native camera preview
- * (rendered behind the WebView by ML Kit) is visible. Restores on cleanup.
+ * Makes the entire WebView transparent so the native camera preview
+ * (rendered behind the WebView by ML Kit) is visible.
+ * Uses a CSS class that sets all backgrounds to transparent via !important.
  */
 function setWebViewTransparent(transparent: boolean) {
-  const html = document.documentElement;
-  const body = document.body;
   if (transparent) {
-    html.style.setProperty('--original-bg', html.style.backgroundColor || '');
-    body.style.setProperty('--original-body-bg', body.style.backgroundColor || '');
-    html.style.backgroundColor = 'transparent';
-    body.style.backgroundColor = 'transparent';
+    // Inject style tag if not already present
+    if (!document.getElementById('mlkit-transparent-style')) {
+      const style = document.createElement('style');
+      style.id = 'mlkit-transparent-style';
+      style.textContent = `
+        .${TRANSPARENT_CLASS},
+        .${TRANSPARENT_CLASS} body,
+        .${TRANSPARENT_CLASS} #root,
+        .${TRANSPARENT_CLASS} #root > * {
+          background: transparent !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    document.documentElement.classList.add(TRANSPARENT_CLASS);
   } else {
-    html.style.backgroundColor = html.style.getPropertyValue('--original-bg') || '';
-    body.style.backgroundColor = body.style.getPropertyValue('--original-body-bg') || '';
-    html.style.removeProperty('--original-bg');
-    body.style.removeProperty('--original-body-bg');
+    document.documentElement.classList.remove(TRANSPARENT_CLASS);
   }
 }
 
@@ -146,19 +155,41 @@ export const MLKitBarcodeScanner = ({
 
       {status === 'scanning' && (
         <div
-          className="relative rounded-lg overflow-hidden"
-          style={{
-            width: '100%',
-            aspectRatio: '4/3',
-            backgroundColor: 'transparent',
-          }}
+          className="fixed inset-0 z-50"
+          style={{ backgroundColor: 'transparent' }}
         >
-          {/* Scanning reticle overlay — camera renders natively behind this */}
+          {/* Scanning reticle — camera renders natively behind the entire WebView */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-2/3 h-1/3 border-2 border-white/60 rounded-lg shadow-lg" />
+            <div className="w-2/3 h-1/3 border-2 border-white/60 rounded-xl shadow-lg" />
           </div>
-          <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-white/80 drop-shadow-md">
-            Point camera at barcode
+
+          {/* Top bar */}
+          <div className="absolute top-12 left-0 right-0 flex justify-center">
+            <Badge className="bg-black/50 text-white border-0">
+              <Scan className="w-3 h-3 mr-1" />
+              Point camera at barcode
+            </Badge>
+          </div>
+
+          {/* Close button */}
+          <button
+            onClick={() => {
+              setWebViewTransparent(false);
+              BarcodeScanner.stopScan().catch(() => {});
+              listenerRef.current?.remove();
+              BarcodeScanner.removeAllListeners().catch(() => {});
+              setStatus('error');
+              setErrorMessage('Scanner closed');
+            }}
+            className="absolute top-12 right-4 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center z-50"
+            aria-label="Close scanner"
+          >
+            <span className="text-white text-lg">&times;</span>
+          </button>
+
+          {/* Bottom hint */}
+          <p className="absolute bottom-24 left-0 right-0 text-center text-sm text-white/90 drop-shadow-md">
+            Scanner is active
           </p>
         </div>
       )}

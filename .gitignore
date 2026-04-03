@@ -38,3 +38,6 @@ dev-tools/.last_task_id
 
 # Git worktrees
 .worktrees/
+
+# Dev workflow progress tracking (ephemeral, per-session)
+progress.md

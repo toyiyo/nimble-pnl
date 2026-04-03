@@ -15,6 +15,8 @@ The workflow is designed for **autonomous execution**: after the user approves t
 
 Maintain a `progress.md` file in the worktree root throughout execution. This file enables context recovery if the session is interrupted or context is compressed.
 
+**Hygiene:** `progress.md` is ephemeral — it must NOT be committed (it's in `.gitignore`). Create it fresh per task, and delete it when the task completes (Phase 10). If a stale `progress.md` is found from a prior completed run, delete it before starting.
+
 **Update `progress.md`** at every phase transition with:
 ```markdown
 # Progress: [task title]
@@ -178,7 +180,7 @@ This phase is **fully autonomous**. Do not ask the user what to do — push, ope
 
 ### 9c: CI Feedback Loop (max 5 iterations)
 
-```
+```text
 Iteration N:
   Wait for CI checks to complete (via PR activity events)
   │
@@ -245,9 +247,11 @@ Review the entire workflow session and capture lessons learned:
 
 4. **Prune** — If a lesson from a previous session turned out to be wrong or outdated, remove or correct it.
 
-5. **Finalize progress** — Update `progress.md` with `## Status: Complete` and delete it (or leave for reference if the user prefers).
+**Skip condition:** No corrections occurred during the session (clean run through all phases). Only the lesson-writing steps (1-4) are skipped — progress cleanup below always runs.
 
-**Skip condition:** No corrections occurred during the session (clean run through all phases).
+### Progress Cleanup (always runs)
+
+5. **Finalize progress** — Update `progress.md` with `## Status: Complete` and delete it. This step runs regardless of whether lessons were written, to prevent stale `progress.md` from triggering false resume in future sessions.
 
 ## Autonomy Guidelines
 

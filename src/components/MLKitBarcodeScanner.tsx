@@ -24,6 +24,26 @@ const SUPPORTED_FORMATS = [
   BarcodeFormat.Codabar,
 ];
 
+/**
+ * Makes the WebView background transparent so the native camera preview
+ * (rendered behind the WebView by ML Kit) is visible. Restores on cleanup.
+ */
+function setWebViewTransparent(transparent: boolean) {
+  const html = document.documentElement;
+  const body = document.body;
+  if (transparent) {
+    html.style.setProperty('--original-bg', html.style.backgroundColor || '');
+    body.style.setProperty('--original-body-bg', body.style.backgroundColor || '');
+    html.style.backgroundColor = 'transparent';
+    body.style.backgroundColor = 'transparent';
+  } else {
+    html.style.backgroundColor = html.style.getPropertyValue('--original-bg') || '';
+    body.style.backgroundColor = body.style.getPropertyValue('--original-body-bg') || '';
+    html.style.removeProperty('--original-bg');
+    body.style.removeProperty('--original-body-bg');
+  }
+}
+
 export const MLKitBarcodeScanner = ({
   onScan,
   onError,
@@ -61,6 +81,9 @@ export const MLKitBarcodeScanner = ({
           return;
         }
 
+        // Make WebView transparent so native camera preview shows through
+        setWebViewTransparent(true);
+
         const listener = await BarcodeScanner.addListener('barcodeScanned', (result) => {
           const barcode = result.barcode;
           handleBarcode(barcode.rawValue, barcode.format);
@@ -77,6 +100,7 @@ export const MLKitBarcodeScanner = ({
         }
       } catch (err) {
         if (!mounted) return;
+        setWebViewTransparent(false);
         const msg = err instanceof Error ? err.message : 'Scanner initialization failed';
         setStatus('error');
         setErrorMessage(msg);
@@ -88,6 +112,7 @@ export const MLKitBarcodeScanner = ({
 
     return () => {
       mounted = false;
+      setWebViewTransparent(false);
       listenerRef.current?.remove();
       BarcodeScanner.stopScan().catch(() => {});
       BarcodeScanner.removeAllListeners().catch(() => {});
@@ -120,25 +145,22 @@ export const MLKitBarcodeScanner = ({
       )}
 
       {status === 'scanning' && (
-        <>
-          <div className="flex justify-center">
-            <Badge className="bg-gradient-to-r from-green-500 to-emerald-600">
-              <Scan className="w-3 h-3 mr-1" />
-              ML Kit Native Scanner
-            </Badge>
+        <div
+          className="relative rounded-lg overflow-hidden"
+          style={{
+            width: '100%',
+            aspectRatio: '4/3',
+            backgroundColor: 'transparent',
+          }}
+        >
+          {/* Scanning reticle overlay — camera renders natively behind this */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-2/3 h-1/3 border-2 border-white/60 rounded-lg shadow-lg" />
           </div>
-          <div
-            className="relative rounded-lg overflow-hidden border border-border/40"
-            style={{ width: '100%', aspectRatio: '4/3', backgroundColor: 'transparent' }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-2/3 h-1/3 border-2 border-primary/60 rounded-lg" />
-            </div>
-            <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-white/80 drop-shadow-md">
-              Point camera at barcode
-            </p>
-          </div>
-        </>
+          <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-white/80 drop-shadow-md">
+            Point camera at barcode
+          </p>
+        </div>
       )}
     </div>
   );

@@ -4,6 +4,10 @@ const config: CapacitorConfig = {
   appId: 'com.easyshifthq.employee',
   appName: 'EasyShiftHQ',
   webDir: 'dist',
+  ios: {
+    // Allow WebView to be transparent so ML Kit camera preview shows through
+    backgroundColor: '#ffffff',
+  },
   android: {
     // Don't overlay WebView behind status bar — prevents untouchable top area
     backgroundColor: '#ffffff',

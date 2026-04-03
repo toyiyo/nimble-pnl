@@ -403,7 +403,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       email: email || undefined,
       phone: phone || undefined,
       position,
-      area: area || null,
+      area: area.trim() || null,
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 

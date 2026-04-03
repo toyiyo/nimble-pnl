@@ -1175,7 +1175,17 @@ const Scheduling = () => {
                         {isGrouped && (
                           <tr
                             className="bg-muted/40 cursor-pointer hover:bg-muted/60 transition-colors"
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={!isCollapsed}
+                            aria-label={`${group.label} group, ${group.employees.length} employees`}
                             onClick={() => toggleGroupCollapse(group.label)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleGroupCollapse(group.label);
+                              }
+                            }}
                           >
                             <td
                               colSpan={weekDays.length + 1}

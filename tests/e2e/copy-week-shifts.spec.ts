@@ -114,7 +114,7 @@ test.describe('Copy Week Shifts', () => {
     // 4. Dialog should open with "Copy Week" title
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 3000 });
-    await expect(dialog.getByText('Copy Week')).toBeVisible();
+    await expect(dialog.getByText('Copy Schedule')).toBeVisible();
 
     // Shift count should be reflected in the confirm button text
     await expect(dialog.getByText(/copy 2 shifts/i)).toBeVisible();

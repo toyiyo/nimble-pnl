@@ -32,7 +32,8 @@ describe('useDeviceToken', () => {
     expect(shouldRegisterForPush(false)).toBe(false);
   });
 
-  it('shouldRegisterForPush returns true on native with user', () => {
-    expect(shouldRegisterForPush(true)).toBe(true);
+  it('shouldRegisterForPush returns false on native when PUSH_NOTIFICATIONS_ENABLED is false', () => {
+    // Push is disabled until Firebase is configured (google-services.json)
+    expect(shouldRegisterForPush(true)).toBe(false);
   });
 });

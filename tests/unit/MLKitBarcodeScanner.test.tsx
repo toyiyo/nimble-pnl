@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 
-const mockStartScan = vi.fn();
-const mockStopScan = vi.fn();
-const mockRequestPermissions = vi.fn().mockResolvedValue({ camera: 'granted' });
-const mockIsSupported = vi.fn().mockResolvedValue({ supported: true });
+const { mockStartScan, mockStopScan, mockRequestPermissions, mockIsSupported } = vi.hoisted(() => ({
+  mockStartScan: vi.fn().mockResolvedValue(undefined),
+  mockStopScan: vi.fn().mockResolvedValue(undefined),
+  mockRequestPermissions: vi.fn().mockResolvedValue({ camera: 'granted' }),
+  mockIsSupported: vi.fn().mockResolvedValue({ supported: true }),
+}));
 
 vi.mock('@capacitor-mlkit/barcode-scanning', () => ({
   BarcodeScanner: {
@@ -14,7 +16,7 @@ vi.mock('@capacitor-mlkit/barcode-scanning', () => ({
     requestPermissions: mockRequestPermissions,
     isSupported: mockIsSupported,
     addListener: vi.fn().mockResolvedValue({ remove: vi.fn() }),
-    removeAllListeners: vi.fn(),
+    removeAllListeners: vi.fn().mockResolvedValue(undefined),
   },
   BarcodeFormat: {
     EanEight: 'EAN_8',

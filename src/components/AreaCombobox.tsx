@@ -18,12 +18,12 @@ import {
 import { useEmployeeAreas, DEFAULT_AREAS } from '@/hooks/useEmployeeAreas';
 
 interface AreaComboboxProps {
-  restaurantId: string | null;
-  value: string;
-  onValueChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  className?: string;
+  readonly restaurantId: string | null;
+  readonly value: string;
+  readonly onValueChange: (value: string) => void;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+  readonly className?: string;
 }
 
 export function AreaCombobox({
@@ -94,21 +94,14 @@ export function AreaCombobox({
           </span>
           <div className="flex items-center gap-1 ml-2">
             {value && (
-              <span
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
                 aria-label="Clear area selection"
                 className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 onClick={handleClear}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleClear(e as unknown as React.MouseEvent);
-                  }
-                }}
               >
                 <X className="h-3.5 w-3.5 shrink-0 opacity-50 hover:opacity-100" />
-              </span>
+              </button>
             )}
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </div>

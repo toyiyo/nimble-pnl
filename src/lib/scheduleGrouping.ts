@@ -52,6 +52,6 @@ export function groupEmployees(
 
   return sortedKeys.map((key) => ({
     label: key || UNASSIGNED_LABEL,
-    employees: groupMap.get(key)!.sort((a, b) => a.name.localeCompare(b.name)),
+    employees: (groupMap.get(key) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
   }));
 }

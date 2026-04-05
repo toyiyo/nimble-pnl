@@ -154,10 +154,57 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   const tableBody: any[][] = [];
   const colCount = weekDays.length + 1 + (includeHoursSummary ? 1 : 0);
 
-  groups.forEach(group => {
-    // Group header row
+  /** Build a single employee row for the PDF table. */
+  const buildEmployeeRow = (employee: Employee): any[] => {
+    const row: any[] = [];
+
+    const nameCell = includePositions
+      ? `${employee.name}\n${employee.position}`
+      : employee.name;
+    row.push({
+      content: nameCell,
+      styles: {
+        halign: "left" as const,
+        fontStyle: "bold" as const,
+        cellPadding: { top: 8, bottom: 8, left: 6, right: 6 },
+      },
+    });
+
+    let totalHours = 0;
+
+    for (const day of weekDays) {
+      const dayShifts = filteredShifts.filter(
+        s => s.employee_id === employee.id && isSameDay(parseISO(s.start_time), day)
+      );
+
+      if (dayShifts.length === 0) {
+        row.push({
+          content: "OFF",
+          styles: { halign: "center" as const, textColor: [150, 150, 150], fontStyle: "italic" as const },
+        });
+      } else {
+        const shiftTexts = dayShifts.map(s => formatKitchenTime(s.start_time, s.end_time));
+        totalHours += dayShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
+        row.push({
+          content: shiftTexts.join("\n"),
+          styles: { halign: "center" as const, fontStyle: "bold" as const },
+        });
+      }
+    }
+
+    if (includeHoursSummary) {
+      row.push({
+        content: totalHours > 0 ? totalHours.toFixed(1) : "-",
+        styles: { halign: "center" as const },
+      });
+    }
+
+    return row;
+  };
+
+  for (const group of groups) {
     if (groupBy !== 'none' && group.label) {
-      const headerRow: any[] = [{
+      tableBody.push([{
         content: `${group.label} (${group.employees.length})`,
         colSpan: colCount,
         styles: {
@@ -168,66 +215,13 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
           fontSize: 10,
           cellPadding: { top: 6, bottom: 6, left: 6, right: 6 },
         },
-      }];
-      tableBody.push(headerRow);
+      }]);
     }
 
-    group.employees.forEach(employee => {
-      const row: any[] = [];
-
-      // Employee name (and position if enabled)
-      const nameCell = includePositions
-        ? `${employee.name}\n${employee.position}`
-        : employee.name;
-      row.push({
-        content: nameCell,
-        styles: {
-          halign: "left" as const,
-          fontStyle: "bold" as const,
-          cellPadding: { top: 8, bottom: 8, left: 6, right: 6 },
-        },
-      });
-
-      let totalHours = 0;
-
-      // Add shift for each day
-      weekDays.forEach(day => {
-        const dayShifts = filteredShifts.filter(
-          s => s.employee_id === employee.id && isSameDay(parseISO(s.start_time), day)
-        );
-
-        if (dayShifts.length === 0) {
-          row.push({
-            content: "OFF",
-            styles: {
-              halign: "center" as const,
-              textColor: [150, 150, 150],
-              fontStyle: "italic" as const,
-            },
-          });
-        } else {
-          const shiftTexts = dayShifts.map(s => formatKitchenTime(s.start_time, s.end_time));
-          const hours = dayShifts.reduce((sum, s) => sum + calculateShiftHours(s), 0);
-          totalHours += hours;
-
-          row.push({
-            content: shiftTexts.join("\n"),
-            styles: { halign: "center" as const, fontStyle: "bold" as const },
-          });
-        }
-      });
-
-      // Add hours total if requested
-      if (includeHoursSummary) {
-        row.push({
-          content: totalHours > 0 ? totalHours.toFixed(1) : "-",
-          styles: { halign: "center" as const },
-        });
-      }
-
-      tableBody.push(row);
-    });
-  });
+    for (const employee of group.employees) {
+      tableBody.push(buildEmployeeRow(employee));
+    }
+  }
 
   // Generate table
   autoTable(doc, {

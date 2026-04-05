@@ -173,76 +173,37 @@ This phase is **fully autonomous**. Do not ask the user what to do — push, ope
    - Body with `## Summary` (1-3 bullets from the plan), `## Test plan`, and link to the design doc
 3. Update `progress.md` with the PR number
 
-### 9b: Wait for CI & Ingest Feedback
+### 9b: Watch CI, Ingest Feedback, Fix — Autonomously
 
-After pushing, poll CI status and ingest all feedback into the review queue:
+This step runs as a **single autonomous loop**. Do not wait for user prompts between iterations.
+
+**Step 1: Start CI watch in background**
 
 ```bash
-# Poll CI checks (run every 2-3 minutes until all complete)
-gh pr checks <PR_NUMBER>
-
-# Once checks complete, ingest all feedback sources into the queue:
-dev-tools/refresh-queue.sh --pr <PR_NUMBER>
+# Run in background — blocks until all checks complete, then notifies
+gh pr checks <PR_NUMBER> --watch
 ```
 
-The `refresh-queue.sh` script automatically:
-- Fetches GitHub PR review comments and issue comments
-- Fetches SonarCloud issues (requires `SONAR_HOST`, `SONAR_TOKEN`, `SONAR_PROJECT_KEY` in `.env.local`)
-- Runs lint and captures problems
-- Deduplicates and saves to `dev-tools/review_queue.json`
+Use `Bash` with `run_in_background: true`. You will be notified when it completes.
 
-If `refresh-queue.sh` env vars aren't set for SonarCloud, fetch issues manually:
+**Step 2: When CI completes, ingest all feedback**
+
 ```bash
+# Ingest GitHub comments, SonarCloud issues, and lint problems into the review queue
+dev-tools/refresh-queue.sh --pr <PR_NUMBER> --skip-tests
+
+# If refresh-queue.sh can't reach SonarCloud (missing env vars), fetch manually:
 curl -s "https://sonarcloud.io/api/issues/search?componentKeys=toyiyo_nimble-pnl&pullRequest=<PR_NUMBER>&resolved=false" -o /tmp/sonar.json
 node dev-tools/ingest-feedback.js --sonar /tmp/sonar.json --pr <PR_NUMBER>
-```
 
-Also check SonarCloud quality gate status:
-```bash
+# Also check quality gate (coverage ≥80% on new code is required):
 curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=toyiyo_nimble-pnl&pullRequest=<PR_NUMBER>"
 ```
 
-- If checks are still `pending`, wait and poll again
-- Once all checks report a result, proceed based on pass/fail
-- **SonarCloud is a required check** — the quality gate MUST pass (coverage ≥80% on new code, no critical issues)
-
-### 9c: CI Feedback Loop (max 5 iterations)
-
-```text
-Iteration N:
-  Poll CI: gh pr checks <PR_NUMBER>
-  Ingest feedback: dev-tools/refresh-queue.sh --pr <PR_NUMBER>
-  Read queue: cat dev-tools/review_queue.json
-  │
-  ├── ALL checks pass AND queue has no open critical/major items → Proceed to Phase 9d
-  │
-  └── Checks fail OR queue has actionable items →
-      1. Read failure details: gh run view <RUN_ID> --log-failed
-         Read queue items: cat dev-tools/review_queue.json (filter for open items)
-      2. Re-read the plan (docs/plans/YYYY-MM-DD-*-plan.md) to stay spec-anchored
-      3. Diagnose root cause from error logs and queue items
-      4. Fix all issues locally (code fixes, coverage gaps, lint errors)
-      5. Run the failing checks locally to confirm fix
-      6. Commit fix with message: "fix(ci): [what was fixed] (iteration N/5)"
-      7. Push to branch
-      8. Update progress.md with iteration count and what was fixed
-      9. Return to top of loop
-```
-
-**After 5 failed iterations:** Stop iterating. Update `progress.md` with detailed failure analysis. Notify the user with:
-- What's failing and why
-- What was tried in each iteration
-- Suggested next steps
-
-### 9d: Handle Review Comments
-
-After CI passes, read the review queue for remaining open items:
+**Step 3: Read the queue and act on every open item**
 
 ```bash
-# Refresh the queue with latest comments
-dev-tools/refresh-queue.sh --pr <PR_NUMBER>
-
-# Read open items
+# Show all open items from the queue
 cat dev-tools/review_queue.json | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
@@ -252,15 +213,36 @@ for i in d['items']:
 "
 ```
 
-1. Review all open queue items
-2. Classify each as:
-   - **Actionable** — clear code change needed (bug, security, performance, SonarCloud critical/major)
-   - **Clarification needed** — ambiguous, could be interpreted multiple ways
-   - **Informational** — style preferences, minor nits, no action needed
-3. For **actionable** items: fix, commit, push (re-enters CI loop 9c)
-4. For **clarification needed**: Ask the user via `AskUserQuestion` with enough context to answer without scrolling back
-5. For **informational**: Acknowledge, no action needed
-6. After addressing all items, confirm CI is still green by polling again
+Classify each open item:
+- **Actionable** (CI failure, SonarCloud critical/major, code review bug) → Fix it
+- **Clarification needed** → Ask user
+- **Informational** (nits, style) → Skip
+
+**Step 4: Fix, verify locally, push, repeat**
+
+For each actionable item:
+1. Fix the code
+2. Run the relevant local check to confirm (`npm run test`, `npm run build`, `npm run lint`)
+3. Commit: `"fix(ci): [what was fixed] (iteration N/5)"`
+4. Push to branch
+5. Go back to Step 1 (start CI watch again)
+
+### 9c: Iteration Limits
+
+- **Max 5 CI iterations.** After 5 failed rounds, stop and report to user.
+- **SonarCloud is a required gate** — quality gate MUST pass (coverage ≥80% on new code, zero critical issues).
+- Update `progress.md` at each iteration with what was fixed.
+
+### 9d: Done
+
+When ALL of these are true:
+- `gh pr checks` shows all checks passing
+- SonarCloud quality gate passes
+- No open critical/major items in `dev-tools/review_queue.json`
+
+Then:
+- Update `progress.md` with `## Status: Ready for merge`
+- Notify the user: "PR #NNN is green and ready for review/merge" with a summary
 
 ### 9e: Done
 

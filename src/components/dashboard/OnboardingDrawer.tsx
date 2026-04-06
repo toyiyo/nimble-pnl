@@ -47,10 +47,7 @@ export const OnboardingDrawer = () => {
   const { hasFeature } = useSubscription();
   const [isOpen, setIsOpen] = useState(true);
   const navigate = useNavigate();
-
-  // Don't show onboarding for staff/employees
   const isStaff = selectedRestaurant?.role === 'staff';
-  if (isStaff) return null;
 
   // Load dismissed state from local storage on mount
   useEffect(() => {
@@ -65,6 +62,9 @@ export const OnboardingDrawer = () => {
     }
     setIsOpen(true);
   }, [percentage]);
+
+  // Don't show onboarding for staff/employees (after all hooks)
+  if (isStaff) return null;
 
   const handleOpen = () => {
     setIsOpen(true);

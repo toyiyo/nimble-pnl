@@ -61,7 +61,7 @@ export function useDeviceToken() {
     registerToken();
 
     return () => {
-      try { PushNotifications.removeAllListeners(); } catch { /* ignore */ }
+      PushNotifications.removeAllListeners().catch(() => { /* ignore cleanup errors */ })
     };
   }, [isNative, user, selectedRestaurant]);
 }

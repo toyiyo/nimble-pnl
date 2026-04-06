@@ -61,23 +61,14 @@ export function useGeofenceCheck(restaurant: {
 
     setChecking(true);
     try {
-      const isNative = Capacitor.isNativePlatform();
-      let userLat: number;
-      let userLng: number;
+      const geoOptions = { enableHighAccuracy: true, timeout: 5000 };
+      const pos = Capacitor.isNativePlatform()
+        ? await Geolocation.getCurrentPosition(geoOptions)
+        : await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, geoOptions)
+          );
 
-      if (isNative) {
-        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 5000 });
-        userLat = pos.coords.latitude;
-        userLng = pos.coords.longitude;
-      } else {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
-        );
-        userLat = pos.coords.latitude;
-        userLng = pos.coords.longitude;
-      }
-
-      return evaluateGeofence(enforcement, lat, lng, radius, userLat, userLng);
+      return evaluateGeofence(enforcement, lat, lng, radius, pos.coords.latitude, pos.coords.longitude);
     } catch {
       return { action: 'allow', checked: false };
     } finally {

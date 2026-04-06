@@ -16,7 +16,7 @@ export function base64ToBlob(base64: string, format: string): Blob {
 export function useNativeCamera() {
   const isNative = Capacitor.isNativePlatform();
 
-  const takePhoto = async (): Promise<Blob | null> => {
+  async function takePhoto(): Promise<Blob | null> {
     if (!isNative) return null;
 
     const photo = await Camera.getPhoto({
@@ -28,7 +28,7 @@ export function useNativeCamera() {
 
     if (!photo.base64String) return null;
     return base64ToBlob(photo.base64String, photo.format);
-  };
+  }
 
   return { isNative, takePhoto };
 }

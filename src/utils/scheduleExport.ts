@@ -21,7 +21,7 @@ export interface ScheduleExportOptions {
  * Formats time in kitchen-friendly compact format
  * Examples: "6A-2P", "4P-CL", "11A-7P"
  */
-const formatKitchenTime = (startTime: string, endTime: string): string => {
+export const formatKitchenTime = (startTime: string, endTime: string): string => {
   const start = parseISO(startTime);
   const end = parseISO(endTime);
   
@@ -50,7 +50,7 @@ const formatKitchenTime = (startTime: string, endTime: string): string => {
 /**
  * Calculate shift hours (excluding break)
  */
-const calculateShiftHours = (shift: Shift): number => {
+export const calculateShiftHours = (shift: Shift): number => {
   const start = new Date(shift.start_time);
   const end = new Date(shift.end_time);
   const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);

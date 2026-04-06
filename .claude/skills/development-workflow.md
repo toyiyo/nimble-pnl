@@ -168,54 +168,81 @@ This phase is **fully autonomous**. Do not ask the user what to do — push, ope
 ### 9a: Push & Create PR
 
 1. Push branch: `git push -u origin <branch-name>`
-2. Create PR using the GitHub MCP tools (`mcp__github__create_pull_request`) with:
+2. Create PR using `gh pr create` with:
    - Concise title (< 70 chars)
    - Body with `## Summary` (1-3 bullets from the plan), `## Test plan`, and link to the design doc
 3. Update `progress.md` with the PR number
 
-### 9b: Subscribe to PR Activity
+### 9b: Watch CI, Ingest Feedback, Fix — Autonomously
 
-1. Use `subscribe_pr_activity` to watch the PR for CI check results and review comments
-2. This enables automatic notification when checks complete or reviews are posted
+This step runs as a **single autonomous loop**. Do not wait for user prompts between iterations.
 
-### 9c: CI Feedback Loop (max 5 iterations)
+**Step 1: Start CI watch in background**
 
-```text
-Iteration N:
-  Wait for CI checks to complete (via PR activity events)
-  │
-  ├── ALL checks pass → Update progress.md, proceed to Phase 9d
-  │
-  └── Checks fail →
-      1. Read failure details from CI check output (use mcp__github__get_pull_request_checks or similar)
-      2. Re-read the plan (docs/plans/YYYY-MM-DD-*-plan.md) to stay spec-anchored
-      3. Diagnose root cause from error logs
-      4. Fix the issue locally
-      5. Run the failing check locally to confirm fix (e.g., npm run test, npm run build)
-      6. Commit fix with message: "fix(ci): [what was fixed] (iteration N/5)"
-      7. Push to branch
-      8. Update progress.md with iteration count and what was fixed
-      9. Return to top of loop
+```bash
+# Run in background — blocks until all checks complete, then notifies
+gh pr checks <PR_NUMBER> --watch
 ```
 
-**After 5 failed iterations:** Stop iterating. Update `progress.md` with detailed failure analysis. Notify the user with:
-- What's failing and why
-- What was tried in each iteration
-- Suggested next steps
+Use `Bash` with `run_in_background: true`. You will be notified when it completes.
 
-### 9d: Handle Review Comments
+**Step 2: When CI completes, ingest all feedback**
 
-When review comments arrive (via PR activity events or after CI passes):
+```bash
+# Ingest GitHub comments, SonarCloud issues, and lint problems into the review queue
+dev-tools/refresh-queue.sh --pr <PR_NUMBER> --skip-tests
 
-1. Read all review comments
-2. Classify each as:
-   - **Actionable** — clear code change needed (bug, security, performance)
-   - **Clarification needed** — ambiguous, could be interpreted multiple ways
-   - **Informational** — style preferences, minor nits, no action needed
-3. For **actionable** items: fix, commit, push (re-enters CI loop 9c)
-4. For **clarification needed**: Ask the user via `AskUserQuestion` with enough context to answer without scrolling back
-5. For **informational**: Reply on the PR acknowledging, explain if not implementing and why
-6. After addressing all comments, confirm CI is still green
+# If refresh-queue.sh can't reach SonarCloud (missing env vars), fetch manually:
+curl -s "https://sonarcloud.io/api/issues/search?componentKeys=toyiyo_nimble-pnl&pullRequest=<PR_NUMBER>&resolved=false" -o /tmp/sonar.json
+node dev-tools/ingest-feedback.js --sonar /tmp/sonar.json --pr <PR_NUMBER>
+
+# Also check quality gate (coverage ≥80% on new code is required):
+curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=toyiyo_nimble-pnl&pullRequest=<PR_NUMBER>"
+```
+
+**Step 3: Read the queue and act on every open item**
+
+```bash
+# Show all open items from the queue
+cat dev-tools/review_queue.json | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+for i in d['items']:
+  if i['status']=='open':
+    print(f\"{i['severity']:8s} {i['source']:16s} {i.get('origin_ref',{}).get('file',''):40s} {i['title'][:80]}\")
+"
+```
+
+Classify each open item:
+- **Actionable** (CI failure, SonarCloud critical/major, code review bug) → Fix it
+- **Clarification needed** → Ask user
+- **Informational** (nits, style) → Skip
+
+**Step 4: Fix, verify locally, push, repeat**
+
+For each actionable item:
+1. Fix the code
+2. Run the relevant local check to confirm (`npm run test`, `npm run build`, `npm run lint`)
+3. Commit: `"fix(ci): [what was fixed] (iteration N/5)"`
+4. Push to branch
+5. Go back to Step 1 (start CI watch again)
+
+### 9c: Iteration Limits
+
+- **Max 5 CI iterations.** After 5 failed rounds, stop and report to user.
+- **SonarCloud is a required gate** — quality gate MUST pass (coverage ≥80% on new code, zero critical issues).
+- Update `progress.md` at each iteration with what was fixed.
+
+### 9d: Done
+
+When ALL of these are true:
+- `gh pr checks` shows all checks passing
+- SonarCloud quality gate passes
+- No open critical/major items in `dev-tools/review_queue.json`
+
+Then:
+- Update `progress.md` with `## Status: Ready for merge`
+- Notify the user: "PR #NNN is green and ready for review/merge" with a summary
 
 ### 9e: Done
 

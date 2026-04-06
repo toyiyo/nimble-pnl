@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
+import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
@@ -67,6 +68,9 @@ import {
   Upload,
   LayoutGrid,
   Copy,
+  Layers,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -336,6 +340,14 @@ const Scheduling = () => {
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
+    try {
+      const saved = localStorage.getItem('schedule-group-by');
+      if (saved === 'area' || saved === 'position' || saved === 'none') return saved;
+    } catch { /* ignore */ }
+    return 'none';
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Calculate scheduled labor costs with breakdown
   const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
@@ -399,6 +411,27 @@ const Scheduling = () => {
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
 
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
+
+  // Grouped employees for rendering
+  const employeeGroups = useMemo(
+    () => groupEmployees(filteredEmployeesWithShifts, groupBy),
+    [filteredEmployeesWithShifts, groupBy]
+  );
+
+  const handleGroupByChange = useCallback((mode: GroupByMode) => {
+    setGroupBy(mode);
+    setCollapsedGroups(new Set());
+    try { localStorage.setItem('schedule-group-by', mode); } catch { /* ignore */ }
+  }, []);
+
+  const toggleGroupCollapse = useCallback((label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -929,6 +962,25 @@ const Scheduling = () => {
                   </SelectContent>
                 </Select>
 
+                {/* Group by */}
+                <Select value={groupBy} onValueChange={(v) => handleGroupByChange(v as GroupByMode)}>
+                  <SelectTrigger
+                    id="group-by"
+                    aria-label="Group by"
+                    className="w-36 h-9 text-xs bg-background"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />
+                      <SelectValue />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Grouping</SelectItem>
+                    <SelectItem value="area">Group by Area</SelectItem>
+                    <SelectItem value="position">Group by Position</SelectItem>
+                  </SelectContent>
+                </Select>
+
                 <div className="h-6 w-px bg-border hidden sm:block" />
 
                 {/* Publishing buttons */}
@@ -1113,101 +1165,147 @@ const Scheduling = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {filteredEmployeesWithShifts.map((employee, idx) => (
-                    <tr
-                      key={employee.id}
-                      className={cn(
-                        "group transition-colors hover:bg-muted/30",
-                        idx % 2 === 0 && "bg-muted/10"
-                      )}
-                    >
-                      <td className="p-3 sticky left-0 bg-inherit backdrop-blur-sm z-10 border-r border-border/30">
-                        <div className="flex items-center gap-3 justify-between">
-                          <div className="flex items-center gap-3">
-                            {/* Avatar placeholder */}
-                            <div className={cn(
-                              "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
-                              employee.is_active
-                                ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                : "bg-muted text-muted-foreground"
-                            )}>
-                              {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="font-medium text-sm flex items-center gap-2">
-                                {employee.name}
-                                {!employee.is_active && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                                    Inactive
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                {employee.position}
-                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
-                                  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
-                                    {hoursPerEmployee.get(employee.id)}h
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditEmployee(employee)}
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-primary/10"
-                            aria-label={`Edit ${employee.name}`}
+                  {employeeGroups.map((group) => {
+                    const isGrouped = groupBy !== 'none';
+                    const isCollapsed = isGrouped && collapsedGroups.has(group.label);
+
+                    return (
+                      <React.Fragment key={group.label || '__all'}>
+                        {/* Group header row */}
+                        {isGrouped && (
+                          <tr
+                            className="bg-muted/40 cursor-pointer hover:bg-muted/60 transition-colors"
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={!isCollapsed}
+                            aria-label={`${group.label} group, ${group.employees.length} employees`}
+                            onClick={() => toggleGroupCollapse(group.label)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleGroupCollapse(group.label);
+                              }
+                            }}
                           >
-                            <Edit className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                      {weekDays.map((day) => {
-                        const dayShifts = getShiftsForEmployee(employee.id, day);
-                        const dayIsToday = isToday(day);
-                        return (
-                          <DroppableDayCell
-                            key={day.toISOString()}
-                            employeeId={employee.id}
-                            day={format(day, 'yyyy-MM-dd')}
-                            isToday={dayIsToday}
-                            isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
+                            <td
+                              colSpan={weekDays.length + 1}
+                              className="p-2 px-3 sticky left-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                {isCollapsed ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                )}
+                                <span className="text-[13px] font-semibold text-foreground">
+                                  {group.label}
+                                </span>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                                  {group.employees.length}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Employee rows */}
+                        {!isCollapsed && group.employees.map((employee, idx) => (
+                          <tr
+                            key={employee.id}
+                            className={cn(
+                              "group transition-colors hover:bg-muted/30",
+                              idx % 2 === 0 && "bg-muted/10"
+                            )}
                           >
-                            <div className="space-y-1.5 min-h-[60px]">
-                              {dayShifts.map((shift) => (
-                                <DraggableShiftCard
-                                  key={shift.id}
-                                  shift={shift}
+                            <td className="p-3 sticky left-0 bg-inherit backdrop-blur-sm z-10 border-r border-border/30">
+                              <div className="flex items-center gap-3 justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                    "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
+                                    employee.is_active
+                                      ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
+                                      : "bg-muted text-muted-foreground"
+                                  )}>
+                                    {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-sm flex items-center gap-2">
+                                      {employee.name}
+                                      {!employee.is_active && (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
+                                          Inactive
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                      {employee.position}
+                                      {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
+                                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
+                                          {hoursPerEmployee.get(employee.id)}h
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditEmployee(employee)}
+                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-primary/10"
+                                  aria-label={`Edit ${employee.name}`}
+                                >
+                                  <Edit className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                            {weekDays.map((day) => {
+                              const dayShifts = getShiftsForEmployee(employee.id, day);
+                              const dayIsToday = isToday(day);
+                              return (
+                                <DroppableDayCell
+                                  key={day.toISOString()}
                                   employeeId={employee.id}
                                   day={format(day, 'yyyy-MM-dd')}
+                                  isToday={dayIsToday}
+                                  isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
                                 >
-                                  <ShiftCard
-                                    shift={shift}
-                                    onEdit={handleEditShift}
-                                    onDelete={handleDeleteShift}
-                                  />
-                                </DraggableShiftCard>
-                              ))}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "w-full h-8 text-xs border border-dashed border-border/50",
-                                  "opacity-0 group-hover:opacity-100 transition-all duration-200",
-                                  "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
-                                )}
-                                onClick={() => handleAddShift(day, employee)}
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add
-                              </Button>
-                            </div>
-                          </DroppableDayCell>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                                  <div className="space-y-1.5 min-h-[60px]">
+                                    {dayShifts.map((shift) => (
+                                      <DraggableShiftCard
+                                        key={shift.id}
+                                        shift={shift}
+                                        employeeId={employee.id}
+                                        day={format(day, 'yyyy-MM-dd')}
+                                      >
+                                        <ShiftCard
+                                          shift={shift}
+                                          onEdit={handleEditShift}
+                                          onDelete={handleDeleteShift}
+                                        />
+                                      </DraggableShiftCard>
+                                    ))}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className={cn(
+                                        "w-full h-8 text-xs border border-dashed border-border/50",
+                                        "opacity-0 group-hover:opacity-100 transition-all duration-200",
+                                        "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                                      )}
+                                      onClick={() => handleAddShift(day, employee)}
+                                    >
+                                      <Plus className="h-3 w-3 mr-1" />
+                                      Add
+                                    </Button>
+                                  </div>
+                                </DroppableDayCell>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1477,6 +1575,7 @@ const Scheduling = () => {
         weekEnd={weekEnd}
         restaurantName={selectedRestaurant?.restaurant?.name}
         positionFilter={positionFilter}
+        groupBy={groupBy}
       />
 
       {/* Shift Import Sheet */}

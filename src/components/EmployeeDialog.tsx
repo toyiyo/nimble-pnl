@@ -12,6 +12,7 @@ import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PositionCombobox } from '@/components/PositionCombobox';
+import { AreaCombobox } from '@/components/AreaCombobox';
 import { HelpCircle, Info, AlertTriangle } from 'lucide-react';
 import {
   Tooltip,
@@ -43,6 +44,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
+  const [area, setArea] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive' | 'terminated'>('active');
   const [hireDate, setHireDate] = useState('');
   const [terminationDate, setTerminationDate] = useState('');
@@ -120,6 +122,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       setEmail(employee.email || '');
       setPhone(employee.phone || '');
       setPosition(employee.position);
+      setArea(employee.area || '');
       setStatus(employee.status);
       setHireDate(employee.hire_date || '');
       setTerminationDate(employee.termination_date || '');
@@ -151,6 +154,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setEmail('');
     setPhone('');
     setPosition('Server');
+    setArea('');
     setStatus('active');
     setHireDate('');
     setTerminationDate('');
@@ -399,6 +403,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       email: email || undefined,
       phone: phone || undefined,
       position,
+      area: area.trim() || null,
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 
@@ -535,6 +540,18 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   value={position}
                   onValueChange={setPosition}
                   placeholder="Select or type a position..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="area">
+                  Area
+                </Label>
+                <AreaCombobox
+                  restaurantId={restaurantId}
+                  value={area}
+                  onValueChange={setArea}
+                  placeholder="Select area (optional)..."
                 />
               </div>
 

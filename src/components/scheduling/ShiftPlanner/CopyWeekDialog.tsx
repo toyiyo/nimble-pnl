@@ -100,7 +100,11 @@ export function CopyWeekDialog({
     [shifts],
   );
 
-  const isSameWeek = targetMonday?.getTime() === sourceWeekStart.getTime();
+  const isSameWeek = targetMonday
+    ? targetMonday.getFullYear() === sourceWeekStart.getFullYear() &&
+      targetMonday.getMonth() === sourceWeekStart.getMonth() &&
+      targetMonday.getDate() === sourceWeekStart.getDate()
+    : false;
   const isPastWeek = checkIsPastWeek(targetMonday);
 
   // --- Derived values (template tab) ---

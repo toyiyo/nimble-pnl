@@ -31,7 +31,7 @@ export function BiometricLockScreen({ onAuthenticate, failedAttempts }: Biometri
           </p>
           <Button
             onClick={onAuthenticate}
-            className="h-11 px-8 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[14px] font-medium"
+            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
             Try Again
           </Button>

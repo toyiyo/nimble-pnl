@@ -24,11 +24,11 @@ const SUPPORTED_FORMATS = [
   BarcodeFormat.Codabar,
 ];
 
-export const MLKitBarcodeScanner = ({
+export function MLKitBarcodeScanner({
   onScan,
   onError,
   className = '',
-}: MLKitBarcodeScannerProps) => {
+}: MLKitBarcodeScannerProps) {
   const [status, setStatus] = useState<'ready' | 'scanning' | 'error'>('ready');
   const [errorMessage, setErrorMessage] = useState('');
   const [lastScanned, setLastScanned] = useState<string | null>(null);
@@ -81,10 +81,10 @@ export const MLKitBarcodeScanner = ({
 
   if (status === 'error') {
     return (
-      <Card className={className}>
+      <Card className={`rounded-xl border border-border/40 bg-background ${className}`}>
         <CardContent className="flex flex-col items-center justify-center py-8 space-y-3">
           <AlertCircle className="w-8 h-8 text-destructive" />
-          <p className="text-sm text-muted-foreground">{errorMessage}</p>
+          <p className="text-[13px] text-muted-foreground">{errorMessage}</p>
           <Button variant="outline" size="sm" onClick={handleScan}>
             Try Again
           </Button>
@@ -94,23 +94,23 @@ export const MLKitBarcodeScanner = ({
   }
 
   return (
-    <Card className={className}>
+    <Card className={`rounded-xl border border-border/40 bg-background ${className}`}>
       <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
         {status === 'scanning' ? (
           <>
             <Loader2 className="w-8 h-8 text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground">Native scanner open...</p>
+            <p className="text-[13px] text-muted-foreground">Native scanner open...</p>
           </>
         ) : (
           <>
             <div className="flex justify-center">
-              <Badge className="bg-gradient-to-r from-green-500 to-emerald-600">
+              <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
                 <Scan className="w-3 h-3 mr-1" />
                 ML Kit Native Scanner
               </Badge>
             </div>
             {lastScanned && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-[13px] text-muted-foreground">
                 Last scanned: <span className="font-mono font-medium text-foreground">{lastScanned}</span>
               </p>
             )}
@@ -123,4 +123,4 @@ export const MLKitBarcodeScanner = ({
       </CardContent>
     </Card>
   );
-};
+}

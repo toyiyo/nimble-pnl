@@ -98,7 +98,7 @@ export function GeofenceSettings({
               type="button"
               variant="outline"
               onClick={handleUseCurrentLocation}
-              className="h-9 text-[13px] font-medium rounded-lg"
+              className="w-full h-9 text-[13px] font-medium rounded-lg"
             >
               <MapPin className="h-4 w-4 mr-2" />
               Use Current Location

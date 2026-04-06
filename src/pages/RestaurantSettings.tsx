@@ -669,10 +669,10 @@ export default function RestaurantSettings() {
 
               {canEdit && (
                 <GeofenceSettings
-                  latitude={(selectedRestaurant.restaurant as any).latitude ?? null}
-                  longitude={(selectedRestaurant.restaurant as any).longitude ?? null}
-                  radiusMeters={(selectedRestaurant.restaurant as any).geofence_radius_meters ?? 100}
-                  enforcement={(selectedRestaurant.restaurant as any).geofence_enforcement ?? 'off'}
+                  latitude={selectedRestaurant.restaurant.latitude ?? null}
+                  longitude={selectedRestaurant.restaurant.longitude ?? null}
+                  radiusMeters={selectedRestaurant.restaurant.geofence_radius_meters ?? 100}
+                  enforcement={selectedRestaurant.restaurant.geofence_enforcement ?? 'off'}
                   onSave={handleSaveGeofence}
                   saving={geofenceSaving}
                 />

@@ -122,7 +122,12 @@ export const useStripeConnect = (restaurantId: string | null) => {
     onSuccess: async (data) => {
       if (data?.url) {
         if (Capacitor.isNativePlatform()) {
-          await Browser.open({ url: data.url });
+          try {
+            await Browser.open({ url: data.url });
+          } catch (e) {
+            console.error('Failed to open browser:', e);
+            window.open(data.url, '_blank', 'noopener,noreferrer');
+          }
         } else {
           window.open(data.url, '_blank', 'noopener,noreferrer');
         }

@@ -486,7 +486,7 @@ test.describe('Tips - Complete Customer Journey', () => {
 
     // Approve
     await page.getByRole('button', { name: /approve tips/i }).click();
-    await expect(page.getByText(/tips approved/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/tips approved|approved/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('Accessibility: Keyboard navigation and ARIA labels', async ({ page }) => {

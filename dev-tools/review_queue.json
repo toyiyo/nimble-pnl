@@ -52870,6 +52870,120 @@
       "status": "open",
       "created_at": "2026-02-01T19:58:31.051Z",
       "updated_at": "2026-02-01T19:58:31.051Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZ0iwE9YVHaA9q918kkV",
+        "pr": "427",
+        "file": "src/components/AreaCombobox.tsx",
+        "line": 97
+      },
+      "title": "Use <input type=\"button\">, <input type=\"image\">, <input type=\"reset\">, <input type=\"submit\">, or <button> instead of the \"button\" role to ensure accessibility a",
+      "body": "Use <input type=\"button\">, <input type=\"image\">, <input type=\"reset\">, <input type=\"submit\">, or <button> instead of the \"button\" role to ensure accessibility across all devices.",
+      "severity": "major",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "4f280140e9b21e23e1de76e43061a548f041dfb6",
+      "status": "open",
+      "created_at": "2026-04-03T15:24:36.113Z",
+      "updated_at": "2026-04-03T15:24:36.113Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZ0iwFBbVHaA9q918kkW",
+        "pr": "427",
+        "file": "src/utils/scheduleExport.ts",
+        "line": 196
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "01505cce39c99150bf1a9d45a8e27943349ec415",
+      "status": "open",
+      "created_at": "2026-04-03T15:24:36.114Z",
+      "updated_at": "2026-04-03T15:24:36.114Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZ0iwFBbVHaA9q918kkX",
+        "pr": "427",
+        "file": "src/utils/scheduleExport.ts",
+        "line": 209
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "8e22f75ee6c87de200ccc615a3fe1966ce90ef53",
+      "status": "open",
+      "created_at": "2026-04-03T15:24:36.114Z",
+      "updated_at": "2026-04-03T15:24:36.114Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZ0iwFBbVHaA9q918kkY",
+        "pr": "427",
+        "file": "src/utils/scheduleExport.ts",
+        "line": 210
+      },
+      "title": "Refactor this code to not nest functions more than 4 levels deep.",
+      "body": "Refactor this code to not nest functions more than 4 levels deep.",
+      "severity": "critical",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "24f45fb3bd2369310f29ddcd8a4fa0bc5cb07157",
+      "status": "open",
+      "created_at": "2026-04-03T15:24:36.114Z",
+      "updated_at": "2026-04-03T15:24:36.114Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZ0iwE9YVHaA9q918kkU",
+        "pr": "427",
+        "file": "src/components/AreaCombobox.tsx",
+        "line": 29
+      },
+      "title": "Mark the props of the component as read-only.",
+      "body": "Mark the props of the component as read-only.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "0bf0af3d1688e576e7d06fe9b2c1a409a52e57c0",
+      "status": "open",
+      "created_at": "2026-04-03T15:24:36.114Z",
+      "updated_at": "2026-04-03T15:24:36.114Z"
+    },
+    {
+      "source": "sonarqube",
+      "origin_ref": {
+        "sonar_key": "AZ0iwFBiVHaA9q918kkZ",
+        "pr": "427",
+        "file": "src/lib/scheduleGrouping.ts",
+        "line": 55
+      },
+      "title": "This assertion is unnecessary since it does not change the type of the expression.",
+      "body": "This assertion is unnecessary since it does not change the type of the expression.",
+      "severity": "minor",
+      "tests_to_run": [
+        "npm run lint"
+      ],
+      "id": "39a62cfa3d0ce60baaeb5e467b7dc6c8132c8bf1",
+      "status": "open",
+      "created_at": "2026-04-03T15:24:36.114Z",
+      "updated_at": "2026-04-03T15:24:36.114Z"
     }
   ]
 }

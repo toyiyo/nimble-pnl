@@ -61,7 +61,7 @@ test.describe('Employee compensation history', () => {
     // Create an hourly employee
     await goToEmployeesPage(page);
     await page.getByRole('button', { name: /add employee/i }).first().click();
-    const dialog = page.getByRole('dialog');
+    const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     await expect(dialog).toBeVisible();
 
     await dialog.getByLabel(/name/i).fill(employee.name);
@@ -97,7 +97,7 @@ test.describe('Employee compensation history', () => {
 
     // Update hourly rate and confirm modal flow
     await page.getByRole('button', { name: `Edit ${employee.name}` }).click();
-    const editDialog = page.getByRole('dialog');
+    const editDialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     await expect(editDialog).toBeVisible();
 
     await editDialog.getByLabel(/hourly rate/i).fill(employee.newRate);
@@ -148,7 +148,7 @@ test.describe('Employee compensation history', () => {
 
     await goToEmployeesPage(page);
     await page.getByRole('button', { name: /add employee/i }).first().click();
-    const dialog = page.getByRole('dialog');
+    const dialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     await expect(dialog).toBeVisible();
 
     await dialog.getByLabel(/name/i).fill(employee.name);
@@ -192,7 +192,7 @@ test.describe('Employee compensation history', () => {
 
     // Update salary + pay period
     await page.getByRole('button', { name: `Edit ${employee.name}` }).click();
-    const editDialog = page.getByRole('dialog');
+    const editDialog = page.getByRole('dialog', { name: /add new employee|edit employee/i });
     await expect(editDialog).toBeVisible();
 
     await editDialog.getByLabel(/salary amount/i).fill(employee.newSalary);

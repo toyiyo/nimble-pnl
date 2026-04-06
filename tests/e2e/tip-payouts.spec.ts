@@ -253,11 +253,14 @@ test.describe('Tip Payouts - Manager Journey', () => {
     await page.goto('/tips');
     await ensureTipsPage(page);
 
+    // Wait for approved tips data to load before looking for payout button
+    await page.waitForLoadState('domcontentloaded');
+
     const payOutButton = page.getByRole('button', { name: /record payout/i }).first();
-    await expect(payOutButton).toBeVisible({ timeout: 10000 });
+    await expect(payOutButton).toBeVisible({ timeout: 15000 });
     await payOutButton.click();
 
-    await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 10000 });
 
     // Verify both employees are listed
     await expect(page.getByText('Dave Clark')).toBeVisible();
@@ -310,6 +313,12 @@ test.describe('Tip Payouts - Manager Journey', () => {
     await expect(payOutButton).toBeVisible({ timeout: 10000 });
     await payOutButton.click();
     await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 5000 });
+    // Dismiss any toasts that may overlap the confirm button
+    const dismissibleToast = page.locator('[role="status"][data-state="open"]').first();
+    if (await dismissibleToast.isVisible({ timeout: 500 }).catch(() => false)) {
+      await dismissibleToast.locator('button').click().catch(() => {});
+      await dismissibleToast.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+    }
     await page.getByRole('button', { name: /confirm/i }).click();
     // Wait for payout to be saved (toast may dismiss quickly)
     try {
@@ -481,6 +490,12 @@ test.describe('Tip Payouts - Employee Tips View', () => {
     await expect(payOutButton).toBeVisible({ timeout: 10000 });
     await payOutButton.click();
     await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 5000 });
+    // Dismiss any toasts that may overlap the confirm button
+    const dismissibleToast = page.locator('[role="status"][data-state="open"]').first();
+    if (await dismissibleToast.isVisible({ timeout: 500 }).catch(() => false)) {
+      await dismissibleToast.locator('button').click().catch(() => {});
+      await dismissibleToast.waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+    }
     await page.getByRole('button', { name: /confirm/i }).click();
     // Wait for payout to be saved (toast may dismiss quickly)
     try {

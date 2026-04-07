@@ -26,6 +26,9 @@ interface TemplateGridProps {
   onDeleteTemplate: (templateId: string) => void;
   onAddTemplate: () => void;
   highlightCellId?: string | null;
+  /** Mobile tap-to-assign */
+  onMobileCellTap?: (templateId: string, day: string) => void;
+  hasMobileSelection?: boolean;
 }
 
 export function TemplateGrid({
@@ -37,6 +40,8 @@ export function TemplateGrid({
   onDeleteTemplate,
   onAddTemplate,
   highlightCellId,
+  onMobileCellTap,
+  hasMobileSelection,
 }: Readonly<TemplateGridProps>) {
   return (
     <div className="rounded-xl border border-border/40 overflow-x-auto">
@@ -95,6 +100,8 @@ export function TemplateGrid({
                     shifts={shifts}
                     onRemoveShift={onRemoveShift}
                     isHighlighted={highlightCellId === `${template.id}:${day}`}
+                    onMobileTap={onMobileCellTap}
+                    hasMobileSelection={hasMobileSelection}
                   />
                 </div>
               );

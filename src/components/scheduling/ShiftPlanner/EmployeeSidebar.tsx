@@ -53,6 +53,8 @@ export interface EmployeeSidebarProps {
   employees: Employee[];
   shifts: Shift[];
   className?: string;
+  /** Mobile tap-to-assign: called when an employee is tapped instead of dragged */
+  onEmployeeSelect?: (employee: { id: string; name: string }) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,10 +65,11 @@ interface DraggableEmployeeProps {
   employee: Employee;
   shiftCount: number;
   hours: number;
+  onSelect?: (employee: { id: string; name: string }) => void;
 }
 
 const DraggableEmployee = memo(
-  function DraggableEmployee({ employee, shiftCount, hours }: DraggableEmployeeProps) {
+  function DraggableEmployee({ employee, shiftCount, hours, onSelect }: DraggableEmployeeProps) {
     const {
       attributes,
       listeners,
@@ -86,10 +89,11 @@ const DraggableEmployee = memo(
       <div
         ref={setNodeRef}
         style={style}
-        {...listeners}
-        {...attributes}
+        {...(onSelect ? {} : { ...listeners, ...attributes })}
+        onClick={onSelect ? () => onSelect({ id: employee.id, name: employee.name }) : undefined}
         className={cn(
-          'rounded-lg border border-border/40 px-3 py-2 cursor-grab active:cursor-grabbing',
+          'rounded-lg border border-border/40 px-3 py-2',
+          onSelect ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
           'bg-background hover:bg-muted/30 transition-colors',
           isDragging && 'opacity-40',
         )}
@@ -117,14 +121,15 @@ const DraggableEmployee = memo(
     prev.employee.name === next.employee.name &&
     prev.employee.position === next.employee.position &&
     prev.shiftCount === next.shiftCount &&
-    prev.hours === next.hours,
+    prev.hours === next.hours &&
+    prev.onSelect === next.onSelect,
 );
 
 // ---------------------------------------------------------------------------
 // EmployeeSidebar
 // ---------------------------------------------------------------------------
 
-export function EmployeeSidebar({ employees, shifts, className }: Readonly<EmployeeSidebarProps>) {
+export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect }: Readonly<EmployeeSidebarProps>) {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('all');
 
@@ -200,6 +205,7 @@ export function EmployeeSidebar({ employees, shifts, className }: Readonly<Emplo
               employee={employee}
               shiftCount={shiftCounts.get(employee.id) ?? 0}
               hours={hoursPerEmployee.get(employee.id) ?? 0}
+              onSelect={onEmployeeSelect}
             />
           ))
         )}

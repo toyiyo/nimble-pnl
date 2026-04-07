@@ -90,8 +90,9 @@ export function ShiftPlannerTab({
     day: string;
   } | null>(null);
 
-  // Mobile sidebar toggle
+  // Mobile sidebar toggle and tap-to-assign flow
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [selectedMobileEmployee, setSelectedMobileEmployee] = useState<{ id: string; name: string } | null>(null);
 
   const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
@@ -145,6 +146,26 @@ export function ShiftPlannerTab({
 
     setPendingAssignment({ employee: { id: employee.id, name: employee.name }, template, day });
   }, [templates]);
+
+  // Mobile tap-to-assign: select employee from sidebar
+  const handleMobileEmployeeSelect = useCallback((employee: { id: string; name: string }) => {
+    setSelectedMobileEmployee(employee);
+    setMobileSidebarOpen(false);
+  }, []);
+
+  // Mobile tap-to-assign: tap a cell to assign the selected employee
+  const handleMobileCellTap = useCallback((templateId: string, day: string) => {
+    if (!selectedMobileEmployee) return;
+    const template = templates.find((t) => t.id === templateId);
+    if (!template) return;
+    setPendingAssignment({ employee: selectedMobileEmployee, template, day });
+    setSelectedMobileEmployee(null);
+  }, [selectedMobileEmployee, templates]);
+
+  // Clear mobile selection
+  const clearMobileSelection = useCallback(() => {
+    setSelectedMobileEmployee(null);
+  }, []);
 
   const handleAssignDay = useCallback(async () => {
     if (!pendingAssignment) return;
@@ -395,6 +416,8 @@ export function ShiftPlannerTab({
                 onDeleteTemplate={deleteTemplate}
                 onAddTemplate={handleAddTemplate}
                 highlightCellId={highlightCellId}
+                onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
+                hasMobileSelection={isMobile && !!selectedMobileEmployee}
               />
             )}
           </div>
@@ -432,14 +455,32 @@ export function ShiftPlannerTab({
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" />
+                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" onEmployeeSelect={handleMobileEmployeeSelect} />
               </div>
             </>
           )}
         </div>
 
+        {/* Mobile: selected employee banner */}
+        {isMobile && selectedMobileEmployee && (
+          <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center justify-between gap-2 px-4 py-3 rounded-xl bg-foreground text-background shadow-lg">
+            <span className="text-[13px] font-medium">
+              Tap a cell to assign <strong>{selectedMobileEmployee.name}</strong>
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-background hover:text-background/70 shrink-0"
+              onClick={clearMobileSelection}
+              aria-label="Cancel selection"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+
         {/* Mobile: floating Team button */}
-        {isMobile && !mobileSidebarOpen && (
+        {isMobile && !mobileSidebarOpen && !selectedMobileEmployee && (
           <Button
             className="fixed bottom-20 right-4 z-30 h-12 w-12 rounded-full shadow-lg bg-foreground text-background hover:bg-foreground/90"
             onClick={() => setMobileSidebarOpen(true)}

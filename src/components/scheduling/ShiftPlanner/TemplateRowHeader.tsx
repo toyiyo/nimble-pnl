@@ -32,8 +32,9 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
   onDelete,
 }: TemplateRowHeaderProps) {
   return (
-    <div className="flex items-center justify-between p-3 min-h-[64px]">
-      <div className="min-w-0">
+    <div className="flex items-center justify-between p-1 md:p-3 min-h-[48px] md:min-h-[64px]">
+      {/* Desktop: full name + time + position */}
+      <div className="hidden md:block min-w-0">
         <div className="text-[14px] font-medium text-foreground truncate">
           {template.name}
         </div>
@@ -45,12 +46,21 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
           {template.position}
         </div>
       </div>
+      {/* Mobile: abbreviated name + time only */}
+      <div className="block md:hidden min-w-0 text-center w-full">
+        <div className="text-[11px] font-medium text-foreground truncate">
+          {template.name.length > 5 ? template.name.slice(0, 5) + '.' : template.name}
+        </div>
+        <div className="text-[10px] text-muted-foreground">
+          {formatCompactTemplateTime(template.start_time)}
+        </div>
+      </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hidden md:inline-flex"
             aria-label={`Actions for ${template.name}`}
           >
             <MoreHorizontal className="h-4 w-4" />

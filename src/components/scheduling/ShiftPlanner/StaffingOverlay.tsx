@@ -307,12 +307,15 @@ export function StaffingOverlay({
               )}
 
               {/* Day columns grid — matches TemplateGrid layout */}
-              <div className="grid grid-cols-[200px_repeat(7,1fr)] min-w-[1000px]">
-                <div className="px-3 py-2 flex flex-col justify-center gap-1">
-                  <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <div className="grid grid-cols-[56px_repeat(7,1fr)] md:grid-cols-[200px_repeat(7,1fr)] min-w-[560px] md:min-w-[1000px]">
+                <div className="px-1 md:px-3 py-2 flex flex-col justify-center gap-1">
+                  <span className="text-[10px] md:text-[12px] font-medium text-muted-foreground uppercase tracking-wider hidden md:block">
                     Staff per Hour
                   </span>
-                  <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block md:hidden">
+                    Staff
+                  </span>
+                  <div className="hidden md:flex items-center gap-2">
                     <div className="flex items-center gap-1">
                       <div className="h-[8px] w-[14px] rounded-sm bg-blue-500/20 border border-blue-500/30" />
                       <span className="text-[10px] text-muted-foreground">On target</span>

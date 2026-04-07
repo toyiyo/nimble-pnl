@@ -15,6 +15,10 @@ interface ShiftCellProps {
   shifts: Shift[];
   onRemoveShift: (shiftId: string) => void;
   isHighlighted?: boolean;
+  /** Mobile tap-to-assign: called when cell is tapped with an employee selected */
+  onMobileTap?: (templateId: string, day: string) => void;
+  /** Whether a mobile employee is selected (enables tap-to-assign visual) */
+  hasMobileSelection?: boolean;
 }
 
 export const ShiftCell = memo(
@@ -25,6 +29,8 @@ export const ShiftCell = memo(
     shifts,
     onRemoveShift,
     isHighlighted,
+    onMobileTap,
+    hasMobileSelection,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -44,11 +50,13 @@ export const ShiftCell = memo(
     return (
       <div
         ref={setNodeRef}
+        onClick={hasMobileSelection && onMobileTap ? () => onMobileTap(templateId, day) : undefined}
         className={cn(
           'min-h-[64px] p-1.5 space-y-1 transition-colors duration-500',
           'border-l-2 border-primary/40',
           isOver && 'bg-foreground/5 ring-1 ring-foreground/20 rounded',
           isHighlighted && 'bg-green-500/10',
+          hasMobileSelection && 'bg-primary/5 ring-1 ring-primary/30 rounded cursor-pointer',
         )}
       >
         {shifts.map((shift) => (
@@ -69,5 +77,7 @@ export const ShiftCell = memo(
     prev.isActiveDay === next.isActiveDay &&
     prev.shifts === next.shifts &&
     prev.onRemoveShift === next.onRemoveShift &&
-    prev.isHighlighted === next.isHighlighted,
+    prev.isHighlighted === next.isHighlighted &&
+    prev.hasMobileSelection === next.hasMobileSelection &&
+    prev.onMobileTap === next.onMobileTap,
 );

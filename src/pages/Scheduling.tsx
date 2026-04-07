@@ -1276,7 +1276,12 @@ const Scheduling = () => {
                                       </button>
                                     </TooltipTrigger>
                                     <TooltipContent side="right" className="text-xs">
-                                      <div className="font-medium">{employee.name}</div>
+                                      <div className="font-medium">
+                                        {employee.name}
+                                        {!employee.is_active && (
+                                          <span className="text-muted-foreground ml-1">(Inactive)</span>
+                                        )}
+                                      </div>
                                       <div className="text-muted-foreground">{employee.position}</div>
                                     </TooltipContent>
                                   </Tooltip>

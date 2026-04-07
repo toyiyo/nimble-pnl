@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 // We test that both full and compact name elements exist in the DOM
 // (Tailwind responsive classes handle visibility via CSS, not JS)
 describe('Schedule responsive name column', () => {
-  it('renders both full-name and compact-name elements for each employee', () => {
+  it('renders both full-name and compact-name elements', () => {
     // We'll test the CSS class presence rather than visual rendering
     // since Vitest doesn't evaluate CSS media queries
     const doc = document.createElement('div');

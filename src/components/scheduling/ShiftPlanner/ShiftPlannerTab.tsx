@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
 
 import { Button } from '@/components/ui/button';
@@ -109,9 +109,11 @@ export function ShiftPlannerTab({
     return Array.from(posSet).sort((a, b) => a.localeCompare(b));
   }, [employees, templates]);
 
-  // DnD setup
+  // DnD setup — PointerSensor for mouse, TouchSensor for touch devices
+  // TouchSensor uses press-and-hold (200ms) to distinguish drag from scroll
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {

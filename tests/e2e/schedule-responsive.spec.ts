@@ -81,8 +81,10 @@ async function gotoSchedule(page: any) {
 
 test.describe('Schedule responsive layout', () => {
   test('shows compact avatars at mobile viewport width', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
+    // Setup at desktop size (signup flow needs wider viewport)
     await setupWithEmployees(page);
+    // Resize to mobile before navigating to schedule
+    await page.setViewportSize({ width: 375, height: 812 });
     await gotoSchedule(page);
 
     // The compact avatar container (flex md:hidden) should be visible on mobile
@@ -114,7 +116,8 @@ test.describe('Schedule responsive layout', () => {
     const compactAvatars = page.locator('td .flex.md\\:hidden');
     await expect(compactAvatars.first()).toBeHidden();
 
-    // Employee name text should be visible
-    await expect(page.getByText('Maria Rodriguez')).toBeVisible();
+    // Employee name text should be visible in the schedule table
+    const table = page.locator('table').first();
+    await expect(table.getByText('Maria Rodriguez')).toBeVisible();
   });
 });

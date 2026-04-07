@@ -1128,10 +1128,10 @@ const Scheduling = () => {
               onDragCancel={handleDragCancel}
             >
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[900px]">
+              <table className="w-full border-collapse min-w-[600px] md:min-w-[900px]">
                 <thead>
                   <tr className="bg-muted/30">
-                    <th className="text-left p-3 font-medium sticky left-0 bg-muted/30 backdrop-blur-sm z-10 min-w-[180px] border-r border-border/30">
+                    <th className="text-left p-3 font-medium sticky left-0 bg-muted/30 backdrop-blur-sm z-10 w-[56px] md:w-auto md:min-w-[180px] border-r border-border/30">
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
@@ -1140,7 +1140,7 @@ const Scheduling = () => {
                         <th
                           key={day.toISOString()}
                           className={cn(
-                            "text-center p-3 font-medium min-w-[130px] transition-colors",
+                            "text-center p-2 md:p-3 font-medium min-w-[70px] md:min-w-[130px] transition-colors",
                             dayIsToday && "bg-primary/5"
                           )}
                         >
@@ -1217,8 +1217,8 @@ const Scheduling = () => {
                               idx % 2 === 0 && "bg-muted/10"
                             )}
                           >
-                            <td className="p-3 sticky left-0 bg-inherit backdrop-blur-sm z-10 border-r border-border/30">
-                              <div className="flex items-center gap-3 justify-between">
+                            <td className="p-1 md:p-3 sticky left-0 bg-inherit backdrop-blur-sm z-10 border-r border-border/30">
+                              <div className="hidden md:flex items-center gap-3 justify-between">
                                 <div className="flex items-center gap-3">
                                   <div className={cn(
                                     "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
@@ -1257,6 +1257,36 @@ const Scheduling = () => {
                                   <Edit className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
+                              {/* Mobile: compact avatar with tooltip */}
+                              <div className="flex md:hidden flex-col items-center py-1">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        onClick={() => handleEditEmployee(employee)}
+                                        className={cn(
+                                          "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
+                                          employee.is_active
+                                            ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
+                                            : "bg-muted text-muted-foreground"
+                                        )}
+                                        aria-label={`${employee.name}, ${employee.position}`}
+                                      >
+                                        {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="text-xs">
+                                      <div className="font-medium">{employee.name}</div>
+                                      <div className="text-muted-foreground">{employee.position}</div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
+                                  <span className="text-[10px] text-muted-foreground mt-0.5">
+                                    {hoursPerEmployee.get(employee.id)}h
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
@@ -1269,7 +1299,7 @@ const Scheduling = () => {
                                   isToday={dayIsToday}
                                   isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
                                 >
-                                  <div className="space-y-1.5 min-h-[60px]">
+                                  <div className="space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]">
                                     {dayShifts.map((shift) => (
                                       <DraggableShiftCard
                                         key={shift.id}

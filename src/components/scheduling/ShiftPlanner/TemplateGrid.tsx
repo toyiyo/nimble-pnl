@@ -40,7 +40,7 @@ export function TemplateGrid({
 }: Readonly<TemplateGridProps>) {
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
-      <div className="grid grid-cols-[200px_repeat(7,1fr)] min-w-[1000px]">
+      <div className="grid grid-cols-[56px_repeat(7,1fr)] md:grid-cols-[200px_repeat(7,1fr)] min-w-[560px] md:min-w-[1000px]">
         {/* Header row */}
         <div className="p-3 flex items-end">
           <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

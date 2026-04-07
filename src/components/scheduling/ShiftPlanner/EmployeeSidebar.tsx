@@ -52,6 +52,7 @@ export function countShiftsForEmployee(shifts: Shift[], employeeId: string): num
 export interface EmployeeSidebarProps {
   employees: Employee[];
   shifts: Shift[];
+  className?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ const DraggableEmployee = memo(
 // EmployeeSidebar
 // ---------------------------------------------------------------------------
 
-export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarProps>) {
+export function EmployeeSidebar({ employees, shifts, className }: Readonly<EmployeeSidebarProps>) {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('all');
 
@@ -154,7 +155,7 @@ export function EmployeeSidebar({ employees, shifts }: Readonly<EmployeeSidebarP
   );
 
   return (
-    <div className="w-[200px] border-l border-border/40 bg-background flex flex-col">
+    <div className={cn("w-[200px] border-l border-border/40 bg-background flex flex-col", className)}>
       {/* Sticky header */}
       <div className="p-3 space-y-2 border-b border-border/40">
         <h3 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

@@ -3,9 +3,10 @@ import { useState, useCallback, useMemo } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/core';
 
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { AlertCircle, CalendarOff, Users } from 'lucide-react';
+import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
 
 import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
@@ -15,6 +16,8 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
+
+import { cn } from '@/lib/utils';
 
 import { AssignmentPopover } from './AssignmentPopover';
 
@@ -84,6 +87,9 @@ export function ShiftPlannerTab({
     template: ShiftTemplate;
     day: string;
   } | null>(null);
+
+  // Mobile sidebar toggle
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
@@ -356,7 +362,7 @@ export function ShiftPlannerTab({
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex gap-0">
+        <div className="relative flex gap-0">
           <div className="flex-1 min-w-0 overflow-x-auto">
             {templates.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-border/40">
@@ -386,8 +392,53 @@ export function ShiftPlannerTab({
               />
             )}
           </div>
-          <EmployeeSidebar employees={employees} shifts={shifts} />
+
+          {/* Desktop: inline sidebar */}
+          <div className="hidden md:block">
+            <EmployeeSidebar employees={employees} shifts={shifts} />
+          </div>
+
+          {/* Mobile: slide-in sidebar panel */}
+          {mobileSidebarOpen && (
+            <div
+              className="md:hidden fixed inset-0 z-40 bg-black/20"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-hidden="true"
+            />
+          )}
+          <div
+            className={cn(
+              'md:hidden fixed top-0 right-0 bottom-0 z-50 w-[260px] bg-background border-l border-border/40 shadow-xl transition-transform duration-200 ease-out',
+              mobileSidebarOpen ? 'translate-x-0' : 'translate-x-full',
+            )}
+          >
+            <div className="flex items-center justify-between p-3 border-b border-border/40">
+              <h3 className="text-[13px] font-semibold text-foreground">Team</h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setMobileSidebarOpen(false)}
+                aria-label="Close employee panel"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" />
+          </div>
         </div>
+
+        {/* Mobile: floating Team button */}
+        {!mobileSidebarOpen && (
+          <Button
+            className="md:hidden fixed bottom-20 right-4 z-30 h-12 w-12 rounded-full shadow-lg bg-foreground text-background hover:bg-foreground/90"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label="Show team members"
+          >
+            <Users className="h-5 w-5" />
+          </Button>
+        )}
+
         <DragOverlay dropAnimation={null}>
           {activeDragEmployee ? (
             <DragOverlayChip name={activeDragEmployee.name} />

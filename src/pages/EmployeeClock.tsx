@@ -10,7 +10,8 @@ import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTime
 import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, Shield, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { collectPunchContext } from '@/utils/punchContext';
+import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
+import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -20,6 +21,7 @@ const EmployeeClock = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | 'break_start' | 'break_end' | null>(null);
+  const [pendingGeofenceResult, setPendingGeofenceResult] = useState<{ distanceMeters?: number; within?: boolean } | undefined>(undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
@@ -30,6 +32,7 @@ const EmployeeClock = () => {
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
   const createPunch = useCreateTimePunch();
   const { punches } = useTimePunches(restaurantId, employee?.id || undefined, new Date(new Date().setHours(0, 0, 0, 0)));
+  const { checkLocation, checking: geofenceChecking } = useGeofenceCheck(selectedRestaurant?.restaurant ?? null);
 
   // Update current time every second
   useEffect(() => {
@@ -99,6 +102,29 @@ const EmployeeClock = () => {
   };
 
   const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+    // Run geofence check before allowing clock-in
+    if (punchType === 'clock_in') {
+      const geofenceResult = await checkLocation();
+      if (geofenceResult.action === 'block') {
+        toast({
+          title: 'Location Required',
+          description: 'You must be at the restaurant to clock in.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (geofenceResult.action === 'warn') {
+        toast({
+          title: 'Location Warning',
+          description: 'You appear to be away from the restaurant.',
+          variant: 'default',
+        });
+      }
+      setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+    } else {
+      setPendingGeofenceResult(undefined);
+    }
+
     setPendingPunchType(punchType);
     setShowCameraDialog(true);
     setCapturedPhoto(null);
@@ -113,9 +139,11 @@ const EmployeeClock = () => {
     setShowCameraDialog(false);
     const photoToProcess = capturedPhoto;
     const punchType = pendingPunchType;
-    
+    const geofenceResult = pendingGeofenceResult;
+
     setPendingPunchType(null);
     setCapturedPhoto(null);
+    setPendingGeofenceResult(undefined);
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
@@ -144,7 +172,7 @@ const EmployeeClock = () => {
         employee_id: employee.id,
         punch_type: punchType,
         punch_time: new Date().toISOString(),
-        location: context?.location,
+        location: mergePunchLocation(context?.location, geofenceResult),
         device_info: context?.device_info,
         photoBlob,
       });
@@ -280,7 +308,7 @@ const EmployeeClock = () => {
                 size="lg"
                 className="h-24 text-xl"
                 onClick={() => handleInitiatePunch('clock_in')}
-                disabled={createPunch.isPending}
+                disabled={createPunch.isPending || geofenceChecking}
               >
                 <LogIn className="mr-2 h-6 w-6" />
                 Clock In

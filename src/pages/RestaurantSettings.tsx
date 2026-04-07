@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { COGSPreferenceSettings } from '@/components/settings/COGSPreferenceSettings';
+import { GeofenceSettings } from '@/components/settings/GeofenceSettings';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 
 export default function RestaurantSettings() {
@@ -52,6 +53,7 @@ export default function RestaurantSettings() {
   const [cuisineType, setCuisineType] = useState('');
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [saving, setSaving] = useState(false);
+  const [geofenceSaving, setGeofenceSaving] = useState(false);
 
   // Business info state
   const [legalName, setLegalName] = useState('');
@@ -338,6 +340,28 @@ export default function RestaurantSettings() {
       toast({ title: 'Labor planning saved', description: 'Staffing settings have been updated.' });
     } catch (err) {
       toast({ title: 'Failed to save', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    }
+  };
+
+  const handleSaveGeofence = async (values: {
+    latitude: number | null;
+    longitude: number | null;
+    geofence_radius_meters: number;
+    geofence_enforcement: string;
+  }) => {
+    if (!selectedRestaurant) return;
+    setGeofenceSaving(true);
+    try {
+      const { error } = await supabase
+        .from('restaurants')
+        .update(values)
+        .eq('id', selectedRestaurant.restaurant_id);
+      if (error) throw error;
+      toast({ title: 'Geofence settings saved', description: 'Clock-in location enforcement has been updated.' });
+    } catch (err) {
+      toast({ title: 'Failed to save geofence settings', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    } finally {
+      setGeofenceSaving(false);
     }
   };
 
@@ -641,6 +665,17 @@ export default function RestaurantSettings() {
                 <div role="status" aria-live="polite" className="sr-only">
                   Saving restaurant settings...
                 </div>
+              )}
+
+              {canEdit && (
+                <GeofenceSettings
+                  latitude={selectedRestaurant.restaurant.latitude ?? null}
+                  longitude={selectedRestaurant.restaurant.longitude ?? null}
+                  radiusMeters={selectedRestaurant.restaurant.geofence_radius_meters ?? 100}
+                  enforcement={selectedRestaurant.restaurant.geofence_enforcement ?? 'off'}
+                  onSave={handleSaveGeofence}
+                  saving={geofenceSaving}
+                />
               )}
             </CardContent>
           </Card>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -10,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Settings, Zap, Clock, CheckCircle } from 'lucide-react';
 
 export function AutoDeductionSettings() {
+  const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { setupAutoDeduction, autoDeductionEnabled, setAutoDeductionEnabled } = useAutomaticInventoryDeduction();
@@ -174,9 +176,9 @@ export function AutoDeductionSettings() {
             >
               {isProcessing ? 'Processing...' : 'Process Pending Sales'}
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => window.open('/pos-sales', '_blank')}
+            <Button
+              variant="outline"
+              onClick={() => navigate('/pos-sales')}
             >
               View POS Sales
             </Button>

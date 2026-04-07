@@ -143,6 +143,7 @@ export default function Banking() {
     totalBalance,
     bankCount,
     accountCount,
+    refreshBanks,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
 
   const { recalculateBankBalance } = useBankStatementImport();
@@ -169,7 +170,7 @@ export default function Banking() {
               try {
                 await recalculateBankBalance(bank.id);
                 // Refresh the banks list to show updated balance
-                window.location.reload();
+                refreshBanks();
               } catch (error) {
                 console.error('Error recalculating balance:', error);
               }

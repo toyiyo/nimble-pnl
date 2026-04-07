@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Package, Plus, ExternalLink } from 'lucide-react';
 import { ProductLookupResult } from '@/services/productLookupService';
 import { CreateProductData } from '@/hooks/useProducts';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 interface ProductCardProps {
   product?: ProductLookupResult | null;
@@ -178,7 +180,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <Button
               variant="outline"
               size="icon"
-              onClick={() => window.open(`https://world.openfoodfacts.org/product/${product.gtin}`, '_blank')}
+              onClick={() => {
+                const url = `https://world.openfoodfacts.org/product/${product.gtin}`;
+                if (Capacitor.isNativePlatform()) {
+                  Browser.open({ url });
+                } else {
+                  window.open(url, '_blank');
+                }
+              }}
             >
               <ExternalLink className="h-4 w-4" />
             </Button>

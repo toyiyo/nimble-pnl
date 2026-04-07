@@ -39,6 +39,8 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 
 const statusConfig = {
   draft: { icon: FileText, color: "bg-muted text-muted-foreground", label: "Draft" },
@@ -170,15 +172,23 @@ export default function InvoiceDetail() {
     window.open(`https://wa.me/?text=${message}`, '_blank');
   };
 
-  const handleViewHostedInvoice = () => {
+  const handleViewHostedInvoice = async () => {
     if (invoice.hosted_invoice_url) {
-      window.open(invoice.hosted_invoice_url, '_blank');
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({ url: invoice.hosted_invoice_url });
+      } else {
+        window.open(invoice.hosted_invoice_url, '_blank');
+      }
     }
   };
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     if (invoice.invoice_pdf_url) {
-      window.open(invoice.invoice_pdf_url, '_blank');
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({ url: invoice.invoice_pdf_url });
+      } else {
+        window.open(invoice.invoice_pdf_url, '_blank');
+      }
     }
   };
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { Capacitor } from '@capacitor/core';
 
 interface AuthContextType {
   user: User | null;
@@ -153,8 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
       setLoading(true);
-      const redirectUrl = `${window.location.origin}/`;
-      
+      const redirectUrl = Capacitor.isNativePlatform()
+        ? 'https://app.easyshifthq.com/'
+        : `${window.location.origin}/`;
+
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -212,7 +215,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = async (email: string) => {
     try {
-      const redirectUrl = `${window.location.origin}/reset-password`;
+      const redirectUrl = Capacitor.isNativePlatform()
+        ? 'https://app.easyshifthq.com/reset-password'
+        : `${window.location.origin}/reset-password`;
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: redirectUrl,
       });

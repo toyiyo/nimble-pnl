@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,7 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 });
 
 const Index = () => {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { isCollaborator, landingPath } = usePermissions();
@@ -607,7 +609,10 @@ const Index = () => {
                 <DataInputDialog
                   restaurantId={selectedRestaurant.restaurant_id}
                   onDataUpdated={() => {
-                    window.location.reload();
+                    queryClient.invalidateQueries({ queryKey: ['revenue-breakdown'] });
+                    queryClient.invalidateQueries({ queryKey: ['monthly-metrics'] });
+                    queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+                    queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
                   }}
                   className="w-full sm:w-auto"
                 />

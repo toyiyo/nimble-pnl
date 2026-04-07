@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 
 interface SSOProviderButtonsProps {
   onSuccess?: () => void;
@@ -14,16 +15,7 @@ export const SSOProviderButtons = ({ onSuccess }: SSOProviderButtonsProps) => {
   const handleOAuthSignIn = async (provider: 'google' | 'github' | 'azure' | 'linkedin_oidc') => {
     setLoading(provider);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        }
-      });
+      const { error } = await signInWithOAuthNative(provider, '/');
 
       if (error) {
         throw error;

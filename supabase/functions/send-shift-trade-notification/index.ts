@@ -326,11 +326,13 @@ const handler = async (req: Request): Promise<Response> => {
         ),
         offered_by:employees!offered_by_employee_id(
           name,
-          email
+          email,
+          user_id
         ),
         accepted_by:employees!accepted_by_employee_id(
           name,
-          email
+          email,
+          user_id
         ),
         restaurant:restaurants(
           name
@@ -410,6 +412,45 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+
+    // Send push notifications to the relevant employees based on action
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const pushUserIds: string[] = [];
+
+    if (action === 'created') {
+      // No targeted push for broadcast — skip (would notify all employees)
+    } else if (action === 'accepted') {
+      // Notify the employee who offered the shift
+      if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
+    } else if (action === 'approved' || action === 'rejected') {
+      // Notify both involved employees
+      if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
+      if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
+    } else if (action === 'cancelled') {
+      // Notify the employee who had accepted
+      if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
+    }
+
+    for (const userId of [...new Set(pushUserIds)]) {
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            title: 'Shift Trade Request',
+            body: 'Someone wants to trade a shift with you',
+            data: { route: '/employee/shifts' },
+          }),
+        });
+      } catch (e) {
+        console.error('Push notification failed:', e);
+      }
+    }
 
     return new Response(
       JSON.stringify({ success: true, emailId: emailData?.id, recipients }),

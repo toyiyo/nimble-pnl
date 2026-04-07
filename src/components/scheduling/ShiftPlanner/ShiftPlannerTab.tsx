@@ -11,6 +11,7 @@ import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
 import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
 import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
@@ -40,6 +41,7 @@ export function ShiftPlannerTab({
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
+  const isMobile = useIsMobile();
 
   const {
     weekStart,
@@ -116,6 +118,8 @@ export function ShiftPlannerTab({
     const employee = event.active.data.current?.employee;
     if (employee) {
       setActiveDragEmployee({ id: employee.id, name: employee.name });
+      // Auto-close mobile sidebar so the grid is visible for dropping
+      setMobileSidebarOpen(false);
     }
   }, []);
 
@@ -394,44 +398,48 @@ export function ShiftPlannerTab({
           </div>
 
           {/* Desktop: inline sidebar */}
-          <div className="hidden md:block">
+          {!isMobile && (
             <EmployeeSidebar employees={employees} shifts={shifts} />
-          </div>
-
-          {/* Mobile: slide-in sidebar panel */}
-          {mobileSidebarOpen && (
-            <div
-              className="md:hidden fixed inset-0 z-40 bg-black/20"
-              onClick={() => setMobileSidebarOpen(false)}
-              aria-hidden="true"
-            />
           )}
-          <div
-            className={cn(
-              'md:hidden fixed top-0 right-0 bottom-0 z-50 w-[260px] bg-background border-l border-border/40 shadow-xl transition-transform duration-200 ease-out',
-              mobileSidebarOpen ? 'translate-x-0' : 'translate-x-full',
-            )}
-          >
-            <div className="flex items-center justify-between p-3 border-b border-border/40">
-              <h3 className="text-[13px] font-semibold text-foreground">Team</h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setMobileSidebarOpen(false)}
-                aria-label="Close employee panel"
+
+          {/* Mobile: slide-in sidebar panel (single instance to avoid duplicate dnd IDs) */}
+          {isMobile && (
+            <>
+              {mobileSidebarOpen && (
+                <div
+                  className="fixed inset-0 z-40 bg-black/20"
+                  onClick={() => setMobileSidebarOpen(false)}
+                  aria-hidden="true"
+                />
+              )}
+              <div
+                className={cn(
+                  'fixed top-0 right-0 bottom-0 z-50 w-[260px] bg-background border-l border-border/40 shadow-xl transition-transform duration-200 ease-out',
+                  mobileSidebarOpen ? 'translate-x-0' : 'translate-x-full',
+                )}
               >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" />
-          </div>
+                <div className="flex items-center justify-between p-3 border-b border-border/40">
+                  <h3 className="text-[13px] font-semibold text-foreground">Team</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    aria-label="Close employee panel"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Mobile: floating Team button */}
-        {!mobileSidebarOpen && (
+        {isMobile && !mobileSidebarOpen && (
           <Button
-            className="md:hidden fixed bottom-20 right-4 z-30 h-12 w-12 rounded-full shadow-lg bg-foreground text-background hover:bg-foreground/90"
+            className="fixed bottom-20 right-4 z-30 h-12 w-12 rounded-full shadow-lg bg-foreground text-background hover:bg-foreground/90"
             onClick={() => setMobileSidebarOpen(true)}
             aria-label="Show team members"
           >

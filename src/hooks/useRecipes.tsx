@@ -473,12 +473,14 @@ export const useRecipes = (restaurantId: string | null) => {
 
   useEffect(() => {
     fetchRecipes();
-    
+  }, [fetchRecipes]);
+
+  useEffect(() => {
     if (!restaurantId) return;
-    
+
     // Set up real-time subscription for recipe updates
     const channel = supabase
-      .channel('recipe-changes')
+      .channel(`recipe-changes:${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -488,7 +490,6 @@ export const useRecipes = (restaurantId: string | null) => {
           filter: `restaurant_id=eq.${restaurantId}`
         },
         () => {
-          // Refetch recipes when any recipe is updated
           fetchRecipes();
         }
       )
@@ -497,7 +498,7 @@ export const useRecipes = (restaurantId: string | null) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchRecipes, restaurantId]);
+  }, [restaurantId]);
 
   return {
     recipes,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -471,14 +471,20 @@ export const useRecipes = (restaurantId: string | null) => {
     }
   };
 
+  // Ref so the realtime callback always calls the latest fetchRecipes
+  const fetchRecipesRef = useRef(fetchRecipes);
+  fetchRecipesRef.current = fetchRecipes;
+
   useEffect(() => {
     fetchRecipes();
-    
+  }, [fetchRecipes]);
+
+  useEffect(() => {
     if (!restaurantId) return;
-    
+
     // Set up real-time subscription for recipe updates
     const channel = supabase
-      .channel('recipe-changes')
+      .channel(`recipe-changes:${restaurantId}`)
       .on(
         'postgres_changes',
         {
@@ -488,8 +494,7 @@ export const useRecipes = (restaurantId: string | null) => {
           filter: `restaurant_id=eq.${restaurantId}`
         },
         () => {
-          // Refetch recipes when any recipe is updated
-          fetchRecipes();
+          fetchRecipesRef.current();
         }
       )
       .subscribe();
@@ -497,7 +502,7 @@ export const useRecipes = (restaurantId: string | null) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchRecipes, restaurantId]);
+  }, [restaurantId]);
 
   return {
     recipes,

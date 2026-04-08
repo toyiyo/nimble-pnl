@@ -418,7 +418,7 @@ export function IncomeStatement({ restaurantId, dateFrom, dateTo }: IncomeStatem
     .filter(a => a.account_subtype === 'depreciation')
     .reduce((sum, acc) => sum + acc.current_balance, 0);
   const amortizationTotal = fixedAccounts
-    .filter(a => a.account_subtype === 'amortization')
+    .filter(a => (a.account_subtype as string) === 'amortization')
     .reduce((sum, acc) => sum + acc.current_balance, 0);
   const depAndAmort = depreciationTotal + amortizationTotal;
   const ebitda = depAndAmort > 0 ? operatingIncome + depAndAmort : null;

@@ -24,7 +24,7 @@ export function useSchedulePlanTemplates(restaurantId: string | null) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as SchedulePlanTemplate[];
+      return data as unknown as SchedulePlanTemplate[];
     },
     enabled: !!restaurantId,
     staleTime: 30000,

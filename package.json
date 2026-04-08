@@ -12,6 +12,7 @@
     "build:mobile": "mv .env.local .env.local.bak 2>/dev/null; npm run build; EXIT=$?; mv .env.local.bak .env.local 2>/dev/null; [ $EXIT -eq 0 ] && npx cap sync",
     "build:ios": "npm run build:mobile && npx cap open ios",
     "build:android": "npm run build:mobile && npx cap open android",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

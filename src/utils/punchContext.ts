@@ -1,21 +1,24 @@
 export interface PunchLocation {
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   distance_meters?: number;
   within_geofence?: boolean;
+  location_unavailable?: boolean;
 }
 
 export function mergePunchLocation(
   baseLocation: { latitude: number; longitude: number } | undefined,
-  geofenceResult?: { distanceMeters?: number; within?: boolean }
+  geofenceResult?: { distanceMeters?: number; within?: boolean },
+  locationUnavailable?: boolean
 ): PunchLocation | undefined {
-  if (!baseLocation) return undefined;
+  if (!baseLocation && !locationUnavailable) return undefined;
   return {
     ...baseLocation,
     ...(geofenceResult?.distanceMeters != null && {
       distance_meters: geofenceResult.distanceMeters,
       within_geofence: geofenceResult.within,
     }),
+    ...(locationUnavailable && { location_unavailable: true }),
   };
 }
 

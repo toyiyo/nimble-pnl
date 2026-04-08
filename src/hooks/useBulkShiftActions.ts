@@ -58,7 +58,8 @@ export function useBulkShiftActions(restaurantId: string) {
       const { error } = await supabase
         .from('shifts')
         .delete()
-        .in('id', unlockedIds);
+        .in('id', unlockedIds)
+        .eq('locked', false);
 
       if (error) throw error;
 
@@ -91,7 +92,8 @@ export function useBulkShiftActions(restaurantId: string) {
       const { error } = await supabase
         .from('shifts')
         .update(changes)
-        .in('id', unlockedIds);
+        .in('id', unlockedIds)
+        .eq('locked', false);
 
       if (error) throw error;
 

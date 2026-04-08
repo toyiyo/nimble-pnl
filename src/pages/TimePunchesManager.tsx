@@ -506,7 +506,9 @@ const TimePunchesManager = () => {
         format(punchDate, 'yyyy-MM-dd'),
         format(punchDate, 'HH:mm:ss'),
         punch.notes?.replace(/"/g, '""') || '',
-        punch.location ? `${punch.location.latitude},${punch.location.longitude}` : '',
+        punch.location?.latitude != null && punch.location?.longitude != null
+          ? `${punch.location.latitude},${punch.location.longitude}`
+          : punch.location?.location_unavailable ? 'unavailable' : '',
       ];
     });
 
@@ -828,7 +830,7 @@ const TimePunchesManager = () => {
                                     </Badge>
                                   </TooltipTrigger>
                                   <TooltipContent>
-                                    <p>Clocked in {punch.location.distance_meters}m from restaurant</p>
+                                    <p>Clocked in {punch.location.distance_meters ?? '?'}m from restaurant</p>
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
@@ -1134,7 +1136,7 @@ const TimePunchesManager = () => {
                       {viewingPunch.location.within_geofence === false && (
                         <p className="text-sm text-amber-600 flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5" />
-                          {viewingPunch.location.distance_meters}m from restaurant
+                          {viewingPunch.location.distance_meters ?? '?'}m from restaurant
                         </p>
                       )}
                     </>

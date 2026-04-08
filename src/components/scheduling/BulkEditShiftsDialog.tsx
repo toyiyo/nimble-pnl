@@ -39,9 +39,9 @@ export function BulkEditShiftsDialog({
   isUpdating,
   positions,
 }: BulkEditShiftsDialogProps) {
-  const [startTime, setStartTime] = useState(NO_CHANGE);
-  const [endTime, setEndTime] = useState(NO_CHANGE);
-  const [position, setPosition] = useState(NO_CHANGE);
+  const [startTime, setStartTime] = useState<string>(NO_CHANGE);
+  const [endTime, setEndTime] = useState<string>(NO_CHANGE);
+  const [position, setPosition] = useState<string>(NO_CHANGE);
 
   const hasChanges = startTime !== NO_CHANGE || endTime !== NO_CHANGE || position !== NO_CHANGE;
 

@@ -264,7 +264,7 @@ describe('useDeleteShiftSeries', () => {
       );
     });
 
-    it('should throw error when trying to delete locked shift with scope "this"', async () => {
+    it('should allow deleting locked shift with scope "this"', async () => {
       setupMockForScope('this');
 
       const { Wrapper } = createWrapper();
@@ -274,19 +274,14 @@ describe('useDeleteShiftSeries', () => {
 
       const lockedShift = createMockShift({ id: 'locked-shift', locked: true });
 
-      await expect(
-        result.current.mutateAsync({
-          shift: lockedShift,
-          scope: 'this',
-          restaurantId: 'rest-123',
-        })
-      ).rejects.toThrow('Cannot delete a locked shift');
+      const outcome = await result.current.mutateAsync({
+        shift: lockedShift,
+        scope: 'this',
+        restaurantId: 'rest-123',
+      });
 
-      expect(mockToast).toHaveBeenCalledWith(
-        expect.objectContaining({
-          variant: 'destructive',
-        })
-      );
+      expect(outcome.deletedCount).toBe(1);
+      expect(outcome.lockedCount).toBe(0);
     });
   });
 

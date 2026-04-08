@@ -42,6 +42,18 @@ interface ScopeOptionProps {
   seriesCount: number;
 }
 
+function getLockedWarning(lockedCount: number, isDelete: boolean): string {
+  const plural = lockedCount > 1;
+  if (isDelete) {
+    const subject = plural ? `${lockedCount} shifts have` : `${lockedCount} shift has`;
+    const pronoun = plural ? 'them' : 'it';
+    const they = plural ? 'They' : 'It';
+    return `${subject} been published and employees may have already seen ${pronoun}. ${they} will also be deleted.`;
+  }
+  const verb = plural ? `${lockedCount} shifts are` : `${lockedCount} shift is`;
+  return `${verb} part of a published schedule and will not be modified.`;
+}
+
 function ScopeOption({ value, label, shift, seriesCount }: ScopeOptionProps): React.ReactElement {
   const id = `scope-${value}`;
 
@@ -123,8 +135,7 @@ export function RecurringShiftActionDialog({
             <Alert variant="default" className="mb-4 border-warning/50 bg-warning/10">
               <AlertTriangle className="h-4 w-4 text-warning" />
               <AlertDescription className="text-sm">
-                {lockedCount} shift{lockedCount > 1 ? 's are' : ' is'} part of a published schedule
-                and will not be {isDelete ? 'deleted' : 'modified'}.
+                {getLockedWarning(lockedCount, isDelete)}
               </AlertDescription>
             </Alert>
           )}

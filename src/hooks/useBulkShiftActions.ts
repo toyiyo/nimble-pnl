@@ -45,34 +45,24 @@ export function useBulkShiftActions(restaurantId: string) {
 
   const bulkDelete = useCallback(
     async (shiftIds: string[]): Promise<BulkDeleteResult> => {
-      const { unlockedIds, lockedCount } = await partitionByLocked(shiftIds, restaurantId);
-
-      if (unlockedIds.length === 0) {
-        toast({
-          title: 'No shifts deleted',
-          description: buildShiftChangeDescription(0, lockedCount, 'deleted'),
-        });
-        return { deletedCount: 0, lockedCount };
-      }
-
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('shifts')
-        .delete()
-        .in('id', unlockedIds)
-        .eq('locked', false);
+        .delete({ count: 'exact' })
+        .in('id', shiftIds)
+        .eq('restaurant_id', restaurantId);
 
       if (error) throw error;
 
-      const deletedCount = unlockedIds.length;
+      const deletedCount = count ?? shiftIds.length;
 
       queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
 
       toast({
         title: 'Shifts deleted',
-        description: buildShiftChangeDescription(deletedCount, lockedCount, 'deleted'),
+        description: `${deletedCount} ${deletedCount === 1 ? 'shift' : 'shifts'} deleted.`,
       });
 
-      return { deletedCount, lockedCount };
+      return { deletedCount, lockedCount: 0 };
     },
     [restaurantId, queryClient, toast],
   );

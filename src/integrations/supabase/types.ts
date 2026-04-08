@@ -2076,6 +2076,44 @@ export type Database = {
           },
         ]
       }
+      device_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          platform: string
+          restaurant_id: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          platform: string
+          restaurant_id: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          platform?: string
+          restaurant_id?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_tokens_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employee_availability: {
         Row: {
           created_at: string | null
@@ -2426,6 +2464,7 @@ export type Database = {
       employees: {
         Row: {
           allocate_daily: boolean | null
+          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -2463,6 +2502,7 @@ export type Database = {
         }
         Insert: {
           allocate_daily?: boolean | null
+          area?: string | null
           compensation_type?: string
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
@@ -2500,6 +2540,7 @@ export type Database = {
         }
         Update: {
           allocate_daily?: boolean | null
+          area?: string | null
           compensation_type?: string
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
@@ -5205,9 +5246,13 @@ export type Database = {
           cuisine_type: string | null
           ein: string | null
           entity_type: string | null
+          geofence_enforcement: string
+          geofence_radius_meters: number
           grandfathered_until: string | null
           id: string
+          latitude: number | null
           legal_name: string | null
+          longitude: number | null
           name: string
           phone: string | null
           state: string | null
@@ -5236,9 +5281,13 @@ export type Database = {
           cuisine_type?: string | null
           ein?: string | null
           entity_type?: string | null
+          geofence_enforcement?: string
+          geofence_radius_meters?: number
           grandfathered_until?: string | null
           id?: string
+          latitude?: number | null
           legal_name?: string | null
+          longitude?: number | null
           name: string
           phone?: string | null
           state?: string | null
@@ -5267,9 +5316,13 @@ export type Database = {
           cuisine_type?: string | null
           ein?: string | null
           entity_type?: string | null
+          geofence_enforcement?: string
+          geofence_radius_meters?: number
           grandfathered_until?: string | null
           id?: string
+          latitude?: number | null
           legal_name?: string | null
+          longitude?: number | null
           name?: string
           phone?: string | null
           state?: string | null
@@ -9307,6 +9360,7 @@ export type Database = {
         }
         Returns: {
           allocate_daily: boolean | null
+          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -9360,6 +9414,7 @@ export type Database = {
       delete_shift_series: {
         Args: {
           p_from_time?: string
+          p_include_locked?: boolean
           p_parent_id: string
           p_restaurant_id: string
           p_scope: string
@@ -9735,6 +9790,7 @@ export type Database = {
         }
         Returns: {
           allocate_daily: boolean | null
+          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null

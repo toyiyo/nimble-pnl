@@ -216,6 +216,110 @@ describe('useGeofenceCheck hook – web geolocation', () => {
     expect(geofenceResult?.action).toBe('allow');
     expect(geofenceResult?.checked).toBe(false);
     expect(result.current.checking).toBe(false);
+    expect(geofenceResult?.locationUnavailable).toBe(true);
+  });
+
+  it('returns locationUnavailable=true when geolocation throws and enforcement is warn', async () => {
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn().mockImplementation((_res, reject) => {
+          reject(new Error('permission denied'));
+        }),
+      },
+    });
+
+    const restaurant = {
+      latitude: 40.7128,
+      longitude: -74.006,
+      geofence_radius_meters: 200,
+      geofence_enforcement: 'warn' as const,
+    };
+
+    const { result } = renderHook(() => useGeofenceCheck(restaurant));
+    let geofenceResult: Awaited<ReturnType<typeof result.current.checkLocation>> | undefined;
+
+    await act(async () => {
+      geofenceResult = await result.current.checkLocation();
+    });
+
+    expect(geofenceResult?.action).toBe('allow');
+    expect(geofenceResult?.checked).toBe(false);
+    expect(geofenceResult?.locationUnavailable).toBe(true);
+  });
+
+  it('returns locationUnavailable=true when geolocation throws and enforcement is block', async () => {
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn().mockImplementation((_res, reject) => {
+          reject(new Error('location services disabled'));
+        }),
+      },
+    });
+
+    const restaurant = {
+      latitude: 40.7128,
+      longitude: -74.006,
+      geofence_radius_meters: 200,
+      geofence_enforcement: 'block' as const,
+    };
+
+    const { result } = renderHook(() => useGeofenceCheck(restaurant));
+    let geofenceResult: Awaited<ReturnType<typeof result.current.checkLocation>> | undefined;
+
+    await act(async () => {
+      geofenceResult = await result.current.checkLocation();
+    });
+
+    expect(geofenceResult?.action).toBe('allow');
+    expect(geofenceResult?.checked).toBe(false);
+    expect(geofenceResult?.locationUnavailable).toBe(true);
+  });
+
+  it('does NOT set locationUnavailable when enforcement is off', async () => {
+    const restaurant = {
+      latitude: 40.7128,
+      longitude: -74.006,
+      geofence_radius_meters: 200,
+      geofence_enforcement: 'off' as const,
+    };
+
+    const { result } = renderHook(() => useGeofenceCheck(restaurant));
+    let geofenceResult: Awaited<ReturnType<typeof result.current.checkLocation>> | undefined;
+
+    await act(async () => {
+      geofenceResult = await result.current.checkLocation();
+    });
+
+    expect(geofenceResult?.locationUnavailable).toBeUndefined();
+  });
+
+  it('does NOT set locationUnavailable when geolocation succeeds', async () => {
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: vi.fn().mockImplementation((resolve) => {
+          resolve({ coords: { latitude: 40.7129, longitude: -74.0061 } });
+        }),
+      },
+    });
+
+    const restaurant = {
+      latitude: 40.7128,
+      longitude: -74.006,
+      geofence_radius_meters: 500,
+      geofence_enforcement: 'warn' as const,
+    };
+
+    const { result } = renderHook(() => useGeofenceCheck(restaurant));
+    let geofenceResult: Awaited<ReturnType<typeof result.current.checkLocation>> | undefined;
+
+    await act(async () => {
+      geofenceResult = await result.current.checkLocation();
+    });
+
+    expect(geofenceResult?.locationUnavailable).toBeUndefined();
   });
 });
 

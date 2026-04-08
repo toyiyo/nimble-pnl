@@ -13,11 +13,12 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  Trash2, Edit, Download, Search, Camera, MapPin, Eye,
+import {
+  Trash2, Edit, Download, Search, Camera, MapPin, MapPinOff, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
   LayoutGrid, List, Code, KeyRound, PenLine, Settings2
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
   addDays, addWeeks, addMonths, isSameDay, differenceInMinutes,
@@ -505,7 +506,9 @@ const TimePunchesManager = () => {
         format(punchDate, 'yyyy-MM-dd'),
         format(punchDate, 'HH:mm:ss'),
         punch.notes?.replace(/"/g, '""') || '',
-        punch.location ? `${punch.location.latitude},${punch.location.longitude}` : '',
+        punch.location?.latitude != null && punch.location?.longitude != null
+          ? `${punch.location.latitude},${punch.location.longitude}`
+          : punch.location?.location_unavailable ? 'unavailable' : '',
       ];
     });
 
@@ -805,9 +808,37 @@ const TimePunchesManager = () => {
                             </Badge>
                           )}
                           {punch.location && (
-                            <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
-                              <MapPin className="h-3 w-3" />
-                            </Badge>
+                            punch.location.location_unavailable ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="outline" className="text-xs bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20">
+                                      <MapPinOff className="h-3 w-3" />
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Location was unavailable at clock-in</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : punch.location.within_geofence === false ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                                      <MapPin className="h-3 w-3" />
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Clocked in {punch.location.distance_meters ?? '?'}m from restaurant</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
+                                <MapPin className="h-3 w-3" />
+                              </Badge>
+                            )
                           )}
                         </div>
                       </div>
@@ -1078,25 +1109,38 @@ const TimePunchesManager = () => {
               )}
 
               {viewingPunch.location && (
-                <div>
-                  <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <MapPin className="h-4 w-4" />
-                    Location
-                  </div>
-                  <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
-                    <div className="text-sm font-mono">
-                      {viewingPunch.location.latitude.toFixed(6)}, {viewingPunch.location.longitude.toFixed(6)}
-                    </div>
-                    <a
-                      href={`https://www.google.com/maps?q=${viewingPunch.location.latitude},${viewingPunch.location.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline text-sm inline-flex items-center gap-1"
-                    >
-                      <MapPin className="h-3 w-3" />
-                      View on Google Maps
-                    </a>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Location</p>
+                  {viewingPunch.location.location_unavailable ? (
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <MapPinOff className="h-3.5 w-3.5 text-gray-500" />
+                      Location was unavailable
+                    </p>
+                  ) : (
+                    <>
+                      {viewingPunch.location.latitude != null && viewingPunch.location.longitude != null && (
+                        <>
+                          <p className="text-sm text-muted-foreground">
+                            {viewingPunch.location.latitude.toFixed(6)}, {viewingPunch.location.longitude.toFixed(6)}
+                          </p>
+                          <a
+                            href={`https://www.google.com/maps?q=${viewingPunch.location.latitude},${viewingPunch.location.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline"
+                          >
+                            View on map
+                          </a>
+                        </>
+                      )}
+                      {viewingPunch.location.within_geofence === false && (
+                        <p className="text-sm text-amber-600 flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {viewingPunch.location.distance_meters ?? '?'}m from restaurant
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 

@@ -50,6 +50,39 @@ describe('mergePunchLocation', () => {
     expect(result?.latitude).toBe(0);
     expect(result?.longitude).toBe(0);
   });
+
+  it('returns location_unavailable when locationUnavailable flag is set', () => {
+    const result = mergePunchLocation(undefined, undefined, true);
+    expect(result).toEqual({ location_unavailable: true });
+  });
+
+  it('includes location_unavailable alongside coordinates when both exist', () => {
+    const result = mergePunchLocation(
+      { latitude: 40.7, longitude: -74.0 },
+      undefined,
+      true
+    );
+    expect(result).toEqual({
+      latitude: 40.7,
+      longitude: -74.0,
+      location_unavailable: true,
+    });
+  });
+
+  it('does not include location_unavailable when flag is false', () => {
+    const result = mergePunchLocation(
+      { latitude: 40.7, longitude: -74.0 },
+      { distanceMeters: 50, within: true },
+      false
+    );
+    expect(result).toEqual({
+      latitude: 40.7,
+      longitude: -74.0,
+      distance_meters: 50,
+      within_geofence: true,
+    });
+    expect(result).not.toHaveProperty('location_unavailable');
+  });
 });
 
 describe('getDeviceInfo', () => {

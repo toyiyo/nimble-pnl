@@ -13,6 +13,7 @@ interface GeofenceResult {
   distanceMeters?: number;
   userLat?: number;
   userLng?: number;
+  locationUnavailable?: boolean;
 }
 
 /** Pure, testable geofence evaluation */
@@ -70,7 +71,7 @@ export function useGeofenceCheck(restaurant: {
 
       return evaluateGeofence(enforcement, lat, lng, radius, pos.coords.latitude, pos.coords.longitude);
     } catch {
-      return { action: 'allow', checked: false };
+      return { action: 'allow', checked: false, locationUnavailable: true };
     } finally {
       setChecking(false);
     }

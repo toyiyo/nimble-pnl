@@ -57,7 +57,7 @@ export function useBulkShiftActions(restaurantId: string) {
 
       toast({
         title: 'Shifts deleted',
-        description: `${shiftIds.length} shift${shiftIds.length !== 1 ? 's' : ''} deleted.`,
+        description: `${shiftIds.length} ${shiftIds.length === 1 ? 'shift' : 'shifts'} deleted.`,
       });
 
       return { deletedCount: shiftIds.length, lockedCount: 0 };

@@ -77,7 +77,7 @@ export function BulkEditShiftsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+      <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">

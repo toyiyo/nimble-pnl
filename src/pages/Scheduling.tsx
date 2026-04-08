@@ -1095,7 +1095,8 @@ const Scheduling = () => {
                   <Button
                     size="sm"
                     onClick={exitSelectionMode}
-                    className="h-9 text-xs"
+                    className="h-9 text-[13px] font-medium"
+                    aria-label="Exit selection mode"
                   >
                     <Check className="h-3.5 w-3.5 mr-1.5" />
                     Done
@@ -1105,7 +1106,8 @@ const Scheduling = () => {
                     variant="outline"
                     size="sm"
                     onClick={() => setSelectionMode(true)}
-                    className="h-9 text-xs"
+                    className="h-9 text-[13px] font-medium"
+                    aria-label="Enter selection mode"
                   >
                     <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
                     Select
@@ -1316,8 +1318,10 @@ const Scheduling = () => {
                         >
                           {selectionMode ? (
                             <button
+                              type="button"
                               onClick={() => selectShiftsForDay(format(day, 'yyyy-MM-dd'))}
-                              className="w-full cursor-pointer text-primary hover:underline"
+                              className="w-full cursor-pointer text-primary hover:underline transition-colors"
+                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
                               <div className="text-xs uppercase tracking-wider font-semibold">
                                 {format(day, 'EEE')}
@@ -1418,8 +1422,10 @@ const Scheduling = () => {
                                     <div className="font-medium text-sm flex items-center gap-2">
                                       {selectionMode ? (
                                         <button
+                                          type="button"
                                           onClick={() => selectShiftsForEmployee(employee.id)}
-                                          className="text-primary hover:underline cursor-pointer text-left"
+                                          className="text-primary hover:underline cursor-pointer text-left transition-colors"
+                                          aria-label={`Select all shifts for ${employee.name}`}
                                         >
                                           {employee.name}
                                         </button>

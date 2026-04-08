@@ -192,7 +192,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     if (!restaurantId) return;
 
     const channel = supabase
-      .channel('connected-banks-changes')
+      .channel(`connected-banks-changes:${restaurantId}`)
       .on(
         'postgres_changes',
         {

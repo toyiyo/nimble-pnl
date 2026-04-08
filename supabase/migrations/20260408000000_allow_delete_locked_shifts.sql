@@ -2,6 +2,9 @@
 -- Adds p_include_locked parameter to delete_shift_series function.
 -- When true, locked shifts are deleted and locked_count returns 0.
 
+-- Drop old 4-param signature to avoid overload ambiguity
+DROP FUNCTION IF EXISTS delete_shift_series(UUID, UUID, TEXT, TIMESTAMPTZ);
+
 CREATE OR REPLACE FUNCTION delete_shift_series(
   p_parent_id UUID,
   p_restaurant_id UUID,

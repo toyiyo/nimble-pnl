@@ -23,7 +23,7 @@ export const useEmployeeAreas = (restaurantId: string | null) => {
       if (error) throw error;
 
       const uniqueAreas = Array.from(
-        new Set(data.map((employee) => employee.area as string).filter(Boolean))
+        new Set((data as any[]).map((employee) => employee.area as string).filter(Boolean))
       ).sort((a, b) => a.localeCompare(b));
 
       return uniqueAreas;

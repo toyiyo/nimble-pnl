@@ -6,8 +6,11 @@ export interface TimePunch {
   punch_type: 'clock_in' | 'clock_out' | 'break_start' | 'break_end';
   punch_time: string;
   location?: {
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
+    distance_meters?: number;
+    within_geofence?: boolean;
+    location_unavailable?: boolean;
   };
   device_info?: string;
   photo_path?: string; // Storage path in time-clock-photos bucket (e.g., restaurant_id/employee_id/punch-timestamp.jpg)

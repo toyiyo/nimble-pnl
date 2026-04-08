@@ -30,7 +30,7 @@ export function getDeviceInfo(maxLength = DEFAULT_DEVICE_INFO_MAX): string {
   return navigator.userAgent.substring(0, maxLength);
 }
 
-export function getQuickLocation(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<PunchLocation | undefined> {
+export function getQuickLocation(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<{ latitude: number; longitude: number } | undefined> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     return Promise.resolve(undefined);
   }

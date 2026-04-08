@@ -587,15 +587,16 @@ const EmployeeClock = () => {
           <AlertDialogDescription className="text-[14px] text-muted-foreground">
             {geofenceWarning?.type === 'unavailable'
               ? "We couldn't verify your location. You can still clock in, but this will be flagged for manager review."
-              : `You appear to be ${geofenceWarning?.distanceMeters ?? '?'} meters from the restaurant. Do you want to continue clocking in?`
+              : `You appear to be about ${geofenceWarning?.distanceMeters != null ? (geofenceWarning.distanceMeters >= 1000 ? `${(geofenceWarning.distanceMeters / 1000).toFixed(1)} km` : `${Math.round(geofenceWarning.distanceMeters / 10) * 10} meters`) : 'some distance'} from the restaurant. Do you want to continue clocking in?`
             }
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <Button variant="outline" onClick={handleCancelWarning}>
+            <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={handleCancelWarning}>
               Cancel
             </Button>
             <Button
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              variant="destructive"
+              className="h-9 px-4 rounded-lg text-[13px] font-medium"
               onClick={handleProceedAfterWarning}
             >
               Continue Anyway

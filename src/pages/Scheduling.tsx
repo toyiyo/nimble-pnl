@@ -47,6 +47,7 @@ import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHe
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
 import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDialog';
 import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
+import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { cn } from '@/lib/utils';
 import {
   Calendar,
@@ -373,6 +374,7 @@ const Scheduling = () => {
     handleDragCancel,
   } = useShiftCopyDnd();
 
+  const { areas } = useEmployeeAreas(restaurantId);
   const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
@@ -1205,6 +1207,7 @@ const Scheduling = () => {
                   <UserPlus className="h-3.5 w-3.5 mr-1.5" />
                   Employee
                 </Button>
+                {!selectionMode && (
                 <Button
                   size="sm"
                   onClick={() => handleAddShift()}
@@ -1213,6 +1216,7 @@ const Scheduling = () => {
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
                   Shift
                 </Button>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -1434,7 +1438,7 @@ const Scheduling = () => {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <button
-                                        onClick={() => handleEditEmployee(employee)}
+                                        onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
                                         className={cn(
                                           "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
                                           employee.is_active
@@ -1839,7 +1843,7 @@ const Scheduling = () => {
             <AlertDialogDescription className="space-y-2">
               <p>This action cannot be undone.</p>
               {Array.from(selectedShiftIds).some((id) => shifts.find((s) => s.id === id)?.locked) && (
-                <p className="text-amber-500 font-medium">Locked shifts (published) will be skipped.</p>
+                <p className="text-muted-foreground font-medium">Locked shifts (published) will be skipped.</p>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1860,7 +1864,7 @@ const Scheduling = () => {
         onConfirm={handleBulkEdit}
         isUpdating={isBulkOperating}
         positions={positions}
-        areas={[]}
+        areas={areas}
       />
     </div>
     </FeatureGate>

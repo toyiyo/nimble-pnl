@@ -29,7 +29,6 @@ interface BulkEditShiftsDialogProps {
   readonly onConfirm: (changes: Record<string, unknown>) => void;
   readonly isUpdating: boolean;
   readonly positions: string[];
-  readonly areas: string[];
 }
 
 export function BulkEditShiftsDialog({
@@ -39,27 +38,23 @@ export function BulkEditShiftsDialog({
   onConfirm,
   isUpdating,
   positions,
-  areas,
 }: BulkEditShiftsDialogProps) {
   const [startTime, setStartTime] = useState(NO_CHANGE);
   const [endTime, setEndTime] = useState(NO_CHANGE);
   const [position, setPosition] = useState(NO_CHANGE);
-  const [area, setArea] = useState(NO_CHANGE);
 
   const hasChanges = useMemo(
     () =>
       startTime !== NO_CHANGE ||
       endTime !== NO_CHANGE ||
-      position !== NO_CHANGE ||
-      area !== NO_CHANGE,
-    [startTime, endTime, position, area],
+      position !== NO_CHANGE,
+    [startTime, endTime, position],
   );
 
   const resetFields = useCallback(() => {
     setStartTime(NO_CHANGE);
     setEndTime(NO_CHANGE);
     setPosition(NO_CHANGE);
-    setArea(NO_CHANGE);
   }, []);
 
   const handleOpenChange = useCallback(
@@ -77,9 +72,8 @@ export function BulkEditShiftsDialog({
     if (startTime !== NO_CHANGE) changes.start_time = startTime;
     if (endTime !== NO_CHANGE) changes.end_time = endTime;
     if (position !== NO_CHANGE) changes.position = position;
-    if (area !== NO_CHANGE) changes.area_id = area;
     onConfirm(changes);
-  }, [startTime, endTime, position, area, onConfirm]);
+  }, [startTime, endTime, position, onConfirm]);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -182,32 +176,7 @@ export function BulkEditShiftsDialog({
             </div>
           )}
 
-          {/* Area */}
-          {areas.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-                Area
-              </Label>
-              <Select value={area} onValueChange={setArea}>
-                <SelectTrigger
-                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
-                  aria-label="Area"
-                >
-                  <SelectValue placeholder="-- No change --" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_CHANGE}>
-                    <span className="text-muted-foreground">-- No change --</span>
-                  </SelectItem>
-                  {areas.map((a) => (
-                    <SelectItem key={a} value={a}>
-                      {a}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+
         </div>
 
         <DialogFooter className="px-6 py-4 border-t border-border/40">

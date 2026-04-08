@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,7 @@ import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHe
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
 import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDialog';
 import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
-import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   Calendar,
@@ -374,7 +374,7 @@ const Scheduling = () => {
     handleDragCancel,
   } = useShiftCopyDnd();
 
-  const { areas } = useEmployeeAreas(restaurantId);
+  const { toast } = useToast();
   const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
@@ -526,6 +526,16 @@ const Scheduling = () => {
     setSelectedShiftIds(new Set());
   }, []);
 
+  // Escape key exits selection mode
+  useEffect(() => {
+    if (!selectionMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitSelectionMode();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectionMode, exitSelectionMode]);
+
   // Bulk shift actions
   const { bulkDelete, bulkEdit } = useBulkShiftActions(restaurantId ?? '');
 
@@ -535,10 +545,16 @@ const Scheduling = () => {
       await bulkDelete(Array.from(selectedShiftIds));
       clearSelection();
       setBulkDeleteDialogOpen(false);
+    } catch {
+      toast({
+        title: 'Failed to delete shifts',
+        description: 'An error occurred. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setIsBulkOperating(false);
     }
-  }, [selectedShiftIds, bulkDelete, clearSelection]);
+  }, [selectedShiftIds, bulkDelete, clearSelection, toast]);
 
   const handleBulkEdit = useCallback(async (changes: Record<string, unknown>) => {
     setIsBulkOperating(true);
@@ -546,10 +562,16 @@ const Scheduling = () => {
       await bulkEdit(Array.from(selectedShiftIds), changes);
       clearSelection();
       setBulkEditDialogOpen(false);
+    } catch {
+      toast({
+        title: 'Failed to update shifts',
+        description: 'An error occurred. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setIsBulkOperating(false);
     }
-  }, [selectedShiftIds, bulkEdit, clearSelection]);
+  }, [selectedShiftIds, bulkEdit, clearSelection, toast]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -1864,7 +1886,6 @@ const Scheduling = () => {
         onConfirm={handleBulkEdit}
         isUpdating={isBulkOperating}
         positions={positions}
-        areas={areas}
       />
     </div>
     </FeatureGate>

@@ -633,7 +633,7 @@ const Scheduling = () => {
     if (actionType === 'delete') {
       // Delete with scope
       deleteShiftSeries.mutate(
-        { shift, scope, restaurantId },
+        { shift, scope, restaurantId, includePublished: true },
         {
           onSuccess: () => {
             setRecurringActionDialog({ open: false, shift: null, actionType: 'edit' });
@@ -1784,9 +1784,15 @@ const Scheduling = () => {
               </div>
               <AlertDialogTitle className="text-lg">Delete Shift</AlertDialogTitle>
             </div>
-            <AlertDialogDescription className="text-sm leading-relaxed">
-              Are you sure you want to delete this shift? This action cannot be undone and the
-              employee will need to be rescheduled.
+            <AlertDialogDescription className="text-sm leading-relaxed space-y-2">
+              <span>Are you sure you want to delete this shift? This action cannot be undone and the
+              employee will need to be rescheduled.</span>
+              {shiftToDelete?.is_published && (
+                <span className="flex items-center gap-2 text-warning font-medium">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  This shift has been published and employees may have already seen it.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2 sm:gap-0">
@@ -1862,7 +1868,10 @@ const Scheduling = () => {
             <AlertDialogDescription className="space-y-2">
               <p>This action cannot be undone.</p>
               {hasLockedInSelection && (
-                <p className="text-muted-foreground font-medium">Locked shifts (published) will be skipped.</p>
+                <p className="flex items-center gap-2 text-warning font-medium">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  Some selected shifts have been published and employees may have already seen them.
+                </p>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

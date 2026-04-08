@@ -239,8 +239,6 @@ export function useDeleteShift() {
 
   return useMutation({
     mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      await assertShiftNotLocked(id);
-
       const { error } = await supabase.from('shifts').delete().eq('id', id);
 
       if (error) throw error;
@@ -267,6 +265,7 @@ interface SeriesOperationParams {
   shift: Shift;
   scope: RecurringActionScope;
   restaurantId: string;
+  includePublished?: boolean;
 }
 
 interface SeriesOperationResult {
@@ -287,12 +286,8 @@ export function useDeleteShiftSeries() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ shift, scope, restaurantId }: SeriesOperationParams): Promise<SeriesOperationResult> => {
+    mutationFn: async ({ shift, scope, restaurantId, includePublished }: SeriesOperationParams): Promise<SeriesOperationResult> => {
       if (scope === 'this') {
-        if (shift.locked) {
-          throw new Error('Cannot delete a locked shift. The schedule has been published.');
-        }
-
         const { error } = await supabase
           .from('shifts')
           .delete()
@@ -309,6 +304,7 @@ export function useDeleteShiftSeries() {
         p_restaurant_id: restaurantId,
         p_scope: scope,
         p_from_time: scope === 'following' ? shift.start_time : null,
+        p_include_locked: includePublished ?? false,
       });
 
       if (error) throw error;
@@ -320,7 +316,7 @@ export function useDeleteShiftSeries() {
         restaurantId,
       };
     },
-    onMutate: async ({ shift, scope, restaurantId }) => {
+    onMutate: async ({ shift, scope, restaurantId, includePublished }) => {
       await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
 
       const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
@@ -331,7 +327,7 @@ export function useDeleteShiftSeries() {
         if (!old) return old;
 
         return old.filter((s) => {
-          if (s.locked) return true;
+          if (s.locked && !includePublished) return true;
 
           const isInSeries = s.id === parentId || s.recurrence_parent_id === parentId;
           if (!isInSeries) return true;

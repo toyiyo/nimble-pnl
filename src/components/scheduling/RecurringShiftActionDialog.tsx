@@ -119,12 +119,22 @@ export function RecurringShiftActionDialog({
         </AlertDialogHeader>
 
         <div className="py-4">
-          {lockedCount > 0 && (
+          {lockedCount > 0 && isDelete && (
+            <Alert variant="default" className="mb-4 border-warning/50 bg-warning/10">
+              <AlertTriangle className="h-4 w-4 text-warning" />
+              <AlertDescription className="text-sm">
+                {lockedCount} shift{lockedCount > 1 ? 's have' : ' has'} been published and
+                employees may have already seen {lockedCount > 1 ? 'them' : 'it'}.
+                {lockedCount > 1 ? ' They' : ' It'} will also be deleted.
+              </AlertDescription>
+            </Alert>
+          )}
+          {lockedCount > 0 && !isDelete && (
             <Alert variant="default" className="mb-4 border-warning/50 bg-warning/10">
               <AlertTriangle className="h-4 w-4 text-warning" />
               <AlertDescription className="text-sm">
                 {lockedCount} shift{lockedCount > 1 ? 's are' : ' is'} part of a published schedule
-                and will not be {isDelete ? 'deleted' : 'modified'}.
+                and will not be modified.
               </AlertDescription>
             </Alert>
           )}

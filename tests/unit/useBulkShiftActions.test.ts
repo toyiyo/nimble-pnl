@@ -126,7 +126,7 @@ describe('useBulkShiftActions', () => {
       mockSupabase.from.mockReturnValue({
         delete: () => ({
           in: () => ({
-            eq: () => ({ data: null, error: null }),
+            eq: () => ({ data: null, error: null, count: 3 }),
           }),
         }),
       });
@@ -155,7 +155,7 @@ describe('useBulkShiftActions', () => {
       mockSupabase.from.mockReturnValue({
         delete: () => ({
           in: () => ({
-            eq: () => ({ data: null, error: null }),
+            eq: () => ({ data: null, error: null, count: 1 }),
           }),
         }),
       });

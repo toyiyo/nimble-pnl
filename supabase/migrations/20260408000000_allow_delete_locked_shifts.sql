@@ -20,6 +20,10 @@ DECLARE
   v_deleted_count INT := 0;
   v_locked_count INT := 0;
 BEGIN
+  IF p_scope NOT IN ('all', 'following') THEN
+    RAISE EXCEPTION 'Invalid scope: %. Must be "all" or "following".', p_scope;
+  END IF;
+
   IF p_scope = 'following' THEN
     -- Count locked shifts that will NOT be deleted (only when not force-deleting)
     IF NOT p_include_locked THEN

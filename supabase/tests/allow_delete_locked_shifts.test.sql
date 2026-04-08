@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- Setup: Create test restaurant, user, and employee
 INSERT INTO restaurants (id, name, address, phone)
@@ -115,20 +115,30 @@ VALUES
    '2026-04-30 09:00:00+00', '2026-04-30 17:00:00+00', 'Server', true,
    '00000000-0000-0000-0000-000000000830'::uuid);
 
--- Test 5: p_include_locked=true, scope='following' from Apr 29 deletes 2 shifts
-SELECT is(
-  (SELECT deleted_count FROM delete_shift_series(
+-- Test 5: p_include_locked=true, scope='following' from Apr 29 deletes 2 shifts with locked_count=0
+SELECT results_eq(
+  $$SELECT deleted_count, locked_count FROM delete_shift_series(
     '00000000-0000-0000-0000-000000000830'::uuid,
     '00000000-0000-0000-0000-000000000801'::uuid,
     'following',
     '2026-04-29 00:00:00+00'::timestamptz,
     true
-  )),
-  2,
-  'p_include_locked=true scope=following: deletes 2 shifts from cutoff'
+  )$$,
+  $$VALUES (2, 0)$$,
+  'p_include_locked=true scope=following: deletes 2, locked_count=0'
 );
 
--- Test 6: Parent shift before cutoff still exists
+-- Test 6: Invalid scope raises error
+SELECT throws_ok(
+  $$SELECT * FROM delete_shift_series(
+    '00000000-0000-0000-0000-000000000830'::uuid,
+    '00000000-0000-0000-0000-000000000801'::uuid,
+    'invalid_scope'
+  )$$,
+  'Invalid scope: invalid_scope. Must be "all" or "following".'
+);
+
+-- Test 7: Parent shift before cutoff still exists
 SELECT is(
   (SELECT COUNT(*)::int FROM shifts
    WHERE id = '00000000-0000-0000-0000-000000000830'::uuid

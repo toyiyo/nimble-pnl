@@ -354,7 +354,7 @@ export default function RestaurantSettings() {
     try {
       const { error } = await supabase
         .from('restaurants')
-        .update(values)
+        .update(values as any)
         .eq('id', selectedRestaurant.restaurant_id);
       if (error) throw error;
       toast({ title: 'Geofence settings saved', description: 'Clock-in location enforcement has been updated.' });

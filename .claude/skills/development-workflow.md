@@ -153,7 +153,7 @@ Iteration 1: Run coderabbit review --plain --type committed
 **Invoke:** `superpowers:verification-before-completion`
 
 - Set a symlink to .env.local so you can run tests in the worktree with access to env vars
-- Run all relevant tests: `npm run test && npm run test:db && npm run test:e2e`, `npm run lint`, `npm run build`
+- Run all relevant tests: `npm run test && npm run test:db && npm run test:e2e`, `npm run typecheck`, `npm run lint`, `npm run build`
 - Confirm ALL pass with actual output evidence
 - Never claim "tests pass" without running them
 - **If any check fails:** Fix the issue, commit the fix, re-run. Loop locally until green before proceeding. Max 5 local fix iterations — if still failing after 5, report to user.

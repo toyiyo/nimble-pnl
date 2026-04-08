@@ -334,7 +334,7 @@ export function ShiftImportSheet({
     if (file) handleFile(file);
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files?.[0];
     if (file) handleFile(file);

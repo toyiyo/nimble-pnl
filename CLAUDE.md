@@ -21,6 +21,7 @@ npm run functions:serve        # Serve edge functions locally
 # Building
 npm run build                  # Production build
 npm run build:dev              # Development build
+npm run typecheck              # TypeScript type check (tsc --noEmit)
 npm run lint                   # ESLint
 
 # Testing

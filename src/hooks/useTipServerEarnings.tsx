@@ -40,7 +40,7 @@ export function useTipServerEarnings(splitId: string | null) {
         employees: { first_name: string; last_name: string } | null;
       };
 
-      return (data ?? []).map((row: EarningRow) => ({
+      return ((data ?? []) as unknown as EarningRow[]).map((row) => ({
         id: row.id,
         tip_split_id: row.tip_split_id,
         employee_id: row.employee_id,

@@ -43,7 +43,7 @@ export function useCopyWeekShifts() {
         p_restaurant_id: restaurantId,
         p_target_start: targetMonday.toISOString(),
         p_target_end: targetEnd.toISOString(),
-        p_shifts: inserts,
+        p_shifts: inserts as any,
       });
 
       if (error) throw error;

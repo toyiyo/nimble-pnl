@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { AppLogo } from '@/components/AppLogo';
 import { Button } from '@/components/ui/button';
 
 interface BiometricLockScreenProps {
@@ -17,9 +17,7 @@ export function BiometricLockScreen({ onAuthenticate, failedAttempts }: Biometri
 
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col items-center justify-center gap-6 px-8">
-      <div className="h-16 w-16 rounded-2xl bg-muted/50 flex items-center justify-center">
-        <ShieldCheck className="h-8 w-8 text-foreground" />
-      </div>
+      <AppLogo size={64} />
       <div className="text-center">
         <h1 className="text-[17px] font-semibold text-foreground">EasyShiftHQ</h1>
         <p className="text-[13px] text-muted-foreground mt-1">Verify your identity to continue</p>

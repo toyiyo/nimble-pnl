@@ -91,11 +91,13 @@ function setupSelectThenMutate(
       };
     }
 
-    // DELETE or UPDATE
+    // DELETE or UPDATE — chain is .in().eq('locked', false)
     if (mutationType === 'delete') {
       return {
         delete: () => ({
-          in: () => mutateResult,
+          in: () => ({
+            eq: () => mutateResult,
+          }),
         }),
       };
     }
@@ -103,7 +105,9 @@ function setupSelectThenMutate(
     // UPDATE
     return {
       update: () => ({
-        in: () => mutateResult,
+        in: () => ({
+          eq: () => mutateResult,
+        }),
       }),
     };
   });

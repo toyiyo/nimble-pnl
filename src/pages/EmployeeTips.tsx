@@ -121,7 +121,7 @@ function EmployeeTips() {
       amount: number;
       hours: number;
       role: string;
-      shareMethod: string;
+      shareMethod: 'hours' | 'role' | 'manual';
       totalSplit: number;
       totalTeamHours: number;
     }> = [];
@@ -137,7 +137,7 @@ function EmployeeTips() {
         amount: myItem.amount,
         hours: myItem.hours_worked,
         role: myItem.role,
-        shareMethod: split.share_method,
+        shareMethod: (split.share_method || 'manual') as 'hours' | 'role' | 'manual',
         totalSplit: split.total_amount,
         totalTeamHours: split.items.reduce((sum, item) => sum + (item.hours_worked || 0), 0),
       });

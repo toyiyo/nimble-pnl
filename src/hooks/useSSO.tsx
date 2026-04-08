@@ -82,7 +82,6 @@ export const useSSO = () => {
       return {
         success: true,
         message: `Redirecting to ${provider.toUpperCase()} authentication`,
-        data,
       };
     } catch (error: any) {
       return {

@@ -13,8 +13,8 @@ interface MLKitBarcodeScannerProps {
 }
 
 const SUPPORTED_FORMATS = [
-  BarcodeFormat.EanThirteen,
-  BarcodeFormat.EanEight,
+  BarcodeFormat.Ean13,
+  BarcodeFormat.Ean8,
   BarcodeFormat.UpcA,
   BarcodeFormat.UpcE,
   BarcodeFormat.QrCode,

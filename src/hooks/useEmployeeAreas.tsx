@@ -16,7 +16,7 @@ export const useEmployeeAreas = (restaurantId: string | null) => {
 
       const { data, error } = await supabase
         .from('employees')
-        .select('area')
+        .select('area' as any)
         .eq('restaurant_id', restaurantId)
         .not('area', 'is', null);
 

@@ -46,7 +46,7 @@ export const useTimePunches = (restaurantId: string | null, employeeId?: string,
       const { data, error } = await query.order('punch_time', { ascending: false });
 
       if (error) throw error;
-      return data as TimePunch[];
+      return data as unknown as TimePunch[];
     },
     enabled: !!restaurantId,
     staleTime: 10000, // 10 seconds for real-time updates
@@ -285,7 +285,7 @@ export const useBulkCreateTimePunches = () => {
           .insert(chunk)
           .select();
         if (error) throw error;
-        insertedPunches.push(...(data as TimePunch[]));
+        insertedPunches.push(...(data as unknown as TimePunch[]));
       }
 
       return insertedPunches;

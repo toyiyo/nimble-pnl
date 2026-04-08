@@ -105,7 +105,7 @@ export function useCheckBankAccounts() {
         .eq('id', accountId)
         .eq('restaurant_id', restaurantId)
         .single();
-      const wasDefault = deletedAccount?.is_default ?? false;
+      const wasDefault = (deletedAccount as any)?.is_default ?? false;
 
       // Soft-delete: set is_active=false and clear is_default to avoid unique constraint conflict
       const { error } = await supabase
@@ -128,7 +128,7 @@ export function useCheckBankAccounts() {
           const { error: promoteError } = await supabase
             .from('check_bank_accounts' as any)
             .update({ is_default: true })
-            .eq('id', remaining[0].id)
+            .eq('id', (remaining as any[])[0].id)
             .eq('restaurant_id', restaurantId);
           if (promoteError) throw promoteError;
         }

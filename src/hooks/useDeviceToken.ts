@@ -34,7 +34,7 @@ export function useDeviceToken() {
         PushNotifications.addListener('registration', async ({ value: token }) => {
           try {
             const platform = Capacitor.getPlatform() as 'ios' | 'android';
-            await supabase.from('device_tokens').upsert(
+            await (supabase.from as any)('device_tokens').upsert(
               {
                 user_id: user.id,
                 restaurant_id: selectedRestaurant.id,

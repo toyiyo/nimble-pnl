@@ -484,38 +484,23 @@ const Scheduling = () => {
     });
   }, []);
 
-  const selectShiftsForEmployee = useCallback((employeeId: string) => {
-    const employeeShiftIds = shifts
-      .filter(s => s.employee_id === employeeId)
-      .map(s => s.id);
+  const toggleShiftGroup = useCallback((candidateIds: string[]) => {
     setSelectedShiftIds(prev => {
-      const allSelected = employeeShiftIds.every(id => prev.has(id));
+      const allSelected = candidateIds.every(id => prev.has(id));
       const next = new Set(prev);
-      if (allSelected) {
-        employeeShiftIds.forEach(id => next.delete(id));
-      } else {
-        employeeShiftIds.forEach(id => next.add(id));
-      }
+      candidateIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
       return next;
     });
-  }, [shifts]);
+  }, []);
+
+  const selectShiftsForEmployee = useCallback((employeeId: string) => {
+    toggleShiftGroup(shifts.filter(s => s.employee_id === employeeId).map(s => s.id));
+  }, [shifts, toggleShiftGroup]);
 
   const selectShiftsForDay = useCallback((dayStr: string) => {
     const targetDay = parseISO(dayStr);
-    const dayShiftIds = shifts
-      .filter(s => isSameDay(parseISO(s.start_time), targetDay))
-      .map(s => s.id);
-    setSelectedShiftIds(prev => {
-      const allSelected = dayShiftIds.every(id => prev.has(id));
-      const next = new Set(prev);
-      if (allSelected) {
-        dayShiftIds.forEach(id => next.delete(id));
-      } else {
-        dayShiftIds.forEach(id => next.add(id));
-      }
-      return next;
-    });
-  }, [shifts]);
+    toggleShiftGroup(shifts.filter(s => isSameDay(parseISO(s.start_time), targetDay)).map(s => s.id));
+  }, [shifts, toggleShiftGroup]);
 
   const clearSelection = useCallback(() => {
     setSelectedShiftIds(new Set());
@@ -525,6 +510,12 @@ const Scheduling = () => {
     setSelectionMode(false);
     setSelectedShiftIds(new Set());
   }, []);
+
+  const hasLockedInSelection = useMemo(() => {
+    if (selectedShiftIds.size === 0) return false;
+    const shiftMap = new Map(shifts.map(s => [s.id, s]));
+    return Array.from(selectedShiftIds).some(id => shiftMap.get(id)?.locked);
+  }, [selectedShiftIds, shifts]);
 
   // Escape key exits selection mode
   useEffect(() => {
@@ -1870,7 +1861,7 @@ const Scheduling = () => {
             <AlertDialogTitle>Delete {selectedShiftIds.size} shift{selectedShiftIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <p>This action cannot be undone.</p>
-              {Array.from(selectedShiftIds).some((id) => shifts.find((s) => s.id === id)?.locked) && (
+              {hasLockedInSelection && (
                 <p className="text-muted-foreground font-medium">Locked shifts (published) will be skipped.</p>
               )}
             </AlertDialogDescription>

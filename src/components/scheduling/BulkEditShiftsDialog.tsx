@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 
 import {
   Dialog,
@@ -43,13 +43,7 @@ export function BulkEditShiftsDialog({
   const [endTime, setEndTime] = useState(NO_CHANGE);
   const [position, setPosition] = useState(NO_CHANGE);
 
-  const hasChanges = useMemo(
-    () =>
-      startTime !== NO_CHANGE ||
-      endTime !== NO_CHANGE ||
-      position !== NO_CHANGE,
-    [startTime, endTime, position],
-  );
+  const hasChanges = startTime !== NO_CHANGE || endTime !== NO_CHANGE || position !== NO_CHANGE;
 
   const resetFields = useCallback(() => {
     setStartTime(NO_CHANGE);
@@ -95,7 +89,6 @@ export function BulkEditShiftsDialog({
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-5">
-          {/* Start Time */}
           <div className="space-y-1.5">
             <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Start Time
@@ -122,7 +115,6 @@ export function BulkEditShiftsDialog({
             )}
           </div>
 
-          {/* End Time */}
           <div className="space-y-1.5">
             <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               End Time
@@ -149,7 +141,6 @@ export function BulkEditShiftsDialog({
             )}
           </div>
 
-          {/* Position */}
           {positions.length > 0 && (
             <div className="space-y-1.5">
               <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -175,8 +166,6 @@ export function BulkEditShiftsDialog({
               </Select>
             </div>
           )}
-
-
         </div>
 
         <DialogFooter className="px-6 py-4 border-t border-border/40">

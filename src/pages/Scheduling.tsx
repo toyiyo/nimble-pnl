@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,10 @@ import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
+import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
+import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDialog';
+import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   Calendar,
@@ -71,6 +75,9 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  CheckSquare,
+  Check,
+  Pencil,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -133,12 +140,15 @@ type ShiftCardProps = {
   shift: Shift;
   onEdit: (shift: Shift) => void;
   onDelete: (shift: Shift) => void;
+  isSelected?: boolean;
+  selectionMode?: boolean;
+  onToggleSelect?: (shiftId: string) => void;
 };
 
 const buildConflictKey = (conflict: ConflictCheck) =>
   conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
 
-const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
+const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSelectionMode, onToggleSelect }: ShiftCardProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
   const { fromZonedTime } = dateFnsTz;
@@ -171,14 +181,34 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
       <Tooltip>
         <TooltipTrigger asChild>
           <div
+            data-testid="shift-card"
             className={cn(
               "group relative rounded-lg border-l-4 transition-all duration-200 cursor-pointer",
               "hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5",
               "bg-gradient-to-r from-card to-card/80",
-              shiftStatusClass
+              shiftStatusClass,
+              isSelected && "ring-2 ring-primary bg-primary/10"
             )}
-            onClick={() => onEdit(shift)}
+            onClick={() => {
+              if (cardSelectionMode && onToggleSelect) {
+                onToggleSelect(shift.id);
+              } else {
+                onEdit(shift);
+              }
+            }}
           >
+            {/* Selection checkbox indicator */}
+            {cardSelectionMode && (
+              <div className={cn(
+                "absolute top-1 right-1 z-10 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                isSelected
+                  ? "bg-primary border-primary"
+                  : "bg-background/80 border-muted-foreground/40"
+              )}>
+                {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+              </div>
+            )}
+
             {/* Time block header */}
             <div className={cn(
               "px-2.5 py-1.5 border-b border-border/50",
@@ -225,8 +255,11 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
               </Badge>
             </div>
 
-            {/* Hover actions */}
-            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5">
+            {/* Hover actions (hidden in selection mode) */}
+            <div className={cn(
+              "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5",
+              cardSelectionMode && "hidden"
+            )}>
               <Button
                 size="icon"
                 variant="ghost"
@@ -300,6 +333,13 @@ const Scheduling = () => {
     actionType: RecurringActionType;
   }>({ open: false, shift: null, actionType: 'edit' });
 
+  // Multi-select state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedShiftIds, setSelectedShiftIds] = useState<Set<string>>(new Set());
+  const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [isBulkOperating, setIsBulkOperating] = useState(false);
+
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
 
@@ -334,6 +374,7 @@ const Scheduling = () => {
     handleDragCancel,
   } = useShiftCopyDnd();
 
+  const { toast } = useToast();
   const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
@@ -433,16 +474,109 @@ const Scheduling = () => {
     });
   }, []);
 
+  // Multi-select helpers
+  const toggleShiftSelection = useCallback((shiftId: string) => {
+    setSelectedShiftIds(prev => {
+      const next = new Set(prev);
+      if (next.has(shiftId)) next.delete(shiftId);
+      else next.add(shiftId);
+      return next;
+    });
+  }, []);
+
+  const toggleShiftGroup = useCallback((candidateIds: string[]) => {
+    setSelectedShiftIds(prev => {
+      const allSelected = candidateIds.every(id => prev.has(id));
+      const next = new Set(prev);
+      candidateIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  }, []);
+
+  const selectShiftsForEmployee = useCallback((employeeId: string) => {
+    toggleShiftGroup(shifts.filter(s => s.employee_id === employeeId).map(s => s.id));
+  }, [shifts, toggleShiftGroup]);
+
+  const selectShiftsForDay = useCallback((dayStr: string) => {
+    const targetDay = parseISO(dayStr);
+    toggleShiftGroup(shifts.filter(s => isSameDay(parseISO(s.start_time), targetDay)).map(s => s.id));
+  }, [shifts, toggleShiftGroup]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedShiftIds(new Set());
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedShiftIds(new Set());
+  }, []);
+
+  const hasLockedInSelection = useMemo(() => {
+    if (selectedShiftIds.size === 0) return false;
+    const shiftMap = new Map(shifts.map(s => [s.id, s]));
+    return Array.from(selectedShiftIds).some(id => shiftMap.get(id)?.locked);
+  }, [selectedShiftIds, shifts]);
+
+  // Escape key exits selection mode
+  useEffect(() => {
+    if (!selectionMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitSelectionMode();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectionMode, exitSelectionMode]);
+
+  // Bulk shift actions
+  const { bulkDelete, bulkEdit } = useBulkShiftActions(restaurantId ?? '');
+
+  const handleBulkDelete = useCallback(async () => {
+    setIsBulkOperating(true);
+    try {
+      await bulkDelete(Array.from(selectedShiftIds));
+      clearSelection();
+      setBulkDeleteDialogOpen(false);
+    } catch {
+      toast({
+        title: 'Failed to delete shifts',
+        description: 'An error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkOperating(false);
+    }
+  }, [selectedShiftIds, bulkDelete, clearSelection, toast]);
+
+  const handleBulkEdit = useCallback(async (changes: Record<string, unknown>) => {
+    setIsBulkOperating(true);
+    try {
+      await bulkEdit(Array.from(selectedShiftIds), changes);
+      clearSelection();
+      setBulkEditDialogOpen(false);
+    } catch {
+      toast({
+        title: 'Failed to update shifts',
+        description: 'An error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkOperating(false);
+    }
+  }, [selectedShiftIds, bulkEdit, clearSelection, toast]);
+
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
+    clearSelection();
   };
 
   const handleNextWeek = () => {
     setCurrentWeekStart(addWeeks(currentWeekStart, 1));
+    clearSelection();
   };
 
   const handleToday = () => {
     setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    clearSelection();
   };
 
   const handleEditEmployee = (employee: Employee) => {
@@ -547,6 +681,7 @@ const Scheduling = () => {
         {
           onSuccess: () => {
             setPublishDialogOpen(false);
+            clearSelection();
           },
         }
       );
@@ -565,6 +700,7 @@ const Scheduling = () => {
         {
           onSuccess: () => {
             setUnpublishDialogOpen(false);
+            clearSelection();
           },
         }
       );
@@ -945,6 +1081,31 @@ const Scheduling = () => {
 
               {/* Actions */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Selection mode toggle */}
+                {selectionMode ? (
+                  <Button
+                    size="sm"
+                    onClick={exitSelectionMode}
+                    className="h-9 text-[13px] font-medium"
+                    aria-label="Exit selection mode"
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1.5" />
+                    Done
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectionMode(true)}
+                    className="h-9 text-[13px] font-medium"
+                    aria-label="Enter selection mode"
+                  >
+                    <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                    Select
+                  </Button>
+                )}
+                <div className="h-6 w-px bg-border hidden sm:block" />
+
                 {/* Position filter */}
                 <Select value={positionFilter} onValueChange={(v) => setPositionFilter(v)}>
                   <SelectTrigger
@@ -1061,6 +1222,7 @@ const Scheduling = () => {
                   <UserPlus className="h-3.5 w-3.5 mr-1.5" />
                   Employee
                 </Button>
+                {!selectionMode && (
                 <Button
                   size="sm"
                   onClick={() => handleAddShift()}
@@ -1069,6 +1231,7 @@ const Scheduling = () => {
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
                   Shift
                 </Button>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -1144,20 +1307,38 @@ const Scheduling = () => {
                             dayIsToday && "bg-primary/5"
                           )}
                         >
-                          <div className={cn(
-                            "text-xs uppercase tracking-wider",
-                            dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
-                          )}>
-                            {format(day, 'EEE')}
-                          </div>
-                          <div className={cn(
-                            "text-sm mt-0.5",
-                            dayIsToday ? "text-primary font-semibold" : "text-foreground"
-                          )}>
-                            {format(day, 'MMM d')}
-                          </div>
-                          {dayIsToday && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
+                          {selectionMode ? (
+                            <button
+                              type="button"
+                              onClick={() => selectShiftsForDay(format(day, 'yyyy-MM-dd'))}
+                              className="w-full cursor-pointer text-primary hover:underline transition-colors"
+                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
+                            >
+                              <div className="text-xs uppercase tracking-wider font-semibold">
+                                {format(day, 'EEE')}
+                              </div>
+                              <div className="text-sm mt-0.5 font-semibold">
+                                {format(day, 'MMM d')}
+                              </div>
+                            </button>
+                          ) : (
+                            <>
+                              <div className={cn(
+                                "text-xs uppercase tracking-wider",
+                                dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
+                              )}>
+                                {format(day, 'EEE')}
+                              </div>
+                              <div className={cn(
+                                "text-sm mt-0.5",
+                                dayIsToday ? "text-primary font-semibold" : "text-foreground"
+                              )}>
+                                {format(day, 'MMM d')}
+                              </div>
+                              {dayIsToday && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
+                              )}
+                            </>
                           )}
                         </th>
                       );
@@ -1230,7 +1411,18 @@ const Scheduling = () => {
                                   </div>
                                   <div>
                                     <div className="font-medium text-sm flex items-center gap-2">
-                                      {employee.name}
+                                      {selectionMode ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => selectShiftsForEmployee(employee.id)}
+                                          className="text-primary hover:underline cursor-pointer text-left transition-colors"
+                                          aria-label={`Select all shifts for ${employee.name}`}
+                                        >
+                                          {employee.name}
+                                        </button>
+                                      ) : (
+                                        employee.name
+                                      )}
                                       {!employee.is_active && (
                                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
                                           Inactive
@@ -1247,15 +1439,17 @@ const Scheduling = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEditEmployee(employee)}
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-primary/10"
-                                  aria-label={`Edit ${employee.name}`}
-                                >
-                                  <Edit className="h-3.5 w-3.5" />
-                                </Button>
+                                {!selectionMode && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleEditEmployee(employee)}
+                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-primary/10"
+                                    aria-label={`Edit ${employee.name}`}
+                                  >
+                                    <Edit className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                               {/* Mobile: compact avatar with tooltip */}
                               <div className="flex md:hidden flex-col items-center py-1">
@@ -1263,7 +1457,7 @@ const Scheduling = () => {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <button
-                                        onClick={() => handleEditEmployee(employee)}
+                                        onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
                                         className={cn(
                                           "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
                                           employee.is_active
@@ -1306,32 +1500,46 @@ const Scheduling = () => {
                                 >
                                   <div className="space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]">
                                     {dayShifts.map((shift) => (
-                                      <DraggableShiftCard
-                                        key={shift.id}
-                                        shift={shift}
-                                        employeeId={employee.id}
-                                        day={format(day, 'yyyy-MM-dd')}
-                                      >
+                                      selectionMode ? (
                                         <ShiftCard
+                                          key={shift.id}
                                           shift={shift}
                                           onEdit={handleEditShift}
                                           onDelete={handleDeleteShift}
+                                          isSelected={selectedShiftIds.has(shift.id)}
+                                          selectionMode={selectionMode}
+                                          onToggleSelect={toggleShiftSelection}
                                         />
-                                      </DraggableShiftCard>
+                                      ) : (
+                                        <DraggableShiftCard
+                                          key={shift.id}
+                                          shift={shift}
+                                          employeeId={employee.id}
+                                          day={format(day, 'yyyy-MM-dd')}
+                                        >
+                                          <ShiftCard
+                                            shift={shift}
+                                            onEdit={handleEditShift}
+                                            onDelete={handleDeleteShift}
+                                          />
+                                        </DraggableShiftCard>
+                                      )
                                     ))}
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className={cn(
-                                        "w-full h-8 text-xs border border-dashed border-border/50",
-                                        "opacity-0 group-hover:opacity-100 transition-all duration-200",
-                                        "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
-                                      )}
-                                      onClick={() => handleAddShift(day, employee)}
-                                    >
-                                      <Plus className="h-3 w-3 mr-1" />
-                                      Add
-                                    </Button>
+                                    {!selectionMode && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={cn(
+                                          "w-full h-8 text-xs border border-dashed border-border/50",
+                                          "opacity-0 group-hover:opacity-100 transition-all duration-200",
+                                          "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                                        )}
+                                        onClick={() => handleAddShift(day, employee)}
+                                      >
+                                        <Plus className="h-3 w-3 mr-1" />
+                                        Add
+                                      </Button>
+                                    )}
                                   </div>
                                 </DroppableDayCell>
                               );
@@ -1356,6 +1564,16 @@ const Scheduling = () => {
             onConfirm={conflictDialog.onConfirm}
             onCancel={conflictDialog.onCancel}
           />
+          {selectionMode && selectedShiftIds.size > 0 && (
+            <BulkActionBar
+              selectedCount={selectedShiftIds.size}
+              onClose={clearSelection}
+              actions={[
+                { label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: () => setBulkEditDialogOpen(true) },
+                { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => setBulkDeleteDialogOpen(true), variant: 'destructive' as const },
+              ]}
+            />
+          )}
         </CardContent>
       </Card>
         </TabsContent>
@@ -1634,6 +1852,37 @@ const Scheduling = () => {
         restaurantId={restaurantId}
         onConfirm={handleCopyWeekConfirm}
         isPending={copyWeekMutation.isPending}
+      />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedShiftIds.size} shift{selectedShiftIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>This action cannot be undone.</p>
+              {hasLockedInSelection && (
+                <p className="text-muted-foreground font-medium">Locked shifts (published) will be skipped.</p>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkOperating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} disabled={isBulkOperating} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isBulkOperating ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Edit Shifts Dialog */}
+      <BulkEditShiftsDialog
+        open={bulkEditDialogOpen}
+        onOpenChange={setBulkEditDialogOpen}
+        selectedCount={selectedShiftIds.size}
+        onConfirm={handleBulkEdit}
+        isUpdating={isBulkOperating}
+        positions={positions}
       />
     </div>
     </FeatureGate>

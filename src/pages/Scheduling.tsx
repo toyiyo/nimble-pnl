@@ -1870,7 +1870,7 @@ const Scheduling = () => {
               {hasLockedInSelection && (
                 <p className="flex items-center gap-2 text-warning font-medium">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Some selected shifts have been published and employees may have already seen them.
+                  Some selected shifts have been published and employees may have already seen them. They will be permanently deleted.
                 </p>
               )}
             </AlertDialogDescription>

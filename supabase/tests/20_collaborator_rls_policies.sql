@@ -291,7 +291,8 @@ SELECT policies_are(
     ARRAY[
         'Deny anonymous access to employees',
         'Users can view employees for their restaurants',
-        'Owners and managers can manage employees'
+        'Owners and managers can manage employees',
+        'Employees can view their own record'
     ],
     'employees table should have view and management policies'
 );

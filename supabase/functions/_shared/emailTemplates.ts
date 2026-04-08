@@ -43,18 +43,11 @@ export const escapeHtml = (str: string): string => {
 /**
  * Generate the standard EasyShiftHQ email header with logo
  */
-const generateHeader = (): string => {
+export const generateHeader = (): string => {
   return `
     <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 32px 24px; text-align: center; border-radius: 8px 8px 0 0;">
       <div style="display: inline-flex; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px; padding: 8px; display: inline-block; margin-right: 12px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-        </div>
+        <img src="https://app.easyshifthq.com/icon-192.png" alt="EasyShiftHQ" width="40" height="40" style="display: block; border-radius: 8px; margin-right: 12px;" />
         <span style="font-size: 20px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px;">EasyShiftHQ</span>
       </div>
     </div>
@@ -64,7 +57,7 @@ const generateHeader = (): string => {
 /**
  * Generate the standard EasyShiftHQ email footer
  */
-const generateFooter = (): string => {
+export const generateFooter = (): string => {
   const year = new Date().getFullYear();
   return `
     <div style="background-color: #f9fafb; padding: 24px 32px; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">
@@ -178,7 +171,7 @@ const generateCTA = (button: { text: string; url: string }): string => {
 /**
  * Generate a footer note (appears before the standard footer)
  */
-const generateFooterNote = (note: string): string => {
+export const generateFooterNote = (note: string): string => {
   const safeNote = escapeHtml(note);
   return `
     <p style="color: #6b7280; font-size: 14px; margin: 32px 0 0 0; line-height: 1.6;">

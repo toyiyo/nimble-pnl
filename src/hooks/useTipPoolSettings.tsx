@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 export type TipSource = 'manual' | 'pos';
 export type ShareMethod = 'hours' | 'role' | 'manual';
 export type SplitCadence = 'daily' | 'weekly' | 'shift';
+export type PoolingModel = 'full_pool' | 'percentage_contribution';
 
 export interface TipPoolSettings {
   id: string;
@@ -14,6 +15,7 @@ export interface TipPoolSettings {
   split_cadence: SplitCadence | null;
   role_weights: Record<string, number>;
   enabled_employee_ids: string[];
+  pooling_model: PoolingModel;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -25,6 +27,7 @@ export interface TipPoolSettingsUpdate {
   split_cadence?: SplitCadence;
   role_weights?: Record<string, number>;
   enabled_employee_ids?: string[];
+  pooling_model?: PoolingModel;
 }
 
 /**

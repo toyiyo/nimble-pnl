@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +19,9 @@ import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
+import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { ShiftDialog } from '@/components/ShiftDialog';
+import type { DefaultEmployee } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
 import { TimeOffList } from '@/components/TimeOffList';
 import { AvailabilityDialog } from '@/components/AvailabilityDialog';
@@ -29,8 +32,22 @@ import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
+import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
+import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
+import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
+import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
+import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
+import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
+import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
+import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
+import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
+import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
+import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
+import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDialog';
+import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   Calendar,
@@ -52,6 +69,15 @@ import {
   Printer,
   ArrowLeftRight,
   TrendingUp,
+  Upload,
+  LayoutGrid,
+  Copy,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  CheckSquare,
+  Check,
+  Pencil,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -83,16 +109,46 @@ export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boole
   return 'border-l-primary/50';
 };
 
+/** Build set of employee IDs who have at least one non-cancelled shift.
+ *  Cancelled shifts should not keep inactive employees visible in the grid. */
+export function buildActiveShiftEmployeeIds(
+  shifts: { employee_id: string; status: string }[],
+): Set<string> {
+  return new Set(
+    shifts.filter(s => s.status !== 'cancelled').map(s => s.employee_id)
+  );
+}
+
+/** Filter employees for the weekly schedule grid:
+ *  - Active employees always shown (so managers can schedule them)
+ *  - Inactive employees shown only if they have shifts this week */
+export function filterEmployeesForScheduleView(
+  allEmployees: Employee[],
+  shiftEmployeeIds: Set<string>,
+  positionFilter: string | null,
+): Employee[] {
+  const filtered = allEmployees.filter(emp =>
+    emp.is_active || shiftEmployeeIds.has(emp.id)
+  );
+  if (positionFilter && positionFilter !== 'all') {
+    return filtered.filter(emp => emp.position === positionFilter);
+  }
+  return filtered;
+}
+
 type ShiftCardProps = {
   shift: Shift;
   onEdit: (shift: Shift) => void;
   onDelete: (shift: Shift) => void;
+  isSelected?: boolean;
+  selectionMode?: boolean;
+  onToggleSelect?: (shiftId: string) => void;
 };
 
 const buildConflictKey = (conflict: ConflictCheck) =>
   conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
 
-const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
+const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSelectionMode, onToggleSelect }: ShiftCardProps) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
   const { fromZonedTime } = dateFnsTz;
@@ -125,14 +181,34 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
       <Tooltip>
         <TooltipTrigger asChild>
           <div
+            data-testid="shift-card"
             className={cn(
               "group relative rounded-lg border-l-4 transition-all duration-200 cursor-pointer",
               "hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5",
               "bg-gradient-to-r from-card to-card/80",
-              shiftStatusClass
+              shiftStatusClass,
+              isSelected && "ring-2 ring-primary bg-primary/10"
             )}
-            onClick={() => onEdit(shift)}
+            onClick={() => {
+              if (cardSelectionMode && onToggleSelect) {
+                onToggleSelect(shift.id);
+              } else {
+                onEdit(shift);
+              }
+            }}
           >
+            {/* Selection checkbox indicator */}
+            {cardSelectionMode && (
+              <div className={cn(
+                "absolute top-1 right-1 z-10 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                isSelected
+                  ? "bg-primary border-primary"
+                  : "bg-background/80 border-muted-foreground/40"
+              )}>
+                {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+              </div>
+            )}
+
             {/* Time block header */}
             <div className={cn(
               "px-2.5 py-1.5 border-b border-border/50",
@@ -179,8 +255,11 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
               </Badge>
             </div>
 
-            {/* Hover actions */}
-            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5">
+            {/* Hover actions (hidden in selection mode) */}
+            <div className={cn(
+              "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5",
+              cardSelectionMode && "hidden"
+            )}>
               <Button
                 size="icon"
                 variant="ghost"
@@ -229,6 +308,7 @@ const ShiftCard = ({ shift, onEdit, onDelete }: ShiftCardProps) => {
 const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
@@ -240,15 +320,25 @@ const Scheduling = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
   const [defaultShiftDate, setDefaultShiftDate] = useState<Date | undefined>();
+  const [defaultShiftEmployee, setDefaultShiftEmployee] = useState<DefaultEmployee | undefined>();
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [shiftImportOpen, setShiftImportOpen] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [recurringActionDialog, setRecurringActionDialog] = useState<{
     open: boolean;
     shift: Shift | null;
     actionType: RecurringActionType;
   }>({ open: false, shift: null, actionType: 'edit' });
+
+  // Multi-select state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedShiftIds, setSelectedShiftIds] = useState<Set<string>>(new Set());
+  const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [isBulkOperating, setIsBulkOperating] = useState(false);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
@@ -262,6 +352,7 @@ const Scheduling = () => {
   const updateShiftSeries = useUpdateShiftSeries();
   const publishSchedule = usePublishSchedule();
   const unpublishSchedule = useUnpublishSchedule();
+  const copyWeekMutation = useCopyWeekShifts();
   const { publication, isPublished, loading: publicationLoading } = useWeekPublicationStatus(
     restaurantId,
     currentWeekStart,
@@ -273,12 +364,31 @@ const Scheduling = () => {
     weekEnd
   );
   
+  const {
+    sensors,
+    activeDragShift,
+    highlightedCellId,
+    conflictDialog,
+    handleDragStart,
+    handleDragEnd,
+    handleDragCancel,
+  } = useShiftCopyDnd();
+
+  const { toast } = useToast();
   const pendingTradeCount = pendingTrades.length;
 
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
+    try {
+      const saved = localStorage.getItem('schedule-group-by');
+      if (saved === 'area' || saved === 'position' || saved === 'none') return saved;
+    } catch { /* ignore */ }
+    return 'none';
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Calculate scheduled labor costs with breakdown
   const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
@@ -300,21 +410,31 @@ const Scheduling = () => {
     }
   }, [allEmployees]);
 
+  const handleCopyWeekConfirm = useCallback(async (targetMonday: Date) => {
+    if (!restaurantId) return;
+    try {
+      await copyWeekMutation.mutateAsync({
+        sourceShifts: shifts,
+        sourceMonday: currentWeekStart,
+        targetMonday,
+        restaurantId,
+      });
+      setCopyDialogOpen(false);
+      setCurrentWeekStart(getMondayOfWeek(targetMonday));
+    } catch {
+      // onError in useCopyWeekShifts already shows a toast
+    }
+  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId]);
+
   // Apply position filter to active employees for new shift creation
   const filteredActiveEmployees = positionFilter && positionFilter !== 'all'
     ? activeEmployees.filter(emp => emp.position === positionFilter)
     : activeEmployees;
 
-  // For displaying shifts, include ALL employees with shifts this week (including inactive)
-  // Apply position filter to all employees with shifts
+  // For displaying the schedule grid: show active employees + inactive employees with non-cancelled shifts
   const filteredEmployeesWithShifts = useMemo(() => {
-    const shiftEmployeeIds = new Set(shifts.map(s => s.employee_id));
-    const employeesWithShifts = allEmployees.filter(emp => shiftEmployeeIds.has(emp.id));
-    
-    if (positionFilter && positionFilter !== 'all') {
-      return employeesWithShifts.filter(emp => emp.position === positionFilter);
-    }
-    return employeesWithShifts;
+    const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
+    return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter);
   }, [allEmployees, shifts, positionFilter]);
 
   // Calculate labor metrics
@@ -331,16 +451,132 @@ const Scheduling = () => {
     .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
 
+  const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
+
+  // Grouped employees for rendering
+  const employeeGroups = useMemo(
+    () => groupEmployees(filteredEmployeesWithShifts, groupBy),
+    [filteredEmployeesWithShifts, groupBy]
+  );
+
+  const handleGroupByChange = useCallback((mode: GroupByMode) => {
+    setGroupBy(mode);
+    setCollapsedGroups(new Set());
+    try { localStorage.setItem('schedule-group-by', mode); } catch { /* ignore */ }
+  }, []);
+
+  const toggleGroupCollapse = useCallback((label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
+
+  // Multi-select helpers
+  const toggleShiftSelection = useCallback((shiftId: string) => {
+    setSelectedShiftIds(prev => {
+      const next = new Set(prev);
+      if (next.has(shiftId)) next.delete(shiftId);
+      else next.add(shiftId);
+      return next;
+    });
+  }, []);
+
+  const toggleShiftGroup = useCallback((candidateIds: string[]) => {
+    setSelectedShiftIds(prev => {
+      const allSelected = candidateIds.every(id => prev.has(id));
+      const next = new Set(prev);
+      candidateIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  }, []);
+
+  const selectShiftsForEmployee = useCallback((employeeId: string) => {
+    toggleShiftGroup(shifts.filter(s => s.employee_id === employeeId).map(s => s.id));
+  }, [shifts, toggleShiftGroup]);
+
+  const selectShiftsForDay = useCallback((dayStr: string) => {
+    const targetDay = parseISO(dayStr);
+    toggleShiftGroup(shifts.filter(s => isSameDay(parseISO(s.start_time), targetDay)).map(s => s.id));
+  }, [shifts, toggleShiftGroup]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedShiftIds(new Set());
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedShiftIds(new Set());
+  }, []);
+
+  const hasLockedInSelection = useMemo(() => {
+    if (selectedShiftIds.size === 0) return false;
+    const shiftMap = new Map(shifts.map(s => [s.id, s]));
+    return Array.from(selectedShiftIds).some(id => shiftMap.get(id)?.locked);
+  }, [selectedShiftIds, shifts]);
+
+  // Escape key exits selection mode
+  useEffect(() => {
+    if (!selectionMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') exitSelectionMode();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectionMode, exitSelectionMode]);
+
+  // Bulk shift actions
+  const { bulkDelete, bulkEdit } = useBulkShiftActions(restaurantId ?? '');
+
+  const handleBulkDelete = useCallback(async () => {
+    setIsBulkOperating(true);
+    try {
+      await bulkDelete(Array.from(selectedShiftIds));
+      clearSelection();
+      setBulkDeleteDialogOpen(false);
+    } catch {
+      toast({
+        title: 'Failed to delete shifts',
+        description: 'An error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkOperating(false);
+    }
+  }, [selectedShiftIds, bulkDelete, clearSelection, toast]);
+
+  const handleBulkEdit = useCallback(async (changes: Record<string, unknown>) => {
+    setIsBulkOperating(true);
+    try {
+      await bulkEdit(Array.from(selectedShiftIds), changes);
+      clearSelection();
+      setBulkEditDialogOpen(false);
+    } catch {
+      toast({
+        title: 'Failed to update shifts',
+        description: 'An error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkOperating(false);
+    }
+  }, [selectedShiftIds, bulkEdit, clearSelection, toast]);
+
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
+    clearSelection();
   };
 
   const handleNextWeek = () => {
     setCurrentWeekStart(addWeeks(currentWeekStart, 1));
+    clearSelection();
   };
 
   const handleToday = () => {
     setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    clearSelection();
   };
 
   const handleEditEmployee = (employee: Employee) => {
@@ -353,9 +589,10 @@ const Scheduling = () => {
     setEmployeeDialogOpen(true);
   };
 
-  const handleAddShift = (date?: Date) => {
+  const handleAddShift = (date?: Date, employee?: DefaultEmployee) => {
     setSelectedShift(undefined);
     setDefaultShiftDate(date);
+    setDefaultShiftEmployee(employee);
     setShiftDialogOpen(true);
   };
 
@@ -370,6 +607,7 @@ const Scheduling = () => {
     } else {
       setSelectedShift(shift);
       setDefaultShiftDate(undefined);
+      setDefaultShiftEmployee(undefined);
       setShiftDialogOpen(true);
     }
   };
@@ -443,6 +681,7 @@ const Scheduling = () => {
         {
           onSuccess: () => {
             setPublishDialogOpen(false);
+            clearSelection();
           },
         }
       );
@@ -461,6 +700,7 @@ const Scheduling = () => {
         {
           onSuccess: () => {
             setUnpublishDialogOpen(false);
+            clearSelection();
           },
         }
       );
@@ -772,6 +1012,14 @@ const Scheduling = () => {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger
+            value="planner"
+            aria-label="Planner"
+            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Planner</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule">
@@ -833,6 +1081,31 @@ const Scheduling = () => {
 
               {/* Actions */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Selection mode toggle */}
+                {selectionMode ? (
+                  <Button
+                    size="sm"
+                    onClick={exitSelectionMode}
+                    className="h-9 text-[13px] font-medium"
+                    aria-label="Exit selection mode"
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1.5" />
+                    Done
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectionMode(true)}
+                    className="h-9 text-[13px] font-medium"
+                    aria-label="Enter selection mode"
+                  >
+                    <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                    Select
+                  </Button>
+                )}
+                <div className="h-6 w-px bg-border hidden sm:block" />
+
                 {/* Position filter */}
                 <Select value={positionFilter} onValueChange={(v) => setPositionFilter(v)}>
                   <SelectTrigger
@@ -847,6 +1120,25 @@ const Scheduling = () => {
                     {positions.map((pos) => (
                       <SelectItem key={pos} value={pos}>{pos}</SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Group by */}
+                <Select value={groupBy} onValueChange={(v) => handleGroupByChange(v as GroupByMode)}>
+                  <SelectTrigger
+                    id="group-by"
+                    aria-label="Group by"
+                    className="w-36 h-9 text-xs bg-background"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5" />
+                      <SelectValue />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Grouping</SelectItem>
+                    <SelectItem value="area">Group by Area</SelectItem>
+                    <SelectItem value="position">Group by Position</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -897,6 +1189,28 @@ const Scheduling = () => {
                   Print
                 </Button>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShiftImportOpen(true)}
+                  className="h-9 text-xs"
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1.5" />
+                  Import
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCopyDialogOpen(true)}
+                  disabled={shifts.length === 0}
+                  className="h-9 text-xs"
+                  aria-label="Copy week"
+                >
+                  <Copy className="h-3.5 w-3.5 mr-1.5" />
+                  Copy Week
+                </Button>
+
                 <div className="h-6 w-px bg-border hidden sm:block" />
 
                 <Button
@@ -908,6 +1222,7 @@ const Scheduling = () => {
                   <UserPlus className="h-3.5 w-3.5 mr-1.5" />
                   Employee
                 </Button>
+                {!selectionMode && (
                 <Button
                   size="sm"
                   onClick={() => handleAddShift()}
@@ -916,6 +1231,7 @@ const Scheduling = () => {
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
                   Shift
                 </Button>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -968,11 +1284,17 @@ const Scheduling = () => {
               </Button>
             </div>
           ) : (
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[900px]">
+              <table className="w-full border-collapse min-w-[600px] md:min-w-[900px]">
                 <thead>
                   <tr className="bg-muted/30">
-                    <th className="text-left p-3 font-medium sticky left-0 bg-muted/30 backdrop-blur-sm z-10 min-w-[180px] border-r border-border/30">
+                    <th className="text-left p-3 font-medium sticky left-0 bg-muted/30 backdrop-blur-sm z-10 w-[56px] md:w-auto md:min-w-[180px] border-r border-border/30">
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
@@ -981,24 +1303,42 @@ const Scheduling = () => {
                         <th
                           key={day.toISOString()}
                           className={cn(
-                            "text-center p-3 font-medium min-w-[130px] transition-colors",
+                            "text-center p-2 md:p-3 font-medium min-w-[70px] md:min-w-[130px] transition-colors",
                             dayIsToday && "bg-primary/5"
                           )}
                         >
-                          <div className={cn(
-                            "text-xs uppercase tracking-wider",
-                            dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
-                          )}>
-                            {format(day, 'EEE')}
-                          </div>
-                          <div className={cn(
-                            "text-sm mt-0.5",
-                            dayIsToday ? "text-primary font-semibold" : "text-foreground"
-                          )}>
-                            {format(day, 'MMM d')}
-                          </div>
-                          {dayIsToday && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
+                          {selectionMode ? (
+                            <button
+                              type="button"
+                              onClick={() => selectShiftsForDay(format(day, 'yyyy-MM-dd'))}
+                              className="w-full cursor-pointer text-primary hover:underline transition-colors"
+                              aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
+                            >
+                              <div className="text-xs uppercase tracking-wider font-semibold">
+                                {format(day, 'EEE')}
+                              </div>
+                              <div className="text-sm mt-0.5 font-semibold">
+                                {format(day, 'MMM d')}
+                              </div>
+                            </button>
+                          ) : (
+                            <>
+                              <div className={cn(
+                                "text-xs uppercase tracking-wider",
+                                dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
+                              )}>
+                                {format(day, 'EEE')}
+                              </div>
+                              <div className={cn(
+                                "text-sm mt-0.5",
+                                dayIsToday ? "text-primary font-semibold" : "text-foreground"
+                              )}>
+                                {format(day, 'MMM d')}
+                              </div>
+                              {dayIsToday && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
+                              )}
+                            </>
                           )}
                         </th>
                       );
@@ -1006,91 +1346,233 @@ const Scheduling = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {filteredEmployeesWithShifts.map((employee, idx) => (
-                    <tr
-                      key={employee.id}
-                      className={cn(
-                        "group transition-colors hover:bg-muted/30",
-                        idx % 2 === 0 && "bg-muted/10"
-                      )}
-                    >
-                      <td className="p-3 sticky left-0 bg-inherit backdrop-blur-sm z-10 border-r border-border/30">
-                        <div className="flex items-center gap-3 justify-between">
-                          <div className="flex items-center gap-3">
-                            {/* Avatar placeholder */}
-                            <div className={cn(
-                              "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
-                              employee.status === 'active'
-                                ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                : "bg-muted text-muted-foreground"
-                            )}>
-                              {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="font-medium text-sm flex items-center gap-2">
-                                {employee.name}
-                                {employee.status !== 'active' && (
-                                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
-                                    Inactive
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">{employee.position}</div>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditEmployee(employee)}
-                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-primary/10"
-                            aria-label={`Edit ${employee.name}`}
+                  {employeeGroups.map((group) => {
+                    const isGrouped = groupBy !== 'none';
+                    const isCollapsed = isGrouped && collapsedGroups.has(group.label);
+
+                    return (
+                      <React.Fragment key={group.label || '__all'}>
+                        {/* Group header row */}
+                        {isGrouped && (
+                          <tr
+                            className="bg-muted/40 cursor-pointer hover:bg-muted/60 transition-colors"
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={!isCollapsed}
+                            aria-label={`${group.label} group, ${group.employees.length} employees`}
+                            onClick={() => toggleGroupCollapse(group.label)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                toggleGroupCollapse(group.label);
+                              }
+                            }}
                           >
-                            <Edit className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                      {weekDays.map((day) => {
-                        const dayShifts = getShiftsForEmployee(employee.id, day);
-                        const dayIsToday = isToday(day);
-                        return (
-                          <td
-                            key={day.toISOString()}
+                            <td
+                              colSpan={weekDays.length + 1}
+                              className="p-2 px-3 sticky left-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                {isCollapsed ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                                )}
+                                <span className="text-[13px] font-semibold text-foreground">
+                                  {group.label}
+                                </span>
+                                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                                  {group.employees.length}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+
+                        {/* Employee rows */}
+                        {!isCollapsed && group.employees.map((employee, idx) => (
+                          <tr
+                            key={employee.id}
                             className={cn(
-                              "p-2 align-top transition-colors",
-                              dayIsToday && "bg-primary/5"
+                              "group transition-colors hover:bg-muted/30",
+                              idx % 2 === 0 && "bg-muted/10"
                             )}
                           >
-                            <div className="space-y-1.5 min-h-[60px]">
-                              {dayShifts.map((shift) => (
-                                <ShiftCard
-                                  key={shift.id}
-                                  shift={shift}
-                                  onEdit={handleEditShift}
-                                  onDelete={handleDeleteShift}
-                                />
-                              ))}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "w-full h-8 text-xs border border-dashed border-border/50",
-                                  "opacity-0 group-hover:opacity-100 transition-all duration-200",
-                                  "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                            <td className="p-1 md:p-3 sticky left-0 bg-inherit backdrop-blur-sm z-10 border-r border-border/30">
+                              <div className="hidden md:flex items-center gap-3 justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                    "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm",
+                                    employee.is_active
+                                      ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
+                                      : "bg-muted text-muted-foreground"
+                                  )}>
+                                    {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-sm flex items-center gap-2">
+                                      {selectionMode ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => selectShiftsForEmployee(employee.id)}
+                                          className="text-primary hover:underline cursor-pointer text-left transition-colors"
+                                          aria-label={`Select all shifts for ${employee.name}`}
+                                        >
+                                          {employee.name}
+                                        </button>
+                                      ) : (
+                                        employee.name
+                                      )}
+                                      {!employee.is_active && (
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted">
+                                          Inactive
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                      {employee.position}
+                                      {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
+                                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
+                                          {hoursPerEmployee.get(employee.id)}h
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                                {!selectionMode && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleEditEmployee(employee)}
+                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-primary/10"
+                                    aria-label={`Edit ${employee.name}`}
+                                  >
+                                    <Edit className="h-3.5 w-3.5" />
+                                  </Button>
                                 )}
-                                onClick={() => handleAddShift(day)}
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add
-                              </Button>
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                              </div>
+                              {/* Mobile: compact avatar with tooltip */}
+                              <div className="flex md:hidden flex-col items-center py-1">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
+                                        className={cn(
+                                          "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
+                                          employee.is_active
+                                            ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
+                                            : "bg-muted text-muted-foreground"
+                                        )}
+                                        aria-label={`${employee.name}, ${employee.position}`}
+                                      >
+                                        {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="text-xs">
+                                      <div className="font-medium">
+                                        {employee.name}
+                                        {!employee.is_active && (
+                                          <span className="text-muted-foreground ml-1">(Inactive)</span>
+                                        )}
+                                      </div>
+                                      <div className="text-muted-foreground">{employee.position}</div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
+                                  <span className="text-[10px] text-muted-foreground mt-0.5">
+                                    {hoursPerEmployee.get(employee.id)}h
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            {weekDays.map((day) => {
+                              const dayShifts = getShiftsForEmployee(employee.id, day);
+                              const dayIsToday = isToday(day);
+                              return (
+                                <DroppableDayCell
+                                  key={day.toISOString()}
+                                  employeeId={employee.id}
+                                  day={format(day, 'yyyy-MM-dd')}
+                                  isToday={dayIsToday}
+                                  isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
+                                >
+                                  <div className="space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]">
+                                    {dayShifts.map((shift) => (
+                                      selectionMode ? (
+                                        <ShiftCard
+                                          key={shift.id}
+                                          shift={shift}
+                                          onEdit={handleEditShift}
+                                          onDelete={handleDeleteShift}
+                                          isSelected={selectedShiftIds.has(shift.id)}
+                                          selectionMode={selectionMode}
+                                          onToggleSelect={toggleShiftSelection}
+                                        />
+                                      ) : (
+                                        <DraggableShiftCard
+                                          key={shift.id}
+                                          shift={shift}
+                                          employeeId={employee.id}
+                                          day={format(day, 'yyyy-MM-dd')}
+                                        >
+                                          <ShiftCard
+                                            shift={shift}
+                                            onEdit={handleEditShift}
+                                            onDelete={handleDeleteShift}
+                                          />
+                                        </DraggableShiftCard>
+                                      )
+                                    ))}
+                                    {!selectionMode && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={cn(
+                                          "w-full h-8 text-xs border border-dashed border-border/50",
+                                          "opacity-0 group-hover:opacity-100 transition-all duration-200",
+                                          "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                                        )}
+                                        onClick={() => handleAddShift(day, employee)}
+                                      >
+                                        <Plus className="h-3 w-3 mr-1" />
+                                        Add
+                                      </Button>
+                                    )}
+                                  </div>
+                                </DroppableDayCell>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+            <DragOverlay dropAnimation={null}>
+              {activeDragShift && <ShiftDragOverlay shift={activeDragShift} />}
+            </DragOverlay>
+            </DndContext>
+          )}
+          <AvailabilityConflictDialog
+            open={conflictDialog.open}
+            data={conflictDialog.data}
+            timezone={restaurantTimezone}
+            onConfirm={conflictDialog.onConfirm}
+            onCancel={conflictDialog.onCancel}
+          />
+          {selectionMode && selectedShiftIds.size > 0 && (
+            <BulkActionBar
+              selectedCount={selectedShiftIds.size}
+              onClose={clearSelection}
+              actions={[
+                { label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: () => setBulkEditDialogOpen(true) },
+                { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => setBulkDeleteDialogOpen(true), variant: 'destructive' as const },
+              ]}
+            />
           )}
         </CardContent>
       </Card>
@@ -1197,6 +1679,14 @@ const Scheduling = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="planner">
+          {restaurantId && (
+            <ShiftPlannerTab
+              restaurantId={restaurantId}
+            />
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
@@ -1213,7 +1703,9 @@ const Scheduling = () => {
             onOpenChange={setShiftDialogOpen}
             shift={selectedShift}
             restaurantId={restaurantId}
+            timezone={restaurantTimezone}
             defaultDate={defaultShiftDate}
+            defaultEmployee={defaultShiftEmployee}
           />
           <TimeOffRequestDialog
             open={timeOffDialogOpen}
@@ -1336,6 +1828,61 @@ const Scheduling = () => {
         weekEnd={weekEnd}
         restaurantName={selectedRestaurant?.restaurant?.name}
         positionFilter={positionFilter}
+        groupBy={groupBy}
+      />
+
+      {/* Shift Import Sheet */}
+      {restaurantId && (
+        <ShiftImportSheet
+          open={shiftImportOpen}
+          onOpenChange={setShiftImportOpen}
+          restaurantId={restaurantId}
+          employees={allEmployees}
+          timezone={restaurantTimezone}
+        />
+      )}
+
+      {/* Copy Week Dialog */}
+      <CopyWeekDialog
+        open={copyDialogOpen}
+        onOpenChange={setCopyDialogOpen}
+        sourceWeekStart={currentWeekStart}
+        sourceWeekEnd={weekEnd}
+        shifts={shifts}
+        restaurantId={restaurantId}
+        onConfirm={handleCopyWeekConfirm}
+        isPending={copyWeekMutation.isPending}
+      />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedShiftIds.size} shift{selectedShiftIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>This action cannot be undone.</p>
+              {hasLockedInSelection && (
+                <p className="text-muted-foreground font-medium">Locked shifts (published) will be skipped.</p>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkOperating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} disabled={isBulkOperating} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isBulkOperating ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Edit Shifts Dialog */}
+      <BulkEditShiftsDialog
+        open={bulkEditDialogOpen}
+        onOpenChange={setBulkEditDialogOpen}
+        selectedCount={selectedShiftIds.size}
+        onConfirm={handleBulkEdit}
+        isUpdating={isBulkOperating}
+        positions={positions}
       />
     </div>
     </FeatureGate>

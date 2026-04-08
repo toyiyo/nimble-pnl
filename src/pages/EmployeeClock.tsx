@@ -5,12 +5,14 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches } from '@/hooks/useTimePunches';
-import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, Shield, CheckCircle } from 'lucide-react';
+import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { collectPunchContext } from '@/utils/punchContext';
+import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
+import { useGeofenceCheck } from '@/hooks/useGeofenceCheck';
 
 const EmployeeClock = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -20,6 +22,12 @@ const EmployeeClock = () => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | 'break_start' | 'break_end' | null>(null);
+  const [pendingGeofenceResult, setPendingGeofenceResult] = useState<{ distanceMeters?: number; within?: boolean } | undefined>(undefined);
+  const [geofenceWarning, setGeofenceWarning] = useState<{
+    type: 'outside' | 'unavailable';
+    distanceMeters?: number;
+  } | null>(null);
+  const [pendingLocationUnavailable, setPendingLocationUnavailable] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
@@ -30,6 +38,7 @@ const EmployeeClock = () => {
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
   const createPunch = useCreateTimePunch();
   const { punches } = useTimePunches(restaurantId, employee?.id || undefined, new Date(new Date().setHours(0, 0, 0, 0)));
+  const { checkLocation, checking: geofenceChecking } = useGeofenceCheck(selectedRestaurant?.restaurant ?? null);
 
   // Update current time every second
   useEffect(() => {
@@ -99,11 +108,63 @@ const EmployeeClock = () => {
   };
 
   const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+    // Run geofence check before allowing clock-in
+    if (punchType === 'clock_in') {
+      const geofenceResult = await checkLocation();
+
+      if (geofenceResult.action === 'block') {
+        toast({
+          title: 'Location Required',
+          description: 'You must be at the restaurant to clock in.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (geofenceResult.action === 'warn') {
+        // Show confirmation dialog instead of toast
+        setPendingPunchType(punchType);
+        setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+        setPendingLocationUnavailable(false);
+        setGeofenceWarning({ type: 'outside', distanceMeters: geofenceResult.distanceMeters });
+        return;
+      }
+
+      if (geofenceResult.locationUnavailable) {
+        // Show location unavailable dialog
+        setPendingPunchType(punchType);
+        setPendingGeofenceResult(undefined);
+        setPendingLocationUnavailable(true);
+        setGeofenceWarning({ type: 'unavailable' });
+        return;
+      }
+
+      setPendingGeofenceResult(geofenceResult.checked ? { distanceMeters: geofenceResult.distanceMeters, within: geofenceResult.within } : undefined);
+      setPendingLocationUnavailable(false);
+    } else {
+      setPendingGeofenceResult(undefined);
+      setPendingLocationUnavailable(false);
+    }
+
     setPendingPunchType(punchType);
     setShowCameraDialog(true);
     setCapturedPhoto(null);
     // Start camera automatically
     setTimeout(startCamera, 100);
+  };
+
+  const handleProceedAfterWarning = () => {
+    setGeofenceWarning(null);
+    setShowCameraDialog(true);
+    setCapturedPhoto(null);
+    setTimeout(startCamera, 100);
+  };
+
+  const handleCancelWarning = () => {
+    setGeofenceWarning(null);
+    setPendingPunchType(null);
+    setPendingGeofenceResult(undefined);
+    setPendingLocationUnavailable(false);
   };
 
   const handleConfirmPunch = async () => {
@@ -113,9 +174,13 @@ const EmployeeClock = () => {
     setShowCameraDialog(false);
     const photoToProcess = capturedPhoto;
     const punchType = pendingPunchType;
-    
+    const geofenceResult = pendingGeofenceResult;
+    const locationUnavailable = pendingLocationUnavailable;
+
     setPendingPunchType(null);
     setCapturedPhoto(null);
+    setPendingGeofenceResult(undefined);
+    setPendingLocationUnavailable(false);
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
@@ -144,7 +209,7 @@ const EmployeeClock = () => {
         employee_id: employee.id,
         punch_type: punchType,
         punch_time: new Date().toISOString(),
-        location: context?.location,
+        location: mergePunchLocation(context?.location, geofenceResult, locationUnavailable),
         device_info: context?.device_info,
         photoBlob,
       });
@@ -227,10 +292,10 @@ const EmployeeClock = () => {
       <Card>
         <CardContent className="pt-6">
           <div className="text-center space-y-4">
-            <div className="text-6xl font-bold tabular-nums">
+            <div className="text-4xl sm:text-6xl font-bold tabular-nums">
               {format(currentTime, 'h:mm:ss a')}
             </div>
-            <div className="text-xl text-muted-foreground">
+            <div className="text-base sm:text-xl text-muted-foreground">
               {format(currentTime, 'EEEE, MMMM d, yyyy')}
             </div>
             
@@ -280,7 +345,7 @@ const EmployeeClock = () => {
                 size="lg"
                 className="h-24 text-xl"
                 onClick={() => handleInitiatePunch('clock_in')}
-                disabled={createPunch.isPending}
+                disabled={createPunch.isPending || geofenceChecking}
               >
                 <LogIn className="mr-2 h-6 w-6" />
                 Clock In
@@ -498,6 +563,47 @@ const EmployeeClock = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Geofence Warning Dialog */}
+      <AlertDialog open={geofenceWarning !== null} onOpenChange={(open) => {
+        if (!open) handleCancelWarning();
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                {geofenceWarning?.type === 'unavailable'
+                  ? <MapPinOff className="h-5 w-5 text-amber-600" />
+                  : <MapPin className="h-5 w-5 text-amber-600" />
+                }
+              </div>
+              <div>
+                <AlertDialogTitle className="text-[17px] font-semibold">
+                  {geofenceWarning?.type === 'unavailable' ? 'Location Unavailable' : 'Location Warning'}
+                </AlertDialogTitle>
+              </div>
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogDescription className="text-[14px] text-muted-foreground">
+            {geofenceWarning?.type === 'unavailable'
+              ? "We couldn't verify your location. You can still clock in, but this will be flagged for manager review."
+              : `You appear to be about ${geofenceWarning?.distanceMeters != null ? (geofenceWarning.distanceMeters >= 1000 ? `${(geofenceWarning.distanceMeters / 1000).toFixed(1)} km` : `${Math.round(geofenceWarning.distanceMeters / 10) * 10} meters`) : 'some distance'} from the restaurant. Do you want to continue clocking in?`
+            }
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={handleCancelWarning}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              onClick={handleProceedAfterWarning}
+            >
+              Continue Anyway
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

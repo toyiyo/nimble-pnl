@@ -292,6 +292,9 @@ function buildEmailHtml(brief: BriefRow, restaurantName: string): string {
       <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
         <!-- Header -->
         <tr><td style="padding:24px 24px 16px;">
+          <div style="margin-bottom:8px;">
+            <img src="https://app.easyshifthq.com/icon-192.png" alt="EasyShiftHQ" width="32" height="32" style="display:block;border-radius:8px;" />
+          </div>
           <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">Weekly Brief</div>
           <div style="font-size:17px;font-weight:600;color:#111827;margin-top:4px;">${restaurantName}</div>
           <div style="font-size:13px;color:#6b7280;margin-top:2px;">${formatWeekRange(brief.brief_week_end)}</div>

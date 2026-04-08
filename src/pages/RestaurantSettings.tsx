@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurants, type Restaurant } from '@/hooks/useRestaurants';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +17,8 @@ import { SecuritySettings } from '@/components/SecuritySettings';
 import { NotificationSettings } from '@/components/NotificationSettings';
 import { SubscriptionPlans, TrialBanner } from '@/components/subscription';
 import { useToast } from '@/hooks/use-toast';
-import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building } from 'lucide-react';
+import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock, DollarSign, Target } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -25,6 +26,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
+import { COGSPreferenceSettings } from '@/components/settings/COGSPreferenceSettings';
+import { GeofenceSettings } from '@/components/settings/GeofenceSettings';
+import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -48,6 +53,7 @@ export default function RestaurantSettings() {
   const [cuisineType, setCuisineType] = useState('');
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [saving, setSaving] = useState(false);
+  const [geofenceSaving, setGeofenceSaving] = useState(false);
 
   // Business info state
   const [legalName, setLegalName] = useState('');
@@ -61,6 +67,36 @@ export default function RestaurantSettings() {
   const [ein, setEin] = useState('');
   const [entityType, setEntityType] = useState<Restaurant['entity_type'] | ''>('');
   const [savingBusiness, setSavingBusiness] = useState(false);
+
+  // Overtime rules state
+  const [otWeeklyThreshold, setOtWeeklyThreshold] = useState('40');
+  const [otWeeklyMultiplier, setOtWeeklyMultiplier] = useState('1.5');
+  const [otDailyEnabled, setOtDailyEnabled] = useState(false);
+  const [otDailyThreshold, setOtDailyThreshold] = useState('8');
+  const [otDailyMultiplier, setOtDailyMultiplier] = useState('1.5');
+  const [otDoubleEnabled, setOtDoubleEnabled] = useState(false);
+  const [otDoubleThreshold, setOtDoubleThreshold] = useState('12');
+  const [otDoubleMultiplier, setOtDoubleMultiplier] = useState('2.0');
+  const [otExcludeTips, setOtExcludeTips] = useState(true);
+  const [otRulesLoading, setOtRulesLoading] = useState(false);
+  const [otSaving, setOtSaving] = useState(false);
+
+  // Labor planning state (staffing settings)
+  const { effectiveSettings: staffDefaults, updateSettings: saveStaffingSettings, isSaving: staffingSaving, isLoading: staffingLoading } = useStaffingSettings(selectedRestaurant?.restaurant_id ?? null);
+  const [lpTargetSplh, setLpTargetSplh] = useState('60');
+  const [lpAvgTicket, setLpAvgTicket] = useState('8');
+  const [lpTargetLaborPct, setLpTargetLaborPct] = useState('22');
+  const [lpMinStaff, setLpMinStaff] = useState('1');
+  const [lpLookbackWeeks, setLpLookbackWeeks] = useState('4');
+
+  // Sync labor planning form when staffing defaults load
+  useEffect(() => {
+    setLpTargetSplh(String(staffDefaults.target_splh));
+    setLpAvgTicket(String(staffDefaults.avg_ticket_size));
+    setLpTargetLaborPct(String(staffDefaults.target_labor_pct));
+    setLpMinStaff(String(staffDefaults.min_staff));
+    setLpLookbackWeeks(String(staffDefaults.lookback_weeks));
+  }, [staffDefaults.target_splh, staffDefaults.avg_ticket_size, staffDefaults.target_labor_pct, staffDefaults.min_staff, staffDefaults.lookback_weeks]);
 
   // Update form when selected restaurant changes
   useEffect(() => {
@@ -181,6 +217,154 @@ export default function RestaurantSettings() {
     }
   };
 
+  // Fetch overtime rules when restaurant changes
+  useEffect(() => {
+    if (!selectedRestaurant) return;
+    const fetchOtRules = async () => {
+      setOtRulesLoading(true);
+      const { data, error } = await (supabase
+        .from('overtime_rules' as any) as any)
+        .select('weekly_threshold_hours, weekly_ot_multiplier, daily_threshold_hours, daily_ot_multiplier, daily_double_threshold_hours, daily_double_multiplier, exclude_tips_from_ot_rate')
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
+        .maybeSingle();
+      if (error) {
+        console.error('Error fetching overtime rules:', error);
+        toast({ title: 'Failed to load overtime rules', description: error.message, variant: 'destructive' });
+      } else if (data) {
+        setOtWeeklyThreshold(String(data.weekly_threshold_hours));
+        setOtWeeklyMultiplier(String(data.weekly_ot_multiplier));
+        setOtDailyEnabled(data.daily_threshold_hours != null);
+        setOtDailyThreshold(String(data.daily_threshold_hours ?? 8));
+        setOtDailyMultiplier(String(data.daily_ot_multiplier));
+        setOtDoubleEnabled(data.daily_double_threshold_hours != null);
+        setOtDoubleThreshold(String(data.daily_double_threshold_hours ?? 12));
+        setOtDoubleMultiplier(String(data.daily_double_multiplier));
+        setOtExcludeTips(data.exclude_tips_from_ot_rate);
+      } else {
+        setOtWeeklyThreshold('40');
+        setOtWeeklyMultiplier('1.5');
+        setOtDailyEnabled(false);
+        setOtDailyThreshold('8');
+        setOtDailyMultiplier('1.5');
+        setOtDoubleEnabled(false);
+        setOtDoubleThreshold('12');
+        setOtDoubleMultiplier('2.0');
+        setOtExcludeTips(true);
+      }
+      setOtRulesLoading(false);
+    };
+    fetchOtRules();
+  }, [selectedRestaurant?.restaurant_id]);
+
+  const handleSaveOtRules = async () => {
+    if (!selectedRestaurant) return;
+
+    const weeklyThreshold = Number.parseFloat(otWeeklyThreshold);
+    const weeklyMultiplier = Number.parseFloat(otWeeklyMultiplier);
+    const dailyThreshold = Number.parseFloat(otDailyThreshold);
+    const dailyMultiplier = Number.parseFloat(otDailyMultiplier);
+    const doubleThreshold = Number.parseFloat(otDoubleThreshold);
+    const doubleMultiplier = Number.parseFloat(otDoubleMultiplier);
+
+    const hasInvalidWeekly = Number.isNaN(weeklyThreshold) || Number.isNaN(weeklyMultiplier);
+    const hasInvalidDaily = otDailyEnabled && (Number.isNaN(dailyThreshold) || Number.isNaN(dailyMultiplier));
+    const hasInvalidDouble = otDailyEnabled && otDoubleEnabled && (Number.isNaN(doubleThreshold) || Number.isNaN(doubleMultiplier));
+
+    if (hasInvalidWeekly || hasInvalidDaily || hasInvalidDouble) {
+      toast({ title: 'Invalid values', description: 'Please enter valid numbers for all fields.', variant: 'destructive' });
+      return;
+    }
+
+    if (weeklyThreshold <= 0 || (otDailyEnabled && dailyThreshold <= 0) || (otDailyEnabled && otDoubleEnabled && doubleThreshold <= 0)) {
+      toast({ title: 'Invalid thresholds', description: 'All thresholds must be greater than zero.', variant: 'destructive' });
+      return;
+    }
+
+    if (weeklyMultiplier < 1 || (otDailyEnabled && dailyMultiplier < 1) || (otDailyEnabled && otDoubleEnabled && doubleMultiplier < 1)) {
+      toast({ title: 'Invalid multipliers', description: 'All multipliers must be at least 1.0.', variant: 'destructive' });
+      return;
+    }
+
+    if (otDailyEnabled && otDoubleEnabled && doubleThreshold <= dailyThreshold) {
+      toast({ title: 'Invalid thresholds', description: 'Double-time threshold must be greater than daily overtime threshold.', variant: 'destructive' });
+      return;
+    }
+
+    setOtSaving(true);
+    try {
+      const { error } = await (supabase
+        .from('overtime_rules' as any) as any)
+        .upsert({
+          restaurant_id: selectedRestaurant.restaurant_id,
+          weekly_threshold_hours: weeklyThreshold,
+          weekly_ot_multiplier: weeklyMultiplier,
+          daily_threshold_hours: otDailyEnabled ? dailyThreshold : null,
+          daily_ot_multiplier: dailyMultiplier,
+          daily_double_threshold_hours: (otDailyEnabled && otDoubleEnabled) ? doubleThreshold : null,
+          daily_double_multiplier: doubleMultiplier,
+          exclude_tips_from_ot_rate: otExcludeTips,
+        }, { onConflict: 'restaurant_id' });
+      if (error) throw error;
+      toast({ title: 'Overtime rules saved', description: 'Payroll overtime settings have been updated.' });
+    } catch (err) {
+      toast({ title: 'Failed to save overtime rules', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    } finally {
+      setOtSaving(false);
+    }
+  };
+
+  const handleSaveLaborPlanning = async () => {
+    if (!selectedRestaurant) return;
+    const targetSplh = Number.parseFloat(lpTargetSplh);
+    const avgTicket = Number.parseFloat(lpAvgTicket);
+    const targetLaborPct = Number.parseFloat(lpTargetLaborPct);
+    const minStaff = Number.parseInt(lpMinStaff, 10);
+    const lookbackWeeks = Number.parseInt(lpLookbackWeeks, 10);
+
+    if ([targetSplh, avgTicket, targetLaborPct, minStaff, lookbackWeeks].some(Number.isNaN)) {
+      toast({ title: 'Invalid values', description: 'Please enter valid numbers for all fields.', variant: 'destructive' });
+      return;
+    }
+    if (targetSplh <= 0 || avgTicket <= 0 || targetLaborPct <= 0 || minStaff < 1) {
+      toast({ title: 'Invalid values', description: 'All values must be greater than zero.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await saveStaffingSettings({
+        target_splh: targetSplh,
+        avg_ticket_size: avgTicket,
+        target_labor_pct: targetLaborPct,
+        min_staff: minStaff,
+        lookback_weeks: lookbackWeeks,
+      });
+      toast({ title: 'Labor planning saved', description: 'Staffing settings have been updated.' });
+    } catch (err) {
+      toast({ title: 'Failed to save', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    }
+  };
+
+  const handleSaveGeofence = async (values: {
+    latitude: number | null;
+    longitude: number | null;
+    geofence_radius_meters: number;
+    geofence_enforcement: string;
+  }) => {
+    if (!selectedRestaurant) return;
+    setGeofenceSaving(true);
+    try {
+      const { error } = await supabase
+        .from('restaurants')
+        .update(values as any)
+        .eq('id', selectedRestaurant.restaurant_id);
+      if (error) throw error;
+      toast({ title: 'Geofence settings saved', description: 'Clock-in location enforcement has been updated.' });
+    } catch (err) {
+      toast({ title: 'Failed to save geofence settings', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
+    } finally {
+      setGeofenceSaving(false);
+    }
+  };
+
   const canEdit = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
   const isOwner = selectedRestaurant?.role === 'owner';
 
@@ -189,6 +373,9 @@ export default function RestaurantSettings() {
     return [
       'general',
       ...(canEdit ? ['business'] : []),
+      ...(canEdit ? ['payroll'] : []),
+      ...(canEdit ? ['labor-planning'] : []),
+      ...(canEdit ? ['financial'] : []),
       ...(isOwner ? ['subscription'] : []),
       ...(canEdit ? ['notifications'] : []),
       'security',
@@ -204,6 +391,9 @@ export default function RestaurantSettings() {
 
   // Compute grid columns class based on visible tab count
   const gridColsMap: Record<number, string> = {
+    8: 'grid-cols-8',
+    7: 'grid-cols-7',
+    6: 'grid-cols-6',
     5: 'grid-cols-5',
     4: 'grid-cols-4',
     3: 'grid-cols-3',
@@ -302,6 +492,24 @@ export default function RestaurantSettings() {
             <TabsTrigger value="business">
               <Building className="h-4 w-4 mr-2" />
               Business
+            </TabsTrigger>
+          )}
+          {canEdit && (
+            <TabsTrigger value="payroll">
+              <Clock className="h-4 w-4 mr-2" />
+              Payroll
+            </TabsTrigger>
+          )}
+          {canEdit && (
+            <TabsTrigger value="labor-planning">
+              <Target className="h-4 w-4 mr-2" />
+              Labor
+            </TabsTrigger>
+          )}
+          {canEdit && (
+            <TabsTrigger value="financial">
+              <DollarSign className="h-4 w-4 mr-2" />
+              Financial
             </TabsTrigger>
           )}
           {isOwner && (
@@ -457,6 +665,17 @@ export default function RestaurantSettings() {
                 <div role="status" aria-live="polite" className="sr-only">
                   Saving restaurant settings...
                 </div>
+              )}
+
+              {canEdit && (
+                <GeofenceSettings
+                  latitude={selectedRestaurant.restaurant.latitude ?? null}
+                  longitude={selectedRestaurant.restaurant.longitude ?? null}
+                  radiusMeters={selectedRestaurant.restaurant.geofence_radius_meters ?? 100}
+                  enforcement={selectedRestaurant.restaurant.geofence_enforcement ?? 'off'}
+                  onSave={handleSaveGeofence}
+                  saving={geofenceSaving}
+                />
               )}
             </CardContent>
           </Card>
@@ -673,6 +892,385 @@ export default function RestaurantSettings() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+        )}
+
+        {/* Payroll / Overtime Rules Tab */}
+        {canEdit && (
+          <TabsContent value="payroll">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" aria-hidden="true" />
+                  Overtime Rules
+                </CardTitle>
+                <CardDescription>
+                  Configure how overtime is calculated for payroll
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {otRulesLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Weekly Overtime */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Weekly Overtime</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Hours beyond the weekly threshold are paid at the overtime rate
+                        </p>
+                      </div>
+                      <div className="p-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="otWeeklyThreshold" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Threshold (hours/week)
+                            </Label>
+                            <Input
+                              id="otWeeklyThreshold"
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={otWeeklyThreshold}
+                              onChange={(e) => setOtWeeklyThreshold(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="otWeeklyMultiplier" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Multiplier
+                            </Label>
+                            <Input
+                              id="otWeeklyMultiplier"
+                              type="number"
+                              min="1"
+                              step="0.1"
+                              value={otWeeklyMultiplier}
+                              onChange={(e) => setOtWeeklyMultiplier(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Daily Overtime */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-[13px] font-semibold text-foreground">Daily Overtime</h3>
+                          <p className="text-[13px] text-muted-foreground mt-0.5">
+                            Required in some states (e.g., California)
+                          </p>
+                        </div>
+                        <Switch
+                          checked={otDailyEnabled}
+                          onCheckedChange={setOtDailyEnabled}
+                          className="data-[state=checked]:bg-foreground"
+                          aria-label="Enable daily overtime"
+                        />
+                      </div>
+                      {otDailyEnabled && (
+                        <div className="p-4 space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="otDailyThreshold" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                Threshold (hours/day)
+                              </Label>
+                              <Input
+                                id="otDailyThreshold"
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={otDailyThreshold}
+                                onChange={(e) => setOtDailyThreshold(e.target.value)}
+                                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="otDailyMultiplier" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                Multiplier
+                              </Label>
+                              <Input
+                                id="otDailyMultiplier"
+                                type="number"
+                                min="1"
+                                step="0.1"
+                                value={otDailyMultiplier}
+                                onChange={(e) => setOtDailyMultiplier(e.target.value)}
+                                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Double Time (nested inside Daily) */}
+                          <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+                            <div className="px-4 py-3 border-b border-border/40 bg-muted/30 flex items-center justify-between">
+                              <div>
+                                <h3 className="text-[13px] font-semibold text-foreground">Double Time</h3>
+                                <p className="text-[13px] text-muted-foreground mt-0.5">
+                                  Additional threshold for double-time pay
+                                </p>
+                              </div>
+                              <Switch
+                                checked={otDoubleEnabled}
+                                onCheckedChange={setOtDoubleEnabled}
+                                className="data-[state=checked]:bg-foreground"
+                                aria-label="Enable double time"
+                              />
+                            </div>
+                            {otDoubleEnabled && (
+                              <div className="p-4">
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="otDoubleThreshold" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                      Threshold (hours/day)
+                                    </Label>
+                                    <Input
+                                      id="otDoubleThreshold"
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      value={otDoubleThreshold}
+                                      onChange={(e) => setOtDoubleThreshold(e.target.value)}
+                                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="otDoubleMultiplier" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                      Multiplier
+                                    </Label>
+                                    <Input
+                                      id="otDoubleMultiplier"
+                                      type="number"
+                                      min="1"
+                                      step="0.1"
+                                      value={otDoubleMultiplier}
+                                      onChange={(e) => setOtDoubleMultiplier(e.target.value)}
+                                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tip Exclusion */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <h3 className="text-[13px] font-semibold text-foreground">Exclude Tips from OT Rate</h3>
+                          <p className="text-[13px] text-muted-foreground mt-0.5">
+                            When enabled, tips are not included when calculating the overtime hourly rate
+                          </p>
+                        </div>
+                        <Switch
+                          checked={otExcludeTips}
+                          onCheckedChange={setOtExcludeTips}
+                          className="data-[state=checked]:bg-foreground"
+                          aria-label="Exclude tips from overtime rate calculation"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+              <CardFooter className="flex justify-end border-t px-6 py-4">
+                <Button
+                  onClick={handleSaveOtRules}
+                  disabled={otSaving || otRulesLoading}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label={otSaving ? 'Saving overtime rules' : 'Save overtime rules'}
+                >
+                  <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {otSaving ? 'Saving...' : 'Save Rules'}
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Labor Planning Tab */}
+        {canEdit && (
+          <TabsContent value="labor-planning">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" aria-hidden="true" />
+                  Labor Planning
+                </CardTitle>
+                <CardDescription>
+                  Configure targets used for staffing suggestions and labor cost analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {staffingLoading ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-24 w-full" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Revenue Targets */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Revenue Targets</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Set goals for sales productivity per labor hour
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="lpTargetSplh" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Target SPLH ($)
+                            </Label>
+                            <Input
+                              id="lpTargetSplh"
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={lpTargetSplh}
+                              onChange={(e) => setLpTargetSplh(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpTargetSplh-help"
+                            />
+                            <p id="lpTargetSplh-help" className="text-[13px] text-muted-foreground">
+                              Sales Per Labor Hour — the revenue each staff member should generate per hour
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="lpAvgTicket" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Average Ticket Size ($)
+                            </Label>
+                            <Input
+                              id="lpAvgTicket"
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={lpAvgTicket}
+                              onChange={(e) => setLpAvgTicket(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpAvgTicket-help"
+                            />
+                            <p id="lpAvgTicket-help" className="text-[13px] text-muted-foreground">
+                              Average revenue per transaction, used to convert guest counts into projected revenue
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Labor Constraints */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Labor Constraints</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Limits and targets for scheduling decisions
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="lpTargetLaborPct" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Target Labor %
+                            </Label>
+                            <Input
+                              id="lpTargetLaborPct"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="1"
+                              value={lpTargetLaborPct}
+                              onChange={(e) => setLpTargetLaborPct(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpTargetLaborPct-help"
+                            />
+                            <p id="lpTargetLaborPct-help" className="text-[13px] text-muted-foreground">
+                              Maximum percentage of revenue that should go to labor costs
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="lpMinStaff" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                              Minimum Staff Per Hour
+                            </Label>
+                            <Input
+                              id="lpMinStaff"
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={lpMinStaff}
+                              onChange={(e) => setLpMinStaff(e.target.value)}
+                              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              aria-describedby="lpMinStaff-help"
+                            />
+                            <p id="lpMinStaff-help" className="text-[13px] text-muted-foreground">
+                              Minimum number of employees scheduled for any open hour, regardless of projected demand
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Forecasting */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Forecasting</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Controls how historical data is used for demand projections
+                        </p>
+                      </div>
+                      <div className="p-4">
+                        <div className="max-w-xs space-y-2">
+                          <Label htmlFor="lpLookbackWeeks" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                            Historical Lookback
+                          </Label>
+                          <Select value={lpLookbackWeeks} onValueChange={setLpLookbackWeeks}>
+                            <SelectTrigger id="lpLookbackWeeks" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                              <SelectValue placeholder="Select period" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="2">2 weeks</SelectItem>
+                              <SelectItem value="4">4 weeks</SelectItem>
+                              <SelectItem value="8">8 weeks</SelectItem>
+                              <SelectItem value="12">12 weeks</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p id="lpLookbackWeeks-help" className="text-[13px] text-muted-foreground">
+                            Number of past weeks used to calculate average sales patterns for staffing projections
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+              <CardFooter className="flex justify-end border-t px-6 py-4">
+                <Button
+                  onClick={handleSaveLaborPlanning}
+                  disabled={staffingSaving || staffingLoading}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label={staffingSaving ? 'Saving labor planning settings' : 'Save labor planning settings'}
+                >
+                  <Save className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {staffingSaving ? 'Saving...' : 'Save Settings'}
+                </Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Financial Tab - COGS settings */}
+        {canEdit && (
+          <TabsContent value="financial">
+            <COGSPreferenceSettings restaurantId={selectedRestaurant.restaurant_id} />
           </TabsContent>
         )}
 

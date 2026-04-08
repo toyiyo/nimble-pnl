@@ -1,3 +1,4 @@
+import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -73,7 +74,7 @@ serve(async (req) => {
     // Get all employees for this restaurant
     const { data: employees, error: empError } = await supabase
       .from("employees")
-      .select("id, name, email")
+      .select("id, name, email, user_id")
       .eq("restaurant_id", restaurantId)
       .eq("status", "active");
 
@@ -126,20 +127,7 @@ serve(async (req) => {
           subject: `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-              <!-- Header with Logo -->
-              <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 32px 24px; text-align: center; border-radius: 8px 8px 0 0;">
-                <div style="display: inline-flex; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
-                  <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px; padding: 8px; display: inline-block; margin-right: 12px;">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                      <line x1="16" y1="2" x2="16" y2="6"></line>
-                      <line x1="8" y1="2" x2="8" y2="6"></line>
-                      <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg>
-                  </div>
-                  <span style="font-size: 20px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px;">EasyShiftHQ</span>
-                </div>
-              </div>
+              ${generateHeader()}
               
               <!-- Content -->
               <div style="padding: 40px 32px; background-color: #ffffff;">
@@ -221,6 +209,28 @@ serve(async (req) => {
       (r) => r.status === "fulfilled" && r.value.success
     ).length;
     const failureCount = results.length - successCount;
+
+    // Send push notifications to all scheduled employees
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const pushPromises = scheduledEmployees
+      .filter((emp) => emp.user_id)
+      .map((employee) =>
+        fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            user_id: employee.user_id,
+            title: "Schedule Updated",
+            body: "A new schedule has been published",
+            data: { route: "/employee/schedule" },
+          }),
+        }).catch((e) => console.error(`Push notification failed for employee ${employee.id}:`, e))
+      );
+    await Promise.allSettled(pushPromises);
 
     // Update the publication record to mark notifications as sent
     await supabase

@@ -92,7 +92,7 @@ const EmployeeShiftMarketplace = () => {
   };
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 space-y-6 max-w-7xl">
+    <div className="space-y-6">
       {/* Header with Navigation */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <EmployeePageHeader
@@ -100,8 +100,8 @@ const EmployeeShiftMarketplace = () => {
           title="Shift Marketplace"
           subtitle="Browse and accept available shifts from your teammates"
         />
-        <Link to="/employee/schedule">
-          <Button variant="outline" className="border-primary/20 hover:bg-primary/5">
+        <Link to="/employee/schedule" className="w-full sm:w-auto">
+          <Button variant="outline" className="w-full sm:w-auto border-primary/20 hover:bg-primary/5">
             <Calendar className="h-4 w-4 mr-2" />
             My Schedule
           </Button>

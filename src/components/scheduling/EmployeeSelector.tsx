@@ -20,7 +20,7 @@ export const EmployeeSelector = ({
   required = true,
 }: EmployeeSelectorProps) => {
   const { employees } = useEmployees(restaurantId);
-  const activeEmployees = employees.filter(emp => emp.status === 'active');
+  const activeEmployees = employees.filter(emp => emp.is_active);
 
   return (
     <div className="space-y-2">

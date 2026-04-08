@@ -6,6 +6,7 @@ import {
   calculateRegularAndOvertimeHours,
   calculateEmployeePay,
   calculatePayrollPeriod,
+  exportPayrollToCSV,
   type ManualPayment,
   type WorkPeriod,
 } from '@/utils/payrollCalculations';
@@ -404,6 +405,261 @@ describe('payrollCalculations - Additional Coverage', () => {
       expect(result.employees.length).toBe(1);
       expect(result.employees[0].manualPayments.length).toBe(0);
       expect(result.employees[0].manualPaymentsTotal).toBe(0);
+    });
+  });
+
+  describe('calculateEmployeePay tip payout deduction', () => {
+    it('should deduct tipsPaidOut from tips when tips > tipsPaidOut', () => {
+      const employee = createEmployee();
+      const result = calculateEmployeePay(
+        employee,
+        [],
+        50000, // $500 tips in cents
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [],
+        20000  // $200 paid out
+      );
+
+      expect(result.totalTips).toBe(50000);
+      expect(result.tipsPaidOut).toBe(20000);
+      expect(result.tipsOwed).toBe(30000); // 50000 - 20000
+    });
+
+    it('should default tipsPaidOut to 0 for backward compatibility', () => {
+      const employee = createEmployee();
+      const result = calculateEmployeePay(
+        employee,
+        [],
+        50000, // $500 tips in cents
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        []
+        // tipsPaidOut omitted - should default to 0
+      );
+
+      expect(result.tipsPaidOut).toBe(0);
+      expect(result.tipsOwed).toBe(50000); // All tips owed
+    });
+
+    it('should clamp tipsOwed to 0 when tipsPaidOut > tips (overpayment)', () => {
+      const employee = createEmployee();
+      const result = calculateEmployeePay(
+        employee,
+        [],
+        30000, // $300 tips in cents
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [],
+        50000  // $500 paid out (overpaid)
+      );
+
+      expect(result.totalTips).toBe(30000);
+      expect(result.tipsPaidOut).toBe(50000);
+      expect(result.tipsOwed).toBe(0); // Clamped to 0, never negative
+    });
+
+    it('should compute totalPay as grossPay + tipsOwed (not grossPay + tips)', () => {
+      const employee = createEmployee({
+        compensation_type: 'contractor',
+        contractor_type: 'per_job',
+      });
+      const manualPayments: ManualPayment[] = [
+        { id: '1', date: '2024-01-15', amount: 100000 }, // $1000 gross
+      ];
+
+      const result = calculateEmployeePay(
+        employee,
+        [],
+        50000, // $500 tips
+        new Date('2024-01-01'),
+        new Date('2024-01-31'),
+        manualPayments,
+        20000  // $200 paid out
+      );
+
+      expect(result.grossPay).toBe(100000);
+      expect(result.tipsOwed).toBe(30000); // 50000 - 20000
+      expect(result.totalPay).toBe(130000); // 100000 + 30000, NOT 100000 + 50000
+    });
+
+    it('should include tipsPaidOut and tipsOwed fields on the return object', () => {
+      const employee = createEmployee();
+      const result = calculateEmployeePay(
+        employee,
+        [],
+        10000,
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [],
+        5000
+      );
+
+      expect(result).toHaveProperty('tipsPaidOut');
+      expect(result).toHaveProperty('tipsOwed');
+      expect(typeof result.tipsPaidOut).toBe('number');
+      expect(typeof result.tipsOwed).toBe('number');
+    });
+  });
+
+  describe('calculatePayrollPeriod with tip payouts', () => {
+    it('should deduct payouts per employee from tipPayoutsPerEmployee', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice' }),
+        createEmployee({ id: 'emp-2', name: 'Bob' }),
+      ];
+
+      const punchesPerEmployee = new Map<string, TimePunch[]>();
+      const tipsPerEmployee = new Map<string, number>();
+      tipsPerEmployee.set('emp-1', 40000); // $400
+      tipsPerEmployee.set('emp-2', 30000); // $300
+
+      const tipPayoutsPerEmployee = new Map<string, number>();
+      tipPayoutsPerEmployee.set('emp-1', 15000); // $150 paid out
+      tipPayoutsPerEmployee.set('emp-2', 10000); // $100 paid out
+
+      const result = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        punchesPerEmployee,
+        tipsPerEmployee,
+        new Map(),
+        tipPayoutsPerEmployee
+      );
+
+      const alice = result.employees.find(e => e.employeeId === 'emp-1')!;
+      const bob = result.employees.find(e => e.employeeId === 'emp-2')!;
+
+      expect(alice.totalTips).toBe(40000);
+      expect(alice.tipsPaidOut).toBe(15000);
+      expect(alice.tipsOwed).toBe(25000); // 40000 - 15000
+
+      expect(bob.totalTips).toBe(30000);
+      expect(bob.tipsPaidOut).toBe(10000);
+      expect(bob.tipsOwed).toBe(20000); // 30000 - 10000
+    });
+
+    it('should aggregate totalTipsPaidOut and totalTipsOwed correctly', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice' }),
+        createEmployee({ id: 'emp-2', name: 'Bob' }),
+      ];
+
+      const punchesPerEmployee = new Map<string, TimePunch[]>();
+      const tipsPerEmployee = new Map<string, number>();
+      tipsPerEmployee.set('emp-1', 40000);
+      tipsPerEmployee.set('emp-2', 30000);
+
+      const tipPayoutsPerEmployee = new Map<string, number>();
+      tipPayoutsPerEmployee.set('emp-1', 15000);
+      tipPayoutsPerEmployee.set('emp-2', 10000);
+
+      const result = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        punchesPerEmployee,
+        tipsPerEmployee,
+        new Map(),
+        tipPayoutsPerEmployee
+      );
+
+      expect(result.totalTips).toBe(70000); // 40000 + 30000
+      expect(result.totalTipsPaidOut).toBe(25000); // 15000 + 10000
+      expect(result.totalTipsOwed).toBe(45000); // 25000 + 20000
+    });
+
+    it('should be backward compatible when tipPayoutsPerEmployee is empty', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice' }),
+      ];
+
+      const punchesPerEmployee = new Map<string, TimePunch[]>();
+      const tipsPerEmployee = new Map<string, number>();
+      tipsPerEmployee.set('emp-1', 50000);
+
+      const result = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        punchesPerEmployee,
+        tipsPerEmployee
+        // tipPayoutsPerEmployee omitted - defaults to empty Map
+      );
+
+      expect(result.employees[0].totalTips).toBe(50000);
+      expect(result.employees[0].tipsPaidOut).toBe(0);
+      expect(result.employees[0].tipsOwed).toBe(50000); // All tips owed
+      expect(result.totalTips).toBe(50000);
+      expect(result.totalTipsPaidOut).toBe(0);
+      expect(result.totalTipsOwed).toBe(50000);
+    });
+  });
+
+  describe('exportPayrollToCSV with tip columns', () => {
+    it('should include Tips Earned, Tips Paid, and Tips Owed headers', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice' }),
+      ];
+
+      const punchesPerEmployee = new Map<string, TimePunch[]>();
+      const tipsPerEmployee = new Map<string, number>();
+      tipsPerEmployee.set('emp-1', 50000);
+
+      const tipPayoutsPerEmployee = new Map<string, number>();
+      tipPayoutsPerEmployee.set('emp-1', 20000);
+
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        punchesPerEmployee,
+        tipsPerEmployee,
+        new Map(),
+        tipPayoutsPerEmployee
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const headerLine = csv.split('\n')[0];
+
+      expect(headerLine).toContain('Tips Earned');
+      expect(headerLine).toContain('Tips Paid');
+      expect(headerLine).toContain('Tips Owed');
+      // Should NOT have a generic "Tips" column (replaced by the three above)
+      expect(headerLine).not.toMatch(/,Tips,/);
+    });
+
+    it('should include correct tip breakdown values in CSV rows', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice' }),
+      ];
+
+      const punchesPerEmployee = new Map<string, TimePunch[]>();
+      const tipsPerEmployee = new Map<string, number>();
+      tipsPerEmployee.set('emp-1', 50000); // $500.00
+
+      const tipPayoutsPerEmployee = new Map<string, number>();
+      tipPayoutsPerEmployee.set('emp-1', 20000); // $200.00
+
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        punchesPerEmployee,
+        tipsPerEmployee,
+        new Map(),
+        tipPayoutsPerEmployee
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const lines = csv.split('\n');
+      const dataRow = lines[1]; // First data row (Alice)
+
+      // Tips Earned = $500.00, Tips Paid = $200.00, Tips Owed = $300.00
+      expect(dataRow).toContain('$500.00');
+      expect(dataRow).toContain('$200.00');
+      expect(dataRow).toContain('$300.00');
     });
   });
 

@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Check, Edit, Trash2, FileText, Split, CheckCircle2, MoreVertical, Sparkles, Settings2 } from "lucide-react";
+import { LinkedInfoResult } from "@/lib/bankTransactionLinkedInfo";
 import { BankAccountInfo } from "./BankAccountInfo";
 import { TransactionBadges } from "./TransactionBadges";
+import { LinkedInfoSubtitle } from "./LinkedInfoSubtitle";
 import { AIConfidenceBadge } from "./AIConfidenceBadge";
 import {
   DropdownMenu,
@@ -22,6 +24,7 @@ export interface TransactionDisplayValues {
   suggestedCategoryName?: string;
   currentCategoryName?: string;
   hasSuggestion: boolean;
+  linkedInfo?: LinkedInfoResult | null;
 }
 
 export interface MemoizedTransactionRowProps {
@@ -128,6 +131,9 @@ export const MemoizedTransactionRow = memo(function MemoizedTransactionRow({
       <div className={COLUMN_WIDTHS.description}>
         <div className="flex flex-col">
           <span className="font-medium truncate">{transaction.description}</span>
+          {displayValues.linkedInfo && (
+            <LinkedInfoSubtitle info={displayValues.linkedInfo} />
+          )}
           <TransactionBadges
             isTransfer={transaction.is_transfer}
             isSplit={transaction.is_split}

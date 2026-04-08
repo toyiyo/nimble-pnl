@@ -3,19 +3,8 @@ import { useMemo } from 'react';
 import { addDays, format, subDays, startOfDay, differenceInDays, subMonths } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useOperatingCosts } from './useOperatingCosts';
-import { BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
-
-type BreakEvenStatus = 'above' | 'at' | 'below';
-
-/** 5% tolerance band for classifying sales relative to break-even */
-const BREAK_EVEN_TOLERANCE = 0.05;
-
-function classifyDelta(delta: number, breakEven: number): BreakEvenStatus {
-  const threshold = breakEven * BREAK_EVEN_TOLERANCE;
-  if (delta > threshold) return 'above';
-  if (delta < -threshold) return 'below';
-  return 'at';
-}
+import { BreakEvenData } from '@/types/operatingCosts';
+import { calculateBreakEven } from '@/lib/breakEvenCalculator';
 
 interface DailySalesData {
   date: string;
@@ -143,137 +132,8 @@ export function useBreakEvenAnalysis(
     if (!restaurantId || !salesData || salesData.length === 0) {
       return null;
     }
-    
-    // Calculate average daily sales for percentage-based costs
-    const totalSales = salesData.reduce((sum, d) => sum + d.netRevenue, 0);
-    const avgDailySales = totalSales / salesData.length;
-    
-    // Today's sales
     const todayStr = format(today, 'yyyy-MM-dd');
-    const todaySalesEntry = salesData.find(d => d.date === todayStr);
-    const todaySales = todaySalesEntry?.netRevenue || 0;
-    
-    // Process costs by type
-    const fixedItems: CostBreakdownItem[] = [];
-    const semiVariableItems: CostBreakdownItem[] = [];
-    const variableItems: CostBreakdownItem[] = [];
-    const customItems: CostBreakdownItem[] = [];
-    
-    for (const cost of costs) {
-      const isPercentage = cost.entryType === 'percentage';
-      let daily: number;
-      let monthly: number;
-      
-      if (isPercentage) {
-        // Percentage-based: calculate from average sales
-        daily = avgDailySales * cost.percentageValue;
-        monthly = daily * 30;
-      } else {
-        // Value-based: convert from cents to dollars, prorate to daily
-        monthly = cost.monthlyValue / 100;
-        daily = monthly / 30;
-      }
-      
-      // For semi-variable costs that are auto-calculated, use the calculated value
-      if (cost.costType === 'semi_variable' && cost.isAutoCalculated && !cost.manualOverride && autoUtilityCosts) {
-        // Distribute auto-calculated utilities evenly across utility items
-        const utilityItems = costs.filter(c => c.costType === 'semi_variable' && c.isAutoCalculated && !c.manualOverride);
-        if (utilityItems.length > 0) {
-          monthly = (autoUtilityCosts / 100) / utilityItems.length;
-          daily = monthly / 30;
-        }
-      }
-      
-      const item: CostBreakdownItem = {
-        id: cost.id,
-        name: cost.name,
-        category: cost.category,
-        daily,
-        monthly,
-        percentage: isPercentage ? cost.percentageValue * 100 : undefined,
-        isPercentage,
-        source: cost.manualOverride || !cost.isAutoCalculated ? 'manual' : 'calculated',
-      };
-      
-      switch (cost.costType) {
-        case 'fixed':
-          fixedItems.push(item);
-          break;
-        case 'semi_variable':
-          semiVariableItems.push(item);
-          break;
-        case 'variable':
-          variableItems.push(item);
-          break;
-        case 'custom':
-          customItems.push(item);
-          break;
-      }
-    }
-    
-    // Calculate totals
-    const fixedDaily = fixedItems.reduce((sum, i) => sum + i.daily, 0);
-    const semiVariableDaily = semiVariableItems.reduce((sum, i) => sum + i.daily, 0);
-    const variableDaily = variableItems.reduce((sum, i) => sum + i.daily, 0);
-    const customDaily = customItems.reduce((sum, i) => sum + i.daily, 0);
-    const dailyBreakEven = fixedDaily + semiVariableDaily + variableDaily + customDaily;
-    
-    const todayDelta = todaySales - dailyBreakEven;
-    const todayStatus = classifyDelta(todayDelta, dailyBreakEven);
-    
-    const history = salesData.map(d => {
-      const delta = d.netRevenue - dailyBreakEven;
-      return {
-        date: d.date,
-        sales: d.netRevenue,
-        breakEven: dailyBreakEven,
-        delta,
-        status: classifyDelta(delta, dailyBreakEven),
-      };
-    });
-    
-    // Summary stats
-    const aboveDays = history.filter(h => h.status === 'above');
-    const belowDays = history.filter(h => h.status === 'below');
-    
-    const daysAbove = aboveDays.length;
-    const daysBelow = belowDays.length;
-    const avgSurplus = aboveDays.length > 0 
-      ? aboveDays.reduce((sum, h) => sum + h.delta, 0) / aboveDays.length 
-      : 0;
-    const avgShortfall = belowDays.length > 0 
-      ? belowDays.reduce((sum, h) => sum + h.delta, 0) / belowDays.length 
-      : 0;
-    
-    return {
-      dailyBreakEven,
-      todaySales,
-      todayStatus,
-      todayDelta,
-      fixedCosts: {
-        items: fixedItems,
-        totalDaily: fixedDaily,
-      },
-      semiVariableCosts: {
-        items: semiVariableItems,
-        totalDaily: semiVariableDaily,
-        monthsAveraged: 3,
-      },
-      variableCosts: {
-        items: variableItems,
-        totalDaily: variableDaily,
-        avgDailySales,
-      },
-      customCosts: {
-        items: customItems,
-        totalDaily: customDaily,
-      },
-      history,
-      daysAbove,
-      daysBelow,
-      avgSurplus,
-      avgShortfall,
-    };
+    return calculateBreakEven(costs, salesData, autoUtilityCosts ?? 0, todayStr);
   }, [restaurantId, costs, salesData, autoUtilityCosts, today]);
   
   return {

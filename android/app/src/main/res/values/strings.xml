@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EasyShiftHQ</string>
+    <string name="title_activity_main">EasyShiftHQ</string>
+    <string name="package_name">com.easyshifthq.employee</string>
+    <string name="custom_url_scheme">com.easyshifthq.employee</string>
+</resources>

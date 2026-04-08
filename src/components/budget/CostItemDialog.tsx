@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CostType, EntryType, OperatingCostInput, CostBreakdownItem } from '@/types/operatingCosts';
 
 interface CostItemDialogProps {
@@ -34,17 +33,19 @@ export function CostItemDialog({
   const [percentageValue, setPercentageValue] = useState(
     editingItem?.percentage?.toString() || ''
   );
-  const [selectedCostType, setSelectedCostType] = useState<CostType>(costType);
 
   const handleSave = () => {
     if (!name.trim()) return;
 
+    // Entry type drives cost type: dollar = fixed, percentage = variable
+    const derivedCostType: CostType = entryType === 'percentage' ? 'variable' : 'fixed';
+
     const data: OperatingCostInput = {
-      costType: selectedCostType,
+      costType: derivedCostType,
       category: name.toLowerCase().replace(/\s+/g, '_'),
       name: name.trim(),
       entryType,
-      manualOverride: true, // User-set values are always manual overrides
+      manualOverride: true,
     };
 
     if (entryType === 'value') {
@@ -87,23 +88,6 @@ export function CostItemDialog({
               placeholder="e.g., Franchise Royalties"
             />
           </div>
-
-          {/* Cost Type (only for custom items) */}
-          {costType === 'custom' && !editingItem && (
-            <div className="space-y-2">
-              <Label>Cost Type</Label>
-              <Select value={selectedCostType} onValueChange={(v) => setSelectedCostType(v as CostType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fixed">Fixed (same every month)</SelectItem>
-                  <SelectItem value="variable">Variable (scales with sales)</SelectItem>
-                  <SelectItem value="custom">Custom / Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
 
           {/* Entry Type Toggle */}
           <div className="space-y-2">

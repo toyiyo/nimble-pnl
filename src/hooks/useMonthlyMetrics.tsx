@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
-import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales } from './utils/passThroughAdjustments';
+import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, isTipLiability } from './utils/passThroughAdjustments';
 import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import type { TimePunch } from '@/types/timeTracking';
@@ -286,7 +286,7 @@ export function useMonthlyMetrics(
           if ((subtype.includes('sales') && subtype.includes('tax')) ||
               (accountName.includes('sales') && accountName.includes('tax'))) {
             month.sales_tax += Math.round(sale.total_price * 100);
-          } else if (subtype.includes('tip') || accountName.includes('tip')) {
+          } else if (isTipLiability(subtype, accountName)) {
             month.tips += Math.round(sale.total_price * 100);
           } else {
             month.other_liabilities += Math.round(sale.total_price * 100);
@@ -330,19 +330,108 @@ export function useMonthlyMetrics(
       });
       } // End of fallback else block
 
-      // Fetch COGS (Cost of Goods Used) from inventory_transactions (source of truth)
-      // Use 'usage' type to track actual product consumption when recipes are sold
-      // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-      const { data: foodCostsData, error: foodCostsError } = await supabase
-        .from('inventory_transactions')
-        .select('created_at, transaction_date, total_cost')
+      // Fetch COGS preference setting
+      const { data: settingsData } = await supabase
+        .from('restaurant_financial_settings')
+        .select('cogs_calculation_method')
         .eq('restaurant_id', restaurantId)
-        .eq('transaction_type', 'usage')
-        .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
-        .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
-        .limit(10000); // Override Supabase's default 1000 row limit
+        .maybeSingle();
+      const cogsMethod = (settingsData?.cogs_calculation_method as string) || 'inventory';
 
-      if (foodCostsError) throw foodCostsError;
+      // Fetch inventory COGS when method uses inventory data
+      let foodCostsData: { created_at: string; transaction_date: string | null; total_cost: number }[] | null = null;
+      if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
+        const { data, error: foodCostsError } = await supabase
+          .from('inventory_transactions')
+          .select('created_at, transaction_date, total_cost')
+          .eq('restaurant_id', restaurantId)
+          .eq('transaction_type', 'usage')
+          .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
+          .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
+          .limit(10000);
+        if (foodCostsError) throw foodCostsError;
+        foodCostsData = data;
+      }
+
+      // Fetch financial COGS when method uses financial data
+      const COGS_SUBTYPES = new Set(['food_cost', 'cost_of_goods_sold', 'beverage_cost', 'packaging_cost']);
+      const financialCOGSByMonth = new Map<string, number>();
+      if (cogsMethod === 'financials' || cogsMethod === 'combined') {
+        // Non-split bank transactions with COGS subtypes
+        const { data: cogsTxns, error: cogsTxnsError } = await supabase
+          .from('bank_transactions')
+          .select('transaction_date, amount, chart_of_accounts!category_id(account_subtype)')
+          .eq('restaurant_id', restaurantId)
+          .in('status', ['posted', 'pending'])
+          .eq('is_transfer', false)
+          .eq('is_split', false)
+          .lt('amount', 0)
+          .gte('transaction_date', fromStr)
+          .lte('transaction_date', toStr)
+          .limit(10000);
+        if (cogsTxnsError) throw cogsTxnsError;
+
+        (cogsTxns || []).forEach((txn: any) => {
+          const subtype = (txn.chart_of_accounts as any)?.account_subtype;
+          if (subtype && COGS_SUBTYPES.has(subtype)) {
+            const monthKey = format(new Date(txn.transaction_date), 'yyyy-MM');
+            financialCOGSByMonth.set(monthKey, (financialCOGSByMonth.get(monthKey) || 0) + Math.round(Math.abs(txn.amount) * 100));
+          }
+        });
+
+        // Split line items with COGS subtypes
+        const { data: splitParents } = await supabase
+          .from('bank_transactions')
+          .select('id, transaction_date')
+          .eq('restaurant_id', restaurantId)
+          .eq('is_split', true)
+          .in('status', ['posted', 'pending'])
+          .eq('is_transfer', false)
+          .gte('transaction_date', fromStr)
+          .lte('transaction_date', toStr)
+          .limit(10000);
+
+        const splitParentIds = (splitParents || []).map((p: any) => p.id);
+        if (splitParentIds.length > 0) {
+          const parentDateMap = new Map<string, string>();
+          (splitParents || []).forEach((p: any) => parentDateMap.set(p.id, format(new Date(p.transaction_date), 'yyyy-MM')));
+
+          const { data: splits } = await supabase
+            .from('bank_transaction_splits')
+            .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype)')
+            .in('transaction_id', splitParentIds)
+            .limit(10000);
+
+          (splits || []).forEach((s: any) => {
+            const subtype = (s.chart_of_accounts as any)?.account_subtype;
+            if (subtype && COGS_SUBTYPES.has(subtype)) {
+              const monthKey = parentDateMap.get(s.transaction_id);
+              if (monthKey) {
+                financialCOGSByMonth.set(monthKey, (financialCOGSByMonth.get(monthKey) || 0) + Math.round(Math.abs(s.amount) * 100));
+              }
+            }
+          });
+        }
+
+        // Pending outflows with COGS subtypes
+        const { data: cogsPending } = await supabase
+          .from('pending_outflows')
+          .select('issue_date, amount, chart_of_accounts!category_id(account_subtype)')
+          .eq('restaurant_id', restaurantId)
+          .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
+          .is('linked_bank_transaction_id', null)
+          .gte('issue_date', fromStr)
+          .lte('issue_date', toStr)
+          .limit(10000);
+
+        (cogsPending || []).forEach((txn: any) => {
+          const subtype = (txn.chart_of_accounts as any)?.account_subtype;
+          if (subtype && COGS_SUBTYPES.has(subtype)) {
+            const monthKey = format(new Date(txn.issue_date), 'yyyy-MM');
+            financialCOGSByMonth.set(monthKey, (financialCOGSByMonth.get(monthKey) || 0) + Math.round(Math.abs(txn.amount) * 100));
+          }
+        });
+      }
 
       // Fetch actual labor costs from bank transactions + pending outflows
       // Use same pattern as useLaborCostsFromTransactions (no alias)
@@ -464,40 +553,39 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Aggregate COGS (Cost of Goods Used) by month
-      foodCostsData?.forEach((transaction) => {
-        const transactionDate = transaction.transaction_date
-          ? normalizeToLocalDate(transaction.transaction_date, 'inventory_transactions.transaction_date')
-          : normalizeToLocalDate(transaction.created_at, 'inventory_transactions.created_at');
-        if (!transactionDate) {
-          return;
-        }
-        const monthKey = format(transactionDate, 'yyyy-MM');
-        
+      // Aggregate COGS by month based on selected method
+      const ensureMonth = (monthKey: string) => {
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
             period: monthKey,
-            gross_revenue: 0,
-            total_collected_at_pos: 0,
-            net_revenue: 0,
-            discounts: 0,
-            refunds: 0,
-            sales_tax: 0,
-            tips: 0,
-            other_liabilities: 0,
-            food_cost: 0,
-            labor_cost: 0,
-            pending_labor_cost: 0,
-            actual_labor_cost: 0,
+            gross_revenue: 0, total_collected_at_pos: 0, net_revenue: 0,
+            discounts: 0, refunds: 0, sales_tax: 0, tips: 0, other_liabilities: 0,
+            food_cost: 0, labor_cost: 0, pending_labor_cost: 0, actual_labor_cost: 0,
             has_data: true,
           });
         }
+        return monthlyMap.get(monthKey)!;
+      };
 
-        const month = monthlyMap.get(monthKey)!;
-        // Use cents to avoid floating-point precision errors
-        // Use Math.abs() because costs may be stored as negative (accounting convention)
-        month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
-      });
+      // Inventory COGS (when method is 'inventory' or 'combined')
+      if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
+        foodCostsData?.forEach((transaction) => {
+          const transactionDate = transaction.transaction_date
+            ? normalizeToLocalDate(transaction.transaction_date, 'inventory_transactions.transaction_date')
+            : normalizeToLocalDate(transaction.created_at, 'inventory_transactions.created_at');
+          if (!transactionDate) return;
+          const month = ensureMonth(format(transactionDate, 'yyyy-MM'));
+          month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
+        });
+      }
+
+      // Financial COGS (when method is 'financials' or 'combined')
+      if (cogsMethod === 'financials' || cogsMethod === 'combined') {
+        financialCOGSByMonth.forEach((costCents, monthKey) => {
+          const month = ensureMonth(monthKey);
+          month.food_cost += costCents;
+        });
+      }
 
       // Calculate labor costs PER MONTH separately to match Payroll period-based calculations
       // For the *current* month, we clamp the month end to the query's dateTo (month-to-date)

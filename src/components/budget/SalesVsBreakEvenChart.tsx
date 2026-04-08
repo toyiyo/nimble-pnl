@@ -6,8 +6,10 @@ import { format, parseISO } from 'date-fns';
 import { BreakEvenData } from '@/types/operatingCosts';
 
 interface SalesVsBreakEvenChartProps {
-  data: BreakEvenData | null;
-  isLoading: boolean;
+  readonly data: BreakEvenData | null;
+  readonly isLoading: boolean;
+  readonly actualCOGSPercentage?: number;
+  readonly targetCOGSPercentage?: number;
 }
 
 function formatCurrency(amount: number): string {
@@ -19,7 +21,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function SalesVsBreakEvenChart({ data, isLoading }: SalesVsBreakEvenChartProps) {
+export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
 
   const chartData = useMemo(() => {
@@ -187,6 +189,27 @@ export function SalesVsBreakEvenChart({ data, isLoading }: SalesVsBreakEvenChart
           <p className="text-[11px] text-muted-foreground">Avg shortfall</p>
         </div>
       </div>
+
+      {/* COGS target vs actual comparison */}
+      {(actualCOGSPercentage !== undefined || targetCOGSPercentage !== undefined) && (
+        <div className="grid grid-cols-2 gap-px bg-border/40 border-t border-border/40">
+          <div className="bg-background p-3 text-center">
+            <p className="text-[14px] font-semibold text-foreground">
+              {targetCOGSPercentage === undefined ? '-' : `${targetCOGSPercentage.toFixed(1)}%`}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Target COGS %</p>
+          </div>
+          <div className="bg-background p-3 text-center">
+            <p className={`text-[14px] font-semibold ${
+              actualCOGSPercentage !== undefined && targetCOGSPercentage !== undefined && actualCOGSPercentage > targetCOGSPercentage
+                ? 'text-destructive' : 'text-green-600'
+            }`}>
+              {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
+            </p>
+            <p className="text-[11px] text-muted-foreground">Actual COGS %</p>
+          </div>
+        </div>
+      )}
 
       <div className="px-5 py-2 border-t border-border/40">
         <p className="text-[11px] text-muted-foreground text-center">

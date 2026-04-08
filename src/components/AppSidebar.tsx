@@ -45,6 +45,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { AppLogo } from '@/components/AppLogo';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -290,14 +291,12 @@ export function AppSidebar() {
             collapsed ? 'justify-center px-3' : 'px-4'
           }`}
         >
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg shadow-lg p-1.5 group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0">
-            <CalendarCheck className="h-4 w-4 text-white" />
-          </div>
+          <AppLogo size={28} className="shadow-lg group-hover:shadow-emerald-500/50 transition-all duration-200 flex-shrink-0" />
           {!collapsed && (
             <div className="flex-1 min-w-0 text-left">
               <div className="font-bold text-sm truncate">EasyShiftHQ</div>
               {selectedRestaurant && (
-                <div className="text-xs text-muted-foreground truncate">
+                <div className="text-xs text-sidebar-foreground/60 truncate">
                   {selectedRestaurant.restaurant.name}
                 </div>
               )}

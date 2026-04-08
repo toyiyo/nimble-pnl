@@ -8,6 +8,7 @@ import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastIntegration } from '@/hooks/useToastIntegration';
+import { useSlingIntegration } from '@/hooks/useSlingIntegration';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -19,12 +20,13 @@ const Integrations = () => {
   const { isConnected: cloverConnected } = useCloverIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: shift4Connected } = useShift4Integration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: toastConnected } = useToastIntegration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: slingConnected } = useSlingIntegration(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
   };
 
-  const integrations = [
+  const integrations = useMemo(() => [
     {
       id: 'toast-pos',
       name: 'Toast POS',
@@ -62,6 +64,15 @@ const Integrations = () => {
       features: ['Payment Charges', 'Refunds', 'Real-time Webhooks', 'API Key Auth']
     },
     {
+      id: 'sling-scheduling',
+      name: 'Sling',
+      description: 'Sync employee schedules and time punches from Sling',
+      category: 'Scheduling',
+      logo: '📋',
+      connected: slingConnected,
+      features: ['Employee Schedules', 'Time Punches', 'Shift Data', 'Payroll Integration']
+    },
+    {
       id: '7shifts',
       name: '7shifts',
       description: 'Pull employee schedules, labor costs, and time tracking data',
@@ -97,7 +108,7 @@ const Integrations = () => {
       connected: false,
       features: ['Purchase Orders', 'Food Costs', 'Inventory', 'Delivery Tracking']
     }
-  ];
+  ], [toastConnected, squareConnected, cloverConnected, shift4Connected, slingConnected]);
 
   const groupedIntegrations = useMemo(() => {
     return integrations.reduce((acc, integration) => {

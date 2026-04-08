@@ -167,14 +167,14 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     }
   });
 
-  test('staff should be redirected to employee clock', async ({ page }) => {
+  test('staff should be redirected to employee schedule', async ({ page }) => {
     const user = generateTestUser('staff');
     await signUpAndCreateRestaurant(page, user);
 
     await setUserRole(page, 'staff');
 
-    // Staff should be redirected to employee clock
-    await expect(page).toHaveURL('/employee/clock', { timeout: 10000 });
+    // Staff should be redirected to employee schedule
+    await expect(page).toHaveURL('/employee/schedule', { timeout: 10000 });
 
     // Staff should access employee routes
     const staffAllowed = [
@@ -183,6 +183,8 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
       '/employee/timecard',
       '/employee/pay',
       '/employee/schedule',
+      '/employee/tips',
+      '/employee/more',
       '/settings',
     ];
 
@@ -196,8 +198,8 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
 
     for (const route of staffForbidden) {
       await page.goto(route, { waitUntil: 'networkidle' });
-      // Should redirect to employee clock
-      await expect(page).toHaveURL('/employee/clock', { timeout: 5000 });
+      // Should redirect to employee schedule
+      await expect(page).toHaveURL('/employee/schedule', { timeout: 5000 });
     }
   });
 

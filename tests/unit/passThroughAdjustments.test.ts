@@ -77,6 +77,59 @@ describe('classifyPassThroughItem', () => {
       expect(classifyPassThroughItem(item)).toBe('other');
     });
 
+
+    it('does not classify non-tip words containing "tip" as tips', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Stipend Liability',
+        },
+      });
+
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('does not classify liability with subtype containing "tip" substring as tips', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_tip_related',
+          account_name: 'Some Liability',
+        },
+      });
+      // subtype.includes('tip') would match this, but exact match should not
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('does not classify "Auto Gratuity" with service_charge subtype as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'service_charge',
+          account_name: 'Auto Gratuity',
+        },
+      });
+      // "Gratuity" matches hasTipKeyword, but subtype "service_charge" takes precedence
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('classifies "Gratuity" with generic subtype as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Gratuity Collected',
+        },
+      });
+      // Generic subtype allows name-based matching
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
     it('does not classify revenue accounts as pass-through', () => {
       const item = createRow({
         is_categorized: true,
@@ -89,6 +142,102 @@ describe('classifyPassThroughItem', () => {
 
       // Falls through to 'other' since no adjustment_type or item_name match
       expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('classifies "Tip - CREDIT" as tip (Toast POS format)', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Tip - CREDIT',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies "Gratuity Collected" as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Gratuity Collected',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('does not classify "Participation Fee" as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Participation Fee',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('does not classify "Anticipation Reserve" as tip', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liability',
+          account_name: 'Anticipation Reserve',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('other');
+    });
+
+    it('classifies account with subtype "tips" exactly', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'tips',
+          account_name: 'General Liability',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies account with subtype "tips_payable" exactly', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'tips_payable',
+          account_name: 'Tips Payable',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies tip by name when subtype is "other_current_liabilities" (plural)', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_current_liabilities',
+          account_name: 'Gratuity Collected',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
+    });
+
+    it('classifies tip by name when subtype is "other_liabilities"', () => {
+      const item = createRow({
+        is_categorized: true,
+        chart_account: {
+          account_type: 'liability',
+          account_subtype: 'other_liabilities',
+          account_name: 'Tips Collected',
+        },
+      });
+      expect(classifyPassThroughItem(item)).toBe('tip');
     });
   });
 

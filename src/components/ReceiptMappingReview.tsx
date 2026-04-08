@@ -20,6 +20,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { buildReceiptReferencePattern } from '@/utils/receiptImportUtils';
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
@@ -400,11 +401,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handlePurchaseDateChange = async (date: Date | undefined) => {
     if (!date) return;
-    
+
     try {
       const { supabase } = await import('@/integrations/supabase/client');
       const dateString = format(date, 'yyyy-MM-dd');
-      
+
       const { error } = await supabase
         .from('receipt_imports')
         .update({ purchase_date: dateString })
@@ -412,8 +413,32 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
       if (error) throw error;
 
+      // If already imported, cascade date change to inventory transactions
+      if (isImported) {
+        const { error: txError } = await supabase
+          .from('inventory_transactions')
+          .update({ transaction_date: dateString })
+          .eq('restaurant_id', selectedRestaurant?.restaurant_id)
+          .like('reference_id', buildReceiptReferencePattern(receiptId));
+
+        if (txError) {
+          console.error('Error cascading date to transactions:', txError);
+          toast({
+            title: "Partial Update",
+            description: `Purchase date updated, but failed to update inventory transaction dates.`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Purchase Date Updated",
+            description: `Set to ${format(date, 'PPP')}. Inventory transaction dates also updated.`
+          });
+        }
+      } else {
+        toast({ title: "Purchase Date Updated", description: `Set to ${format(date, 'PPP')}` });
+      }
+
       setReceiptDetails(prev => prev ? { ...prev, purchase_date: dateString } : null);
-      toast({ title: "Purchase Date Updated", description: `Set to ${format(date, 'PPP')}` });
     } catch (error) {
       console.error('Error updating purchase date:', error);
       toast({ title: "Error", description: "Failed to update purchase date", variant: "destructive" });
@@ -507,10 +532,14 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
         <CardContent className="space-y-6 pt-6">
           {/* Vendor & Date Section */}
-          {!isImported && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Vendor</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Vendor</label>
+              {isImported ? (
+                <div className="h-10 flex items-center px-3 text-[14px] bg-muted/30 border border-border/40 rounded-lg text-muted-foreground">
+                  {receiptDetails?.vendor_name || 'Unknown vendor'}
+                </div>
+              ) : (
                 <SearchableSupplierSelector
                   value={selectedSupplierId || undefined}
                   onValueChange={handleSupplierChange}
@@ -518,42 +547,42 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   placeholder="Select or create supplier..."
                   showNewIndicator={isNewSupplier}
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  Purchase Date
-                </label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !receiptDetails?.purchase_date && "text-muted-foreground"
-                      )}
-                    >
-                      {receiptDetails?.purchase_date 
-                        ? format(new Date(receiptDetails.purchase_date), 'PPP')
-                        : 'Pick a date'}
-                      {receiptDetails?.purchase_date && (
-                        <CheckCircle className="ml-auto h-4 w-4 text-green-600" />
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={receiptDetails?.purchase_date ? new Date(receiptDetails.purchase_date) : undefined}
-                      onSelect={handlePurchaseDateChange}
-                      disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              )}
             </div>
-          )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Purchase Date
+              </label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !receiptDetails?.purchase_date && "text-muted-foreground"
+                    )}
+                  >
+                    {receiptDetails?.purchase_date
+                      ? format(new Date(receiptDetails.purchase_date), 'PPP')
+                      : 'Pick a date'}
+                    {receiptDetails?.purchase_date && (
+                      <CheckCircle className="ml-auto h-4 w-4 text-green-600" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={receiptDetails?.purchase_date ? new Date(receiptDetails.purchase_date) : undefined}
+                    onSelect={handlePurchaseDateChange}
+                    disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
 
           {/* Batch Actions */}
           <ReceiptBatchActions

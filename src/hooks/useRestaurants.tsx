@@ -33,6 +33,11 @@ export interface Restaurant {
   trial_ends_at?: string;
   subscription_ends_at?: string;
   grandfathered_until?: string;
+  // Geofence fields
+  latitude?: number | null;
+  longitude?: number | null;
+  geofence_radius_meters?: number;
+  geofence_enforcement?: 'off' | 'warn' | 'block';
 }
 
 export interface UserRestaurant {

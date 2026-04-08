@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { IncomeStatement } from '@/components/financial-statements/IncomeStatement';
 
 // Keep track of income statement data returned by useQuery mock
@@ -10,6 +11,18 @@ let currentIncomeData: any = null;
 const mockUseRevenueBreakdown = vi.fn();
 vi.mock('@/hooks/useRevenueBreakdown', () => ({
   useRevenueBreakdown: (...args: any[]) => mockUseRevenueBreakdown(...args),
+}));
+
+// Mock unified COGS hook — defaults to zero COGS (no tracking data)
+const mockUseUnifiedCOGS = vi.fn();
+vi.mock('@/hooks/useUnifiedCOGS', () => ({
+  useUnifiedCOGS: (...args: any[]) => mockUseUnifiedCOGS(...args),
+}));
+
+// Mock uncategorized totals hook — defaults to zero
+const mockUseUncategorizedTotals = vi.fn();
+vi.mock('@/hooks/useUncategorizedTotals', () => ({
+  useUncategorizedTotals: (...args: any[]) => mockUseUncategorizedTotals(...args),
 }));
 
 // Mock react-query useQuery to return deterministic data (no network/Supabase)
@@ -37,16 +50,36 @@ vi.mock('@/hooks/use-toast', () => ({
 
 const renderIncomeStatement = () =>
   render(
-    <IncomeStatement
-      restaurantId="resto-1"
-      dateFrom={new Date('2024-01-01')}
-      dateTo={new Date('2024-01-31')}
-    />
+    <MemoryRouter>
+      <IncomeStatement
+        restaurantId="resto-1"
+        dateFrom={new Date('2024-01-01')}
+        dateTo={new Date('2024-01-31')}
+      />
+    </MemoryRouter>
   );
 
 describe('IncomeStatement P&L behavior', () => {
   beforeEach(() => {
     mockUseRevenueBreakdown.mockReset();
+    mockUseUnifiedCOGS.mockReset();
+    mockUseUncategorizedTotals.mockReset();
+    // Default: no unified COGS data (hook loaded but zero total)
+    mockUseUnifiedCOGS.mockReturnValue({
+      totalCOGS: 0,
+      dailyCOGS: [],
+      breakdown: { inventory: 0, financials: 0 },
+      method: 'inventory',
+      isLoading: false,
+      error: null,
+    });
+    // Default: no uncategorized transactions
+    mockUseUncategorizedTotals.mockReturnValue({
+      uncategorizedInflows: 0,
+      uncategorizedOutflows: 0,
+      uncategorizedCount: 0,
+      isLoading: false,
+    });
   });
 
   it('uses POS revenue breakdown, nets discounts/refunds, and excludes pass-through from profit', () => {
@@ -153,6 +186,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 300,
         },
       ],
@@ -178,7 +212,10 @@ describe('IncomeStatement P&L behavior', () => {
     expect(screen.getByText('Gross Profit')).toBeInTheDocument();
     expect(screen.getByText('$650.00')).toBeInTheDocument(); // 1050 - 400
     expect(screen.getByText('Net Income')).toBeInTheDocument();
-    expect(screen.getByText('$350.00')).toBeInTheDocument(); // 650 - 300
+    // $350 appears for both Operating Income and Net Income (same value when no labor/fixed)
+    const netIncomeRow = screen.getByText('Net Income').closest('div');
+    expect(netIncomeRow).not.toBeNull();
+    expect(within(netIncomeRow as HTMLElement).getByText('$350.00')).toBeInTheDocument(); // 650 - 300
   });
 
   it('includes uncategorized POS revenue in net sales and profit calculations', () => {
@@ -275,6 +312,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 400,
         },
       ],
@@ -329,6 +367,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 900,
         },
       ],
@@ -342,7 +381,10 @@ describe('IncomeStatement P&L behavior', () => {
 
     // Profit math from journal entries
     expect(screen.getByText('$1,200.00')).toBeInTheDocument(); // Gross Profit: 2000 - 800
-    expect(screen.getByText('$300.00')).toBeInTheDocument(); // Net Income: 1200 - 900
+    // $300 appears for both Operating Income and Net Income (same value when no labor/fixed)
+    const netIncomeRow = screen.getByText('Net Income').closest('div');
+    expect(netIncomeRow).not.toBeNull();
+    expect(within(netIncomeRow as HTMLElement).getByText('$300.00')).toBeInTheDocument(); // Net Income: 1200 - 900
     expect(screen.queryByText(/Net Sales Revenue/i)).not.toBeInTheDocument();
   });
 
@@ -412,6 +454,7 @@ describe('IncomeStatement P&L behavior', () => {
           account_code: '6000',
           account_name: 'Operating Expenses',
           account_type: 'expense',
+          account_subtype: 'operating_expenses',
           current_balance: 100,
         },
       ],
@@ -422,8 +465,9 @@ describe('IncomeStatement P&L behavior', () => {
     const totalRevenueRow = screen.getByText('Total Revenue').closest('div');
     expect(totalRevenueRow).not.toBeNull();
     expect(within(totalRevenueRow as HTMLElement).getByText('$0.00')).toBeInTheDocument();
-    expect(screen.getByText('Total Expenses')).toBeInTheDocument();
-    expect(screen.getAllByText('$100.00')).toHaveLength(2); // expense line + total
+    expect(screen.getByText('Total Controllable')).toBeInTheDocument();
+    // $100 appears: expense line + Total Controllable + Total Operating Expenses
+    expect(screen.getAllByText('$100.00')).toHaveLength(3);
     const netIncomeRow = screen.getByText('Net Income').closest('div');
     expect(netIncomeRow).not.toBeNull();
     expect(within(netIncomeRow as HTMLElement).getByText('-$100.00')).toBeInTheDocument();

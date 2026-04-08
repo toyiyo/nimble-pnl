@@ -1,0 +1,283 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getEncryptionService } from "../_shared/encryption.ts";
+import {
+  slingLogin,
+  slingApiGet,
+  fetchSlingUsers,
+} from "../_shared/slingApiClient.ts";
+import { corsHeaders } from "../_shared/cors.ts";
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    // User client for auth checks (anon key + user JWT)
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // Service role client for data operations (bypasses RLS)
+    const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const {
+      data: { user },
+    } = await userSupabase.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { restaurantId, slingOrgId } = await req.json();
+
+    if (!restaurantId) {
+      return new Response(
+        JSON.stringify({ error: "Missing restaurantId" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Verify user has permission (owner/manager only)
+    const { data: userRestaurant } = await userSupabase
+      .from("user_restaurants")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("restaurant_id", restaurantId)
+      .single();
+
+    if (
+      !userRestaurant ||
+      !["owner", "manager"].includes(userRestaurant.role)
+    ) {
+      return new Response(JSON.stringify({ error: "Access denied" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get connection using service role (to read encrypted password/token)
+    const { data: connection, error: connectionError } = await serviceSupabase
+      .from("sling_connections")
+      .select("id, restaurant_id, email, password_encrypted, auth_token, token_fetched_at, sling_org_id, sling_org_name, is_active")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .single();
+
+    if (connectionError || !connection) {
+      return new Response(
+        JSON.stringify({ error: "No Sling connection found" }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const encryption = await getEncryptionService();
+    let token: string;
+
+    // If we have a fresh auth token (less than 1 hour old), use it directly
+    if (connection.auth_token && connection.token_fetched_at) {
+      const tokenAge = Date.now() - new Date(connection.token_fetched_at).getTime();
+      if (tokenAge < 3600000) {
+        token = await encryption.decrypt(connection.auth_token);
+      } else if (connection.password_encrypted) {
+        // Token expired, re-login with password
+        const password = await encryption.decrypt(connection.password_encrypted);
+        token = await slingLogin(connection.email, password);
+      } else {
+        throw new Error("Auth token expired. Please re-enter your Sling auth token.");
+      }
+    } else if (connection.password_encrypted) {
+      // No token, login with password
+      const password = await encryption.decrypt(connection.password_encrypted);
+      token = await slingLogin(connection.email, password);
+    } else {
+      throw new Error("No authentication method available. Please save credentials first.");
+    }
+
+    // If no org selected yet, fetch session to get org list
+    if (!slingOrgId) {
+      const sessionData = await slingApiGet(token, "/account/session");
+
+      // Extract orgs from session response
+      // Session response includes the user object with their orgs
+      const orgs: Array<{ id: number; name: string }> = [];
+
+      if (sessionData?.orgs && Array.isArray(sessionData.orgs)) {
+        for (const org of sessionData.orgs) {
+          orgs.push({ id: org.id, name: org.name || `Org ${org.id}` });
+        }
+      } else if (sessionData?.org) {
+        // Single org format
+        orgs.push({
+          id: sessionData.org.id,
+          name: sessionData.org.name || `Org ${sessionData.org.id}`,
+        });
+      }
+
+      if (orgs.length === 0) {
+        throw new Error(
+          "No Sling organizations found for this account"
+        );
+      }
+
+      // If multiple orgs, ask frontend to pick
+      if (orgs.length > 1) {
+        // Save encrypted token while we wait for org selection
+        const encryptionForTemp = await getEncryptionService();
+        const encryptedTempToken = await encryptionForTemp.encrypt(token);
+        await serviceSupabase
+          .from("sling_connections")
+          .update({
+            auth_token: encryptedTempToken,
+            token_fetched_at: new Date().toISOString(),
+          })
+          .eq("id", connection.id);
+
+        return new Response(
+          JSON.stringify({ needsOrgSelection: true, orgs }),
+          {
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      }
+
+      // Auto-select the single org — fall through with its ID
+      return await completeConnection(
+        serviceSupabase,
+        connection,
+        token,
+        orgs[0].id,
+        orgs[0].name
+      );
+    }
+
+    // Org already selected — complete connection setup
+    // Fetch org name from session if we don't have it
+    let orgName = connection.sling_org_name || "";
+    if (!orgName) {
+      try {
+        const sessionData = await slingApiGet(token, "/account/session");
+        const matchedOrg = sessionData?.orgs?.find(
+          (o: any) => o.id === slingOrgId
+        );
+        orgName = matchedOrg?.name || sessionData?.org?.name || `Org ${slingOrgId}`;
+      } catch {
+        orgName = `Org ${slingOrgId}`;
+      }
+    }
+
+    return await completeConnection(
+      serviceSupabase,
+      connection,
+      token,
+      slingOrgId,
+      orgName
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error testing Sling connection:", message);
+    return new Response(
+      JSON.stringify({ success: false, error: message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+});
+
+async function completeConnection(
+  serviceSupabase: any,
+  connection: any,
+  token: string,
+  orgId: number,
+  orgName: string
+): Promise<Response> {
+  // Encrypt auth token before storing
+  const encryption = await getEncryptionService();
+  const encryptedToken = await encryption.encrypt(token);
+
+  // Fetch all users from Sling
+  const slingUsers = await fetchSlingUsers(token);
+
+  // Upsert users into sling_users table
+  if (slingUsers.length > 0) {
+    const userRows = slingUsers.map((u: any) => ({
+      restaurant_id: connection.restaurant_id,
+      sling_user_id: u.id,
+      name: u.name || u.legalName || "",
+      lastname: u.lastname || "",
+      email: u.email || "",
+      position: "",
+      is_active: u.active !== false,
+      raw_json: u,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error: usersError } = await serviceSupabase
+      .from("sling_users")
+      .upsert(userRows, {
+        onConflict: "restaurant_id,sling_user_id",
+      });
+
+    if (usersError) {
+      throw new Error(`Failed to upsert Sling users: ${usersError.message}`);
+    }
+  }
+
+  // Update connection with encrypted token, org info, and connected status
+  const { error: updateError } = await serviceSupabase
+    .from("sling_connections")
+    .update({
+      auth_token: encryptedToken,
+      token_fetched_at: new Date().toISOString(),
+      sling_org_id: orgId,
+      sling_org_name: orgName,
+      connection_status: "connected",
+      last_error: null,
+      last_error_at: null,
+    })
+    .eq("id", connection.id);
+
+  if (updateError) {
+    throw new Error(`Failed to update Sling connection: ${updateError.message}`);
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      orgName,
+      usersCount: slingUsers.length,
+    }),
+    {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    }
+  );
+}

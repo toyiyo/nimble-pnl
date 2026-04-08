@@ -21,6 +21,7 @@ npm run functions:serve        # Serve edge functions locally
 # Building
 npm run build                  # Production build
 npm run build:dev              # Development build
+npm run typecheck              # TypeScript type check (tsc --noEmit)
 npm run lint                   # ESLint
 
 # Testing
@@ -80,6 +81,9 @@ const { data, isLoading } = useQuery({
 **Edge functions pattern**: CORS handling → Auth → Permission check → Business logic → JSON response
 
 ## Critical Rules
+
+### Mandatory Development Workflow
+**Every task MUST follow the `development-workflow` skill.** Before starting any implementation work, invoke the development-workflow skill from `.claude/skills/development-workflow.md`. This is non-negotiable. The skill orchestrates: consult lessons → brainstorm → plan → worktree → TDD build → UI review → code-simplify → CodeRabbit review → verify → PR → CI feedback loop → retrospective. After the user approves the plan, execution is **fully autonomous** through PR creation and CI green.
 
 ### No Manual Caching
 ```typescript

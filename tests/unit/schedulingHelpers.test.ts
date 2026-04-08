@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { getShiftStatusClass } from '@/pages/Scheduling';
+import { getShiftStatusClass, filterEmployeesForScheduleView, buildActiveShiftEmployeeIds } from '@/pages/Scheduling';
 import { buildShiftChangeDescription } from '@/hooks/useShifts';
+import type { Employee } from '@/types/scheduling';
 
 describe('getShiftStatusClass', () => {
   it('returns conflict styling when conflicts are present', () => {
@@ -26,5 +27,71 @@ describe('buildShiftChangeDescription', () => {
   it('handles singular grammar correctly', () => {
     expect(buildShiftChangeDescription(1, 0, 'deleted')).toBe('1 shift deleted.');
     expect(buildShiftChangeDescription(1, 1, 'updated')).toBe('1 shift updated. 1 locked shift was unchanged.');
+  });
+});
+
+describe('buildActiveShiftEmployeeIds', () => {
+  it('excludes cancelled shifts from employee ID set', () => {
+    const shifts = [
+      { employee_id: '1', status: 'scheduled' },
+      { employee_id: '2', status: 'cancelled' },
+      { employee_id: '3', status: 'confirmed' },
+    ];
+    const result = buildActiveShiftEmployeeIds(shifts as { employee_id: string; status: string }[]);
+    expect(result.has('1')).toBe(true);
+    expect(result.has('2')).toBe(false);
+    expect(result.has('3')).toBe(true);
+  });
+
+  it('includes employee if they have at least one non-cancelled shift', () => {
+    const shifts = [
+      { employee_id: '1', status: 'cancelled' },
+      { employee_id: '1', status: 'scheduled' },
+    ];
+    const result = buildActiveShiftEmployeeIds(shifts as { employee_id: string; status: string }[]);
+    expect(result.has('1')).toBe(true);
+  });
+
+  it('returns empty set for empty shifts', () => {
+    const result = buildActiveShiftEmployeeIds([]);
+    expect(result.size).toBe(0);
+  });
+});
+
+type TestEmployee = Pick<Employee, 'id' | 'name' | 'is_active' | 'position'>;
+
+describe('filterEmployeesForScheduleView', () => {
+  const activeWithShifts: TestEmployee = { id: '1', name: 'Alice', is_active: true, position: 'Server' };
+  const activeNoShifts: TestEmployee = { id: '2', name: 'Bob', is_active: true, position: 'Cook' };
+  const inactiveWithShifts: TestEmployee = { id: '3', name: 'Carol', is_active: false, position: 'Server' };
+  const inactiveNoShifts: TestEmployee = { id: '4', name: 'Dave', is_active: false, position: 'Cook' };
+  const allEmployees = [activeWithShifts, activeNoShifts, inactiveWithShifts, inactiveNoShifts] as Employee[];
+  const shiftEmployeeIds = new Set(['1', '3']);
+
+  it('includes active employees regardless of shifts', () => {
+    const result = filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, null);
+    expect(result.map(e => e.id)).toContain('1');
+    expect(result.map(e => e.id)).toContain('2');
+  });
+
+  it('includes inactive employees only if they have shifts', () => {
+    const result = filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, null);
+    expect(result.map(e => e.id)).toContain('3');
+    expect(result.map(e => e.id)).not.toContain('4');
+  });
+
+  it('applies position filter when provided', () => {
+    const result = filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, 'Server');
+    expect(result.map(e => e.id)).toEqual(['1', '3']);
+  });
+
+  it('treats "all" same as null — shows all eligible employees', () => {
+    const result = filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, 'all');
+    expect(result.map(e => e.id)).toEqual(['1', '2', '3']);
+  });
+
+  it('returns empty array when no employees match', () => {
+    const result = filterEmployeesForScheduleView([], new Set(), null);
+    expect(result).toEqual([]);
   });
 });

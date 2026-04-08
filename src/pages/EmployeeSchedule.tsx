@@ -222,8 +222,8 @@ const EmployeeSchedule = () => {
           title="My Schedule"
           subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
         />
-        <Link to="/employee/shifts">
-          <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+        <Link to="/employee/shifts" className="w-full sm:w-auto">
+          <Button className="w-full sm:w-auto bg-gradient-to-r from-primary to-accent hover:opacity-90">
             <ArrowLeftRight className="h-4 w-4 mr-2" />
             Browse Available Shifts
           </Button>
@@ -247,7 +247,7 @@ const EmployeeSchedule = () => {
               {pendingTrades.map((trade) => (
                 <div
                   key={trade.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-background border border-yellow-500/20"
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg bg-background border border-yellow-500/20"
                 >
                   <div className="flex items-center gap-4">
                     <div className="text-center">
@@ -338,29 +338,33 @@ const EmployeeSchedule = () => {
       {/* Week Navigation */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <CardTitle>Weekly Schedule</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handlePreviousWeek}
-                aria-label="Previous week"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleToday}>
-                Today
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleNextWeek}
-                aria-label="Next week"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Badge variant="outline" className="px-3 py-1 ml-2">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePreviousWeek}
+                  aria-label="Previous week"
+                  className="min-h-[44px] min-w-[44px]"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleToday} className="min-h-[44px]">
+                  Today
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNextWeek}
+                  aria-label="Next week"
+                  className="min-h-[44px] min-w-[44px]"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <Badge variant="outline" className="px-3 py-1">
                 {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
               </Badge>
             </div>
@@ -406,7 +410,7 @@ const EmployeeSchedule = () => {
                         {dayShifts.map((shift) => (
                           <div
                             key={shift.id}
-                            className={`flex items-center justify-between p-3 rounded-lg ${
+                            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg ${
                               shift.status === 'cancelled'
                                 ? 'bg-destructive/10 line-through'
                                 : 'bg-muted/50'
@@ -423,7 +427,7 @@ const EmployeeSchedule = () => {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2">
                               <div className="text-sm text-muted-foreground">
                                 {formatShiftDuration(
                                   shift.start_time,
@@ -443,7 +447,7 @@ const EmployeeSchedule = () => {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleTradeShift(shift)}
-                                  className="ml-2"
+                                  className="min-h-[44px]"
                                 >
                                   <ArrowLeftRight className="h-4 w-4 mr-1" />
                                   Trade

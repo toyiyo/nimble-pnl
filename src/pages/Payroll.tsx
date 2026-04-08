@@ -22,6 +22,7 @@ import {
 } from '@/utils/payrollCalculations';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
+import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
 import {
   DollarSign,
   Clock,
@@ -111,6 +112,8 @@ const Payroll = () => {
     refetch,
     addManualPayment,
     isAddingPayment,
+    adjustOvertime,
+    isAdjustingOvertime,
   } = usePayroll(restaurantId, start, end);
   
   const { employees } = useEmployees(restaurantId);
@@ -120,6 +123,15 @@ const Payroll = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<{
     id: string;
     name: string;
+  } | null>(null);
+
+  // State for overtime adjustment dialog
+  const [otDialogOpen, setOtDialogOpen] = useState(false);
+  const [otSelectedEmployee, setOtSelectedEmployee] = useState<{
+    id: string;
+    name: string;
+    regularHours: number;
+    overtimeHours: number;
   } | null>(null);
 
   // Helper to check if an employee is a per-job contractor
@@ -191,6 +203,23 @@ const Payroll = () => {
     addManualPayment(data);
     setPaymentDialogOpen(false);
     setSelectedEmployee(null);
+  };
+
+  const handleAdjustOT = (employeeId: string, employeeName: string, regularHours: number, overtimeHours: number) => {
+    setOtSelectedEmployee({ id: employeeId, name: employeeName, regularHours, overtimeHours });
+    setOtDialogOpen(true);
+  };
+
+  const handleOtSubmit = (data: {
+    employeeId: string;
+    punchDate: string;
+    adjustmentType: 'regular_to_overtime' | 'overtime_to_regular';
+    hours: number;
+    reason: string;
+  }) => {
+    adjustOvertime(data);
+    setOtDialogOpen(false);
+    setOtSelectedEmployee(null);
   };
 
   const handleExportCSV = () => {
@@ -400,13 +429,18 @@ const Payroll = () => {
             <CardHeader className="pb-2">
               <CardDescription className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
-                Total Tips
+                Tips Owed
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(payrollPeriod.totalTips)}
+                {formatCurrency(payrollPeriod.totalTipsOwed)}
               </div>
+              {payrollPeriod.totalTipsPaidOut > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatCurrency(payrollPeriod.totalTips)} earned, {formatCurrency(payrollPeriod.totalTipsPaidOut)} paid out
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -487,7 +521,9 @@ const Payroll = () => {
                     <TableHead className="text-right">OT Hrs</TableHead>
                     <TableHead className="text-right">Regular Pay</TableHead>
                     <TableHead className="text-right">OT Pay</TableHead>
-                    <TableHead className="text-right">Tips</TableHead>
+                    <TableHead className="text-right">Tips Earned</TableHead>
+                    <TableHead className="text-right">Tips Paid</TableHead>
+                    <TableHead className="text-right">Tips Owed</TableHead>
                     <TableHead className="text-right font-semibold">Total Pay</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -549,12 +585,12 @@ const Payroll = () => {
                         {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {employee.compensationType === 'hourly' && employee.overtimeHours > 0 ? (
-                          <Badge variant="secondary">
-                            {formatHours(employee.overtimeHours)}
-                          </Badge>
-                        ) : (
-                          employee.compensationType === 'hourly' ? '0.00' : '-'
+                        {employee.compensationType !== 'hourly' ? '-' : (
+                          employee.overtimeHours > 0 ? (
+                            <Badge variant="secondary">
+                              {formatHours(employee.overtimeHours)}
+                            </Badge>
+                          ) : '0.00'
                         )}
                       </TableCell>
                       <TableCell className="text-right">
@@ -566,10 +602,32 @@ const Payroll = () => {
                       <TableCell className="text-right">
                         {employee.totalTips > 0 ? formatCurrency(employee.totalTips) : '-'}
                       </TableCell>
+                      <TableCell className="text-right">
+                        {employee.tipsPaidOut > 0 ? formatCurrency(employee.tipsPaidOut) : '-'}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {employee.tipsOwed > 0 ? formatCurrency(employee.tipsOwed) : '-'}
+                      </TableCell>
                       <TableCell className="text-right font-semibold">
                         {formatCurrency(employee.totalPay)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-2">
+                        {employee.compensationType === 'hourly' && (employee.regularHours > 0 || employee.overtimeHours > 0) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAdjustOT(
+                              employee.employeeId,
+                              employee.employeeName,
+                              employee.regularHours,
+                              employee.overtimeHours
+                            )}
+                            aria-label={`Adjust overtime for ${employee.employeeName}`}
+                          >
+                            <Clock className="h-4 w-4 mr-1" />
+                            Adjust OT
+                          </Button>
+                        )}
                         {isEmployeePerJobContractor(employee.employeeId) && (
                           <Button
                             variant="outline"
@@ -607,8 +665,14 @@ const Payroll = () => {
                       {formatCurrency(payrollPeriod.totalTips)}
                     </TableCell>
                     <TableCell className="text-right">
+                      {formatCurrency(payrollPeriod.totalTipsPaidOut)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatCurrency(payrollPeriod.totalTipsOwed)}
+                    </TableCell>
+                    <TableCell className="text-right">
                       {formatCurrency(
-                        payrollPeriod.totalGrossPay + payrollPeriod.totalTips
+                        payrollPeriod.totalGrossPay + payrollPeriod.totalTipsOwed
                       )}
                     </TableCell>
                     <TableCell>{/* Actions column - empty for total row */}</TableCell>
@@ -670,6 +734,22 @@ const Payroll = () => {
           employeeId={selectedEmployee.id}
           onSubmit={handlePaymentSubmit}
           isSubmitting={isAddingPayment}
+        />
+      )}
+
+      {/* Adjust Overtime Dialog */}
+      {otSelectedEmployee && (
+        <AdjustOvertimeDialog
+          open={otDialogOpen}
+          onOpenChange={setOtDialogOpen}
+          employeeName={otSelectedEmployee.name}
+          employeeId={otSelectedEmployee.id}
+          regularHours={otSelectedEmployee.regularHours}
+          overtimeHours={otSelectedEmployee.overtimeHours}
+          periodStart={format(start, 'yyyy-MM-dd')}
+          periodEnd={format(end, 'yyyy-MM-dd')}
+          onSubmit={handleOtSubmit}
+          isSubmitting={isAdjustingOvertime}
         />
       )}
     </div>

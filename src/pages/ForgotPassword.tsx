@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { CalendarCheck, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { AppLogo } from '@/components/AppLogo';
 import { z } from 'zod';
 
 const emailSchema = z.string().email('Please enter a valid email address');
@@ -96,7 +97,7 @@ const ForgotPassword = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center items-center gap-2 mb-2">
-            <CalendarCheck className="h-8 w-8 text-emerald-600" />
+            <AppLogo size={32} />
             <CardTitle className="text-2xl">EasyShiftHQ</CardTitle>
           </div>
           <CardDescription>

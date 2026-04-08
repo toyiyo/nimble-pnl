@@ -4,6 +4,32 @@
     "feature-dev@claude-plugins-official": true,
     "stripe@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": true,
-    "superpowers@claude-plugins-official": true
+    "superpowers@claude-plugins-official": true,
+    "includeCoAuthoredBy": false,
+    "gitAttribution": false
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'git commit'; then echo '--- CodeRabbit Pre-Commit Check ---'; coderabbit review --plain --type uncommitted 2>&1 | head -200; echo '--- End CodeRabbit Check ---'; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-edit-lint.sh"
+          }
+        ]
+      }
+    ]
   }
 }

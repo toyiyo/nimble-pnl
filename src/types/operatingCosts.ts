@@ -46,34 +46,33 @@ export interface CostBreakdownItem {
 }
 
 export interface BreakEvenData {
-  // Core daily number
+  // Break-even by period
   dailyBreakEven: number;
-  
+  monthlyBreakEven: number;
+  yearlyBreakEven: number;
+
+  // Contribution margin
+  totalVariablePercent: number;  // sum of all percentage-based costs (0.61 = 61%)
+  contributionMargin: number;    // 1 - totalVariablePercent (0.39 = 39%)
+
   // Today's comparison
   todaySales: number;
   todayStatus: 'above' | 'at' | 'below';
   todayDelta: number;
-  
-  // Cost breakdown by type
+
+  // Cost breakdown — 2 groups only
   fixedCosts: {
     items: CostBreakdownItem[];
     totalDaily: number;
-  };
-  semiVariableCosts: {
-    items: CostBreakdownItem[];
-    totalDaily: number;
-    monthsAveraged: number;
+    totalMonthly: number;
+    totalYearly: number;
   };
   variableCosts: {
     items: CostBreakdownItem[];
     totalDaily: number;
     avgDailySales: number;
   };
-  customCosts: {
-    items: CostBreakdownItem[];
-    totalDaily: number;
-  };
-  
+
   // Historical comparison (configurable days)
   history: {
     date: string;
@@ -82,7 +81,7 @@ export interface BreakEvenData {
     delta: number;
     status: 'above' | 'at' | 'below';
   }[];
-  
+
   // Summary stats
   daysAbove: number;
   daysBelow: number;
@@ -108,3 +107,17 @@ export const DEFAULT_OPERATING_COSTS: OperatingCostInput[] = [
   { costType: 'variable', category: 'labor', name: 'Labor Target', entryType: 'percentage', percentageValue: 0.32, displayOrder: 2 },
   { costType: 'variable', category: 'processing_fees', name: 'Payment Processing', entryType: 'percentage', percentageValue: 0.025, displayOrder: 3 },
 ];
+
+// Expense suggestion from bank transaction / payroll analysis
+export interface ExpenseSuggestion {
+  id: string;              // deterministic key: "{normalized_payee}:{account_subtype}"
+  payeeName: string;       // "ABC Landlord LLC"
+  suggestedName: string;   // "Rent / Lease" (mapped from category)
+  costType: CostType;      // which cost block it belongs in
+  monthlyAmount: number;   // average monthly amount in cents
+  confidence: number;      // 0-1 based on months matched + variance
+  source: 'bank' | 'payroll';
+  matchedMonths: number;   // how many months the pattern was detected
+}
+
+export type SuggestionAction = 'dismissed' | 'snoozed' | 'accepted';

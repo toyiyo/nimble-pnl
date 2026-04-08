@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,12 +9,15 @@ import { useSquareIntegration } from '@/hooks/useSquareIntegration';
 import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastConnection } from '@/hooks/useToastConnection';
+import { useSlingConnection } from '@/hooks/useSlingConnection';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
 import { Shift4Sync } from '@/components/Shift4Sync';
 import { ToastSync } from '@/components/ToastSync';
+import { SlingSync } from '@/components/SlingSync';
 import { Shift4ConnectDialog } from '@/components/Shift4ConnectDialog';
 import { ToastSetupWizard } from '@/components/pos/ToastSetupWizard';
+import { SlingSetupWizard } from '@/components/pos/SlingSetupWizard';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -37,7 +41,9 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const [isConnecting, setIsConnecting] = useState(false);
   const [showShift4Dialog, setShowShift4Dialog] = useState(false);
   const [showToastSetup, setShowToastSetup] = useState(false);
+  const [showSlingSetup, setShowSlingSetup] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   // Square-specific integration hook
   const squareIntegration = useSquareIntegration(restaurantId);
@@ -51,22 +57,36 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Toast-specific integration hook
   const toastConnection = useToastConnection(restaurantId);
 
-  // Check if this integration is Square, Clover, Shift4, or Toast and if it's connected
+  // Sling-specific integration hook
+  const slingConnection = useSlingConnection(restaurantId);
+
+  // Check if this integration is Square, Clover, Shift4, Toast, or Sling and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
-  
-  const actuallyConnected = isSquareIntegration ? squareIntegration.isConnected : 
-                            isCloverIntegration ? cloverIntegration.isConnected :
-                            isShift4Integration ? shift4Integration.isConnected :
-                            isToastIntegration ? toastConnection.isConnected :
-                            integration.connected;
-  const actuallyConnecting = isSquareIntegration ? squareIntegration.isConnecting : 
-                             isCloverIntegration ? cloverIntegration.isConnecting :
-                             isShift4Integration ? shift4Integration.loading :
-                             isToastIntegration ? toastConnection.loading :
-                             isConnecting;
+  const isSlingIntegration = integration.id === 'sling-scheduling';
+
+  const getActuallyConnected = (): boolean => {
+    if (isSquareIntegration) return squareIntegration.isConnected;
+    if (isCloverIntegration) return cloverIntegration.isConnected;
+    if (isShift4Integration) return shift4Integration.isConnected;
+    if (isToastIntegration) return toastConnection.isConnected;
+    if (isSlingIntegration) return slingConnection.isConnected;
+    return integration.connected;
+  };
+
+  const getActuallyConnecting = (): boolean => {
+    if (isSquareIntegration) return squareIntegration.isConnecting;
+    if (isCloverIntegration) return cloverIntegration.isConnecting;
+    if (isShift4Integration) return shift4Integration.loading;
+    if (isToastIntegration) return toastConnection.loading;
+    if (isSlingIntegration) return slingConnection.loading;
+    return isConnecting;
+  };
+
+  const actuallyConnected = getActuallyConnected();
+  const actuallyConnecting = getActuallyConnecting();
 
   const handleConnect = async () => {
     if (isSquareIntegration) {
@@ -88,7 +108,12 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       setShowToastSetup(true);
       return;
     }
-    
+
+    if (isSlingIntegration) {
+      setShowSlingSetup(true);
+      return;
+    }
+
     // For other integrations, show coming soon message
     setIsConnecting(true);
     
@@ -141,11 +166,35 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
       await toastConnection.disconnectToast(restaurantId);
       return;
     }
-    
+
+    if (isSlingIntegration) {
+      await slingConnection.disconnectSling(restaurantId);
+      return;
+    }
+
     toast({
       title: "Disconnected",
       description: `Successfully disconnected from ${integration.name}`,
     });
+  };
+
+  const getConnectionDateLabel = (): string => {
+    if (isSquareIntegration && squareIntegration.connection) {
+      return `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}`;
+    }
+    if (isCloverIntegration && cloverIntegration.connection) {
+      return `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}`;
+    }
+    if (isShift4Integration && shift4Integration.connection) {
+      return `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}`;
+    }
+    if (isToastIntegration && toastConnection.connection) {
+      return `Connected: ${new Date(toastConnection.connection.created_at).toLocaleDateString()}`;
+    }
+    if (isSlingIntegration && slingConnection.connection) {
+      return `Connected: ${new Date(slingConnection.connection.created_at).toLocaleDateString()}`;
+    }
+    return 'Last sync: 2 hours ago';
   };
 
   const handleConfigure = () => {
@@ -250,16 +299,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
           <div className="space-y-4 pt-4 border-t">
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 rounded-md p-2">
               <Clock className="h-3 w-3" />
-              {isSquareIntegration && squareIntegration.connection ? 
-                `Connected: ${new Date(squareIntegration.connection.connected_at).toLocaleDateString()}` :
-              isCloverIntegration && cloverIntegration.connection ?
-                `Connected: ${new Date(cloverIntegration.connection.connected_at).toLocaleDateString()}` :
-              isShift4Integration && shift4Integration.connection ?
-                `Connected: ${new Date(shift4Integration.connection.connected_at).toLocaleDateString()}` :
-              isToastIntegration && toastConnection.connection ?
-                `Connected: ${new Date(toastConnection.connection.created_at).toLocaleDateString()}` :
-                'Last sync: 2 hours ago'
-              }
+              {getConnectionDateLabel()}
             </div>
             
             {/* Square Sync Component */}
@@ -285,9 +325,14 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             
             {/* Toast Sync Component */}
             {isToastIntegration && (
-              <ToastSync 
+              <ToastSync
                 restaurantId={restaurantId}
               />
+            )}
+
+            {/* Sling Sync Component */}
+            {isSlingIntegration && (
+              <SlingSync restaurantId={restaurantId} />
             )}
           </div>
         )}
@@ -309,6 +354,19 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             onComplete={() => {
               setShowToastSetup(false);
               toastConnection.checkConnectionStatus(restaurantId);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Sling Setup Wizard Dialog */}
+      <Dialog open={showSlingSetup} onOpenChange={setShowSlingSetup}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <SlingSetupWizard
+            restaurantId={restaurantId}
+            onComplete={() => {
+              setShowSlingSetup(false);
+              queryClient.invalidateQueries({ queryKey: ['sling-connection', restaurantId] });
             }}
           />
         </DialogContent>

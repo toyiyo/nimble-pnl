@@ -38,6 +38,8 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
   const defaultProps = {
     open: true,
     onClose: vi.fn(),
+    poolingModel: 'full_pool' as const,
+    onPoolingModelChange: vi.fn(),
     tipSource: 'manual' as const,
     shareMethod: 'hours' as const,
     splitCadence: 'daily' as const,
@@ -104,7 +106,7 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
     it('highlights selected tip source', () => {
       render(<TipPoolSettingsDialog {...defaultProps} tipSource="manual" />);
       const manualLabel = screen.getByText('Manual Entry').closest('label');
-      expect(manualLabel).toHaveClass('border-primary');
+      expect(manualLabel).toHaveClass('border-foreground');
     });
 
     it('calls onTipSourceChange when POS Import is clicked', () => {
@@ -125,7 +127,7 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
     it('highlights selected share method', () => {
       render(<TipPoolSettingsDialog {...defaultProps} shareMethod="hours" />);
       const hoursLabel = screen.getByText('By Hours Worked').closest('label');
-      expect(hoursLabel).toHaveClass('border-primary');
+      expect(hoursLabel).toHaveClass('border-foreground');
     });
 
     it('calls onShareMethodChange when By Role is clicked', () => {
@@ -265,7 +267,7 @@ describe('TipPoolSettingsDialog - Comprehensive Tests', () => {
     it('highlights selected cadence', () => {
       render(<TipPoolSettingsDialog {...defaultProps} splitCadence="daily" />);
       const dailyLabel = screen.getByText('Daily').closest('label');
-      expect(dailyLabel).toHaveClass('border-primary');
+      expect(dailyLabel).toHaveClass('border-foreground');
     });
 
     it('calls onSplitCadenceChange when Weekly is clicked', () => {

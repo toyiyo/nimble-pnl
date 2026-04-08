@@ -1,3 +1,4 @@
+import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
@@ -164,21 +165,7 @@ const generateEmailHtml = (
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
   <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
-    <!-- Header with Logo -->
-    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 32px 24px; text-align: center; border-radius: 8px 8px 0 0;">
-      <div style="display: inline-flex; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
-        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 8px; padding: 8px; display: inline-block; margin-right: 12px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="16 3 21 3 21 8"></polyline>
-            <line x1="4" y1="20" x2="21" y2="3"></line>
-            <polyline points="21 16 21 21 16 21"></polyline>
-            <line x1="15" y1="15" x2="21" y2="21"></line>
-            <line x1="4" y1="4" x2="9" y2="9"></line>
-          </svg>
-        </div>
-        <span style="font-size: 20px; font-weight: 700; color: #1f2937; letter-spacing: -0.5px;">EasyShiftHQ</span>
-      </div>
-    </div>
+    ${generateHeader()}
     
     <!-- Content -->
     <div style="padding: 40px 32px; background-color: #ffffff;">
@@ -326,11 +313,13 @@ const handler = async (req: Request): Promise<Response> => {
         ),
         offered_by:employees!offered_by_employee_id(
           name,
-          email
+          email,
+          user_id
         ),
         accepted_by:employees!accepted_by_employee_id(
           name,
-          email
+          email,
+          user_id
         ),
         restaurant:restaurants(
           name
@@ -410,6 +399,45 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+
+    // Send push notifications to the relevant employees based on action
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const pushUserIds: string[] = [];
+
+    if (action === 'created') {
+      // No targeted push for broadcast — skip (would notify all employees)
+    } else if (action === 'accepted') {
+      // Notify the employee who offered the shift
+      if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
+    } else if (action === 'approved' || action === 'rejected') {
+      // Notify both involved employees
+      if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
+      if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
+    } else if (action === 'cancelled') {
+      // Notify the employee who had accepted
+      if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
+    }
+
+    for (const userId of [...new Set(pushUserIds)]) {
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            title: 'Shift Trade Request',
+            body: 'Someone wants to trade a shift with you',
+            data: { route: '/employee/shifts' },
+          }),
+        });
+      } catch (e) {
+        console.error('Push notification failed:', e);
+      }
+    }
 
     return new Response(
       JSON.stringify({ success: true, emailId: emailData?.id, recipients }),

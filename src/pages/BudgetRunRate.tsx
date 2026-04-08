@@ -1,16 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { startOfDay, subDays } from 'date-fns';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useOperatingCosts } from '@/hooks/useOperatingCosts';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
+import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { BreakEvenHeroCard } from '@/components/budget/BreakEvenHeroCard';
 import { CostBlock } from '@/components/budget/CostBlock';
 import { CostItemDialog } from '@/components/budget/CostItemDialog';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Target, Plus } from 'lucide-react';
-import { CostType, OperatingCostInput, CostBreakdownItem } from '@/types/operatingCosts';
+import { Target } from 'lucide-react';
+import type { CostType, OperatingCostInput, CostBreakdownItem, ExpenseSuggestion } from '@/types/operatingCosts';
+import { useExpenseSuggestions } from '@/hooks/useExpenseSuggestions';
+
+const COST_TYPE_LABELS: Record<CostType, string> = {
+  fixed: 'Add Fixed Cost',
+  semi_variable: 'Add Fixed Cost',
+  variable: 'Add Variable Cost',
+  custom: 'Add Fixed Cost',
+};
 
 export default function BudgetRunRate() {
   const { selectedRestaurant } = useRestaurantContext();
@@ -18,10 +27,6 @@ export default function BudgetRunRate() {
   
   const {
     costs,
-    fixedCosts,
-    semiVariableCosts,
-    variableCosts,
-    customCosts,
     isLoading: costsLoading,
     createCost,
     updateCost,
@@ -31,11 +36,40 @@ export default function BudgetRunRate() {
   } = useOperatingCosts(restaurantId);
   
   const { data: breakEvenData, isLoading: analysisLoading } = useBreakEvenAnalysis(restaurantId);
-  
+
+  // Unified COGS for actual vs target comparison — match break-even 14-day range
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const historyStart = useMemo(() => subDays(today, 13), [today]);
+  const { totalCOGS, isLoading: cogsLoading } = useUnifiedCOGS(restaurantId, historyStart, today);
+
+  // Compute actual COGS % = totalCOGS / totalRevenue over the same period
+  const actualCOGSPercentage = useMemo(() => {
+    if (!breakEvenData?.history || breakEvenData.history.length === 0 || cogsLoading) return undefined;
+    const totalRevenue = breakEvenData.history.reduce((sum, h) => sum + h.sales, 0);
+    if (totalRevenue <= 0 || totalCOGS <= 0) return undefined;
+    return (totalCOGS / totalRevenue) * 100;
+  }, [breakEvenData, totalCOGS, cogsLoading]);
+
+  // Target COGS % from the food_cost variable cost item
+  const targetCOGSPercentage = useMemo(() => {
+    const foodCostItem = breakEvenData?.variableCosts.items.find(
+      (item) => item.category === 'food_cost'
+    );
+    return foodCostItem?.percentage;  // already in % form (e.g. 28)
+  }, [breakEvenData]);
+
+  const {
+    suggestions,
+    dismissSuggestion,
+    snoozeSuggestion,
+    acceptSuggestion,
+  } = useExpenseSuggestions(restaurantId);
+
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<CostBreakdownItem | null>(null);
   const [dialogCostType, setDialogCostType] = useState<CostType>('custom');
+  const [pendingSuggestionId, setPendingSuggestionId] = useState<string | null>(null);
   
   // Seed defaults if no costs exist
   useEffect(() => {
@@ -58,11 +92,29 @@ export default function BudgetRunRate() {
     setDialogOpen(true);
   };
   
+  const handleAcceptSuggestion = (suggestion: ExpenseSuggestion) => {
+    // Pre-fill the dialog with suggestion data
+    const prefilledItem: CostBreakdownItem = {
+      id: 'suggestion-prefill',
+      name: suggestion.suggestedName,
+      category: suggestion.id.split(':').pop() || suggestion.suggestedName.toLowerCase().replace(/\s+/g, '_'),
+      daily: suggestion.monthlyAmount / 100 / 30,
+      monthly: suggestion.monthlyAmount / 100,
+      isPercentage: false,
+      source: 'manual',
+    };
+    setEditingItem(prefilledItem);
+    setDialogCostType(suggestion.costType);
+    setPendingSuggestionId(suggestion.id);
+    setDialogOpen(true);
+  };
+
   const handleSaveItem = (data: OperatingCostInput) => {
-    if (editingItem) {
+    if (editingItem && editingItem.id !== 'suggestion-prefill') {
       updateCost({
         id: editingItem.id,
         name: data.name,
+        costType: data.costType,
         entryType: data.entryType,
         monthlyValue: data.monthlyValue,
         percentageValue: data.percentageValue,
@@ -70,14 +122,22 @@ export default function BudgetRunRate() {
       });
     } else {
       createCost(data);
+      // Record suggestion as accepted only after user confirms save
+      if (pendingSuggestionId) {
+        acceptSuggestion(pendingSuggestionId);
+        setPendingSuggestionId(null);
+      }
     }
   };
   
-  const handleDeleteItem = (id: string) => {
-    deleteCost(id);
-  };
-  
   const isLoading = costsLoading || analysisLoading;
+
+  // Shared suggestion handler props for all CostBlock instances
+  const suggestionHandlers = {
+    onAcceptSuggestion: handleAcceptSuggestion,
+    onSnoozeSuggestion: snoozeSuggestion,
+    onDismissSuggestion: dismissSuggestion,
+  };
 
   if (!restaurantId) {
     return (
@@ -131,48 +191,33 @@ export default function BudgetRunRate() {
             </div>
           ) : (
             <>
-              {/* Fixed Costs */}
+              {/* Fixed Costs (all dollar-amount items) */}
               <CostBlock
                 title="Fixed Costs"
-                subtitle="Costs that don't change with sales"
+                subtitle="Dollar amounts that don't scale with sales"
                 totalDaily={breakEvenData?.fixedCosts.totalDaily || 0}
                 items={breakEvenData?.fixedCosts.items || []}
                 onAddItem={() => handleAddItem('fixed')}
                 onEditItem={handleEditItem}
-                onDeleteItem={handleDeleteItem}
+                onDeleteItem={deleteCost}
                 showAddButton
+                suggestions={suggestions.filter(s => s.costType !== 'variable')}
+                {...suggestionHandlers}
               />
-              
-              {/* Semi-Variable (Utilities) */}
-              <CostBlock
-                title="Utilities (Averaged)"
-                subtitle="Estimated from historical usage"
-                totalDaily={breakEvenData?.semiVariableCosts.totalDaily || 0}
-                items={breakEvenData?.semiVariableCosts.items || []}
-                onEditItem={handleEditItem}
-                infoText={`Smoothed from last ${breakEvenData?.semiVariableCosts.monthsAveraged || 3} months of transactions. Override any value to set manually.`}
-              />
-              
-              {/* Variable Costs */}
+
+              {/* Variable Costs (all percentage items) */}
               <CostBlock
                 title="Variable Costs"
-                subtitle="Costs that scale with sales"
+                subtitle="Percentages that scale with sales"
                 totalDaily={breakEvenData?.variableCosts.totalDaily || 0}
                 items={breakEvenData?.variableCosts.items || []}
+                onAddItem={() => handleAddItem('variable')}
                 onEditItem={handleEditItem}
-                showPercentages
-              />
-              
-              {/* Custom Costs */}
-              <CostBlock
-                title="Custom / Other Costs"
-                subtitle="Franchise fees, marketing, etc."
-                totalDaily={breakEvenData?.customCosts.totalDaily || 0}
-                items={breakEvenData?.customCosts.items || []}
-                onAddItem={() => handleAddItem('custom')}
-                onEditItem={handleEditItem}
-                onDeleteItem={handleDeleteItem}
+                onDeleteItem={deleteCost}
                 showAddButton
+                showPercentages
+                suggestions={suggestions.filter(s => s.costType === 'variable')}
+                {...suggestionHandlers}
               />
             </>
           )}
@@ -180,7 +225,12 @@ export default function BudgetRunRate() {
       </Card>
       
       {/* Sales vs Cost Reality Chart */}
-      <SalesVsBreakEvenChart data={breakEvenData} isLoading={isLoading} />
+      <SalesVsBreakEvenChart
+        data={breakEvenData}
+        isLoading={isLoading}
+        actualCOGSPercentage={actualCOGSPercentage}
+        targetCOGSPercentage={targetCOGSPercentage}
+      />
       
       {/* Cost Item Dialog */}
       <CostItemDialog
@@ -189,11 +239,7 @@ export default function BudgetRunRate() {
         onSave={handleSaveItem}
         editingItem={editingItem}
         costType={dialogCostType}
-        title={
-          dialogCostType === 'fixed' ? 'Add Fixed Cost' :
-          dialogCostType === 'variable' ? 'Add Variable Cost' :
-          'Add Custom Cost'
-        }
+        title={COST_TYPE_LABELS[dialogCostType]}
       />
     </div>
   );

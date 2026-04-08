@@ -11,8 +11,10 @@ import { useSSO } from '@/hooks/useSSO';
 import { useToast } from '@/hooks/use-toast';
 import { SSOProviderButtons } from '@/components/SSOProviderButtons';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { Building, ArrowRight, Shield, CalendarCheck } from 'lucide-react';
+import { Building, ArrowRight, Shield } from 'lucide-react';
+import { AppLogo } from '@/components/AppLogo';
 import { supabase } from '@/integrations/supabase/client';
+import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -135,16 +137,7 @@ const Auth = () => {
   const handleGoogleAuth = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        }
-      });
+      const { error } = await signInWithOAuthNative('google', '/');
 
       if (error) {
         throw error;
@@ -169,7 +162,7 @@ const Auth = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center items-center gap-2 mb-2">
-            <CalendarCheck className="h-8 w-8 text-emerald-600" />
+            <AppLogo size={32} />
             <CardTitle className="text-2xl">EasyShiftHQ</CardTitle>
           </div>
           <CardDescription>

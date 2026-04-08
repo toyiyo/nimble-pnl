@@ -2,7 +2,7 @@ import React, { ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useWeeklyBrief, useWeeklyBriefHistory } from '@/hooks/useWeeklyBrief';
+import { useWeeklyBrief, useWeeklyBriefHistory, getMostRecentSunday } from '@/hooks/useWeeklyBrief';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
@@ -80,11 +80,7 @@ describe('useWeeklyBrief', () => {
     const chain = buildQueryChain({ data: null, error: null });
     mockSupabase.from.mockReturnValue(chain);
 
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const lastSunday = new Date(now);
-    lastSunday.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
-    const expectedDate = lastSunday.toISOString().split('T')[0];
+    const expectedDate = getMostRecentSunday();
 
     const { result } = renderHook(
       () => useWeeklyBrief('rest-123'),

@@ -22,6 +22,7 @@ export interface Employee {
   email?: string;
   phone?: string;
   position: string;
+  area?: string;
   status: 'active' | 'inactive' | 'terminated';
   hire_date?: string;
   termination_date?: string; // Date when employee was terminated/inactivated
@@ -62,6 +63,9 @@ export interface Employee {
   // Time tracking & tips
   requires_time_punch?: boolean; // Must clock in/out (true for hourly, optional for others)
   tip_eligible?: boolean; // Can receive tip pool distributions
+
+  // FLSA exempt status
+  is_exempt?: boolean; // Exempt employees skip OT calculations
 
   // Compensation history (optional join)
   compensation_history?: CompensationHistoryEntry[];
@@ -108,7 +112,7 @@ export interface ShiftTemplate {
   id: string;
   restaurant_id: string;
   name: string;
-  day_of_week: number; // 0 = Sunday, 6 = Saturday
+  days: number[]; // [0,1,2,3,4,5,6] — 0=Sunday, 6=Saturday
   start_time: string;
   end_time: string;
   break_duration: number;
@@ -181,6 +185,8 @@ export interface ConflictCheck {
   start_date?: string;
   end_date?: string;
   status?: string;
+  available_start?: string; // TIME format (HH:MM:SS), stored as UTC in database
+  available_end?: string;   // TIME format (HH:MM:SS), stored as UTC in database
 }
 
 export interface NotificationSettings {
@@ -253,4 +259,78 @@ export interface LaborCostBreakdown {
   salary_allocations: number; // In cents
   contractor_payments: number; // In cents
   total: number; // In cents
+}
+
+// Staffing suggestions
+export interface MinCrew {
+  [position: string]: number;
+}
+
+export interface StaffingSettings {
+  id: string;
+  restaurant_id: string;
+  target_splh: number;
+  avg_ticket_size: number;
+  target_labor_pct: number;
+  min_staff: number;
+  lookback_weeks: number;
+  manual_projections: ManualProjections | null;
+  min_crew: MinCrew | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManualProjections {
+  [dayOfWeek: string]: number;
+}
+
+export interface HourlySalesData {
+  hour: number;
+  avgSales: number;
+  sampleCount: number;
+}
+
+export interface HourlyStaffingRecommendation {
+  hour: number;
+  projectedSales: number;
+  recommendedStaff: number;
+  estimatedLaborCost: number;
+  laborPct: number;
+  overTarget: boolean;
+}
+
+export interface ShiftBlock {
+  startHour: number;
+  endHour: number;
+  headcount: number;
+  day: string;
+}
+
+// --- Schedule Plan Templates ---
+
+export interface TemplateShiftSnapshot {
+  day_offset: number;       // 0=Monday through 6=Sunday (Monday-anchored)
+  start_time: string;       // HH:MM:SS
+  end_time: string;         // HH:MM:SS
+  break_duration: number;
+  position: string;
+  employee_id: string;
+  employee_name: string;
+  notes: string | null;
+}
+
+export interface SchedulePlanTemplate {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  shifts: TemplateShiftSnapshot[];
+  shift_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplyTemplateResult {
+  inserted_count: number;
+  skipped_count: number;
+  deleted_count: number;
 }

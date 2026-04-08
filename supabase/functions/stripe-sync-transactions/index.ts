@@ -207,6 +207,25 @@ serve(async (req) => {
 
     console.log(`[SYNC-TRANSACTIONS] Total transactions fetched across all accounts: ${allTransactions.length}`);
 
+    // Query tombstones to filter out previously deleted transactions
+    const allStripeIds = allTransactions.map(t => t.id);
+    let tombstonedIds = new Set<string>();
+
+    if (allStripeIds.length > 0) {
+      const { data: tombstones } = await supabaseAdmin
+        .from("deleted_bank_transactions")
+        .select("external_transaction_id")
+        .eq("restaurant_id", bank.restaurant_id)
+        .in("external_transaction_id", allStripeIds);
+
+      if (tombstones && tombstones.length > 0) {
+        tombstonedIds = new Set(
+          tombstones.map(t => t.external_transaction_id).filter((id): id is string => id !== null)
+        );
+        console.log(`[SYNC-TRANSACTIONS] Found ${tombstonedIds.size} tombstoned transactions to skip`);
+      }
+    }
+
     let syncedCount = 0;
     let skippedCount = 0;
 
@@ -220,6 +239,12 @@ serve(async (req) => {
         .single();
 
       if (existing) {
+        skippedCount++;
+        continue;
+      }
+
+      // Skip transactions that were previously deleted (tombstoned)
+      if (tombstonedIds.has(txn.id)) {
         skippedCount++;
         continue;
       }

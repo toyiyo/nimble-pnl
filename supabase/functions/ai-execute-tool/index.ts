@@ -96,8 +96,10 @@ function calculateDateRange(
       if (!customStartDate || !customEndDate) {
         throw new Error('Custom period requires start_date and end_date');
       }
-      startDate = new Date(customStartDate);
-      endDate = new Date(customEndDate);
+      const [sy, sm, sd] = customStartDate.split('-').map(Number);
+      startDate = new Date(sy, sm - 1, sd);
+      const [ey, em, ed] = customEndDate.split('-').map(Number);
+      endDate = new Date(ey, em - 1, ed);
       break;
     default:
       // Default to current week
@@ -1124,65 +1126,56 @@ async function executeGetSalesSummary(
     include_items = false 
   } = args;
 
-  // Calculate date ranges
-  const now = new Date();
-  let startDate: Date;
-  let endDate: Date = now;
-  let prevStartDate: Date;
-  let prevEndDate: Date;
+  // Use centralized date calculation
+  const effectivePeriod = (start_date && end_date) ? 'custom' : (period || 'month');
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(
+    effectivePeriod as PeriodType,
+    start_date,
+    end_date
+  );
 
-  // If custom dates provided, use those
-  if (start_date && end_date) {
-    // Parse dates explicitly to avoid timezone issues
-    const [startYear, startMonth, startDay] = start_date.split('-').map(Number);
-    const [endYear, endMonth, endDay] = end_date.split('-').map(Number);
-    startDate = new Date(startYear, startMonth - 1, startDay);
-    endDate = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
-    
-    // Calculate previous period with same duration
-    const durationMs = endDate.getTime() - startDate.getTime();
-    prevEndDate = new Date(startDate.getTime() - 1);
-    prevStartDate = new Date(prevEndDate.getTime() - durationMs);
-  } else {
-    // Calculate based on period
-    switch (period) {
-      case 'today':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-        break;
-      case 'yesterday':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2, 23, 59, 59);
-        break;
-      case 'week':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 14);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-        break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-        break;
-      case 'quarter': {
-        const quarter = Math.floor(now.getMonth() / 3);
-        startDate = new Date(now.getFullYear(), quarter * 3, 1);
-        prevStartDate = new Date(now.getFullYear(), (quarter - 1) * 3, 1);
-        prevEndDate = new Date(now.getFullYear(), quarter * 3, 0, 23, 59, 59);
-        break;
-      }
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        prevStartDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        prevEndDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+  // Calculate previous period for comparison
+  let prevStartDate!: Date;
+  let prevEndDate!: Date;
+  const durationMs = endDate.getTime() - startDate.getTime();
+
+  switch (effectivePeriod) {
+    case 'today':
+    case 'yesterday': {
+      prevStartDate = new Date(startDate);
+      prevStartDate.setDate(prevStartDate.getDate() - 1);
+      prevEndDate = new Date(prevStartDate);
+      prevEndDate.setHours(23, 59, 59);
+      break;
+    }
+    case 'week':
+    case 'last_week': {
+      prevEndDate = new Date(startDate.getTime() - 1);
+      prevStartDate = new Date(prevEndDate.getTime() - durationMs);
+      break;
+    }
+    case 'month':
+    case 'last_month': {
+      prevStartDate = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
+      prevEndDate = new Date(startDate.getFullYear(), startDate.getMonth(), 0, 23, 59, 59);
+      break;
+    }
+    case 'quarter': {
+      prevStartDate = new Date(startDate.getFullYear(), startDate.getMonth() - 3, 1);
+      prevEndDate = new Date(startDate.getFullYear(), startDate.getMonth(), 0, 23, 59, 59);
+      break;
+    }
+    case 'year': {
+      prevStartDate = new Date(startDate.getFullYear() - 1, 0, 1);
+      prevEndDate = new Date(startDate.getFullYear() - 1, endDate.getMonth(), endDate.getDate(), 23, 59, 59);
+      break;
+    }
+    default: {
+      // custom or unknown: use same duration before start
+      prevEndDate = new Date(startDate.getTime() - 1);
+      prevStartDate = new Date(prevEndDate.getTime() - durationMs);
     }
   }
-
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
 
   // Fetch current period sales (excluding adjustments - only actual revenue)
   const { data: currentSales, error: currentError } = await supabase
@@ -2768,12 +2761,38 @@ async function executeGetBreakEvenProgress(
   restaurantId: string,
   supabase: any
 ): Promise<any> {
-  const { history_days = 14, include_monthly_progress = true } = args;
+  const { history_days = 14, include_monthly_progress = true, month } = args;
 
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const historyStart = new Date(today);
-  historyStart.setDate(today.getDate() - (history_days - 1));
+
+  let today: Date;
+  let historyStart: Date;
+  let targetMonthStart: Date;
+  let targetMonthEnd: Date;
+
+  if (month) {
+    // Parse YYYY-MM format
+    const [yearStr, monthStr] = month.split('-').map(Number);
+    targetMonthStart = new Date(yearStr, monthStr - 1, 1);
+    targetMonthEnd = new Date(yearStr, monthStr, 0); // last day of the month
+
+    // For a past month, set "today" to the last day of that month
+    // For current/future month, use actual today
+    if (targetMonthEnd < now) {
+      today = new Date(targetMonthEnd);
+    } else {
+      today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    }
+
+    // History covers the full month
+    historyStart = new Date(targetMonthStart);
+  } else {
+    today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    historyStart = new Date(today);
+    historyStart.setDate(today.getDate() - (history_days - 1));
+    targetMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    targetMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  }
 
   const startDateStr = historyStart.toISOString().split('T')[0];
   const todayStr = today.toISOString().split('T')[0];
@@ -2864,17 +2883,18 @@ async function executeGetBreakEvenProgress(
   // Monthly progress
   let monthlyProgress = null;
   if (include_monthly_progress) {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const monthStart = targetMonthStart;
+    const monthEnd = targetMonthEnd;
     const daysInMonth = monthEnd.getDate();
-    const dayOfMonth = now.getDate();
+    const dayOfMonth = today <= targetMonthEnd ? Math.min(today.getDate(), daysInMonth) : daysInMonth;
     const monthStartStr = monthStart.toISOString().split('T')[0];
+    const monthEndStr = today <= targetMonthEnd ? todayStr : targetMonthEnd.toISOString().split('T')[0];
 
     // Fetch month-to-date sales
     const { data: mtdSales, error: mtdError } = await supabase.rpc('get_daily_sales_totals', {
       p_restaurant_id: restaurantId,
       p_date_from: monthStartStr,
-      p_date_to: todayStr,
+      p_date_to: monthEndStr,
     });
 
     if (!mtdError) {

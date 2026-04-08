@@ -88,8 +88,9 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
 }
 
 export function usePOSTipsForDate(restaurantId: string | null, date: string) {
-  const formattedDate = format(new Date(date), 'yyyy-MM-dd');
-  const { data: tips } = usePOSTips(restaurantId, formattedDate, formattedDate);
+  // date is already 'yyyy-MM-dd' — don't re-parse through new Date() which
+  // shifts the date backward in US timezones (UTC midnight → previous local day)
+  const { data: tips } = usePOSTips(restaurantId, date, date);
 
   return {
     tipData: tips?.[0] || null,

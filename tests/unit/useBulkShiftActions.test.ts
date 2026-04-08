@@ -18,6 +18,20 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
 }));
 
+// ── useShifts mock ──────────────────────────────────────────────────
+vi.mock('@/hooks/useShifts', () => ({
+  buildShiftChangeDescription: (count: number, lockedCount: number, action: string) => {
+    const label = count === 1 ? 'shift' : 'shifts';
+    let desc = `${count} ${label} ${action}.`;
+    if (lockedCount > 0) {
+      const lockedLabel = lockedCount === 1 ? 'locked shift was' : 'locked shifts were';
+      const outcome = action === 'deleted' ? 'preserved' : 'unchanged';
+      desc += ` ${lockedCount} ${lockedLabel} ${outcome}.`;
+    }
+    return desc;
+  },
+}));
+
 // ── Toast mock ───────────────────────────────────────────────────────
 const mockToast = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({
@@ -230,6 +244,31 @@ describe('useBulkShiftActions', () => {
 
       expect(outcome!.updatedCount).toBe(0);
       expect(outcome!.lockedCount).toBe(2);
+    });
+
+    it('updates all shifts when none are locked', async () => {
+      const lockedRows = [
+        { id: 's1', locked: false },
+        { id: 's2', locked: false },
+      ];
+
+      setupSelectThenMutate(
+        lockedRows,
+        { data: [{ id: 's1' }, { id: 's2' }], error: null, count: 2 },
+        'update',
+      );
+
+      const { result } = renderHook(() => useBulkShiftActions('rest-1'), {
+        wrapper: createWrapper(),
+      });
+
+      let outcome: Awaited<ReturnType<typeof result.current.bulkEdit>>;
+      await act(async () => {
+        outcome = await result.current.bulkEdit(['s1', 's2'], { position: 'Host' });
+      });
+
+      expect(outcome!.updatedCount).toBe(2);
+      expect(outcome!.lockedCount).toBe(0);
     });
   });
 });

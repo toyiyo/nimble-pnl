@@ -121,14 +121,15 @@ describe('useBulkShiftActions', () => {
   // ── bulkDelete ─────────────────────────────────────────────────────
 
   describe('bulkDelete', () => {
-    it('filters out locked shifts and deletes only unlocked ones', async () => {
-      const lockedRows = [
-        { id: 's1', locked: false },
-        { id: 's2', locked: true },
-        { id: 's3', locked: false },
-      ];
-
-      setupSelectThenMutate(lockedRows, { data: null, error: null, count: 2 }, 'delete');
+    it('deletes all shifts including locked ones', async () => {
+      // bulkDelete now deletes all shifts directly without partitioning
+      mockSupabase.from.mockReturnValue({
+        delete: () => ({
+          in: () => ({
+            eq: () => ({ data: null, error: null }),
+          }),
+        }),
+      });
 
       const { result } = renderHook(() => useBulkShiftActions('rest-1'), {
         wrapper: createWrapper(),
@@ -139,25 +140,25 @@ describe('useBulkShiftActions', () => {
         outcome = await result.current.bulkDelete(['s1', 's2', 's3']);
       });
 
-      expect(outcome!.deletedCount).toBe(2);
-      expect(outcome!.lockedCount).toBe(1);
+      expect(outcome!.deletedCount).toBe(3);
+      expect(outcome!.lockedCount).toBe(0);
 
-      // Verify toast was called with skip info
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
-          description: expect.stringContaining('1 locked shift was preserved'),
+          title: 'Shifts deleted',
+          description: '3 shifts deleted.',
         }),
       );
     });
 
-    it('returns zero counts when all shifts are locked', async () => {
-      const lockedRows = [
-        { id: 's1', locked: true },
-        { id: 's2', locked: true },
-      ];
-
-      // Only the SELECT call — no mutation should happen
-      setupSelectThenMutate(lockedRows, { data: null, error: null, count: 0 }, 'delete');
+    it('deletes a single shift with correct grammar', async () => {
+      mockSupabase.from.mockReturnValue({
+        delete: () => ({
+          in: () => ({
+            eq: () => ({ data: null, error: null }),
+          }),
+        }),
+      });
 
       const { result } = renderHook(() => useBulkShiftActions('rest-1'), {
         wrapper: createWrapper(),
@@ -165,32 +166,16 @@ describe('useBulkShiftActions', () => {
 
       let outcome: Awaited<ReturnType<typeof result.current.bulkDelete>>;
       await act(async () => {
-        outcome = await result.current.bulkDelete(['s1', 's2']);
+        outcome = await result.current.bulkDelete(['s1']);
       });
 
-      expect(outcome!.deletedCount).toBe(0);
-      expect(outcome!.lockedCount).toBe(2);
-    });
+      expect(outcome!.deletedCount).toBe(1);
 
-    it('deletes all shifts when none are locked', async () => {
-      const lockedRows = [
-        { id: 's1', locked: false },
-        { id: 's2', locked: false },
-      ];
-
-      setupSelectThenMutate(lockedRows, { data: null, error: null, count: 2 }, 'delete');
-
-      const { result } = renderHook(() => useBulkShiftActions('rest-1'), {
-        wrapper: createWrapper(),
-      });
-
-      let outcome: Awaited<ReturnType<typeof result.current.bulkDelete>>;
-      await act(async () => {
-        outcome = await result.current.bulkDelete(['s1', 's2']);
-      });
-
-      expect(outcome!.deletedCount).toBe(2);
-      expect(outcome!.lockedCount).toBe(0);
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: '1 shift deleted.',
+        }),
+      );
     });
   });
 

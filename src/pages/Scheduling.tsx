@@ -31,6 +31,8 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
+import { LaborBudgetIndicator } from '@/components/scheduling/LaborBudgetIndicator';
+import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
@@ -400,6 +402,12 @@ const Scheduling = () => {
 
   // Calculate per-employee labor costs with outlier detection
   const laborCostSummary = useEmployeeLaborCosts(shifts, allEmployees);
+
+  // Calculate labor budget comparison
+  const laborBudgetData = useScheduleLaborBudget(
+    laborCostBreakdown.total,
+    restaurantId
+  );
 
   // Handler for clicking on an employee in the breakdown to edit them
   const handleEditEmployeeById = useCallback((employeeId: string) => {
@@ -846,13 +854,21 @@ const Scheduling = () => {
           "group relative overflow-hidden border-border/50 transition-colors duration-300",
           laborCostSummary.isAverageHigh
             ? "border-destructive/50 hover:border-destructive/70"
-            : "hover:border-success/30"
+            : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
+              ? "border-destructive/50 hover:border-destructive/70"
+              : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
+                ? "border-warning/50 hover:border-warning/70"
+                : "hover:border-success/30"
         )}>
           <div className={cn(
             "absolute top-0 right-0 w-24 h-24 rounded-bl-full",
             laborCostSummary.isAverageHigh
               ? "bg-gradient-to-bl from-destructive/10 to-transparent"
-              : "bg-gradient-to-bl from-success/5 to-transparent"
+              : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
+                ? "bg-gradient-to-bl from-destructive/10 to-transparent"
+                : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
+                  ? "bg-gradient-to-bl from-warning/10 to-transparent"
+                  : "bg-gradient-to-bl from-success/5 to-transparent"
           )} />
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -874,11 +890,21 @@ const Scheduling = () => {
               "p-2 rounded-lg transition-colors",
               laborCostSummary.isAverageHigh
                 ? "bg-destructive/10 group-hover:bg-destructive/15"
-                : "bg-success/10 group-hover:bg-success/15"
+                : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
+                  ? "bg-destructive/10 group-hover:bg-destructive/15"
+                  : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
+                    ? "bg-warning/10 group-hover:bg-warning/15"
+                    : "bg-success/10 group-hover:bg-success/15"
             )}>
               <DollarSign className={cn(
                 "h-4 w-4",
-                laborCostSummary.isAverageHigh ? "text-destructive" : "text-success"
+                laborCostSummary.isAverageHigh
+                  ? "text-destructive"
+                  : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
+                    ? "text-destructive"
+                    : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
+                      ? "text-warning"
+                      : "text-success"
               )} />
             </div>
           </CardHeader>
@@ -970,6 +996,8 @@ const Scheduling = () => {
                     />
                   </div>
                 )}
+                {/* Labor Budget Comparison */}
+                <LaborBudgetIndicator budgetData={laborBudgetData} />
               </>
             )}
           </CardContent>

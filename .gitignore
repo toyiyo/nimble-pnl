@@ -41,3 +41,17 @@ dev-tools/.last_task_id
 
 # Dev workflow progress tracking (ephemeral, per-session)
 progress.md
+
+# Marketing assets (videos, screenshots, audio) — stored in Google Drive
+marketing/
+demo-video/
+screenshots/
+
+# Claude Code working files
+.claude/worktrees/
+
+# Playwright MCP session snapshots
+.playwright-mcp/
+
+# Superpowers plugin ephemeral files
+.superpowers/

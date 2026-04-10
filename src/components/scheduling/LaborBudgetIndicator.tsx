@@ -56,7 +56,7 @@ export function LaborBudgetIndicator({ budgetData }: LaborBudgetIndicatorProps) 
   }
 
   const colors = tierColors[budgetData.tier];
-  const barWidth = Math.min(budgetData.percentage, 100);
+  const barWidth = Math.max(0, Math.min(budgetData.percentage, 100));
 
   return (
     <div className="mt-3 pt-3 border-t border-border/50">

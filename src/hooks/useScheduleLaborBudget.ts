@@ -102,7 +102,9 @@ export function useScheduleLaborBudget(
   const { data: breakEvenData, isLoading: breakEvenLoading } =
     useBreakEvenAnalysis(restaurantId);
 
-  const isLoading = costsLoading || breakEvenLoading;
+  const laborEntry = costs.find((c) => c.category === 'labor') ?? null;
+  const needsBreakEven = laborEntry?.entryType === 'percentage';
+  const isLoading = costsLoading || (needsBreakEven && breakEvenLoading);
 
   const budgetData = useMemo(
     () => calculateLaborBudget(scheduledTotal, costs, breakEvenData),

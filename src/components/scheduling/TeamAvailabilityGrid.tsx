@@ -237,7 +237,9 @@ const AvailabilityCell = memo(function AvailabilityCell({
   prev.employeeId === next.employeeId &&
   prev.dow === next.dow &&
   prev.date.getTime() === next.date.getTime() &&
-  prev.compact === next.compact,
+  prev.compact === next.compact &&
+  prev.availability === next.availability &&
+  prev.exceptions === next.exceptions,
 );
 
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
@@ -466,7 +468,7 @@ export function TeamAvailabilityGrid({
                             <p className="text-[14px] font-medium text-foreground truncate">
                               {employee.name}
                             </p>
-                            <p className="text-[12px] text-muted-foreground truncate">
+                            <p className="text-[13px] text-muted-foreground truncate">
                               {employee.position}
                             </p>
                           </div>

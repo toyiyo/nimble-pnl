@@ -15,7 +15,9 @@ import {
   EmployeeNotLinkedState,
   EmployeeInfoAlert,
   PeriodSelector,
+  HelpVideoCard,
 } from '@/components/employee';
+import { HELP_VIDEOS } from '@/components/employee/helpVideoConfig';
 import {
   DollarSign,
   Clock,
@@ -79,6 +81,7 @@ const EmployeePay = () => {
 
   return (
     <div className="space-y-6">
+      <HelpVideoCard {...HELP_VIDEOS.pay} />
       {/* Header */}
       <EmployeePageHeader
         icon={Wallet}

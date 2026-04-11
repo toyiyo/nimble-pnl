@@ -12,7 +12,9 @@ import {
   NoRestaurantState,
   EmployeePageSkeleton,
   EmployeeNotLinkedState,
+  HelpVideoCard,
 } from '@/components/employee';
+import { HELP_VIDEOS } from '@/components/employee/helpVideoConfig';
 import { format, parseISO } from 'date-fns';
 import { Store, Calendar, Clock, MapPin, User, ArrowRightLeft, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -93,6 +95,7 @@ const EmployeeShiftMarketplace = () => {
 
   return (
     <div className="space-y-6">
+      <HelpVideoCard {...HELP_VIDEOS.shifts} />
       {/* Header with Navigation */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <EmployeePageHeader

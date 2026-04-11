@@ -16,7 +16,9 @@ import {
   EmployeePageSkeleton,
   EmployeeNotLinkedState,
   PeriodSelector,
+  HelpVideoCard,
 } from '@/components/employee';
+import { HELP_VIDEOS } from '@/components/employee/helpVideoConfig';
 import { TipTransparency } from '@/components/tips/TipTransparency';
 import { TipDispute } from '@/components/tips/TipDispute';
 import { supabase } from '@/integrations/supabase/client';
@@ -164,6 +166,7 @@ function EmployeeTips() {
 
   return (
     <div className="space-y-6">
+      <HelpVideoCard {...HELP_VIDEOS.tips} />
       {/* Header */}
       <EmployeePageHeader
         icon={Banknote}

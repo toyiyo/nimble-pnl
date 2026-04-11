@@ -14,7 +14,9 @@ import {
   EmployeeInfoAlert,
   PeriodSelector,
   PeriodType,
+  HelpVideoCard,
 } from '@/components/employee';
+import { HELP_VIDEOS } from '@/components/employee/helpVideoConfig';
 import {
   Clock,
   LogIn,
@@ -181,6 +183,7 @@ const EmployeeTimecard = () => {
 
   return (
     <div className="space-y-6">
+      <HelpVideoCard {...HELP_VIDEOS.timecard} />
       {/* Header */}
       <EmployeePageHeader
         icon={FileText}

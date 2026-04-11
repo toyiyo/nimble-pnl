@@ -36,6 +36,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { formatTime } from '@/lib/utils';
+import { HelpVideoCard } from '@/components/employee';
+import { HELP_VIDEOS } from '@/components/employee/helpVideoConfig';
 
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -388,6 +390,7 @@ const EmployeePortal = () => {
 
   return (
     <div className="space-y-6">
+      <HelpVideoCard {...HELP_VIDEOS.requests} />
       {/* Header */}
       <Card className="bg-gradient-to-br from-primary/5 via-accent/5 to-transparent border-primary/10">
         <CardHeader>

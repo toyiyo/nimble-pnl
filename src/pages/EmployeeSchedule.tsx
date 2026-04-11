@@ -15,7 +15,9 @@ import {
   EmployeePageSkeleton,
   EmployeeNotLinkedState,
   EmployeeInfoAlert,
+  HelpVideoCard,
 } from '@/components/employee';
+import { HELP_VIDEOS } from '@/components/employee/helpVideoConfig';
 import {
   Calendar,
   Clock,
@@ -215,6 +217,8 @@ const EmployeeSchedule = () => {
 
   return (
     <div className="space-y-6">
+      <HelpVideoCard {...HELP_VIDEOS.welcome} />
+      <HelpVideoCard {...HELP_VIDEOS.schedule} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <EmployeePageHeader

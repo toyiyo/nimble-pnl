@@ -410,8 +410,8 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
         <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
           <div className="flex-1 text-center">
             <p className="text-xs text-muted-foreground">From</p>
-            <p className="font-medium">{trade.offered_by.name}</p>
-            <p className="text-xs text-muted-foreground">{trade.offered_by.position}</p>
+            <p className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</p>
+            <p className="text-xs text-muted-foreground">{trade.offered_by?.position ?? ''}</p>
           </div>
           <ArrowRight className="h-5 w-5 text-muted-foreground" />
           <div className="flex-1 text-center">
@@ -471,9 +471,9 @@ const OpenTradeCard = ({ trade }: OpenTradeCardProps) => {
     <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
       <div className="flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{trade.offered_by.name}</span>
+          <span className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</span>
           <span className="text-muted-foreground">•</span>
-          <span className="text-sm text-muted-foreground">{trade.offered_by.position}</span>
+          <span className="text-sm text-muted-foreground">{trade.offered_by?.position ?? ''}</span>
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span>{format(shiftStart, 'EEE, MMM d')}</span>

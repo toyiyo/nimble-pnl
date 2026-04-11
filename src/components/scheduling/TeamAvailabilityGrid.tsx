@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
+import * as dateFnsTz from 'date-fns-tz';
 
 // ─── Day column definitions (Mon–Sun order) ───────────────────────────────────
 
@@ -68,6 +70,15 @@ function formatSlotRange(start: string | null, end: string | null): string {
   return `${formatTimeShort(start)}–${formatTimeShort(end)}`;
 }
 
+function utcTimeToLocal(time: string, timezone: string): string {
+  const converter = dateFnsTz.toZonedTime ?? ((date: Date) => date);
+  const date = new Date(`1970-01-01T${time}Z`);
+  const zoned = converter(date, timezone);
+  const h = zoned.getHours();
+  const m = zoned.getMinutes();
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}
+
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -88,6 +99,7 @@ interface AvailabilityCellProps {
   date: Date;
   employeeId: string;
   dow: number;
+  timezone: string;
   availability: EmployeeAvailability[];
   exceptions: AvailabilityException[];
   onOpenAvailabilityDialog: (employeeId: string, dayOfWeek: number, availability?: EmployeeAvailability) => void;
@@ -100,6 +112,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
   date,
   employeeId,
   dow,
+  timezone,
   availability,
   exceptions,
   onOpenAvailabilityDialog,
@@ -139,9 +152,12 @@ const AvailabilityCell = memo(function AvailabilityCell({
   const isExceptionAvailable = isException && isAvailable;
   const isExceptionUnavailable = isException && !isAvailable;
   const isRecurringAvailable = effective.type === 'recurring' && isAvailable;
+  const isRecurringUnavailable = effective.type === 'recurring' && !isAvailable;
+  const isNotSet = effective.type === 'not-set';
+
   let bgClass = 'bg-muted/30 hover:bg-muted/50';
   let textClass = 'text-muted-foreground';
-  let ariaLabel = `${dow} not set`;
+  let ariaLabel = 'No availability set — click to add';
 
   if (isRecurringAvailable || isExceptionAvailable) {
     bgClass = 'bg-emerald-500/10 hover:bg-emerald-500/20';
@@ -149,18 +165,34 @@ const AvailabilityCell = memo(function AvailabilityCell({
   } else if (isExceptionUnavailable) {
     bgClass = 'bg-amber-500/10 hover:bg-amber-500/20';
     textClass = 'text-amber-700 dark:text-amber-400';
+  } else if (isRecurringUnavailable) {
+    bgClass = 'bg-red-500/5 hover:bg-red-500/10';
+    textClass = 'text-red-600/70 dark:text-red-400/70';
   }
+
+  // Convert UTC times to restaurant timezone for display
+  const localizeTime = (t: string | null) => (t ? utcTimeToLocal(t, timezone) : null);
+
+  // Build display for all slots (handles split shifts)
+  const availableSlots = effective.slots.filter((s) => s.isAvailable);
+  const slotsForDisplay = availableSlots.length > 0 ? availableSlots : effective.slots;
 
   let timeDisplay = '—';
   if (isRecurringAvailable || isExceptionAvailable) {
-    timeDisplay = formatSlotRange(slot?.startTime ?? null, slot?.endTime ?? null);
+    timeDisplay = slotsForDisplay
+      .map((s) => formatSlotRange(localizeTime(s.startTime), localizeTime(s.endTime)))
+      .join(' + ');
   } else if (isExceptionUnavailable) {
     timeDisplay = slot?.reason ? slot.reason.slice(0, 8) : 'Off';
+  } else if (isRecurringUnavailable) {
+    timeDisplay = 'Off';
   }
 
+  // For compact (mobile) split display — show first slot's start/end
+  const firstAvailSlot = slotsForDisplay[0];
   const splitTime =
-    (isRecurringAvailable || isExceptionAvailable) && slot?.startTime && slot?.endTime
-      ? [formatTimeShort(slot.startTime), formatTimeShort(slot.endTime)]
+    (isRecurringAvailable || isExceptionAvailable) && firstAvailSlot?.startTime && firstAvailSlot?.endTime
+      ? [formatTimeShort(localizeTime(firstAvailSlot.startTime)!), formatTimeShort(localizeTime(firstAvailSlot.endTime)!)]
       : null;
 
   if (isException) {
@@ -170,7 +202,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
       : `Add exception for ${dateStr}`;
   } else if (effective.type === 'recurring' && slot) {
     ariaLabel = slot.isAvailable
-      ? `Available ${formatSlotRange(slot.startTime, slot.endTime)}`
+      ? `Available ${formatSlotRange(localizeTime(slot.startTime), localizeTime(slot.endTime))}`
       : 'Unavailable (recurring)';
   } else {
     ariaLabel = 'No availability set — click to add';
@@ -189,7 +221,9 @@ const AvailabilityCell = memo(function AvailabilityCell({
         {isExceptionAvailable && (
           <Zap className="absolute top-0.5 right-0.5 h-2.5 w-2.5 text-amber-500" />
         )}
-        {splitTime ? (
+        {slotsForDisplay.length > 1 && (isRecurringAvailable || isExceptionAvailable) ? (
+          <span className={`text-[10px] font-medium ${textClass}`}>{slotsForDisplay.length} slots</span>
+        ) : splitTime ? (
           <>
             <span className={`text-[10px] font-medium leading-tight ${textClass}`}>{splitTime[0]}</span>
             <span className={`text-[10px] leading-tight ${textClass}`}>{splitTime[1]}</span>
@@ -232,6 +266,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
   prev.dow === next.dow &&
   prev.date.getTime() === next.date.getTime() &&
   prev.compact === next.compact &&
+  prev.timezone === next.timezone &&
   prev.availability === next.availability &&
   prev.exceptions === next.exceptions,
 );
@@ -271,6 +306,8 @@ export function TeamAvailabilityGrid({
   onOpenAvailabilityDialog,
   onOpenExceptionDialog,
 }: TeamAvailabilityGridProps) {
+  const { selectedRestaurant } = useRestaurantContext();
+  const timezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
   const today = new Date();
   const [weekStart, setWeekStart] = useState<Date>(() => getMondayOfWeek(today));
 
@@ -483,6 +520,7 @@ export function TeamAvailabilityGrid({
                               date={date}
                               employeeId={employee.id}
                               dow={col.dow}
+                              timezone={timezone}
                               availability={availability}
                               exceptions={exceptions}
                               onOpenAvailabilityDialog={onOpenAvailabilityDialog}
@@ -565,6 +603,7 @@ export function TeamAvailabilityGrid({
                               date={date}
                               employeeId={employee.id}
                               dow={col.dow}
+                              timezone={timezone}
                               availability={availability}
                               exceptions={exceptions}
                               onOpenAvailabilityDialog={onOpenAvailabilityDialog}

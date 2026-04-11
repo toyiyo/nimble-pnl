@@ -139,8 +139,6 @@ const AvailabilityCell = memo(function AvailabilityCell({
   const isExceptionAvailable = isException && isAvailable;
   const isExceptionUnavailable = isException && !isAvailable;
   const isRecurringAvailable = effective.type === 'recurring' && isAvailable;
-  const notSet = effective.type === 'not-set';
-
   let bgClass = 'bg-muted/30 hover:bg-muted/50';
   let textClass = 'text-muted-foreground';
   let ariaLabel = `${dow} not set`;
@@ -153,16 +151,12 @@ const AvailabilityCell = memo(function AvailabilityCell({
     textClass = 'text-amber-700 dark:text-amber-400';
   }
 
-  const timeDisplay =
-    isRecurringAvailable || isExceptionAvailable
-      ? formatSlotRange(slot?.startTime ?? null, slot?.endTime ?? null)
-      : isExceptionUnavailable
-        ? slot?.reason
-          ? slot.reason.slice(0, 8)
-          : 'Off'
-        : notSet
-          ? '—'
-          : '—';
+  let timeDisplay = '—';
+  if (isRecurringAvailable || isExceptionAvailable) {
+    timeDisplay = formatSlotRange(slot?.startTime ?? null, slot?.endTime ?? null);
+  } else if (isExceptionUnavailable) {
+    timeDisplay = slot?.reason ? slot.reason.slice(0, 8) : 'Off';
+  }
 
   const splitTime =
     (isRecurringAvailable || isExceptionAvailable) && slot?.startTime && slot?.endTime
@@ -325,21 +319,6 @@ export function TeamAvailabilityGrid({
   const goToToday = useCallback(() => {
     setWeekStart(getMondayOfWeek(new Date()));
   }, []);
-
-  // Stable callbacks for cell handlers
-  const handleOpenAvailabilityDialog = useCallback(
-    (employeeId: string, dayOfWeek: number, avail?: EmployeeAvailability) => {
-      onOpenAvailabilityDialog(employeeId, dayOfWeek, avail);
-    },
-    [onOpenAvailabilityDialog],
-  );
-
-  const handleOpenExceptionDialog = useCallback(
-    (employeeId: string, date: Date, exception?: AvailabilityException) => {
-      onOpenExceptionDialog(employeeId, date, exception);
-    },
-    [onOpenExceptionDialog],
-  );
 
   // Determine if today is in the displayed week
   const todayStr = toDateStr(today);
@@ -506,8 +485,8 @@ export function TeamAvailabilityGrid({
                               dow={col.dow}
                               availability={availability}
                               exceptions={exceptions}
-                              onOpenAvailabilityDialog={handleOpenAvailabilityDialog}
-                              onOpenExceptionDialog={handleOpenExceptionDialog}
+                              onOpenAvailabilityDialog={onOpenAvailabilityDialog}
+                              onOpenExceptionDialog={onOpenExceptionDialog}
                             />
                           );
                         })
@@ -588,8 +567,8 @@ export function TeamAvailabilityGrid({
                               dow={col.dow}
                               availability={availability}
                               exceptions={exceptions}
-                              onOpenAvailabilityDialog={handleOpenAvailabilityDialog}
-                              onOpenExceptionDialog={handleOpenExceptionDialog}
+                              onOpenAvailabilityDialog={onOpenAvailabilityDialog}
+                              onOpenExceptionDialog={onOpenExceptionDialog}
                               compact
                             />
                           </div>

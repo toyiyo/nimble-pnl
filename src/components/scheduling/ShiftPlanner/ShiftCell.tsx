@@ -2,6 +2,7 @@ import { memo } from 'react';
 
 import { useDroppable } from '@dnd-kit/core';
 
+import { classifyCapacity } from '@/lib/openShiftHelpers';
 import type { Shift } from '@/types/scheduling';
 
 import { cn } from '@/lib/utils';
@@ -13,6 +14,7 @@ interface ShiftCellProps {
   day: string;
   isActiveDay: boolean;
   shifts: Shift[];
+  capacity: number;
   onRemoveShift: (shiftId: string) => void;
   isHighlighted?: boolean;
   /** Mobile tap-to-assign: called when cell is tapped with an employee selected */
@@ -27,6 +29,7 @@ export const ShiftCell = memo(
     day,
     isActiveDay,
     shifts,
+    capacity,
     onRemoveShift,
     isHighlighted,
     onMobileTap,
@@ -69,6 +72,20 @@ export const ShiftCell = memo(
             onRemove={onRemoveShift}
           />
         ))}
+        {capacity > 1 && (
+          <div
+            className={cn(
+              'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
+              classifyCapacity(capacity, shifts.length) === 'full'
+                ? 'text-emerald-600 bg-emerald-500/10'
+                : classifyCapacity(capacity, shifts.length) === 'partial'
+                  ? 'text-amber-600 bg-amber-500/10'
+                  : 'text-red-500 bg-red-500/10',
+            )}
+          >
+            {shifts.length}/{capacity}
+          </div>
+        )}
       </div>
     );
   },
@@ -77,6 +94,7 @@ export const ShiftCell = memo(
     prev.day === next.day &&
     prev.isActiveDay === next.isActiveDay &&
     prev.shifts === next.shifts &&
+    prev.capacity === next.capacity &&
     prev.onRemoveShift === next.onRemoveShift &&
     prev.isHighlighted === next.isHighlighted &&
     prev.hasMobileSelection === next.hasMobileSelection &&

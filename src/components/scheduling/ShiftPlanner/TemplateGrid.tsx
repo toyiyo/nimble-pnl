@@ -98,6 +98,7 @@ export function TemplateGrid({
                     day={day}
                     isActiveDay={isActiveDay}
                     shifts={shifts}
+                    capacity={template.capacity ?? 1}
                     onRemoveShift={onRemoveShift}
                     isHighlighted={highlightCellId === `${template.id}:${day}`}
                     onMobileTap={onMobileCellTap}

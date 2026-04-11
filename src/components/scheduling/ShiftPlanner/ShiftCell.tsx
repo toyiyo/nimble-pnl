@@ -65,6 +65,7 @@ export const ShiftCell = memo(
             shiftId={shift.id}
             employeeName={shift.employee?.name ?? 'Unassigned'}
             position={shift.position}
+            source={shift.source}
             onRemove={onRemoveShift}
           />
         ))}

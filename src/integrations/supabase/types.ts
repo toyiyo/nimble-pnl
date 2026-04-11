@@ -1,4 +1,3 @@
-Connecting to db 5432
 export type Json =
   | string
   | number
@@ -6220,7 +6219,6 @@ export type Database = {
           recurrence_parent_id: string | null
           recurrence_pattern: Json | null
           restaurant_id: string
-          source: string
           source_id: string | null
           source_type: string | null
           start_time: string
@@ -6243,7 +6241,6 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id: string
-          source?: string
           source_id?: string | null
           source_type?: string | null
           start_time: string
@@ -6266,7 +6263,6 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id?: string
-          source?: string
           source_id?: string | null
           source_type?: string | null
           start_time?: string

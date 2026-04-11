@@ -91,8 +91,8 @@ export function computeEffectiveAvailability(
           type: 'recurring',
           slots: recurring.map((avail) => ({
             isAvailable: avail.is_available,
-            startTime: avail.start_time,
-            endTime: avail.end_time,
+            startTime: avail.start_time ?? null,
+            endTime: avail.end_time ?? null,
             sourceRecord: avail,
           })),
         });

@@ -186,7 +186,7 @@ const EmployeeShiftMarketplace = () => {
                           <div className="flex items-center gap-2 text-sm">
                             <User className="w-4 h-4 text-muted-foreground" />
                             <span className="text-muted-foreground">Offered by:</span>
-                            <span className="font-medium">{trade.offered_by.name}</span>
+                            <span className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</span>
                           </div>
 
                           {/* Reason */}

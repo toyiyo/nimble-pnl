@@ -246,6 +246,99 @@ describe('useShiftTrades', () => {
       expect(result.current.trades).toHaveLength(0);
     });
 
+    it('should filter out trades with null offered_by or offered_shift', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-valid',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+        {
+          id: 'trade-null-employee',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-2',
+          offered_by_employee_id: 'emp-deleted',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T11:00:00Z',
+          updated_at: '2026-01-04T11:00:00Z',
+          offered_shift: {
+            id: 'shift-2',
+            start_time: '2026-01-11T09:00:00Z',
+            end_time: '2026-01-11T17:00:00Z',
+            position: 'Cook',
+            break_duration: 30,
+          },
+          offered_by: undefined,
+        },
+        {
+          id: 'trade-null-shift',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-deleted',
+          offered_by_employee_id: 'emp-2',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T12:00:00Z',
+          updated_at: '2026-01-04T12:00:00Z',
+          offered_shift: undefined,
+          offered_by: {
+            id: 'emp-2',
+            name: 'Jane Smith',
+            email: 'jane@example.com',
+            position: 'Cook',
+          },
+        },
+      ];
+
+      const builder = createSelectQueryBuilder(mockTrades);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const { result } = renderHook(() => useShiftTrades('rest-123'), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].id).toBe('trade-valid');
+    });
+
     it('should handle null restaurantId', async () => {
       const { result } = renderHook(() => useShiftTrades(null), {
         wrapper: createWrapper(),
@@ -575,6 +668,19 @@ describe('useShiftTrades', () => {
           reviewed_at: null,
           created_at: '2026-01-04T10:00:00Z',
           updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
           accepted_by: undefined,
         },
       ];
@@ -640,6 +746,76 @@ describe('useShiftTrades', () => {
       expect(result.current.trades[0].target_employee_id).toBeNull();
     });
 
+    it('should filter out marketplace trades with null offered_by or offered_shift', async () => {
+      const mockTrades: TestShiftTrade[] = [
+        {
+          id: 'trade-valid',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            position: 'Server',
+          },
+        },
+        {
+          id: 'trade-null-employee',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-2',
+          offered_by_employee_id: 'emp-deleted',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open',
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T11:00:00Z',
+          updated_at: '2026-01-04T11:00:00Z',
+          offered_shift: {
+            id: 'shift-2',
+            start_time: '2026-01-11T09:00:00Z',
+            end_time: '2026-01-11T17:00:00Z',
+            position: 'Cook',
+            break_duration: 30,
+          },
+          offered_by: undefined,
+        },
+      ];
+
+      const builder = createSelectQueryBuilder(mockTrades);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const { result } = renderHook(() => useMarketplaceTrades('rest-123', null), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].id).toBe('trade-valid');
+    });
+
     it('should handle null restaurantId', async () => {
       const { result } = renderHook(() => useMarketplaceTrades(null), {
         wrapper: createWrapper(),
@@ -694,6 +870,8 @@ describe('useShiftTrades', () => {
           reviewed_at: null,
           created_at: '2026-01-04T10:00:00Z',
           updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: { id: 'shift-1', start_time: '2026-01-10T09:00:00Z', end_time: '2026-01-10T17:00:00Z', position: 'Server', break_duration: 30 },
+          offered_by: { id: 'emp-1', name: 'John Doe', email: 'john@example.com', position: 'Server' },
         },
         {
           id: 'trade-2',
@@ -710,6 +888,8 @@ describe('useShiftTrades', () => {
           reviewed_at: null,
           created_at: '2026-01-04T11:00:00Z',
           updated_at: '2026-01-04T11:00:00Z',
+          offered_shift: { id: 'shift-2', start_time: '2026-01-11T14:00:00Z', end_time: '2026-01-11T22:00:00Z', position: 'Cook', break_duration: 30 },
+          offered_by: { id: 'emp-2', name: 'Jane Smith', email: 'jane@example.com', position: 'Cook' },
         },
       ];
 
@@ -744,6 +924,8 @@ describe('useShiftTrades', () => {
           reviewed_at: null,
           created_at: '2026-01-04T10:00:00Z',
           updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: { id: 'shift-1', start_time: '2026-01-10T09:00:00Z', end_time: '2026-01-10T17:00:00Z', position: 'Server', break_duration: 30 },
+          offered_by: { id: 'emp-1', name: 'John Doe', email: 'john@example.com', position: 'Server' },
         },
       ];
 

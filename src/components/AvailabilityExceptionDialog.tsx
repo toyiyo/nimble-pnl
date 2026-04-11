@@ -22,6 +22,7 @@ interface AvailabilityExceptionDialogProps {
   restaurantId: string;
   exception?: AvailabilityException;
   defaultEmployeeId?: string; // For employee self-service
+  defaultDate?: Date; // Pre-fill when creating from grid cell
 }
 
 export const AvailabilityExceptionDialog = ({
@@ -30,6 +31,7 @@ export const AvailabilityExceptionDialog = ({
   restaurantId,
   exception,
   defaultEmployeeId,
+  defaultDate,
 }: AvailabilityExceptionDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [date, setDate] = useState<Date | undefined>();
@@ -59,13 +61,13 @@ export const AvailabilityExceptionDialog = ({
       setReason(exception.reason || '');
     } else {
       setEmployeeId(defaultEmployeeId || '');
-      setDate(undefined);
+      setDate(defaultDate);
       setIsAvailable(false);
       setStartTime('09:00');
       setEndTime('17:00');
       setReason('');
     }
-  }, [exception, open, defaultEmployeeId]);
+  }, [exception, open, defaultEmployeeId, defaultDate]);
 
   const toUTC = (time: string) => {
     if (!date) return '';

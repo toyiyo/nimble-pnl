@@ -18,6 +18,7 @@ interface AvailabilityDialogProps {
   restaurantId: string;
   availability?: EmployeeAvailability;
   defaultEmployeeId?: string; // For employee self-service
+  defaultDayOfWeek?: number; // 0-6, pre-fill when creating from grid cell
 }
 
 const daysOfWeek = [
@@ -36,6 +37,7 @@ export const AvailabilityDialog = ({
   restaurantId,
   availability,
   defaultEmployeeId,
+  defaultDayOfWeek,
 }: AvailabilityDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [dayOfWeek, setDayOfWeek] = useState<number>(1);
@@ -57,13 +59,13 @@ export const AvailabilityDialog = ({
       setNotes(availability.notes || '');
     } else {
       setEmployeeId(defaultEmployeeId || '');
-      setDayOfWeek(1);
+      setDayOfWeek(defaultDayOfWeek ?? 1);
       setIsAvailable(true);
       setStartTime('09:00');
       setEndTime('17:00');
       setNotes('');
     }
-  }, [availability, open, defaultEmployeeId]);
+  }, [availability, open, defaultEmployeeId, defaultDayOfWeek]);
 
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';

@@ -38,6 +38,7 @@ import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
 import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
+import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
 import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
 import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
@@ -83,7 +84,7 @@ import {
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
-import { Employee, Shift, ConflictCheck } from '@/types/scheduling';
+import { Employee, Shift, ConflictCheck, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -318,6 +319,11 @@ const Scheduling = () => {
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
   const [exceptionDialogOpen, setExceptionDialogOpen] = useState(false);
+  const [gridAvailability, setGridAvailability] = useState<EmployeeAvailability | undefined>();
+  const [gridDefaultEmployeeId, setGridDefaultEmployeeId] = useState<string | undefined>();
+  const [gridDefaultDayOfWeek, setGridDefaultDayOfWeek] = useState<number | undefined>();
+  const [gridException, setGridException] = useState<AvailabilityException | undefined>();
+  const [gridDefaultDate, setGridDefaultDate] = useState<Date | undefined>();
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -571,6 +577,20 @@ const Scheduling = () => {
       setIsBulkOperating(false);
     }
   }, [selectedShiftIds, bulkEdit, clearSelection, toast]);
+
+  const handleOpenAvailabilityFromGrid = useCallback((employeeId: string, dayOfWeek: number, availability?: EmployeeAvailability) => {
+    setGridDefaultEmployeeId(employeeId);
+    setGridDefaultDayOfWeek(dayOfWeek);
+    setGridAvailability(availability);
+    setAvailabilityDialogOpen(true);
+  }, []);
+
+  const handleOpenExceptionFromGrid = useCallback((employeeId: string, date: Date, exception?: AvailabilityException) => {
+    setGridDefaultEmployeeId(employeeId);
+    setGridDefaultDate(date);
+    setGridException(exception);
+    setExceptionDialogOpen(true);
+  }, []);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -1662,19 +1682,14 @@ const Scheduling = () => {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="py-12">
-              <div className="text-center max-w-md mx-auto">
-                <div className="relative inline-block mb-4">
-                  <div className="absolute inset-0 bg-accent/10 rounded-full blur-xl" />
-                  <div className="relative p-4 bg-muted rounded-2xl">
-                    <Clock className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Set employee availability preferences to automatically detect scheduling conflicts.
-                  Define recurring patterns for each day of the week.
-                </p>
-              </div>
+            <CardContent className="p-0">
+              {restaurantId && (
+                <TeamAvailabilityGrid
+                  restaurantId={restaurantId}
+                  onOpenAvailabilityDialog={handleOpenAvailabilityFromGrid}
+                  onOpenExceptionDialog={handleOpenExceptionFromGrid}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1742,13 +1757,33 @@ const Scheduling = () => {
           />
           <AvailabilityDialog
             open={availabilityDialogOpen}
-            onOpenChange={setAvailabilityDialogOpen}
+            onOpenChange={(open) => {
+              setAvailabilityDialogOpen(open);
+              if (!open) {
+                setGridAvailability(undefined);
+                setGridDefaultEmployeeId(undefined);
+                setGridDefaultDayOfWeek(undefined);
+              }
+            }}
             restaurantId={restaurantId}
+            availability={gridAvailability}
+            defaultEmployeeId={gridDefaultEmployeeId}
+            defaultDayOfWeek={gridDefaultDayOfWeek}
           />
           <AvailabilityExceptionDialog
             open={exceptionDialogOpen}
-            onOpenChange={setExceptionDialogOpen}
+            onOpenChange={(open) => {
+              setExceptionDialogOpen(open);
+              if (!open) {
+                setGridException(undefined);
+                setGridDefaultEmployeeId(undefined);
+                setGridDefaultDate(undefined);
+              }
+            }}
             restaurantId={restaurantId}
+            exception={gridException}
+            defaultEmployeeId={gridDefaultEmployeeId}
+            defaultDate={gridDefaultDate}
           />
         </>
       )}

@@ -114,7 +114,7 @@ serve(async (req) => {
       // 1. Active employees
       supabase
         .from("employees")
-        .select("id, name, position, hourly_rate, salary, pay_type")
+        .select("id, name, position, hourly_rate, salary_amount, compensation_type")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "active"),
 
@@ -158,7 +158,7 @@ serve(async (req) => {
       // 7. Sales data: 4-week lookback
       supabase
         .from("unified_sales")
-        .select("sale_date, sale_time, total_amount")
+        .select("sale_date, sale_time, total_price")
         .eq("restaurant_id", restaurant_id)
         .eq("item_type", "sale")
         .gte("sale_date", fourWeeksAgoStr)
@@ -166,8 +166,8 @@ serve(async (req) => {
 
       // 8. Operating costs (labor category)
       supabase
-        .from("operating_costs")
-        .select("entry_type, value")
+        .from("restaurant_operating_costs")
+        .select("entry_type, monthly_value")
         .eq("restaurant_id", restaurant_id)
         .eq("category", "labor")
         .maybeSingle(),
@@ -214,7 +214,7 @@ serve(async (req) => {
       name: e.name,
       position: e.position ?? "Staff",
       // hourly_rate stored in cents; salary employees get 0
-      hourly_rate: e.pay_type === "salary" ? 0 : (e.hourly_rate ?? 0),
+      hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
     }));
 
     // ── Build ScheduleTemplate[] ─────────────────────────────────────────────
@@ -322,7 +322,7 @@ serve(async (req) => {
       const weekStr = weekStart_.toISOString().split("T")[0];
 
       if (!salesAggMap[key]) salesAggMap[key] = { totalSales: 0, weekCount: 0 };
-      salesAggMap[key].totalSales += sale.total_amount ?? 0;
+      salesAggMap[key].totalSales += sale.total_price ?? 0;
 
       if (!salesWeekTracker[key]) salesWeekTracker[key] = new Set();
       salesWeekTracker[key].add(weekStr);
@@ -341,10 +341,10 @@ serve(async (req) => {
     // ── Calculate weekly budget target ───────────────────────────────────────
     let weeklyBudgetTarget: number | null = null;
     const costRow = operatingCostsResult.data;
-    if (costRow && costRow.entry_type === "value" && costRow.value != null) {
-      // entry_type='value' means monthly dollar value (stored in cents /100)
-      // weeklyBudgetTarget = (monthlyValue / 100) / 30 * 7, expressed in cents
-      const monthlyValueCents = costRow.value; // already in cents
+    if (costRow && costRow.entry_type === "value" && costRow.monthly_value != null) {
+      // entry_type='value' means monthly dollar value (stored in cents)
+      // weeklyBudgetTarget = (monthlyValue / 100) / 30 * 7
+      const monthlyValueCents = costRow.monthly_value;
       weeklyBudgetTarget = Math.round((monthlyValueCents / 30) * 7);
     }
 

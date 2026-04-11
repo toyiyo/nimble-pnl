@@ -6,7 +6,11 @@ interface HelpVideoEntry {
   duration: string;
 }
 
-const STORAGE_BASE = '/help-videos';
+// Supabase Storage public URL for help videos bucket
+// Uses the app's SUPABASE_URL which resolves to local or production automatically
+import { SUPABASE_URL } from '@/integrations/supabase/client';
+
+const STORAGE_BASE = `${SUPABASE_URL}/storage/v1/object/public/help-videos`;
 
 export const HELP_VIDEOS: Record<string, HelpVideoEntry> = {
   welcome: {

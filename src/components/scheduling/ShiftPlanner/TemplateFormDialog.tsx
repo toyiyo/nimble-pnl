@@ -29,6 +29,7 @@ interface TemplateFormDialogProps {
     position: string;
     days: number[];
     break_duration: number;
+    capacity: number;
   }) => void | Promise<void>;
   positions: string[];
 }
@@ -48,6 +49,7 @@ export function TemplateFormDialog({
   const [position, setPosition] = useState('');
   const [days, setDays] = useState<number[]>([]);
   const [breakDuration, setBreakDuration] = useState(0);
+  const [capacity, setCapacity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Pre-fill form when template changes or dialog opens
@@ -59,6 +61,7 @@ export function TemplateFormDialog({
       setPosition(template.position);
       setDays([...template.days]);
       setBreakDuration(template.break_duration);
+      setCapacity(template.capacity ?? 1);
     } else {
       setName('');
       setStartTime('09:00');
@@ -66,6 +69,7 @@ export function TemplateFormDialog({
       setPosition('');
       setDays([]);
       setBreakDuration(0);
+      setCapacity(1);
     }
     setIsSubmitting(false);
   }, [template, open]);
@@ -91,6 +95,7 @@ export function TemplateFormDialog({
         position: position.trim(),
         days,
         break_duration: breakDuration,
+        capacity,
       });
       onOpenChange(false);
     } catch {
@@ -243,6 +248,27 @@ export function TemplateFormDialog({
               onChange={(e) => setBreakDuration(Math.max(0, Number.parseInt(e.target.value, 10) || 0))}
               className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
             />
+          </div>
+
+          {/* Staff Needed */}
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="capacity"
+              className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+            >
+              Staff Needed
+            </Label>
+            <Input
+              id="capacity"
+              type="number"
+              min={1}
+              value={capacity}
+              onChange={(e) => setCapacity(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+              className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              How many employees are needed for this shift
+            </p>
           </div>
 
           {/* Footer */}

@@ -74,12 +74,14 @@ test.describe('Shift Template Capacity', () => {
     // Dialog should close
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-    // 8. Wait for toast to dismiss (toast may overlay elements)
-    // Give the toast time to appear and then fade out
-    await page.waitForTimeout(2500);
+    // 8. Wait for template to appear in the grid (dismisses toast naturally)
+    await expect(page.getByText('Closing Server')).toBeVisible({ timeout: 10000 });
 
-    // 9. Verify "Closing Server" text is visible
-    await expect(page.getByText('Closing Server')).toBeVisible({ timeout: 5000 });
+    // 9. Dismiss any remaining toasts that might overlay elements
+    const toast = page.locator('[data-sonner-toast]').first();
+    if (await toast.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await toast.locator('button[aria-label="Close"]').click().catch(() => {});
+    }
 
     // 10. Verify "0/3" capacity indicator is visible somewhere on the page
     // The indicator shows assigned/capacity, starting at 0/3 for a new template
@@ -157,11 +159,14 @@ test.describe('Shift Template Capacity', () => {
     // Dialog should close
     await expect(dialog).not.toBeVisible({ timeout: 5000 });
 
-    // 8. Wait for toast to dismiss
-    await page.waitForTimeout(2500);
+    // 8. Wait for template to appear in the grid
+    await expect(page.getByText('Morning Cashier')).toBeVisible({ timeout: 10000 });
 
-    // 9. Verify "Morning Cashier" text is visible
-    await expect(page.getByText('Morning Cashier')).toBeVisible({ timeout: 5000 });
+    // 9. Dismiss any remaining toasts
+    const toast = page.locator('[data-sonner-toast]').first();
+    if (await toast.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await toast.locator('button[aria-label="Close"]').click().catch(() => {});
+    }
 
     // 10. Verify NO "0/1" indicator is shown (capacity=1 is intentionally hidden)
     await expect(page.getByText('0/1')).not.toBeVisible();

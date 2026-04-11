@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react';
+import { memo, useState, useMemo, useEffect } from 'react';
 
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -22,16 +22,19 @@ interface Employee {
   id: string;
   name: string;
   position: string | null;
+  area?: string;
 }
 
 export function filterEmployees(
   employees: Employee[],
   search: string,
+  area: string,
   role: string,
 ): Employee[] {
   const q = search.toLowerCase();
   return employees.filter((e) => {
     if (q && !e.name.toLowerCase().includes(q)) return false;
+    if (area !== 'all' && e.area !== area) return false;
     if (role !== 'all' && e.position !== role) return false;
     return true;
   });
@@ -131,7 +134,24 @@ const DraggableEmployee = memo(
 
 export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect }: Readonly<EmployeeSidebarProps>) {
   const [search, setSearch] = useState('');
+  const [area, setArea] = useState('all');
   const [role, setRole] = useState('all');
+
+  // Derive unique areas for the filter dropdown
+  const areas = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of employees) {
+      if (e.area) set.add(e.area);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [employees]);
+
+  // Reset area filter when selected value is no longer available
+  useEffect(() => {
+    if (area !== 'all' && !areas.includes(area)) {
+      setArea('all');
+    }
+  }, [area, areas]);
 
   // Derive unique roles for the filter dropdown
   const roles = useMemo(() => {
@@ -155,8 +175,8 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
 
   const filtered = useMemo(
-    () => filterEmployees(employees, search, role),
-    [employees, search, role],
+    () => filterEmployees(employees, search, area, role),
+    [employees, search, area, role],
   );
 
   return (
@@ -176,6 +196,22 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
             aria-label="Search employees"
           />
         </div>
+        {areas.length > 1 && (
+          <Select value={area} onValueChange={setArea}>
+            <SelectTrigger
+              className="h-8 text-[13px] bg-muted/30 border-border/40 rounded-lg"
+              aria-label="Filter by area"
+            >
+              <SelectValue placeholder="All areas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All areas</SelectItem>
+              {areas.map((a) => (
+                <SelectItem key={a} value={a}>{a}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {roles.length > 1 && (
           <Select value={role} onValueChange={setRole}>
             <SelectTrigger

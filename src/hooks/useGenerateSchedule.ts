@@ -58,11 +58,20 @@ export function useGenerateSchedule() {
       }
 
       // 2. Batch-insert shifts
-      const shiftsToInsert = response.shifts.map((shift) => ({
+      const shiftsToInsert = response.shifts.map((shift) => {
+        // Build proper local-time Date objects and serialize as ISO strings
+        // to match how useCreateShift sends timestamps (with timezone info)
+        const [y, m, d] = shift.day.split('-').map(Number);
+        const [sh, sm] = shift.start_time.split(':').map(Number);
+        const [eh, em] = shift.end_time.split(':').map(Number);
+        const startDate = new Date(y, m - 1, d, sh, sm, 0);
+        const endDate = new Date(y, m - 1, d, eh, em, 0);
+
+        return {
         restaurant_id: params.restaurantId,
         employee_id: shift.employee_id,
-        start_time: `${shift.day}T${shift.start_time}`,
-        end_time: `${shift.day}T${shift.end_time}`,
+        start_time: startDate.toISOString(),
+        end_time: endDate.toISOString(),
         break_duration: 0,
         position: shift.position,
         status: 'scheduled' as const,
@@ -70,7 +79,8 @@ export function useGenerateSchedule() {
         locked: false,
         is_recurring: false,
         source: 'ai',
-      }));
+      };
+      });
 
       const { error: insertError } = await supabase.from('shifts').insert(shiftsToInsert);
       if (insertError) throw insertError;

@@ -92,7 +92,9 @@ export const PlannerHeader = memo(function PlannerHeader({
             aria-label="Generate schedule with AI"
           >
             <Sparkles className={cn('h-3.5 w-3.5 mr-1', isGenerating && 'animate-pulse')} />
-            {isGenerating ? 'Generating...' : 'Generate with AI'}
+            <span aria-live="polite" aria-atomic="true">
+              {isGenerating ? 'Generating...' : 'Generate with AI'}
+            </span>
           </Button>
         )}
         {onExport && (

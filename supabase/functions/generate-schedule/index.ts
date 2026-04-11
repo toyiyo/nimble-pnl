@@ -242,8 +242,8 @@ serve(async (req) => {
 
     // Override with availability exceptions for this week
     for (const exc of (availExceptionsResult.data ?? [])) {
-      const excDate = new Date(exc.exception_date);
-      const dayOfWeek = excDate.getDay();
+      const [ey, em, ed] = (exc.exception_date ?? exc.date).split('-').map(Number);
+      const dayOfWeek = new Date(ey, em - 1, ed).getDay();
       if (!availability[exc.employee_id]) availability[exc.employee_id] = {};
       availability[exc.employee_id][dayOfWeek] = {
         available: exc.is_available,
@@ -265,7 +265,7 @@ serve(async (req) => {
     // ── Build prior schedule patterns ────────────────────────────────────────
     // Group prior shifts by day_of_week + position, count per week, then average
     const priorShifts = priorShiftsResult.data ?? [];
-    const patternMap: Record<string, { totalCount: number; weekCount: number }> = {};
+    const patternMap: Record<string, { totalCount: number }> = {};
     const weekTracker: Record<string, Set<string>> = {};
 
     for (const shift of priorShifts) {
@@ -280,7 +280,7 @@ serve(async (req) => {
       const weekStr = weekKey.toISOString().split("T")[0];
       const trackerKey = `${key}:${weekStr}`;
 
-      if (!patternMap[key]) patternMap[key] = { totalCount: 0, weekCount: 0 };
+      if (!patternMap[key]) patternMap[key] = { totalCount: 0 };
       patternMap[key].totalCount += 1;
 
       if (!weekTracker[key]) weekTracker[key] = new Set();
@@ -474,6 +474,22 @@ serve(async (req) => {
       }
     }
 
+    // Build existing shifts as GeneratedShift format for overlap checking
+    const existingAsGenerated: GeneratedShift[] = existingShifts.map((s) => {
+      const [y, m, d] = s.start_time.split('T')[0].split('-').map(Number);
+      const day = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const startTime = s.start_time.includes('T') ? s.start_time.split('T')[1].substring(0, 8) : s.start_time;
+      const endTime = s.end_time?.includes('T') ? s.end_time.split('T')[1].substring(0, 8) : (s.end_time ?? '00:00:00');
+      return {
+        employee_id: s.employee_id,
+        template_id: '',
+        day,
+        start_time: startTime,
+        end_time: endTime,
+        position: s.position ?? 'Staff',
+      };
+    });
+
     const validationCtx: ValidationContext = {
       employeeIds,
       employeePositions,
@@ -481,6 +497,7 @@ serve(async (req) => {
       availability: availabilityMap,
       lockedShiftIds: lockedShiftIdSet,
       excludedEmployeeIds: new Set(excluded_employee_ids),
+      existingShifts: existingAsGenerated,
     };
 
     const { valid: validShifts, dropped: droppedShifts } = validateGeneratedShifts(

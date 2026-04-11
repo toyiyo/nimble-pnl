@@ -35,6 +35,7 @@ function makeContext(overrides?: Partial<ValidationContext>): ValidationContext 
     availability: makeAvailability(),
     lockedShiftIds: new Set(),
     excludedEmployeeIds: new Set(),
+    existingShifts: [],
     ...overrides,
   };
 }
@@ -168,6 +169,17 @@ describe('validateGeneratedShifts', () => {
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
     expect(result.dropped[0].reason).toMatch(/excluded/i);
+  });
+
+  it('drops shifts that overlap with existing shifts', () => {
+    const existingShift = makeShift({ start_time: '10:00:00', end_time: '16:00:00' });
+    const ctx = makeContext({ existingShifts: [existingShift] });
+    // New AI-generated shift overlaps with existing
+    const shift = makeShift({ start_time: '14:00:00', end_time: '20:00:00' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].reason).toMatch(/double.book|overlap/i);
   });
 
   it('allows two non-overlapping shifts for same employee on same day', () => {

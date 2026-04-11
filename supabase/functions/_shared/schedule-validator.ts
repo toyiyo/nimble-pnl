@@ -29,6 +29,8 @@ export interface ValidationContext {
   availability: Map<string, AvailabilitySlot>;
   lockedShiftIds: Set<string>;
   excludedEmployeeIds: Set<string>;
+  /** Existing shifts on the target week (locked or otherwise) to check for overlaps */
+  existingShifts: GeneratedShift[];
 }
 
 interface DroppedShift {
@@ -160,13 +162,20 @@ export function validateGeneratedShifts(
       }
     }
 
-    // 7. Double-booking check against already-valid shifts
-    const hasOverlap = valid.some(
-      (v) =>
-        v.employee_id === shift.employee_id &&
-        v.day === shift.day &&
-        shiftsOverlap(v, shift),
-    );
+    // 7. Double-booking check against already-valid shifts AND existing shifts
+    const hasOverlap =
+      valid.some(
+        (v) =>
+          v.employee_id === shift.employee_id &&
+          v.day === shift.day &&
+          shiftsOverlap(v, shift),
+      ) ||
+      ctx.existingShifts.some(
+        (e) =>
+          e.employee_id === shift.employee_id &&
+          e.day === shift.day &&
+          shiftsOverlap(e, shift),
+      );
 
     if (hasOverlap) {
       drop(

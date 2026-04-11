@@ -320,7 +320,7 @@ export function ShiftPlannerTab({
     setExportDialogOpen(true);
   }, []);
 
-  const handleGenerate = (excludedEmployeeIds: string[], lockedShiftIds: string[]) => {
+  const handleGenerate = useCallback((excludedEmployeeIds: string[], lockedShiftIds: string[]) => {
     if (!restaurantId) return;
     const weekStartStr = weekDays[0]; // Already a YYYY-MM-DD string
     generateSchedule.mutate(
@@ -334,7 +334,7 @@ export function ShiftPlannerTab({
         onSuccess: () => setGenerateDialogOpen(false),
       },
     );
-  };
+  }, [restaurantId, weekDays, generateSchedule]);
 
   // Loading state
   if (isLoading || templatesLoading) {

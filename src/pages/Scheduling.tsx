@@ -394,9 +394,16 @@ const Scheduling = () => {
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
-  const { areas, isLoading: areasLoading } = useEmployeeAreas(restaurantId);
+  const { areas } = useEmployeeAreas(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
+
+  // Reset area filter when selected value is no longer available
+  useEffect(() => {
+    if (areaFilter !== 'all' && !areas.includes(areaFilter)) {
+      setAreaFilter('all');
+    }
+  }, [areaFilter, areas]);
   const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
     try {
       const saved = localStorage.getItem('schedule-group-by');
@@ -1177,7 +1184,7 @@ const Scheduling = () => {
                       aria-label="Filter by area"
                       className="w-40 h-9 text-xs bg-background"
                     >
-                      <SelectValue placeholder={areasLoading ? 'Loading...' : 'All Areas'} />
+                      <SelectValue placeholder="All Areas" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Areas</SelectItem>

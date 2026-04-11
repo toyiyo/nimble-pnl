@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react';
+import { memo, useState, useMemo, useEffect } from 'react';
 
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -145,6 +145,13 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [employees]);
+
+  // Reset area filter when selected value is no longer available
+  useEffect(() => {
+    if (area !== 'all' && !areas.includes(area)) {
+      setArea('all');
+    }
+  }, [area, areas]);
 
   // Derive unique roles for the filter dropdown
   const roles = useMemo(() => {

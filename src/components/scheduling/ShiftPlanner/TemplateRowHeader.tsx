@@ -45,6 +45,11 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
         <div className="text-[12px] text-muted-foreground">
           {template.position}
         </div>
+        {template.capacity > 1 && (
+          <div className="text-[10px] font-medium text-amber-600">
+            Need {template.capacity}
+          </div>
+        )}
       </div>
       {/* Mobile: abbreviated name + time only */}
       <div className="block md:hidden min-w-0 text-center w-full">

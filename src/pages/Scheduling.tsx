@@ -19,6 +19,7 @@ import { useEmployeeLaborCosts } from '@/hooks/useEmployeeLaborCosts';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
+import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
@@ -129,14 +130,19 @@ export function filterEmployeesForScheduleView(
   allEmployees: Employee[],
   shiftEmployeeIds: Set<string>,
   positionFilter: string | null,
+  areaFilter: string | null,
 ): Employee[] {
   const filtered = allEmployees.filter(emp =>
     emp.is_active || shiftEmployeeIds.has(emp.id)
   );
-  if (positionFilter && positionFilter !== 'all') {
-    return filtered.filter(emp => emp.position === positionFilter);
+  let result = filtered;
+  if (areaFilter && areaFilter !== 'all') {
+    result = result.filter(emp => emp.area === areaFilter);
   }
-  return filtered;
+  if (positionFilter && positionFilter !== 'all') {
+    result = result.filter(emp => emp.position === positionFilter);
+  }
+  return result;
 }
 
 type ShiftCardProps = {
@@ -388,7 +394,9 @@ const Scheduling = () => {
   // Separate active employees for creating new shifts
   const activeEmployees = allEmployees.filter(emp => Boolean(emp.is_active));
   const { positions, isLoading: positionsLoading } = useEmployeePositions(restaurantId);
+  const { areas, isLoading: areasLoading } = useEmployeeAreas(restaurantId);
   const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [areaFilter, setAreaFilter] = useState<string>('all');
   const [groupBy, setGroupBy] = useState<GroupByMode>(() => {
     try {
       const saved = localStorage.getItem('schedule-group-by');
@@ -440,16 +448,23 @@ const Scheduling = () => {
     }
   }, [copyWeekMutation, shifts, currentWeekStart, restaurantId]);
 
-  // Apply position filter to active employees for new shift creation
-  const filteredActiveEmployees = positionFilter && positionFilter !== 'all'
-    ? activeEmployees.filter(emp => emp.position === positionFilter)
-    : activeEmployees;
+  // Apply position and area filters to active employees for new shift creation
+  const filteredActiveEmployees = useMemo(() => {
+    let result = activeEmployees;
+    if (areaFilter && areaFilter !== 'all') {
+      result = result.filter(emp => emp.area === areaFilter);
+    }
+    if (positionFilter && positionFilter !== 'all') {
+      result = result.filter(emp => emp.position === positionFilter);
+    }
+    return result;
+  }, [activeEmployees, areaFilter, positionFilter]);
 
   // For displaying the schedule grid: show active employees + inactive employees with non-cancelled shifts
   const filteredEmployeesWithShifts = useMemo(() => {
     const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
-    return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter);
-  }, [allEmployees, shifts, positionFilter]);
+    return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter, areaFilter);
+  }, [allEmployees, shifts, positionFilter, areaFilter]);
 
   // Calculate labor metrics
   const calculateShiftHours = (shift: Shift) => {
@@ -1153,6 +1168,25 @@ const Scheduling = () => {
                   </Button>
                 )}
                 <div className="h-6 w-px bg-border hidden sm:block" />
+
+                {/* Area filter */}
+                {areas.length > 1 && (
+                  <Select value={areaFilter} onValueChange={(v) => setAreaFilter(v)}>
+                    <SelectTrigger
+                      id="area-filter"
+                      aria-label="Filter by area"
+                      className="w-40 h-9 text-xs bg-background"
+                    >
+                      <SelectValue placeholder={areasLoading ? 'Loading...' : 'All Areas'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Areas</SelectItem>
+                      {areas.map((a) => (
+                        <SelectItem key={a} value={a}>{a}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 {/* Position filter */}
                 <Select value={positionFilter} onValueChange={(v) => setPositionFilter(v)}>

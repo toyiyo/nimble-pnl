@@ -72,20 +72,23 @@ export const ShiftCell = memo(
             onRemove={onRemoveShift}
           />
         ))}
-        {capacity > 1 && (
-          <div
-            className={cn(
-              'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
-              classifyCapacity(capacity, shifts.length) === 'full'
-                ? 'text-emerald-600 bg-emerald-500/10'
-                : classifyCapacity(capacity, shifts.length) === 'partial'
-                  ? 'text-amber-600 bg-amber-500/10'
-                  : 'text-red-500 bg-red-500/10',
-            )}
-          >
-            {shifts.length}/{capacity}
-          </div>
-        )}
+        {capacity > 1 && (() => {
+          const status = classifyCapacity(capacity, shifts.length);
+          return (
+            <div
+              className={cn(
+                'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
+                status === 'full'
+                  ? 'text-emerald-600 bg-emerald-500/10'
+                  : status === 'partial'
+                    ? 'text-amber-600 bg-amber-500/10'
+                    : 'text-red-500 bg-red-500/10',
+              )}
+            >
+              {shifts.length}/{capacity}
+            </div>
+          );
+        })()}
       </div>
     );
   },

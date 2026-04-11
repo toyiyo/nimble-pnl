@@ -47,6 +47,7 @@ import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { computeOpenSpots } from '@/lib/openShiftHelpers';
+import { formatLocalDate } from '@/lib/shiftInterval';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -473,13 +474,7 @@ const Scheduling = () => {
   const openShiftCount = useMemo(() => {
     if (!templates.length || shifts === undefined) return 0;
 
-    // Format weekDays as YYYY-MM-DD strings for templateAppliesToDay
-    const weekDayStrings = weekDays.map(d => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    });
+    const weekDayStrings = weekDays.map(formatLocalDate);
 
     // Build the grid to count assigned shifts per template/day
     const gridData = buildTemplateGridData(shifts, templates, weekDayStrings);

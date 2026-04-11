@@ -266,7 +266,7 @@ export function TemplateFormDialog({
               onChange={(e) => setCapacity(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
               className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               How many employees are needed for this shift
             </p>
           </div>

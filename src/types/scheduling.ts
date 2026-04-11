@@ -103,6 +103,7 @@ export interface Shift {
   published_by?: string | null;
   is_published: boolean;
   locked: boolean;
+  source: 'manual' | 'ai' | 'template';
   created_at: string;
   updated_at: string;
   employee?: Employee; // Joined data

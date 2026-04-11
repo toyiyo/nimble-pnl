@@ -31,6 +31,8 @@ import { DragOverlayChip } from './DragOverlayChip';
 import { PlannerExportDialog } from './PlannerExportDialog';
 import { AvailabilityConflictDialog } from './AvailabilityConflictDialog';
 import type { ConflictDialogData } from './AvailabilityConflictDialog';
+import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
+import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -80,6 +82,8 @@ export function ShiftPlannerTab({
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const generateSchedule = useGenerateSchedule();
 
   const { toast } = useToast();
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
@@ -316,6 +320,22 @@ export function ShiftPlannerTab({
     setExportDialogOpen(true);
   }, []);
 
+  const handleGenerate = useCallback((excludedEmployeeIds: string[], lockedShiftIds: string[]) => {
+    if (!restaurantId) return;
+    const weekStartStr = weekDays[0]; // Already a YYYY-MM-DD string
+    generateSchedule.mutate(
+      {
+        restaurantId,
+        weekStart: weekStartStr,
+        lockedShiftIds,
+        excludedEmployeeIds,
+      },
+      {
+        onSuccess: () => setGenerateDialogOpen(false),
+      },
+    );
+  }, [restaurantId, weekDays, generateSchedule]);
+
   // Loading state
   if (isLoading || templatesLoading) {
     return (
@@ -365,6 +385,8 @@ export function ShiftPlannerTab({
         onNextWeek={goToNextWeek}
         onToday={goToToday}
         onExport={handleExport}
+        onGenerate={() => setGenerateDialogOpen(true)}
+        isGenerating={generateSchedule.isPending}
       />
 
       {/* Validation alerts */}
@@ -536,6 +558,18 @@ export function ShiftPlannerTab({
         timezone={restaurantTimezone}
         onConfirm={handleConflictConfirm}
         onCancel={handleConflictCancel}
+      />
+
+      {/* Generate schedule with AI dialog */}
+      <GenerateScheduleDialog
+        open={generateDialogOpen}
+        onOpenChange={setGenerateDialogOpen}
+        employees={employees ?? []}
+        existingShifts={shifts}
+        weekStart={weekStart}
+        weekEnd={weekEnd}
+        isGenerating={generateSchedule.isPending}
+        onGenerate={handleGenerate}
       />
 
     </div>

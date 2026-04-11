@@ -134,10 +134,10 @@ serve(async (req) => {
       // 4. Availability exceptions for the target week
       supabase
         .from("availability_exceptions")
-        .select("employee_id, exception_date, is_available, start_time, end_time")
+        .select("employee_id, date, is_available, start_time, end_time")
         .eq("restaurant_id", restaurant_id)
-        .gte("exception_date", week_start)
-        .lt("exception_date", weekEndStr),
+        .gte("date", week_start)
+        .lt("date", weekEndStr),
 
       // 5. Staffing settings
       supabase
@@ -175,7 +175,7 @@ serve(async (req) => {
       // 9. Existing shifts this week (for locked shift identification)
       supabase
         .from("shifts")
-        .select("id, employee_id, start_time, end_time, position, is_locked, employees(name)")
+        .select("id, employee_id, start_time, end_time, position, locked, employees(name)")
         .eq("restaurant_id", restaurant_id)
         .gte("start_time", `${week_start}T00:00:00`)
         .lt("start_time", `${weekEndStr}T00:00:00`)
@@ -242,7 +242,7 @@ serve(async (req) => {
 
     // Override with availability exceptions for this week
     for (const exc of (availExceptionsResult.data ?? [])) {
-      const [ey, em, ed] = (exc.exception_date ?? exc.date).split('-').map(Number);
+      const [ey, em, ed] = exc.date.split('-').map(Number);
       const dayOfWeek = new Date(ey, em - 1, ed).getDay();
       if (!availability[exc.employee_id]) availability[exc.employee_id] = {};
       availability[exc.employee_id][dayOfWeek] = {
@@ -353,7 +353,7 @@ serve(async (req) => {
     const lockedShiftIdSet = new Set(locked_shift_ids);
 
     const lockedShifts: LockedShift[] = existingShifts
-      .filter((s) => s.is_locked || lockedShiftIdSet.has(s.id))
+      .filter((s) => s.locked || lockedShiftIdSet.has(s.id))
       .map((s) => {
         const startDt = new Date(s.start_time);
         const day = startDt.toISOString().split("T")[0];
@@ -495,7 +495,6 @@ serve(async (req) => {
       employeePositions,
       templateIds,
       availability: availabilityMap,
-      lockedShiftIds: lockedShiftIdSet,
       excludedEmployeeIds: new Set(excluded_employee_ids),
       existingShifts: existingAsGenerated,
     };

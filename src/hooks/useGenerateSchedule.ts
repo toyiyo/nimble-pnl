@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { fromZonedTime } from 'date-fns-tz';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface GenerateScheduleParams {
   restaurantId: string;
+  restaurantTimezone: string;
   weekStart: string; // YYYY-MM-DD
   lockedShiftIds: string[];
   excludedEmployeeIds: string[];
@@ -57,20 +59,31 @@ export function useGenerateSchedule() {
         throw new Error('AI generated no valid shifts. Check templates and availability.');
       }
 
-      // 2. Batch-insert shifts
-      const shiftsToInsert = response.shifts.map((shift) => ({
-        restaurant_id: params.restaurantId,
-        employee_id: shift.employee_id,
-        start_time: `${shift.day}T${shift.start_time}`,
-        end_time: `${shift.day}T${shift.end_time}`,
-        break_duration: 0,
-        position: shift.position,
-        status: 'scheduled' as const,
-        is_published: false,
-        locked: false,
-        is_recurring: false,
-        source: 'ai',
-      }));
+      // 2. Batch-insert shifts using restaurant timezone for correct UTC conversion
+      const shiftsToInsert = response.shifts.map((shift) => {
+        const startUtc = fromZonedTime(
+          `${shift.day}T${shift.start_time}`,
+          params.restaurantTimezone,
+        ).toISOString();
+        const endUtc = fromZonedTime(
+          `${shift.day}T${shift.end_time}`,
+          params.restaurantTimezone,
+        ).toISOString();
+
+        return {
+          restaurant_id: params.restaurantId,
+          employee_id: shift.employee_id,
+          start_time: startUtc,
+          end_time: endUtc,
+          break_duration: 0,
+          position: shift.position,
+          status: 'scheduled' as const,
+          is_published: false,
+          locked: false,
+          is_recurring: false,
+          source: 'ai',
+        };
+      });
 
       const { error: insertError } = await supabase.from('shifts').insert(shiftsToInsert);
       if (insertError) throw insertError;

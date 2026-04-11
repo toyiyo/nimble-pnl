@@ -326,6 +326,7 @@ export function ShiftPlannerTab({
     generateSchedule.mutate(
       {
         restaurantId,
+        restaurantTimezone,
         weekStart: weekStartStr,
         lockedShiftIds,
         excludedEmployeeIds,
@@ -334,7 +335,7 @@ export function ShiftPlannerTab({
         onSuccess: () => setGenerateDialogOpen(false),
       },
     );
-  }, [restaurantId, weekDays, generateSchedule]);
+  }, [restaurantId, restaurantTimezone, weekDays, generateSchedule]);
 
   // Loading state
   if (isLoading || templatesLoading) {

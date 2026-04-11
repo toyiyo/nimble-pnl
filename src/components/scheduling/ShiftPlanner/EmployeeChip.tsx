@@ -4,11 +4,13 @@ import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+import type { Shift } from '@/types/scheduling';
+
 interface EmployeeChipProps {
   employeeName: string;
   shiftId: string;
   position: string;
-  source?: string;
+  source?: Shift['source'];
   onRemove: (shiftId: string) => void;
 }
 

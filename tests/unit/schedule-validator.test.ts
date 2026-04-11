@@ -33,7 +33,6 @@ function makeContext(overrides?: Partial<ValidationContext>): ValidationContext 
     ]),
     templateIds: new Set(['tmpl-1', 'tmpl-2']),
     availability: makeAvailability(),
-    lockedShiftIds: new Set(),
     excludedEmployeeIds: new Set(),
     existingShifts: [],
     ...overrides,

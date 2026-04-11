@@ -27,7 +27,6 @@ export interface ValidationContext {
   templateIds: Set<string>;
   /** Key: "employeeId:dayOfWeek" (0=Sun..6=Sat) */
   availability: Map<string, AvailabilitySlot>;
-  lockedShiftIds: Set<string>;
   excludedEmployeeIds: Set<string>;
   /** Existing shifts on the target week (locked or otherwise) to check for overlaps */
   existingShifts: GeneratedShift[];

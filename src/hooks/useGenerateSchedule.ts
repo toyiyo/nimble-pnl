@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { fromZonedTime } from 'date-fns-tz';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface GenerateScheduleParams {
   restaurantId: string;
+  restaurantTimezone: string;
   weekStart: string; // YYYY-MM-DD
   lockedShiftIds: string[];
   excludedEmployeeIds: string[];
@@ -57,29 +59,30 @@ export function useGenerateSchedule() {
         throw new Error('AI generated no valid shifts. Check templates and availability.');
       }
 
-      // 2. Batch-insert shifts
+      // 2. Batch-insert shifts using restaurant timezone for correct UTC conversion
       const shiftsToInsert = response.shifts.map((shift) => {
-        // Build proper local-time Date objects and serialize as ISO strings
-        // to match how useCreateShift sends timestamps (with timezone info)
-        const [y, m, d] = shift.day.split('-').map(Number);
-        const [sh, sm] = shift.start_time.split(':').map(Number);
-        const [eh, em] = shift.end_time.split(':').map(Number);
-        const startDate = new Date(y, m - 1, d, sh, sm, 0);
-        const endDate = new Date(y, m - 1, d, eh, em, 0);
+        const startUtc = fromZonedTime(
+          `${shift.day}T${shift.start_time}`,
+          params.restaurantTimezone,
+        ).toISOString();
+        const endUtc = fromZonedTime(
+          `${shift.day}T${shift.end_time}`,
+          params.restaurantTimezone,
+        ).toISOString();
 
         return {
-        restaurant_id: params.restaurantId,
-        employee_id: shift.employee_id,
-        start_time: startDate.toISOString(),
-        end_time: endDate.toISOString(),
-        break_duration: 0,
-        position: shift.position,
-        status: 'scheduled' as const,
-        is_published: false,
-        locked: false,
-        is_recurring: false,
-        source: 'ai',
-      };
+          restaurant_id: params.restaurantId,
+          employee_id: shift.employee_id,
+          start_time: startUtc,
+          end_time: endUtc,
+          break_duration: 0,
+          position: shift.position,
+          status: 'scheduled' as const,
+          is_published: false,
+          locked: false,
+          is_recurring: false,
+          source: 'ai',
+        };
       });
 
       const { error: insertError } = await supabase.from('shifts').insert(shiftsToInsert);

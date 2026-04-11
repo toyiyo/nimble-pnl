@@ -2,7 +2,8 @@ import { memo } from 'react';
 
 import { Button } from '@/components/ui/button';
 
-import { ChevronLeft, ChevronRight, Calendar, Printer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Printer, Sparkles } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface PlannerHeaderProps {
   weekStart: Date;
@@ -12,6 +13,8 @@ interface PlannerHeaderProps {
   onNextWeek: () => void;
   onToday: () => void;
   onExport?: () => void;
+  onGenerate?: () => void;
+  isGenerating?: boolean;
 }
 
 /**
@@ -32,6 +35,8 @@ export const PlannerHeader = memo(function PlannerHeader({
   onNextWeek,
   onToday,
   onExport,
+  onGenerate,
+  isGenerating,
 }: PlannerHeaderProps) {
   return (
     <div className="flex items-center justify-between px-1 py-2">
@@ -77,6 +82,21 @@ export const PlannerHeader = memo(function PlannerHeader({
         <span className="text-[13px] text-muted-foreground">
           <span className="font-medium text-foreground">{totalHours}h</span> scheduled
         </span>
+        {onGenerate && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            onClick={onGenerate}
+            disabled={isGenerating}
+            aria-label="Generate schedule with AI"
+          >
+            <Sparkles className={cn('h-3.5 w-3.5 mr-1', isGenerating && 'animate-pulse')} />
+            <span aria-live="polite" aria-atomic="true">
+              {isGenerating ? 'Generating...' : 'Generate with AI'}
+            </span>
+          </Button>
+        )}
         {onExport && (
           <Button
             variant="ghost"

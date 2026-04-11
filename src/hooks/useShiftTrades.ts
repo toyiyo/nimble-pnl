@@ -156,7 +156,10 @@ export const useShiftTrades = (
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as ShiftTrade[];
+      // Filter out trades with null joined data (e.g., deleted employees)
+      return (data as ShiftTrade[]).filter(
+        (t) => t.offered_by != null && t.offered_shift != null
+      );
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
@@ -440,8 +443,13 @@ export const useMarketplaceTrades = (
 
       if (tradesError) throw tradesError;
 
-      if (!currentEmployeeId || !trades || trades.length === 0) {
-        return trades || [];
+      // Filter out trades with null joined data (e.g., deleted employees)
+      const validTrades = (trades || []).filter(
+        (t) => t.offered_by != null && t.offered_shift != null
+      );
+
+      if (!currentEmployeeId || validTrades.length === 0) {
+        return validTrades;
       }
 
       // Get current employee's shifts to check for conflicts
@@ -454,7 +462,7 @@ export const useMarketplaceTrades = (
       if (shiftsError) throw shiftsError;
 
       // Filter out trades that would create conflicts
-      const filteredTrades = trades.map((trade) => {
+      const filteredTrades = validTrades.map((trade) => {
         const hasConflict = employeeShifts?.some((shift) => {
           const tradeStart = new Date(trade.offered_shift.start_time);
           const tradeEnd = new Date(trade.offered_shift.end_time);

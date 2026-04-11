@@ -4,10 +4,13 @@ import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+import type { Shift } from '@/types/scheduling';
+
 interface EmployeeChipProps {
   employeeName: string;
   shiftId: string;
   position: string;
+  source?: Shift['source'];
   onRemove: (shiftId: string) => void;
 }
 
@@ -58,6 +61,7 @@ export const EmployeeChip = memo(
     employeeName,
     shiftId,
     position,
+    source,
     onRemove,
   }: EmployeeChipProps) {
     const colors = getColors(position);
@@ -71,6 +75,9 @@ export const EmployeeChip = memo(
           colors.text,
         )}
       >
+        {source === 'ai' && (
+          <span className="text-violet-400 text-[10px] shrink-0" aria-label="AI generated">✦</span>
+        )}
         <span className="truncate">{employeeName}</span>
         <button
           type="button"
@@ -90,5 +97,6 @@ export const EmployeeChip = memo(
     prev.shiftId === next.shiftId &&
     prev.employeeName === next.employeeName &&
     prev.position === next.position &&
+    prev.source === next.source &&
     prev.onRemove === next.onRemove,
 );

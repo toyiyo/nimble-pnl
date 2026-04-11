@@ -216,7 +216,7 @@ export const TradeMarketplace = () => {
                   </p>
                   <p>
                     <span className="font-medium">Posted by:</span>{' '}
-                    {selectedTrade.offered_by.name}
+                    {selectedTrade.offered_by?.name ?? 'Unknown'}
                   </p>
                 </div>
               </div>
@@ -288,7 +288,7 @@ const ShiftTradeCard = ({ trade, onAccept, disabled, showConflict }: ShiftTradeC
           <div className="flex-1">
             <CardTitle className="text-lg">{trade.offered_shift.position}</CardTitle>
             <CardDescription className="mt-1 text-xs">
-              Posted by {trade.offered_by.name} •{' '}
+              Posted by {trade.offered_by?.name ?? 'Unknown'} •{' '}
               {formatDistanceToNow(new Date(trade.created_at), { addSuffix: true })}
             </CardDescription>
           </div>

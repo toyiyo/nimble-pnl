@@ -21,51 +21,81 @@ function mockShift(overrides: Partial<Shift> = {}): Shift {
 }
 
 const employees = [
-  { id: 'emp-1', name: 'Alice Johnson', position: 'Server' },
-  { id: 'emp-2', name: 'Bob Smith', position: 'Cook' },
-  { id: 'emp-3', name: 'Charlie Brown', position: 'Server' },
-  { id: 'emp-4', name: 'Diana Prince', position: null },
+  { id: 'emp-1', name: 'Alice Johnson', position: 'Server', area: 'Front of House' },
+  { id: 'emp-2', name: 'Bob Smith', position: 'Cook', area: 'Back of House' },
+  { id: 'emp-3', name: 'Charlie Brown', position: 'Server', area: 'Bar' },
+  { id: 'emp-4', name: 'Diana Prince', position: null, area: undefined },
 ];
 
 describe('filterEmployees', () => {
   it('returns all employees when search is empty and role is "all"', () => {
-    const result = filterEmployees(employees, '', 'all');
+    const result = filterEmployees(employees, '', 'all', 'all');
     expect(result).toEqual(employees);
   });
 
   it('filters by name case-insensitively', () => {
-    const result = filterEmployees(employees, 'alice', 'all');
+    const result = filterEmployees(employees, 'alice', 'all', 'all');
     expect(result).toEqual([employees[0]]);
   });
 
   it('filters by name with mixed case input', () => {
-    const result = filterEmployees(employees, 'BOB', 'all');
+    const result = filterEmployees(employees, 'BOB', 'all', 'all');
     expect(result).toEqual([employees[1]]);
   });
 
   it('filters by role', () => {
-    const result = filterEmployees(employees, '', 'Server');
+    const result = filterEmployees(employees, '', 'all', 'Server');
     expect(result).toEqual([employees[0], employees[2]]);
   });
 
   it('combines name search and role filter', () => {
-    const result = filterEmployees(employees, 'charlie', 'Server');
+    const result = filterEmployees(employees, 'charlie', 'all', 'Server');
     expect(result).toEqual([employees[2]]);
   });
 
   it('returns empty array when no matches', () => {
-    const result = filterEmployees(employees, 'Zara', 'Cook');
+    const result = filterEmployees(employees, 'Zara', 'all', 'Cook');
     expect(result).toEqual([]);
   });
 
   it('excludes employees with null position when filtering by role', () => {
-    const result = filterEmployees(employees, '', 'Server');
+    const result = filterEmployees(employees, '', 'all', 'Server');
     expect(result).not.toContainEqual(employees[3]);
   });
 
   it('includes employees with null position when role is "all"', () => {
-    const result = filterEmployees(employees, '', 'all');
+    const result = filterEmployees(employees, '', 'all', 'all');
     expect(result).toContainEqual(employees[3]);
+  });
+
+  it('filters by area', () => {
+    const result = filterEmployees(employees, '', 'Front of House', 'all');
+    expect(result).toEqual([employees[0]]);
+  });
+
+  it('combines area and role filter (AND logic)', () => {
+    const result = filterEmployees(employees, '', 'Front of House', 'Server');
+    expect(result).toEqual([employees[0]]);
+  });
+
+  it('returns empty when area and role have no overlap', () => {
+    const result = filterEmployees(employees, '', 'Back of House', 'Server');
+    expect(result).toEqual([]);
+  });
+
+  it('includes employees with undefined area when area filter is "all"', () => {
+    const result = filterEmployees(employees, '', 'all', 'all');
+    expect(result).toContainEqual(employees[3]);
+  });
+
+  it('excludes employees with undefined area when filtering by specific area', () => {
+    const result = filterEmployees(employees, '', 'Front of House', 'all');
+    expect(result).not.toContainEqual(employees[3]);
+  });
+
+  it('combines search, area, and role filter', () => {
+    const result = filterEmployees(employees, 'alice', 'Front of House', 'Server');
+    expect(result).toEqual([employees[0]]);
   });
 });
 

@@ -78,7 +78,7 @@ test.describe('Employee Help Video Cards', () => {
     await expect(page.getByText('Viewing Your Schedule')).toBeVisible({ timeout: 10000 });
 
     // === VERIFY: Video elements are rendered (cards are expanded) ===
-    const videoPlayers = page.locator('[data-testid="help-video-player"]');
+    const videoPlayers = page.locator('video');
     await expect(videoPlayers.first()).toBeVisible({ timeout: 5000 });
 
     // === ACTION: Dismiss the welcome card ===
@@ -102,9 +102,6 @@ test.describe('Employee Help Video Cards', () => {
     await page.reload();
     await page.waitForLoadState('networkidle');
     await expect(page).toHaveURL(/\/employee\/schedule/, { timeout: 10000 });
-
-    // Wait for the page content to load
-    await page.waitForTimeout(1000);
 
     // === VERIFY: After reload, welcome card remains collapsed (persisted in localStorage) ===
     // The welcome card should render as the collapsed pill button, not the expanded card with video

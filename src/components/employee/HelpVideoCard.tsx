@@ -69,12 +69,12 @@ export function HelpVideoCard({ videoKey, videoUrl, title, description, duration
           </button>
         </div>
         <video
-          data-testid="help-video-player"
           src={videoUrl}
           controls
           playsInline
           preload="metadata"
-          className="w-full rounded-lg bg-black"
+          aria-label={title}
+          className="w-full rounded-lg bg-foreground"
         />
       </div>
     </div>

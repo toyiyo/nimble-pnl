@@ -292,7 +292,8 @@ SELECT policies_are(
         'Deny anonymous access to employees',
         'Users can view employees for their restaurants',
         'Owners and managers can manage employees',
-        'Employees can view their own record'
+        'Employees can view their own record',
+        'Team members can view coworkers in their restaurant'
     ],
     'employees table should have view and management policies'
 );

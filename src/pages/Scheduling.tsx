@@ -44,7 +44,9 @@ import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
+import { computeOpenSpots } from '@/lib/openShiftHelpers';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -354,6 +356,7 @@ const Scheduling = () => {
   // Fetch ALL employees (including inactive) to show historical shifts
   const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { templates } = useShiftTemplates(restaurantId);
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const deleteShift = useDeleteShift();
   const deleteShiftSeries = useDeleteShiftSeries();
@@ -466,6 +469,31 @@ const Scheduling = () => {
     .reduce((sum, shift) => sum + calculateShiftHours(shift), 0);
 
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
+
+  const openShiftCount = useMemo(() => {
+    if (!templates.length || shifts === undefined) return 0;
+
+    // Format weekDays as YYYY-MM-DD strings for templateAppliesToDay
+    const weekDayStrings = weekDays.map(d => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    });
+
+    // Build the grid to count assigned shifts per template/day
+    const gridData = buildTemplateGridData(shifts, templates, weekDayStrings);
+
+    let total = 0;
+    for (const template of templates) {
+      for (const dayStr of weekDayStrings) {
+        if (!templateAppliesToDay(template, dayStr)) continue;
+        const assigned = gridData.get(template.id)?.get(dayStr)?.length ?? 0;
+        total += computeOpenSpots(template.capacity, assigned);
+      }
+    }
+    return total;
+  }, [templates, shifts, weekDays]);
 
   // Grouped employees for rendering
   const employeeGroups = useMemo(
@@ -1797,6 +1825,7 @@ const Scheduling = () => {
         shiftCount={shifts.length}
         employeeCount={scheduledEmployeeCount}
         totalHours={totalScheduledHours}
+        openShiftCount={openShiftCount}
         onConfirm={handlePublishSchedule}
         isPublishing={publishSchedule.isPending}
       />

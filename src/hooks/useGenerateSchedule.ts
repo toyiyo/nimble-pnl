@@ -20,18 +20,20 @@ interface GeneratedShift {
   position: string;
 }
 
-interface GenerateScheduleResponse {
+export interface GenerateScheduleMetadata {
+  estimated_cost: number;
+  budget_variance_pct: number;
+  notes: string;
+  model_used: string;
+  total_generated: number;
+  total_valid: number;
+  total_dropped: number;
+  dropped_reasons: string[];
+}
+
+export interface GenerateScheduleResponse {
   shifts: GeneratedShift[];
-  metadata: {
-    estimated_cost: number;
-    budget_variance_pct: number;
-    notes: string;
-    model_used: string;
-    total_generated: number;
-    total_valid: number;
-    total_dropped: number;
-    dropped_reasons: string[];
-  };
+  metadata: GenerateScheduleMetadata;
 }
 
 export function useGenerateSchedule() {
@@ -56,7 +58,7 @@ export function useGenerateSchedule() {
       const response = data as GenerateScheduleResponse;
 
       if (response.shifts.length === 0) {
-        throw new Error('AI generated no valid shifts. Check templates and availability.');
+        return response;
       }
 
       // 2. Batch-insert shifts using restaurant timezone for correct UTC conversion
@@ -91,6 +93,8 @@ export function useGenerateSchedule() {
       return response;
     },
     onSuccess: (data, variables) => {
+      if (data.shifts.length === 0) return;
+
       queryClient.invalidateQueries({ queryKey: ['shifts', variables.restaurantId] });
 
       let description = `${data.shifts.length} shifts created — review and publish when ready.`;

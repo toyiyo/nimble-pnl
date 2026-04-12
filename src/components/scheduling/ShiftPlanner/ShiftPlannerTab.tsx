@@ -34,6 +34,8 @@ import { PlannerExportDialog } from './PlannerExportDialog';
 import { AvailabilityConflictDialog } from './AvailabilityConflictDialog';
 import type { ConflictDialogData } from './AvailabilityConflictDialog';
 import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
+import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
+import { useEmployeeAvailability } from '@/hooks/useAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 
 interface ShiftPlannerTabProps {
@@ -74,6 +76,8 @@ export function ShiftPlannerTab({
     deleteTemplate,
   } = useShiftTemplates(restaurantId);
 
+  const { availability } = useEmployeeAvailability(restaurantId);
+
   // Compute template grid data
   const templateGridData = useMemo(
     () => buildTemplateGridData(shifts, templates, weekDays),
@@ -85,6 +89,8 @@ export function ShiftPlannerTab({
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [generationResult, setGenerationResult] = useState<GenerateScheduleResponse | null>(null);
+  const [generationError, setGenerationError] = useState<Error | null>(null);
   const generateSchedule = useGenerateSchedule();
 
   const { toast } = useToast();
@@ -330,7 +336,9 @@ export function ShiftPlannerTab({
 
   const handleGenerate = useCallback((excludedEmployeeIds: string[], lockedShiftIds: string[]) => {
     if (!restaurantId) return;
-    const weekStartStr = weekDays[0]; // Already a YYYY-MM-DD string
+    const weekStartStr = weekDays[0];
+    setGenerationResult(null);
+    setGenerationError(null);
     generateSchedule.mutate(
       {
         restaurantId,
@@ -340,10 +348,35 @@ export function ShiftPlannerTab({
         excludedEmployeeIds,
       },
       {
-        onSuccess: () => setGenerateDialogOpen(false),
+        onSuccess: (data) => {
+          if (data.shifts.length > 0) {
+            // Clear state and close — don't leave stale results for next open
+            setGenerationResult(null);
+            setGenerationError(null);
+            setGenerateDialogOpen(false);
+          } else {
+            setGenerationResult(data);
+          }
+        },
+        onError: (error) => {
+          setGenerationError(error);
+        },
       },
     );
   }, [restaurantId, restaurantTimezone, weekDays, generateSchedule]);
+
+  const handleGenerateDialogChange = useCallback((open: boolean) => {
+    setGenerateDialogOpen(open);
+    if (!open) {
+      setGenerationResult(null);
+      setGenerationError(null);
+    }
+  }, []);
+
+  const handleGenerateRetry = useCallback(() => {
+    setGenerationResult(null);
+    setGenerationError(null);
+  }, []);
 
   // Loading state
   if (isLoading || templatesLoading) {
@@ -582,13 +615,18 @@ export function ShiftPlannerTab({
       {/* Generate schedule with AI dialog */}
       <GenerateScheduleDialog
         open={generateDialogOpen}
-        onOpenChange={setGenerateDialogOpen}
+        onOpenChange={handleGenerateDialogChange}
         employees={employees ?? []}
+        templates={templates}
+        availability={availability}
         existingShifts={shifts}
         weekStart={weekStart}
         weekEnd={weekEnd}
         isGenerating={generateSchedule.isPending}
+        generationResult={generationResult}
+        generationError={generationError}
         onGenerate={handleGenerate}
+        onRetry={handleGenerateRetry}
       />
 
     </div>

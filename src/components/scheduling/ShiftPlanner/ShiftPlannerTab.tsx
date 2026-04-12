@@ -349,9 +349,13 @@ export function ShiftPlannerTab({
       },
       {
         onSuccess: (data) => {
-          setGenerationResult(data);
           if (data.shifts.length > 0) {
+            // Clear state and close — don't leave stale results for next open
+            setGenerationResult(null);
+            setGenerationError(null);
             setGenerateDialogOpen(false);
+          } else {
+            setGenerationResult(data);
           }
         },
         onError: (error) => {

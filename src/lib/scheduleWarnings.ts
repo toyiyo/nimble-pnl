@@ -51,6 +51,7 @@ export function computeScheduleWarnings(
 ): ScheduleWarning[] {
   const warnings: ScheduleWarning[] = [];
   const activeTemplates = templates.filter((t) => t.is_active);
+  const templatePositionsLower = new Set(activeTemplates.map((t) => t.position.toLowerCase()));
 
   for (const emp of employees) {
     const empAvail = availability.filter(
@@ -79,11 +80,12 @@ export function computeScheduleWarnings(
       });
     }
 
-    // 3. position_mismatch — skip time overlap if triggered
+    // 3. position_mismatch — skip time overlap if triggered (case-insensitive to match server validator)
+    const empPositionLower = emp.position.toLowerCase();
     const matchingTemplates = activeTemplates.filter(
-      (t) => t.position === emp.position,
+      (t) => t.position.toLowerCase() === empPositionLower,
     );
-    if (matchingTemplates.length === 0) {
+    if (!templatePositionsLower.has(empPositionLower)) {
       warnings.push({
         type: 'position_mismatch',
         employeeId: emp.id,

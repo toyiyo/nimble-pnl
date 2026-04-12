@@ -1,17 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeScheduleWarnings,
-  ScheduleWarning,
+  type ScheduleWarning,
+  type Employee,
 } from '@/lib/scheduleWarnings';
 import type { ShiftTemplate, EmployeeAvailability } from '@/types/scheduling';
 
 // --- Factory helpers ---
-
-interface Employee {
-  id: string;
-  name: string;
-  position: string;
-}
 
 let idCounter = 0;
 function uid(): string {

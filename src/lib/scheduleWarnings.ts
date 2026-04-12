@@ -14,6 +14,7 @@ export interface ScheduleWarning {
 }
 
 const MINUTES_PER_DAY = 24 * 60;
+const MIN_DAYS_THRESHOLD = 3;
 
 /** Convert "HH:MM:SS" to total minutes from midnight. */
 function toMinutes(time: string): number {
@@ -69,7 +70,7 @@ export function computeScheduleWarnings(
 
     // 2. limited_availability
     const availableDays = new Set(empAvail.map((a) => a.day_of_week));
-    if (availableDays.size < 3) {
+    if (availableDays.size < MIN_DAYS_THRESHOLD) {
       warnings.push({
         type: 'limited_availability',
         employeeId: emp.id,

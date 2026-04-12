@@ -402,8 +402,6 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
 
     // Send push notifications to the relevant employees based on action
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const pushUserIds: string[] = [];
 
     if (action === 'created') {
@@ -426,7 +424,7 @@ const handler = async (req: Request): Promise<Response> => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceRoleKey}`,
+            'Authorization': `Bearer ${supabaseServiceKey}`,
           },
           body: JSON.stringify({
             user_id: userId,
@@ -438,10 +436,7 @@ const handler = async (req: Request): Promise<Response> => {
       } catch (e) {
         console.error('Push notification failed:', e);
       }
-    }
 
-    // Send web push notifications to the same users
-    for (const userId of [...new Set(pushUserIds)]) {
       try {
         await sendWebPushToUser(supabase, userId, trade.restaurant_id, {
           title: 'Shift Trade Update',

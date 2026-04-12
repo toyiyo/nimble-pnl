@@ -10,6 +10,7 @@ export interface ScheduleEmployee {
   id: string;
   name: string;
   position: string;
+  area: string | null;
   hourly_rate: number; // cents
 }
 
@@ -20,6 +21,7 @@ export interface ScheduleTemplate {
   start_time: string;
   end_time: string;
   position: string;
+  area: string | null;
 }
 
 export interface AvailabilityDay {
@@ -68,13 +70,14 @@ const SYSTEM_PROMPT = `You are a restaurant schedule optimizer. Your job is to c
 RULES:
 1. ONLY use the provided shift templates as shift blocks — do not invent custom time ranges.
 2. ONLY assign employees to templates matching their position.
-3. ONLY assign employees on days/times they are available.
-4. Do NOT assign any employee more than once in the same time slot (no double-booking).
-5. Do NOT modify or reassign any locked shifts — they are fixed.
-6. Weight staffing toward peak sales hours — more staff during lunch/dinner rushes.
-7. If staffing settings specify minimum crew per position, meet those minimums when possible.
-8. If no staffing settings exist, use prior schedule patterns to infer typical staffing levels.
-9. Try to stay within the weekly labor budget target. If adequate coverage requires exceeding it, note the variance.
+3. When a template has an area set, PREFER assigning employees from the same area. Only assign employees from a different area to that template if no same-area employees are available for that time slot. This is a soft preference — cross-area assignments are allowed as a fallback.
+4. ONLY assign employees on days/times they are available.
+5. Do NOT assign any employee more than once in the same time slot (no double-booking).
+6. Do NOT modify or reassign any locked shifts — they are fixed.
+7. Weight staffing toward peak sales hours — more staff during lunch/dinner rushes.
+8. If staffing settings specify minimum crew per position, meet those minimums when possible.
+9. If no staffing settings exist, use prior schedule patterns to infer typical staffing levels.
+10. Try to stay within the weekly labor budget target. If adequate coverage requires exceeding it, note the variance.
 
 Return valid JSON only, matching the provided schema exactly.`;
 
@@ -130,6 +133,7 @@ function buildUserPrompt(ctx: ScheduleContext): string {
     id: e.id,
     name: e.name,
     position: e.position,
+    area: e.area ?? 'unassigned',
     hourly_rate_dollars: (e.hourly_rate / 100).toFixed(2),
   }));
   sections.push(`## Available Employees\n${JSON.stringify(employeesForPrompt, null, 2)}`);
@@ -137,7 +141,8 @@ function buildUserPrompt(ctx: ScheduleContext): string {
   // Shift templates
   const templatesSection = ctx.templates.map((t) => {
     const dayNames = t.days.map((d) => DAY_NAMES[d]).join(', ');
-    return `- [${t.id}] "${t.name}" | position: ${t.position} | ${t.start_time}–${t.end_time} | active days: ${dayNames}`;
+    const areaStr = t.area ? ` | area: ${t.area}` : '';
+    return `- [${t.id}] "${t.name}" | position: ${t.position}${areaStr} | ${t.start_time}–${t.end_time} | active days: ${dayNames}`;
   });
   sections.push(`## Shift Templates\n${templatesSection.join('\n')}`);
 

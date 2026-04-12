@@ -5756,6 +5756,7 @@ export type Database = {
       shift_templates: {
         Row: {
           break_duration: number
+          capacity: number
           created_at: string | null
           days: number[]
           end_time: string
@@ -5769,6 +5770,7 @@ export type Database = {
         }
         Insert: {
           break_duration?: number
+          capacity?: number
           created_at?: string | null
           days?: number[]
           end_time: string
@@ -5782,6 +5784,7 @@ export type Database = {
         }
         Update: {
           break_duration?: number
+          capacity?: number
           created_at?: string | null
           days?: number[]
           end_time?: string

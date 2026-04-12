@@ -24,6 +24,12 @@ import {
   useRejectShiftTrade,
   ShiftTrade,
 } from '@/hooks/useShiftTrades';
+import {
+  useOpenShiftClaims,
+  useApproveClaimMutation,
+  useRejectClaimMutation,
+  OpenShiftClaimWithJoins,
+} from '@/hooks/useOpenShiftClaims';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -41,10 +47,35 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 type ActionType = 'approve' | 'reject' | null;
 
+function renderClaimButtonContent(action: ActionType, isPending: boolean) {
+  if (isPending) {
+    return (
+      <>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Processing...
+      </>
+    );
+  }
+  if (action === 'approve') {
+    return (
+      <>
+        <CheckCircle className="mr-2 h-4 w-4" />
+        Approve
+      </>
+    );
+  }
+  return (
+    <>
+      <XCircle className="mr-2 h-4 w-4" />
+      Reject
+    </>
+  );
+}
+
 export const TradeApprovalQueue = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  
+
   // Fetch both pending_approval and open trades
   const { trades: pendingTrades, loading: pendingLoading } = useShiftTrades(
     restaurantId,
@@ -56,16 +87,27 @@ export const TradeApprovalQueue = () => {
     'open',
     null
   );
-  
+
+  // Fetch open shift claims
+  const { claims: allClaims, loading: claimsLoading } = useOpenShiftClaims(restaurantId);
+  const pendingClaims = allClaims.filter((c) => c.status === 'pending_approval');
+
   const { mutate: approveTrade, isPending: isApproving } = useApproveShiftTrade();
   const { mutate: rejectTrade, isPending: isRejecting } = useRejectShiftTrade();
+  const { mutate: approveClaim, isPending: isApprovingClaim } = useApproveClaimMutation();
+  const { mutate: rejectClaim, isPending: isRejectingClaim } = useRejectClaimMutation();
 
   const [selectedTrade, setSelectedTrade] = useState<ShiftTrade | null>(null);
   const [actionType, setActionType] = useState<ActionType>(null);
   const [managerNote, setManagerNote] = useState('');
   const [openSectionExpanded, setOpenSectionExpanded] = useState(true);
 
-  const loading = pendingLoading || openLoading;
+  // Claim dialog state
+  const [selectedClaim, setSelectedClaim] = useState<OpenShiftClaimWithJoins | null>(null);
+  const [claimActionType, setClaimActionType] = useState<ActionType>(null);
+  const [claimNote, setClaimNote] = useState('');
+
+  const loading = pendingLoading || openLoading || claimsLoading;
 
   const handleAction = (trade: ShiftTrade, action: 'approve' | 'reject') => {
     setSelectedTrade(trade);
@@ -114,6 +156,40 @@ export const TradeApprovalQueue = () => {
     setManagerNote('');
   };
 
+  const handleClaimAction = (claim: OpenShiftClaimWithJoins, action: 'approve' | 'reject') => {
+    setSelectedClaim(claim);
+    setClaimActionType(action);
+    setClaimNote('');
+  };
+
+  const handleClaimConfirm = () => {
+    if (!selectedClaim || !claimActionType) return;
+    const payload = { claimId: selectedClaim.id, note: claimNote || undefined };
+    if (claimActionType === 'approve') {
+      approveClaim(payload, {
+        onSuccess: () => {
+          setSelectedClaim(null);
+          setClaimActionType(null);
+          setClaimNote('');
+        },
+      });
+    } else {
+      rejectClaim(payload, {
+        onSuccess: () => {
+          setSelectedClaim(null);
+          setClaimActionType(null);
+          setClaimNote('');
+        },
+      });
+    }
+  };
+
+  const handleClaimCancel = () => {
+    setSelectedClaim(null);
+    setClaimActionType(null);
+    setClaimNote('');
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -126,9 +202,46 @@ export const TradeApprovalQueue = () => {
   const hasPendingTrades = pendingTrades.length > 0;
   const hasOpenTrades = openTrades.length > 0;
   const hasNoTrades = !hasPendingTrades && !hasOpenTrades;
+  const hasPendingClaims = pendingClaims.length > 0;
 
   return (
     <div className="space-y-6">
+      {/* Pending Shift Claims Section */}
+      {hasPendingClaims && (
+        <>
+          <Card className="border-green-200 bg-gradient-to-br from-green-50 via-emerald-50 to-transparent dark:border-green-800 dark:from-green-950/20 dark:via-emerald-950/20">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-2xl text-green-900 dark:text-green-100">
+                      Pending Shift Claims
+                    </CardTitle>
+                    <Badge className="bg-green-500">{pendingClaims.length}</Badge>
+                  </div>
+                  <CardDescription className="text-green-700 dark:text-green-300">
+                    Employees requesting to claim open shifts
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <div className="space-y-4">
+            {pendingClaims.map((claim) => (
+              <ClaimRequestCard
+                key={claim.id}
+                claim={claim}
+                onApprove={() => handleClaimAction(claim, 'approve')}
+                onReject={() => handleClaimAction(claim, 'reject')}
+                disabled={isApprovingClaim || isRejectingClaim}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {/* Pending Approval Section */}
       <Card className="border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50 to-transparent dark:border-amber-800 dark:from-amber-950/20 dark:via-orange-950/20">
         <CardHeader>
@@ -218,7 +331,110 @@ export const TradeApprovalQueue = () => {
         </Card>
       </Collapsible>
 
-      {/* Approval/Rejection Dialog */}
+      {/* Claim Approval/Rejection Dialog */}
+      <Dialog open={!!selectedClaim && !!claimActionType} onOpenChange={(open) => !open && handleClaimCancel()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {claimActionType === 'approve' ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  Approve Shift Claim
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-5 w-5 text-red-600" />
+                  Reject Shift Claim
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {claimActionType === 'approve'
+                ? 'This will assign the shift to the claiming employee.'
+                : 'This will decline the claim request.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedClaim && (
+            <div className="space-y-4">
+              {/* Claim Summary */}
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <h4 className="mb-3 text-sm font-semibold text-muted-foreground">Claim Summary</h4>
+                <div className="space-y-1 text-sm">
+                  <p>
+                    <span className="font-medium">Employee:</span>{' '}
+                    {selectedClaim.employee?.name ?? 'Unknown'}
+                  </p>
+                  <p>
+                    <span className="font-medium">Shift:</span>{' '}
+                    {selectedClaim.shift_template?.name ?? 'Unknown'}
+                  </p>
+                  <p>
+                    <span className="font-medium">Date:</span>{' '}
+                    {format(new Date(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}
+                  </p>
+                  {selectedClaim.shift_template && (
+                    <p>
+                      <span className="font-medium">Time:</span>{' '}
+                      {selectedClaim.shift_template.start_time} – {selectedClaim.shift_template.end_time}
+                    </p>
+                  )}
+                  <p>
+                    <span className="font-medium">Position:</span>{' '}
+                    {selectedClaim.shift_template?.position ?? selectedClaim.employee?.position ?? '—'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Manager Note */}
+              <div className="space-y-2">
+                <Label htmlFor="claim-manager-note" className="text-sm font-medium">
+                  Add Note{' '}
+                  <span className="text-muted-foreground">
+                    ({claimActionType === 'reject' ? 'Recommended' : 'Optional'})
+                  </span>
+                </Label>
+                <Textarea
+                  id="claim-manager-note"
+                  placeholder={
+                    claimActionType === 'approve'
+                      ? 'Optional note about this approval...'
+                      : 'Explain why this claim is being rejected...'
+                  }
+                  value={claimNote}
+                  onChange={(e) => setClaimNote(e.target.value)}
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+
+              {claimActionType === 'approve' && (
+                <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400" />
+                  <p className="text-xs text-green-700 dark:text-green-300">
+                    The employee will be notified of your decision.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleClaimCancel} disabled={isApprovingClaim || isRejectingClaim}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleClaimConfirm}
+              disabled={isApprovingClaim || isRejectingClaim}
+              variant={claimActionType === 'approve' ? 'default' : 'destructive'}
+            >
+              {renderClaimButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trade Approval/Rejection Dialog */}
       <Dialog open={!!selectedTrade && !!actionType} onOpenChange={(open) => !open && handleCancel()}>
         <DialogContent>
           <DialogHeader>
@@ -444,6 +660,84 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
             Reject
           </Button>
           <Button onClick={onApprove} disabled={disabled} className="flex-1">
+            <CheckCircle className="mr-2 h-4 w-4" />
+            Approve
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// Claim Request Card
+interface ClaimRequestCardProps {
+  claim: OpenShiftClaimWithJoins;
+  onApprove: () => void;
+  onReject: () => void;
+  disabled: boolean;
+}
+
+const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequestCardProps) => {
+  const shiftDate = new Date(claim.shift_date);
+
+  return (
+    <Card data-testid="pending-claim" className="border-green-200 dark:border-green-800">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="text-lg">
+              {claim.shift_template?.position ?? '—'}
+            </CardTitle>
+            <CardDescription className="mt-1">
+              {format(shiftDate, 'EEEE, MMMM d, yyyy')}
+            </CardDescription>
+          </div>
+          <Badge className="bg-green-500">Claim</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Time */}
+        {claim.shift_template && (
+          <div className="flex items-center gap-2 text-sm">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <span>
+              {claim.shift_template.start_time} – {claim.shift_template.end_time}
+            </span>
+          </div>
+        )}
+
+        {/* Employee info */}
+        <div className="rounded-lg bg-muted/50 p-3 text-sm">
+          <p className="text-xs text-muted-foreground mb-1">Requesting employee</p>
+          <p className="font-medium">{claim.employee?.name ?? 'Unknown'}</p>
+          {claim.employee?.position && (
+            <p className="text-xs text-muted-foreground">{claim.employee.position}</p>
+          )}
+        </div>
+
+        {/* Shift name */}
+        {claim.shift_template?.name && (
+          <div className="flex items-start gap-2 rounded-md bg-green-50 p-3 dark:bg-green-950/20">
+            <FileText className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400" />
+            <div className="flex-1">
+              <p className="text-xs font-medium text-green-900 dark:text-green-100">Shift Template:</p>
+              <p className="mt-1 text-sm text-green-700 dark:text-green-300">{claim.shift_template.name}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          <Button
+            onClick={onReject}
+            disabled={disabled}
+            variant="outline"
+            className="flex-1 border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20"
+          >
+            <XCircle className="mr-2 h-4 w-4" />
+            Reject
+          </Button>
+          <Button onClick={onApprove} disabled={disabled} className="flex-1 bg-green-600 hover:bg-green-700">
             <CheckCircle className="mr-2 h-4 w-4" />
             Approve
           </Button>

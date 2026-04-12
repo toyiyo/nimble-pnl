@@ -279,6 +279,8 @@ export interface StaffingSettings {
   lookback_weeks: number;
   manual_projections: ManualProjections | null;
   min_crew: MinCrew | null;
+  open_shifts_enabled: boolean;
+  require_shift_claim_approval: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -336,4 +338,32 @@ export interface ApplyTemplateResult {
   inserted_count: number;
   skipped_count: number;
   deleted_count: number;
+}
+
+export interface OpenShiftClaim {
+  id: string;
+  restaurant_id: string;
+  shift_template_id: string;
+  shift_date: string;
+  claimed_by_employee_id: string;
+  status: 'pending_approval' | 'approved' | 'rejected' | 'cancelled';
+  resulting_shift_id: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OpenShift {
+  template_id: string;
+  template_name: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  position: string;
+  area: string | null;
+  capacity: number;
+  assigned_count: number;
+  pending_claims: number;
+  open_spots: number;
 }

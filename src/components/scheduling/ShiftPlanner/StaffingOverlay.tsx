@@ -205,6 +205,15 @@ export function StaffingOverlay({
     setLocalSettings((prev) => ({ ...(prev ?? {}), ...updates }));
   }, []);
 
+  const handleImmediateSettingsChange = useCallback(async (updates: Record<string, unknown>) => {
+    try {
+      await updateSettings(updates);
+      toast({ title: 'Setting saved' });
+    } catch {
+      toast({ title: 'Failed to save setting', variant: 'destructive' });
+    }
+  }, [updateSettings, toast]);
+
   const handleSaveDefaults = useCallback(async () => {
     if (!localSettings) return;
     try {
@@ -272,6 +281,7 @@ export function StaffingOverlay({
               <StaffingConfigPanel
                 settings={activeSettings}
                 onSettingsChange={handleSettingsChange}
+                onImmediateSettingsChange={handleImmediateSettingsChange}
                 onSaveDefaults={handleSaveDefaults}
                 isSaving={isSaving}
                 employeePositions={employeePositions}

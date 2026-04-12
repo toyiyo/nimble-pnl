@@ -81,7 +81,7 @@ test.describe('AI Schedule Generation', () => {
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
     // "Employees" section header should be visible inside the dialog
-    await expect(dialog.getByText('Employees')).toBeVisible();
+    await expect(dialog.getByText('Employees', { exact: true })).toBeVisible();
 
     // Generate button should be present (in dialog footer)
     // aria-label is "Generate schedule with AI"

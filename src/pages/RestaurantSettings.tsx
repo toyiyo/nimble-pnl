@@ -1249,6 +1249,68 @@ export default function RestaurantSettings() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Open Shift Claiming */}
+                    <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                        <h3 className="text-[13px] font-semibold text-foreground">Open Shift Claiming</h3>
+                        <p className="text-[13px] text-muted-foreground mt-0.5">
+                          Let employees pick up unfilled shifts on their own
+                        </p>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="text-[14px] font-medium text-foreground">
+                              Allow employees to claim open shifts
+                            </div>
+                            <p className="text-[13px] text-muted-foreground mt-0.5">
+                              When enabled, employees can see and claim unfilled shifts after you publish the schedule.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={!!staffDefaults.open_shifts_enabled}
+                            onCheckedChange={async (checked) => {
+                              try {
+                                await saveStaffingSettings({ open_shifts_enabled: checked });
+                                toast({ title: checked ? 'Open shift claiming enabled' : 'Open shift claiming disabled' });
+                              } catch {
+                                toast({ title: 'Failed to save setting', variant: 'destructive' });
+                              }
+                            }}
+                            disabled={staffingSaving}
+                            className="data-[state=checked]:bg-foreground"
+                            aria-label="Allow employees to claim open shifts"
+                          />
+                        </div>
+                        {staffDefaults.open_shifts_enabled && (
+                          <div className="flex items-center justify-between gap-4 pl-4 border-l-2 border-border/40">
+                            <div className="min-w-0">
+                              <div className="text-[14px] font-medium text-foreground">
+                                Require manager approval
+                              </div>
+                              <p className="text-[13px] text-muted-foreground mt-0.5">
+                                When off, employees are instantly assigned. When on, claims go to your approval queue.
+                              </p>
+                            </div>
+                            <Switch
+                              checked={!!staffDefaults.require_shift_claim_approval}
+                              onCheckedChange={async (checked) => {
+                                try {
+                                  await saveStaffingSettings({ require_shift_claim_approval: checked });
+                                  toast({ title: 'Setting saved' });
+                                } catch {
+                                  toast({ title: 'Failed to save setting', variant: 'destructive' });
+                                }
+                              }}
+                              disabled={staffingSaving}
+                              className="data-[state=checked]:bg-foreground"
+                              aria-label="Require manager approval for shift claims"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </>
                 )}
               </CardContent>

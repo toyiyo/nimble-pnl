@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import * as dateFnsTz from 'date-fns-tz';
+import { utcTimeToLocalTime, localTimeToUtcTime } from '@/lib/availabilityTimeUtils';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -49,13 +49,16 @@ export const AvailabilityDialog = ({
   const createAvailability = useCreateAvailability();
   const updateAvailability = useUpdateAvailability();
 
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
   useEffect(() => {
     if (availability) {
       setEmployeeId(availability.employee_id);
       setDayOfWeek(availability.day_of_week);
       setIsAvailable(availability.is_available);
-      setStartTime(availability.start_time.substring(0, 5)); // HH:MM
-      setEndTime(availability.end_time.substring(0, 5)); // HH:MM
+      setStartTime(utcTimeToLocalTime(availability.start_time, restaurantTimezone));
+      setEndTime(utcTimeToLocalTime(availability.end_time, restaurantTimezone));
       setNotes(availability.notes || '');
     } else {
       setEmployeeId(defaultEmployeeId || '');
@@ -65,32 +68,19 @@ export const AvailabilityDialog = ({
       setEndTime('17:00');
       setNotes('');
     }
-  }, [availability, open, defaultEmployeeId, defaultDayOfWeek]);
-
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { fromZonedTime } = dateFnsTz;
+  }, [availability, open, defaultEmployeeId, defaultDayOfWeek, restaurantTimezone]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId) return;
-
-    // Convert local time (restaurant timezone) to UTC string (HH:MM:SS)
-    const toUTC = (time: string) => {
-      const today = new Date();
-      const dateStr = `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,'0')}-${today.getDate().toString().padStart(2,'0')}T${time}:00`;
-      const converter = fromZonedTime ?? ((value: string) => new Date(value));
-      const utcDate = converter(dateStr, restaurantTimezone);
-      return `${utcDate.getUTCHours().toString().padStart(2, '0')}:${utcDate.getUTCMinutes().toString().padStart(2, '0')}:${utcDate.getUTCSeconds().toString().padStart(2, '0')}`;
-    };
 
     const availabilityData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
       day_of_week: dayOfWeek,
       is_available: isAvailable,
-      start_time: toUTC(startTime),
-      end_time: toUTC(endTime),
+      start_time: localTimeToUtcTime(startTime, restaurantTimezone),
+      end_time: localTimeToUtcTime(endTime, restaurantTimezone),
       notes: notes || undefined,
     };
 

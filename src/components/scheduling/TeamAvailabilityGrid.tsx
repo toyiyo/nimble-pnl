@@ -7,7 +7,7 @@ import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useA
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
-import * as dateFnsTz from 'date-fns-tz';
+import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 
 // ─── Day column definitions (Mon–Sun order) ───────────────────────────────────
 
@@ -70,14 +70,6 @@ function formatSlotRange(start: string | null, end: string | null): string {
   return `${formatTimeShort(start)}–${formatTimeShort(end)}`;
 }
 
-function utcTimeToLocal(time: string, timezone: string): string {
-  const converter = dateFnsTz.toZonedTime ?? ((date: Date) => date);
-  const date = new Date(`1970-01-01T${time}Z`);
-  const zoned = converter(date, timezone);
-  const h = zoned.getHours();
-  const m = zoned.getMinutes();
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
-}
 
 function getInitials(name: string): string {
   return name
@@ -171,7 +163,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
   }
 
   // Convert UTC times to restaurant timezone for display
-  const localizeTime = (t: string | null) => (t ? utcTimeToLocal(t, timezone) : null);
+  const localizeTime = (t: string | null) => (t ? utcTimeToLocalTime(t, timezone) : null);
 
   // Build display for all slots (handles split shifts)
   const availableSlots = effective.slots.filter((s) => s.isAvailable);

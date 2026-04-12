@@ -308,7 +308,7 @@ export function ShiftPlannerTab({
     start_time: string;
     end_time: string;
     position: string;
-    area?: string;
+    area?: string | null;
     days: number[];
     break_duration: number;
     capacity: number;

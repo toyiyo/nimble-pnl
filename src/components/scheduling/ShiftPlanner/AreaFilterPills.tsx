@@ -23,7 +23,7 @@ export function AreaFilterPills({
   ];
 
   return (
-    <div className="flex items-center gap-2 px-1">
+    <div className="flex items-center gap-2 px-1" role="group" aria-label="Filter templates by area">
       <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
         Area
       </span>
@@ -31,6 +31,7 @@ export function AreaFilterPills({
         <button
           key={pill.label}
           type="button"
+          aria-pressed={selectedArea === pill.value}
           onClick={() => onSelect(pill.value)}
           className={cn(
             'px-3 py-1 rounded-lg text-[12px] font-medium transition-colors',

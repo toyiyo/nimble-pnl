@@ -28,7 +28,7 @@ interface TemplateFormDialogProps {
     start_time: string;
     end_time: string;
     position: string;
-    area?: string;
+    area?: string | null;
     days: number[];
     break_duration: number;
     capacity: number;
@@ -100,7 +100,7 @@ export function TemplateFormDialog({
         start_time: startTime,
         end_time: endTime,
         position: position.trim(),
-        area: area.trim() || undefined,
+        area: area.trim() || null,
         days,
         break_duration: breakDuration,
         capacity,
@@ -211,7 +211,7 @@ export function TemplateFormDialog({
 
           {/* Area (optional) */}
           <div className="space-y-1.5">
-            <Label htmlFor="area" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label id="template-area-label" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Area
             </Label>
             <AreaCombobox

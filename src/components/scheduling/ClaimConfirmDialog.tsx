@@ -5,7 +5,8 @@ import { Hand, Calendar, Clock, MapPin } from 'lucide-react';
 
 import type { OpenShift } from '@/types/scheduling';
 
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
+import { parseDateLocal } from '@/lib/dateUtils';
 
 interface ClaimConfirmDialogProps {
   open: boolean;
@@ -32,7 +33,7 @@ export function ClaimConfirmDialog({
 }: Readonly<ClaimConfirmDialogProps>) {
   if (!openShift) return null;
 
-  const dateLabel = format(parseISO(openShift.shift_date), 'EEEE, MMMM d');
+  const dateLabel = format(parseDateLocal(openShift.shift_date), 'EEEE, MMMM d');
   const timeLabel = `${formatCompactTime(openShift.start_time)} - ${formatCompactTime(openShift.end_time)}`;
 
   return (

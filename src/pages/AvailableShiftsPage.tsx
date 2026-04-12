@@ -367,7 +367,7 @@ export default function AvailableShiftsPage() {
                           openShift={item.openShift}
                           hasConflict={conflictMap.get(item.key) ?? false}
                           onClaim={handleClaim}
-                          isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id}
+                          isClaiming={claimMutation.isPending && claimTarget?.template_id === item.openShift.template_id && claimTarget?.shift_date === item.openShift.shift_date}
                         />
                       ) : item.type === 'trade' && item.trade ? (
                         <TradeCard

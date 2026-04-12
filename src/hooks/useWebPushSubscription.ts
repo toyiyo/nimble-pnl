@@ -3,8 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 const DISMISS_KEY = 'push_banner_dismissed_at';
+
+function getVapidPublicKey(): string | undefined {
+  return import.meta.env.VITE_VAPID_PUBLIC_KEY;
+}
 
 export function isWebPushSupported(): boolean {
   return (
@@ -76,7 +79,8 @@ export function useWebPushSubscription() {
   }, [isSupported]);
 
   const subscribe = useCallback(async () => {
-    if (!isSupported || !user || !restaurantId || !VAPID_PUBLIC_KEY) return;
+    const vapidKey = getVapidPublicKey();
+    if (!isSupported || !user || !restaurantId || !vapidKey) return;
 
     setIsLoading(true);
     try {
@@ -87,7 +91,7 @@ export function useWebPushSubscription() {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
 
       const json = subscription.toJSON();

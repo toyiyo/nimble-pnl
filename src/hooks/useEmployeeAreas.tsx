@@ -11,7 +11,7 @@ export const DEFAULT_AREAS = [
 /** Merge and deduplicate area arrays, sorted alphabetically */
 export function mergeAreas(employeeAreas: string[], templateAreas: string[]): string[] {
   const unique = new Set([...employeeAreas, ...templateAreas]);
-  return Array.from(unique).sort();
+  return Array.from(unique).sort((a, b) => a.localeCompare(b));
 }
 
 export const useEmployeeAreas = (restaurantId: string | null) => {

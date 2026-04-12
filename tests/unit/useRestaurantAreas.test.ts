@@ -15,6 +15,6 @@ describe('mergeAreas', () => {
 
   it('preserves different casings as separate entries', () => {
     const result = mergeAreas(['Kitchen'], ['kitchen', 'Bar']);
-    expect(result).toEqual(['Bar', 'Kitchen', 'kitchen']);
+    expect(result).toEqual(['Bar', 'kitchen', 'Kitchen']);
   });
 });

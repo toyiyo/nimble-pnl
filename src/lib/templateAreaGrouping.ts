@@ -50,5 +50,5 @@ export function getTemplateAreas(templates: ShiftTemplate[]): string[] {
   for (const t of templates) {
     if (t.area) areas.add(t.area);
   }
-  return Array.from(areas).sort();
+  return Array.from(areas).sort((a, b) => a.localeCompare(b));
 }

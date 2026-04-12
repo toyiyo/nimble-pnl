@@ -153,43 +153,39 @@ export function GenerateScheduleDialog({
     onOpenChange(nextOpen);
   }
 
-  // Header icon & title based on phase
-  const headerIcon = (() => {
-    if (phase === 'results') {
-      if (generationError) return <Info className="h-5 w-5 text-amber-500" />;
-      if (generationResult && generationResult.shifts.length > 0) return <CheckCircle2 className="h-5 w-5 text-green-500" />;
-      return <Info className="h-5 w-5 text-amber-500" />;
+  // Header varies by phase and result state
+  const hasShifts = generationResult && generationResult.shifts.length > 0;
+  const header = (() => {
+    if (phase !== 'results') {
+      return {
+        icon: <Sparkles className="h-5 w-5 text-violet-500" />,
+        iconBg: 'bg-violet-500/10',
+        title: 'Generate Schedule',
+        subtitle: `AI will create shifts for ${formatDateRange(weekStart, weekEnd)}`,
+      };
     }
-    return <Sparkles className="h-5 w-5 text-violet-500" />;
-  })();
-
-  const headerIconBg = (() => {
-    if (phase === 'results') {
-      if (generationError) return 'bg-amber-500/10';
-      if (generationResult && generationResult.shifts.length > 0) return 'bg-green-500/10';
-      return 'bg-amber-500/10';
+    if (generationError) {
+      return {
+        icon: <Info className="h-5 w-5 text-amber-500" />,
+        iconBg: 'bg-amber-500/10',
+        title: 'Something Went Wrong',
+        subtitle: 'The AI schedule generation failed',
+      };
     }
-    return 'bg-violet-500/10';
-  })();
-
-  const headerTitle = (() => {
-    if (phase === 'results') {
-      if (generationError) return 'Something Went Wrong';
-      if (generationResult && generationResult.shifts.length > 0) return 'Schedule Generated';
-      return 'No Shifts Scheduled';
+    if (hasShifts) {
+      return {
+        icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+        iconBg: 'bg-green-500/10',
+        title: 'Schedule Generated',
+        subtitle: `${generationResult.shifts.length} shifts for ${formatDateRange(weekStart, weekEnd)}`,
+      };
     }
-    return 'Generate Schedule';
-  })();
-
-  const headerSubtitle = (() => {
-    if (phase === 'results') {
-      if (generationError) return 'The AI schedule generation failed';
-      if (generationResult && generationResult.shifts.length > 0) {
-        return `${generationResult.shifts.length} shifts for ${formatDateRange(weekStart, weekEnd)}`;
-      }
-      return `No shifts could be created for ${formatDateRange(weekStart, weekEnd)}`;
-    }
-    return `AI will create shifts for ${formatDateRange(weekStart, weekEnd)}`;
+    return {
+      icon: <Info className="h-5 w-5 text-amber-500" />,
+      iconBg: 'bg-amber-500/10',
+      title: 'No Shifts Scheduled',
+      subtitle: `No shifts could be created for ${formatDateRange(weekStart, weekEnd)}`,
+    };
   })();
 
   return (
@@ -198,15 +194,15 @@ export function GenerateScheduleDialog({
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
-            <div className={`h-10 w-10 rounded-xl ${headerIconBg} flex items-center justify-center`}>
-              {headerIcon}
+            <div className={`h-10 w-10 rounded-xl ${header.iconBg} flex items-center justify-center`}>
+              {header.icon}
             </div>
             <div>
               <DialogTitle className="text-[17px] font-semibold text-foreground">
-                {headerTitle}
+                {header.title}
               </DialogTitle>
               <p className="text-[13px] text-muted-foreground mt-0.5">
-                {headerSubtitle}
+                {header.subtitle}
               </p>
             </div>
           </div>
@@ -340,7 +336,7 @@ export function GenerateScheduleDialog({
                   {generationError.message || 'An unexpected error occurred. Try again or build the schedule manually.'}
                 </p>
               </div>
-            ) : generationResult && generationResult.shifts.length > 0 ? (
+            ) : hasShifts ? (
               /* Success with shifts */
               <div className="space-y-4">
                 <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-4">
@@ -430,7 +426,7 @@ export function GenerateScheduleDialog({
 
         {phase === 'results' && (
           <div className="px-6 py-4 border-t border-border/40 flex justify-end gap-2">
-            {(generationError || (generationResult && generationResult.shifts.length === 0)) && (
+            {(generationError || (generationResult && !hasShifts)) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -447,7 +443,7 @@ export function GenerateScheduleDialog({
               onClick={() => handleOpenChange(false)}
               aria-label="Close generation results"
             >
-              {generationResult && generationResult.shifts.length > 0 ? 'Done' : 'Close'}
+              {hasShifts ? 'Done' : 'Close'}
             </Button>
           </div>
         )}

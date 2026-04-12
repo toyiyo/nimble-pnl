@@ -14,6 +14,8 @@ const DEFAULTS: Omit<StaffingSettings, 'id' | 'restaurant_id' | 'created_at' | '
   lookback_weeks: 4,
   manual_projections: null,
   min_crew: null,
+  open_shifts_enabled: false,
+  require_shift_claim_approval: false,
 };
 
 export function useStaffingSettings(restaurantId: string | null) {

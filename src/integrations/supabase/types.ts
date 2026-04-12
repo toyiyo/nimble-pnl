@@ -3616,6 +3616,91 @@ export type Database = {
           },
         ]
       }
+      open_shift_claims: {
+        Row: {
+          claimed_by_employee_id: string
+          created_at: string
+          id: string
+          restaurant_id: string
+          resulting_shift_id: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          shift_date: string
+          shift_template_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          claimed_by_employee_id: string
+          created_at?: string
+          id?: string
+          restaurant_id: string
+          resulting_shift_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shift_date: string
+          shift_template_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          claimed_by_employee_id?: string
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          resulting_shift_id?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shift_date?: string
+          shift_template_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "active_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
+            columns: ["claimed_by_employee_id"]
+            isOneToOne: false
+            referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_resulting_shift_id_fkey"
+            columns: ["resulting_shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_shift_claims_shift_template_id_fkey"
+            columns: ["shift_template_id"]
+            isOneToOne: false
+            referencedRelation: "shift_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ops_inbox_item: {
         Row: {
           created_at: string
@@ -5755,6 +5840,7 @@ export type Database = {
       }
       shift_templates: {
         Row: {
+          area: string | null
           break_duration: number
           capacity: number
           created_at: string | null
@@ -5769,6 +5855,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          area?: string | null
           break_duration?: number
           capacity?: number
           created_at?: string | null
@@ -5783,6 +5870,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          area?: string | null
           break_duration?: number
           capacity?: number
           created_at?: string | null
@@ -7050,6 +7138,8 @@ export type Database = {
           manual_projections: Json | null
           min_crew: Json | null
           min_staff: number
+          open_shifts_enabled: boolean
+          require_shift_claim_approval: boolean
           restaurant_id: string
           target_labor_pct: number
           target_splh: number
@@ -7063,6 +7153,8 @@ export type Database = {
           manual_projections?: Json | null
           min_crew?: Json | null
           min_staff?: number
+          open_shifts_enabled?: boolean
+          require_shift_claim_approval?: boolean
           restaurant_id: string
           target_labor_pct?: number
           target_splh?: number
@@ -7076,6 +7168,8 @@ export type Database = {
           manual_projections?: Json | null
           min_crew?: Json | null
           min_staff?: number
+          open_shifts_enabled?: boolean
+          require_shift_claim_approval?: boolean
           restaurant_id?: string
           target_labor_pct?: number
           target_splh?: number
@@ -9086,6 +9180,10 @@ export type Database = {
         }
         Returns: Json
       }
+      approve_open_shift_claim: {
+        Args: { p_claim_id: string; p_reviewer_note?: string }
+        Returns: Json
+      }
       approve_shift_trade: {
         Args: {
           p_manager_note?: string
@@ -9236,6 +9334,15 @@ export type Database = {
       claim_check_numbers_for_account: {
         Args: { p_account_id: string; p_count?: number }
         Returns: number
+      }
+      claim_open_shift: {
+        Args: {
+          p_employee_id: string
+          p_restaurant_id: string
+          p_shift_date: string
+          p_template_id: string
+        }
+        Returns: Json
       }
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
@@ -9569,6 +9676,26 @@ export type Database = {
           tips: number
         }[]
       }
+      get_open_shifts: {
+        Args: {
+          p_restaurant_id: string
+          p_week_end: string
+          p_week_start: string
+        }
+        Returns: {
+          area: string
+          assigned_count: number
+          capacity: number
+          end_time: string
+          open_spots: number
+          pending_claims: number
+          position: string
+          shift_date: string
+          start_time: string
+          template_id: string
+          template_name: string
+        }[]
+      }
       get_owner_restaurant_count: {
         Args: { p_user_id?: string }
         Returns: number
@@ -9842,6 +9969,10 @@ export type Database = {
       rebuild_account_balances: {
         Args: { p_restaurant_id: string }
         Returns: number
+      }
+      reject_open_shift_claim: {
+        Args: { p_claim_id: string; p_reviewer_note?: string }
+        Returns: Json
       }
       reject_shift_trade: {
         Args: {

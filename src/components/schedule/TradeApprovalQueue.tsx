@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
+import { parseDateLocal } from '@/lib/dateUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -371,7 +372,7 @@ export const TradeApprovalQueue = () => {
                   </p>
                   <p>
                     <span className="font-medium">Date:</span>{' '}
-                    {format(new Date(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}
+                    {format(parseDateLocal(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}
                   </p>
                   {selectedClaim.shift_template && (
                     <p>
@@ -678,7 +679,7 @@ interface ClaimRequestCardProps {
 }
 
 const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequestCardProps) => {
-  const shiftDate = new Date(claim.shift_date);
+  const shiftDate = parseDateLocal(claim.shift_date);
 
   return (
     <Card data-testid="pending-claim" className="border-green-200 dark:border-green-800">

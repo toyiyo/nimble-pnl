@@ -40,7 +40,8 @@ import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
 
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 
-import { format, parseISO, startOfWeek, addDays } from 'date-fns';
+import { format, startOfWeek, addDays } from 'date-fns';
+import { parseDateLocal } from '@/lib/dateUtils';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { cn } from '@/lib/utils';
 
@@ -416,7 +417,7 @@ export default function AvailableShiftsPage() {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-                      {format(parseISO(claim.shift_date), 'EEE, MMM d')}
+                      {format(parseDateLocal(claim.shift_date), 'EEE, MMM d')}
                     </span>
                     {(claim as any).shift_template && (
                       <span className="flex items-center gap-1">

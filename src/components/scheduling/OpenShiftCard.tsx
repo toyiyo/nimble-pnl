@@ -6,8 +6,9 @@ import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 
 import type { OpenShift } from '@/types/scheduling';
 
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { parseDateLocal } from '@/lib/dateUtils';
 import { formatCompactTime } from '@/lib/openShiftHelpers';
 
 interface OpenShiftCardProps {
@@ -23,7 +24,7 @@ export const OpenShiftCard = memo(function OpenShiftCard({
   onClaim,
   isClaiming,
 }: OpenShiftCardProps) {
-  const dateLabel = format(parseISO(openShift.shift_date), 'EEE, MMM d');
+  const dateLabel = format(parseDateLocal(openShift.shift_date), 'EEE, MMM d');
   const timeLabel = `${formatCompactTime(openShift.start_time)}-${formatCompactTime(openShift.end_time)}`;
   const spotsLabel = openShift.open_spots === 1 ? '1 spot left' : `${openShift.open_spots} spots left`;
 

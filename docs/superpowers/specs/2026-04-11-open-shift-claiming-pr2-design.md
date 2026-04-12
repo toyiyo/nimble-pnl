@@ -3,7 +3,7 @@
 **Date:** 2026-04-11
 **Status:** Draft
 **Parent spec:** `docs/superpowers/specs/2026-04-11-open-shift-claiming-design.md`
-**Depends on:** PR1 (merged — capacity column on shift_templates)
+**Depends on:** PR1 (merged — capacity column on shift_templates), area column on shift_templates (merged)
 
 ## Problem
 

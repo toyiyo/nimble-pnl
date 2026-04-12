@@ -95,7 +95,7 @@ Run `npx supabase migration new open_shift_claims` to get the timestamp, then wr
 4. RLS ENABLE + 5 policies (employees view own, managers view all, employees insert own, employees cancel own pending, managers review)
 5. `ALTER TABLE staffing_settings ADD COLUMN open_shifts_enabled BOOLEAN NOT NULL DEFAULT false`
 6. `ALTER TABLE staffing_settings ADD COLUMN require_shift_claim_approval BOOLEAN NOT NULL DEFAULT false`
-7. `CREATE OR REPLACE FUNCTION get_open_shifts(p_restaurant_id UUID, p_week_start DATE, p_week_end DATE)` — SECURITY DEFINER, returns open spots for published weeks only when feature enabled. Use the exact SQL from the design spec.
+7. `CREATE OR REPLACE FUNCTION get_open_shifts(p_restaurant_id UUID, p_week_start DATE, p_week_end DATE)` — SECURITY DEFINER, returns open spots for published weeks only when feature enabled. Use the SQL from the design spec but add `area TEXT` to the return columns (shift_templates now has an optional `area` column). Include `st.area` in the template_days CTE and return it in the final SELECT.
 8. `CREATE OR REPLACE FUNCTION claim_open_shift(p_restaurant_id UUID, p_template_id UUID, p_shift_date DATE, p_employee_id UUID)` — SECURITY DEFINER, atomic claim with capacity check, conflict check, approval mode. Use the exact SQL from the design spec. Note: the `source` column on shifts uses `source_type` in the DB (not `source`). Verify with `npx supabase db dump --local --schema public 2>&1 | grep -A 30 "CREATE TABLE.*public.shifts"` before writing the INSERT.
 9. `CREATE OR REPLACE FUNCTION approve_open_shift_claim(p_claim_id UUID, p_reviewer_note TEXT DEFAULT NULL)` — from spec
 10. `CREATE OR REPLACE FUNCTION reject_open_shift_claim(p_claim_id UUID, p_reviewer_note TEXT DEFAULT NULL)` — from spec
@@ -169,6 +169,7 @@ export interface OpenShift {
   start_time: string;
   end_time: string;
   position: string;
+  area: string | null;
   capacity: number;
   assigned_count: number;
   pending_claims: number;
@@ -414,6 +415,7 @@ const makeOpenShift = (overrides: Partial<OpenShift> = {}): OpenShift => ({
   start_time: '16:00:00',
   end_time: '22:00:00',
   position: 'Server',
+  area: null,
   capacity: 3,
   assigned_count: 1,
   pending_claims: 0,
@@ -615,7 +617,7 @@ interface OpenShiftCardProps {
 }
 ```
 
-Display: Green `OPEN SHIFT` badge, template name, date (formatted), time range, position, spots remaining ("2 spots left"), and a "Claim" button. When `hasConflict`, gray out the card and show "Schedule conflict" instead of the button.
+Display: Green `OPEN SHIFT` badge, template name, date (formatted), time range, position, area (if set), spots remaining ("2 spots left"), and a "Claim" button. When `hasConflict`, gray out the card and show "Schedule conflict" instead of the button.
 
 Follow CLAUDE.md card styling: `rounded-xl border border-border/40 bg-background`. Use `text-[14px]` for names, `text-[13px]` for details, `text-[11px]` for badges.
 

@@ -2,6 +2,7 @@ import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
+import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -436,6 +437,20 @@ const handler = async (req: Request): Promise<Response> => {
         });
       } catch (e) {
         console.error('Push notification failed:', e);
+      }
+    }
+
+    // Send web push notifications to the same users
+    for (const userId of [...new Set(pushUserIds)]) {
+      try {
+        await sendWebPushToUser(supabase, userId, trade.restaurant_id, {
+          title: 'Shift Trade Update',
+          body: content.subject(employeeName),
+          url: '/employee/shifts',
+          tag: `trade-${action}-${tradeId}`,
+        });
+      } catch (e) {
+        console.error('Web push failed:', e);
       }
     }
 

@@ -1867,7 +1867,7 @@ const Scheduling = () => {
         totalHours={totalScheduledHours}
         openShiftCount={openShiftCount}
         openShiftsEnabled={staffingSettings.open_shifts_enabled}
-        onNavigateToSettings={() => navigate('/settings?tab=staffing')}
+        onNavigateToSettings={() => navigate('/settings?tab=labor-planning')}
         onConfirm={handlePublishSchedule}
         isPublishing={publishSchedule.isPending}
       />

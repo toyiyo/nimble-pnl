@@ -24,6 +24,7 @@ interface StaffingConfigPanelProps {
     require_shift_claim_approval?: boolean;
   };
   onSettingsChange: (updates: Record<string, unknown>) => void;
+  onImmediateSettingsChange?: (updates: Record<string, unknown>) => void;
   onSaveDefaults: () => void;
   isSaving: boolean;
   employeePositions: string[];
@@ -49,6 +50,7 @@ function HelpTip({ text }: Readonly<{ text: string }>) {
 export const StaffingConfigPanel = memo(function StaffingConfigPanel({
   settings,
   onSettingsChange,
+  onImmediateSettingsChange,
   onSaveDefaults,
   isSaving,
   employeePositions,
@@ -278,7 +280,10 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
             </div>
             <Switch
               checked={!!settings.open_shifts_enabled}
-              onCheckedChange={(checked) => onSettingsChange({ open_shifts_enabled: checked })}
+              onCheckedChange={(checked) => {
+                onSettingsChange({ open_shifts_enabled: checked });
+                onImmediateSettingsChange?.({ open_shifts_enabled: checked });
+              }}
               disabled={isSaving}
               className="data-[state=checked]:bg-foreground"
               aria-label="Allow employees to claim open shifts"
@@ -296,7 +301,10 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
               </div>
               <Switch
                 checked={!!settings.require_shift_claim_approval}
-                onCheckedChange={(checked) => onSettingsChange({ require_shift_claim_approval: checked })}
+                onCheckedChange={(checked) => {
+                  onSettingsChange({ require_shift_claim_approval: checked });
+                  onImmediateSettingsChange?.({ require_shift_claim_approval: checked });
+                }}
                 disabled={isSaving}
                 className="data-[state=checked]:bg-foreground"
                 aria-label="Require manager approval for shift claims"

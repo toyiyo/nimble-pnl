@@ -28,6 +28,7 @@ interface PublishScheduleDialogProps {
   shiftCount: number;
   employeeCount: number;
   totalHours: number;
+  openShiftCount: number;
   onConfirm: (notes?: string) => void;
   isPublishing: boolean;
 }
@@ -40,6 +41,7 @@ export const PublishScheduleDialog = ({
   shiftCount,
   employeeCount,
   totalHours,
+  openShiftCount,
   onConfirm,
   isPublishing,
 }: PublishScheduleDialogProps) => {
@@ -96,6 +98,17 @@ export const PublishScheduleDialog = ({
               </div>
             </div>
           </div>
+
+          {/* Open Shifts Alert */}
+          {openShiftCount > 0 && (
+            <Alert className="border-amber-500/50 bg-amber-500/10">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-sm">
+                <strong>{openShiftCount} {openShiftCount === 1 ? 'shift' : 'shifts'} still {openShiftCount === 1 ? 'needs' : 'need'} staff.</strong>{' '}
+                You can fill these now or broadcast to your team later.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Warning Alert */}
           <Alert className="border-yellow-500/50 bg-yellow-500/10">

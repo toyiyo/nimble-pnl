@@ -40,11 +40,14 @@ export function localTimeToUtcTime(
   timezone: string,
   referenceDate: Date = new Date(),
 ): string {
+  const timeParts = localTime.split(':');
+  const normalizedTime = timeParts.length === 2 ? `${localTime}:00` : localTime;
+
   const refYear = referenceDate.getUTCFullYear();
   const refMonth = String(referenceDate.getUTCMonth() + 1).padStart(2, '0');
   const refDay = String(referenceDate.getUTCDate()).padStart(2, '0');
 
-  const dateStr = `${refYear}-${refMonth}-${refDay}T${localTime}:00`;
+  const dateStr = `${refYear}-${refMonth}-${refDay}T${normalizedTime}`;
   const utcDate = fromZonedTime(dateStr, timezone);
 
   const h = String(utcDate.getUTCHours()).padStart(2, '0');

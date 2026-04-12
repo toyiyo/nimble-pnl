@@ -163,7 +163,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
   }
 
   // Convert UTC times to restaurant timezone for display
-  const localizeTime = (t: string | null) => (t ? utcTimeToLocalTime(t, timezone) : null);
+  const localizeTime = (t: string | null) => (t ? utcTimeToLocalTime(t, timezone, date) : null);
 
   // Build display for all slots (handles split shifts)
   const availableSlots = effective.slots.filter((s) => s.isAvailable);

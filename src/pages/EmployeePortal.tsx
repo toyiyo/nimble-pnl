@@ -35,7 +35,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { formatTime } from '@/lib/utils';
 
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -146,9 +145,9 @@ const EmployeePortal = () => {
   }
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const formatTimeInRestaurantTz = (time: string | null | undefined) => {
+  const formatTimeInRestaurantTz = (time: string | null | undefined, referenceDate?: Date) => {
     if (!time) return '';
-    return utcTimeToLocalTime(time, restaurantTimezone);
+    return utcTimeToLocalTime(time, restaurantTimezone, referenceDate);
   };
 
   const renderTimeOffContent = () => {
@@ -356,7 +355,7 @@ const EmployeePortal = () => {
                   </Badge>
                     {exception.start_time && exception.end_time && (
                       <span className="text-sm text-muted-foreground">
-                        {formatTimeInRestaurantTz(exception.start_time)} - {formatTimeInRestaurantTz(exception.end_time)}
+                        {formatTimeInRestaurantTz(exception.start_time, new Date(exception.date))} - {formatTimeInRestaurantTz(exception.end_time, new Date(exception.date))}
                       </span>
                     )}
                 </div>

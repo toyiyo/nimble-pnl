@@ -52,11 +52,12 @@ export const AvailabilityExceptionDialog = ({
       setEmployeeId(exception.employee_id);
       setDate(new Date(exception.date));
       setIsAvailable(exception.is_available);
+      const exceptionDate = new Date(exception.date);
       if (exception.start_time) {
-        setStartTime(utcTimeToLocalTime(exception.start_time, restaurantTimezone));
+        setStartTime(utcTimeToLocalTime(exception.start_time, restaurantTimezone, exceptionDate));
       }
       if (exception.end_time) {
-        setEndTime(utcTimeToLocalTime(exception.end_time, restaurantTimezone));
+        setEndTime(utcTimeToLocalTime(exception.end_time, restaurantTimezone, exceptionDate));
       }
       setReason(exception.reason || '');
     } else {

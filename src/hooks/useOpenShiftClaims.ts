@@ -3,13 +3,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { OpenShiftClaim } from '@/types/scheduling';
 
+export type OpenShiftClaimWithJoins = OpenShiftClaim & {
+  shift_template?: { name: string; start_time: string; end_time: string; position: string } | null;
+  employee?: { name: string; position: string | null } | null;
+};
+
 export function useOpenShiftClaims(restaurantId: string | null, employeeId?: string | null) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['open_shift_claims', restaurantId, employeeId],
     queryFn: async () => {
       if (!restaurantId) return [];
       let query = (supabase.from('open_shift_claims') as any)
-        .select('*, shift_template:shift_templates(name, start_time, end_time, position)')
+        .select('*, shift_template:shift_templates(name, start_time, end_time, position), employee:employees(name, position)')
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false });
 
@@ -19,14 +24,14 @@ export function useOpenShiftClaims(restaurantId: string | null, employeeId?: str
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as (OpenShiftClaim & { shift_template?: { name: string; start_time: string; end_time: string; position: string } })[];
+      return data as OpenShiftClaimWithJoins[];
     },
     enabled: !!restaurantId,
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
 
-  return { claims: data ?? [], loading: isLoading, error };
+  return { claims: data ?? [] as OpenShiftClaimWithJoins[], loading: isLoading, error };
 }
 
 export function useClaimOpenShift() {

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,7 @@ import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { computeOpenSpots } from '@/lib/openShiftHelpers';
+import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
@@ -318,9 +320,11 @@ const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSel
 };
 
 const Scheduling = () => {
+  const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
@@ -1862,6 +1866,8 @@ const Scheduling = () => {
         employeeCount={scheduledEmployeeCount}
         totalHours={totalScheduledHours}
         openShiftCount={openShiftCount}
+        openShiftsEnabled={staffingSettings.open_shifts_enabled}
+        onNavigateToSettings={() => navigate('/settings?tab=staffing')}
         onConfirm={handlePublishSchedule}
         isPublishing={publishSchedule.isPending}
       />

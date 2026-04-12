@@ -29,7 +29,9 @@ interface PublishScheduleDialogProps {
   employeeCount: number;
   totalHours: number;
   openShiftCount: number;
+  openShiftsEnabled: boolean;
   onConfirm: (notes?: string) => void;
+  onNavigateToSettings?: () => void;
   isPublishing: boolean;
 }
 
@@ -42,7 +44,9 @@ export const PublishScheduleDialog = ({
   employeeCount,
   totalHours,
   openShiftCount,
+  openShiftsEnabled,
   onConfirm,
+  onNavigateToSettings,
   isPublishing,
 }: PublishScheduleDialogProps) => {
   const [notes, setNotes] = useState('');
@@ -105,7 +109,20 @@ export const PublishScheduleDialog = ({
               <AlertTriangle className="h-4 w-4 text-amber-600" />
               <AlertDescription className="text-sm">
                 <strong>{openShiftCount} {openShiftCount === 1 ? 'shift' : 'shifts'} still {openShiftCount === 1 ? 'needs' : 'need'} staff.</strong>{' '}
-                You can fill these now or broadcast to your team later.
+                {openShiftsEnabled ? (
+                  'You can fill these now or broadcast to your team later.'
+                ) : (
+                  <>
+                    Want employees to fill these?{' '}
+                    <button
+                      type="button"
+                      onClick={onNavigateToSettings}
+                      className="text-amber-600 underline hover:text-amber-700 cursor-pointer"
+                    >
+                      Enable open shift claiming in Settings →
+                    </button>
+                  </>
+                )}
               </AlertDescription>
             </Alert>
           )}

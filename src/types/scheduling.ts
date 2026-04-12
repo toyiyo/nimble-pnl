@@ -119,6 +119,7 @@ export interface ShiftTemplate {
   break_duration: number;
   position: string;
   capacity: number;
+  area?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

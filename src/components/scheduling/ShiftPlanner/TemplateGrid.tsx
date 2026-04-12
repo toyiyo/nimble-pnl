@@ -1,13 +1,18 @@
+import { useState, useCallback, useMemo } from 'react';
+
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
 import type { ShiftTemplate, Shift } from '@/types/scheduling';
 
 import { cn } from '@/lib/utils';
+import { groupTemplatesByArea } from '@/lib/templateAreaGrouping';
 
 import { TemplateRowHeader } from './TemplateRowHeader';
 import { ShiftCell } from './ShiftCell';
+import { AreaSectionHeader } from './AreaSectionHeader';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const AREA_COLLAPSE_KEY = 'shift-planner-area-collapse';
 
 function getDayLabel(dateStr: string): { name: string; number: number; isToday: boolean } {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -29,6 +34,7 @@ interface TemplateGridProps {
   /** Mobile tap-to-assign */
   onMobileCellTap?: (templateId: string, day: string) => void;
   hasMobileSelection?: boolean;
+  areaFilter?: string | null;
 }
 
 export function TemplateGrid({
@@ -42,7 +48,27 @@ export function TemplateGrid({
   highlightCellId,
   onMobileCellTap,
   hasMobileSelection,
+  areaFilter,
 }: Readonly<TemplateGridProps>) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(AREA_COLLAPSE_KEY) || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleCollapse = useCallback((area: string) => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [area]: !prev[area] };
+      localStorage.setItem(AREA_COLLAPSE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const groups = useMemo(() => groupTemplatesByArea(templates, areaFilter), [templates, areaFilter]);
+  const showSectionHeaders = areaFilter === null && groups.length > 1;
+
   return (
     <div className="rounded-xl border border-border/40 overflow-x-auto">
       <div className="grid grid-cols-[56px_repeat(7,1fr)] md:grid-cols-[200px_repeat(7,1fr)] min-w-[560px] md:min-w-[1000px]">
@@ -75,38 +101,52 @@ export function TemplateGrid({
           );
         })}
 
-        {/* Template rows */}
-        {templates.map((template) => (
-          <div
-            key={template.id}
-            className="contents"
-          >
-            <div className="group border-t border-border/40">
-              <TemplateRowHeader
-                template={template}
-                onEdit={onEditTemplate}
-                onDelete={onDeleteTemplate}
+        {/* Template rows grouped by area */}
+        {groups.map((group) => (
+          <div key={group.area} className="contents">
+            {showSectionHeaders && (
+              <AreaSectionHeader
+                area={group.area}
+                templateCount={group.templates.length}
+                isCollapsed={!!collapsed[group.area]}
+                onToggle={() => toggleCollapse(group.area)}
+                colSpan={8}
               />
-            </div>
-            {weekDays.map((day) => {
-              const isActiveDay = templateAppliesToDay(template, day);
-              const shifts = gridData.get(template.id)?.get(day) ?? [];
-              return (
-                <div key={day} className="border-t border-l border-border/40">
-                  <ShiftCell
-                    templateId={template.id}
-                    day={day}
-                    isActiveDay={isActiveDay}
-                    shifts={shifts}
-                    capacity={template.capacity ?? 1}
-                    onRemoveShift={onRemoveShift}
-                    isHighlighted={highlightCellId === `${template.id}:${day}`}
-                    onMobileTap={onMobileCellTap}
-                    hasMobileSelection={hasMobileSelection}
-                  />
+            )}
+            {(!showSectionHeaders || !collapsed[group.area]) &&
+              group.templates.map((template) => (
+                <div
+                  key={template.id}
+                  className="contents"
+                >
+                  <div className="group border-t border-border/40">
+                    <TemplateRowHeader
+                      template={template}
+                      onEdit={onEditTemplate}
+                      onDelete={onDeleteTemplate}
+                    />
+                  </div>
+                  {weekDays.map((day) => {
+                    const isActiveDay = templateAppliesToDay(template, day);
+                    const shifts = gridData.get(template.id)?.get(day) ?? [];
+                    return (
+                      <div key={day} className="border-t border-l border-border/40">
+                        <ShiftCell
+                          templateId={template.id}
+                          day={day}
+                          isActiveDay={isActiveDay}
+                          shifts={shifts}
+                          capacity={template.capacity ?? 1}
+                          onRemoveShift={onRemoveShift}
+                          isHighlighted={highlightCellId === `${template.id}:${day}`}
+                          onMobileTap={onMobileCellTap}
+                          hasMobileSelection={hasMobileSelection}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              ))}
           </div>
         ))}
       </div>

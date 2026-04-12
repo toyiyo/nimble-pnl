@@ -114,14 +114,14 @@ serve(async (req) => {
       // 1. Active employees
       supabase
         .from("employees")
-        .select("id, name, position, hourly_rate, salary_amount, compensation_type")
+        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "active"),
 
       // 2. Active shift templates
       supabase
         .from("shift_templates")
-        .select("id, name, days, start_time, end_time, position")
+        .select("id, name, days, start_time, end_time, position, area")
         .eq("restaurant_id", restaurant_id)
         .eq("is_active", true),
 
@@ -213,6 +213,7 @@ serve(async (req) => {
       id: e.id,
       name: e.name,
       position: e.position ?? "Staff",
+      area: e.area ?? null,
       // hourly_rate stored in cents; salary employees get 0
       hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
     }));
@@ -225,6 +226,7 @@ serve(async (req) => {
       start_time: t.start_time,
       end_time: t.end_time,
       position: t.position ?? "Staff",
+      area: t.area ?? null,
     }));
 
     // ── Build availability map ───────────────────────────────────────────────

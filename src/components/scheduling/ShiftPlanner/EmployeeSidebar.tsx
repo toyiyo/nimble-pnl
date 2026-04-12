@@ -58,6 +58,8 @@ export interface EmployeeSidebarProps {
   className?: string;
   /** Mobile tap-to-assign: called when an employee is tapped instead of dragged */
   onEmployeeSelect?: (employee: { id: string; name: string }) => void;
+  /** Area filter from the planner's filter pills — syncs the sidebar's area dropdown */
+  plannerAreaFilter?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,10 +134,11 @@ const DraggableEmployee = memo(
 // EmployeeSidebar
 // ---------------------------------------------------------------------------
 
-export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect }: Readonly<EmployeeSidebarProps>) {
+export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect, plannerAreaFilter }: Readonly<EmployeeSidebarProps>) {
   const [search, setSearch] = useState('');
   const [area, setArea] = useState('all');
   const [role, setRole] = useState('all');
+  const [showAllOverride, setShowAllOverride] = useState(false);
 
   // Derive unique areas for the filter dropdown
   const areas = useMemo(() => {
@@ -147,11 +150,24 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   }, [employees]);
 
   // Reset area filter when selected value is no longer available
+  // Skip when planner is controlling the area (plannerAreaFilter may reference template areas not in employee list)
   useEffect(() => {
+    if (plannerAreaFilter) return;
     if (area !== 'all' && !areas.includes(area)) {
       setArea('all');
     }
-  }, [area, areas]);
+  }, [area, areas, plannerAreaFilter]);
+
+  // Sync sidebar area from planner filter pills
+  useEffect(() => {
+    if (plannerAreaFilter) {
+      setArea(plannerAreaFilter);
+      setShowAllOverride(false);
+    } else {
+      setArea('all');
+      setShowAllOverride(false);
+    }
+  }, [plannerAreaFilter]);
 
   // Derive unique roles for the filter dropdown
   const roles = useMemo(() => {
@@ -174,9 +190,11 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
 
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
 
+  const effectiveArea = showAllOverride ? 'all' : area;
+
   const filtered = useMemo(
-    () => filterEmployees(employees, search, area, role),
-    [employees, search, area, role],
+    () => filterEmployees(employees, search, effectiveArea, role),
+    [employees, search, effectiveArea, role],
   );
 
   return (
@@ -211,6 +229,16 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
               ))}
             </SelectContent>
           </Select>
+        )}
+        {plannerAreaFilter && (
+          <button
+            type="button"
+            onClick={() => setShowAllOverride((prev) => !prev)}
+            className="w-full text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors py-1.5 px-2 rounded-lg hover:bg-muted/50"
+            aria-label={showAllOverride ? `Show ${plannerAreaFilter} only` : 'Show all employees'}
+          >
+            {showAllOverride ? `Show ${plannerAreaFilter} only` : 'Show all employees'}
+          </button>
         )}
         {roles.length > 1 && (
           <Select value={role} onValueChange={setRole}>

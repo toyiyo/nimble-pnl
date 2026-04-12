@@ -19,8 +19,10 @@ import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { cn } from '@/lib/utils';
+import { getTemplateAreas } from '@/lib/templateAreaGrouping';
 
 import { AssignmentPopover } from './AssignmentPopover';
+import { AreaFilterPills } from './AreaFilterPills';
 
 import { PlannerHeader } from './PlannerHeader';
 import { StaffingOverlay } from './StaffingOverlay';
@@ -86,6 +88,7 @@ export function ShiftPlannerTab({
   const generateSchedule = useGenerateSchedule();
 
   const { toast } = useToast();
+  const [areaFilter, setAreaFilter] = useState<string | null>(null);
   const [highlightCellId, setHighlightCellId] = useState<string | null>(null);
   const [activeDragEmployee, setActiveDragEmployee] = useState<{ id: string; name: string } | null>(null);
   const [pendingAssignment, setPendingAssignment] = useState<{
@@ -113,6 +116,9 @@ export function ShiftPlannerTab({
     }
     return Array.from(posSet).sort((a, b) => a.localeCompare(b));
   }, [employees, templates]);
+
+  const templateAreas = useMemo(() => getTemplateAreas(templates), [templates]);
+  const hasUnassigned = useMemo(() => templates.some((t) => !t.area), [templates]);
 
   // DnD setup — PointerSensor for mouse, TouchSensor for touch devices
   // TouchSensor uses press-and-hold (200ms) to distinguish drag from scroll
@@ -432,18 +438,27 @@ export function ShiftPlannerTab({
                 </button>
               </div>
             ) : (
-              <TemplateGrid
-                weekDays={weekDays}
-                templates={templates}
-                gridData={templateGridData}
-                onRemoveShift={deleteShift}
-                onEditTemplate={handleEditTemplate}
-                onDeleteTemplate={deleteTemplate}
-                onAddTemplate={handleAddTemplate}
-                highlightCellId={highlightCellId}
-                onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
-                hasMobileSelection={isMobile && !!selectedMobileEmployee}
-              />
+              <div className="space-y-2">
+                <AreaFilterPills
+                  areas={templateAreas}
+                  hasUnassigned={hasUnassigned}
+                  selectedArea={areaFilter}
+                  onSelect={setAreaFilter}
+                />
+                <TemplateGrid
+                  weekDays={weekDays}
+                  templates={templates}
+                  gridData={templateGridData}
+                  onRemoveShift={deleteShift}
+                  onEditTemplate={handleEditTemplate}
+                  onDeleteTemplate={deleteTemplate}
+                  onAddTemplate={handleAddTemplate}
+                  highlightCellId={highlightCellId}
+                  onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
+                  hasMobileSelection={isMobile && !!selectedMobileEmployee}
+                  areaFilter={areaFilter}
+                />
+              </div>
             )}
           </div>
 

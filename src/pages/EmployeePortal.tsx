@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { formatTime } from '@/lib/utils';
+import { EnableNotificationsBanner } from '@/components/EnableNotificationsBanner';
 
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -404,6 +405,8 @@ const EmployeePortal = () => {
           </div>
         </CardHeader>
       </Card>
+
+      <EnableNotificationsBanner />
 
       <Tabs defaultValue="time-off" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2">

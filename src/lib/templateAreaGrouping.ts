@@ -26,7 +26,7 @@ export function groupTemplatesByArea(
   const map = new Map<string, ShiftTemplate[]>();
 
   for (const t of filtered) {
-    const key = t.area ?? UNASSIGNED;
+    const key = t.area || UNASSIGNED;
     const group = map.get(key);
     if (group) {
       group.push(t);

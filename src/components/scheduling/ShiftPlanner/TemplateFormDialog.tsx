@@ -211,7 +211,7 @@ export function TemplateFormDialog({
 
           {/* Area (optional) */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            <Label htmlFor="area" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Area
             </Label>
             <AreaCombobox

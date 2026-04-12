@@ -13,8 +13,8 @@ describe('mergeAreas', () => {
     expect(mergeAreas([], [])).toEqual([]);
   });
 
-  it('deduplicates case-sensitively', () => {
-    const result = mergeAreas(['Kitchen'], ['Kitchen', 'Bar']);
-    expect(result).toEqual(['Bar', 'Kitchen']);
+  it('preserves different casings as separate entries', () => {
+    const result = mergeAreas(['Kitchen'], ['kitchen', 'Bar']);
+    expect(result).toEqual(['Bar', 'Kitchen', 'kitchen']);
   });
 });

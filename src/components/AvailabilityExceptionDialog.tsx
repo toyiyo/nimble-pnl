@@ -85,8 +85,8 @@ export const AvailabilityExceptionDialog = ({
       employee_id: employeeId,
       date: formatDateToUTC(date),
       is_available: isAvailable,
-      start_time: isAvailable ? localTimeToUtcTime(startTime, restaurantTimezone, date ?? new Date()) : undefined,
-      end_time: isAvailable ? localTimeToUtcTime(endTime, restaurantTimezone, date ?? new Date()) : undefined,
+      start_time: isAvailable ? localTimeToUtcTime(startTime, restaurantTimezone, date) : undefined,
+      end_time: isAvailable ? localTimeToUtcTime(endTime, restaurantTimezone, date) : undefined,
       reason: reason || undefined,
     };
 

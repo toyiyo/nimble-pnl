@@ -38,7 +38,7 @@ test.describe('Open Shift Claiming', () => {
           end_time: '22:00:00',
           position: 'Server',
           capacity: 3,
-          days: [1, 2, 3, 4, 5], // Mon-Fri
+          days: [0, 1, 2, 3, 4, 5, 6], // All days — ensures test works regardless of day-of-week
           is_active: true,
         })
         .select()
@@ -65,16 +65,30 @@ test.describe('Open Shift Claiming', () => {
       const userId = user?.id;
       if (!userId) throw new Error('No authenticated user found');
 
-      // Publish the current week schedule
+      // Publish current + next week (ensures future dates exist regardless of day-of-week)
+      const nextMonday = new Date(monday);
+      nextMonday.setDate(monday.getDate() + 7);
+      const nextSunday = new Date(nextMonday);
+      nextSunday.setDate(nextMonday.getDate() + 6);
+
       const { error: pubError } = await supabase
         .from('schedule_publications')
-        .insert({
-          restaurant_id: restId,
-          week_start_date: mondayStr,
-          week_end_date: sundayStr,
-          published_by: userId,
-          shift_count: 0,
-        });
+        .insert([
+          {
+            restaurant_id: restId,
+            week_start_date: mondayStr,
+            week_end_date: sundayStr,
+            published_by: userId,
+            shift_count: 0,
+          },
+          {
+            restaurant_id: restId,
+            week_start_date: toDateStr(nextMonday),
+            week_end_date: toDateStr(nextSunday),
+            published_by: userId,
+            shift_count: 0,
+          },
+        ]);
       if (pubError) throw new Error(`schedule_publications insert failed: ${pubError.message}`);
 
       // Create employee linked to the current user so useCurrentEmployee can find them

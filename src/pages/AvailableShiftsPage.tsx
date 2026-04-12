@@ -4,7 +4,6 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import {
   Collapsible,
   CollapsibleContent,
@@ -21,7 +20,6 @@ import {
   ChevronUp,
   CheckCircle,
   XCircle,
-  ArrowRightLeft,
 } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';

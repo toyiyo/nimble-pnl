@@ -15,6 +15,7 @@ import {
   NOTIFICATION_FROM,
   APP_URL
 } from "../_shared/notificationHelpers.ts";
+import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
 
 interface RequestBody {
   shiftId: string;
@@ -123,7 +124,8 @@ const handler = async (req: Request): Promise<Response> => {
         employee:employees!employee_id(
           id,
           name,
-          email
+          email,
+          user_id
         )
       `)
       .eq('id', shiftId)
@@ -217,7 +219,21 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Successfully sent shift notification: emailId=${emailResult?.id}`);
 
-    return successResponse({ 
+    // Send web push notification to the employee
+    if (shift.employee?.user_id) {
+      try {
+        await sendWebPushToUser(supabase, shift.employee.user_id, shift.restaurant_id, {
+          title: config.heading,
+          body: config.message(!!hasChanges),
+          url: '/employee/schedule',
+          tag: `shift-${action}-${shiftId}`,
+        });
+      } catch (e) {
+        console.error('Web push failed:', e);
+      }
+    }
+
+    return successResponse({
       message: 'Notification sent',
       emailId: emailResult?.id,
     });

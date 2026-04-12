@@ -23,7 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import * as dateFnsTz from 'date-fns-tz';
+import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 import { TimeOffRequest, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -35,7 +35,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { formatTime } from '@/lib/utils';
 
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -146,12 +145,9 @@ const EmployeePortal = () => {
   }
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const formatTimeInRestaurantTz = (time: string | null | undefined) => {
+  const formatTimeInRestaurantTz = (time: string | null | undefined, referenceDate?: Date) => {
     if (!time) return '';
-    const converter = dateFnsTz.toZonedTime ?? ((date: Date) => date);
-    const date = new Date(`1970-01-01T${time}Z`);
-    const zoned = converter(date, restaurantTimezone);
-    return format(zoned, 'HH:mm');
+    return utcTimeToLocalTime(time, restaurantTimezone, referenceDate);
   };
 
   const renderTimeOffContent = () => {
@@ -359,7 +355,7 @@ const EmployeePortal = () => {
                   </Badge>
                     {exception.start_time && exception.end_time && (
                       <span className="text-sm text-muted-foreground">
-                        {formatTimeInRestaurantTz(exception.start_time)} - {formatTimeInRestaurantTz(exception.end_time)}
+                        {formatTimeInRestaurantTz(exception.start_time, new Date(exception.date))} - {formatTimeInRestaurantTz(exception.end_time, new Date(exception.date))}
                       </span>
                     )}
                 </div>

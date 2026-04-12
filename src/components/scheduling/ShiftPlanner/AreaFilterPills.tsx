@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { UNASSIGNED } from '@/lib/templateAreaGrouping';
 
 interface AreaFilterPillsProps {
   readonly areas: string[];
@@ -18,7 +19,7 @@ export function AreaFilterPills({
   const pills = [
     { label: 'All', value: null as string | null },
     ...areas.map((a) => ({ label: a, value: a })),
-    ...(hasUnassigned ? [{ label: 'Unassigned', value: 'Unassigned' }] : []),
+    ...(hasUnassigned ? [{ label: UNASSIGNED, value: UNASSIGNED }] : []),
   ];
 
   return (

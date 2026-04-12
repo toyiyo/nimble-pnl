@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
@@ -12,6 +12,7 @@ import { ShiftCell } from './ShiftCell';
 import { AreaSectionHeader } from './AreaSectionHeader';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const AREA_COLLAPSE_KEY = 'shift-planner-area-collapse';
 
 function getDayLabel(dateStr: string): { name: string; number: number; isToday: boolean } {
   const [y, m, d] = dateStr.split('-').map(Number);
@@ -49,11 +50,9 @@ export function TemplateGrid({
   hasMobileSelection,
   areaFilter,
 }: Readonly<TemplateGridProps>) {
-  const STORAGE_KEY = 'shift-planner-area-collapse';
-
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      return JSON.parse(localStorage.getItem(AREA_COLLAPSE_KEY) || '{}');
     } catch {
       return {};
     }
@@ -62,12 +61,12 @@ export function TemplateGrid({
   const toggleCollapse = useCallback((area: string) => {
     setCollapsed((prev) => {
       const next = { ...prev, [area]: !prev[area] };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(AREA_COLLAPSE_KEY, JSON.stringify(next));
       return next;
     });
   }, []);
 
-  const groups = groupTemplatesByArea(templates, areaFilter);
+  const groups = useMemo(() => groupTemplatesByArea(templates, areaFilter), [templates, areaFilter]);
   const showSectionHeaders = areaFilter === null && groups.length > 1;
 
   return (

@@ -1,6 +1,6 @@
 import type { ShiftTemplate } from '@/types/scheduling';
 
-const UNASSIGNED = 'Unassigned';
+export const UNASSIGNED = 'Unassigned';
 
 export interface TemplateAreaGroup {
   area: string;

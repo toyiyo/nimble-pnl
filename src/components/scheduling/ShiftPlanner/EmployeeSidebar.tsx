@@ -150,11 +150,13 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   }, [employees]);
 
   // Reset area filter when selected value is no longer available
+  // Skip when planner is controlling the area (plannerAreaFilter may reference template areas not in employee list)
   useEffect(() => {
+    if (plannerAreaFilter) return;
     if (area !== 'all' && !areas.includes(area)) {
       setArea('all');
     }
-  }, [area, areas]);
+  }, [area, areas, plannerAreaFilter]);
 
   // Sync sidebar area from planner filter pills
   useEffect(() => {

@@ -19,7 +19,6 @@ import { SubscriptionPlans, TrialBanner } from '@/components/subscription';
 import { useToast } from '@/hooks/use-toast';
 import { Settings, Save, RotateCcw, AlertCircle, CreditCard, Building, Clock, DollarSign, Target } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,

@@ -302,8 +302,10 @@ export function ShiftPlannerTab({
     start_time: string;
     end_time: string;
     position: string;
+    area?: string;
     days: number[];
     break_duration: number;
+    capacity: number;
   }) => {
     if (editingTemplate) {
       await updateTemplate({ id: editingTemplate.id, ...data });
@@ -527,6 +529,7 @@ export function ShiftPlannerTab({
         template={editingTemplate}
         onSubmit={handleTemplateSubmit}
         positions={positions}
+        restaurantId={restaurantId}
       />
 
       {/* Assignment popover — shown after dropping an employee onto a shift cell */}

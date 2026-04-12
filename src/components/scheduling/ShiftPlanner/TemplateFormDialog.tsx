@@ -14,6 +14,7 @@ import { Clock } from 'lucide-react';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
+import { AreaCombobox } from '@/components/AreaCombobox';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
@@ -27,11 +28,13 @@ interface TemplateFormDialogProps {
     start_time: string;
     end_time: string;
     position: string;
+    area?: string;
     days: number[];
     break_duration: number;
     capacity: number;
   }) => void | Promise<void>;
   positions: string[];
+  restaurantId: string | null;
 }
 
 export function TemplateFormDialog({
@@ -40,6 +43,7 @@ export function TemplateFormDialog({
   template,
   onSubmit,
   positions,
+  restaurantId,
 }: Readonly<TemplateFormDialogProps>) {
   const isEdit = !!template;
 
@@ -50,6 +54,7 @@ export function TemplateFormDialog({
   const [days, setDays] = useState<number[]>([]);
   const [breakDuration, setBreakDuration] = useState(0);
   const [capacity, setCapacity] = useState(1);
+  const [area, setArea] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Pre-fill form when template changes or dialog opens
@@ -62,6 +67,7 @@ export function TemplateFormDialog({
       setDays([...template.days]);
       setBreakDuration(template.break_duration);
       setCapacity(template.capacity ?? 1);
+      setArea(template?.area ?? '');
     } else {
       setName('');
       setStartTime('09:00');
@@ -70,6 +76,7 @@ export function TemplateFormDialog({
       setDays([]);
       setBreakDuration(0);
       setCapacity(1);
+      setArea('');
     }
     setIsSubmitting(false);
   }, [template, open]);
@@ -93,6 +100,7 @@ export function TemplateFormDialog({
         start_time: startTime,
         end_time: endTime,
         position: position.trim(),
+        area: area.trim() || undefined,
         days,
         break_duration: breakDuration,
         capacity,
@@ -199,6 +207,19 @@ export function TemplateFormDialog({
                 ))}
               </datalist>
             )}
+          </div>
+
+          {/* Area (optional) */}
+          <div className="space-y-1.5">
+            <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              Area
+            </Label>
+            <AreaCombobox
+              restaurantId={restaurantId}
+              value={area}
+              onValueChange={setArea}
+              placeholder="Select area (optional)..."
+            />
           </div>
 
           {/* Days */}

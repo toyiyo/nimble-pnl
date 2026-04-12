@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import * as dateFnsTz from 'date-fns-tz';
+import { fromZonedTime } from 'date-fns-tz';
+import { utcTimeToLocalTime, localTimeToUtcTime } from '@/lib/availabilityTimeUtils';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,6 @@ export const AvailabilityExceptionDialog = ({
 
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { fromZonedTime } = dateFnsTz;
 
   useEffect(() => {
     if (exception) {
@@ -53,10 +53,10 @@ export const AvailabilityExceptionDialog = ({
       setDate(new Date(exception.date));
       setIsAvailable(exception.is_available);
       if (exception.start_time) {
-        setStartTime(exception.start_time.substring(0, 5)); // HH:MM
+        setStartTime(utcTimeToLocalTime(exception.start_time, restaurantTimezone));
       }
       if (exception.end_time) {
-        setEndTime(exception.end_time.substring(0, 5)); // HH:MM
+        setEndTime(utcTimeToLocalTime(exception.end_time, restaurantTimezone));
       }
       setReason(exception.reason || '');
     } else {
@@ -67,19 +67,10 @@ export const AvailabilityExceptionDialog = ({
       setEndTime('17:00');
       setReason('');
     }
-  }, [exception, open, defaultEmployeeId, defaultDate]);
-
-  const toUTC = (time: string) => {
-    if (!date) return '';
-    const dateStr = format(date, 'yyyy-MM-dd');
-    const converter = fromZonedTime ?? ((value: string) => new Date(value));
-    const zoned = converter(`${dateStr}T${time}:00`, restaurantTimezone);
-    return `${zoned.getUTCHours().toString().padStart(2, '0')}:${zoned.getUTCMinutes().toString().padStart(2, '0')}:${zoned.getUTCSeconds().toString().padStart(2, '0')}`;
-  };
+  }, [exception, open, defaultEmployeeId, defaultDate, restaurantTimezone]);
 
   const formatDateToUTC = (value: Date) => {
-    const converter = fromZonedTime ?? ((v: Date) => v);
-    return converter(value, restaurantTimezone).toISOString().substring(0, 10);
+    return fromZonedTime(value, restaurantTimezone).toISOString().substring(0, 10);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -94,8 +85,8 @@ export const AvailabilityExceptionDialog = ({
       employee_id: employeeId,
       date: formatDateToUTC(date),
       is_available: isAvailable,
-      start_time: isAvailable ? toUTC(startTime) : undefined,
-      end_time: isAvailable ? toUTC(endTime) : undefined,
+      start_time: isAvailable ? localTimeToUtcTime(startTime, restaurantTimezone, date ?? new Date()) : undefined,
+      end_time: isAvailable ? localTimeToUtcTime(endTime, restaurantTimezone, date ?? new Date()) : undefined,
       reason: reason || undefined,
     };
 

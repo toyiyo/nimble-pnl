@@ -36,6 +36,7 @@ interface GenerateScheduleDialogProps {
   availability: EmployeeAvailability[];
   generationResult: GenerateScheduleResponse | null;
   generationError: Error | null;
+  onRetry: () => void;
 }
 
 function formatDateRange(start: Date, end: Date): string {
@@ -66,6 +67,7 @@ export function GenerateScheduleDialog({
   availability,
   generationResult,
   generationError,
+  onRetry,
 }: Readonly<GenerateScheduleDialogProps>) {
   // employees to exclude — empty means all included
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
@@ -431,7 +433,7 @@ export function GenerateScheduleDialog({
                 variant="ghost"
                 size="sm"
                 className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                onClick={() => onOpenChange(true)}
+                onClick={onRetry}
                 aria-label="Try generating again"
               >
                 Try Again

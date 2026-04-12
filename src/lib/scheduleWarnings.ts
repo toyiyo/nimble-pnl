@@ -38,8 +38,8 @@ function timeRangesOverlap(
   let bE = toMinutes(bEnd);
 
   // Handle overnight: if end <= start, add 24h to end
-  if (aE <= aS) aE += MINUTES_PER_DAY;
-  if (bE <= bS) bE += MINUTES_PER_DAY;
+  if (aE < aS) aE += MINUTES_PER_DAY;
+  if (bE < bS) bE += MINUTES_PER_DAY;
 
   return aS < bE && bS < aE;
 }

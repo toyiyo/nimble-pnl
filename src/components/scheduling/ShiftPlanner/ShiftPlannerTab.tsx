@@ -369,6 +369,11 @@ export function ShiftPlannerTab({
     }
   }, []);
 
+  const handleGenerateRetry = useCallback(() => {
+    setGenerationResult(null);
+    setGenerationError(null);
+  }, []);
+
   // Loading state
   if (isLoading || templatesLoading) {
     return (
@@ -617,6 +622,7 @@ export function ShiftPlannerTab({
         generationResult={generationResult}
         generationError={generationError}
         onGenerate={handleGenerate}
+        onRetry={handleGenerateRetry}
       />
 
     </div>

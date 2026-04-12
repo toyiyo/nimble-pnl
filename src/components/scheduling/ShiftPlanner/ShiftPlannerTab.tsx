@@ -464,7 +464,7 @@ export function ShiftPlannerTab({
 
           {/* Desktop: inline sidebar */}
           {!isMobile && (
-            <EmployeeSidebar employees={employees} shifts={shifts} />
+            <EmployeeSidebar employees={employees} shifts={shifts} plannerAreaFilter={areaFilter} />
           )}
 
           {/* Mobile: slide-in sidebar panel (single instance to avoid duplicate dnd IDs) */}
@@ -495,7 +495,7 @@ export function ShiftPlannerTab({
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" onEmployeeSelect={handleMobileEmployeeSelect} />
+                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" onEmployeeSelect={handleMobileEmployeeSelect} plannerAreaFilter={areaFilter} />
               </div>
             </>
           )}

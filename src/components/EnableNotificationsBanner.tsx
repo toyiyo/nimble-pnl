@@ -26,6 +26,7 @@ export function EnableNotificationsBanner() {
           size="sm"
           className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
           onClick={dismiss}
+          disabled={isLoading}
         >
           Not now
         </Button>

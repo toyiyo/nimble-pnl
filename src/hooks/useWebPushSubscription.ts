@@ -62,6 +62,8 @@ export function useWebPushSubscription() {
       registration.pushManager.getSubscription().then((sub) => {
         setIsSubscribed(!!sub);
       });
+    }).catch((err) => {
+      console.warn('Failed to check push subscription:', err);
     });
   }, [isSupported]);
 
@@ -74,7 +76,7 @@ export function useWebPushSubscription() {
   }, [isSupported]);
 
   const subscribe = useCallback(async () => {
-    if (!user || !restaurantId || !VAPID_PUBLIC_KEY) return;
+    if (!isSupported || !user || !restaurantId || !VAPID_PUBLIC_KEY) return;
 
     setIsLoading(true);
     try {
@@ -98,16 +100,20 @@ export function useWebPushSubscription() {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        await subscription.unsubscribe();
+        throw error;
+      }
       setIsSubscribed(true);
     } catch (err) {
       console.error('Failed to subscribe to web push:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [user, restaurantId]);
+  }, [isSupported, user, restaurantId]);
 
   const unsubscribe = useCallback(async () => {
+    if (!isSupported) return;
     setIsLoading(true);
     try {
       const registration = await navigator.serviceWorker.ready;
@@ -126,7 +132,7 @@ export function useWebPushSubscription() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isSupported]);
 
   const dismiss = useCallback(() => {
     localStorage.setItem(DISMISS_KEY, String(Date.now()));

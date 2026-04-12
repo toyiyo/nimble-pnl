@@ -29,7 +29,7 @@ export function ClaimConfirmDialog({
   openShift,
   onConfirm,
   isPending,
-}: ClaimConfirmDialogProps) {
+}: Readonly<ClaimConfirmDialogProps>) {
   if (!openShift) return null;
 
   const dateLabel = format(parseISO(openShift.shift_date), 'EEEE, MMMM d');

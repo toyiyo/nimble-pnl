@@ -5755,6 +5755,7 @@ export type Database = {
       }
       shift_templates: {
         Row: {
+          area: string | null
           break_duration: number
           capacity: number
           created_at: string | null
@@ -5769,6 +5770,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          area?: string | null
           break_duration?: number
           capacity?: number
           created_at?: string | null
@@ -5783,6 +5785,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          area?: string | null
           break_duration?: number
           capacity?: number
           created_at?: string | null
@@ -8716,6 +8719,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "user_restaurants_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      web_push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          p256dh: string
+          restaurant_id: string
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          p256dh: string
+          restaurant_id: string
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          p256dh?: string
+          restaurant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "web_push_subscriptions_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"

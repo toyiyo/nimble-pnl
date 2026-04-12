@@ -2,6 +2,7 @@ import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
+import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -300,6 +301,18 @@ const handler = async (req: Request): Promise<Response> => {
           );
         } catch (e) {
           console.error('Push notification failed:', e);
+        }
+
+        // Also send web push
+        try {
+          await sendWebPushToUser(supabase, timeOffRequest.employee.user_id, timeOffRequest.restaurant_id, {
+            title: 'Time-Off Update',
+            body: `Your time-off request (${startDate} - ${endDate}) has been ${action}`,
+            url: '/employee/portal',
+            tag: `timeoff-${action}-${timeOffRequestId}`,
+          });
+        } catch (e) {
+          console.error('Web push failed:', e);
         }
       }
 

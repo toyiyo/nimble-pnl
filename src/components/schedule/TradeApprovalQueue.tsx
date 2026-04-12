@@ -47,6 +47,31 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 type ActionType = 'approve' | 'reject' | null;
 
+function renderClaimButtonContent(action: ActionType, isPending: boolean) {
+  if (isPending) {
+    return (
+      <>
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        Processing...
+      </>
+    );
+  }
+  if (action === 'approve') {
+    return (
+      <>
+        <CheckCircle className="mr-2 h-4 w-4" />
+        Approve
+      </>
+    );
+  }
+  return (
+    <>
+      <XCircle className="mr-2 h-4 w-4" />
+      Reject
+    </>
+  );
+}
+
 export const TradeApprovalQueue = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
@@ -403,22 +428,7 @@ export const TradeApprovalQueue = () => {
               disabled={isApprovingClaim || isRejectingClaim}
               variant={claimActionType === 'approve' ? 'default' : 'destructive'}
             >
-              {(isApprovingClaim || isRejectingClaim) ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : claimActionType === 'approve' ? (
-                <>
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Approve
-                </>
-              ) : (
-                <>
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Reject
-                </>
-              )}
+              {renderClaimButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
             </Button>
           </DialogFooter>
         </DialogContent>

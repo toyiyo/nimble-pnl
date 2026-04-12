@@ -8,20 +8,13 @@ import type { OpenShift } from '@/types/scheduling';
 
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatCompactTime } from '@/lib/openShiftHelpers';
 
 interface OpenShiftCardProps {
   openShift: OpenShift;
   hasConflict: boolean;
   onClaim: (openShift: OpenShift) => void;
   isClaiming: boolean;
-}
-
-function formatCompactTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const suffix = h >= 12 ? 'p' : 'a';
-  const hour12 = h % 12 || 12;
-  if (m === 0) return `${hour12}${suffix}`;
-  return `${hour12}:${String(m).padStart(2, '0')}${suffix}`;
 }
 
 export const OpenShiftCard = memo(function OpenShiftCard({

@@ -229,6 +229,8 @@ export interface SchedulePublication {
   published_by: string;
   notes: string | null;
   shift_count: number;
+  open_shifts_broadcast_at: string | null;
+  open_shifts_broadcast_by: string | null;
 }
 
 // Daily labor allocation for salaried/contractor employees

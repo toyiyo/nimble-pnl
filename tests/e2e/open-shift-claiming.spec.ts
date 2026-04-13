@@ -192,10 +192,11 @@ test.describe('Open Shift Claiming', () => {
     const seedResult = await page.evaluate(async (restId: string) => {
       const supabase = (window as any).__supabase;
 
-      // Set restaurant timezone to America/Chicago (CDT = UTC-5 in April)
+      // Use a DST-free timezone so expected UTC hours are deterministic year-round.
+      // Etc/GMT+5 = UTC-5 always (POSIX sign convention is reversed).
       await supabase
         .from('restaurants')
-        .update({ timezone: 'America/Chicago' })
+        .update({ timezone: 'Etc/GMT+5' })
         .eq('id', restId);
 
       // Enable open shifts (instant approval)
@@ -211,7 +212,7 @@ test.describe('Open Shift Claiming', () => {
         );
 
       // Template: 3:30 PM - 10:00 PM (the exact scenario from the bug report)
-      const { data: template } = await supabase
+      const { data: template, error: templateError } = await supabase
         .from('shift_templates')
         .insert({
           restaurant_id: restId,
@@ -225,6 +226,7 @@ test.describe('Open Shift Claiming', () => {
         })
         .select()
         .single();
+      if (templateError) throw new Error(`shift_templates insert failed: ${templateError.message}`);
 
       // Compute next Sunday (DOW=0) that is today or in the future
       const now = new Date();
@@ -266,7 +268,7 @@ test.describe('Open Shift Claiming', () => {
           hourly_rate: 1500,
         });
 
-      return { templateId: template!.id, sundayStr, mondayStr };
+      return { templateId: template.id, sundayStr, mondayStr };
     }, restaurantId as string);
 
     // 3. Switch to staff role
@@ -315,7 +317,7 @@ test.describe('Open Shift Claiming', () => {
       const startHourUTC = new Date(shift.start_time).getUTCHours();
       const endHourUTC = new Date(shift.end_time).getUTCHours();
 
-      // In CDT (UTC-5): 15:30 local = 20:30 UTC, 22:00 local = 03:00 UTC next day
+      // In Etc/GMT+5 (UTC-5): 15:30 local = 20:30 UTC, 22:00 local = 03:00 UTC next day
       // BUG would produce: 15:30 UTC (startHourUTC=15), 22:00 UTC (endHourUTC=22)
       return {
         startHourUTC,
@@ -325,10 +327,10 @@ test.describe('Open Shift Claiming', () => {
       };
     }, { restId: restaurantId as string, sundayStr: seedResult.sundayStr });
 
-    // The shift should be stored as 20:30 UTC (15:30 CDT), not 15:30 UTC
+    // The shift should be stored as 20:30 UTC (15:30 UTC-5), not 15:30 UTC
     expect(shiftCheck).not.toHaveProperty('error');
-    expect(shiftCheck.startHourUTC).toBe(20); // 15:30 CDT = 20:30 UTC
-    expect(shiftCheck.endHourUTC).toBe(3);    // 22:00 CDT = 03:00 UTC next day
+    expect(shiftCheck.startHourUTC).toBe(20); // 15:30 local = 20:30 UTC (UTC-5)
+    expect(shiftCheck.endHourUTC).toBe(3);    // 22:00 local = 03:00 UTC next day (UTC-5)
 
     // 6. Verify open_spots via RPC
     const spotsCheck = await page.evaluate(async (args: { restId: string; mondayStr: string; sundayStr: string }) => {

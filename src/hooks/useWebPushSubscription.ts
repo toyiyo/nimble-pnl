@@ -80,7 +80,18 @@ export function useWebPushSubscription() {
 
   const subscribe = useCallback(async () => {
     const vapidKey = getVapidPublicKey();
-    if (!isSupported || !user || !restaurantId || !vapidKey) return;
+    if (!isSupported) {
+      console.warn('Web push not supported in this browser');
+      return;
+    }
+    if (!user || !restaurantId) {
+      console.warn('Cannot subscribe: no authenticated user or restaurant');
+      return;
+    }
+    if (!vapidKey) {
+      console.error('Cannot subscribe: VITE_VAPID_PUBLIC_KEY is not configured');
+      return;
+    }
 
     setIsLoading(true);
     try {

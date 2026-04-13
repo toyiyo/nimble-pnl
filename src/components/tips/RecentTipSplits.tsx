@@ -43,32 +43,6 @@ export function RecentTipSplits({ restaurantId, onEditSplit, currentDate }: Rece
   // State for audit log dialog
   const [selectedSplitId, setSelectedSplitId] = useState<string | null>(null);
 
-  if (isLoading) {
-    return (
-      <Card className="rounded-xl border-border/40">
-        <CardContent className="py-8 text-center">
-          <p className="text-muted-foreground">Loading recent splits...</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!recentSplits || recentSplits.length === 0) {
-    return (
-      <Card className="rounded-xl border-border/40">
-        <CardContent className="py-8 text-center">
-          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
-            <History className="h-5 w-5 text-muted-foreground/50" />
-          </div>
-          <p className="text-[14px] font-medium text-foreground mt-4">No recent tip splits</p>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            Recent tip splits will appear here
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -79,94 +53,110 @@ export function RecentTipSplits({ restaurantId, onEditSplit, currentDate }: Rece
           <div>
             <CardTitle className="text-[17px] font-semibold text-foreground">Recent Tip Splits</CardTitle>
             <CardDescription className="text-[13px]">
-              Last 30 days • {recentSplits.length} split{recentSplits.length === 1 ? '' : 's'}
+              {isLoading
+                ? 'Loading...'
+                : `Last 30 days • ${recentSplits.length} split${recentSplits.length === 1 ? '' : 's'}`}
             </CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          {recentSplits.map((split) => {
-            const isDraft = split.status === 'draft';
-            const isApproved = split.status === 'approved';
+        {isLoading ? (
+          <p className="py-4 text-center text-muted-foreground">Loading recent splits...</p>
+        ) : recentSplits.length === 0 ? (
+          <div className="py-4 text-center">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
+              <History className="h-5 w-5 text-muted-foreground/50" />
+            </div>
+            <p className="text-[14px] font-medium text-foreground mt-4">No recent tip splits</p>
+            <p className="text-[13px] text-muted-foreground mt-1">
+              Recent tip splits will appear here
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {recentSplits.map((split) => {
+              const isDraft = split.status === 'draft';
+              const isApproved = split.status === 'approved';
 
-            return (
-              <div
-                key={split.id}
-                className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
-              >
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    {isDraft && (
-                      <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
-                        <FileText className="h-3 w-3 mr-1" />
-                        Draft
-                      </Badge>
-                    )}
-                    {isApproved && (
-                      <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Approved
-                      </Badge>
-                    )}
-                    <span className="text-sm text-muted-foreground flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1">
-                      <DollarSign className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-semibold">{formatCurrencyFromCents(split.total_amount)}</span>
+              return (
+                <div
+                  key={split.id}
+                  className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors"
+                >
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      {isDraft && (
+                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
+                          <FileText className="h-3 w-3 mr-1" />
+                          Draft
+                        </Badge>
+                      )}
+                      {isApproved && (
+                        <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/20">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Approved
+                        </Badge>
+                      )}
+                      <span className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {format(new Date(split.split_date + 'T12:00:00'), 'MMM d, yyyy')}
+                      </span>
                     </div>
-                    <span className="text-sm text-muted-foreground">
-                      • {split.items?.length || 0} employee{split.items?.length === 1 ? '' : 's'}
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      • {getShareMethodLabel(split.share_method)}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="flex gap-2">
-                  {isDraft && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEditSplit(split.id)}
-                    >
-                      <Edit className="h-3 w-3 mr-1" />
-                      Resume
-                    </Button>
-                  )}
-                  {isApproved && (
-                    <>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-semibold">{formatCurrencyFromCents(split.total_amount)}</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        • {split.items?.length || 0} employee{split.items?.length === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        • {getShareMethodLabel(split.share_method)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {isDraft && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => reopenSplit(split.id)}
-                        disabled={isReopening}
-                        aria-label="Reopen split for editing"
+                        onClick={() => onEditSplit(split.id)}
                       >
-                        <RotateCcw className="h-3 w-3 mr-1" />
-                        Reopen
+                        <Edit className="h-3 w-3 mr-1" />
+                        Resume
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedSplitId(split.id)}
-                        aria-label="View audit trail"
-                      >
-                        View Details
-                      </Button>
-                    </>
-                  )}
+                    )}
+                    {isApproved && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => reopenSplit(split.id)}
+                          disabled={isReopening}
+                          aria-label="Reopen split for editing"
+                        >
+                          <RotateCcw className="h-3 w-3 mr-1" />
+                          Reopen
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedSplitId(split.id)}
+                          aria-label="View audit trail"
+                        >
+                          View Details
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
 
       {/* Audit Log Dialog */}

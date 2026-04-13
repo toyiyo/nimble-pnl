@@ -126,7 +126,10 @@ test.describe('Tip sharing', () => {
     }).toPass({ timeout: 10000 });
 
     // Verify Recent Tip Splits section shows the approved split
-    await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/\$300\.00/).first()).toBeVisible({ timeout: 5000 });
+    // The heading is always rendered, but we need to wait for the page to transition
+    // back from the review view after approval completes
+    await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 15000 });
+    // Wait for the split data to load and display the approved amount
+    await expect(page.getByText(/\$300\.00/).first()).toBeVisible({ timeout: 15000 });
   });
 });

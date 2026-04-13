@@ -20,16 +20,21 @@ ALTER TABLE staffing_settings DISABLE ROW LEVEL SECURITY;
 ALTER TABLE schedule_publications DISABLE ROW LEVEL SECURITY;
 ALTER TABLE open_shift_claims DISABLE ROW LEVEL SECURITY;
 
+-- Auth user for FK references
+INSERT INTO auth.users (id, email)
+VALUES ('dddddddd-d001-0000-0000-000000000001', 'tz-test@example.com')
+ON CONFLICT DO NOTHING;
+
 -- Restaurant in CDT timezone (UTC-5 in April)
 INSERT INTO restaurants (id, name, timezone)
-VALUES ('aaaaaaaa-tz01-0000-0000-000000000001', 'TZ Test Restaurant', 'America/Chicago')
+VALUES ('aaaaaaaa-a001-0000-0000-000000000001', 'TZ Test Restaurant', 'America/Chicago')
 ON CONFLICT (id) DO NOTHING;
 
 -- Template: Closing shift 3:30p-10p on Sundays (day 0), capacity 3
 INSERT INTO shift_templates (id, restaurant_id, name, start_time, end_time, position, days, capacity)
 VALUES (
-  'bbbbbbbb-tz01-0000-0000-000000000001',
-  'aaaaaaaa-tz01-0000-0000-000000000001',
+  'bbbbbbbb-b001-0000-0000-000000000001',
+  'aaaaaaaa-a001-0000-0000-000000000001',
   'Closing - Weekend',
   '15:30:00', '22:00:00',
   'Server',
@@ -40,31 +45,31 @@ VALUES (
 -- Employee
 INSERT INTO employees (id, restaurant_id, name, position, status, is_active)
 VALUES (
-  'cccccccc-tz01-0000-0000-000000000001',
-  'aaaaaaaa-tz01-0000-0000-000000000001',
+  'cccccccc-c001-0000-0000-000000000001',
+  'aaaaaaaa-a001-0000-0000-000000000001',
   'Test Employee', 'Server', 'active', true
 );
 
 -- Second employee (for approve test)
 INSERT INTO employees (id, restaurant_id, name, position, status, is_active)
 VALUES (
-  'cccccccc-tz01-0000-0000-000000000002',
-  'aaaaaaaa-tz01-0000-0000-000000000001',
+  'cccccccc-c001-0000-0000-000000000002',
+  'aaaaaaaa-a001-0000-0000-000000000001',
   'Test Employee 2', 'Server', 'active', true
 );
 
 -- Enable open shifts, NO approval required (instant claim)
 INSERT INTO staffing_settings (restaurant_id, open_shifts_enabled, require_shift_claim_approval)
-VALUES ('aaaaaaaa-tz01-0000-0000-000000000001', true, false)
+VALUES ('aaaaaaaa-a001-0000-0000-000000000001', true, false)
 ON CONFLICT (restaurant_id) DO UPDATE
 SET open_shifts_enabled = true, require_shift_claim_approval = false;
 
 -- Publish schedule for April 13-19, 2026 (Sun Apr 19 is day-of-week 0)
 INSERT INTO schedule_publications (restaurant_id, week_start_date, week_end_date, published_by, shift_count)
 VALUES (
-  'aaaaaaaa-tz01-0000-0000-000000000001',
+  'aaaaaaaa-a001-0000-0000-000000000001',
   '2026-04-13', '2026-04-19',
-  '00000000-0000-0000-0000-000000000000',
+  'dddddddd-d001-0000-0000-000000000001',
   0
 );
 
@@ -78,10 +83,10 @@ SELECT is(
     SELECT (result->>'success')::boolean
     FROM (
       SELECT claim_open_shift(
-        'aaaaaaaa-tz01-0000-0000-000000000001',
-        'bbbbbbbb-tz01-0000-0000-000000000001',
+        'aaaaaaaa-a001-0000-0000-000000000001',
+        'bbbbbbbb-b001-0000-0000-000000000001',
         '2026-04-19'::date,
-        'cccccccc-tz01-0000-0000-000000000001'
+        'cccccccc-c001-0000-0000-000000000001'
       ) AS result
     ) sub
   ),
@@ -97,8 +102,8 @@ SELECT is(
   (
     SELECT start_time::timestamptz
     FROM shifts
-    WHERE restaurant_id = 'aaaaaaaa-tz01-0000-0000-000000000001'
-      AND employee_id = 'cccccccc-tz01-0000-0000-000000000001'
+    WHERE restaurant_id = 'aaaaaaaa-a001-0000-0000-000000000001'
+      AND employee_id = 'cccccccc-c001-0000-0000-000000000001'
       AND source = 'template'
     ORDER BY created_at DESC LIMIT 1
   ),
@@ -114,8 +119,8 @@ SELECT is(
   (
     SELECT end_time::timestamptz
     FROM shifts
-    WHERE restaurant_id = 'aaaaaaaa-tz01-0000-0000-000000000001'
-      AND employee_id = 'cccccccc-tz01-0000-0000-000000000001'
+    WHERE restaurant_id = 'aaaaaaaa-a001-0000-0000-000000000001'
+      AND employee_id = 'cccccccc-c001-0000-0000-000000000001'
       AND source = 'template'
     ORDER BY created_at DESC LIMIT 1
   ),
@@ -131,7 +136,7 @@ SELECT is(
   (
     SELECT open_spots
     FROM get_open_shifts(
-      'aaaaaaaa-tz01-0000-0000-000000000001',
+      'aaaaaaaa-a001-0000-0000-000000000001',
       '2026-04-13'::date,
       '2026-04-19'::date
     )
@@ -149,8 +154,8 @@ SELECT is(
 
 INSERT INTO shifts (restaurant_id, employee_id, start_time, end_time, position, status, source)
 VALUES (
-  'aaaaaaaa-tz01-0000-0000-000000000001',
-  'cccccccc-tz01-0000-0000-000000000002',
+  'aaaaaaaa-a001-0000-0000-000000000001',
+  'cccccccc-c001-0000-0000-000000000002',
   '2026-04-19 20:30:00+00',  -- 15:30 CDT as proper UTC
   '2026-04-20 03:00:00+00',  -- 22:00 CDT as proper UTC
   'Server', 'scheduled', 'manual'
@@ -160,7 +165,7 @@ SELECT is(
   (
     SELECT open_spots
     FROM get_open_shifts(
-      'aaaaaaaa-tz01-0000-0000-000000000001',
+      'aaaaaaaa-a001-0000-0000-000000000001',
       '2026-04-13'::date,
       '2026-04-19'::date
     )
@@ -178,13 +183,13 @@ SELECT is(
 
 UPDATE staffing_settings
 SET require_shift_claim_approval = true
-WHERE restaurant_id = 'aaaaaaaa-tz01-0000-0000-000000000001';
+WHERE restaurant_id = 'aaaaaaaa-a001-0000-0000-000000000001';
 
 -- Create a third employee for the approve test
 INSERT INTO employees (id, restaurant_id, name, position, status, is_active)
 VALUES (
-  'cccccccc-tz01-0000-0000-000000000003',
-  'aaaaaaaa-tz01-0000-0000-000000000001',
+  'cccccccc-c001-0000-0000-000000000003',
+  'aaaaaaaa-a001-0000-0000-000000000001',
   'Test Employee 3', 'Server', 'active', true
 );
 
@@ -194,10 +199,10 @@ SELECT is(
     SELECT (result->>'success')::boolean
     FROM (
       SELECT claim_open_shift(
-        'aaaaaaaa-tz01-0000-0000-000000000001',
-        'bbbbbbbb-tz01-0000-0000-000000000001',
+        'aaaaaaaa-a001-0000-0000-000000000001',
+        'bbbbbbbb-b001-0000-0000-000000000001',
         '2026-04-19'::date,
-        'cccccccc-tz01-0000-0000-000000000003'
+        'cccccccc-c001-0000-0000-000000000003'
       ) AS result
     ) sub
   ),
@@ -215,7 +220,7 @@ SELECT is(
     FROM (
       SELECT approve_open_shift_claim(
         (SELECT id FROM open_shift_claims
-         WHERE claimed_by_employee_id = 'cccccccc-tz01-0000-0000-000000000003'
+         WHERE claimed_by_employee_id = 'cccccccc-c001-0000-0000-000000000003'
            AND status = 'pending_approval'
          LIMIT 1)
       ) AS result
@@ -233,8 +238,8 @@ SELECT is(
   (
     SELECT start_time::timestamptz
     FROM shifts
-    WHERE restaurant_id = 'aaaaaaaa-tz01-0000-0000-000000000001'
-      AND employee_id = 'cccccccc-tz01-0000-0000-000000000003'
+    WHERE restaurant_id = 'aaaaaaaa-a001-0000-0000-000000000001'
+      AND employee_id = 'cccccccc-c001-0000-0000-000000000003'
       AND source = 'template'
     ORDER BY created_at DESC LIMIT 1
   ),

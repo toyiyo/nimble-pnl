@@ -178,4 +178,175 @@ test.describe('Open Shift Claiming', () => {
       await expect(successToast).toContainText(/shift claimed|claim submitted/i);
     }
   });
+
+  test('claimed shift has correct timezone-adjusted timestamps', async ({ page }) => {
+    // 1. Sign up manager, create restaurant
+    const testUser = generateTestUser('tz-claim');
+    await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+
+    // 2. Seed data with explicit timezone
+    const seedResult = await page.evaluate(async (restId: string) => {
+      const supabase = (window as any).__supabase;
+
+      // Use a DST-free timezone so expected UTC hours are deterministic year-round.
+      // Etc/GMT+5 = UTC-5 always (POSIX sign convention is reversed).
+      await supabase
+        .from('restaurants')
+        .update({ timezone: 'Etc/GMT+5' })
+        .eq('id', restId);
+
+      // Enable open shifts (instant approval)
+      await supabase
+        .from('staffing_settings')
+        .upsert(
+          {
+            restaurant_id: restId,
+            open_shifts_enabled: true,
+            require_shift_claim_approval: false,
+          },
+          { onConflict: 'restaurant_id' }
+        );
+
+      // Template: 3:30 PM - 10:00 PM (the exact scenario from the bug report)
+      const { data: template, error: templateError } = await supabase
+        .from('shift_templates')
+        .insert({
+          restaurant_id: restId,
+          name: 'Closing TZ Test',
+          start_time: '15:30:00',
+          end_time: '22:00:00',
+          position: 'Server',
+          capacity: 3,
+          days: [0], // Sunday only — ensures the claim targets the exact date we verify
+          is_active: true,
+        })
+        .select()
+        .single();
+      if (templateError) throw new Error(`shift_templates insert failed: ${templateError.message}`);
+
+      // Compute next Sunday (DOW=0) that is today or in the future
+      const now = new Date();
+      const daysUntilSunday = (7 - now.getDay()) % 7 || 7; // next Sunday, not today
+      const nextSunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSunday);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const sundayStr = `${nextSunday.getFullYear()}-${pad(nextSunday.getMonth() + 1)}-${pad(nextSunday.getDate())}`;
+
+      // Compute week containing that Sunday (Mon-Sun)
+      const monday = new Date(nextSunday);
+      monday.setDate(nextSunday.getDate() - 6);
+      const mondayStr = `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+
+      // Get auth user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Publish the week
+      await supabase
+        .from('schedule_publications')
+        .insert({
+          restaurant_id: restId,
+          week_start_date: mondayStr,
+          week_end_date: sundayStr,
+          published_by: user?.id,
+          shift_count: 0,
+        });
+
+      // Create employee linked to current user
+      await supabase
+        .from('employees')
+        .insert({
+          restaurant_id: restId,
+          user_id: user?.id,
+          name: 'TZ Test Employee',
+          position: 'Server',
+          status: 'active',
+          is_active: true,
+          compensation_type: 'hourly',
+          hourly_rate: 1500,
+        });
+
+      return { templateId: template.id, sundayStr, mondayStr };
+    }, restaurantId as string);
+
+    // 3. Switch to staff role
+    await page.evaluate(async () => {
+      const supabase = (window as any).__supabase;
+      const { data: { user } } = await supabase.auth.getUser();
+      const restaurantId = await (window as any).__getRestaurantId(user?.id);
+      await supabase
+        .from('user_restaurants')
+        .update({ role: 'staff' })
+        .eq('user_id', user?.id)
+        .eq('restaurant_id', restaurantId);
+    });
+
+    // 4. Navigate and claim the shift
+    await page.goto('/employee/shifts');
+    await expect(page.getByText('Available Shifts')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('OPEN SHIFT').first()).toBeVisible({ timeout: 15000 });
+
+    const claimButton = page.getByRole('button', { name: /claim shift closing tz test/i }).first();
+    await expect(claimButton).toBeVisible({ timeout: 10000 });
+    await claimButton.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await dialog.getByRole('button', { name: /confirm/i }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    // 5. Verify the resulting shift has correct UTC timestamps
+    const shiftCheck = await page.evaluate(async (args: { restId: string; sundayStr: string }) => {
+      const supabase = (window as any).__supabase;
+
+      // Read the shift created by the claim
+      const { data: shifts } = await supabase
+        .from('shifts')
+        .select('start_time, end_time')
+        .eq('restaurant_id', args.restId)
+        .eq('source', 'template')
+        .eq('status', 'scheduled')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!shifts || shifts.length === 0) return { error: 'No shift found' };
+
+      const shift = shifts[0];
+      const startHourUTC = new Date(shift.start_time).getUTCHours();
+      const endHourUTC = new Date(shift.end_time).getUTCHours();
+
+      // In Etc/GMT+5 (UTC-5): 15:30 local = 20:30 UTC, 22:00 local = 03:00 UTC next day
+      // BUG would produce: 15:30 UTC (startHourUTC=15), 22:00 UTC (endHourUTC=22)
+      return {
+        startHourUTC,
+        endHourUTC,
+        startTime: shift.start_time,
+        endTime: shift.end_time,
+      };
+    }, { restId: restaurantId as string, sundayStr: seedResult.sundayStr });
+
+    // The shift should be stored as 20:30 UTC (15:30 UTC-5), not 15:30 UTC
+    expect(shiftCheck).not.toHaveProperty('error');
+    expect(shiftCheck.startHourUTC).toBe(20); // 15:30 local = 20:30 UTC (UTC-5)
+    expect(shiftCheck.endHourUTC).toBe(3);    // 22:00 local = 03:00 UTC next day (UTC-5)
+
+    // 6. Verify open_spots via RPC
+    const spotsCheck = await page.evaluate(async (args: { restId: string; mondayStr: string; sundayStr: string }) => {
+      const supabase = (window as any).__supabase;
+      const { data } = await supabase.rpc('get_open_shifts', {
+        p_restaurant_id: args.restId,
+        p_week_start: args.mondayStr,
+        p_week_end: args.sundayStr,
+      });
+      // Find the Sunday entry for our template
+      const entry = data?.find((d: any) => d.shift_date === args.sundayStr);
+      return { openSpots: entry?.open_spots ?? null, assignedCount: entry?.assigned_count ?? null };
+    }, { restId: restaurantId as string, mondayStr: seedResult.mondayStr, sundayStr: seedResult.sundayStr });
+
+    // After 1 claim, should show 2 open spots (capacity 3 - 1 assigned)
+    expect(spotsCheck.assignedCount).toBe(1);
+    expect(spotsCheck.openSpots).toBe(2);
+  });
 });

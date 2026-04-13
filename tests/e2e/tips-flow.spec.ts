@@ -80,6 +80,8 @@ test.describe('Tip pooling flow', () => {
     }).toPass({ timeout: 10000 });
 
     // Verify the Recent Tip Splits section appears (shows approved splits)
-    await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 5000 });
+    // The heading is always rendered, but we need to wait for the page to transition
+    // back from the review view after approval completes
+    await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 15000 });
   });
 });

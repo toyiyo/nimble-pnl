@@ -40,7 +40,7 @@ import { ClaimConfirmDialog } from '@/components/scheduling/ClaimConfirmDialog';
 
 import type { OpenShift, OpenShiftClaim } from '@/types/scheduling';
 
-import { format, startOfWeek, addDays } from 'date-fns';
+import { format, parseISO, startOfWeek, addDays } from 'date-fns';
 import { parseDateLocal } from '@/lib/dateUtils';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { cn } from '@/lib/utils';

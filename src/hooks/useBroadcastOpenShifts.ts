@@ -21,12 +21,15 @@ export function useBroadcastOpenShifts() {
         success: boolean;
         open_shifts: number;
         push_sent: number;
-        emails_sent: number;
+        push_failed: number;
+        email_sent: number;
+        email_failed: number;
         total_employees: number;
       };
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['schedule-publication'] });
+      queryClient.invalidateQueries({ queryKey: ['week_publication_status'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule_publications'] });
       toast({
         title: 'Broadcast sent',
         description: `Notified ${data.total_employees} team members about ${data.open_shifts} open shifts.`,

@@ -5609,6 +5609,8 @@ export type Database = {
           id: string
           notes: string | null
           notification_sent: boolean
+          open_shifts_broadcast_at: string | null
+          open_shifts_broadcast_by: string | null
           published_at: string
           published_by: string
           restaurant_id: string
@@ -5621,6 +5623,8 @@ export type Database = {
           id?: string
           notes?: string | null
           notification_sent?: boolean
+          open_shifts_broadcast_at?: string | null
+          open_shifts_broadcast_by?: string | null
           published_at?: string
           published_by: string
           restaurant_id: string
@@ -5633,6 +5637,8 @@ export type Database = {
           id?: string
           notes?: string | null
           notification_sent?: boolean
+          open_shifts_broadcast_at?: string | null
+          open_shifts_broadcast_by?: string | null
           published_at?: string
           published_by?: string
           restaurant_id?: string

@@ -48,7 +48,7 @@ export default defineConfig(async ({ mode }) => {
   }
 
   return {
-    base: './',
+    base: process.env.CAPACITOR_BUILD === 'true' ? './' : '/',
     server: {
       host: "::",
       port: 8080,

@@ -30,6 +30,7 @@ import { AvailabilityDialog } from '@/components/AvailabilityDialog';
 import { AvailabilityExceptionDialog } from '@/components/AvailabilityExceptionDialog';
 import { ScheduleStatusBadge } from '@/components/ScheduleStatusBadge';
 import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
+import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
 import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
@@ -87,6 +88,7 @@ import {
   CheckSquare,
   Check,
   Pencil,
+  Volume2,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -346,6 +348,7 @@ const Scheduling = () => {
   const [changeLogDialogOpen, setChangeLogDialogOpen] = useState(false);
   const [unpublishDialogOpen, setUnpublishDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false);
   const [shiftImportOpen, setShiftImportOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [recurringActionDialog, setRecurringActionDialog] = useState<{
@@ -1281,6 +1284,30 @@ const Scheduling = () => {
                       <Unlock className="h-3.5 w-3.5 mr-1.5" />
                       Unpublish
                     </Button>
+                    {staffingSettings.open_shifts_enabled && openShiftCount > 0 && (
+                      <Button
+                        variant={publication?.open_shifts_broadcast_at ? 'ghost' : 'outline'}
+                        size="sm"
+                        onClick={() => setBroadcastDialogOpen(true)}
+                        className={cn(
+                          'h-9 text-xs',
+                          publication?.open_shifts_broadcast_at && 'text-muted-foreground'
+                        )}
+                        aria-label="Broadcast open shifts"
+                      >
+                        {publication?.open_shifts_broadcast_at ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 mr-1.5 text-green-600" />
+                            Broadcast Sent
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="h-3.5 w-3.5 mr-1.5" />
+                            Broadcast
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <Button
@@ -1867,9 +1894,23 @@ const Scheduling = () => {
         totalHours={totalScheduledHours}
         openShiftCount={openShiftCount}
         openShiftsEnabled={staffingSettings.open_shifts_enabled}
+        broadcastDate={publication?.open_shifts_broadcast_at ?? null}
         onNavigateToSettings={() => navigate('/settings?tab=labor-planning')}
         onConfirm={handlePublishSchedule}
         isPublishing={publishSchedule.isPending}
+      />
+
+      {/* Broadcast Open Shifts Dialog */}
+      <BroadcastOpenShiftsDialog
+        open={broadcastDialogOpen}
+        onOpenChange={setBroadcastDialogOpen}
+        restaurantId={restaurantId ?? ''}
+        publicationId={publication?.id ?? ''}
+        weekStart={currentWeekStart}
+        weekEnd={weekEnd}
+        openShiftCount={openShiftCount}
+        alreadyBroadcast={!!publication?.open_shifts_broadcast_at}
+        broadcastDate={publication?.open_shifts_broadcast_at ?? null}
       />
 
       {/* Change Log Dialog */}

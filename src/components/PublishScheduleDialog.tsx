@@ -30,6 +30,7 @@ interface PublishScheduleDialogProps {
   totalHours: number;
   openShiftCount: number;
   openShiftsEnabled: boolean;
+  broadcastDate?: string | null;
   onConfirm: (notes?: string) => void;
   onNavigateToSettings?: () => void;
   isPublishing: boolean;
@@ -45,6 +46,7 @@ export const PublishScheduleDialog = ({
   totalHours,
   openShiftCount,
   openShiftsEnabled,
+  broadcastDate,
   onConfirm,
   onNavigateToSettings,
   isPublishing,
@@ -109,7 +111,9 @@ export const PublishScheduleDialog = ({
               <AlertTriangle className="h-4 w-4 text-amber-600" />
               <AlertDescription className="text-sm">
                 <strong>{openShiftCount} {openShiftCount === 1 ? 'shift' : 'shifts'} still {openShiftCount === 1 ? 'needs' : 'need'} staff.</strong>{' '}
-                {openShiftsEnabled ? (
+                {openShiftsEnabled && broadcastDate ? (
+                  `Broadcast sent on ${format(new Date(broadcastDate), 'MMM d')}.`
+                ) : openShiftsEnabled ? (
                   'You can fill these now or broadcast to your team later.'
                 ) : (
                   <>

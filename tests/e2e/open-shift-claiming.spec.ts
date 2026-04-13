@@ -221,7 +221,7 @@ test.describe('Open Shift Claiming', () => {
           end_time: '22:00:00',
           position: 'Server',
           capacity: 3,
-          days: [0, 1, 2, 3, 4, 5, 6],
+          days: [0], // Sunday only — ensures the claim targets the exact date we verify
           is_active: true,
         })
         .select()

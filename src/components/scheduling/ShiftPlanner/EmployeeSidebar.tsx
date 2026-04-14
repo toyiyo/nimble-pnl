@@ -14,6 +14,8 @@ import { computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 
 import { cn } from '@/lib/utils';
 
+import { isMinor } from '@/lib/employeeUtils';
+
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
@@ -23,6 +25,8 @@ interface Employee {
   name: string;
   position: string | null;
   area?: string;
+  employment_type?: 'full_time' | 'part_time';
+  date_of_birth?: string;
 }
 
 export function filterEmployees(
@@ -30,12 +34,14 @@ export function filterEmployees(
   search: string,
   area: string,
   role: string,
+  employmentType: string = 'all',
 ): Employee[] {
   const q = search.toLowerCase();
   return employees.filter((e) => {
     if (q && !e.name.toLowerCase().includes(q)) return false;
     if (area !== 'all' && e.area !== area) return false;
     if (role !== 'all' && e.position !== role) return false;
+    if (employmentType !== 'all' && e.employment_type !== employmentType) return false;
     return true;
   });
 }
@@ -114,9 +120,16 @@ const DraggableEmployee = memo(
           )}
         </div>
         {employee.position && (
-          <p className="text-[11px] text-muted-foreground truncate">
-            {employee.position}
-          </p>
+          <div className="flex items-center gap-1">
+            <p className="text-[11px] text-muted-foreground truncate">
+              {employee.position}
+            </p>
+            {isMinor(employee.date_of_birth) && (
+              <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-medium shrink-0">
+                Minor
+              </span>
+            )}
+          </div>
         )}
       </div>
     );
@@ -125,6 +138,7 @@ const DraggableEmployee = memo(
     prev.employee.id === next.employee.id &&
     prev.employee.name === next.employee.name &&
     prev.employee.position === next.employee.position &&
+    prev.employee.date_of_birth === next.employee.date_of_birth &&
     prev.shiftCount === next.shiftCount &&
     prev.hours === next.hours &&
     prev.onSelect === next.onSelect,
@@ -138,6 +152,7 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   const [search, setSearch] = useState('');
   const [area, setArea] = useState('all');
   const [role, setRole] = useState('all');
+  const [employmentType, setEmploymentType] = useState('all');
   const [showAllOverride, setShowAllOverride] = useState(false);
 
   // Derive unique areas for the filter dropdown
@@ -193,8 +208,8 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   const effectiveArea = showAllOverride ? 'all' : area;
 
   const filtered = useMemo(
-    () => filterEmployees(employees, search, effectiveArea, role),
-    [employees, search, effectiveArea, role],
+    () => filterEmployees(employees, search, effectiveArea, role, employmentType),
+    [employees, search, effectiveArea, role, employmentType],
   );
 
   return (
@@ -256,6 +271,19 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
             </SelectContent>
           </Select>
         )}
+        <Select value={employmentType} onValueChange={setEmploymentType}>
+          <SelectTrigger
+            className="h-8 text-[13px] bg-muted/30 border-border/40 rounded-lg"
+            aria-label="Filter by employment type"
+          >
+            <SelectValue placeholder="All types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="full_time">Full-Time</SelectItem>
+            <SelectItem value="part_time">Part-Time</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Scrollable employee list */}

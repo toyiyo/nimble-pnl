@@ -31,6 +31,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { suggestRateCorrections } from '@/hooks/useEmployeeLaborCosts';
+import { computeAge, isMinor } from '@/lib/employeeUtils';
+import { cn } from '@/lib/utils';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -45,6 +47,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
+  const [employmentType, setEmploymentType] = useState<'full_time' | 'part_time'>('full_time');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive' | 'terminated'>('active');
   const [hireDate, setHireDate] = useState('');
   const [terminationDate, setTerminationDate] = useState('');
@@ -123,6 +127,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       setPhone(employee.phone || '');
       setPosition(employee.position);
       setArea(employee.area || '');
+      setEmploymentType(employee.employment_type || 'full_time');
+      setDateOfBirth(employee.date_of_birth || '');
       setStatus(employee.status);
       setHireDate(employee.hire_date || '');
       setTerminationDate(employee.termination_date || '');
@@ -155,6 +161,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setPhone('');
     setPosition('Server');
     setArea('');
+    setEmploymentType('full_time');
+    setDateOfBirth('');
     setStatus('active');
     setHireDate('');
     setTerminationDate('');
@@ -404,6 +412,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       phone: phone || undefined,
       position,
       area: area.trim() || null,
+      employment_type: employmentType,
+      date_of_birth: dateOfBirth || null,
       status,
       hire_date: hireDate || undefined,
       termination_date: (status === 'inactive' || status === 'terminated') && terminationDate 
@@ -553,6 +563,46 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   onValueChange={setArea}
                   placeholder="Select area (optional)..."
                 />
+              </div>
+
+              {/* Employment Type Toggle */}
+              <div className="space-y-2">
+                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Employment Type
+                </Label>
+                <div className="flex rounded-lg border border-border/40 overflow-hidden w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setEmploymentType('full_time')}
+                    className={cn(
+                      'px-4 py-2 text-[13px] font-medium transition-colors',
+                      employmentType === 'full_time'
+                        ? 'bg-foreground text-background'
+                        : 'bg-background text-muted-foreground hover:text-foreground'
+                    )}
+                    aria-label="Full-time employment"
+                    aria-pressed={employmentType === 'full_time'}
+                  >
+                    Full-Time
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmploymentType('part_time')}
+                    className={cn(
+                      'px-4 py-2 text-[13px] font-medium transition-colors border-l border-border/40',
+                      employmentType === 'part_time'
+                        ? 'bg-foreground text-background'
+                        : 'bg-background text-muted-foreground hover:text-foreground'
+                    )}
+                    aria-label="Part-time employment"
+                    aria-pressed={employmentType === 'part_time'}
+                  >
+                    Part-Time
+                  </button>
+                </div>
+                <p className="text-[12px] text-muted-foreground">
+                  Used by the scheduler to plan weekly hours
+                </p>
               </div>
 
               {/* Compensation Type Selector */}
@@ -920,7 +970,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
@@ -944,6 +994,22 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => setHireDate(e.target.value)}
                     aria-label="Hire date"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    aria-label="Date of birth"
+                  />
+                  {dateOfBirth && isMinor(dateOfBirth) && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium inline-block">
+                      Minor ({computeAge(dateOfBirth)} yrs)
+                    </span>
+                  )}
                 </div>
               </div>
 

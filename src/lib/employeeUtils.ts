@@ -21,5 +21,7 @@ export function computeAge(dateOfBirth: string): number {
  */
 export function isMinor(dateOfBirth: string | null | undefined): boolean {
   if (!dateOfBirth) return false;
-  return computeAge(dateOfBirth) < 18;
+  const age = computeAge(dateOfBirth);
+  if (!Number.isFinite(age) || age < 0) return false;
+  return age < 18;
 }

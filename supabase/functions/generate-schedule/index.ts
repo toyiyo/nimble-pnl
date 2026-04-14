@@ -114,7 +114,7 @@ serve(async (req) => {
       // 1. Active employees
       supabase
         .from("employees")
-        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type")
+        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "active"),
 
@@ -216,6 +216,7 @@ serve(async (req) => {
       area: e.area ?? null,
       // hourly_rate stored in cents; salary employees get 0
       hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
+      employment_type: e.employment_type ?? "full_time",
     }));
 
     // ── Build ScheduleTemplate[] ─────────────────────────────────────────────

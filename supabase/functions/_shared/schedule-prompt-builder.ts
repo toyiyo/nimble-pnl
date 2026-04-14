@@ -12,6 +12,7 @@ export interface ScheduleEmployee {
   position: string;
   area: string | null;
   hourly_rate: number; // cents
+  employment_type: 'full_time' | 'part_time';
 }
 
 export interface ScheduleTemplate {
@@ -78,6 +79,7 @@ RULES:
 8. If staffing settings specify minimum crew per position, meet those minimums when possible.
 9. If no staffing settings exist, use prior schedule patterns to infer typical staffing levels.
 10. Try to stay within the weekly labor budget target. If adequate coverage requires exceeding it, note the variance.
+11. Full-time employees should be scheduled for more shifts, targeting 35-40 hours per week. Part-time employees should be scheduled for fewer shifts, targeting 15-25 hours per week. When both full-time and part-time employees are available for a slot, prefer the full-time employee unless they are already near 40 hours for the week.
 
 Return valid JSON only, matching the provided schema exactly.`;
 
@@ -135,6 +137,7 @@ function buildUserPrompt(ctx: ScheduleContext): string {
     position: e.position,
     area: e.area ?? 'unassigned',
     hourly_rate_dollars: (e.hourly_rate / 100).toFixed(2),
+    employment_type: e.employment_type,
   }));
   sections.push(`## Available Employees\n${JSON.stringify(employeesForPrompt, null, 2)}`);
 

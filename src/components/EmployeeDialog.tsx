@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
-import { Employee, CompensationType, PayPeriodType, ContractorPaymentInterval } from '@/types/scheduling';
+import { Employee, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -47,7 +47,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
-  const [employmentType, setEmploymentType] = useState<'full_time' | 'part_time'>('full_time');
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('full_time');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive' | 'terminated'>('active');
   const [hireDate, setHireDate] = useState('');

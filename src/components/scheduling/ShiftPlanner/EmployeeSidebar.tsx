@@ -152,7 +152,7 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   const [search, setSearch] = useState('');
   const [area, setArea] = useState('all');
   const [role, setRole] = useState('all');
-  const [empType, setEmpType] = useState('all');
+  const [employmentType, setEmploymentType] = useState('all');
   const [showAllOverride, setShowAllOverride] = useState(false);
 
   // Derive unique areas for the filter dropdown
@@ -208,8 +208,8 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
   const effectiveArea = showAllOverride ? 'all' : area;
 
   const filtered = useMemo(
-    () => filterEmployees(employees, search, effectiveArea, role, empType),
-    [employees, search, effectiveArea, role, empType],
+    () => filterEmployees(employees, search, effectiveArea, role, employmentType),
+    [employees, search, effectiveArea, role, employmentType],
   );
 
   return (
@@ -271,7 +271,7 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
             </SelectContent>
           </Select>
         )}
-        <Select value={empType} onValueChange={setEmpType}>
+        <Select value={employmentType} onValueChange={setEmploymentType}>
           <SelectTrigger
             className="h-8 text-[13px] bg-muted/30 border-border/40 rounded-lg"
             aria-label="Filter by employment type"

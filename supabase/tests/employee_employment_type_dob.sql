@@ -2,6 +2,11 @@
 BEGIN;
 SELECT plan(7);
 
+-- Setup: Create test restaurant
+INSERT INTO restaurants (id, name) VALUES
+  ('aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa', 'Employment Type Test Restaurant')
+ON CONFLICT (id) DO NOTHING;
+
 -- Test 1: employment_type column exists with default
 SELECT has_column('public', 'employees', 'employment_type',
   'employees table should have employment_type column');
@@ -14,7 +19,7 @@ SELECT has_column('public', 'employees', 'date_of_birth',
 INSERT INTO employees (id, restaurant_id, name, position, hourly_rate, compensation_type)
 VALUES (
   'aaaaaaaa-0000-0000-0000-000000000001',
-  (SELECT id FROM restaurants LIMIT 1),
+  'aaaaaaaa-0000-0000-0000-aaaaaaaaaaaa',
   'Test Default FT',
   'Server',
   1500,

@@ -126,6 +126,7 @@ export function buildTemplateGridData(
 ): Map<string, Map<string, Shift[]>> {
   const weekDaySet = new Set(weekDays);
   const grid = new Map<string, Map<string, Shift[]>>();
+  const templateIds = new Set(templates.map((t) => t.id));
 
   for (const t of templates) {
     grid.set(t.id, new Map());
@@ -138,6 +139,13 @@ export function buildTemplateGridData(
     const dayStr = formatLocalDate(shiftStartAt);
     if (!weekDaySet.has(dayStr)) continue;
 
+    // Prefer explicit template ID (set during planner assignment)
+    if (shift.shift_template_id && templateIds.has(shift.shift_template_id)) {
+      pushToGridBucket(grid.get(shift.shift_template_id)!, dayStr, shift);
+      continue;
+    }
+
+    // Fallback: match by time/position/day for legacy shifts
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();

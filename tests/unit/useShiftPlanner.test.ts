@@ -229,6 +229,47 @@ describe('useShiftPlanner utilities', () => {
       expect(t1Days?.get('2026-03-02')).toHaveLength(1);
     });
 
+    it('should bucket shift by shift_template_id when present, ignoring time-based matching', () => {
+      // Two templates with identical time/position/days but different areas
+      const cscTemplate: ShiftTemplate = {
+        id: 't-csc', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [5, 6, 0], name: 'Open-weekend-csc', area: 'Cold Stone',
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: true, created_at: '', updated_at: '',
+      };
+      const wtzTemplate: ShiftTemplate = {
+        id: 't-wtz', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [5, 6, 0], name: 'Open-weekend-wtz', area: "Wetzel's",
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: true, created_at: '', updated_at: '',
+      };
+
+      // Shift explicitly linked to wtz template
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-07T10:00:00', end_time: '2026-03-07T16:30:00',
+        position: 'Server', status: 'scheduled',
+        shift_template_id: 't-wtz',
+      });
+
+      const grid = buildTemplateGridData([shift], [cscTemplate, wtzTemplate], weekDays);
+
+      // Should be in wtz bucket, NOT csc (which would be the .find() first-match)
+      expect(grid.get('t-wtz')?.get('2026-03-07')).toHaveLength(1);
+      expect(grid.get('t-csc')?.get('2026-03-07') ?? []).toHaveLength(0);
+    });
+
+    it('should fall back to time-based matching when shift_template_id is absent', () => {
+      // Legacy shift without shift_template_id — should still match by time/position/day
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00',
+        position: 'Server', status: 'scheduled',
+        // No shift_template_id
+      });
+
+      const grid = buildTemplateGridData([shift], templates, weekDays);
+      expect(grid.get('t1')?.get('2026-03-02')).toHaveLength(1);
+    });
+
     it('should match shifts with timezone offset (+00:00) to local-time templates', () => {
       // Supabase may return timestamps with +00:00 instead of Z
       const localSixAm = new Date('2026-03-02T06:00:00');

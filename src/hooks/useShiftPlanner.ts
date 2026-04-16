@@ -188,6 +188,8 @@ function buildShiftPayload(
     status: 'scheduled' as const,
     is_published: false,
     locked: false,
+    source: (input.shiftTemplateId ? 'template' : 'manual') as 'template' | 'manual',
+    shift_template_id: input.shiftTemplateId ?? null,
   };
 }
 
@@ -267,6 +269,7 @@ export interface ShiftCreateInput {
   position: string;
   breakDuration?: number;
   notes?: string;
+  shiftTemplateId?: string;
 }
 
 export interface UseShiftPlannerReturn {

@@ -104,6 +104,7 @@ export interface Shift {
   is_published: boolean;
   locked: boolean;
   source: 'manual' | 'ai' | 'template';
+  shift_template_id?: string | null; // References shift_templates.id for planner bucketing
   created_at: string;
   updated_at: string;
   employee?: Employee; // Joined data

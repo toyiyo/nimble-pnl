@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildGridData, buildTemplateGridData, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime } from '@/hooks/useShiftPlanner';
+import { buildGridData, buildTemplateGridData, buildShiftPayload, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime } from '@/hooks/useShiftPlanner';
+import { ShiftInterval } from '@/lib/shiftInterval';
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 function mockShift(overrides: Partial<Shift>): Shift {
@@ -444,6 +445,44 @@ describe('useShiftPlanner utilities', () => {
 
       // Should be on March 2 (local date), not whatever UTC date it converts to
       expect(grid.get('e1')?.get('2026-03-02')).toHaveLength(1);
+    });
+  });
+
+  describe('buildShiftPayload', () => {
+    it('should include shift_template_id and source=template when shiftTemplateId is provided', () => {
+      const input = {
+        employeeId: 'e1',
+        date: '2026-03-02',
+        startTime: '10:00',
+        endTime: '16:30',
+        position: 'Server',
+        breakDuration: 30,
+        shiftTemplateId: 'tmpl-123',
+      };
+      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30');
+      const payload = buildShiftPayload('r1', input, interval);
+
+      expect(payload.shift_template_id).toBe('tmpl-123');
+      expect(payload.source).toBe('template');
+      expect(payload.restaurant_id).toBe('r1');
+      expect(payload.employee_id).toBe('e1');
+      expect(payload.position).toBe('Server');
+      expect(payload.break_duration).toBe(30);
+    });
+
+    it('should set shift_template_id to null and source=manual when no template ID', () => {
+      const input = {
+        employeeId: 'e1',
+        date: '2026-03-02',
+        startTime: '10:00',
+        endTime: '16:30',
+        position: 'Server',
+      };
+      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30');
+      const payload = buildShiftPayload('r1', input, interval);
+
+      expect(payload.shift_template_id).toBeNull();
+      expect(payload.source).toBe('manual');
     });
   });
 });

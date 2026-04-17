@@ -172,7 +172,7 @@ function errorToValidationResult(err: unknown, fallback: string): ValidationResu
 }
 
 /** Build the mutation payload for creating a shift from validated inputs. */
-function buildShiftPayload(
+export function buildShiftPayload(
   restaurantId: string,
   input: ShiftCreateInput,
   interval: ShiftInterval,

@@ -1370,6 +1370,58 @@ describe('Validation Edge Cases', () => {
       expect(snapshot.salary_amount).toBe(200000);
       expect(snapshot.pay_period_type).toBe('bi-weekly');
     });
+
+    it('resolves by chronology for employees with multiple comp-type transitions when the latest history entry matches the current type', () => {
+      // salary → hourly → salary, target date lands inside the middle (hourly)
+      // era. The latest history entry (salary, 2026-04-01) matches the current
+      // compensation_type (salary), so the history is internally consistent and
+      // the resolver must use pure chronology — not filter to the current type.
+      // A naive "prefer current-type" shortcut would incorrectly return the
+      // 2026-01-01 salary entry instead of the 2026-02-01 hourly entry.
+      const employee = createEmployee({
+        compensation_type: 'salary',
+        salary_amount: 300000,
+        pay_period_type: 'monthly',
+        hourly_rate: 0,
+        compensation_history: [
+          {
+            id: 's-initial',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'salary',
+            amount_cents: 200000,
+            pay_period_type: 'monthly',
+            effective_date: '2026-01-01',
+            created_at: '2026-01-01T00:00:00Z',
+          },
+          {
+            id: 'h-mid',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 2500,
+            pay_period_type: null,
+            effective_date: '2026-02-01',
+            created_at: '2026-02-01T00:00:00Z',
+          },
+          {
+            id: 's-current',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'salary',
+            amount_cents: 300000,
+            pay_period_type: 'monthly',
+            effective_date: '2026-04-01',
+            created_at: '2026-04-01T00:00:00Z',
+          },
+        ],
+      });
+
+      const snapshot = resolveCompensationForDate(employee, '2026-02-15');
+
+      expect(snapshot.compensation_type).toBe('hourly');
+      expect(snapshot.hourly_rate).toBe(2500);
+    });
   });
 });
 

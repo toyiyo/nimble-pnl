@@ -1275,6 +1275,101 @@ describe('Validation Edge Cases', () => {
 
       expect(total).toBe(200000);
     });
+
+    it('skips a stale history entry of a different compensation_type and uses the most recent matching-type entry', () => {
+      // Reproduces the Alejandra bug: current comp_type is 'hourly' but a stale
+      // 'salary' entry sits between the shift date and the most recent hourly entry.
+      const employee = createEmployee({
+        compensation_type: 'hourly',
+        hourly_rate: 1000,
+        compensation_history: [
+          {
+            id: 'h1',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 3000,
+            pay_period_type: null,
+            effective_date: '2026-03-01',
+            created_at: '2026-03-01T00:00:00Z',
+          },
+          {
+            id: 'h2',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 1500,
+            pay_period_type: null,
+            effective_date: '2026-03-15',
+            created_at: '2026-03-15T00:00:00Z',
+          },
+          {
+            id: 'h3',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 1000,
+            pay_period_type: null,
+            effective_date: '2026-04-01',
+            created_at: '2026-04-01T00:00:00Z',
+          },
+          {
+            id: 'h4-stale',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'salary',
+            amount_cents: 60000,
+            pay_period_type: null,
+            effective_date: '2026-04-11',
+            created_at: '2026-04-11T00:00:00Z',
+          },
+        ],
+      });
+
+      const snapshot = resolveCompensationForDate(employee, '2026-04-13');
+
+      expect(snapshot.compensation_type).toBe('hourly');
+      expect(snapshot.hourly_rate).toBe(1000);
+    });
+
+    it('falls back to a mismatched-type entry when no matching-type entry exists on or before the date (legitimate comp-type transition)', () => {
+      // Employee started on salary in Jan, switched to hourly in April. A Feb shift
+      // still correctly resolves to the salary rate in effect at that time.
+      const employee = createEmployee({
+        compensation_type: 'hourly',
+        hourly_rate: 1500,
+        salary_amount: 200000,
+        pay_period_type: 'bi-weekly',
+        compensation_history: [
+          {
+            id: 's1',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'salary',
+            amount_cents: 200000,
+            pay_period_type: 'bi-weekly',
+            effective_date: '2026-01-01',
+            created_at: '2026-01-01T00:00:00Z',
+          },
+          {
+            id: 'h1',
+            employee_id: 'emp-test',
+            restaurant_id: 'rest-test',
+            compensation_type: 'hourly',
+            amount_cents: 1500,
+            pay_period_type: null,
+            effective_date: '2026-04-01',
+            created_at: '2026-04-01T00:00:00Z',
+          },
+        ],
+      });
+
+      const snapshot = resolveCompensationForDate(employee, '2026-02-15');
+
+      expect(snapshot.compensation_type).toBe('salary');
+      expect(snapshot.salary_amount).toBe(200000);
+      expect(snapshot.pay_period_type).toBe('bi-weekly');
+    });
   });
 });
 

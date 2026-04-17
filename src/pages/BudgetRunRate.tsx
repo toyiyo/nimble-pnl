@@ -234,6 +234,7 @@ export default function BudgetRunRate() {
       
       {/* Cost Item Dialog */}
       <CostItemDialog
+        key={editingItem?.id ?? 'new'}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSave={handleSaveItem}

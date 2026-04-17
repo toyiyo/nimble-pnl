@@ -271,6 +271,23 @@ describe('useShiftPlanner utilities', () => {
       expect(grid.get('t1')?.get('2026-03-02')).toHaveLength(1);
     });
 
+    it('should bucket shift as unmatched when shift_template_id references an archived template', () => {
+      // Shift has a template ID that is NOT in the active templates list (archived/deleted)
+      // Should go to __unmatched__, NOT fall through to time-based matching
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00',
+        position: 'Server', status: 'scheduled',
+        shift_template_id: 'archived-template-id',
+      });
+
+      const grid = buildTemplateGridData([shift], templates, weekDays);
+      // Must NOT match t1 via time-based fallback
+      expect(grid.get('t1')?.get('2026-03-02') ?? []).toHaveLength(0);
+      // Must be in __unmatched__
+      expect(grid.get('__unmatched__')?.get('2026-03-02')).toHaveLength(1);
+    });
+
     it('should match shifts with timezone offset (+00:00) to local-time templates', () => {
       // Supabase may return timestamps with +00:00 instead of Z
       const localSixAm = new Date('2026-03-02T06:00:00');

@@ -140,12 +140,17 @@ export function buildTemplateGridData(
     if (!weekDaySet.has(dayStr)) continue;
 
     // Prefer explicit template ID (set during planner assignment)
-    if (shift.shift_template_id && templateIds.has(shift.shift_template_id)) {
-      pushToGridBucket(grid.get(shift.shift_template_id)!, dayStr, shift);
+    if (shift.shift_template_id) {
+      // If template is active, bucket under it; if archived, mark unmatched
+      // (don't fall through to time-based matching which could pick the wrong template)
+      const bucketKey = templateIds.has(shift.shift_template_id)
+        ? shift.shift_template_id
+        : '__unmatched__';
+      pushToGridBucket(grid.get(bucketKey)!, dayStr, shift);
       continue;
     }
 
-    // Fallback: match by time/position/day for legacy shifts
+    // Fallback: match by time/position/day for legacy shifts (no shift_template_id)
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();

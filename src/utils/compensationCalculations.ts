@@ -75,13 +75,12 @@ export function resolveCompensationForDate(
 ): CompensationSnapshot {
   const dateStr = normalizeDateString(targetDate);
   const history = getSortedHistory(employee);
-  // Prefer the most recent entry whose compensation_type matches the employee's
-  // current compensation_type; fall back to any most-recent entry so legitimate
-  // historical comp-type transitions (e.g. salary→hourly) still resolve correctly.
-  const matchingEntry = history.find(
-    h => h.effective_date <= dateStr && h.compensation_type === employee.compensation_type
-  );
-  const entry = matchingEntry ?? history.find(h => h.effective_date <= dateStr);
+  // Prefer the most recent entry whose type matches the employee's current
+  // compensation_type. Fall back to any dated entry so historical type
+  // transitions (e.g. salary→hourly) still resolve correctly for past dates.
+  const entry =
+    history.find(h => h.effective_date <= dateStr && h.compensation_type === employee.compensation_type) ??
+    history.find(h => h.effective_date <= dateStr);
 
   const snapshot: CompensationSnapshot = {
     compensation_type: entry?.compensation_type || employee.compensation_type,

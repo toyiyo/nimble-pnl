@@ -126,6 +126,7 @@ export function buildTemplateGridData(
 ): Map<string, Map<string, Shift[]>> {
   const weekDaySet = new Set(weekDays);
   const grid = new Map<string, Map<string, Shift[]>>();
+  const templateIds = new Set(templates.map((t) => t.id));
 
   for (const t of templates) {
     grid.set(t.id, new Map());
@@ -138,6 +139,18 @@ export function buildTemplateGridData(
     const dayStr = formatLocalDate(shiftStartAt);
     if (!weekDaySet.has(dayStr)) continue;
 
+    // Prefer explicit template ID (set during planner assignment)
+    if (shift.shift_template_id) {
+      // If template is active, bucket under it; if archived, mark unmatched
+      // (don't fall through to time-based matching which could pick the wrong template)
+      const bucketKey = templateIds.has(shift.shift_template_id)
+        ? shift.shift_template_id
+        : '__unmatched__';
+      pushToGridBucket(grid.get(bucketKey)!, dayStr, shift);
+      continue;
+    }
+
+    // Fallback: match by time/position/day for legacy shifts (no shift_template_id)
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();
@@ -164,7 +177,7 @@ function errorToValidationResult(err: unknown, fallback: string): ValidationResu
 }
 
 /** Build the mutation payload for creating a shift from validated inputs. */
-function buildShiftPayload(
+export function buildShiftPayload(
   restaurantId: string,
   input: ShiftCreateInput,
   interval: ShiftInterval,
@@ -180,6 +193,8 @@ function buildShiftPayload(
     status: 'scheduled' as const,
     is_published: false,
     locked: false,
+    source: (input.shiftTemplateId ? 'template' : 'manual') as 'template' | 'manual',
+    shift_template_id: input.shiftTemplateId ?? null,
   };
 }
 
@@ -259,6 +274,7 @@ export interface ShiftCreateInput {
   position: string;
   breakDuration?: number;
   notes?: string;
+  shiftTemplateId?: string;
 }
 
 export interface UseShiftPlannerReturn {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildGridData, buildTemplateGridData, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime } from '@/hooks/useShiftPlanner';
+import { buildGridData, buildTemplateGridData, buildShiftPayload, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime } from '@/hooks/useShiftPlanner';
+import { ShiftInterval } from '@/lib/shiftInterval';
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 function mockShift(overrides: Partial<Shift>): Shift {
@@ -229,6 +230,64 @@ describe('useShiftPlanner utilities', () => {
       expect(t1Days?.get('2026-03-02')).toHaveLength(1);
     });
 
+    it('should bucket shift by shift_template_id when present, ignoring time-based matching', () => {
+      // Two templates with identical time/position/days but different areas
+      const cscTemplate: ShiftTemplate = {
+        id: 't-csc', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [5, 6, 0], name: 'Open-weekend-csc', area: 'Cold Stone',
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: true, created_at: '', updated_at: '',
+      };
+      const wtzTemplate: ShiftTemplate = {
+        id: 't-wtz', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [5, 6, 0], name: 'Open-weekend-wtz', area: "Wetzel's",
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: true, created_at: '', updated_at: '',
+      };
+
+      // Shift explicitly linked to wtz template
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-07T10:00:00', end_time: '2026-03-07T16:30:00',
+        position: 'Server', status: 'scheduled',
+        shift_template_id: 't-wtz',
+      });
+
+      const grid = buildTemplateGridData([shift], [cscTemplate, wtzTemplate], weekDays);
+
+      // Should be in wtz bucket, NOT csc (which would be the .find() first-match)
+      expect(grid.get('t-wtz')?.get('2026-03-07')).toHaveLength(1);
+      expect(grid.get('t-csc')?.get('2026-03-07') ?? []).toHaveLength(0);
+    });
+
+    it('should fall back to time-based matching when shift_template_id is absent', () => {
+      // Legacy shift without shift_template_id — should still match by time/position/day
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00',
+        position: 'Server', status: 'scheduled',
+        // No shift_template_id
+      });
+
+      const grid = buildTemplateGridData([shift], templates, weekDays);
+      expect(grid.get('t1')?.get('2026-03-02')).toHaveLength(1);
+    });
+
+    it('should bucket shift as unmatched when shift_template_id references an archived template', () => {
+      // Shift has a template ID that is NOT in the active templates list (archived/deleted)
+      // Should go to __unmatched__, NOT fall through to time-based matching
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-02T06:00:00', end_time: '2026-03-02T12:00:00',
+        position: 'Server', status: 'scheduled',
+        shift_template_id: 'archived-template-id',
+      });
+
+      const grid = buildTemplateGridData([shift], templates, weekDays);
+      // Must NOT match t1 via time-based fallback
+      expect(grid.get('t1')?.get('2026-03-02') ?? []).toHaveLength(0);
+      // Must be in __unmatched__
+      expect(grid.get('__unmatched__')?.get('2026-03-02')).toHaveLength(1);
+    });
+
     it('should match shifts with timezone offset (+00:00) to local-time templates', () => {
       // Supabase may return timestamps with +00:00 instead of Z
       const localSixAm = new Date('2026-03-02T06:00:00');
@@ -403,6 +462,44 @@ describe('useShiftPlanner utilities', () => {
 
       // Should be on March 2 (local date), not whatever UTC date it converts to
       expect(grid.get('e1')?.get('2026-03-02')).toHaveLength(1);
+    });
+  });
+
+  describe('buildShiftPayload', () => {
+    it('should include shift_template_id and source=template when shiftTemplateId is provided', () => {
+      const input = {
+        employeeId: 'e1',
+        date: '2026-03-02',
+        startTime: '10:00',
+        endTime: '16:30',
+        position: 'Server',
+        breakDuration: 30,
+        shiftTemplateId: 'tmpl-123',
+      };
+      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30');
+      const payload = buildShiftPayload('r1', input, interval);
+
+      expect(payload.shift_template_id).toBe('tmpl-123');
+      expect(payload.source).toBe('template');
+      expect(payload.restaurant_id).toBe('r1');
+      expect(payload.employee_id).toBe('e1');
+      expect(payload.position).toBe('Server');
+      expect(payload.break_duration).toBe(30);
+    });
+
+    it('should set shift_template_id to null and source=manual when no template ID', () => {
+      const input = {
+        employeeId: 'e1',
+        date: '2026-03-02',
+        startTime: '10:00',
+        endTime: '16:30',
+        position: 'Server',
+      };
+      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30');
+      const payload = buildShiftPayload('r1', input, interval);
+
+      expect(payload.shift_template_id).toBeNull();
+      expect(payload.source).toBe('manual');
     });
   });
 });

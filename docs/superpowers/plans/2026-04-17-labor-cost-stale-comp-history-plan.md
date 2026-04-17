@@ -15,16 +15,16 @@
 ### Task 1: Reproduce the bug in a failing unit test for `resolveCompensationForDate`
 
 **Files:**
-- Test: `tests/unit/resolveCompensationForDate.test.ts` (new)
+- Test: `tests/unit/compensation-edge-cases.test.ts` (existing file already covering this resolver — add new cases to the "Compensation Type Transitions" describe block)
 
-- [ ] **Step 1: Check if a test file already exists for the resolver**
+- [ ] **Step 1: Confirm the existing resolver test file**
 
 Run: `ls tests/unit/ | grep -i compensation`
-If a file exists that already tests `resolveCompensationForDate`, add the new cases to it and adjust paths below. Otherwise create the new file.
+Expected: `compensation-edge-cases.test.ts` already imports `resolveCompensationForDate`. Add the new cases there (matching the existing `createEmployee` helper). Only create a new `tests/unit/resolveCompensationForDate.test.ts` if the existing file is ever removed.
 
 - [ ] **Step 2: Write two failing tests covering the bug and the fallback guarantee**
 
-Contents of `tests/unit/resolveCompensationForDate.test.ts`:
+Contents to append inside `tests/unit/compensation-edge-cases.test.ts` (the `Compensation Type Transitions` describe block), re-using its `createEmployee` helper:
 
 ```ts
 import { describe, it, expect } from 'vitest';

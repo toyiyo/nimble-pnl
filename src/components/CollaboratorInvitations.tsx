@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle } from 'lucide-react';
+import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, RefreshCw } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
 import {
@@ -15,6 +15,7 @@ import {
   useSendCollaboratorInvitation,
   useCancelCollaboratorInvitation,
   useRemoveCollaborator,
+  useResendCollaboratorInvitation,
 } from '@/hooks/useCollaborators';
 
 interface CollaboratorInvitationsProps {
@@ -42,6 +43,8 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
   const sendInvitationMutation = useSendCollaboratorInvitation();
   const cancelInvitationMutation = useCancelCollaboratorInvitation();
   const removeCollaboratorMutation = useRemoveCollaborator();
+  const resendInvitationMutation = useResendCollaboratorInvitation();
+  const [showCancelledInvites, setShowCancelledInvites] = useState(false);
 
   const handleSendInvitation = () => {
     if (!email || !selectedRole) {
@@ -77,6 +80,14 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
       collaboratorId,
       collaboratorEmail,
       restaurantId,
+    });
+  };
+
+  const handleResendInvitation = (invite: { email: string; role: string }) => {
+    resendInvitationMutation.mutate({
+      restaurantId,
+      email: invite.email,
+      role: invite.role as Role,
     });
   };
 
@@ -311,8 +322,8 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
         </CardContent>
       </Card>
 
-      {/* Pending Invitations */}
-      {(invitesLoading || invitesError || pendingInvites?.some(i => i.status === 'pending')) && (
+      {/* Pending & Expired Invitations */}
+      {(invitesLoading || invitesError || pendingInvites?.some(i => i.status === 'pending' || i.status === 'expired')) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Pending Invitations</CardTitle>
@@ -344,9 +355,10 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
             ) : (
               <div className="space-y-3">
                 {pendingInvites
-                  ?.filter(invite => invite.status === 'pending')
+                  ?.filter(invite => invite.status === 'pending' || invite.status === 'expired')
                   .map((invite) => {
                     const Icon = roleIcons[invite.role] || Calculator;
+                    const isExpired = invite.status === 'expired';
 
                     return (
                       <div
@@ -360,10 +372,9 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                           <div>
                             <p className="font-medium text-sm">{invite.email}</p>
                             <p className="text-xs text-muted-foreground">
-                              Invited by {invite.invitedBy} • Expires{' '}
-                              {invite.expiresAt
-                                ? new Date(invite.expiresAt).toLocaleDateString()
-                                : 'never'}
+                              {isExpired
+                                ? `Expired — invited by ${invite.invitedBy || 'unknown'}`
+                                : `Invited by ${invite.invitedBy} • Expires ${invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : 'never'}`}
                             </p>
                           </div>
                         </div>
@@ -383,10 +394,59 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
+                          {canManage && invite.status === 'expired' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleResendInvitation(invite)}
+                              disabled={resendInvitationMutation.isPending}
+                              className="text-primary hover:text-primary hover:bg-primary/10"
+                              aria-label={`Resend invitation to ${invite.email}`}
+                            >
+                              <RefreshCw className={`h-4 w-4 ${resendInvitationMutation.isPending ? 'animate-spin' : ''}`} />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );
                   })}
+
+                {/* Cancelled history toggle */}
+                {(() => {
+                  const cancelled = pendingInvites?.filter(i => i.status === 'cancelled') ?? [];
+                  if (cancelled.length === 0) return null;
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        aria-expanded={showCancelledInvites}
+                        onClick={() => setShowCancelledInvites(prev => !prev)}
+                        className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1 transition-colors"
+                      >
+                        {showCancelledInvites ? 'Hide cancelled' : `Show cancelled (${cancelled.length})`}
+                      </button>
+                      {showCancelledInvites && cancelled.map((invite) => {
+                        const Icon = roleIcons[invite.role] || Calculator;
+                        return (
+                          <div key={invite.id} className="flex items-center justify-between p-3 border rounded-lg opacity-50">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 rounded-lg bg-muted">
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-sm">{invite.email}</p>
+                                <p className="text-xs text-muted-foreground">Cancelled</p>
+                              </div>
+                            </div>
+                            <Badge variant="outline">
+                              <span className="capitalize">{invite.status}</span>
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </CardContent>

@@ -53,25 +53,24 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
         </span>
       </button>
 
-      {expanded && (
-        <div
-          id="schedule-overview-body"
-          className={cn(
-            'p-3',
-            isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',
-          )}
-        >
-          {overviewDays.map((d) => (
-            <OverviewDayCard
-              key={d.day}
-              data={d}
-              dayLabel={shortLabel(d.day)}
-              variant={isMobile ? 'mobile' : 'desktop'}
-              coverage={isMobile ? coverageByDay.get(d.day) : undefined}
-            />
-          ))}
-        </div>
-      )}
+      <div
+        id="schedule-overview-body"
+        hidden={!expanded}
+        className={cn(
+          'p-3',
+          isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',
+        )}
+      >
+        {overviewDays.map((d) => (
+          <OverviewDayCard
+            key={d.day}
+            data={d}
+            dayLabel={shortLabel(d.day)}
+            variant={isMobile ? 'mobile' : 'desktop'}
+            coverage={isMobile ? coverageByDay.get(d.day) : undefined}
+          />
+        ))}
+      </div>
     </section>
   );
 });

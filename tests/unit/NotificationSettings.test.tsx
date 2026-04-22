@@ -96,4 +96,20 @@ describe('NotificationSettings approver warning', () => {
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('hides warning when the approver count query errors (undefined count should not be treated as zero)', () => {
+    notificationSettingsMock.mockReturnValue({
+      settings: baseSettings,
+      loading: false,
+    });
+    approverCountMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+    });
+
+    renderWithClient(<NotificationSettings restaurantId="rest-1" />);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

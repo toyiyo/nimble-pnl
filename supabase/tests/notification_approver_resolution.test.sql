@@ -4,7 +4,38 @@
 
 BEGIN;
 
+-- Disable RLS so fixture inserts run under the test transaction regardless of
+-- the calling role. Rolled back at the end of the transaction.
+ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
+
 SELECT plan(6);
+
+-- Ensure deterministic state: clear any rows left by earlier failed runs sharing
+-- these fixed UUIDs, then insert fresh. Order matters for FK constraints.
+DELETE FROM user_restaurants
+WHERE restaurant_id IN (
+  '00000000-0000-0000-0000-000000000801'::uuid,
+  '00000000-0000-0000-0000-000000000805'::uuid
+);
+DELETE FROM profiles
+WHERE user_id IN (
+  '00000000-0000-0000-0000-000000000802'::uuid,
+  '00000000-0000-0000-0000-000000000803'::uuid,
+  '00000000-0000-0000-0000-000000000804'::uuid
+);
+DELETE FROM auth.users
+WHERE id IN (
+  '00000000-0000-0000-0000-000000000802'::uuid,
+  '00000000-0000-0000-0000-000000000803'::uuid,
+  '00000000-0000-0000-0000-000000000804'::uuid
+);
+DELETE FROM restaurants
+WHERE id IN (
+  '00000000-0000-0000-0000-000000000801'::uuid,
+  '00000000-0000-0000-0000-000000000805'::uuid
+);
 
 -- Setup: create an isolated restaurant and three users with different roles.
 INSERT INTO restaurants (id, name, address, phone)
@@ -13,29 +44,28 @@ VALUES (
   'Approver Test Restaurant',
   '1 Test St',
   '555-0801'
-)
-ON CONFLICT (id) DO NOTHING;
+);
 
 INSERT INTO auth.users (id, email)
 VALUES
   ('00000000-0000-0000-0000-000000000802'::uuid, 'owner-approver@test.com'),
   ('00000000-0000-0000-0000-000000000803'::uuid, 'manager-approver@test.com'),
-  ('00000000-0000-0000-0000-000000000804'::uuid, 'chef-approver@test.com')
-ON CONFLICT (id) DO NOTHING;
+  ('00000000-0000-0000-0000-000000000804'::uuid, 'chef-approver@test.com');
 
+-- A trigger on auth.users may auto-create profile rows. Upsert the emails so
+-- both the trigger-created case and a bare-table case land on the same state.
 INSERT INTO profiles (user_id, email)
 VALUES
   ('00000000-0000-0000-0000-000000000802'::uuid, 'owner-approver@test.com'),
   ('00000000-0000-0000-0000-000000000803'::uuid, 'manager-approver@test.com'),
   ('00000000-0000-0000-0000-000000000804'::uuid, 'chef-approver@test.com')
-ON CONFLICT (user_id) DO NOTHING;
+ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role)
 VALUES
   ('00000000-0000-0000-0000-000000000802'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'owner'),
   ('00000000-0000-0000-0000-000000000803'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'manager'),
-  ('00000000-0000-0000-0000-000000000804'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'chef')
-ON CONFLICT (user_id, restaurant_id) DO NOTHING;
+  ('00000000-0000-0000-0000-000000000804'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'chef');
 
 -- Test 1: owner is resolved through the profiles join
 SELECT ok(
@@ -100,8 +130,7 @@ VALUES (
   'Empty Approver Restaurant',
   '2 Test St',
   '555-0805'
-)
-ON CONFLICT (id) DO NOTHING;
+);
 
 SELECT is(
   (SELECT count(*)::int FROM user_restaurants

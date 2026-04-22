@@ -17,7 +17,11 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
   const { settings, loading } = useNotificationSettings(restaurantId);
   const updateSettings = useUpdateNotificationSettings();
   const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } = useNotificationPreferences(restaurantId);
-  const { data: approverCount, isLoading: approverCountLoading } = useApproverCount(restaurantId);
+  const {
+    data: approverCount,
+    isLoading: approverCountLoading,
+    isError: approverCountError,
+  } = useApproverCount(restaurantId);
 
   const [localSettings, setLocalSettings] = useState({
     notify_time_off_request: true,
@@ -56,8 +60,10 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
 
   const showNoApproversWarning =
     !approverCountLoading &&
+    !approverCountError &&
+    approverCount !== undefined &&
     localSettings.time_off_notify_managers &&
-    (approverCount ?? 0) === 0;
+    approverCount === 0;
 
   if (loading) {
     return (

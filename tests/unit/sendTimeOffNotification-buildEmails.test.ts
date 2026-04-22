@@ -52,7 +52,7 @@ function makeSupabaseStub(result: MockResult) {
 }
 
 describe('buildEmails', () => {
-  it('returns only employee when notifyEmployee=true and notifyManagers=false', async () => {
+  it('CRITICAL: returns only employee when notifyEmployee=true and notifyManagers=false', async () => {
     const { supabase } = makeSupabaseStub({ data: [], error: null });
     const result = await buildEmails({
       supabase: supabase as never,
@@ -68,7 +68,7 @@ describe('buildEmails', () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  it('queries user_restaurants joined to profiles for managers', async () => {
+  it('CRITICAL: queries user_restaurants joined to profiles for managers', async () => {
     const { supabase, calls } = makeSupabaseStub({
       data: [
         { user_id: 'u1', profiles: { email: 'owner@example.com' } },
@@ -94,7 +94,7 @@ describe('buildEmails', () => {
     expect(result.employeeIncluded).toBe(false);
   });
 
-  it('de-duplicates when employee is also a manager', async () => {
+  it('CRITICAL: de-duplicates when employee is also a manager', async () => {
     const { supabase } = makeSupabaseStub({
       data: [
         { user_id: 'u1', profiles: { email: 'shared@example.com' } },
@@ -114,7 +114,7 @@ describe('buildEmails', () => {
     expect(result.managersFound).toBe(2);
   });
 
-  it('captures managerLookupError when the query errors', async () => {
+  it('CRITICAL: captures managerLookupError when the query errors', async () => {
     const { supabase } = makeSupabaseStub({
       data: null,
       error: { message: 'relation profiles does not exist' },
@@ -131,7 +131,7 @@ describe('buildEmails', () => {
     expect(result.managerLookupError).toBe('relation profiles does not exist');
   });
 
-  it('returns empty list when both flags are false', async () => {
+  it('CRITICAL: returns empty list when both flags are false', async () => {
     const { supabase } = makeSupabaseStub({ data: [], error: null });
     const result = await buildEmails({
       supabase: supabase as never,
@@ -146,7 +146,7 @@ describe('buildEmails', () => {
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  it('skips manager rows with null profiles or null email', async () => {
+  it('CRITICAL: skips manager rows with null profiles or null email', async () => {
     const { supabase } = makeSupabaseStub({
       data: [
         { user_id: 'u1', profiles: null },

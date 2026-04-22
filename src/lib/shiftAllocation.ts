@@ -5,6 +5,40 @@ import type { Shift, ShiftTemplate } from '@/types/scheduling';
 export type AllocationStatus = 'none' | 'highlight' | 'conflict' | 'available';
 
 /**
+ * Returns a `YYYY-MM-DD` string using the **wall-clock** date components of
+ * the given ISO timestamp, ignoring any timezone suffix. Stripping the suffix
+ * before parsing means the browser treats the digits as local time, so both
+ * `'2026-04-20T09:00:00'` and `'2026-04-20T09:00:00Z'` resolve to the same
+ * calendar date. This is the single authoritative date-key extractor used in
+ * `sameDay` and in the `computeAllocationStatuses` bucketing step.
+ */
+function toLocalDateKey(iso: string): string {
+  // Strip any timezone designator so the datetime is parsed as local.
+  const local = iso.replace(/Z$|[+-]\d{2}:?\d{2}$/, '');
+  const d = new Date(local);
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const dd = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+/**
+ * Returns epoch-millis treating the given ISO timestamp as a **local**
+ * wall-clock time, regardless of any timezone suffix (e.g. `Z` or `+HH:MM`).
+ * The numeric date and time components in the string are used directly as
+ * local-time values so they compare correctly against `toDateTime()` output.
+ *
+ * Example: `'2026-04-20T09:00:00Z'` → same epoch as `new Date(2026,3,20,9,0,0)`
+ * in the local timezone — consistent with a template `start_time` of `'09:00:00'`.
+ */
+function toLocalEpoch(iso: string): number {
+  // Strip any timezone designator (Z or ±HH:MM / ±HHMM) so that the
+  // browser's Date constructor parses the remaining digits as local time.
+  const local = iso.replace(/Z$|[+-]\d{2}:?\d{2}$/, '');
+  return new Date(local).getTime();
+}
+
+/**
  * Classifies how an employee's existing shifts relate to a template slot
  * on a given day. Used by the planner allocation overlay.
  *
@@ -30,8 +64,8 @@ export function computeAllocationStatus(
     if (shift.status === 'cancelled') continue;
     if (!sameDay(shift.start_time, day)) continue;
 
-    const shiftStart = new Date(shift.start_time).getTime();
-    const shiftEnd = new Date(shift.end_time).getTime();
+    const shiftStart = toLocalEpoch(shift.start_time);
+    const shiftEnd = toLocalEpoch(shift.end_time);
 
     if (shiftStart <= templateStart && shiftEnd >= templateEnd) {
       isEncompassed = true;
@@ -46,11 +80,7 @@ export function computeAllocationStatus(
 }
 
 function sameDay(isoString: string, day: string): boolean {
-  const d = new Date(isoString);
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, '0');
-  const dd = d.getDate().toString().padStart(2, '0');
-  return `${y}-${m}-${dd}` === day;
+  return toLocalDateKey(isoString) === day;
 }
 
 function toDateTime(day: string, hhmmss: string): number {
@@ -71,11 +101,11 @@ export function computeAllocationStatuses(
 ): Map<string, AllocationStatus> {
   const shiftsByDay = new Map<string, Shift[]>();
   for (const shift of employeeShifts) {
-    const iso = shift.start_time.slice(0, 10);
-    let bucket = shiftsByDay.get(iso);
+    const key = toLocalDateKey(shift.start_time);
+    let bucket = shiftsByDay.get(key);
     if (!bucket) {
       bucket = [];
-      shiftsByDay.set(iso, bucket);
+      shiftsByDay.set(key, bucket);
     }
     bucket.push(shift);
   }

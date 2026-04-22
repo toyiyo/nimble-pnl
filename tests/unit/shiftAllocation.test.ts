@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { computeAllocationStatus } from '@/lib/shiftAllocation';
+import { computeAllocationStatus, computeAllocationStatuses } from '@/lib/shiftAllocation';
 
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
@@ -103,5 +103,30 @@ describe('computeAllocationStatus', () => {
       end_time: '2026-04-20T22:00:00',
     });
     expect(computeAllocationStatus([shift], template, '2026-04-20')).toBe('available');
+  });
+
+  it('classifies UTC-suffixed shift timestamps consistently with local wall-clock templates', () => {
+    // A UTC-suffixed shift that describes the same 09:00–17:00 wall-clock window
+    // as the template should be classified as "highlight", not "conflict" or
+    // "available", regardless of the runtime timezone.
+    const shift = makeShift({
+      start_time: '2026-04-20T09:00:00Z',
+      end_time: '2026-04-20T17:00:00Z',
+    });
+    expect(computeAllocationStatus([shift], template, '2026-04-20')).toBe('highlight');
+  });
+});
+
+describe('computeAllocationStatuses', () => {
+  const template = makeTemplate({ start_time: '09:00:00', end_time: '17:00:00' });
+
+  it('keys results by templateId:day and matches single-call results', () => {
+    const shift = makeShift({
+      start_time: '2026-04-20T09:00:00',
+      end_time: '2026-04-20T17:00:00',
+    });
+    const result = computeAllocationStatuses([shift], [template], ['2026-04-20', '2026-04-21']);
+    expect(result.get(`${template.id}:2026-04-20`)).toBe('highlight');
+    expect(result.get(`${template.id}:2026-04-21`)).toBe('available');
   });
 });

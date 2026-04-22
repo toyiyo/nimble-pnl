@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useSearchParams } from 'react-router-dom';
-import { ReactNode } from 'react';
 
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 
@@ -63,5 +62,8 @@ describe('useSharedWeek', () => {
       result.current.shared.setWeekStart(new Date(2026, 4, 4)); // 2026-05-04 Monday
     });
     expect(result.current.param).toBe('2026-05-04');
+    expect(result.current.shared.weekStart.getFullYear()).toBe(2026);
+    expect(result.current.shared.weekStart.getMonth()).toBe(4); // May (0-indexed)
+    expect(result.current.shared.weekStart.getDate()).toBe(4);
   });
 });

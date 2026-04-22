@@ -44,7 +44,7 @@ export function useSharedWeek(): UseSharedWeekReturn {
           next.set(WEEK_PARAM, formatIsoDate(monday));
           return next;
         },
-        { replace: false },
+        { replace: true },
       );
     },
     [setSearchParams],

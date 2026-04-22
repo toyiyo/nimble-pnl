@@ -22,25 +22,16 @@ export interface BuildEmailsResult {
 }
 
 interface ApproverQueryClient {
-  from(table: string): ApproverSelectBuilder;
-}
-
-interface ApproverSelectBuilder {
-  select(columns: string): ApproverEqBuilder;
-}
-
-interface ApproverEqBuilder {
-  eq(column: string, value: string): ApproverInBuilder;
-}
-
-interface ApproverInBuilder {
-  in(
-    column: string,
-    values: string[]
-  ): Promise<{
-    data: ManagerRow[] | null;
-    error: { message: string } | null;
-  }>;
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        in(column: string, values: string[]): Promise<{
+          data: ManagerRow[] | null;
+          error: { message: string } | null;
+        }>;
+      };
+    };
+  };
 }
 
 interface ManagerRow {

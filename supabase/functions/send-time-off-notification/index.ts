@@ -142,7 +142,7 @@ const handler = async (req: Request): Promise<Response> => {
     const recipients = await buildEmails({
       supabase,
       restaurantId: timeOffRequest.restaurant_id,
-      employeeEmail: timeOffRequest.employee?.email ?? null,
+      employeeEmail: timeOffRequest.employee?.email || null,
       notifyEmployee: !!settings.time_off_notify_employee,
       notifyManagers: !!settings.time_off_notify_managers,
     });
@@ -186,8 +186,6 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const uniqueEmails = recipients.emails;
-
     const startDate = formatDate(timeOffRequest.start_date);
     const endDate = formatDate(timeOffRequest.end_date);
 
@@ -197,7 +195,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send notification emails
     try {
-      const emailPromises = uniqueEmails.map(email => 
+      const emailPromises = recipients.emails.map(email => 
         resend.emails.send({
           from: "EasyShiftHQ <notifications@easyshifthq.com>",
           to: [email],
@@ -314,10 +312,10 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
-          message: `Notifications sent to ${uniqueEmails.length} recipient(s)`,
-          recipients: uniqueEmails.length
+          message: `Notifications sent to ${recipients.emails.length} recipient(s)`,
+          recipients: recipients.emails.length
         }),
         {
           status: 200,

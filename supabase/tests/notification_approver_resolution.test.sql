@@ -28,14 +28,14 @@ VALUES
   ('00000000-0000-0000-0000-000000000802'::uuid, 'owner-approver@test.com'),
   ('00000000-0000-0000-0000-000000000803'::uuid, 'manager-approver@test.com'),
   ('00000000-0000-0000-0000-000000000804'::uuid, 'chef-approver@test.com')
-ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email;
+ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role)
 VALUES
   ('00000000-0000-0000-0000-000000000802'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'owner'),
   ('00000000-0000-0000-0000-000000000803'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'manager'),
   ('00000000-0000-0000-0000-000000000804'::uuid, '00000000-0000-0000-0000-000000000801'::uuid, 'chef')
-ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+ON CONFLICT (user_id, restaurant_id) DO NOTHING;
 
 -- Test 1: owner is resolved through the profiles join
 SELECT ok(
@@ -70,15 +70,16 @@ SELECT is(
   'Only owner and manager roles count as approvers'
 );
 
--- Test 4: chef is NOT in the approver list
+-- Test 4: chef's email is NOT returned by the approver-filtered join
 SELECT ok(
   NOT EXISTS(
-    SELECT 1 FROM user_restaurants
-    WHERE restaurant_id = '00000000-0000-0000-0000-000000000801'::uuid
-      AND role = 'chef'
-      AND role IN ('owner', 'manager')
+    SELECT 1 FROM user_restaurants ur
+    JOIN profiles p ON p.user_id = ur.user_id
+    WHERE ur.restaurant_id = '00000000-0000-0000-0000-000000000801'::uuid
+      AND ur.role IN ('owner', 'manager')
+      AND p.email = 'chef-approver@test.com'
   ),
-  'chef role is excluded from approver resolution'
+  'chef email is excluded when filtering to owner/manager roles'
 );
 
 -- Test 5: join returns email for every approver (no null-profile rows)

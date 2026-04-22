@@ -37,6 +37,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
   const [sending, setSending] = useState(false);
   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
   const [showHistory, setShowHistory] = useState(false);
+  const [pendingConflict, setPendingConflict] = useState(false);
   const { toast } = useToast();
 
   const canManageInvites = userRole === 'owner' || userRole === 'manager';
@@ -124,6 +125,15 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
       return;
     }
 
+    const hasConflict = invitations.some(
+      inv => inv.email.toLowerCase() === inviteForm.email.toLowerCase() && inv.status === 'pending'
+    );
+    if (hasConflict && !pendingConflict) {
+      setPendingConflict(true);
+      return;
+    }
+    setPendingConflict(false);
+
     setSending(true);
     try {
       // Call edge function to send invitation email
@@ -207,7 +217,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
           </div>
           
           {canManageInvites && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setPendingConflict(false); }}>
               <DialogTrigger asChild>
                 <Button className="flex items-center gap-2 w-full sm:w-auto" size="sm">
                   <Plus className="h-4 w-4" />
@@ -255,12 +265,20 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                   </div>
                 </div>
                 
+                {pendingConflict && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]">
+                    <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <p className="text-foreground">
+                      A pending invite for <strong>{inviteForm.email}</strong> already exists. Sending a new one will cancel the old link.
+                    </p>
+                  </div>
+                )}
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancel
                   </Button>
                   <Button onClick={sendInvitation} disabled={sending}>
-                    {sending ? 'Sending...' : 'Send Invitation'}
+                    {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}
                   </Button>
                 </DialogFooter>
               </DialogContent>

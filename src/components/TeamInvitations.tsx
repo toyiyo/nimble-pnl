@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { formatExpiresIn } from '@/lib/invitationUtils';
 
 interface Invitation {
   id: string;
@@ -34,6 +35,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     role: 'staff',
   });
   const [sending, setSending] = useState(false);
+  const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const canManageInvites = userRole === 'owner' || userRole === 'manager';
@@ -152,6 +154,22 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     }
   };
 
+  const resendInvitation = async (invitation: Invitation) => {
+    setResendingIds(prev => new Set(prev).add(invitation.id));
+    try {
+      const { error } = await supabase.functions.invoke('send-team-invitation', {
+        body: { restaurantId, email: invitation.email, role: invitation.role },
+      });
+      if (error) throw error;
+      toast({ title: 'Invitation resent', description: `New invite sent to ${invitation.email}` });
+      fetchInvitations();
+    } catch {
+      toast({ title: 'Error', description: 'Failed to resend invitation', variant: 'destructive' });
+    } finally {
+      setResendingIds(prev => { const s = new Set(prev); s.delete(invitation.id); return s; });
+    }
+  };
+
   const statusIcons = {
     pending: <Clock className="h-4 w-4 text-yellow-500" />,
     accepted: <CheckCircle className="h-4 w-4 text-green-500" />,
@@ -257,10 +275,9 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                         Invited as <span className="capitalize font-medium">{invitation.role}</span> by {invitation.invitedBy}
                       </p>
                       <p>
-                        {new Date(invitation.createdAt).toLocaleDateString()}
-                        {invitation.expiresAt && (
-                          <span> • Expires {new Date(invitation.expiresAt).toLocaleDateString()}</span>
-                        )}
+                        {invitation.expiresAt && (invitation.status === 'pending' || invitation.status === 'expired')
+                          ? formatExpiresIn(invitation.expiresAt)
+                          : new Date(invitation.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
@@ -273,13 +290,26 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                   </Badge>
                   
                   {canManageInvites && invitation.status === 'pending' && (
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => deleteInvitation(invitation.id, invitation.email)}
                       className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
+                      aria-label={`Cancel invitation for ${invitation.email}`}
                     >
                       <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canManageInvites && invitation.status === 'expired' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => resendInvitation(invitation)}
+                      disabled={resendingIds.has(invitation.id)}
+                      className="text-primary hover:text-primary hover:bg-primary/10 p-2"
+                      aria-label={`Resend invitation to ${invitation.email}`}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${resendingIds.has(invitation.id) ? 'animate-spin' : ''}`} />
                     </Button>
                   )}
                 </div>

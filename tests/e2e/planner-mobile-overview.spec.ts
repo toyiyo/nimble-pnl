@@ -1,7 +1,9 @@
-import { test, expect, devices } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
 
-test.use({ ...devices['iPhone 13'] });
+// Use an iPhone-sized viewport on Chromium (CI doesn't install WebKit).
+// useIsMobile triggers at <768px width, so 390x844 is well below the breakpoint.
+test.use({ viewport: { width: 390, height: 844 } });
 
 test.describe('Planner mobile layout', () => {
   test('overview panel renders stacked with visible day cards', async ({ page }) => {

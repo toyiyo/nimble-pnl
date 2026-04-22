@@ -92,7 +92,7 @@ export interface BuildEmailsInput {
 export interface BuildEmailsResult {
   emails: string[];          // de-duplicated recipient list
   employeeIncluded: boolean; // true if employee email was added
-  managerCount: number;      // number of owner/manager recipients added
+  managersFound: number;     // owner/manager rows resolved with a valid email (pre-dedup)
   managerLookupError?: string;
 }
 
@@ -100,7 +100,7 @@ export async function buildEmails(input: BuildEmailsInput): Promise<BuildEmailsR
   const { supabase, restaurantId, employeeEmail, notifyEmployee, notifyManagers } = input;
   const emails: string[] = [];
   let employeeIncluded = false;
-  let managerCount = 0;
+  let managersFound = 0;
   let managerLookupError: string | undefined;
 
   if (notifyEmployee && employeeEmail) {
@@ -122,7 +122,7 @@ export async function buildEmails(input: BuildEmailsInput): Promise<BuildEmailsR
         const email = m?.profiles?.email;
         if (email) {
           emails.push(email);
-          managerCount++;
+          managersFound++;
         }
       }
     }
@@ -131,7 +131,7 @@ export async function buildEmails(input: BuildEmailsInput): Promise<BuildEmailsR
   return {
     emails: [...new Set(emails)],
     employeeIncluded,
-    managerCount,
+    managersFound,
     managerLookupError,
   };
 }
@@ -152,7 +152,7 @@ if (result.managerLookupError) {
   console.error('Manager lookup failed:', result.managerLookupError);
 }
 
-if (settings.time_off_notify_managers && result.managerCount === 0) {
+if (settings.time_off_notify_managers && result.managersFound === 0) {
   console.warn(
     `time-off notification: notify_managers=true but 0 approvers resolved for restaurant ${timeOffRequest.restaurant_id}`
   );
@@ -166,7 +166,7 @@ if (result.emails.length === 0) {
 // ... send emails using result.emails ...
 
 console.log(
-  `Sent notification: employee=${result.employeeIncluded}, managers=${result.managerCount}, total=${result.emails.length}`
+  `Sent notification: employee=${result.employeeIncluded}, managers=${result.managersFound}, total=${result.emails.length}`
 );
 ```
 
@@ -248,10 +248,10 @@ Employee submits time-off request
               WHERE restaurant_id = $1 AND role IN ('owner','manager')
               emails += profiles.email for each row with an email
        → dedupe via Set
-       → return { emails, employeeIncluded, managerCount, managerLookupError? }
+       → return { emails, employeeIncluded, managersFound, managerLookupError? }
 
        if managerLookupError       → console.error
-       if notifyManagers && managerCount === 0 → console.warn
+       if notifyManagers && managersFound === 0 → console.warn
        if emails.length === 0       → early return { recipients: 0 }
 
        send each email via Resend.emails.send()
@@ -319,10 +319,10 @@ ROLLBACK;
 
 Import the extracted `buildEmails` module with a mocked Supabase client:
 
-1. `notifyEmployee=true, notifyManagers=false, employeeEmail='e@x'` → `emails=['e@x']`, employeeIncluded=true, managerCount=0
-2. `notifyEmployee=false, notifyManagers=true` with 2 manager rows → `emails` = 2 manager emails, managerCount=2
+1. `notifyEmployee=true, notifyManagers=false, employeeEmail='e@x'` → `emails=['e@x']`, employeeIncluded=true, managersFound=0
+2. `notifyEmployee=false, notifyManagers=true` with 2 manager rows → `emails` = 2 manager emails, managersFound=2
 3. Both true, employee email also appears in manager list → de-duplicated to 2 addresses (not 3)
-4. `notifyManagers=true` but query returns `{ error }` → `managerLookupError` populated, emails empty, managerCount=0
+4. `notifyManagers=true` but query returns `{ error }` → `managerLookupError` populated, emails empty, managersFound=0
 5. Both false → `emails=[]`
 6. Manager row missing `profiles.email` (null) → skipped silently, not counted
 

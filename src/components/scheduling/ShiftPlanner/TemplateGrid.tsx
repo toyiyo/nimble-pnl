@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from 'react';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
@@ -35,6 +35,8 @@ interface TemplateGridProps {
   onMobileCellTap?: (templateId: string, day: string) => void;
   hasMobileSelection?: boolean;
   areaFilter?: string | null;
+  /** Optional row rendered immediately under the day headers (e.g., coverage strip). */
+  coverageSlot?: ReactNode;
 }
 
 export function TemplateGrid({
@@ -49,6 +51,7 @@ export function TemplateGrid({
   onMobileCellTap,
   hasMobileSelection,
   areaFilter,
+  coverageSlot,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -100,6 +103,15 @@ export function TemplateGrid({
             </div>
           );
         })}
+
+        {coverageSlot && (
+          <>
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-t border-border/40">
+              Cover
+            </div>
+            {coverageSlot}
+          </>
+        )}
 
         {/* Template rows grouped by area */}
         {groups.map((group) => (

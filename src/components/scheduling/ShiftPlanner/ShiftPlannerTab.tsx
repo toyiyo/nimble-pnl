@@ -13,6 +13,7 @@ import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
 import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
@@ -23,6 +24,7 @@ import { getTemplateAreas } from '@/lib/templateAreaGrouping';
 
 import { AssignmentPopover } from './AssignmentPopover';
 import { AreaFilterPills } from './AreaFilterPills';
+import { CoverageStrip } from './CoverageStrip';
 
 import { PlannerHeader } from './PlannerHeader';
 import { StaffingOverlay } from './StaffingOverlay';
@@ -90,6 +92,9 @@ export function ShiftPlannerTab({
     () => buildTemplateGridData(shifts, templates, weekDays),
     [shifts, templates, weekDays],
   );
+
+  // Derive coverage index for CoverageStrip and future phases
+  const { coverageByDay } = usePlannerShiftsIndex(shifts, weekDays);
 
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -497,6 +502,7 @@ export function ShiftPlannerTab({
                   onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
                   hasMobileSelection={isMobile && !!selectedMobileEmployee}
                   areaFilter={areaFilter}
+                  coverageSlot={!isMobile ? <CoverageStrip weekDays={weekDays} coverageByDay={coverageByDay} /> : undefined}
                 />
               </div>
             )}

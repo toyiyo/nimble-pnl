@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
 import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
+import { buildEmails } from './buildEmails.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,42 +47,6 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', 
   year: 'numeric'
 });
 
-// Use a type alias for the Supabase client that's more permissive
-type SupabaseClientType = ReturnType<typeof createClient>;
-
-const buildEmails = async (
-  supabase: SupabaseClientType,
-  restaurantId: string,
-  employeeEmail?: string,
-  notifyEmployee?: boolean,
-  notifyManagers?: boolean
-) => {
-  const emails: string[] = [];
-
-  if (notifyEmployee && employeeEmail) {
-    emails.push(employeeEmail);
-  }
-
-  if (notifyManagers) {
-    const { data: managers, error: managersError } = await supabase
-      .from('user_restaurants')
-      .select(`
-        user:auth.users(email)
-      `)
-      .eq('restaurant_id', restaurantId)
-      .in('role', ['owner', 'manager']);
-
-    if (!managersError && managers) {
-      managers.forEach((manager: { user?: { email?: string } | null } | null) => {
-        if (manager?.user?.email) {
-          emails.push(manager.user.email);
-        }
-      });
-    }
-  }
-
-  return [...new Set(emails)];
-};
 
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
@@ -175,20 +140,41 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const uniqueEmails = await buildEmails(
-      supabase as any,
-      timeOffRequest.restaurant_id,
-      timeOffRequest.employee?.email,
-      settings.time_off_notify_employee,
-      settings.time_off_notify_managers
-    );
+    const recipients = await buildEmails({
+      supabase,
+      restaurantId: timeOffRequest.restaurant_id,
+      employeeEmail: timeOffRequest.employee?.email ?? null,
+      notifyEmployee: !!settings.time_off_notify_employee,
+      notifyManagers: !!settings.time_off_notify_managers,
+    });
 
-    if (uniqueEmails.length === 0) {
-      console.log('No recipients found for notification');
+    if (recipients.managerLookupError) {
+      console.error(
+        'time-off notification: manager lookup failed for restaurant',
+        timeOffRequest.restaurant_id,
+        '-',
+        recipients.managerLookupError
+      );
+    }
+
+    if (settings.time_off_notify_managers && recipients.managersFound === 0) {
+      console.warn(
+        'time-off notification: notify_managers=true but 0 approvers resolved for restaurant',
+        timeOffRequest.restaurant_id
+      );
+    }
+
+    if (recipients.emails.length === 0) {
+      console.log('No recipients configured for notification', {
+        restaurantId: timeOffRequest.restaurant_id,
+        notifyEmployee: !!settings.time_off_notify_employee,
+        notifyManagers: !!settings.time_off_notify_managers,
+      });
       return new Response(
         JSON.stringify({
           success: true,
-          message: 'No recipients configured'
+          message: 'No recipients configured',
+          recipients: 0,
         }),
         {
           status: 200,
@@ -196,6 +182,8 @@ const handler = async (req: Request): Promise<Response> => {
         }
       );
     }
+
+    const uniqueEmails = recipients.emails;
 
     const startDate = formatDate(timeOffRequest.start_date);
     const endDate = formatDate(timeOffRequest.end_date);
@@ -278,7 +266,13 @@ const handler = async (req: Request): Promise<Response> => {
       );
 
       const results = await Promise.all(emailPromises);
-      console.log(`Sent ${results.length} notification emails`);
+      console.log('Sent time-off notification', {
+        action,
+        restaurantId: timeOffRequest.restaurant_id,
+        total: results.length,
+        employeeIncluded: recipients.employeeIncluded,
+        managersFound: recipients.managersFound,
+      });
 
       // Send push notification to the employee for approved/rejected actions
       if ((action === 'approved' || action === 'rejected') && timeOffRequest.employee?.user_id) {

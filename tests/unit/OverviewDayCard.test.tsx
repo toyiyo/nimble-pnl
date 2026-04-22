@@ -60,4 +60,16 @@ describe('<OverviewDayCard>', () => {
     render(<OverviewDayCard data={data} />);
     expect(screen.getByText(/gap 3p/i)).toBeInTheDocument();
   });
+
+  it('renders mobile coverage strip density buckets when variant="mobile" and coverage is provided', () => {
+    const coverage = [0, 1, 2, 3, 4];
+    const data = { ...baseDay, unstaffed: false };
+    const { container } = render(
+      <OverviewDayCard data={data} variant="mobile" coverage={coverage} />,
+    );
+    // Coverage strip renders one child div per bucket
+    const strip = container.querySelector('.h-3.rounded-sm.overflow-hidden');
+    expect(strip).not.toBeNull();
+    expect(strip!.children).toHaveLength(coverage.length);
+  });
 });

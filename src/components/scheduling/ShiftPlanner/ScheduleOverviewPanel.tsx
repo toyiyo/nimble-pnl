@@ -37,6 +37,7 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        aria-controls="schedule-overview-body"
         className="w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/50 transition-colors"
       >
         <span className="flex items-center gap-2">
@@ -48,12 +49,13 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
           <span className="text-[13px] font-semibold text-foreground">Schedule overview</span>
         </span>
         <span className="text-[12px] text-muted-foreground">
-          {overviewDays.filter((d) => !d.unstaffed).length}/7 days staffed
+          {overviewDays.filter((d) => !d.unstaffed).length}/{overviewDays.length} days staffed
         </span>
       </button>
 
       {expanded && (
         <div
+          id="schedule-overview-body"
           className={cn(
             'p-3',
             isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',

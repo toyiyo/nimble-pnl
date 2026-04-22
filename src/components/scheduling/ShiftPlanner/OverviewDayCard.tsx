@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, type CSSProperties } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -25,9 +25,14 @@ function pillColor(position: string | null): string {
   return ROLE_BG[key] ?? 'bg-primary/60';
 }
 
-function pillStyle(pill: OverviewPill): React.CSSProperties {
-  const start = Math.max(0, pill.startHour - COVERAGE_START_HOUR);
-  const end = Math.min(COVERAGE_BUCKETS, pill.endHour - COVERAGE_START_HOUR);
+function pillStyle(pill: OverviewPill): CSSProperties {
+  const rawStart = pill.startHour - COVERAGE_START_HOUR;
+  const rawEnd = pill.endHour - COVERAGE_START_HOUR;
+  const start = Math.max(0, Math.min(COVERAGE_BUCKETS, rawStart));
+  const end = Math.max(0, Math.min(COVERAGE_BUCKETS, rawEnd));
+  if (end <= start) {
+    return { display: 'none' };
+  }
   const left = (start / COVERAGE_BUCKETS) * 100;
   const width = Math.max(2, ((end - start) / COVERAGE_BUCKETS) * 100);
   return { left: `${left}%`, width: `${width}%` };
@@ -75,7 +80,7 @@ export const OverviewDayCard = memo(function OverviewDayCard({
 
       {!unstaffed && (
         <div
-          className="relative w-full rounded-md bg-muted/40"
+          className="relative w-full overflow-hidden rounded-md bg-muted/40"
           style={{ height: laneHeight * 3 + 6 }}
           aria-hidden="true"
         >

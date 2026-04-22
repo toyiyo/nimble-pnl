@@ -14,6 +14,8 @@ import { computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 
 import { cn } from '@/lib/utils';
 
+import { EmployeeMiniWeek } from './EmployeeMiniWeek';
+
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
@@ -55,9 +57,13 @@ export function countShiftsForEmployee(shifts: Shift[], employeeId: string): num
 export interface EmployeeSidebarProps {
   employees: Employee[];
   shifts: Shift[];
+  weekDays: readonly string[];
+  shiftsByEmployee: Map<string, Shift[]>;
   className?: string;
   /** Mobile tap-to-assign: called when an employee is tapped instead of dragged */
   onEmployeeSelect?: (employee: { id: string; name: string }) => void;
+  /** Hover pick handler: called when a card is hovered, with employeeId or null on leave */
+  onEmployeePick?: (employeeId: string | null) => void;
   /** Area filter from the planner's filter pills — syncs the sidebar's area dropdown */
   plannerAreaFilter?: string | null;
 }
@@ -66,15 +72,20 @@ export interface EmployeeSidebarProps {
 // DraggableEmployee (internal, memoized)
 // ---------------------------------------------------------------------------
 
+const EMPTY_SHIFTS: readonly Shift[] = [];
+
 interface DraggableEmployeeProps {
   employee: Employee;
   shiftCount: number;
   hours: number;
   onSelect?: (employee: { id: string; name: string }) => void;
+  weekDays: readonly string[];
+  employeeShifts: readonly Shift[];
+  onPick?: (employeeId: string | null) => void;
 }
 
 const DraggableEmployee = memo(
-  function DraggableEmployee({ employee, shiftCount, hours, onSelect }: DraggableEmployeeProps) {
+  function DraggableEmployee({ employee, shiftCount, hours, onSelect, weekDays, employeeShifts, onPick }: DraggableEmployeeProps) {
     const {
       attributes,
       listeners,
@@ -96,6 +107,8 @@ const DraggableEmployee = memo(
         style={style}
         {...(onSelect ? {} : { ...listeners, ...attributes })}
         onClick={onSelect ? () => onSelect({ id: employee.id, name: employee.name }) : undefined}
+        onMouseEnter={onPick ? () => onPick(employee.id) : undefined}
+        onMouseLeave={onPick ? () => onPick(null) : undefined}
         className={cn(
           'rounded-lg border border-border/40 px-3 py-2',
           onSelect ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing',
@@ -118,6 +131,7 @@ const DraggableEmployee = memo(
             {employee.position}
           </p>
         )}
+        <EmployeeMiniWeek weekDays={weekDays} employeeShifts={employeeShifts} />
       </div>
     );
   },
@@ -127,14 +141,26 @@ const DraggableEmployee = memo(
     prev.employee.position === next.employee.position &&
     prev.shiftCount === next.shiftCount &&
     prev.hours === next.hours &&
-    prev.onSelect === next.onSelect,
+    prev.onSelect === next.onSelect &&
+    prev.onPick === next.onPick &&
+    prev.weekDays === next.weekDays &&
+    prev.employeeShifts === next.employeeShifts,
 );
 
 // ---------------------------------------------------------------------------
 // EmployeeSidebar
 // ---------------------------------------------------------------------------
 
-export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect, plannerAreaFilter }: Readonly<EmployeeSidebarProps>) {
+export function EmployeeSidebar({
+  employees,
+  shifts,
+  weekDays,
+  shiftsByEmployee,
+  className,
+  onEmployeeSelect,
+  onEmployeePick,
+  plannerAreaFilter,
+}: Readonly<EmployeeSidebarProps>) {
   const [search, setSearch] = useState('');
   const [area, setArea] = useState('all');
   const [role, setRole] = useState('all');
@@ -270,6 +296,9 @@ export function EmployeeSidebar({ employees, shifts, className, onEmployeeSelect
               shiftCount={shiftCounts.get(employee.id) ?? 0}
               hours={hoursPerEmployee.get(employee.id) ?? 0}
               onSelect={onEmployeeSelect}
+              onPick={onEmployeePick}
+              weekDays={weekDays}
+              employeeShifts={shiftsByEmployee.get(employee.id) ?? EMPTY_SHIFTS}
             />
           ))
         )}

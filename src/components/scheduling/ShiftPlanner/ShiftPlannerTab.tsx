@@ -95,7 +95,7 @@ export function ShiftPlannerTab({
   );
 
   // Derive coverage index for CoverageStrip and overview panel
-  const { coverageByDay, overviewDays } = usePlannerShiftsIndex(shifts, weekDays);
+  const { coverageByDay, overviewDays, shiftsByEmployee } = usePlannerShiftsIndex(shifts, weekDays);
 
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -123,6 +123,10 @@ export function ShiftPlannerTab({
   const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
+  // pickedEmployeeId: set on hover of an employee card; Phase 7 will use this for the allocation overlay
+   
+  const [, setPickedEmployeeId] = useState<string | null>(null);
 
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
@@ -518,7 +522,14 @@ export function ShiftPlannerTab({
 
           {/* Desktop: inline sidebar */}
           {!isMobile && (
-            <EmployeeSidebar employees={employees} shifts={shifts} plannerAreaFilter={areaFilter} />
+            <EmployeeSidebar
+              employees={employees}
+              shifts={shifts}
+              weekDays={weekDays}
+              shiftsByEmployee={shiftsByEmployee}
+              plannerAreaFilter={areaFilter}
+              onEmployeePick={setPickedEmployeeId}
+            />
           )}
 
           {/* Mobile: slide-in sidebar panel (single instance to avoid duplicate dnd IDs) */}
@@ -549,7 +560,16 @@ export function ShiftPlannerTab({
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" onEmployeeSelect={handleMobileEmployeeSelect} plannerAreaFilter={areaFilter} />
+                <EmployeeSidebar
+                  employees={employees}
+                  shifts={shifts}
+                  weekDays={weekDays}
+                  shiftsByEmployee={shiftsByEmployee}
+                  className="w-full border-l-0"
+                  onEmployeeSelect={handleMobileEmployeeSelect}
+                  onEmployeePick={setPickedEmployeeId}
+                  plannerAreaFilter={areaFilter}
+                />
               </div>
             </>
           )}

@@ -4,6 +4,7 @@ import { useDroppable } from '@dnd-kit/core';
 
 import { classifyCapacity } from '@/lib/openShiftHelpers';
 import type { Shift } from '@/types/scheduling';
+import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,8 @@ interface ShiftCellProps {
   onMobileTap?: (templateId: string, day: string) => void;
   /** Whether a mobile employee is selected (enables tap-to-assign visual) */
   hasMobileSelection?: boolean;
+  allocationStatus?: AllocationStatus;
+  pickedEmployeeName?: string;
 }
 
 export const ShiftCell = memo(
@@ -34,6 +37,8 @@ export const ShiftCell = memo(
     isHighlighted,
     onMobileTap,
     hasMobileSelection,
+    allocationStatus,
+    pickedEmployeeName,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -50,18 +55,36 @@ export const ShiftCell = memo(
       );
     }
 
+    const overlayClass = cn(
+      allocationStatus === 'highlight' && 'outline outline-2 outline-primary bg-primary/5',
+      allocationStatus === 'conflict' && 'outline outline-2 outline-destructive bg-destructive/10',
+      allocationStatus === 'available' && 'bg-primary/5',
+    );
+
     return (
       <div
         ref={setNodeRef}
         onClick={hasMobileSelection && onMobileTap ? () => onMobileTap(templateId, day) : undefined}
+        data-allocation-status={allocationStatus ?? 'none'}
         className={cn(
-          'min-h-[64px] p-1.5 space-y-1 transition-colors duration-500',
+          'min-h-[64px] p-1.5 space-y-1 transition-colors duration-200 relative',
           'border-l-2 border-primary/40',
           isOver && 'bg-foreground/5 ring-1 ring-foreground/20 rounded',
           isHighlighted && 'bg-green-500/10',
           hasMobileSelection && 'bg-primary/5 ring-1 ring-primary/30 rounded cursor-pointer',
+          overlayClass,
         )}
       >
+        {allocationStatus === 'highlight' && pickedEmployeeName && (
+          <div className="absolute top-0 right-0 m-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary text-primary-foreground pointer-events-none">
+            {pickedEmployeeName}
+          </div>
+        )}
+        {allocationStatus === 'conflict' && (
+          <div className="absolute top-0 right-0 m-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground pointer-events-none">
+            Conflicts
+          </div>
+        )}
         {shifts.map((shift) => (
           <EmployeeChip
             key={shift.id}
@@ -101,5 +124,7 @@ export const ShiftCell = memo(
     prev.onRemoveShift === next.onRemoveShift &&
     prev.isHighlighted === next.isHighlighted &&
     prev.hasMobileSelection === next.hasMobileSelection &&
-    prev.onMobileTap === next.onMobileTap,
+    prev.onMobileTap === next.onMobileTap &&
+    prev.allocationStatus === next.allocationStatus &&
+    prev.pickedEmployeeName === next.pickedEmployeeName,
 );

@@ -6,15 +6,17 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle } from 'lucide-react';
+import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, RefreshCw } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
+import { formatExpiresIn } from '@/lib/invitationUtils';
 import {
   useCollaboratorsQuery,
   useCollaboratorInvitesQuery,
   useSendCollaboratorInvitation,
   useCancelCollaboratorInvitation,
   useRemoveCollaborator,
+  useResendCollaboratorInvitation,
 } from '@/hooks/useCollaborators';
 
 interface CollaboratorInvitationsProps {
@@ -28,20 +30,22 @@ const roleIcons: Record<string, typeof Calculator> = {
   collaborator_chef: ChefHat,
 };
 
-export const CollaboratorInvitations = ({ restaurantId, userRole }: CollaboratorInvitationsProps) => {
+export function CollaboratorInvitations({ restaurantId, userRole }: CollaboratorInvitationsProps) {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [email, setEmail] = useState('');
   const { toast } = useToast();
 
   const canManage = userRole === 'owner' || userRole === 'manager';
 
-  // Use React Query hooks
   const { data: collaborators, isLoading: collaboratorsLoading, error: collaboratorsError } = useCollaboratorsQuery(restaurantId);
   const { data: pendingInvites, isLoading: invitesLoading, error: invitesError } = useCollaboratorInvitesQuery(restaurantId);
 
   const sendInvitationMutation = useSendCollaboratorInvitation();
   const cancelInvitationMutation = useCancelCollaboratorInvitation();
   const removeCollaboratorMutation = useRemoveCollaborator();
+  const resendInvitationMutation = useResendCollaboratorInvitation();
+  const [showCancelledInvites, setShowCancelledInvites] = useState(false);
+  const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
 
   const handleSendInvitation = () => {
     if (!email || !selectedRole) {
@@ -80,10 +84,18 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
     });
   };
 
+  const handleResendInvitation = (invite: { id: string; email: string; role: string }) => {
+    setResendingIds(prev => new Set(prev).add(invite.id));
+    resendInvitationMutation.mutate(
+      { restaurantId, email: invite.email, role: invite.role as Role },
+      { onSettled: () => setResendingIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; }) }
+    );
+  };
+
   const statusIcons = {
-    pending: <Clock className="h-4 w-4 text-yellow-500" />,
-    accepted: <CheckCircle className="h-4 w-4 text-green-500" />,
-    expired: <XCircle className="h-4 w-4 text-red-500" />,
+    pending: <Clock className="h-4 w-4 text-muted-foreground" />,
+    accepted: <CheckCircle className="h-4 w-4 text-primary" />,
+    expired: <XCircle className="h-4 w-4 text-destructive" />,
     cancelled: <XCircle className="h-4 w-4 text-muted-foreground" />,
   };
 
@@ -94,7 +106,8 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
     cancelled: "outline",
   } as const;
 
-  // Render role selection cards
+  const cancelledInvites = pendingInvites?.filter(i => i.status === 'cancelled') ?? [];
+
   const renderRoleSelection = () => (
     <div className="space-y-4">
       <div className="text-center mb-6">
@@ -145,7 +158,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
     </div>
   );
 
-  // Render email input for selected role
   const renderEmailInput = () => {
     const preset = COLLABORATOR_PRESETS.find(p => p.role === selectedRole);
     if (!preset) return null;
@@ -205,7 +217,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
 
   return (
     <div className="space-y-6">
-      {/* Invite New Collaborator */}
       {canManage && (
         <Card>
           <CardHeader>
@@ -227,7 +238,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
         </Card>
       )}
 
-      {/* Current Collaborators */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Active Collaborators</CardTitle>
@@ -239,7 +249,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
           {collaboratorsLoading ? (
             <div className="space-y-3">
               {[1, 2].map((i) => (
-                <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                <div key={i} className="flex items-center justify-between p-3 border border-border/40 rounded-xl">
                   <div className="flex items-center gap-3">
                     <Skeleton className="h-8 w-8 rounded-lg" />
                     <div className="space-y-2">
@@ -265,7 +275,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                 return (
                   <div
                     key={collab.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex items-center justify-between p-3 border border-border/40 rounded-xl hover:border-border transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-muted">
@@ -311,20 +321,19 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
         </CardContent>
       </Card>
 
-      {/* Pending Invitations */}
-      {(invitesLoading || invitesError || pendingInvites?.some(i => i.status === 'pending')) && (
+      {(invitesLoading || invitesError || (pendingInvites && pendingInvites.length > 0)) && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Pending Invitations</CardTitle>
+            <CardTitle className="text-lg">Invitations</CardTitle>
             <CardDescription>
-              Collaborator invitations waiting to be accepted
+              Pending and expired collaborator invitations
             </CardDescription>
           </CardHeader>
           <CardContent>
             {invitesLoading ? (
               <div className="space-y-3">
                 {[1, 2].map((i) => (
-                  <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div key={i} className="flex items-center justify-between p-3 border border-border/40 rounded-xl">
                     <div className="flex items-center gap-3">
                       <Skeleton className="h-8 w-8 rounded-lg" />
                       <div className="space-y-2">
@@ -344,14 +353,15 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
             ) : (
               <div className="space-y-3">
                 {pendingInvites
-                  ?.filter(invite => invite.status === 'pending')
+                  ?.filter(invite => invite.status === 'pending' || invite.status === 'expired')
                   .map((invite) => {
                     const Icon = roleIcons[invite.role] || Calculator;
+                    const isExpired = invite.status === 'expired';
 
                     return (
                       <div
                         key={invite.id}
-                        className="flex items-center justify-between p-3 border rounded-lg"
+                        className="flex items-center justify-between p-3 border border-border/40 rounded-xl hover:border-border transition-colors"
                       >
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-muted">
@@ -360,10 +370,9 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                           <div>
                             <p className="font-medium text-sm">{invite.email}</p>
                             <p className="text-xs text-muted-foreground">
-                              Invited by {invite.invitedBy} • Expires{' '}
-                              {invite.expiresAt
-                                ? new Date(invite.expiresAt).toLocaleDateString()
-                                : 'never'}
+                              {isExpired
+                                ? `Expired — invited by ${invite.invitedBy || 'unknown'}`
+                                : `Invited by ${invite.invitedBy || 'unknown'} • ${invite.expiresAt ? formatExpiresIn(invite.expiresAt) : 'No expiry'}`}
                             </p>
                           </div>
                         </div>
@@ -383,10 +392,55 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           )}
+                          {canManage && invite.status === 'expired' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleResendInvitation(invite)}
+                              disabled={resendingIds.has(invite.id)}
+                              aria-busy={resendingIds.has(invite.id)}
+                              aria-label={resendingIds.has(invite.id) ? `Sending invitation to ${invite.email}` : `Resend invitation to ${invite.email}`}
+                              className="text-primary hover:text-primary hover:bg-primary/10"
+                            >
+                              <RefreshCw className={`h-4 w-4 ${resendingIds.has(invite.id) ? 'animate-spin' : ''}`} />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );
                   })}
+
+                {cancelledInvites.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-expanded={showCancelledInvites}
+                      onClick={() => setShowCancelledInvites(prev => !prev)}
+                      className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1 transition-colors"
+                    >
+                      {showCancelledInvites ? 'Hide cancelled' : `Show cancelled (${cancelledInvites.length})`}
+                    </button>
+                    {showCancelledInvites && cancelledInvites.map((invite) => {
+                      const Icon = roleIcons[invite.role] || Calculator;
+                      return (
+                        <div key={invite.id} className="flex items-center justify-between p-3 border border-border/40 rounded-xl opacity-50">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-muted">
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">{invite.email}</p>
+                              <p className="text-xs text-muted-foreground">Cancelled</p>
+                            </div>
+                          </div>
+                          <Badge variant="outline">
+                            <span className="capitalize">{invite.status}</span>
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             )}
           </CardContent>
@@ -394,4 +448,4 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
       )}
     </div>
   );
-};
+}

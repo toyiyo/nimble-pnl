@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { formatExpiresIn } from '@/lib/invitationUtils';
 
 interface Invitation {
   id: string;
@@ -18,6 +19,7 @@ interface Invitation {
   createdAt: string;
   expiresAt?: string;
   invitedBy?: string;
+  employeeId?: string;
 }
 
 interface TeamInvitationsProps {
@@ -25,7 +27,7 @@ interface TeamInvitationsProps {
   userRole: string;
 }
 
-export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps) => {
+export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps) {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -34,11 +36,16 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     role: 'staff',
   });
   const [sending, setSending] = useState(false);
+  const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
+  const [showHistory, setShowHistory] = useState(false);
+  const [pendingConflict, setPendingConflict] = useState(false);
+  const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const canManageInvites = userRole === 'owner' || userRole === 'manager';
 
   useEffect(() => {
+    setShowHistory(false);
     fetchInvitations();
   }, [restaurantId]);
 
@@ -52,7 +59,6 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
 
       if (error) throw error;
 
-      // Get profile information for invited_by users
       const invitedByIds = [...new Set(invitations.map(inv => inv.invited_by))];
       const { data: profiles } = await supabase
         .from('profiles')
@@ -68,7 +74,8 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
         status: inv.status as 'pending' | 'accepted' | 'expired' | 'cancelled',
         createdAt: inv.created_at,
         expiresAt: inv.expires_at,
-        invitedBy: profilesMap.get(inv.invited_by)?.full_name || 'Unknown'
+        invitedBy: profilesMap.get(inv.invited_by)?.full_name || 'Unknown',
+        employeeId: inv.employee_id ?? undefined,
       }));
 
       setInvitations(formattedInvitations);
@@ -120,9 +127,17 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
       return;
     }
 
+    const hasConflict = invitations.some(
+      inv => inv.email.toLowerCase() === inviteForm.email.toLowerCase() && inv.status === 'pending'
+    );
+    if (hasConflict && !pendingConflict) {
+      setPendingConflict(true);
+      return;
+    }
+    setPendingConflict(false);
+
     setSending(true);
     try {
-      // Call edge function to send invitation email
       const { data, error } = await supabase.functions.invoke('send-team-invitation', {
         body: {
           restaurantId,
@@ -152,10 +167,36 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     }
   };
 
+  const resendInvitation = async (invitation: Invitation, confirmed = false) => {
+    const hasPendingConflict = invitations.some(
+      inv => inv.email.toLowerCase() === invitation.email.toLowerCase() && inv.status === 'pending'
+    );
+    if (hasPendingConflict && !confirmed) {
+      setResendConflictId(invitation.id);
+      return;
+    }
+    setResendConflictId(null);
+    setResendingIds(prev => new Set(prev).add(invitation.id));
+    try {
+      const body: Record<string, unknown> = { restaurantId, email: invitation.email, role: invitation.role };
+      if (invitation.employeeId) body.employeeId = invitation.employeeId;
+      const { error } = await supabase.functions.invoke('send-team-invitation', { body });
+      if (error) throw error;
+      toast({ title: 'Invitation resent', description: `New invite sent to ${invitation.email}` });
+      fetchInvitations();
+    } catch (err) {
+      console.error('Error resending invitation:', err);
+      toast({ title: 'Error', description: 'Failed to resend invitation', variant: 'destructive' });
+    } finally {
+      setResendingIds(prev => { const s = new Set(prev); s.delete(invitation.id); return s; });
+    }
+  };
+
   const statusIcons = {
-    pending: <Clock className="h-4 w-4 text-yellow-500" />,
-    accepted: <CheckCircle className="h-4 w-4 text-green-500" />,
-    expired: <XCircle className="h-4 w-4 text-red-500" />,
+    pending: <Clock className="h-4 w-4 text-muted-foreground" />,
+    accepted: <CheckCircle className="h-4 w-4 text-primary" />,
+    expired: <XCircle className="h-4 w-4 text-destructive" />,
+    cancelled: null,
   };
 
   const statusColors = {
@@ -164,6 +205,14 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     expired: "destructive",
     cancelled: "outline",
   } as const;
+
+  const activeInvitations = invitations.filter(
+    inv => inv.status === 'pending' || inv.status === 'expired'
+  );
+  const historyInvitations = invitations.filter(
+    inv => inv.status === 'accepted' || inv.status === 'cancelled'
+  );
+  const visibleInvitations = showHistory ? invitations : activeInvitations;
 
   return (
     <Card>
@@ -177,40 +226,57 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
           </div>
           
           {canManageInvites && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setPendingConflict(false);
+                setInviteForm({ email: '', role: 'staff' });
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button className="flex items-center gap-2 w-full sm:w-auto" size="sm">
                   <Plus className="h-4 w-4" />
                   <span className="sm:inline">Send Invitation</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Invite Team Member</DialogTitle>
-                  <DialogDescription>
-                    Send an invitation to join your restaurant team
-                  </DialogDescription>
+              <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                      <Mail className="h-5 w-5 text-foreground" />
+                    </div>
+                    <div>
+                      <DialogTitle className="text-[17px] font-semibold text-foreground">Invite Team Member</DialogTitle>
+                      <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                        Send an invitation to join your restaurant team
+                      </DialogDescription>
+                    </div>
+                  </div>
                 </DialogHeader>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="email">Email Address</Label>
+
+                <div className="px-6 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Email Address</Label>
                     <Input
                       id="email"
                       type="email"
                       placeholder="Enter email address"
                       value={inviteForm.email}
-                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                      onChange={(e) => {
+                        setPendingConflict(false);
+                        setInviteForm({ ...inviteForm, email: e.target.value });
+                      }}
                     />
                   </div>
-                  
-                  <div>
-                    <Label htmlFor="role">Role</Label>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="role" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Role</Label>
                     <Select
                       value={inviteForm.role}
                       onValueChange={(value) => setInviteForm({ ...inviteForm, role: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -223,14 +289,23 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {pendingConflict && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]">
+                      <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <p className="text-foreground">
+                        A pending invite for <strong>{inviteForm.email}</strong> already exists. Sending a new one will cancel the old link.
+                      </p>
+                    </div>
+                  )}
                 </div>
-                
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+
+                <DialogFooter className="px-6 py-4 border-t border-border/40">
+                  <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); }}>
                     Cancel
                   </Button>
-                  <Button onClick={sendInvitation} disabled={sending}>
-                    {sending ? 'Sending...' : 'Send Invitation'}
+                  <Button onClick={sendInvitation} disabled={sending} className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90">
+                    {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -246,45 +321,97 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
           </div>
         ) : invitations.length > 0 ? (
           <div className="space-y-3 md:space-y-4">
-            {invitations.map((invitation) => (
-              <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4 border rounded-lg">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm md:text-base truncate">{invitation.email}</p>
-                    <div className="text-xs md:text-sm text-muted-foreground space-y-1">
-                      <p className="truncate">
-                        Invited as <span className="capitalize font-medium">{invitation.role}</span> by {invitation.invitedBy}
-                      </p>
-                      <p>
-                        {new Date(invitation.createdAt).toLocaleDateString()}
-                        {invitation.expiresAt && (
-                          <span> • Expires {new Date(invitation.expiresAt).toLocaleDateString()}</span>
-                        )}
-                      </p>
+            {visibleInvitations.map((invitation) => (
+              <div key={invitation.id} className="border border-border/40 rounded-xl hover:border-border transition-colors">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm md:text-base truncate">{invitation.email}</p>
+                      <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+                        <p className="truncate">
+                          Invited as <span className="capitalize font-medium">{invitation.role}</span> by {invitation.invitedBy}
+                        </p>
+                        <p>
+                          {invitation.expiresAt && (invitation.status === 'pending' || invitation.status === 'expired')
+                            ? formatExpiresIn(invitation.expiresAt)
+                            : new Date(invitation.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
+                    <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1 text-xs">
+                      {statusIcons[invitation.status]}
+                      <span className="capitalize">{invitation.status}</span>
+                    </Badge>
+
+                    {canManageInvites && invitation.status === 'pending' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteInvitation(invitation.id, invitation.email)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
+                        aria-label={`Cancel invitation for ${invitation.email}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canManageInvites && invitation.status === 'expired' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resendConflictId === invitation.id
+                          ? resendInvitation(invitation, true)
+                          : resendInvitation(invitation)
+                        }
+                        disabled={resendingIds.has(invitation.id)}
+                        aria-busy={resendingIds.has(invitation.id)}
+                        aria-label={
+                          resendingIds.has(invitation.id)
+                            ? `Sending invitation to ${invitation.email}`
+                            : resendConflictId === invitation.id
+                              ? `Confirm resend to ${invitation.email}, cancelling existing pending invite`
+                              : `Resend invitation to ${invitation.email}`
+                        }
+                        className={
+                          resendConflictId === invitation.id
+                            ? 'text-amber-600 hover:text-amber-600 hover:bg-amber-500/10 p-2'
+                            : 'text-primary hover:text-primary hover:bg-primary/10 p-2'
+                        }
+                      >
+                        <RefreshCw className={`h-4 w-4 ${resendingIds.has(invitation.id) ? 'animate-spin' : ''}`} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
-                  <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1 text-xs">
-                    {statusIcons[invitation.status]}
-                    <span className="capitalize">{invitation.status}</span>
-                  </Badge>
-                  
-                  {canManageInvites && invitation.status === 'pending' && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => deleteInvitation(invitation.id, invitation.email)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+                {resendConflictId === invitation.id && (
+                  <div className="px-3 pb-3 md:px-4">
+                    <p className="text-[11px] text-amber-600">
+                      A pending invite for this email already exists. Click again to cancel it and resend.
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
+            {visibleInvitations.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                All invitations are in history.
+              </p>
+            )}
+            {historyInvitations.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={showHistory}
+                onClick={() => setShowHistory(prev => !prev)}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
+              >
+                {showHistory
+                  ? 'Hide history'
+                  : `Show history (${historyInvitations.length})`}
+              </button>
+            )}
           </div>
         ) : (
           <div className="text-center py-6 md:py-8">
@@ -301,4 +428,4 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
       </CardContent>
     </Card>
   );
-};
+}

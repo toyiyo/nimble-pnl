@@ -11,17 +11,26 @@ import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
+import { classifyInvitationError } from '@/lib/invitationUtils';
 
-export const AcceptInvitation = () => {
+interface InvitationDetails {
+  email: string;
+  role: string;
+  restaurant: { name: string; address?: string } | null;
+  invited_by: string;
+  expires_at: string;
+}
+
+export function AcceptInvitation() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
-  const [authLoading2, setAuthLoading2] = useState(false);
-  const [invitation, setInvitation] = useState<any>(null);
-  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'accepted' | 'error' | 'needs_auth'>('loading');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
+  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'needs_auth'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -37,7 +46,6 @@ export const AcceptInvitation = () => {
 
   useEffect(() => {
     if (user && invitation && user.email === invitation.email) {
-      // For existing users signing in, accept the invitation
       if (status === 'valid') {
         acceptInvitation();
       }
@@ -63,14 +71,22 @@ export const AcceptInvitation = () => {
         body: { token }
       });
 
-      if (error) throw error;
+      if (error) {
+        let errorMessage = error?.message || '';
+        if (error?.context) {
+          try {
+            const body = await error.context.json();
+            errorMessage = body?.error || errorMessage;
+          } catch {}
+        }
+        throw new Error(errorMessage);
+      }
 
       if (data.success) {
         setInvitation(data.invitation);
-        setEmail(data.invitation.email); // Pre-fill email
-        
+        setEmail(data.invitation.email);
+
         if (user) {
-          // User is already authenticated, check email match
           if (user.email === data.invitation.email) {
             setStatus('valid');
           } else {
@@ -82,15 +98,14 @@ export const AcceptInvitation = () => {
             setStatus('invalid');
           }
         } else {
-          // User needs to authenticate
           setStatus('needs_auth');
         }
       } else {
         throw new Error(data.error || 'Invalid invitation');
       }
-    } catch (error: any) {
-      console.error('Error validating invitation:', error);
-      setStatus('invalid');
+    } catch (err: unknown) {
+      console.error('Error validating invitation:', err);
+      setStatus(classifyInvitationError(err instanceof Error ? err.message : ''));
     } finally {
       setLoading(false);
     }
@@ -114,7 +129,6 @@ export const AcceptInvitation = () => {
           description: data.message,
         });
 
-        // Immediate redirect to dashboard
         navigate('/');
       } else {
         throw new Error(data.error || 'Failed to accept invitation');
@@ -133,7 +147,7 @@ export const AcceptInvitation = () => {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthLoading2(true);
+    setAuthSubmitting(true);
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -142,8 +156,7 @@ export const AcceptInvitation = () => {
       });
       
       if (error) throw error;
-      
-      // Update status to valid so useEffect can accept the invitation
+
       setStatus('valid');
     } catch (error: any) {
       toast({
@@ -152,12 +165,12 @@ export const AcceptInvitation = () => {
         variant: "destructive",
       });
     } finally {
-      setAuthLoading2(false);
+      setAuthSubmitting(false);
     }
   };
 
   const handleGoogleAuth = async () => {
-    setAuthLoading2(true);
+    setAuthSubmitting(true);
     try {
       const { error } = await signInWithOAuthNative('google', `/accept-invitation?token=${encodeURIComponent(token)}`);
 
@@ -168,16 +181,15 @@ export const AcceptInvitation = () => {
         description: error.message || "Failed to sign in with Google",
         variant: "destructive",
       });
-      setAuthLoading2(false);
+      setAuthSubmitting(false);
     }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthLoading2(true);
+    setAuthSubmitting(true);
 
     try {
-      // Validate email matches invitation
       if (email !== invitation?.email) {
         toast({
           title: "Email Mismatch",
@@ -187,7 +199,6 @@ export const AcceptInvitation = () => {
         return;
       }
 
-      // Use special signup function that bypasses email confirmation and accepts invitation
       const { data, error } = await supabase.functions.invoke('signup-with-invitation', {
         body: {
           email,
@@ -197,18 +208,15 @@ export const AcceptInvitation = () => {
         }
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (data.success) {
         toast({
           title: "Account Created!",
           description: `${data.message} Please sign in to continue.`,
         });
-        // Switch to sign-in mode after successful signup
         setShowSignIn(true);
-        setPassword(''); // Clear password field
+        setPassword('');
       } else {
         throw new Error(data.error || 'Failed to create account');
       }
@@ -220,7 +228,7 @@ export const AcceptInvitation = () => {
         variant: "destructive",
       });
     } finally {
-      setAuthLoading2(false);
+      setAuthSubmitting(false);
     }
   };
 
@@ -240,6 +248,29 @@ export const AcceptInvitation = () => {
     );
   }
 
+  if (status === 'expired') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <Clock className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <CardTitle>Invitation Expired</CardTitle>
+            <CardDescription>
+              This invitation link is no longer valid. Ask your manager to resend it from the Team page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <Button onClick={() => navigate('/')}>
+              Go to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (status === 'invalid') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
@@ -250,7 +281,7 @@ export const AcceptInvitation = () => {
             </div>
             <CardTitle>Invalid Invitation</CardTitle>
             <CardDescription>
-              This invitation is invalid, expired, or has already been used.
+              This invitation is invalid or has already been used.
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">
@@ -268,10 +299,10 @@ export const AcceptInvitation = () => {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-600" />
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-primary" />
             </div>
-            <CardTitle className="text-green-600">Welcome to the Team!</CardTitle>
+            <CardTitle>Welcome to the Team!</CardTitle>
             <CardDescription>
               You've successfully joined {invitation?.restaurant?.name}! Redirecting to dashboard...
             </CardDescription>
@@ -281,7 +312,6 @@ export const AcceptInvitation = () => {
     );
   }
 
-  // Show authenticated user's invitation
   if (status === 'valid' && user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
@@ -352,7 +382,6 @@ export const AcceptInvitation = () => {
     );
   }
 
-  // Show invitation details with authentication required - NEW USER FOCUSED FLOW
   if (status === 'needs_auth' && invitation) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
@@ -380,17 +409,15 @@ export const AcceptInvitation = () => {
             </div>
 
             {!showSignIn ? (
-              /* NEW USER SIGNUP - PRIMARY FLOW */
               <div className="space-y-4">
                 <div className="text-center">
                   <h4 className="font-medium mb-2">Create Your Account</h4>
                   <p className="text-sm text-muted-foreground">Join the team instantly - no email verification needed!</p>
                 </div>
 
-                {/* Google Sign-In Option */}
-                <GoogleSignInButton 
+                <GoogleSignInButton
                   onClick={handleGoogleAuth}
-                  disabled={authLoading2}
+                  disabled={authSubmitting}
                   text="continue"
                 />
 
@@ -440,8 +467,8 @@ export const AcceptInvitation = () => {
                       minLength={6}
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading2}>
-                    {authLoading2 ? "Creating Account..." : "Join Team"}
+                  <Button type="submit" className="w-full" disabled={authSubmitting}>
+                    {authSubmitting ? "Creating Account..." : "Join Team"}
                   </Button>
                 </form>
 
@@ -457,7 +484,6 @@ export const AcceptInvitation = () => {
                 </div>
               </div>
             ) : (
-              /* EXISTING USER SIGN IN - SECONDARY FLOW */
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-4">
                   <Button 
@@ -474,10 +500,9 @@ export const AcceptInvitation = () => {
                   </div>
                 </div>
 
-                {/* Google Sign-In Option */}
-                <GoogleSignInButton 
+                <GoogleSignInButton
                   onClick={handleGoogleAuth}
-                  disabled={authLoading2}
+                  disabled={authSubmitting}
                   text="signin"
                 />
 
@@ -515,8 +540,8 @@ export const AcceptInvitation = () => {
                       placeholder="Enter your password"
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading2}>
-                    {authLoading2 ? "Signing In..." : "Sign In & Join Team"}
+                  <Button type="submit" className="w-full" disabled={authSubmitting}>
+                    {authSubmitting ? "Signing In..." : "Sign In & Join Team"}
                   </Button>
                 </form>
               </div>
@@ -532,4 +557,4 @@ export const AcceptInvitation = () => {
   }
 
   return null;
-};
+}

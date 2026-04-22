@@ -45,10 +45,12 @@ describe('<EmployeeMiniWeek>', () => {
     const { container } = render(
       <EmployeeMiniWeek weekDays={weekDays} employeeShifts={shifts} />,
     );
-    const tuesday = container.querySelector('[data-mini-week-day="2026-04-21"]')!;
-    expect(tuesday.querySelectorAll('[data-mini-bar]')).toHaveLength(1);
-    const monday = container.querySelector('[data-mini-week-day="2026-04-20"]')!;
-    expect(monday.querySelectorAll('[data-mini-bar]')).toHaveLength(0);
+    const tuesday = container.querySelector('[data-mini-week-day="2026-04-21"]');
+    expect(tuesday).not.toBeNull();
+    expect(tuesday!.querySelectorAll('[data-mini-bar]')).toHaveLength(1);
+    const monday = container.querySelector('[data-mini-week-day="2026-04-20"]');
+    expect(monday).not.toBeNull();
+    expect(monday!.querySelectorAll('[data-mini-bar]')).toHaveLength(0);
   });
 
   it('renders multiple bars when employee has multiple shifts on the same day', () => {
@@ -59,7 +61,8 @@ describe('<EmployeeMiniWeek>', () => {
     const { container } = render(
       <EmployeeMiniWeek weekDays={weekDays} employeeShifts={shifts} />,
     );
-    const monday = container.querySelector('[data-mini-week-day="2026-04-20"]')!;
-    expect(monday.querySelectorAll('[data-mini-bar]')).toHaveLength(2);
+    const monday = container.querySelector('[data-mini-week-day="2026-04-20"]');
+    expect(monday).not.toBeNull();
+    expect(monday!.querySelectorAll('[data-mini-bar]')).toHaveLength(2);
   });
 });

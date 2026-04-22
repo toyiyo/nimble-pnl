@@ -12,7 +12,7 @@ test.describe('Planner allocation overlay', () => {
     await page.evaluate(
       ({ restId }) => (window as any).__insertEmployees(
         [
-          { name: 'Jose Delgado', position: 'server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 },
+          { name: 'Jose Delgado', position: 'Server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 },
         ],
         restId,
       ),

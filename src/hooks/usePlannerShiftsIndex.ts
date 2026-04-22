@@ -4,6 +4,15 @@ import { toLocalDateKey, toLocalEpoch } from '@/lib/shiftAllocation';
 
 import type { Shift } from '@/types/scheduling';
 
+/**
+ * Derives planner shift indices for coverage strip + overview panel.
+ *
+ * Known limitation: shifts that cross midnight (end_time hour is less than
+ * start_time hour) are bucketed only against their start date. The end tail
+ * bleeding into the next day is not counted toward that next day's coverage
+ * or overview pills. Matches the assumption used by `buildTemplateGridData`
+ * and shiftAllocation.ts; full midnight-crossing support is a follow-up.
+ */
 export const COVERAGE_START_HOUR = 6;
 export const COVERAGE_END_HOUR = 23; // exclusive
 export const COVERAGE_BUCKETS = COVERAGE_END_HOUR - COVERAGE_START_HOUR; // 17

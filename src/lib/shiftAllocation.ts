@@ -46,6 +46,11 @@ export function toLocalEpoch(iso: string): number {
  * - "highlight": employee is already scheduled covering this slot
  * - "conflict": employee has a shift that partially overlaps this slot
  * - "available": template is active, employee has no overlapping shift
+ *
+ * Known limitation: overnight templates (end_time <= start_time) and shifts
+ * that cross midnight are matched only on their start date. Full midnight-
+ * crossing support is deferred to a follow-up; the same assumption is baked
+ * into `buildTemplateGridData` in useShiftPlanner.ts.
  */
 export function computeAllocationStatus(
   employeeShifts: readonly Shift[],

@@ -320,6 +320,16 @@ export function useShiftPlanner(
 ): UseShiftPlannerReturn {
   const { externalWeekStart, onExternalWeekStartChange } = options;
 
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    externalWeekStart !== undefined &&
+    !onExternalWeekStartChange
+  ) {
+    console.warn(
+      'useShiftPlanner: externalWeekStart was provided without onExternalWeekStartChange. Navigation will be silently ignored — pass both or neither.',
+    );
+  }
+
   const [internalWeekStart, setInternalWeekStart] = useState<Date>(() =>
     getMondayOfWeek(new Date()),
   );

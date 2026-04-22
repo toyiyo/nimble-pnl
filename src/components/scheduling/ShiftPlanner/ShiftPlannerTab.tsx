@@ -25,6 +25,7 @@ import { getTemplateAreas } from '@/lib/templateAreaGrouping';
 import { AssignmentPopover } from './AssignmentPopover';
 import { AreaFilterPills } from './AreaFilterPills';
 import { CoverageStrip } from './CoverageStrip';
+import { ScheduleOverviewPanel } from './ScheduleOverviewPanel';
 
 import { PlannerHeader } from './PlannerHeader';
 import { StaffingOverlay } from './StaffingOverlay';
@@ -93,8 +94,8 @@ export function ShiftPlannerTab({
     [shifts, templates, weekDays],
   );
 
-  // Derive coverage index for CoverageStrip and future phases
-  const { coverageByDay } = usePlannerShiftsIndex(shifts, weekDays);
+  // Derive coverage index for CoverageStrip and overview panel
+  const { coverageByDay, overviewDays } = usePlannerShiftsIndex(shifts, weekDays);
 
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -457,6 +458,13 @@ export function ShiftPlannerTab({
 
       {/* Staffing suggestions overlay */}
       <StaffingOverlay restaurantId={restaurantId} weekDays={weekDays} />
+
+      {/* Schedule overview panel — weekly mini-Gantt */}
+      <ScheduleOverviewPanel
+        overviewDays={overviewDays}
+        coverageByDay={coverageByDay}
+        isMobile={isMobile}
+      />
 
       {/* Two-panel layout */}
       <DndContext

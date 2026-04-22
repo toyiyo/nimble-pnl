@@ -57,6 +57,7 @@ describe('NotificationSettings approver warning', () => {
 
     renderWithClient(<NotificationSettings restaurantId="rest-1" />);
 
+    expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText('No approvers configured')).toBeInTheDocument();
   });
 
@@ -69,7 +70,7 @@ describe('NotificationSettings approver warning', () => {
 
     renderWithClient(<NotificationSettings restaurantId="rest-1" />);
 
-    expect(screen.queryByText('No approvers configured')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('hides warning when notify_managers is off even if approverCount is 0', () => {
@@ -81,7 +82,7 @@ describe('NotificationSettings approver warning', () => {
 
     renderWithClient(<NotificationSettings restaurantId="rest-1" />);
 
-    expect(screen.queryByText('No approvers configured')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('hides warning while approverCount is still loading', () => {
@@ -93,6 +94,6 @@ describe('NotificationSettings approver warning', () => {
 
     renderWithClient(<NotificationSettings restaurantId="rest-1" />);
 
-    expect(screen.queryByText('No approvers configured')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

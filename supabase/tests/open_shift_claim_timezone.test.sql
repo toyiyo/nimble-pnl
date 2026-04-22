@@ -20,12 +20,21 @@ ALTER TABLE staffing_settings DISABLE ROW LEVEL SECURITY;
 ALTER TABLE schedule_publications DISABLE ROW LEVEL SECURITY;
 ALTER TABLE open_shift_claims DISABLE ROW LEVEL SECURITY;
 
+-- Compute a target Sunday that is always in the future.
+-- Formula: CURRENT_DATE + (7 - DOW) gives the next Sunday from today;
+-- when today is Sunday (DOW=0), adds 7 to avoid using today.
+CREATE TEMP TABLE test_config AS
+SELECT
+  CURRENT_DATE + (7 - EXTRACT(DOW FROM CURRENT_DATE)::int) AS target_sunday,
+  (CURRENT_DATE + (7 - EXTRACT(DOW FROM CURRENT_DATE)::int))::timestamp + interval '15 hours 30 minutes' AS local_start,
+  (CURRENT_DATE + (7 - EXTRACT(DOW FROM CURRENT_DATE)::int))::timestamp + interval '22 hours' AS local_end;
+
 -- Auth user for FK references
 INSERT INTO auth.users (id, email)
 VALUES ('dddddddd-d001-0000-0000-000000000001', 'tz-test@example.com')
 ON CONFLICT DO NOTHING;
 
--- Restaurant in CDT timezone (UTC-5 in April)
+-- Restaurant in CDT timezone (UTC-5 in summer, UTC-6 in winter)
 INSERT INTO restaurants (id, name, timezone)
 VALUES ('aaaaaaaa-a001-0000-0000-000000000001', 'TZ Test Restaurant', 'America/Chicago')
 ON CONFLICT (id) DO NOTHING;
@@ -64,18 +73,19 @@ VALUES ('aaaaaaaa-a001-0000-0000-000000000001', true, false)
 ON CONFLICT (restaurant_id) DO UPDATE
 SET open_shifts_enabled = true, require_shift_claim_approval = false;
 
--- Publish schedule for April 13-19, 2026 (Sun Apr 19 is day-of-week 0)
+-- Publish schedule for the week ending on target_sunday
 INSERT INTO schedule_publications (restaurant_id, week_start_date, week_end_date, published_by, shift_count)
-VALUES (
+SELECT
   'aaaaaaaa-a001-0000-0000-000000000001',
-  '2026-04-13', '2026-04-19',
+  target_sunday - 6,
+  target_sunday,
   'dddddddd-d001-0000-0000-000000000001',
   0
-);
+FROM test_config;
 
 -- ============================================
 -- Test 1: claim_open_shift (instant) creates shift with correct UTC start
--- In April, CDT = UTC-5. Template 15:30 local → 20:30 UTC
+-- Template 15:30 local → UTC equivalent depends on DST at target date
 -- ============================================
 
 SELECT is(
@@ -85,7 +95,7 @@ SELECT is(
       SELECT claim_open_shift(
         'aaaaaaaa-a001-0000-0000-000000000001',
         'bbbbbbbb-b001-0000-0000-000000000001',
-        '2026-04-19'::date,
+        (SELECT target_sunday FROM test_config),
         'cccccccc-c001-0000-0000-000000000001'
       ) AS result
     ) sub
@@ -95,7 +105,7 @@ SELECT is(
 );
 
 -- ============================================
--- Test 2: Resulting shift start_time is 20:30 UTC (15:30 CDT), not 15:30 UTC
+-- Test 2: Resulting shift start_time matches 15:30 local converted to UTC
 -- ============================================
 
 SELECT is(
@@ -107,12 +117,12 @@ SELECT is(
       AND source = 'template'
     ORDER BY created_at DESC LIMIT 1
   ),
-  '2026-04-19 20:30:00+00'::timestamptz,
-  'claim shift start_time is 20:30 UTC (15:30 CDT), not 15:30 UTC'
+  (SELECT local_start AT TIME ZONE 'America/Chicago' FROM test_config),
+  'claim shift start_time matches 15:30 local converted to UTC'
 );
 
 -- ============================================
--- Test 3: Resulting shift end_time is 03:00 UTC next day (22:00 CDT)
+-- Test 3: Resulting shift end_time matches 22:00 local converted to UTC
 -- ============================================
 
 SELECT is(
@@ -124,8 +134,8 @@ SELECT is(
       AND source = 'template'
     ORDER BY created_at DESC LIMIT 1
   ),
-  '2026-04-20 03:00:00+00'::timestamptz,
-  'claim shift end_time is 03:00 UTC next day (22:00 CDT), not 22:00 UTC'
+  (SELECT local_end AT TIME ZONE 'America/Chicago' FROM test_config),
+  'claim shift end_time matches 22:00 local converted to UTC'
 );
 
 -- ============================================
@@ -137,10 +147,10 @@ SELECT is(
     SELECT open_spots
     FROM get_open_shifts(
       'aaaaaaaa-a001-0000-0000-000000000001',
-      '2026-04-13'::date,
-      '2026-04-19'::date
+      (SELECT target_sunday - 6 FROM test_config),
+      (SELECT target_sunday FROM test_config)
     )
-    WHERE shift_date = '2026-04-19'
+    WHERE shift_date = (SELECT target_sunday FROM test_config)
     LIMIT 1
   ),
   2::bigint,
@@ -149,27 +159,27 @@ SELECT is(
 
 -- ============================================
 -- Test 5: Planner-created shift (proper UTC) is also counted by get_open_shifts
--- Insert a shift as if created by the planner: 15:30 CDT = 20:30 UTC
+-- Insert a shift as if created by the planner: 15:30 local = UTC equivalent
 -- ============================================
 
 INSERT INTO shifts (restaurant_id, employee_id, start_time, end_time, position, status, source)
-VALUES (
+SELECT
   'aaaaaaaa-a001-0000-0000-000000000001',
   'cccccccc-c001-0000-0000-000000000002',
-  '2026-04-19 20:30:00+00',  -- 15:30 CDT as proper UTC
-  '2026-04-20 03:00:00+00',  -- 22:00 CDT as proper UTC
+  local_start AT TIME ZONE 'America/Chicago',
+  local_end AT TIME ZONE 'America/Chicago',
   'Server', 'scheduled', 'manual'
-);
+FROM test_config;
 
 SELECT is(
   (
     SELECT open_spots
     FROM get_open_shifts(
       'aaaaaaaa-a001-0000-0000-000000000001',
-      '2026-04-13'::date,
-      '2026-04-19'::date
+      (SELECT target_sunday - 6 FROM test_config),
+      (SELECT target_sunday FROM test_config)
     )
-    WHERE shift_date = '2026-04-19'
+    WHERE shift_date = (SELECT target_sunday FROM test_config)
     LIMIT 1
   ),
   1::bigint,
@@ -201,7 +211,7 @@ SELECT is(
       SELECT claim_open_shift(
         'aaaaaaaa-a001-0000-0000-000000000001',
         'bbbbbbbb-b001-0000-0000-000000000001',
-        '2026-04-19'::date,
+        (SELECT target_sunday FROM test_config),
         'cccccccc-c001-0000-0000-000000000003'
       ) AS result
     ) sub
@@ -231,7 +241,7 @@ SELECT is(
 );
 
 -- ============================================
--- Test 8: Approved shift has correct UTC start time (20:30 UTC, not 15:30 UTC)
+-- Test 8: Approved shift has correct UTC start time
 -- ============================================
 
 SELECT is(
@@ -243,8 +253,8 @@ SELECT is(
       AND source = 'template'
     ORDER BY created_at DESC LIMIT 1
   ),
-  '2026-04-19 20:30:00+00'::timestamptz,
-  'approved claim shift start_time is 20:30 UTC (15:30 CDT), not 15:30 UTC'
+  (SELECT local_start AT TIME ZONE 'America/Chicago' FROM test_config),
+  'approved claim shift start_time matches 15:30 local converted to UTC'
 );
 
 SELECT * FROM finish();

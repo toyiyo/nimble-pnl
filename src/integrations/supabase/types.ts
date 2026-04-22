@@ -2472,10 +2472,12 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -2510,10 +2512,12 @@ export type Database = {
           daily_rate_amount?: number | null
           daily_rate_reference_days?: number | null
           daily_rate_reference_weekly?: number | null
+          date_of_birth?: string | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
+          employment_type?: string
           exempt_changed_at?: string | null
           exempt_changed_by?: string | null
           hire_date?: string | null
@@ -2548,10 +2552,12 @@ export type Database = {
           daily_rate_amount?: number | null
           daily_rate_reference_days?: number | null
           daily_rate_reference_weekly?: number | null
+          date_of_birth?: string | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
+          employment_type?: string
           exempt_changed_at?: string | null
           exempt_changed_by?: string | null
           hire_date?: string | null
@@ -9525,10 +9531,12 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -9975,10 +9983,12 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
+          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
+          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null

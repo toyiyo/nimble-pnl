@@ -10,6 +10,7 @@ import { Employee } from '@/types/scheduling';
 import { Users, UserX, UsersRound, Plus, RotateCcw, Edit, UserMinus, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { isMinor } from '@/lib/employeeUtils';
 import {
   Tooltip,
   TooltipContent,
@@ -287,6 +288,14 @@ const EmployeeCard = ({ employee, onEdit, onDeactivate, onReactivate, variant }:
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="truncate">{employee.position}</span>
+              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted shrink-0">
+                {employee.employment_type === 'part_time' ? 'PT' : 'FT'}
+              </span>
+              {isMinor(employee.date_of_birth) && (
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium shrink-0">
+                  Minor
+                </span>
+              )}
               <span>•</span>
               <span className="shrink-0">{getCompensationDisplay()}</span>
             </div>

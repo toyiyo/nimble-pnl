@@ -3,6 +3,7 @@ export type CompensationType = 'hourly' | 'salary' | 'contractor' | 'daily_rate'
 export type PayPeriodType = 'weekly' | 'bi-weekly' | 'semi-monthly' | 'monthly';
 export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'per-job';
 export type DeactivationReason = 'seasonal' | 'left_company' | 'on_leave' | 'other';
+export type EmploymentType = 'full_time' | 'part_time';
 
 export interface CompensationHistoryEntry {
   id: string;
@@ -67,6 +68,10 @@ export interface Employee {
   // FLSA exempt status
   is_exempt?: boolean; // Exempt employees skip OT calculations
 
+  // Employment classification
+  employment_type?: EmploymentType; // Defaults to 'full_time' at DB level
+  date_of_birth?: string; // YYYY-MM-DD, optional
+
   // Compensation history (optional join)
   compensation_history?: CompensationHistoryEntry[];
 }
@@ -104,6 +109,7 @@ export interface Shift {
   is_published: boolean;
   locked: boolean;
   source: 'manual' | 'ai' | 'template';
+  shift_template_id?: string | null; // References shift_templates.id for planner bucketing
   created_at: string;
   updated_at: string;
   employee?: Employee; // Joined data

@@ -385,6 +385,74 @@ describe('useScheduledLaborCosts', () => {
       expect(result.current.breakdown.hourly.cost).toBeCloseTo(120, 2);
     });
 
+    it('counts shifts for hourly employees whose history has a stale salary entry', () => {
+      // Regression guard for the Alejandra Scheduling Labor Cost bug: an hourly
+      // employee has a stale salary entry in compensation_history dated between
+      // the most recent hourly entry and the shift date. Without the resolver
+      // fix, resolveCompensationForDate returned the salary entry and
+      // calculateScheduledLaborCost dropped the shift entirely.
+      const mockEmployees = [
+        {
+          id: 'emp-hourly-with-stale-salary',
+          first_name: 'Alejandra',
+          last_name: 'Perez',
+          compensation_type: 'hourly' as const,
+          hourly_rate: 1000, // $10.00/hr in cents
+          status: 'active' as const,
+          compensation_history: [
+            {
+              id: 'h1',
+              employee_id: 'emp-hourly-with-stale-salary',
+              restaurant_id: mockRestaurantId,
+              compensation_type: 'hourly' as const,
+              amount_cents: 1000,
+              pay_period_type: null,
+              effective_date: '2026-04-01',
+              created_at: '2026-04-01T00:00:00Z',
+            },
+            {
+              id: 'h2-stale',
+              employee_id: 'emp-hourly-with-stale-salary',
+              restaurant_id: mockRestaurantId,
+              compensation_type: 'salary' as const,
+              amount_cents: 60000,
+              pay_period_type: null,
+              effective_date: '2026-04-11',
+              created_at: '2026-04-11T00:00:00Z',
+            },
+          ],
+        },
+      ];
+
+      const aprDateFrom = new Date('2026-04-13T00:00:00Z');
+      const aprDateTo = new Date('2026-04-19T23:59:59Z');
+
+      const mockShifts: Shift[] = [
+        {
+          id: 'shift-stale-salary-regression',
+          employee_id: 'emp-hourly-with-stale-salary',
+          start_time: '2026-04-13T15:00:00Z',
+          end_time: '2026-04-13T21:30:00Z', // 6.5 gross hours
+          break_duration: 30, // 30 min break → 6.0 net hours
+          status: 'scheduled',
+        } as Shift,
+      ];
+
+      vi.mocked(useEmployees).mockReturnValue({
+        employees: mockEmployees,
+        loading: false,
+      } as any);
+
+      const { result } = renderHook(() =>
+        useScheduledLaborCosts(mockShifts, aprDateFrom, aprDateTo, mockRestaurantId)
+      );
+
+      // 6 hours × $10/hr = $60 — not $0 (which was the bug).
+      expect(result.current.breakdown.hourly.hours).toBeCloseTo(6, 2);
+      expect(result.current.breakdown.hourly.cost).toBeCloseTo(60, 2);
+      expect(result.current.totalCost).toBeCloseTo(60, 2);
+    });
+
     it('handles shifts without matching employee', () => {
       const mockEmployees = [
         {

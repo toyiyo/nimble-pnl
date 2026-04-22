@@ -230,6 +230,7 @@ export function ShiftPlannerTab({
       endTime: endHHMM,
       position: template.position,
       breakDuration: template.break_duration,
+      shiftTemplateId: template.id,
     };
 
     const result = await validateAndCreate(input);
@@ -266,6 +267,7 @@ export function ShiftPlannerTab({
       endTime: endHHMM,
       position: template.position,
       breakDuration: template.break_duration,
+      shiftTemplateId: template.id,
     }));
 
     const allConflicts: ConflictCheck[] = [];

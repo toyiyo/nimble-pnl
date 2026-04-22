@@ -22,13 +22,6 @@ export interface PendingInvite {
   invitedBy?: string;
 }
 
-// ============================================================
-// Query Hooks
-// ============================================================
-
-/**
- * Fetches all collaborators (users with collaborator_* roles) for a restaurant
- */
 export const useCollaboratorsQuery = (restaurantId: string | null) => {
   return useQuery({
     queryKey: ['collaborators', restaurantId],
@@ -75,15 +68,12 @@ export const useCollaboratorsQuery = (restaurantId: string | null) => {
       }));
     },
     enabled: !!restaurantId,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 };
 
-/**
- * Fetches pending collaborator invitations for a restaurant
- */
 export const useCollaboratorInvitesQuery = (restaurantId: string | null) => {
   return useQuery({
     queryKey: ['collaborator-invites', restaurantId],
@@ -127,15 +117,11 @@ export const useCollaboratorInvitesQuery = (restaurantId: string | null) => {
       }));
     },
     enabled: !!restaurantId,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 };
-
-// ============================================================
-// Mutation Hooks
-// ============================================================
 
 interface SendInvitationParams {
   restaurantId: string;
@@ -143,9 +129,6 @@ interface SendInvitationParams {
   role: Role;
 }
 
-/**
- * Sends an invitation to a collaborator
- */
 export const useSendCollaboratorInvitation = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -186,9 +169,6 @@ interface CancelInvitationParams {
   restaurantId: string;
 }
 
-/**
- * Cancels a pending invitation
- */
 export const useCancelCollaboratorInvitation = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -227,9 +207,6 @@ interface RemoveCollaboratorParams {
   restaurantId: string;
 }
 
-/**
- * Removes a collaborator from a restaurant
- */
 export const useRemoveCollaborator = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -256,6 +233,35 @@ export const useRemoveCollaborator = () => {
       toast({
         title: 'Error removing collaborator',
         description: error.message || 'Failed to remove collaborator',
+        variant: 'destructive',
+      });
+    },
+  });
+};
+
+export const useResendCollaboratorInvitation = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ restaurantId, email, role }: SendInvitationParams) => {
+      const { error } = await supabase.functions.invoke('send-team-invitation', {
+        body: { restaurantId, email, role },
+      });
+      if (error) throw error;
+      return { email, role };
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['collaborator-invites', variables.restaurantId] });
+      toast({
+        title: 'Invitation resent',
+        description: `New invite sent to ${data.email}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error resending invitation',
+        description: error.message || 'Failed to resend invitation',
         variant: 'destructive',
       });
     },

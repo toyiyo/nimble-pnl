@@ -22,7 +22,7 @@ export function AcceptInvitation() {
   const [accepting, setAccepting] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [invitation, setInvitation] = useState<any>(null);
-  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'error' | 'needs_auth'>('loading');
+  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'needs_auth'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -63,7 +63,16 @@ export function AcceptInvitation() {
         body: { token }
       });
 
-      if (error) throw error;
+      if (error) {
+        let errorMessage = error?.message || '';
+        if (error?.context) {
+          try {
+            const body = await error.context.json();
+            errorMessage = body?.error || errorMessage;
+          } catch {}
+        }
+        throw new Error(errorMessage);
+      }
 
       if (data.success) {
         setInvitation(data.invitation);
@@ -84,11 +93,11 @@ export function AcceptInvitation() {
           setStatus('needs_auth');
         }
       } else {
-        throw new Error(data.error || '');
+        throw new Error(data.error || 'Invalid invitation');
       }
-    } catch (error: any) {
-      console.error('Error validating invitation:', error);
-      setStatus(classifyInvitationError(error?.message || ''));
+    } catch (err: any) {
+      console.error('Error validating invitation:', err);
+      setStatus(classifyInvitationError(err?.message || ''));
     } finally {
       setLoading(false);
     }

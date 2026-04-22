@@ -31,9 +31,23 @@ describe('formatExpiresIn', () => {
     expect(formatExpiresIn(yesterday)).toBe('Expired yesterday');
   });
 
+  it('returns "Expires today" for 22 hours away (not "Expires tomorrow")', () => {
+    const almostTomorrow = new Date('2026-04-22T10:00:00Z').toISOString();
+    expect(formatExpiresIn(almostTomorrow)).toBe('Expires today');
+  });
+
+  it('returns "Expired today" for 13 hours ago (not "Expired yesterday")', () => {
+    const recentlyExpired = new Date('2026-04-20T23:00:00Z').toISOString();
+    expect(formatExpiresIn(recentlyExpired)).toBe('Expired today');
+  });
+
   it('returns "Expired 5 days ago" for 5 days past', () => {
     const past = new Date('2026-04-16T12:00:00Z').toISOString();
     expect(formatExpiresIn(past)).toBe('Expired 5 days ago');
+  });
+
+  it('returns "Unknown expiration" for an invalid date string', () => {
+    expect(formatExpiresIn('not-a-date')).toBe('Unknown expiration');
   });
 });
 

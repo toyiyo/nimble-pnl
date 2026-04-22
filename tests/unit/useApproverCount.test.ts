@@ -37,14 +37,14 @@ describe('useApproverCount', () => {
     mockSupabase.from.mockReset();
   });
 
-  it('returns 0 when restaurantId is undefined without hitting the client', async () => {
+  it('does not fetch when restaurantId is undefined', async () => {
     const { result } = renderHook(() => useApproverCount(undefined), {
       wrapper: createWrapper(),
     });
     await waitFor(() => {
       expect(result.current.isFetching).toBe(false);
     });
-    expect(result.current.data).toBe(0);
+    expect(result.current.data).toBeUndefined();
     expect(mockSupabase.from).not.toHaveBeenCalled();
   });
 
@@ -59,7 +59,7 @@ describe('useApproverCount', () => {
     await waitFor(() => expect(result.current.data).toBe(3));
 
     expect(mockSupabase.from).toHaveBeenCalledWith('user_restaurants');
-    expect(stub.select).toHaveBeenCalledWith('*', { count: 'exact', head: true });
+    expect(stub.select).toHaveBeenCalledWith('id', { count: 'exact', head: true });
     const eqCall = stub.select.mock.results[0].value.eq;
     expect(eqCall).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     const inCall = eqCall.mock.results[0].value.in;

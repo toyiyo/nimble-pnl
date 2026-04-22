@@ -36,6 +36,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
   });
   const [sending, setSending] = useState(false);
   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
+  const [showHistory, setShowHistory] = useState(false);
   const { toast } = useToast();
 
   const canManageInvites = userRole === 'owner' || userRole === 'manager';
@@ -185,6 +186,14 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
     cancelled: "outline",
   } as const;
 
+  const activeInvitations = invitations.filter(
+    inv => inv.status === 'pending' || inv.status === 'expired'
+  );
+  const historyInvitations = invitations.filter(
+    inv => inv.status === 'accepted' || inv.status === 'cancelled'
+  );
+  const visibleInvitations = showHistory ? invitations : activeInvitations;
+
   return (
     <Card>
       <CardHeader>
@@ -266,7 +275,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
           </div>
         ) : invitations.length > 0 ? (
           <div className="space-y-3 md:space-y-4">
-            {invitations.map((invitation) => (
+            {visibleInvitations.map((invitation) => (
               <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4 border rounded-lg">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
@@ -284,13 +293,13 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
                   <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1 text-xs">
                     {statusIcons[invitation.status]}
                     <span className="capitalize">{invitation.status}</span>
                   </Badge>
-                  
+
                   {canManageInvites && invitation.status === 'pending' && (
                     <Button
                       variant="ghost"
@@ -317,6 +326,21 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                 </div>
               </div>
             ))}
+            {visibleInvitations.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-2">
+                All invitations are in history.
+              </p>
+            )}
+            {historyInvitations.length > 0 && (
+              <button
+                onClick={() => setShowHistory(prev => !prev)}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
+              >
+                {showHistory
+                  ? 'Hide history'
+                  : `Show history (${historyInvitations.length})`}
+              </button>
+            )}
           </div>
         ) : (
           <div className="text-center py-6 md:py-8">

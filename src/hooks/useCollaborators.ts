@@ -275,10 +275,10 @@ export const useResendCollaboratorInvitation = () => {
         body: { restaurantId, email, role },
       });
       if (error) throw error;
-      return { email, role, restaurantId };
+      return { email, role };
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['collaborator-invites', data.restaurantId] });
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['collaborator-invites', variables.restaurantId] });
       toast({
         title: 'Invitation resent',
         description: `New invite sent to ${data.email}`,

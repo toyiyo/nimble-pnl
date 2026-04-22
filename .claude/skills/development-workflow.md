@@ -22,7 +22,7 @@ Maintain a `progress.md` file in the worktree root throughout execution. This fi
 # Progress: [task title]
 
 ## Spec
-Link: docs/plans/YYYY-MM-DD-<topic>-plan.md
+Link: docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md
 
 ## Current Phase
 Phase N: [name] — [status: in-progress | completed | blocked]
@@ -71,7 +71,23 @@ Do NOT skip phases. Do NOT start coding before phases 1-2 are complete. Do NOT c
 **Skip condition:** Already in a dedicated worktree for this task. If the current directory is on `main` or a reused branch, do NOT skip — create a fresh worktree.
 
 <HARD-GATE>
-Never commit design docs, plans, or code for a new task directly to `main`. If you catch yourself with uncommitted changes or fresh commits on `main`, stop and move them to a feature branch via `git branch <feature> HEAD && git reset --hard origin/main`, then resume work in a worktree.
+Never commit design docs, plans, or code for a new task directly to `main`. If you catch yourself with uncommitted changes or fresh commits on `main`, stop and move them off `main` before resyncing — **never `git reset --hard` while the working tree is dirty**, it destroys uncommitted work.
+
+```bash
+# 1. Preserve any uncommitted edits (tracked + untracked).
+git stash push --include-untracked --message "pre-recover-$(date +%s)"
+
+# 2. Move committed work (if any) to a feature branch, then resync main.
+git branch <feature> HEAD
+git reset --hard origin/main
+
+# 3. Check out the feature branch in a new worktree and restore the stash there.
+git worktree add .claude/worktrees/<feature> <feature>
+cd .claude/worktrees/<feature>
+git stash pop   # only if step 1 actually stashed something
+```
+
+If `git stash push` reports "No local changes to save," skip step 3's `git stash pop`. If step 2's `git branch` fails because `HEAD` is already at `origin/main` (no accidental commits), skip it — the stashed edits alone are what need to move.
 </HARD-GATE>
 
 ## Phase 2: Brainstorm

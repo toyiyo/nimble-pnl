@@ -45,8 +45,6 @@ export const CoverageStrip = memo(function CoverageStrip({
             key={day}
             data-coverage-day={day}
             className="border-t border-l border-border/40 flex items-stretch h-6"
-            role="img"
-            aria-label={`Coverage for ${day}`}
           >
             {buckets.map((count, idx) => {
               const density = densityFor(count);
@@ -54,6 +52,7 @@ export const CoverageStrip = memo(function CoverageStrip({
                 <div
                   key={idx}
                   data-density={density}
+                  aria-hidden="true"
                   title={`${hourLabel(idx)} · ${count} on shift`}
                   className={cn('flex-1 border-r border-border/20 last:border-r-0', DENSITY_CLASS[density])}
                 />

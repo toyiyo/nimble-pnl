@@ -217,7 +217,13 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
           </div>
           
           {canManageInvites && (
-            <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) setPendingConflict(false); }}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setPendingConflict(false);
+                setInviteForm({ email: '', role: 'staff' });
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button className="flex items-center gap-2 w-full sm:w-auto" size="sm">
                   <Plus className="h-4 w-4" />
@@ -240,7 +246,10 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                       type="email"
                       placeholder="Enter email address"
                       value={inviteForm.email}
-                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                      onChange={(e) => {
+                        setPendingConflict(false);
+                        setInviteForm({ ...inviteForm, email: e.target.value });
+                      }}
                     />
                   </div>
                   
@@ -274,7 +283,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                   </div>
                 )}
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  <Button variant="outline" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); }}>
                     Cancel
                   </Button>
                   <Button onClick={sendInvitation} disabled={sending}>

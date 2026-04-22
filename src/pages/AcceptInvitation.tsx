@@ -11,6 +11,7 @@ import { signInWithOAuthNative } from '@/utils/nativeRedirect';
 import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
+import { classifyInvitationError } from '@/lib/invitationUtils';
 
 export const AcceptInvitation = () => {
   const [searchParams] = useSearchParams();
@@ -21,7 +22,7 @@ export const AcceptInvitation = () => {
   const [accepting, setAccepting] = useState(false);
   const [authLoading2, setAuthLoading2] = useState(false);
   const [invitation, setInvitation] = useState<any>(null);
-  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'accepted' | 'error' | 'needs_auth'>('loading');
+  const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'error' | 'needs_auth'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -86,11 +87,11 @@ export const AcceptInvitation = () => {
           setStatus('needs_auth');
         }
       } else {
-        throw new Error(data.error || 'Invalid invitation');
+        throw new Error(data.error || '');
       }
     } catch (error: any) {
       console.error('Error validating invitation:', error);
-      setStatus('invalid');
+      setStatus(classifyInvitationError(error?.message || ''));
     } finally {
       setLoading(false);
     }
@@ -235,6 +236,29 @@ export const AcceptInvitation = () => {
             <CardTitle>Loading Invitation</CardTitle>
             <CardDescription>Please wait while we validate your invitation...</CardDescription>
           </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  if (status === 'expired') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+              <Clock className="w-6 h-6 text-amber-600" />
+            </div>
+            <CardTitle>Invitation Expired</CardTitle>
+            <CardDescription>
+              This invitation link is no longer valid. Ask your manager to resend it from the Team page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <Button onClick={() => navigate('/')}>
+              Go to Dashboard
+            </Button>
+          </CardContent>
         </Card>
       </div>
     );

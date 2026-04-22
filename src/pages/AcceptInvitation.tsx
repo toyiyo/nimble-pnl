@@ -246,8 +246,8 @@ export const AcceptInvitation = () => {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-              <Clock className="w-6 h-6 text-amber-600" />
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+              <Clock className="w-6 h-6 text-muted-foreground" />
             </div>
             <CardTitle>Invitation Expired</CardTitle>
             <CardDescription>
@@ -274,7 +274,7 @@ export const AcceptInvitation = () => {
             </div>
             <CardTitle>Invalid Invitation</CardTitle>
             <CardDescription>
-              This invitation is invalid, expired, or has already been used.
+              This invitation is invalid or has already been used.
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center">

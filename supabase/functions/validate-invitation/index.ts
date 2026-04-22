@@ -97,16 +97,18 @@ const handler = async (req: Request): Promise<Response> => {
     );
   } catch (error: any) {
     console.error('Error validating invitation:', error);
+    const knownErrors = ['Invitation has expired', 'Invalid or expired invitation', 'Missing token'];
+    const isApplicationError = knownErrors.includes(error.message);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error.message,
-        success: false 
+        success: false
       }),
       {
-        status: 500,
-        headers: { 
-          'Content-Type': 'application/json', 
-          ...corsHeaders 
+        status: isApplicationError ? 200 : 500,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
         },
       }
     );

@@ -27,9 +27,11 @@ import {
   useSendCollaboratorInvitation,
   useCancelCollaboratorInvitation,
   useRemoveCollaborator,
+  useResendCollaboratorInvitation,
   type Collaborator,
   type PendingInvite,
 } from '@/hooks/useCollaborators';
+import type { Role } from '@/lib/permissions';
 
 // Test wrapper component
 const createWrapper = () => {
@@ -531,6 +533,53 @@ describe('useCollaborators Hook', () => {
         };
         expect(invite.status).toBe(status);
       }
+    });
+  });
+
+  // ============================================================
+  // useResendCollaboratorInvitation Tests
+  // ============================================================
+
+  describe('useResendCollaboratorInvitation', () => {
+    it('calls send-team-invitation edge function with correct params', async () => {
+      mockInvoke.mockResolvedValueOnce({ data: {}, error: null });
+
+      const { result } = renderHook(() => useResendCollaboratorInvitation(), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        result.current.mutate({
+          restaurantId: 'rest-1',
+          email: 'sam@example.com',
+          role: 'collaborator_accountant' as Role,
+        });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+      expect(mockInvoke).toHaveBeenCalledWith('send-team-invitation', {
+        body: { restaurantId: 'rest-1', email: 'sam@example.com', role: 'collaborator_accountant' },
+      });
+    });
+
+    it('invalidates collaborator-invites query on success', async () => {
+      mockInvoke.mockResolvedValueOnce({ data: {}, error: null });
+
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      const wrapper = ({ children }: { children: React.ReactNode }) =>
+        React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+      const { result } = renderHook(() => useResendCollaboratorInvitation(), { wrapper });
+
+      await act(async () => {
+        result.current.mutate({ restaurantId: 'rest-1', email: 'sam@example.com', role: 'collaborator_accountant' as Role });
+      });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['collaborator-invites', 'rest-1'] });
     });
   });
 });

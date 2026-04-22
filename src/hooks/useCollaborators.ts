@@ -261,3 +261,35 @@ export const useRemoveCollaborator = () => {
     },
   });
 };
+
+/**
+ * Resends an expired invitation to a collaborator
+ */
+export const useResendCollaboratorInvitation = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ restaurantId, email, role }: SendInvitationParams) => {
+      const { error } = await supabase.functions.invoke('send-team-invitation', {
+        body: { restaurantId, email, role },
+      });
+      if (error) throw error;
+      return { email, role, restaurantId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['collaborator-invites', data.restaurantId] });
+      toast({
+        title: 'Invitation resent',
+        description: `New invite sent to ${data.email}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error resending invitation',
+        description: error.message || 'Failed to resend invitation',
+        variant: 'destructive',
+      });
+    },
+  });
+};

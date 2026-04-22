@@ -292,10 +292,10 @@ export const AcceptInvitation = () => {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-600" />
+            <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-primary" />
             </div>
-            <CardTitle className="text-green-600">Welcome to the Team!</CardTitle>
+            <CardTitle>Welcome to the Team!</CardTitle>
             <CardDescription>
               You've successfully joined {invitation?.restaurant?.name}! Redirecting to dashboard...
             </CardDescription>

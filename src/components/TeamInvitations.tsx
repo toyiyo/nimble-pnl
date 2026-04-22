@@ -230,36 +230,44 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                   <span className="sm:inline">Send Invitation</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Invite Team Member</DialogTitle>
-                  <DialogDescription>
-                    Send an invitation to join your restaurant team
-                  </DialogDescription>
+              <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+                      <Mail className="h-5 w-5 text-foreground" />
+                    </div>
+                    <div>
+                      <DialogTitle className="text-[17px] font-semibold text-foreground">Invite Team Member</DialogTitle>
+                      <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                        Send an invitation to join your restaurant team
+                      </DialogDescription>
+                    </div>
+                  </div>
                 </DialogHeader>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="email">Email Address</Label>
+
+                <div className="px-6 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Email Address</Label>
                     <Input
                       id="email"
                       type="email"
                       placeholder="Enter email address"
                       value={inviteForm.email}
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       onChange={(e) => {
                         setPendingConflict(false);
                         setInviteForm({ ...inviteForm, email: e.target.value });
                       }}
                     />
                   </div>
-                  
-                  <div>
-                    <Label htmlFor="role">Role</Label>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="role" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Role</Label>
                     <Select
                       value={inviteForm.role}
                       onValueChange={(value) => setInviteForm({ ...inviteForm, role: value })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -272,21 +280,22 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {pendingConflict && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]">
+                      <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <p className="text-foreground">
+                        A pending invite for <strong>{inviteForm.email}</strong> already exists. Sending a new one will cancel the old link.
+                      </p>
+                    </div>
+                  )}
                 </div>
-                
-                {pendingConflict && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]">
-                    <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                    <p className="text-foreground">
-                      A pending invite for <strong>{inviteForm.email}</strong> already exists. Sending a new one will cancel the old link.
-                    </p>
-                  </div>
-                )}
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); }}>
+
+                <DialogFooter className="px-6 py-4 border-t border-border/40">
+                  <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); }}>
                     Cancel
                   </Button>
-                  <Button onClick={sendInvitation} disabled={sending}>
+                  <Button onClick={sendInvitation} disabled={sending} className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90">
                     {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}
                   </Button>
                 </DialogFooter>
@@ -304,7 +313,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
         ) : invitations.length > 0 ? (
           <div className="space-y-3 md:space-y-4">
             {visibleInvitations.map((invitation) => (
-              <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4 border rounded-lg">
+              <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">

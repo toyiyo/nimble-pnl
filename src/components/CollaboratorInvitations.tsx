@@ -253,7 +253,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
           {collaboratorsLoading ? (
             <div className="space-y-3">
               {[1, 2].map((i) => (
-                <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                <div key={i} className="flex items-center justify-between p-3 border border-border/40 rounded-xl">
                   <div className="flex items-center gap-3">
                     <Skeleton className="h-8 w-8 rounded-lg" />
                     <div className="space-y-2">
@@ -279,7 +279,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                 return (
                   <div
                     key={collab.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex items-center justify-between p-3 border border-border/40 rounded-xl hover:border-border transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-muted">
@@ -338,7 +338,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
             {invitesLoading ? (
               <div className="space-y-3">
                 {[1, 2].map((i) => (
-                  <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div key={i} className="flex items-center justify-between p-3 border border-border/40 rounded-xl">
                     <div className="flex items-center gap-3">
                       <Skeleton className="h-8 w-8 rounded-lg" />
                       <div className="space-y-2">
@@ -366,7 +366,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                     return (
                       <div
                         key={invite.id}
-                        className="flex items-center justify-between p-3 border rounded-lg"
+                        className="flex items-center justify-between p-3 border border-border/40 rounded-xl hover:border-border transition-colors"
                       >
                         <div className="flex items-center gap-3">
                           <div className="p-2 rounded-lg bg-muted">
@@ -428,7 +428,7 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                     {showCancelledInvites && cancelledInvites.map((invite) => {
                       const Icon = roleIcons[invite.role] || Calculator;
                       return (
-                        <div key={invite.id} className="flex items-center justify-between p-3 border rounded-lg opacity-50">
+                        <div key={invite.id} className="flex items-center justify-between p-3 border border-border/40 rounded-xl opacity-50">
                           <div className="flex items-center gap-3">
                             <div className="p-2 rounded-lg bg-muted">
                               <Icon className="h-4 w-4" />

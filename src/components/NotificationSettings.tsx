@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Bell, Mail, Users, CheckCircle, Newspaper } from 'lucide-react';
+import { Bell, Mail, Users, CheckCircle, Newspaper, AlertTriangle } from 'lucide-react';
 import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
 import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
+import { useApproverCount } from '@/hooks/useApproverCount';
 
 interface NotificationSettingsProps {
   restaurantId: string;
@@ -16,6 +17,11 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
   const { settings, loading } = useNotificationSettings(restaurantId);
   const updateSettings = useUpdateNotificationSettings();
   const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } = useNotificationPreferences(restaurantId);
+  const {
+    data: approverCount,
+    isLoading: approverCountLoading,
+    isError: approverCountError,
+  } = useApproverCount(restaurantId);
 
   const [localSettings, setLocalSettings] = useState({
     notify_time_off_request: true,
@@ -51,6 +57,13 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
     localSettings.time_off_notify_managers !== settings.time_off_notify_managers ||
     localSettings.time_off_notify_employee !== settings.time_off_notify_employee
   );
+
+  const showNoApproversWarning =
+    !approverCountLoading &&
+    !approverCountError &&
+    approverCount !== undefined &&
+    localSettings.time_off_notify_managers &&
+    approverCount === 0;
 
   if (loading) {
     return (
@@ -176,6 +189,25 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
               }
             />
           </div>
+
+          {showNoApproversWarning && (
+            <div
+              role="alert"
+              className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20"
+            >
+              <AlertTriangle
+                className="h-4 w-4 text-amber-600 mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
+              <div className="text-[13px]">
+                <p className="font-medium text-foreground">No approvers configured</p>
+                <p className="text-muted-foreground mt-0.5">
+                  This restaurant has no owners or managers set up to receive notifications.
+                  Invite a teammate with owner or manager access from the Team page.
+                </p>
+              </div>
+            </div>
+          )}
 
           <Separator />
 

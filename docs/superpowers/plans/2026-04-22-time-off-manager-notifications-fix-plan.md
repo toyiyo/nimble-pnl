@@ -108,7 +108,7 @@ describe('buildEmails', () => {
     });
     expect(result.emails).toEqual(['employee@example.com']);
     expect(result.employeeIncluded).toBe(true);
-    expect(result.managerCount).toBe(0);
+    expect(result.managersFound).toBe(0);
     expect(result.managerLookupError).toBeUndefined();
     expect(supabase.from).not.toHaveBeenCalled();
   });
@@ -135,7 +135,7 @@ describe('buildEmails', () => {
     expect(calls.inCol).toBe('role');
     expect(calls.inVals).toEqual(['owner', 'manager']);
     expect(result.emails.sort()).toEqual(['manager@example.com', 'owner@example.com']);
-    expect(result.managerCount).toBe(2);
+    expect(result.managersFound).toBe(2);
     expect(result.employeeIncluded).toBe(false);
   });
 
@@ -156,7 +156,7 @@ describe('buildEmails', () => {
     });
     expect(result.emails.sort()).toEqual(['other@example.com', 'shared@example.com']);
     expect(result.employeeIncluded).toBe(true);
-    expect(result.managerCount).toBe(2);
+    expect(result.managersFound).toBe(2);
   });
 
   it('captures managerLookupError when the query errors', async () => {
@@ -172,7 +172,7 @@ describe('buildEmails', () => {
       notifyManagers: true,
     });
     expect(result.emails).toEqual([]);
-    expect(result.managerCount).toBe(0);
+    expect(result.managersFound).toBe(0);
     expect(result.managerLookupError).toBe('relation profiles does not exist');
   });
 
@@ -187,7 +187,7 @@ describe('buildEmails', () => {
     });
     expect(result.emails).toEqual([]);
     expect(result.employeeIncluded).toBe(false);
-    expect(result.managerCount).toBe(0);
+    expect(result.managersFound).toBe(0);
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
@@ -208,7 +208,7 @@ describe('buildEmails', () => {
       notifyManagers: true,
     });
     expect(result.emails).toEqual(['real@example.com']);
-    expect(result.managerCount).toBe(1);
+    expect(result.managersFound).toBe(1);
   });
 });
 ```
@@ -242,7 +242,7 @@ export interface BuildEmailsInput {
 export interface BuildEmailsResult {
   emails: string[];
   employeeIncluded: boolean;
-  managerCount: number;
+  managersFound: number;
   managerLookupError?: string;
 }
 
@@ -286,7 +286,7 @@ export async function buildEmails(
 
   const emails: string[] = [];
   let employeeIncluded = false;
-  let managerCount = 0;
+  let managersFound = 0;
   let managerLookupError: string | undefined;
 
   if (notifyEmployee && employeeEmail) {
@@ -308,7 +308,7 @@ export async function buildEmails(
         const email = m?.profiles?.email;
         if (email) {
           emails.push(email);
-          managerCount++;
+          managersFound++;
         }
       }
     }
@@ -317,7 +317,7 @@ export async function buildEmails(
   return {
     emails: [...new Set(emails)],
     employeeIncluded,
-    managerCount,
+    managersFound,
     managerLookupError,
   };
 }
@@ -417,7 +417,7 @@ if (recipients.managerLookupError) {
   );
 }
 
-if (settings.time_off_notify_managers && recipients.managerCount === 0) {
+if (settings.time_off_notify_managers && recipients.managersFound === 0) {
   console.warn(
     'time-off notification: notify_managers=true but 0 approvers resolved for restaurant',
     timeOffRequest.restaurant_id
@@ -456,7 +456,7 @@ console.log('Sent time-off notification', {
   restaurantId: timeOffRequest.restaurant_id,
   total: results.length,
   employeeIncluded: recipients.employeeIncluded,
-  managerCount: recipients.managerCount,
+  managersFound: recipients.managersFound,
 });
 ```
 
@@ -1091,7 +1091,7 @@ Otherwise, nothing to commit — proceed to Phase 7 (CodeRabbit review) of the d
 - No DB migration → confirmed; nothing in the plan modifies the schema
 
 **Type consistency check:**
-- `BuildEmailsResult` fields (`emails`, `employeeIncluded`, `managerCount`, `managerLookupError`) are consistent between Task 1 (definition), Task 2 (usage), and Task 1's test (assertions).
+- `BuildEmailsResult` fields (`emails`, `employeeIncluded`, `managersFound`, `managerLookupError`) are consistent between Task 1 (definition), Task 2 (usage), and Task 1's test (assertions).
 - The query shape `user_restaurants.select('user_id, profiles:user_id(email)').eq(...).in(...)` is identical in the hook (Task 4 — with count option) and the resolver (Task 1), matching what Task 3's pgTAP test validates at the DB layer.
 - `useApproverCount` returns `number` (Task 4); consumed as `number | undefined` in Task 5 (React Query's `data` is undefined before first resolve) and guarded with `(approverCount ?? 0) === 0`.
 

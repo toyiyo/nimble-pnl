@@ -17,7 +17,7 @@ export interface BuildEmailsInput {
 export interface BuildEmailsResult {
   emails: string[];
   employeeIncluded: boolean;
-  managerCount: number;
+  managersFound: number;
   managerLookupError?: string;
 }
 
@@ -61,7 +61,7 @@ export async function buildEmails(
 
   const emails: string[] = [];
   let employeeIncluded = false;
-  let managerCount = 0;
+  let managersFound = 0;
   let managerLookupError: string | undefined;
 
   if (notifyEmployee && employeeEmail) {
@@ -83,7 +83,7 @@ export async function buildEmails(
         const email = m?.profiles?.email;
         if (email) {
           emails.push(email);
-          managerCount++;
+          managersFound++;
         }
       }
     }
@@ -92,7 +92,7 @@ export async function buildEmails(
   return {
     emails: [...new Set(emails)],
     employeeIncluded,
-    managerCount,
+    managersFound,
     managerLookupError,
   };
 }

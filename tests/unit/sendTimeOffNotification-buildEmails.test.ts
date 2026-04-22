@@ -3,7 +3,7 @@ import { buildEmails } from '../../supabase/functions/send-time-off-notification
 
 type ManagerRow = {
   user_id: string;
-  profiles: { email: string | null } | null;
+  profiles: { email?: string | null } | null;
 };
 
 interface MockResult {
@@ -63,7 +63,7 @@ describe('buildEmails', () => {
     });
     expect(result.emails).toEqual(['employee@example.com']);
     expect(result.employeeIncluded).toBe(true);
-    expect(result.managerCount).toBe(0);
+    expect(result.managersFound).toBe(0);
     expect(result.managerLookupError).toBeUndefined();
     expect(supabase.from).not.toHaveBeenCalled();
   });
@@ -90,7 +90,7 @@ describe('buildEmails', () => {
     expect(calls.inCol).toBe('role');
     expect(calls.inVals).toEqual(['owner', 'manager']);
     expect(result.emails.sort()).toEqual(['manager@example.com', 'owner@example.com']);
-    expect(result.managerCount).toBe(2);
+    expect(result.managersFound).toBe(2);
     expect(result.employeeIncluded).toBe(false);
   });
 
@@ -111,7 +111,7 @@ describe('buildEmails', () => {
     });
     expect(result.emails.sort()).toEqual(['other@example.com', 'shared@example.com']);
     expect(result.employeeIncluded).toBe(true);
-    expect(result.managerCount).toBe(2);
+    expect(result.managersFound).toBe(2);
   });
 
   it('captures managerLookupError when the query errors', async () => {
@@ -127,7 +127,7 @@ describe('buildEmails', () => {
       notifyManagers: true,
     });
     expect(result.emails).toEqual([]);
-    expect(result.managerCount).toBe(0);
+    expect(result.managersFound).toBe(0);
     expect(result.managerLookupError).toBe('relation profiles does not exist');
   });
 
@@ -142,7 +142,7 @@ describe('buildEmails', () => {
     });
     expect(result.emails).toEqual([]);
     expect(result.employeeIncluded).toBe(false);
-    expect(result.managerCount).toBe(0);
+    expect(result.managersFound).toBe(0);
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
@@ -163,6 +163,6 @@ describe('buildEmails', () => {
       notifyManagers: true,
     });
     expect(result.emails).toEqual(['real@example.com']);
-    expect(result.managerCount).toBe(1);
+    expect(result.managersFound).toBe(1);
   });
 });

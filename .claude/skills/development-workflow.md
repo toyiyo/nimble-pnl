@@ -22,7 +22,7 @@ Maintain a `progress.md` file in the worktree root throughout execution. This fi
 # Progress: [task title]
 
 ## Spec
-Link: docs/plans/YYYY-MM-DD-<topic>-plan.md
+Link: docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md
 
 ## Current Phase
 Phase N: [name] — [status: in-progress | completed | blocked]
@@ -54,12 +54,43 @@ Do NOT skip phases. Do NOT start coding before phases 1-2 are complete. Do NOT c
 - Read `memory/lessons.md` from the auto-memory directory
 - Scan for entries relevant to the current task (matching category, similar patterns, related files)
 - Keep relevant lessons in mind during brainstorm and implementation
-- If lessons suggest a specific approach or warn against a mistake, call it out during Phase 1
+- If lessons suggest a specific approach or warn against a mistake, call it out during Phase 2
 - **Context recovery:** If `progress.md` exists, read it to determine where prior work left off. Resume from the last incomplete phase instead of restarting.
 
 **Skip condition:** None. Always check past lessons before starting.
 
-## Phase 1: Brainstorm
+## Phase 1: Isolate
+
+**Invoke:** `superpowers:using-git-worktrees`
+
+- Create worktree + branch for isolated development **before** any artifact (design doc, plan, code) is written.
+- This ensures every commit from this task — including spec and plan documents — lands on the feature branch, never on `main`.
+- Branch name convention: `feature/<short-kebab-topic>` (or `fix/...`, `chore/...`).
+- Worktree path convention: `.claude/worktrees/<short-kebab-topic>`.
+
+**Skip condition:** Already in a dedicated worktree for this task. If the current directory is on `main` or a reused branch, do NOT skip — create a fresh worktree.
+
+<HARD-GATE>
+Never commit design docs, plans, or code for a new task directly to `main`. If you catch yourself with uncommitted changes or fresh commits on `main`, stop and move them off `main` before resyncing — **never `git reset --hard` while the working tree is dirty**, it destroys uncommitted work.
+
+```bash
+# 1. Preserve any uncommitted edits (tracked + untracked).
+git stash push --include-untracked --message "pre-recover-$(date +%s)"
+
+# 2. Move committed work (if any) to a feature branch, then resync main.
+git branch <feature> HEAD
+git reset --hard origin/main
+
+# 3. Check out the feature branch in a new worktree and restore the stash there.
+git worktree add .claude/worktrees/<feature> <feature>
+cd .claude/worktrees/<feature>
+git stash pop   # only if step 1 actually stashed something
+```
+
+If `git stash push` reports "No local changes to save," skip step 3's `git stash pop`. If step 2's `git branch` fails because `HEAD` is already at `origin/main` (no accidental commits), skip it — the stashed edits alone are what need to move.
+</HARD-GATE>
+
+## Phase 2: Brainstorm
 
 **Invoke:** `superpowers:brainstorming`
 
@@ -68,27 +99,19 @@ Do NOT skip phases. Do NOT start coding before phases 1-2 are complete. Do NOT c
 - Propose 2-3 approaches with trade-offs and recommendation
 - Reference any relevant lessons from Phase 0 in your proposals
 - Get design approval
-- Write design doc to `docs/plans/YYYY-MM-DD-<topic>-design.md`
+- Write design doc to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit it on the feature branch
 
 **Skip condition:** None. Every task gets at least a brief design pass.
 
-## Phase 2: Plan
+## Phase 3: Plan
 
 **Invoke:** `superpowers:writing-plans`
 
 - Break design into bite-sized tasks (2-5 minutes each)
 - Identify task dependencies
-- Save plan to `docs/plans/YYYY-MM-DD-<topic>-plan.md`
+- Save plan to `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` and commit it on the feature branch
 
 **Skip condition:** None.
-
-## Phase 3: Isolate
-
-**Invoke:** `superpowers:using-git-worktrees`
-
-- Create worktree + branch for isolated development
-
-**Skip condition:** Already in a worktree.
 
 ## Phase 4: Build (TDD)
 
@@ -260,7 +283,7 @@ Review the entire workflow session and capture lessons learned:
    - User corrections ("no, do it this way", "that's wrong", redirects)
    - CodeRabbit findings that required fixes (Phase 7)
    - Test failures that revealed wrong assumptions (Phase 4/8)
-   - Design changes after initial brainstorm (Phase 1 pivots)
+   - Design changes after initial brainstorm (Phase 2 pivots)
 
 2. **Write lessons** — For each correction, append to the appropriate category in `memory/lessons.md`:
    ```markdown
@@ -282,7 +305,7 @@ Review the entire workflow session and capture lessons learned:
 
 ## Autonomy Guidelines
 
-After the user approves the plan (end of Phase 2), the workflow should run autonomously through Phases 3–9 without requiring human input. The only exceptions where you should pause and ask:
+After the user approves the plan (end of Phase 3), the workflow should run autonomously through Phases 4–9 without requiring human input. The only exceptions where you should pause and ask:
 
 1. **Ambiguous review comments** (Phase 9d) — When a reviewer's intent is unclear
 2. **Persistent CI failures** (Phase 9c) — After 5 failed iterations
@@ -306,9 +329,9 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | Phase | Skill/Command | Skip If |
 |-------|---------------|---------|
 | 0. Consult Lessons | Read `memory/lessons.md` + `progress.md` | Never |
-| 1. Brainstorm | `superpowers:brainstorming` | Never |
-| 2. Plan | `superpowers:writing-plans` | Never |
-| 3. Isolate | `superpowers:using-git-worktrees` | Already in worktree |
+| 1. Isolate | `superpowers:using-git-worktrees` | Already in a dedicated worktree |
+| 2. Brainstorm | `superpowers:brainstorming` | Never |
+| 3. Plan | `superpowers:writing-plans` | Never |
 | 4. Build | `superpowers:test-driven-development` | Never |
 | 5. UI Review | `frontend-design:frontend-design` | No UI changes |
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |

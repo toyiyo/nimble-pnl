@@ -22,6 +22,8 @@ Invoke the `development-workflow` skill from `.claude/skills/development-workflo
 
 2. **Fresh start:** If no `progress.md`, use the Skill tool to invoke the development-workflow skill, then follow every phase in order. Ask the user what they want to build if no task was provided alongside this command.
 
-3. **Autonomy after Phase 2:** Once the user approves the plan, execute Phases 3–9 autonomously. Only pause for genuine blockers or ambiguous review feedback. Update `progress.md` at each phase transition.
+3. **Never commit to `main`:** After Phase 0, immediately create a feature worktree (Phase 1: Isolate) BEFORE writing any design doc, plan, or code. Every artifact produced for this task — specs, plans, code, tests — must land on the feature branch, not on `main`. If you find yourself about to `git commit` while checked out on `main`, stop and move the work to a feature branch first.
 
-4. **Completion:** Notify the user when the PR is green and ready for review, or when stuck after exhausting retry loops.
+4. **Autonomy after Phase 3:** Once the user approves the plan, execute Phases 4–9 autonomously. Only pause for genuine blockers or ambiguous review feedback. Update `progress.md` at each phase transition.
+
+5. **Completion:** Notify the user when the PR is green and ready for review, or when stuck after exhausting retry loops.

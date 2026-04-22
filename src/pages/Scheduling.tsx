@@ -48,6 +48,7 @@ import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
 import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { computeOpenSpots } from '@/lib/openShiftHelpers';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
@@ -328,7 +329,7 @@ const Scheduling = () => {
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
-  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
@@ -655,7 +656,7 @@ const Scheduling = () => {
   };
 
   const handleToday = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    setCurrentWeekStart(getMondayOfWeek(new Date()));
     clearSelection();
   };
 
@@ -1822,6 +1823,8 @@ const Scheduling = () => {
           {restaurantId && (
             <ShiftPlannerTab
               restaurantId={restaurantId}
+              weekStart={currentWeekStart}
+              onWeekStartChange={setCurrentWeekStart}
             />
           )}
         </TabsContent>

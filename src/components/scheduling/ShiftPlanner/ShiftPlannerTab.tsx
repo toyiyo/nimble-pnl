@@ -13,6 +13,7 @@ import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
 import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
@@ -20,9 +21,12 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
+import { computeAllocationStatuses, type AllocationStatus } from '@/lib/shiftAllocation';
 
 import { AssignmentPopover } from './AssignmentPopover';
 import { AreaFilterPills } from './AreaFilterPills';
+import { CoverageStrip } from './CoverageStrip';
+import { ScheduleOverviewPanel } from './ScheduleOverviewPanel';
 
 import { PlannerHeader } from './PlannerHeader';
 import { StaffingOverlay } from './StaffingOverlay';
@@ -40,10 +44,14 @@ import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
+  weekStart: Date;
+  onWeekStartChange: (next: Date) => void;
 }
 
 export function ShiftPlannerTab({
   restaurantId,
+  weekStart: externalWeekStart,
+  onWeekStartChange,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -66,7 +74,10 @@ export function ShiftPlannerTab({
     validationResult,
     clearValidation,
     totalHours,
-  } = useShiftPlanner(restaurantId);
+  } = useShiftPlanner(restaurantId, {
+    externalWeekStart,
+    onExternalWeekStartChange: onWeekStartChange,
+  });
 
   const {
     templates,
@@ -83,6 +94,9 @@ export function ShiftPlannerTab({
     () => buildTemplateGridData(shifts, templates, weekDays),
     [shifts, templates, weekDays],
   );
+
+  // Derive coverage index for CoverageStrip and overview panel
+  const { coverageByDay, overviewDays, shiftsByEmployee } = usePlannerShiftsIndex(shifts, weekDays);
 
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -111,6 +125,19 @@ export function ShiftPlannerTab({
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
+  const [pickedEmployeeId, setPickedEmployeeId] = useState<string | null>(null);
+
+  const allocationStatuses = useMemo<Map<string, AllocationStatus> | undefined>(() => {
+    if (!pickedEmployeeId) return undefined;
+    const employeeShifts = shiftsByEmployee.get(pickedEmployeeId) ?? [];
+    return computeAllocationStatuses(employeeShifts, templates, weekDays);
+  }, [pickedEmployeeId, shiftsByEmployee, templates, weekDays]);
+
+  const pickedEmployeeName = useMemo(() => {
+    if (!pickedEmployeeId) return undefined;
+    return employees.find((e) => e.id === pickedEmployeeId)?.name;
+  }, [pickedEmployeeId, employees]);
+
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
     const posSet = new Set<string>();
@@ -137,17 +164,19 @@ export function ShiftPlannerTab({
     const employee = event.active.data.current?.employee;
     if (employee) {
       setActiveDragEmployee({ id: employee.id, name: employee.name });
-      // Auto-close mobile sidebar so the grid is visible for dropping
+      setPickedEmployeeId(employee.id);
       setMobileSidebarOpen(false);
     }
   }, []);
 
   const handleDragCancel = useCallback((_event: DragCancelEvent) => {
     setActiveDragEmployee(null);
+    setPickedEmployeeId(null);
   }, []);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveDragEmployee(null);
+    setPickedEmployeeId(null);
     const { active, over } = event;
     if (!over) return;
 
@@ -166,6 +195,7 @@ export function ShiftPlannerTab({
   // Mobile tap-to-assign: select employee from sidebar
   const handleMobileEmployeeSelect = useCallback((employee: { id: string; name: string }) => {
     setSelectedMobileEmployee(employee);
+    setPickedEmployeeId(employee.id);
     setMobileSidebarOpen(false);
   }, []);
 
@@ -176,11 +206,13 @@ export function ShiftPlannerTab({
     if (!template) return;
     setPendingAssignment({ employee: selectedMobileEmployee, template, day });
     setSelectedMobileEmployee(null);
+    setPickedEmployeeId(null);
   }, [selectedMobileEmployee, templates]);
 
   // Clear mobile selection
   const clearMobileSelection = useCallback(() => {
     setSelectedMobileEmployee(null);
+    setPickedEmployeeId(null);
   }, []);
 
   const handleAssignDay = useCallback(async () => {
@@ -448,6 +480,13 @@ export function ShiftPlannerTab({
       {/* Staffing suggestions overlay */}
       <StaffingOverlay restaurantId={restaurantId} weekDays={weekDays} />
 
+      {/* Schedule overview panel — weekly mini-Gantt */}
+      <ScheduleOverviewPanel
+        overviewDays={overviewDays}
+        coverageByDay={coverageByDay}
+        isMobile={isMobile}
+      />
+
       {/* Two-panel layout */}
       <DndContext
         sensors={sensors}
@@ -492,6 +531,9 @@ export function ShiftPlannerTab({
                   onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
                   hasMobileSelection={isMobile && !!selectedMobileEmployee}
                   areaFilter={areaFilter}
+                  coverageSlot={!isMobile ? <CoverageStrip weekDays={weekDays} coverageByDay={coverageByDay} /> : undefined}
+                  allocationStatuses={allocationStatuses}
+                  pickedEmployeeName={pickedEmployeeName}
                 />
               </div>
             )}
@@ -499,7 +541,14 @@ export function ShiftPlannerTab({
 
           {/* Desktop: inline sidebar */}
           {!isMobile && (
-            <EmployeeSidebar employees={employees} shifts={shifts} plannerAreaFilter={areaFilter} />
+            <EmployeeSidebar
+              employees={employees}
+              shifts={shifts}
+              weekDays={weekDays}
+              shiftsByEmployee={shiftsByEmployee}
+              plannerAreaFilter={areaFilter}
+              onEmployeePick={setPickedEmployeeId}
+            />
           )}
 
           {/* Mobile: slide-in sidebar panel (single instance to avoid duplicate dnd IDs) */}
@@ -530,7 +579,16 @@ export function ShiftPlannerTab({
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
-                <EmployeeSidebar employees={employees} shifts={shifts} className="w-full border-l-0" onEmployeeSelect={handleMobileEmployeeSelect} plannerAreaFilter={areaFilter} />
+                <EmployeeSidebar
+                  employees={employees}
+                  shifts={shifts}
+                  weekDays={weekDays}
+                  shiftsByEmployee={shiftsByEmployee}
+                  className="w-full border-l-0"
+                  onEmployeeSelect={handleMobileEmployeeSelect}
+                  onEmployeePick={setPickedEmployeeId}
+                  plannerAreaFilter={areaFilter}
+                />
               </div>
             </>
           )}

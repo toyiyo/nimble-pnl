@@ -320,12 +320,54 @@ export interface UseShiftPlannerReturn {
   totalHours: number;
 }
 
+export interface UseShiftPlannerOptions {
+  /**
+   * When provided, the hook defers all week state to this external source
+   * (e.g. useSharedWeek) instead of owning it internally. When omitted,
+   * the hook manages its own weekStart via useState.
+   */
+  externalWeekStart?: Date;
+  onExternalWeekStartChange?: (next: Date) => void;
+}
+
 export function useShiftPlanner(
   restaurantId: string | null,
+  options: UseShiftPlannerOptions = {},
 ): UseShiftPlannerReturn {
-  // Week navigation state
-  const [weekStart, setWeekStart] = useState<Date>(() =>
+  const { externalWeekStart, onExternalWeekStartChange } = options;
+
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    externalWeekStart !== undefined &&
+    !onExternalWeekStartChange
+  ) {
+    console.warn(
+      'useShiftPlanner: externalWeekStart was provided without onExternalWeekStartChange. Navigation will be silently ignored — pass both or neither.',
+    );
+  }
+
+  const [internalWeekStart, setInternalWeekStart] = useState<Date>(() =>
     getMondayOfWeek(new Date()),
+  );
+
+  const weekStart = externalWeekStart ?? internalWeekStart;
+  const setWeekStart = useCallback(
+    (updater: Date | ((prev: Date) => Date)) => {
+      if (externalWeekStart !== undefined && onExternalWeekStartChange) {
+        const next =
+          typeof updater === 'function'
+            ? (updater as (prev: Date) => Date)(externalWeekStart)
+            : updater;
+        onExternalWeekStartChange(getMondayOfWeek(next));
+      } else {
+        setInternalWeekStart((prev) =>
+          typeof updater === 'function'
+            ? (updater as (prev: Date) => Date)(prev)
+            : updater,
+        );
+      }
+    },
+    [externalWeekStart, onExternalWeekStartChange],
   );
 
   const weekEnd = useMemo(() => getWeekEnd(weekStart), [weekStart]);
@@ -363,7 +405,7 @@ export function useShiftPlanner(
       next.setDate(prev.getDate() + 7);
       return next;
     });
-  }, []);
+  }, [setWeekStart]);
 
   const goToPrevWeek = useCallback(() => {
     setWeekStart((prev) => {
@@ -371,15 +413,15 @@ export function useShiftPlanner(
       next.setDate(prev.getDate() - 7);
       return next;
     });
-  }, []);
+  }, [setWeekStart]);
 
   const goToToday = useCallback(() => {
     setWeekStart(getMondayOfWeek(new Date()));
-  }, []);
+  }, [setWeekStart]);
 
   const goToWeek = useCallback((monday: Date) => {
     setWeekStart(getMondayOfWeek(monday));
-  }, []);
+  }, [setWeekStart]);
 
   // Validation helper
   const clearValidation = useCallback(() => {

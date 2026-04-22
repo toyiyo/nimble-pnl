@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from 'react';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
 import type { ShiftTemplate, Shift } from '@/types/scheduling';
+import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
 import { groupTemplatesByArea } from '@/lib/templateAreaGrouping';
@@ -35,6 +36,10 @@ interface TemplateGridProps {
   onMobileCellTap?: (templateId: string, day: string) => void;
   hasMobileSelection?: boolean;
   areaFilter?: string | null;
+  /** Optional row rendered immediately under the day headers (e.g., coverage strip). */
+  coverageSlot?: ReactNode;
+  allocationStatuses?: Map<string, AllocationStatus>;
+  pickedEmployeeName?: string;
 }
 
 export function TemplateGrid({
@@ -49,6 +54,9 @@ export function TemplateGrid({
   onMobileCellTap,
   hasMobileSelection,
   areaFilter,
+  coverageSlot,
+  allocationStatuses,
+  pickedEmployeeName,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -101,6 +109,15 @@ export function TemplateGrid({
           );
         })}
 
+        {coverageSlot && (
+          <>
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-t border-border/40">
+              Cover
+            </div>
+            {coverageSlot}
+          </>
+        )}
+
         {/* Template rows grouped by area */}
         {groups.map((group) => (
           <div key={group.area} className="contents">
@@ -141,6 +158,8 @@ export function TemplateGrid({
                           isHighlighted={highlightCellId === `${template.id}:${day}`}
                           onMobileTap={onMobileCellTap}
                           hasMobileSelection={hasMobileSelection}
+                          allocationStatus={allocationStatuses?.get(`${template.id}:${day}`) ?? 'none'}
+                          pickedEmployeeName={pickedEmployeeName}
                         />
                       </div>
                     );

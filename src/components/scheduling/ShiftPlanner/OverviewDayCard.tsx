@@ -103,7 +103,7 @@ export const OverviewDayCard = memo(function OverviewDayCard({
       {variant === 'mobile' && coverage && (
         <div className="flex h-3 rounded-sm overflow-hidden">
           {coverage.map((count, idx) => {
-            const density = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 4;
+            const density = Math.min(4, count) as 0 | 1 | 2 | 3 | 4;
             const classMap = ['bg-muted/40', 'bg-primary/20', 'bg-primary/40', 'bg-primary/60', 'bg-primary/80'] as const;
             return <div key={idx} className={cn('flex-1', classMap[density])} />;
           })}

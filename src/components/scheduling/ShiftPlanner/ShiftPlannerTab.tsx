@@ -206,6 +206,7 @@ export function ShiftPlannerTab({
     if (!template) return;
     setPendingAssignment({ employee: selectedMobileEmployee, template, day });
     setSelectedMobileEmployee(null);
+    setPickedEmployeeId(null);
   }, [selectedMobileEmployee, templates]);
 
   // Clear mobile selection

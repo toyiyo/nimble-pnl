@@ -56,10 +56,14 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
 
       <div
         id={bodyId}
-        hidden={!expanded}
+        aria-hidden={!expanded}
         className={cn(
           'p-3',
-          isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',
+          expanded
+            ? isMobile
+              ? 'flex flex-col gap-2'
+              : 'grid grid-cols-7 gap-2'
+            : 'hidden',
         )}
       >
         {overviewDays.map((d) => (

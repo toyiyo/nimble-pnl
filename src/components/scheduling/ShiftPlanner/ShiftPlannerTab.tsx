@@ -21,6 +21,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
+import { computeAllocationStatuses, type AllocationStatus } from '@/lib/shiftAllocation';
 
 import { AssignmentPopover } from './AssignmentPopover';
 import { AreaFilterPills } from './AreaFilterPills';
@@ -124,9 +125,18 @@ export function ShiftPlannerTab({
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
-  // pickedEmployeeId: set on hover of an employee card; Phase 7 will use this for the allocation overlay
-   
-  const [, setPickedEmployeeId] = useState<string | null>(null);
+  const [pickedEmployeeId, setPickedEmployeeId] = useState<string | null>(null);
+
+  const allocationStatuses = useMemo<Map<string, AllocationStatus> | undefined>(() => {
+    if (!pickedEmployeeId) return undefined;
+    const employeeShifts = shiftsByEmployee.get(pickedEmployeeId) ?? [];
+    return computeAllocationStatuses(employeeShifts, templates, weekDays);
+  }, [pickedEmployeeId, shiftsByEmployee, templates, weekDays]);
+
+  const pickedEmployeeName = useMemo(() => {
+    if (!pickedEmployeeId) return undefined;
+    return employees.find((e) => e.id === pickedEmployeeId)?.name;
+  }, [pickedEmployeeId, employees]);
 
   // Derive unique positions from employees and templates
   const positions = useMemo(() => {
@@ -154,17 +164,19 @@ export function ShiftPlannerTab({
     const employee = event.active.data.current?.employee;
     if (employee) {
       setActiveDragEmployee({ id: employee.id, name: employee.name });
-      // Auto-close mobile sidebar so the grid is visible for dropping
+      setPickedEmployeeId(employee.id);
       setMobileSidebarOpen(false);
     }
   }, []);
 
   const handleDragCancel = useCallback((_event: DragCancelEvent) => {
     setActiveDragEmployee(null);
+    setPickedEmployeeId(null);
   }, []);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveDragEmployee(null);
+    setPickedEmployeeId(null);
     const { active, over } = event;
     if (!over) return;
 
@@ -183,6 +195,7 @@ export function ShiftPlannerTab({
   // Mobile tap-to-assign: select employee from sidebar
   const handleMobileEmployeeSelect = useCallback((employee: { id: string; name: string }) => {
     setSelectedMobileEmployee(employee);
+    setPickedEmployeeId(employee.id);
     setMobileSidebarOpen(false);
   }, []);
 
@@ -198,6 +211,7 @@ export function ShiftPlannerTab({
   // Clear mobile selection
   const clearMobileSelection = useCallback(() => {
     setSelectedMobileEmployee(null);
+    setPickedEmployeeId(null);
   }, []);
 
   const handleAssignDay = useCallback(async () => {
@@ -515,6 +529,8 @@ export function ShiftPlannerTab({
                   hasMobileSelection={isMobile && !!selectedMobileEmployee}
                   areaFilter={areaFilter}
                   coverageSlot={!isMobile ? <CoverageStrip weekDays={weekDays} coverageByDay={coverageByDay} /> : undefined}
+                  allocationStatuses={allocationStatuses}
+                  pickedEmployeeName={pickedEmployeeName}
                 />
               </div>
             )}

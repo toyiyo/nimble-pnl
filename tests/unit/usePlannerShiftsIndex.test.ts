@@ -5,9 +5,10 @@ import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
 import type { Shift } from '@/types/scheduling';
 
+let nextShiftId = 0;
 function makeShift(partial: Partial<Shift>): Shift {
   return {
-    id: 's' + Math.random().toString(36).slice(2, 8),
+    id: 's' + (nextShiftId++),
     restaurant_id: 'r1',
     employee_id: 'e1',
     start_time: '2026-04-20T13:00:00',
@@ -90,5 +91,41 @@ describe('usePlannerShiftsIndex', () => {
     const monday = result.current.overviewDays[0];
     expect(monday.pills.filter((p) => p.lane >= 0 && p.lane < 3)).toHaveLength(3);
     expect(monday.collapsedCount).toBe(2);
+  });
+
+  it('credits partial hours in coverage buckets via floor(start) and ceil(end)', () => {
+    // A shift 13:30-17:15 should cover buckets for hours 13,14,15,16,17 (5 buckets):
+    // startBucket = floor(13.5) - 6 = 7, endBucket = ceil(17.25) - 6 = 12 → buckets 7..11.
+    const shifts: Shift[] = [
+      makeShift({ start_time: '2026-04-20T13:30:00', end_time: '2026-04-20T17:15:00' }),
+    ];
+    const { result } = renderHook(() => usePlannerShiftsIndex(shifts, weekDays));
+    const coverage = result.current.coverageByDay.get('2026-04-20')!;
+    expect(coverage[7]).toBe(1);  // 13:00 bucket credited because shift touches 13:30
+    expect(coverage[11]).toBe(1); // 17:00 bucket credited because shift ends at 17:15
+    expect(coverage[12]).toBe(0); // 18:00 bucket not credited
+  });
+
+  it('flags hasGap when two shifts leave a >=60 minute window uncovered', () => {
+    const shifts: Shift[] = [
+      makeShift({ id: 'morning', start_time: '2026-04-20T09:00:00', end_time: '2026-04-20T12:00:00' }),
+      makeShift({ id: 'evening', start_time: '2026-04-20T14:00:00', end_time: '2026-04-20T18:00:00' }),
+    ];
+    const { result } = renderHook(() => usePlannerShiftsIndex(shifts, weekDays));
+    const monday = result.current.overviewDays[0];
+    expect(monday.hasGap).toBe(true);
+    expect(monday.gapLabel).not.toBeNull();
+    expect(monday.gapLabel).toMatch(/^Gap \d+[ap]$/);
+  });
+
+  it('does not flag hasGap when the uncovered window is under 60 minutes', () => {
+    const shifts: Shift[] = [
+      makeShift({ id: 'early', start_time: '2026-04-20T09:00:00', end_time: '2026-04-20T12:00:00' }),
+      makeShift({ id: 'late',  start_time: '2026-04-20T12:30:00', end_time: '2026-04-20T17:00:00' }),
+    ];
+    const { result } = renderHook(() => usePlannerShiftsIndex(shifts, weekDays));
+    const monday = result.current.overviewDays[0];
+    expect(monday.hasGap).toBe(false);
+    expect(monday.gapLabel).toBeNull();
   });
 });

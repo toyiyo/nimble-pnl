@@ -29,14 +29,13 @@ const roleIcons: Record<string, typeof Calculator> = {
   collaborator_chef: ChefHat,
 };
 
-export const CollaboratorInvitations = ({ restaurantId, userRole }: CollaboratorInvitationsProps) => {
+export function CollaboratorInvitations({ restaurantId, userRole }: CollaboratorInvitationsProps) {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [email, setEmail] = useState('');
   const { toast } = useToast();
 
   const canManage = userRole === 'owner' || userRole === 'manager';
 
-  // Use React Query hooks
   const { data: collaborators, isLoading: collaboratorsLoading, error: collaboratorsError } = useCollaboratorsQuery(restaurantId);
   const { data: pendingInvites, isLoading: invitesLoading, error: invitesError } = useCollaboratorInvitesQuery(restaurantId);
 
@@ -108,7 +107,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
 
   const cancelledInvites = pendingInvites?.filter(i => i.status === 'cancelled') ?? [];
 
-  // Render role selection cards
   const renderRoleSelection = () => (
     <div className="space-y-4">
       <div className="text-center mb-6">
@@ -159,7 +157,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
     </div>
   );
 
-  // Render email input for selected role
   const renderEmailInput = () => {
     const preset = COLLABORATOR_PRESETS.find(p => p.role === selectedRole);
     if (!preset) return null;
@@ -219,7 +216,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
 
   return (
     <div className="space-y-6">
-      {/* Invite New Collaborator */}
       {canManage && (
         <Card>
           <CardHeader>
@@ -241,7 +237,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
         </Card>
       )}
 
-      {/* Current Collaborators */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Active Collaborators</CardTitle>
@@ -325,7 +320,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
         </CardContent>
       </Card>
 
-      {/* Pending & Expired Invitations */}
       {(invitesLoading || invitesError || pendingInvites?.some(i => i.status === 'pending' || i.status === 'expired')) && (
         <Card>
           <CardHeader>
@@ -414,7 +408,6 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
                     );
                   })}
 
-                {/* Cancelled history toggle */}
                 {cancelledInvites.length > 0 && (
                   <>
                     <button
@@ -453,4 +446,4 @@ export const CollaboratorInvitations = ({ restaurantId, userRole }: Collaborator
       )}
     </div>
   );
-};
+}

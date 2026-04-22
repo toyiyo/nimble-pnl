@@ -26,7 +26,7 @@ interface TeamInvitationsProps {
   userRole: string;
 }
 
-export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps) => {
+export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps) {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -57,7 +57,6 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
 
       if (error) throw error;
 
-      // Get profile information for invited_by users
       const invitedByIds = [...new Set(invitations.map(inv => inv.invited_by))];
       const { data: profiles } = await supabase
         .from('profiles')
@@ -136,7 +135,6 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
 
     setSending(true);
     try {
-      // Call edge function to send invitation email
       const { data, error } = await supabase.functions.invoke('send-team-invitation', {
         body: {
           restaurantId,
@@ -396,4 +394,4 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
       </CardContent>
     </Card>
   );
-};
+}

@@ -13,14 +13,14 @@ import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
 import { classifyInvitationError } from '@/lib/invitationUtils';
 
-export const AcceptInvitation = () => {
+export function AcceptInvitation() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
-  const [authLoading2, setAuthLoading2] = useState(false);
+  const [authSubmitting, setAuthLoading2] = useState(false);
   const [invitation, setInvitation] = useState<any>(null);
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'error' | 'needs_auth'>('loading');
   const [email, setEmail] = useState('');
@@ -38,7 +38,6 @@ export const AcceptInvitation = () => {
 
   useEffect(() => {
     if (user && invitation && user.email === invitation.email) {
-      // For existing users signing in, accept the invitation
       if (status === 'valid') {
         acceptInvitation();
       }
@@ -68,10 +67,9 @@ export const AcceptInvitation = () => {
 
       if (data.success) {
         setInvitation(data.invitation);
-        setEmail(data.invitation.email); // Pre-fill email
-        
+        setEmail(data.invitation.email);
+
         if (user) {
-          // User is already authenticated, check email match
           if (user.email === data.invitation.email) {
             setStatus('valid');
           } else {
@@ -83,7 +81,6 @@ export const AcceptInvitation = () => {
             setStatus('invalid');
           }
         } else {
-          // User needs to authenticate
           setStatus('needs_auth');
         }
       } else {
@@ -115,7 +112,6 @@ export const AcceptInvitation = () => {
           description: data.message,
         });
 
-        // Immediate redirect to dashboard
         navigate('/');
       } else {
         throw new Error(data.error || 'Failed to accept invitation');
@@ -143,8 +139,7 @@ export const AcceptInvitation = () => {
       });
       
       if (error) throw error;
-      
-      // Update status to valid so useEffect can accept the invitation
+
       setStatus('valid');
     } catch (error: any) {
       toast({
@@ -178,7 +173,6 @@ export const AcceptInvitation = () => {
     setAuthLoading2(true);
 
     try {
-      // Validate email matches invitation
       if (email !== invitation?.email) {
         toast({
           title: "Email Mismatch",
@@ -188,7 +182,6 @@ export const AcceptInvitation = () => {
         return;
       }
 
-      // Use special signup function that bypasses email confirmation and accepts invitation
       const { data, error } = await supabase.functions.invoke('signup-with-invitation', {
         body: {
           email,
@@ -198,18 +191,15 @@ export const AcceptInvitation = () => {
         }
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (data.success) {
         toast({
           title: "Account Created!",
           description: `${data.message} Please sign in to continue.`,
         });
-        // Switch to sign-in mode after successful signup
         setShowSignIn(true);
-        setPassword(''); // Clear password field
+        setPassword('');
       } else {
         throw new Error(data.error || 'Failed to create account');
       }
@@ -305,7 +295,6 @@ export const AcceptInvitation = () => {
     );
   }
 
-  // Show authenticated user's invitation
   if (status === 'valid' && user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
@@ -376,7 +365,6 @@ export const AcceptInvitation = () => {
     );
   }
 
-  // Show invitation details with authentication required - NEW USER FOCUSED FLOW
   if (status === 'needs_auth' && invitation) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
@@ -404,17 +392,15 @@ export const AcceptInvitation = () => {
             </div>
 
             {!showSignIn ? (
-              /* NEW USER SIGNUP - PRIMARY FLOW */
               <div className="space-y-4">
                 <div className="text-center">
                   <h4 className="font-medium mb-2">Create Your Account</h4>
                   <p className="text-sm text-muted-foreground">Join the team instantly - no email verification needed!</p>
                 </div>
 
-                {/* Google Sign-In Option */}
-                <GoogleSignInButton 
+                <GoogleSignInButton
                   onClick={handleGoogleAuth}
-                  disabled={authLoading2}
+                  disabled={authSubmitting}
                   text="continue"
                 />
 
@@ -464,8 +450,8 @@ export const AcceptInvitation = () => {
                       minLength={6}
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading2}>
-                    {authLoading2 ? "Creating Account..." : "Join Team"}
+                  <Button type="submit" className="w-full" disabled={authSubmitting}>
+                    {authSubmitting ? "Creating Account..." : "Join Team"}
                   </Button>
                 </form>
 
@@ -481,7 +467,6 @@ export const AcceptInvitation = () => {
                 </div>
               </div>
             ) : (
-              /* EXISTING USER SIGN IN - SECONDARY FLOW */
               <div className="space-y-4">
                 <div className="flex items-center gap-2 mb-4">
                   <Button 
@@ -498,10 +483,9 @@ export const AcceptInvitation = () => {
                   </div>
                 </div>
 
-                {/* Google Sign-In Option */}
-                <GoogleSignInButton 
+                <GoogleSignInButton
                   onClick={handleGoogleAuth}
-                  disabled={authLoading2}
+                  disabled={authSubmitting}
                   text="signin"
                 />
 
@@ -539,8 +523,8 @@ export const AcceptInvitation = () => {
                       placeholder="Enter your password"
                     />
                   </div>
-                  <Button type="submit" className="w-full" disabled={authLoading2}>
-                    {authLoading2 ? "Signing In..." : "Sign In & Join Team"}
+                  <Button type="submit" className="w-full" disabled={authSubmitting}>
+                    {authSubmitting ? "Signing In..." : "Sign In & Join Team"}
                   </Button>
                 </form>
               </div>
@@ -556,4 +540,4 @@ export const AcceptInvitation = () => {
   }
 
   return null;
-};
+}

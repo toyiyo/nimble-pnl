@@ -47,7 +47,6 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('en-US', 
   year: 'numeric'
 });
 
-
 const handler = async (req: Request): Promise<Response> => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -157,7 +156,11 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    if (settings.time_off_notify_managers && recipients.managersFound === 0) {
+    if (
+      settings.time_off_notify_managers &&
+      recipients.managersFound === 0 &&
+      !recipients.managerLookupError
+    ) {
       console.warn(
         'time-off notification: notify_managers=true but 0 approvers resolved for restaurant',
         timeOffRequest.restaurant_id
@@ -269,7 +272,7 @@ const handler = async (req: Request): Promise<Response> => {
       console.log('Sent time-off notification', {
         action,
         restaurantId: timeOffRequest.restaurant_id,
-        total: results.length,
+        attempted: results.length,
         employeeIncluded: recipients.employeeIncluded,
         managersFound: recipients.managersFound,
       });

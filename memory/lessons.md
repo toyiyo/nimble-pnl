@@ -96,4 +96,62 @@
 - **Mistake:** Ran `/dev` brainstorm + plan phases from the main branch, committing `docs/superpowers/specs/*-design.md` and `docs/superpowers/plans/*-plan.md` directly to `main`. The development-workflow skill's phase order was Brainstorm → Plan → Isolate, which guarantees that every spec and plan commit lands on `main`.
 - **Correction:** Always create the feature worktree FIRST, before any artifact is written. Design docs, plans, and code all get authored in the worktree and commit to the feature branch. `main` never receives work-in-progress artifacts for a task.
 - **Rule:** `main` is read-only from the workflow's perspective. The very first action after Phase 0 (consult lessons) is Phase 1: Isolate — create a feature branch and worktree. Reordered the development-workflow skill phases accordingly: Phase 0 Consult Lessons → Phase 1 Isolate → Phase 2 Brainstorm → Phase 3 Plan → Phase 4 Build.
-- **Recovery pattern when caught mid-flight:** If commits have already landed on `main` but aren't pushed, run `git branch <feature> HEAD && git reset --hard origin/main`, then create a worktree on the feature branch.
+- **Recovery pattern when caught mid-flight (corrected 2026-04-22 post-CodeRabbit):** If commits or uncommitted edits have landed on `main`:
+  1. `git stash push --include-untracked --message "pre-recover-$(date +%s)"` — preserve uncommitted tracked+untracked edits first (otherwise step 3 destroys them).
+  2. `git branch <feature> HEAD && git reset --hard origin/main` — only if there are accidental commits to move; skip if HEAD is already at origin/main.
+  3. `git worktree add .claude/worktrees/<feature> <feature>` then `git stash pop` inside the worktree.
+- **Why the earlier recovery was wrong:** `git branch <feature> HEAD` only snapshots committed HEAD; `git reset --hard origin/main` then destroys the working tree. The most common case this HARD-GATE catches is uncommitted edits, so skipping the stash defeats the point.
+
+---
+
+## Category: Database (PostgREST / Supabase)
+
+### [2026-04-22] PostgREST cross-schema joins silently return null
+- **Mistake:** Edge function queried `user_restaurants` with `user:auth.users(email)` embed. PostgREST cannot traverse from `public` to the `auth` schema by default — the join returned `null` for every row, no error thrown. Manager emails silently went missing; only employees got notified on time-off requests.
+- **Correction:** Use the `profiles` table in the `public` schema, which has its own FK to `auth.users`. Embed via `profiles:user_id(email)`. The email is the same data but reachable through a public-schema join.
+- **Rule:** When a Supabase embed needs auth.users data, always route through `profiles` (or another public-schema mirror) — never embed `auth.users` directly. Whenever a fanout-to-recipients query "returns fewer rows than expected" without throwing, suspect a cross-schema join first.
+
+### [2026-04-22] pgTAP fixture flakiness from ON CONFLICT DO NOTHING
+- **Mistake:** Test used `INSERT ... ON CONFLICT (id) DO NOTHING` for fixture rows with fixed UUIDs. A stale row from a prior failed run could survive and make the test pass/fail based on prior state rather than the current transaction's inserts.
+- **Correction:** Delete-before-insert in FK order inside the same `BEGIN ... ROLLBACK` transaction. Also `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` so fixture inserts don't depend on the caller's role. Keep `ON CONFLICT DO UPDATE` (not `DO NOTHING`) on tables that have auto-create triggers (e.g., `profiles` auto-created from `auth.users`), so the fixture deterministically lands its values regardless of trigger timing.
+- **Rule:** Deterministic pgTAP fixtures: (1) RLS off inside the txn, (2) delete-before-insert in FK-safe order, (3) use `ON CONFLICT DO UPDATE` not `DO NOTHING` when a trigger may have pre-created the row.
+
+---
+
+## Category: React Query
+
+### [2026-04-22] `enabled: !!id` is the codebase's "waiting" signal — don't bypass it
+- **Mistake:** First draft of a hook early-returned `{ data: 0 }` for an undefined id. Tests and the first UI consumer both passed, but the pattern diverged from every other hook: the rest of the codebase relies on `enabled: !!id` leaving `data: undefined` while waiting, and downstream components check `isLoading` / `data !== undefined` accordingly.
+- **Correction:** Use `enabled: !!restaurantId` in the query config. Inside `queryFn`, use the non-null assertion (`restaurantId!`) since the query is gated above. Consumers must then handle `data: undefined` explicitly instead of getting a synthetic `0`.
+- **Rule:** Match the codebase's React Query conventions even when your own test works with a shortcut. `enabled: !!id` + `data: undefined` while disabled is the house style; synthetic defaults create asymmetry that downstream components won't expect.
+
+### [2026-04-22] Warning heuristics must guard against error states
+- **Mistake:** UI warning computed `(approverCount ?? 0) === 0` to show "No approvers configured". On transient query errors (network, RLS), `data` is undefined with `isLoading: false` — the heuristic treated that as zero and rendered a misleading warning on top of a silent failure.
+- **Correction:** Destructure `isError` too and guard `!isError && data !== undefined && data === 0`. Add a unit test for the error path.
+- **Rule:** Any UI that derives "empty/zero" from a query result must also check `isError`. React Query returns `data: undefined` for both "still loading (disabled)" and "errored"; conflating either with "genuinely zero" creates confident-looking misinformation.
+
+---
+
+## Category: Testing (React)
+
+### [2026-04-22] Prefer structural (role) assertions over text assertions
+- **Mistake:** Tests asserted `queryByText('No approvers configured')` to verify an alert renders. A regression that kept the `role="alert"` div but emptied its text children would pass — the test can't tell the difference between "alert rendered correctly" and "alert rendered as an empty shell".
+- **Correction:** Assert `getByRole('alert')` / `queryByRole('alert')` for presence/absence. Keep one belt-and-suspenders text check in the happy-path test; the rest use role only.
+- **Rule:** When testing a component's presence/absence, assert on the accessibility role, not the content text. Role assertions catch structural regressions that text-only assertions miss.
+
+### [2026-04-22] Tautological tests that can't fail
+- **Mistake:** A test case "chef email is excluded" asserted that a chef's email was not in the approvers list — but the mock data passed to the function never contained a chef to begin with, so the assertion was vacuously true.
+- **Correction:** Either include the chef in the mock data (so exclusion is observable) or delete the test. Added the chef to the role filter and asserted it was filtered out.
+- **Rule:** Every test should be able to fail if the code regresses. If the test setup doesn't include the thing being tested against, the assertion is tautological and provides no coverage.
+
+---
+
+## Category: Code Review Process
+
+### [2026-04-22] Two-stage review (spec → quality) catches different classes of issue
+- **Observation:** The subagent-driven workflow ran two reviewers after each task: spec compliance first, then code quality. Spec review caught "managerCount → managersFound" naming drift from the spec and a tautological chef test (scope issues). Quality review caught `enabled: !!id` convention mismatch and `select('*')` CLAUDE.md violation (craft issues). Neither reviewer caught all the issues alone.
+- **Rule:** Keep the two-stage review. Spec review asks "does this match what we agreed to build?" and catches drift; quality review asks "is this the right way to build it?" and catches conventions and smells. They're complementary, not redundant.
+
+### [2026-04-22] CodeRabbit feedback triage: fix, defer, or push back
+- **Observation:** CodeRabbit surfaced 7 items on one PR. Triage: 1 real bug (error-state warning), 2 quick quality wins (fixture determinism, test prefixes), 1 plan-doc drift (deferred as historical artifact), 1 markdown lint nit (deferred), 1 style-guide disagreement (pushed back — `bg-amber-500/10` is the documented CLAUDE.md pattern).
+- **Rule:** Not every CodeRabbit finding must be addressed. Fix real bugs and quick wins. Defer nits. Push back when the finding contradicts an existing codebase convention — but document the reasoning in a PR comment so future readers know it's intentional, not overlooked.

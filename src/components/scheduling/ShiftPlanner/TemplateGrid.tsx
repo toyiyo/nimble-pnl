@@ -3,6 +3,7 @@ import { useState, useCallback, useMemo, type ReactNode } from 'react';
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
 import type { ShiftTemplate, Shift } from '@/types/scheduling';
+import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
 import { groupTemplatesByArea } from '@/lib/templateAreaGrouping';
@@ -37,6 +38,8 @@ interface TemplateGridProps {
   areaFilter?: string | null;
   /** Optional row rendered immediately under the day headers (e.g., coverage strip). */
   coverageSlot?: ReactNode;
+  allocationStatuses?: Map<string, AllocationStatus>;
+  pickedEmployeeName?: string;
 }
 
 export function TemplateGrid({
@@ -52,6 +55,8 @@ export function TemplateGrid({
   hasMobileSelection,
   areaFilter,
   coverageSlot,
+  allocationStatuses,
+  pickedEmployeeName,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -153,6 +158,8 @@ export function TemplateGrid({
                           isHighlighted={highlightCellId === `${template.id}:${day}`}
                           onMobileTap={onMobileCellTap}
                           hasMobileSelection={hasMobileSelection}
+                          allocationStatus={allocationStatuses?.get(`${template.id}:${day}`) ?? 'none'}
+                          pickedEmployeeName={pickedEmployeeName}
                         />
                       </div>
                     );

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUpAndCreateRestaurant, generateTestUser } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 test.describe('Planner mobile layout', () => {
   test('overview panel renders stacked with visible day cards', async ({ page }) => {
@@ -9,6 +9,18 @@ test.describe('Planner mobile layout', () => {
     // planner (useIsMobile uses matchMedia and re-renders on width change).
     const user = generateTestUser('mobile-overview');
     await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    // Seed an employee so the planner renders (empty-state bypasses the panel).
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    await page.evaluate(
+      ({ restId }) => (window as any).__insertEmployees(
+        [{ name: 'Mobile Tester', position: 'Server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 }],
+        restId,
+      ),
+      { restId: restaurantId },
+    );
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/scheduling');
     await page.getByRole('tab', { name: /planner/i }).click();

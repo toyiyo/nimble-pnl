@@ -40,10 +40,14 @@ import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
+  weekStart: Date;
+  onWeekStartChange: (next: Date) => void;
 }
 
 export function ShiftPlannerTab({
   restaurantId,
+  weekStart: externalWeekStart,
+  onWeekStartChange,
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
@@ -66,7 +70,10 @@ export function ShiftPlannerTab({
     validationResult,
     clearValidation,
     totalHours,
-  } = useShiftPlanner(restaurantId);
+  } = useShiftPlanner(restaurantId, {
+    externalWeekStart,
+    onExternalWeekStartChange: onWeekStartChange,
+  });
 
   const {
     templates,

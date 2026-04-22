@@ -1823,6 +1823,8 @@ const Scheduling = () => {
           {restaurantId && (
             <ShiftPlannerTab
               restaurantId={restaurantId}
+              weekStart={currentWeekStart}
+              onWeekStartChange={setCurrentWeekStart}
             />
           )}
         </TabsContent>

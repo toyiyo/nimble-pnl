@@ -32,8 +32,10 @@ test.describe('Planner mobile layout', () => {
     const dayCards = page.locator('[data-overview-day]');
     await expect(dayCards).toHaveCount(7);
 
-    // Collapsing works
+    // Collapsing hides the cards. The panel body stays mounted (with the
+    // `hidden` HTML attribute) so `aria-controls` always resolves to an
+    // element, but the cards become non-visible.
     await page.getByRole('button', { expanded: true, name: /schedule overview/i }).click();
-    await expect(dayCards).toHaveCount(0);
+    await expect(dayCards.first()).not.toBeVisible();
   });
 });

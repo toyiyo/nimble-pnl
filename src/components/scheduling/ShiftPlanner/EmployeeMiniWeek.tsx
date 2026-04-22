@@ -81,13 +81,13 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
               const startPct = Math.max(0, Math.min(1, rawStart)) * 100;
               const endPct = Math.max(0, Math.min(1, rawEnd)) * 100;
               if (endPct <= startPct) return null;
-              const height = Math.max(4, endPct - startPct);
+              const height = endPct - startPct;
               return (
                 <div
                   key={shift.id}
                   data-mini-bar={shift.id}
                   className={cn('absolute left-0.5 right-0.5 rounded-[2px]', barColor(shift.position))}
-                  style={{ top: `${startPct}%`, height: `${height}%` }}
+                  style={{ top: `${startPct}%`, height: `${height}%`, minHeight: 4 }}
                 />
               );
             })}

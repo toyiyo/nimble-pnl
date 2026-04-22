@@ -42,6 +42,7 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
   const canManageInvites = userRole === 'owner' || userRole === 'manager';
 
   useEffect(() => {
+    setShowHistory(false);
     fetchInvitations();
   }, [restaurantId]);
 
@@ -333,6 +334,8 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
             )}
             {historyInvitations.length > 0 && (
               <button
+                type="button"
+                aria-expanded={showHistory}
                 onClick={() => setShowHistory(prev => !prev)}
                 className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
               >

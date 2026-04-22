@@ -12,7 +12,7 @@ export type AllocationStatus = 'none' | 'highlight' | 'conflict' | 'available';
  * calendar date. This is the single authoritative date-key extractor used in
  * `sameDay` and in the `computeAllocationStatuses` bucketing step.
  */
-function toLocalDateKey(iso: string): string {
+export function toLocalDateKey(iso: string): string {
   // Strip any timezone designator so the datetime is parsed as local.
   const local = iso.replace(/Z$|[+-]\d{2}:?\d{2}$/, '');
   const d = new Date(local);
@@ -31,7 +31,7 @@ function toLocalDateKey(iso: string): string {
  * Example: `'2026-04-20T09:00:00Z'` → same epoch as `new Date(2026,3,20,9,0,0)`
  * in the local timezone — consistent with a template `start_time` of `'09:00:00'`.
  */
-function toLocalEpoch(iso: string): number {
+export function toLocalEpoch(iso: string): number {
   // Strip any timezone designator (Z or ±HH:MM / ±HHMM) so that the
   // browser's Date constructor parses the remaining digits as local time.
   const local = iso.replace(/Z$|[+-]\d{2}:?\d{2}$/, '');

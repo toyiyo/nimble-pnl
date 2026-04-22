@@ -66,7 +66,7 @@ export const OverviewDayCard = memo(function OverviewDayCard({
             </span>
           )}
           {!unstaffed && hasGap && gapLabel && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600">
               {gapLabel}
             </span>
           )}

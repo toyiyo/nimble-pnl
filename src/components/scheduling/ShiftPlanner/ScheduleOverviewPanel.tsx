@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useId, useState } from 'react';
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -27,6 +27,7 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
   isMobile,
 }: Readonly<ScheduleOverviewPanelProps>) {
   const [expanded, setExpanded] = useState(true);
+  const bodyId = useId();
 
   return (
     <section
@@ -37,7 +38,7 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        aria-controls="schedule-overview-body"
+        aria-controls={bodyId}
         className="w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/50 transition-colors"
       >
         <span className="flex items-center gap-2">
@@ -54,7 +55,7 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
       </button>
 
       <div
-        id="schedule-overview-body"
+        id={bodyId}
         hidden={!expanded}
         className={cn(
           'p-3',

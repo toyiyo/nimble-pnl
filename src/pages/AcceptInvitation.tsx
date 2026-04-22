@@ -20,7 +20,7 @@ export function AcceptInvitation() {
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
-  const [authSubmitting, setAuthLoading2] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [invitation, setInvitation] = useState<any>(null);
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'error' | 'needs_auth'>('loading');
   const [email, setEmail] = useState('');
@@ -130,7 +130,7 @@ export function AcceptInvitation() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthLoading2(true);
+    setAuthSubmitting(true);
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -148,12 +148,12 @@ export function AcceptInvitation() {
         variant: "destructive",
       });
     } finally {
-      setAuthLoading2(false);
+      setAuthSubmitting(false);
     }
   };
 
   const handleGoogleAuth = async () => {
-    setAuthLoading2(true);
+    setAuthSubmitting(true);
     try {
       const { error } = await signInWithOAuthNative('google', `/accept-invitation?token=${encodeURIComponent(token)}`);
 
@@ -164,13 +164,13 @@ export function AcceptInvitation() {
         description: error.message || "Failed to sign in with Google",
         variant: "destructive",
       });
-      setAuthLoading2(false);
+      setAuthSubmitting(false);
     }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthLoading2(true);
+    setAuthSubmitting(true);
 
     try {
       if (email !== invitation?.email) {
@@ -211,7 +211,7 @@ export function AcceptInvitation() {
         variant: "destructive",
       });
     } finally {
-      setAuthLoading2(false);
+      setAuthSubmitting(false);
     }
   };
 

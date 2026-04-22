@@ -19,6 +19,7 @@ interface Invitation {
   createdAt: string;
   expiresAt?: string;
   invitedBy?: string;
+  employeeId?: string;
 }
 
 interface TeamInvitationsProps {
@@ -38,6 +39,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
   const [showHistory, setShowHistory] = useState(false);
   const [pendingConflict, setPendingConflict] = useState(false);
+  const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const canManageInvites = userRole === 'owner' || userRole === 'manager';
@@ -72,7 +74,8 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
         status: inv.status as 'pending' | 'accepted' | 'expired' | 'cancelled',
         createdAt: inv.created_at,
         expiresAt: inv.expires_at,
-        invitedBy: profilesMap.get(inv.invited_by)?.full_name || 'Unknown'
+        invitedBy: profilesMap.get(inv.invited_by)?.full_name || 'Unknown',
+        employeeId: inv.employee_id ?? undefined,
       }));
 
       setInvitations(formattedInvitations);
@@ -164,12 +167,20 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     }
   };
 
-  const resendInvitation = async (invitation: Invitation) => {
+  const resendInvitation = async (invitation: Invitation, confirmed = false) => {
+    const hasPendingConflict = invitations.some(
+      inv => inv.email.toLowerCase() === invitation.email.toLowerCase() && inv.status === 'pending'
+    );
+    if (hasPendingConflict && !confirmed) {
+      setResendConflictId(invitation.id);
+      return;
+    }
+    setResendConflictId(null);
     setResendingIds(prev => new Set(prev).add(invitation.id));
     try {
-      const { error } = await supabase.functions.invoke('send-team-invitation', {
-        body: { restaurantId, email: invitation.email, role: invitation.role },
-      });
+      const body: Record<string, unknown> = { restaurantId, email: invitation.email, role: invitation.role };
+      if (invitation.employeeId) body.employeeId = invitation.employeeId;
+      const { error } = await supabase.functions.invoke('send-team-invitation', { body });
       if (error) throw error;
       toast({ title: 'Invitation resent', description: `New invite sent to ${invitation.email}` });
       fetchInvitations();
@@ -182,8 +193,8 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   };
 
   const statusIcons = {
-    pending: <Clock className="h-4 w-4 text-yellow-500" />,
-    accepted: <CheckCircle className="h-4 w-4 text-green-500" />,
+    pending: <Clock className="h-4 w-4 text-muted-foreground" />,
+    accepted: <CheckCircle className="h-4 w-4 text-primary" />,
     expired: <XCircle className="h-4 w-4 text-destructive" />,
     cancelled: null,
   };
@@ -311,54 +322,77 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
         ) : invitations.length > 0 ? (
           <div className="space-y-3 md:space-y-4">
             {visibleInvitations.map((invitation) => (
-              <div key={invitation.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm md:text-base truncate">{invitation.email}</p>
-                    <div className="text-xs md:text-sm text-muted-foreground space-y-1">
-                      <p className="truncate">
-                        Invited as <span className="capitalize font-medium">{invitation.role}</span> by {invitation.invitedBy}
-                      </p>
-                      <p>
-                        {invitation.expiresAt && (invitation.status === 'pending' || invitation.status === 'expired')
-                          ? formatExpiresIn(invitation.expiresAt)
-                          : new Date(invitation.createdAt).toLocaleDateString()}
-                      </p>
+              <div key={invitation.id} className="border border-border/40 rounded-xl hover:border-border transition-colors">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 md:p-4">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm md:text-base truncate">{invitation.email}</p>
+                      <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+                        <p className="truncate">
+                          Invited as <span className="capitalize font-medium">{invitation.role}</span> by {invitation.invitedBy}
+                        </p>
+                        <p>
+                          {invitation.expiresAt && (invitation.status === 'pending' || invitation.status === 'expired')
+                            ? formatExpiresIn(invitation.expiresAt)
+                            : new Date(invitation.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
-                  <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1 text-xs">
-                    {statusIcons[invitation.status]}
-                    <span className="capitalize">{invitation.status}</span>
-                  </Badge>
+                  <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3">
+                    <Badge variant={statusColors[invitation.status]} className="flex items-center gap-1 text-xs">
+                      {statusIcons[invitation.status]}
+                      <span className="capitalize">{invitation.status}</span>
+                    </Badge>
 
-                  {canManageInvites && invitation.status === 'pending' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteInvitation(invitation.id, invitation.email)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
-                      aria-label={`Cancel invitation for ${invitation.email}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {canManageInvites && invitation.status === 'expired' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => resendInvitation(invitation)}
-                      disabled={resendingIds.has(invitation.id)}
-                      className="text-primary hover:text-primary hover:bg-primary/10 p-2"
-                      aria-label={`Resend invitation to ${invitation.email}`}
-                    >
-                      <RefreshCw className={`h-4 w-4 ${resendingIds.has(invitation.id) ? 'animate-spin' : ''}`} />
-                    </Button>
-                  )}
+                    {canManageInvites && invitation.status === 'pending' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteInvitation(invitation.id, invitation.email)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
+                        aria-label={`Cancel invitation for ${invitation.email}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {canManageInvites && invitation.status === 'expired' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resendConflictId === invitation.id
+                          ? resendInvitation(invitation, true)
+                          : resendInvitation(invitation)
+                        }
+                        disabled={resendingIds.has(invitation.id)}
+                        aria-busy={resendingIds.has(invitation.id)}
+                        aria-label={
+                          resendingIds.has(invitation.id)
+                            ? `Sending invitation to ${invitation.email}`
+                            : resendConflictId === invitation.id
+                              ? `Confirm resend to ${invitation.email}, cancelling existing pending invite`
+                              : `Resend invitation to ${invitation.email}`
+                        }
+                        className={
+                          resendConflictId === invitation.id
+                            ? 'text-amber-600 hover:text-amber-600 hover:bg-amber-500/10 p-2'
+                            : 'text-primary hover:text-primary hover:bg-primary/10 p-2'
+                        }
+                      >
+                        <RefreshCw className={`h-4 w-4 ${resendingIds.has(invitation.id) ? 'animate-spin' : ''}`} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                {resendConflictId === invitation.id && (
+                  <div className="px-3 pb-3 md:px-4">
+                    <p className="text-[11px] text-amber-600">
+                      A pending invite for this email already exists. Click again to cancel it and resend.
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
             {visibleInvitations.length === 0 && (

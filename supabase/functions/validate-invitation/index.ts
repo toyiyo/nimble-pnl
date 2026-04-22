@@ -103,8 +103,9 @@ const handler = async (req: Request): Promise<Response> => {
       'Invitation has expired': 410,
     };
     const status = statusMap[error.message] ?? 500;
+    const responseMessage = status === 500 ? 'An unexpected error occurred' : error.message;
     return new Response(
-      JSON.stringify({ error: error.message, success: false }),
+      JSON.stringify({ error: responseMessage, success: false }),
       { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
     );
   }

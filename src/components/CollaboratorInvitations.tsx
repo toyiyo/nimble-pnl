@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, RefreshCw } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
+import { formatExpiresIn } from '@/lib/invitationUtils';
 import {
   useCollaboratorsQuery,
   useCollaboratorInvitesQuery,
@@ -44,7 +45,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   const removeCollaboratorMutation = useRemoveCollaborator();
   const resendInvitationMutation = useResendCollaboratorInvitation();
   const [showCancelledInvites, setShowCancelledInvites] = useState(false);
-  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
 
   const handleSendInvitation = () => {
     if (!email || !selectedRole) {
@@ -84,16 +85,16 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   };
 
   const handleResendInvitation = (invite: { id: string; email: string; role: string }) => {
-    setResendingId(invite.id);
+    setResendingIds(prev => new Set(prev).add(invite.id));
     resendInvitationMutation.mutate(
       { restaurantId, email: invite.email, role: invite.role as Role },
-      { onSettled: () => setResendingId(null) }
+      { onSettled: () => setResendingIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; }) }
     );
   };
 
   const statusIcons = {
-    pending: <Clock className="h-4 w-4 text-yellow-500" />,
-    accepted: <CheckCircle className="h-4 w-4 text-green-500" />,
+    pending: <Clock className="h-4 w-4 text-muted-foreground" />,
+    accepted: <CheckCircle className="h-4 w-4 text-primary" />,
     expired: <XCircle className="h-4 w-4 text-destructive" />,
     cancelled: <XCircle className="h-4 w-4 text-muted-foreground" />,
   };
@@ -320,7 +321,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
         </CardContent>
       </Card>
 
-      {(invitesLoading || invitesError || pendingInvites?.some(i => i.status === 'pending' || i.status === 'expired')) && (
+      {(invitesLoading || invitesError || (pendingInvites && pendingInvites.length > 0)) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Invitations</CardTitle>
@@ -371,7 +372,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
                             <p className="text-xs text-muted-foreground">
                               {isExpired
                                 ? `Expired — invited by ${invite.invitedBy || 'unknown'}`
-                                : `Invited by ${invite.invitedBy || 'unknown'} • Expires ${invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : 'never'}`}
+                                : `Invited by ${invite.invitedBy || 'unknown'} • ${invite.expiresAt ? formatExpiresIn(invite.expiresAt) : 'No expiry'}`}
                             </p>
                           </div>
                         </div>
@@ -396,11 +397,12 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
                               variant="ghost"
                               size="sm"
                               onClick={() => handleResendInvitation(invite)}
-                              disabled={resendingId === invite.id}
+                              disabled={resendingIds.has(invite.id)}
+                              aria-busy={resendingIds.has(invite.id)}
+                              aria-label={resendingIds.has(invite.id) ? `Sending invitation to ${invite.email}` : `Resend invitation to ${invite.email}`}
                               className="text-primary hover:text-primary hover:bg-primary/10"
-                              aria-label={`Resend invitation to ${invite.email}`}
                             >
-                              <RefreshCw className={`h-4 w-4 ${resendingId === invite.id ? 'animate-spin' : ''}`} />
+                              <RefreshCw className={`h-4 w-4 ${resendingIds.has(invite.id) ? 'animate-spin' : ''}`} />
                             </Button>
                           )}
                         </div>

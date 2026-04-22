@@ -13,6 +13,14 @@ import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
 import { classifyInvitationError } from '@/lib/invitationUtils';
 
+interface InvitationDetails {
+  email: string;
+  role: string;
+  restaurant: { name: string; address?: string } | null;
+  invited_by: string;
+  expires_at: string;
+}
+
 export function AcceptInvitation() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -21,7 +29,7 @@ export function AcceptInvitation() {
   const [loading, setLoading] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [invitation, setInvitation] = useState<any>(null);
+  const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
   const [status, setStatus] = useState<'loading' | 'valid' | 'invalid' | 'expired' | 'accepted' | 'needs_auth'>('loading');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -95,9 +103,9 @@ export function AcceptInvitation() {
       } else {
         throw new Error(data.error || 'Invalid invitation');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error validating invitation:', err);
-      setStatus(classifyInvitationError(err?.message || ''));
+      setStatus(classifyInvitationError(err instanceof Error ? err.message : ''));
     } finally {
       setLoading(false);
     }

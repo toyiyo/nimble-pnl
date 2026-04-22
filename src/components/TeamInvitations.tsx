@@ -163,7 +163,8 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
       if (error) throw error;
       toast({ title: 'Invitation resent', description: `New invite sent to ${invitation.email}` });
       fetchInvitations();
-    } catch {
+    } catch (err) {
+      console.error('Error resending invitation:', err);
       toast({ title: 'Error', description: 'Failed to resend invitation', variant: 'destructive' });
     } finally {
       setResendingIds(prev => { const s = new Set(prev); s.delete(invitation.id); return s; });
@@ -173,7 +174,8 @@ export const TeamInvitations = ({ restaurantId, userRole }: TeamInvitationsProps
   const statusIcons = {
     pending: <Clock className="h-4 w-4 text-yellow-500" />,
     accepted: <CheckCircle className="h-4 w-4 text-green-500" />,
-    expired: <XCircle className="h-4 w-4 text-red-500" />,
+    expired: <XCircle className="h-4 w-4 text-destructive" />,
+    cancelled: null,
   };
 
   const statusColors = {

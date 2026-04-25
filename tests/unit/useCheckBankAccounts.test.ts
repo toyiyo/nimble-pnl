@@ -435,4 +435,89 @@ describe('useCheckBankAccounts', () => {
       expect(result.current.defaultAccount).toBeNull();
     });
   });
+
+  describe('saveAccountSecrets', () => {
+    it('calls set_check_bank_account_secrets RPC with correct args', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: null, error: null });
+
+      const { result } = renderHook(() => useCheckBankAccounts(), {
+        wrapper: createWrapper(),
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await result.current.saveAccountSecrets.mutateAsync({
+        id: 'abc-123',
+        routing: '111000614',
+        account: '2907959096',
+      });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('set_check_bank_account_secrets', {
+        p_id: 'abc-123',
+        p_routing: '111000614',
+        p_account: '2907959096',
+      });
+    });
+
+    it('throws when the RPC returns an error', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: { message: 'Routing number must be exactly 9 digits' },
+      });
+
+      const { result } = renderHook(() => useCheckBankAccounts(), {
+        wrapper: createWrapper(),
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await expect(
+        result.current.saveAccountSecrets.mutateAsync({
+          id: 'abc-123', routing: '12345', account: '1234',
+        })
+      ).rejects.toThrow(/Routing number/);
+    });
+  });
+
+  describe('fetchAccountSecrets', () => {
+    it('returns plaintext routing + account on success', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: [{ routing_number: '111000614', account_number: '2907959096' }],
+        error: null,
+      });
+
+      const { result } = renderHook(() => useCheckBankAccounts(), {
+        wrapper: createWrapper(),
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const secrets = await result.current.fetchAccountSecrets('abc-123');
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_check_bank_account_secrets', { p_id: 'abc-123' });
+      expect(secrets).toEqual({ routing_number: '111000614', account_number: '2907959096' });
+    });
+
+    it('returns null when the RPC returns no rows', async () => {
+      mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+
+      const { result } = renderHook(() => useCheckBankAccounts(), {
+        wrapper: createWrapper(),
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      const secrets = await result.current.fetchAccountSecrets('abc-123');
+      expect(secrets).toBeNull();
+    });
+
+    it('throws when the RPC returns an error', async () => {
+      mockSupabase.rpc.mockResolvedValue({
+        data: null,
+        error: { message: 'Unauthorized' },
+      });
+
+      const { result } = renderHook(() => useCheckBankAccounts(), {
+        wrapper: createWrapper(),
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      await expect(result.current.fetchAccountSecrets('abc-123')).rejects.toThrow(/Unauthorized/);
+    });
+  });
 });

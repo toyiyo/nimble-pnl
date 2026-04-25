@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
+import { formatMicrLine } from './micrLine';
+import { registerMicrFont, toMicrPdfText } from '@/assets/fonts/micr-e13b';
 
 export interface CheckPrintConfig {
   business_name: string;
@@ -123,8 +125,11 @@ function buildCityStateZip(settings: CheckPrintConfig): string {
  *  - Top third: the actual check
  *  - Middle third: payee record stub
  *  - Bottom third: company record stub
+ *
+ * Sync — does NOT render the MICR line (font load is async).
+ * generateCheckPDFAsync wraps this and adds the MICR pass.
  */
-function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
+function renderCheckPageSync(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
   const pageWidth = 8.5;
   const margin = 0.5;
   const checkHeight = 3.5; // Standard check-on-top height in inches
@@ -299,10 +304,46 @@ function renderStub(
   doc.setDrawColor(0, 0, 0);
 }
 
+async function renderMicrLine(
+  doc: jsPDF,
+  check: CheckData,
+  settings: CheckPrintConfig,
+  pageWidth: number,
+): Promise<void> {
+  if (!settings.print_bank_info || !settings.routing_number || !settings.account_number) {
+    return;
+  }
+  const fontFamily = await registerMicrFont(doc);
+  const micr = formatMicrLine({
+    checkNumber: check.checkNumber,
+    routingNumber: settings.routing_number,
+    accountNumber: settings.account_number,
+  });
+  const renderable = toMicrPdfText(micr);
+
+  doc.setFont(fontFamily, 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
+
+  const micrY = 3.30;
+  const rightX = pageWidth - 0.5;
+  doc.text(renderable, rightX, micrY, { align: 'right', charSpace: 0.018 });
+
+  doc.setFont('helvetica', 'normal');
+}
+
+async function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
+  renderCheckPageSync(doc, settings, check);
+  await renderMicrLine(doc, check, settings, 8.5);
+}
+
 export function generateCheckPDF(
   settings: CheckPrintConfig,
   checks: CheckData[],
 ): jsPDF {
+  if (settings.print_bank_info) {
+    throw new Error('print_bank_info requires generateCheckPDFAsync (font loading is async)');
+  }
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'in',
@@ -311,8 +352,26 @@ export function generateCheckPDF(
 
   checks.forEach((check, index) => {
     if (index > 0) doc.addPage();
-    renderCheckPage(doc, settings, check);
+    renderCheckPageSync(doc, settings, check);
   });
+
+  return doc;
+}
+
+export async function generateCheckPDFAsync(
+  settings: CheckPrintConfig,
+  checks: CheckData[],
+): Promise<jsPDF> {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'in',
+    format: 'letter',
+  });
+
+  for (let i = 0; i < checks.length; i++) {
+    if (i > 0) doc.addPage();
+    await renderCheckPage(doc, settings, checks[i]);
+  }
 
   return doc;
 }

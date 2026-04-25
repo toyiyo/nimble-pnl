@@ -1,7 +1,21 @@
 import { describe, expect, test, vi, beforeEach, it } from 'vitest';
+
+// MICR font loader uses fetch(import-url) which doesn't resolve in jsdom.
+// Stub the registration with a built-in jsPDF font so the rendering path
+// runs end-to-end without a real font load. Mirror the production ASCII
+// mapping (⑆→A, ⑈→C) so Unicode glyphs don't get octal-escaped by jsPDF
+// and the routing/account digits remain searchable in the PDF stream.
+vi.mock('@/assets/fonts/micr-e13b', () => ({
+  registerMicrFont: vi.fn(async () => 'courier'),
+  toMicrPdfText: (s: string) =>
+    s.replace(/⑆/g, 'A').replace(/⑈/g, 'C'),
+  MICR_PDF_CHAR_MAP: { '⑆': 'A', '⑈': 'C' },
+}));
+
 import {
   numberToWords,
   generateCheckPDF,
+  generateCheckPDFAsync,
   generateCheckFilename,
 } from '../../src/utils/checkPrinting';
 import type { CheckData, CheckPrintConfig } from '../../src/utils/checkPrinting';
@@ -349,9 +363,14 @@ describe('generateCheckPDF', () => {
     expect(pdfOutput).toContain('One Thousand Two Hundred Thirty-Four and 56/100');
   });
 
-  test('check face contains bank name when print_bank_info is enabled', () => {
-    const settings = makeSettings({ bank_name: 'Chase Bank', print_bank_info: true });
-    const doc = generateCheckPDF(settings, [makeCheck()]);
+  test('check face contains bank name when print_bank_info is enabled', async () => {
+    const settings = makeSettings({
+      bank_name: 'Chase Bank',
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number: '2907959096',
+    });
+    const doc = await generateCheckPDFAsync(settings, [makeCheck()]);
     const pdfOutput = doc.output();
 
     expect(pdfOutput).toContain('Chase Bank');
@@ -387,7 +406,7 @@ describe('generateCheckPDF', () => {
     expect(pdfOutput).toContain('Check #: 101');
   });
 
-  it('renders bank name centered at top when print_bank_info is true', () => {
+  it('renders bank name centered at top when print_bank_info is true', async () => {
     const config: CheckPrintConfig = {
       business_name: 'Test Restaurant',
       business_address_line1: '1 Main St',
@@ -400,7 +419,7 @@ describe('generateCheckPDF', () => {
       routing_number: '111000614',
       account_number: '2907959096',
     };
-    const doc = generateCheckPDF(config, [
+    const doc = await generateCheckPDFAsync(config, [
       { checkNumber: 1001, payeeName: 'X', amount: 1, issueDate: '2026-04-25' },
     ]);
     const output = doc.output();
@@ -425,5 +444,47 @@ describe('generateCheckPDF', () => {
     ]);
     const output = doc.output();
     expect(output).not.toContain('Test Bank NA');
+  });
+
+  it('renders the MICR line at the bottom of the check when print_bank_info', async () => {
+    const config: CheckPrintConfig = {
+      business_name: 'Test Restaurant',
+      business_address_line1: null,
+      business_address_line2: null,
+      business_city: null,
+      business_state: null,
+      business_zip: null,
+      bank_name: 'Test Bank NA',
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number: '2907959096',
+    };
+    const doc = await generateCheckPDFAsync(config, [
+      { checkNumber: 239, payeeName: 'X', amount: 1, issueDate: '2026-04-25' },
+    ]);
+    const output = doc.output();
+    expect(output).toMatch(/111000614/);
+    expect(output).toMatch(/2907959096/);
+    expect(output).toMatch(/239/);
+  });
+
+  it('does NOT render the MICR line when print_bank_info is false', async () => {
+    const config: CheckPrintConfig = {
+      business_name: 'X',
+      business_address_line1: null,
+      business_address_line2: null,
+      business_city: null,
+      business_state: null,
+      business_zip: null,
+      bank_name: null,
+      print_bank_info: false,
+      routing_number: null,
+      account_number: null,
+    };
+    const doc = await generateCheckPDFAsync(config, [
+      { checkNumber: 1001, payeeName: 'X', amount: 1, issueDate: '2026-04-25' },
+    ]);
+    const output = doc.output();
+    expect(output).not.toMatch(/111000614/);
   });
 });

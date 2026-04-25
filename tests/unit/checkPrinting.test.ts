@@ -1,10 +1,10 @@
-import { describe, expect, test, vi, beforeEach } from 'vitest';
+import { describe, expect, test, vi, beforeEach, it } from 'vitest';
 import {
   numberToWords,
   generateCheckPDF,
   generateCheckFilename,
 } from '../../src/utils/checkPrinting';
-import type { CheckData } from '../../src/utils/checkPrinting';
+import type { CheckData, CheckPrintConfig } from '../../src/utils/checkPrinting';
 import type { CheckSettings } from '../../src/hooks/useCheckSettings';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +22,9 @@ function makeSettings(overrides: Partial<CheckSettings> = {}): CheckSettings {
     business_state: 'TX',
     business_zip: '78701',
     bank_name: 'First National Bank',
+    print_bank_info: false,
+    routing_number: null,
+    account_number: null,
     next_check_number: 1001,
     created_at: '2025-01-01T00:00:00Z',
     updated_at: '2025-01-01T00:00:00Z',
@@ -346,8 +349,8 @@ describe('generateCheckPDF', () => {
     expect(pdfOutput).toContain('One Thousand Two Hundred Thirty-Four and 56/100');
   });
 
-  test('check face contains bank name when provided', () => {
-    const settings = makeSettings({ bank_name: 'Chase Bank' });
+  test('check face contains bank name when print_bank_info is enabled', () => {
+    const settings = makeSettings({ bank_name: 'Chase Bank', print_bank_info: true });
     const doc = generateCheckPDF(settings, [makeCheck()]);
     const pdfOutput = doc.output();
 
@@ -382,5 +385,45 @@ describe('generateCheckPDF', () => {
     expect(pdfOutput).toContain('Vendor B');
     expect(pdfOutput).toContain('Check #: 100');
     expect(pdfOutput).toContain('Check #: 101');
+  });
+
+  it('renders bank name centered at top when print_bank_info is true', () => {
+    const config: CheckPrintConfig = {
+      business_name: 'Test Restaurant',
+      business_address_line1: '1 Main St',
+      business_address_line2: null,
+      business_city: 'Austin',
+      business_state: 'TX',
+      business_zip: '78701',
+      bank_name: 'Test Bank NA',
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number: '2907959096',
+    };
+    const doc = generateCheckPDF(config, [
+      { checkNumber: 1001, payeeName: 'X', amount: 1, issueDate: '2026-04-25' },
+    ]);
+    const output = doc.output();
+    expect(output).toContain('Test Bank NA');
+  });
+
+  it('does NOT render bank name when print_bank_info is false', () => {
+    const config: CheckPrintConfig = {
+      business_name: 'Test Restaurant',
+      business_address_line1: null,
+      business_address_line2: null,
+      business_city: null,
+      business_state: null,
+      business_zip: null,
+      bank_name: 'Test Bank NA',
+      print_bank_info: false,
+      routing_number: null,
+      account_number: null,
+    };
+    const doc = generateCheckPDF(config, [
+      { checkNumber: 1001, payeeName: 'X', amount: 1, issueDate: '2026-04-25' },
+    ]);
+    const output = doc.output();
+    expect(output).not.toContain('Test Bank NA');
   });
 });

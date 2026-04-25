@@ -9,6 +9,9 @@ export interface CheckPrintConfig {
   business_state: string | null;
   business_zip: string | null;
   bank_name: string | null;
+  print_bank_info: boolean;
+  routing_number: string | null;
+  account_number: string | null;
 }
 
 export interface CheckData {
@@ -19,11 +22,23 @@ export interface CheckData {
   memo?: string;
 }
 
+export interface PrintSecretsInput {
+  routing_number: string;
+  account_number: string;
+}
+
 export function buildPrintConfig(
-  settings: Omit<CheckPrintConfig, 'bank_name'>,
-  bankName: string | null,
+  settings: Omit<CheckPrintConfig, 'bank_name' | 'print_bank_info' | 'routing_number' | 'account_number'>,
+  bankAccount: { bank_name: string | null; print_bank_info: boolean } | null,
+  secrets: PrintSecretsInput | null,
 ): CheckPrintConfig {
-  return { ...settings, bank_name: bankName };
+  return {
+    ...settings,
+    bank_name: bankAccount?.bank_name ?? null,
+    print_bank_info: Boolean(bankAccount?.print_bank_info && secrets),
+    routing_number: secrets?.routing_number ?? null,
+    account_number: secrets?.account_number ?? null,
+  };
 }
 
 // --- Number to words conversion ---
@@ -192,15 +207,16 @@ function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckDat
   doc.setFontSize(8);
   doc.text('DOLLARS', pageWidth - margin - 1.3, amountWordsY);
 
-  // Bank name
-  if (settings.bank_name) {
-    doc.setFontSize(9);
+  // Bank name (top-center) — only when print_bank_info is enabled.
+  if (settings.print_bank_info && settings.bank_name) {
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(settings.bank_name, margin, 2.2);
+    doc.text(settings.bank_name, pageWidth / 2, 0.55, { align: 'center' });
   }
 
-  // Memo line
-  const memoY = 2.85;
+  // Memo line — moved up from y=2.85 to y=2.55 so the MICR clear band
+  // (bottom 5/8" of the check, y=2.875–3.50) stays empty.
+  const memoY = 2.55;
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.text('Memo', margin, memoY);

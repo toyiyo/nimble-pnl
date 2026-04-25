@@ -1,6 +1,6 @@
 -- Tests for check printing tables and functions (multi-bank-account schema)
 BEGIN;
-SELECT plan(33);
+SELECT plan(48);
 
 -- ==========================================
 -- 1. check_bank_accounts table structure
@@ -178,6 +178,159 @@ SELECT throws_ok(
 
 -- Re-enable RLS
 ALTER TABLE public.check_audit_log ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================
+-- 10. MICR printing additions (2026-04-25)
+-- ==========================================
+
+-- Column types & defaults
+SELECT col_type_is(
+    'public', 'check_bank_accounts', 'routing_number', 'text',
+    'check_bank_accounts.routing_number is text'
+);
+SELECT col_type_is(
+    'public', 'check_bank_accounts', 'account_number_encrypted', 'text',
+    'check_bank_accounts.account_number_encrypted is text'
+);
+SELECT col_type_is(
+    'public', 'check_bank_accounts', 'account_number_last4', 'text',
+    'check_bank_accounts.account_number_last4 is text'
+);
+SELECT col_type_is(
+    'public', 'check_bank_accounts', 'print_bank_info', 'boolean',
+    'check_bank_accounts.print_bank_info is boolean'
+);
+SELECT col_default_is(
+    'public', 'check_bank_accounts', 'print_bank_info', 'false',
+    'print_bank_info defaults to false'
+);
+
+-- Setup: create restaurant + bank account + owner user, simulate auth
+ALTER TABLE public.restaurants DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.check_bank_accounts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_restaurants DISABLE ROW LEVEL SECURITY;
+
+INSERT INTO public.restaurants (id, name)
+VALUES ('00000000-0000-0000-0000-c1c100000001'::uuid, 'pgTAP MICR Restaurant')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+INSERT INTO auth.users (id, email)
+VALUES ('00000000-0000-0000-0000-c1c100000a01'::uuid, 'micr-owner@test.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
+VALUES (
+  '00000000-0000-0000-0000-c1c100000a01'::uuid,
+  '00000000-0000-0000-0000-c1c100000001'::uuid,
+  'owner'
+)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
+
+-- Insert the bank account row we'll use across the rest of the assertions
+DELETE FROM public.check_bank_accounts
+  WHERE id = '00000000-0000-0000-0000-c1c100000acc'::uuid;
+INSERT INTO public.check_bank_accounts (id, restaurant_id, account_name)
+VALUES (
+  '00000000-0000-0000-0000-c1c100000acc'::uuid,
+  '00000000-0000-0000-0000-c1c100000001'::uuid,
+  'pgTAP MICR Account'
+);
+
+-- Routing-format CHECK constraint
+SELECT throws_ok(
+    $$UPDATE public.check_bank_accounts SET routing_number = '12345'
+      WHERE id = '00000000-0000-0000-0000-c1c100000acc'::uuid$$,
+    '23514',
+    NULL,
+    'CHECK constraint rejects 5-digit routing'
+);
+
+SELECT throws_ok(
+    $$UPDATE public.check_bank_accounts SET routing_number = 'abcdefghi'
+      WHERE id = '00000000-0000-0000-0000-c1c100000acc'::uuid$$,
+    '23514',
+    NULL,
+    'CHECK constraint rejects alphabetic routing'
+);
+
+SELECT lives_ok(
+    $$UPDATE public.check_bank_accounts SET routing_number = '111000614'
+      WHERE id = '00000000-0000-0000-0000-c1c100000acc'::uuid$$,
+    'CHECK constraint accepts valid 9-digit routing'
+);
+
+-- Switch to authenticated session for the owner so the SECURITY DEFINER RPCs
+-- pass their auth.uid() check.
+SET LOCAL role TO authenticated;
+SELECT set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-c1c100000a01","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub',
+  '00000000-0000-0000-0000-c1c100000a01', true);
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+
+SELECT lives_ok(
+    $$SELECT public.set_check_bank_account_secrets(
+        '00000000-0000-0000-0000-c1c100000acc'::uuid,
+        '111000614',
+        '2907959096'
+      )$$,
+    'set_check_bank_account_secrets succeeds for owner'
+);
+
+-- Switch back to superuser to inspect the encrypted column
+RESET ROLE;
+
+SELECT is(
+    (SELECT account_number_last4 FROM public.check_bank_accounts
+       WHERE id = '00000000-0000-0000-0000-c1c100000acc'::uuid),
+    '9096',
+    'account_number_last4 is persisted as last 4 digits'
+);
+
+SELECT isnt(
+    (SELECT account_number_encrypted FROM public.check_bank_accounts
+       WHERE id = '00000000-0000-0000-0000-c1c100000acc'::uuid),
+    '2907959096',
+    'account_number_encrypted is not the plaintext value'
+);
+
+-- Re-enter authenticated session for the get RPC + invalid-input checks
+SET LOCAL role TO authenticated;
+SELECT set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-c1c100000a01","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub',
+  '00000000-0000-0000-0000-c1c100000a01', true);
+SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+
+SELECT is(
+    (SELECT account_number FROM public.get_check_bank_account_secrets(
+       '00000000-0000-0000-0000-c1c100000acc'::uuid)),
+    '2907959096',
+    'get_check_bank_account_secrets round-trips the account number'
+);
+
+SELECT is(
+    (SELECT routing_number FROM public.get_check_bank_account_secrets(
+       '00000000-0000-0000-0000-c1c100000acc'::uuid)),
+    '111000614',
+    'get_check_bank_account_secrets returns the routing number'
+);
+
+SELECT throws_like(
+    $$SELECT public.set_check_bank_account_secrets(
+        '00000000-0000-0000-0000-c1c100000acc'::uuid, '123', '1234')$$,
+    '%Routing number must be exactly 9 digits%',
+    'set RPC rejects short routing with explicit error'
+);
+
+SELECT throws_like(
+    $$SELECT public.set_check_bank_account_secrets(
+        '00000000-0000-0000-0000-c1c100000acc'::uuid, '111000614', '12')$$,
+    '%Account number must be 4 to 17 digits%',
+    'set RPC rejects 2-digit account'
+);
+
+RESET ROLE;
 
 SELECT * FROM finish();
 ROLLBACK;

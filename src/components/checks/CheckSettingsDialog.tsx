@@ -110,12 +110,12 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
 
   // ---------- Bank account handlers ----------
 
-  const handleStartAdd = useCallback(() => {
+  function handleStartAdd() {
     setEditingAccount(null);
     setIsAddingAccount(true);
-  }, []);
+  }
 
-  const handleStartEdit = useCallback((account: CheckBankAccount) => {
+  function handleStartEdit(account: CheckBankAccount) {
     setIsAddingAccount(false);
     setEditingAccount({
       id: account.id,
@@ -125,15 +125,15 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
       is_default: account.is_default,
       print_bank_info: account.print_bank_info,
       routing_number: account.routing_number ?? '',
-      account_number: '', // never pre-fill — user must re-enter to change
+      account_number: '',
       account_number_last4: account.account_number_last4,
     });
-  }, []);
+  }
 
-  const handleCancelAccountForm = useCallback(() => {
+  function handleCancelAccountForm() {
     setEditingAccount(null);
     setIsAddingAccount(false);
-  }, []);
+  }
 
   const handleSaveAccount = useCallback(
     async (formData: AccountFormState) => {

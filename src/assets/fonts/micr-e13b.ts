@@ -21,10 +21,6 @@ async function loadFontBase64(): Promise<string> {
   return cachedBase64;
 }
 
-/**
- * Register the MICR E-13B font with the given jsPDF instance.
- * Returns the font family name to pass to doc.setFont().
- */
 export async function registerMicrFont(doc: jsPDF): Promise<string> {
   const base64 = await loadFontBase64();
   doc.addFileToVFS(MICR_FONT_FILENAME, base64);
@@ -32,20 +28,14 @@ export async function registerMicrFont(doc: jsPDF): Promise<string> {
   return MICR_FONT_FAMILY;
 }
 
-/**
- * The bundled MICR Encoding TTF (Digital Graphic Labs) maps the four
- * MICR control symbols to ASCII letters rather than Unicode 0x2446-0x2449.
- * Translate the Unicode-form output of formatMicrLine into the font's chars.
- *
- *   transit (⑆) -> 'A',  amount (⑇) -> 'B',  on-us (⑈) -> 'C',  dash (⑉) -> 'D'
- */
+// The bundled TTF maps MICR control symbols to ASCII letters:
+//   transit (⑆) → 'A',  on-us (⑈) → 'C'
 export const MICR_PDF_CHAR_MAP: Record<string, string> = {
   [MICR_TRANSIT]: 'A',
   [MICR_ON_US]: 'C',
 };
 
 export function toMicrPdfText(unicodeMicr: string): string {
-  if (Object.keys(MICR_PDF_CHAR_MAP).length === 0) return unicodeMicr;
   let out = '';
   for (const ch of unicodeMicr) {
     out += MICR_PDF_CHAR_MAP[ch] ?? ch;

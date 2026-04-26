@@ -188,16 +188,12 @@ export function useCheckBankAccounts() {
       const { data, error } = await (supabase.rpc as any)('get_check_bank_account_secrets', { p_id: id });
       if (error) throw new Error(error.message);
       if (!Array.isArray(data) || data.length === 0) return null;
-      const row = data[0] as { routing_number: string; account_number: string };
-      return {
-        routing_number: row.routing_number,
-        account_number: row.account_number,
-      };
+      const { routing_number, account_number } = data[0] as CheckBankAccountSecrets;
+      return { routing_number, account_number };
     },
     [],
   );
 
-  // Auto-create check bank accounts from connected banks when none exist
   const autoCreatedRef = useRef<string | null>(null);
 
   useEffect(() => {

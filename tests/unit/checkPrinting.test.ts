@@ -534,10 +534,11 @@ describe('generateCheckPDF', () => {
     // PDF user space origin is bottom-left; convert Y to inches-from-top.
     const tdY_in_from_top = 11 - tdY_pt / 72;
 
-    // Old buggy code: rightX = 8.0; jsPDF align: 'right' subtracted
+    // Old buggy code (PR #479): rightX = 8.0; jsPDF align: 'right' subtracted
     // getTextWidth(text) only, so Td X landed near 8.0 − 3.1 = 4.9".
-    // Our fix places leftX at (8.5 − 1.9375) − totalWidth ≈ 2.92" for
-    // a 3.1" text + 0.018" × 30 = 0.54" charSpace overhead.
+    // After PR #480: leftX = (8.5 − 1.9375) − totalWidth.
+    // After font-size fix (this PR): 32 chars × 0.125" pitch = 4.0" total →
+    // leftX ≈ 2.5625". Still inside the (0.5, 4.5) window below.
     expect(tdX_in).toBeGreaterThan(0.5);
     expect(tdX_in).toBeLessThan(4.5); // strictly less than the old buggy 4.9"
 
@@ -565,5 +566,56 @@ describe('generateCheckPDF', () => {
     expect(placement.rightEdgeX).toBeCloseTo(6.5625, 4);
     expect(placement.leftX).toBeCloseTo(2.9225, 3);
     expect(placement.baselineY).toBeCloseTo(3.1875, 4);
+  });
+
+  // -------------------------------------------------------------------------
+  // ANSI X9.27 / X9.100-160-1 require MICR-E13B characters at 0.117" tall and
+  // 0.125" pitch (8 cpi). Our bundled TTF (unitsPerEm=4096) hits that exactly
+  // at setFontSize(18) and produces 0.125" advance per glyph natively, so any
+  // additional charSpace (Tc) overshoots the spec pitch. Assert both values
+  // land in the rendered PDF stream so a regression to 12pt or to a non-zero
+  // Tc can't slip through silently.
+  // -------------------------------------------------------------------------
+  it('CRITICAL: MICR is rendered at setFontSize(18) with no extra charSpace (ANSI X9.27 spec)', async () => {
+    const config: CheckPrintConfig = {
+      business_name: 'X',
+      business_address_line1: null,
+      business_address_line2: null,
+      business_city: null,
+      business_state: null,
+      business_zip: null,
+      bank_name: 'Test Bank NA',
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number: '2907959096',
+    };
+    const doc = await generateCheckPDFAsync(config, [
+      { checkNumber: 1002, payeeName: 'X', amount: 1, issueDate: '2026-04-26' },
+    ]);
+    const output = doc.output();
+
+    // The MICR Tj contains the routing digits. Walk back from there to find
+    // the most recent `Tf` (font set + size) and any `Tc` (char-space) ops.
+    const tjIdx = output.indexOf('111000614');
+    expect(tjIdx).toBeGreaterThan(-1);
+
+    // 600 chars of context: enough to capture the BT block's font + Tc setup.
+    const before = output.slice(Math.max(0, tjIdx - 600), tjIdx);
+
+    // Tf op format: `/<FontName> <size> Tf`
+    const tfMatches = [...before.matchAll(/\/[A-Za-z0-9_+,]+\s+(-?\d+\.?\d*)\s+Tf/g)];
+    expect(tfMatches.length).toBeGreaterThan(0);
+    const lastTfSize = parseFloat(tfMatches[tfMatches.length - 1][1]);
+    // jsPDF emits the size in points exactly as passed to setFontSize.
+    expect(lastTfSize).toBe(18);
+
+    // Tc op format: `<value> Tc`. With charSpace=0 (or omitted in the call),
+    // jsPDF should not emit a non-zero Tc op for this Tj. If Tc is present
+    // at all, it must be 0.
+    const tcMatches = [...before.matchAll(/(-?\d+\.?\d*)\s+Tc(?![A-Za-z])/g)];
+    if (tcMatches.length > 0) {
+      const lastTc = parseFloat(tcMatches[tcMatches.length - 1][1]);
+      expect(lastTc).toBe(0);
+    }
   });
 });

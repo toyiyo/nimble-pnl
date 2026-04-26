@@ -491,4 +491,79 @@ describe('generateCheckPDF', () => {
     const output = doc.output();
     expect(output).not.toMatch(/111000614/);
   });
+
+  // -------------------------------------------------------------------------
+  // PR #479 regression: MICR was rendered with `align: 'right'` + `charSpace`,
+  // which jsPDF combines incorrectly — the rendered right edge overshot the
+  // align target by (N − 1) × charSpace and printed past the paper edge.
+  // The fix uses manual leftX placement via computeMicrPlacement so the right
+  // edge lands at pageWidth − 1.9375" (ANSI X9 position 14, where the on-us
+  // field meets the receiving-bank-encoded amount field).
+  // -------------------------------------------------------------------------
+  it('MICR line Td X is consistent with computeMicrPlacement, not align: "right" (PR #479 regression)', async () => {
+    const config: CheckPrintConfig = {
+      business_name: 'X',
+      business_address_line1: null,
+      business_address_line2: null,
+      business_city: null,
+      business_state: null,
+      business_zip: null,
+      bank_name: 'Test Bank NA',
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number: '2907959096',
+    };
+    const doc = await generateCheckPDFAsync(config, [
+      { checkNumber: 1002, payeeName: 'X', amount: 1, issueDate: '2026-04-26' },
+    ]);
+    const output = doc.output();
+
+    // Find the Tj containing the routing digits — that's the MICR.
+    const tjIdx = output.indexOf('111000614');
+    expect(tjIdx).toBeGreaterThan(-1);
+
+    // Walk backward and grab the last "<x> <y> Td" before that Tj.
+    const before = output.slice(Math.max(0, tjIdx - 400), tjIdx);
+    const tdMatches = [...before.matchAll(/(-?\d+\.?\d*)\s+(-?\d+\.?\d*)\s+Td/g)];
+    expect(tdMatches.length).toBeGreaterThan(0);
+    const lastTd = tdMatches[tdMatches.length - 1];
+    const tdX_pt = parseFloat(lastTd[1]);
+    const tdY_pt = parseFloat(lastTd[2]);
+
+    const tdX_in = tdX_pt / 72;
+    // PDF user space origin is bottom-left; convert Y to inches-from-top.
+    const tdY_in_from_top = 11 - tdY_pt / 72;
+
+    // Old buggy code: rightX = 8.0; jsPDF align: 'right' subtracted
+    // getTextWidth(text) only, so Td X landed near 8.0 − 3.1 = 4.9".
+    // Our fix places leftX at (8.5 − 1.9375) − totalWidth ≈ 2.92" for
+    // a 3.1" text + 0.018" × 30 = 0.54" charSpace overhead.
+    expect(tdX_in).toBeGreaterThan(0.5);
+    expect(tdX_in).toBeLessThan(4.5); // strictly less than the old buggy 4.9"
+
+    // Baseline must be inside the ANSI clear band: 3/16" to 7/16" above the
+    // bottom of a 3.5" check, i.e. 3.0625" to 3.3125" from top of page.
+    expect(tdY_in_from_top).toBeGreaterThanOrEqual(3.0);
+    expect(tdY_in_from_top).toBeLessThanOrEqual(3.35);
+  });
+
+  it('MICR right edge lands at pageWidth − 1.9375" (ANSI X9 position 14)', async () => {
+    // computeMicrPlacement is the source of truth for where the right edge
+    // lands. This test asserts the constants and math directly, separate from
+    // jsPDF's PDF-stream encoding which is brittle to assert against.
+    const { computeMicrPlacement, MICR_RIGHT_MARGIN_INCHES } = await import(
+      '../../src/utils/checkPrinting'
+    );
+    expect(MICR_RIGHT_MARGIN_INCHES).toBeCloseTo(1.9375, 4);
+    const placement = computeMicrPlacement({
+      pageWidth: 8.5,
+      checkBottomY: 3.5,
+      measuredTextWidth: 3.1,
+      charCount: 31,
+      charSpace: 0.018,
+    });
+    expect(placement.rightEdgeX).toBeCloseTo(6.5625, 4);
+    expect(placement.leftX).toBeCloseTo(2.9225, 3);
+    expect(placement.baselineY).toBeCloseTo(3.1875, 4);
+  });
 });

@@ -13,10 +13,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
 import { Settings, Loader2, Building2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { useCheckSettings } from '@/hooks/useCheckSettings';
 import { useCheckBankAccounts } from '@/hooks/useCheckBankAccounts';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { isValidAbaRouting } from '@/lib/abaChecksum';
 
 import type { UpsertCheckSettingsInput } from '@/hooks/useCheckSettings';
 import type { UpsertCheckBankAccountInput, CheckBankAccount } from '@/hooks/useCheckBankAccounts';
@@ -32,6 +34,11 @@ interface AccountFormState {
   bank_name: string;
   next_check_number: number;
   is_default: boolean;
+  print_bank_info: boolean;
+  // Plaintext only during entry; never re-displayed after save.
+  routing_number: string;
+  account_number: string;
+  account_number_last4: string | null;
 }
 
 const emptyAccountForm: AccountFormState = {
@@ -39,12 +46,16 @@ const emptyAccountForm: AccountFormState = {
   bank_name: '',
   next_check_number: 1001,
   is_default: false,
+  print_bank_info: false,
+  routing_number: '',
+  account_number: '',
+  account_number_last4: null,
 };
 
 export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
   const { settings, saveSettings } = useCheckSettings();
-  const { accounts, saveAccount, deleteAccount } = useCheckBankAccounts();
+  const { accounts, saveAccount, saveAccountSecrets, deleteAccount } = useCheckBankAccounts();
 
   const [form, setForm] = useState<UpsertCheckSettingsInput>({
     business_name: '',
@@ -112,6 +123,10 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
       bank_name: account.bank_name ?? '',
       next_check_number: account.next_check_number,
       is_default: account.is_default,
+      print_bank_info: account.print_bank_info,
+      routing_number: account.routing_number ?? '',
+      account_number: '', // never pre-fill — user must re-enter to change
+      account_number_last4: account.account_number_last4,
     });
   }, []);
 
@@ -122,22 +137,45 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
 
   const handleSaveAccount = useCallback(
     async (formData: AccountFormState) => {
+      // Validate MICR inputs before any save when print toggle is on.
+      if (formData.print_bank_info) {
+        if (!isValidAbaRouting(formData.routing_number)) {
+          toast.error('Enter a valid 9-digit ABA routing number.');
+          return;
+        }
+        // Account number must be present either as new entry OR as previously saved (edit mode with last4).
+        const hasExistingSecret = !!formData.account_number_last4 && !!formData.id;
+        if (!hasExistingSecret && !/^\d{4,17}$/.test(formData.account_number)) {
+          toast.error('Enter a 4–17 digit account number.');
+          return;
+        }
+      }
+
       const input: UpsertCheckBankAccountInput = {
         id: formData.id,
         account_name: formData.account_name,
         bank_name: formData.bank_name || null,
         next_check_number: formData.next_check_number,
         is_default: formData.is_default,
+        print_bank_info: formData.print_bank_info,
       };
       try {
-        await saveAccount.mutateAsync(input);
+        const saved = await saveAccount.mutateAsync(input);
+        // Persist encrypted secrets only when MICR is enabled and the user supplied a fresh account number.
+        if (formData.print_bank_info && formData.account_number.length >= 4) {
+          await saveAccountSecrets.mutateAsync({
+            id: saved.id,
+            routing: formData.routing_number,
+            account: formData.account_number,
+          });
+        }
         setEditingAccount(null);
         setIsAddingAccount(false);
       } catch {
         // Error toast is handled by the mutation's onError callback
       }
     },
-    [saveAccount],
+    [saveAccount, saveAccountSecrets],
   );
 
   const handleConfirmDelete = useCallback(
@@ -443,8 +481,10 @@ function AccountInlineForm({ initial, isSaving, onSave, onCancel }: AccountInlin
   const [local, setLocal] = useState<AccountFormState>(initial);
   const isEdit = !!initial.id;
 
-  const updateLocal = (field: keyof AccountFormState, value: string | number | boolean) =>
-    setLocal((prev) => ({ ...prev, [field]: value }));
+  const updateLocal = <K extends keyof AccountFormState>(
+    field: K,
+    value: AccountFormState[K],
+  ) => setLocal((prev) => ({ ...prev, [field]: value }));
 
   const formId = isEdit ? `edit-account-${initial.id}` : 'new-account';
 
@@ -514,6 +554,101 @@ function AccountInlineForm({ initial, isSaving, onSave, onCancel }: AccountInlin
                 Default account
               </Label>
             </div>
+          </div>
+        </div>
+
+        {/* Bank info for printing — toggle reveals routing + account inputs */}
+        <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+          <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold text-foreground">Bank info for printing</h3>
+            <Switch
+              id={`${formId}-print-bank-info`}
+              checked={local.print_bank_info}
+              onCheckedChange={(checked) => updateLocal('print_bank_info', checked)}
+              className="data-[state=checked]:bg-foreground"
+              aria-label="Print bank name and account info on checks"
+            />
+          </div>
+          <div className="p-4 space-y-4">
+            <p className="text-[13px] text-muted-foreground">
+              Turn on if you print on blank check stock. Leave off if your check stock
+              already has the bank name and MICR line pre-printed.
+            </p>
+            {local.print_bank_info && (
+              <>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor={`${formId}-routing`}
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    Routing Number
+                  </Label>
+                  <Input
+                    id={`${formId}-routing`}
+                    inputMode="numeric"
+                    maxLength={9}
+                    placeholder="111000614"
+                    value={local.routing_number}
+                    onChange={(e) =>
+                      updateLocal('routing_number', e.target.value.replace(/\D/g, '').slice(0, 9))
+                    }
+                    className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    aria-describedby={`${formId}-routing-help`}
+                  />
+                  <p id={`${formId}-routing-help`} className="text-[12px] text-muted-foreground">
+                    9-digit ABA routing number printed on the bottom of your checks.
+                  </p>
+                  {local.routing_number.length === 9 && !isValidAbaRouting(local.routing_number) && (
+                    <p className="text-[12px] text-destructive" role="alert">
+                      Routing number checksum is invalid. Please double-check the digits.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label
+                    htmlFor={`${formId}-account`}
+                    className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    Account Number
+                  </Label>
+                  {local.account_number_last4 && local.account_number === '' ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id={`${formId}-account-masked`}
+                        disabled
+                        value={`••••${local.account_number_last4}`}
+                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => updateLocal('account_number_last4', null)}
+                        className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  ) : (
+                    <Input
+                      id={`${formId}-account`}
+                      inputMode="numeric"
+                      maxLength={17}
+                      placeholder="2907959096"
+                      value={local.account_number}
+                      onChange={(e) =>
+                        updateLocal('account_number', e.target.value.replace(/\D/g, '').slice(0, 17))
+                      }
+                      className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                      aria-describedby={`${formId}-account-help`}
+                    />
+                  )}
+                  <p id={`${formId}-account-help`} className="text-[12px] text-muted-foreground">
+                    Stored encrypted; only the last 4 digits will be shown after saving.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

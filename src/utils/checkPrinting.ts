@@ -29,6 +29,44 @@ export interface PrintSecretsInput {
   account_number: string;
 }
 
+// ---------------------------------------------------------------------------
+// MICR placement (ANSI X9.100-160-1)
+// ---------------------------------------------------------------------------
+
+// ANSI X9.100-160-1 reserves positions 1–12 (rightmost 1.5") for the amount
+// field encoded by the receiving bank, plus position 13 as a mandatory blank.
+// The on-us symbol (⑈) must land at position 14: 5/16" + 13 × 1/8" = 1.9375".
+export const MICR_RIGHT_MARGIN_INCHES = 1.9375;
+
+// ANSI allows 3/16"–7/16" from the check bottom; 5/16" is the midpoint and
+// matches observed production placement (~0.314").
+export const MICR_BASELINE_FROM_CHECK_BOTTOM_INCHES = 0.3125;
+
+// Standard check-on-top height in inches. Shared with renderCheckPageSync.
+const CHECK_HEIGHT_INCHES = 3.5;
+
+// MICR-E13B inter-character spacing (inches). Tuned to render close to the
+// ANSI 8 cpi pitch with the bundled TTF.
+const MICR_CHAR_SPACE_INCHES = 0.018;
+
+export function computeMicrPlacement(input: {
+  pageWidth: number;
+  checkBottomY: number;
+  measuredTextWidth: number;
+  charCount: number;
+  charSpace: number;
+}): { leftX: number; baselineY: number; rightEdgeX: number; totalWidth: number } {
+  const interCharGaps = Math.max(0, input.charCount - 1);
+  const totalWidth = input.measuredTextWidth + input.charSpace * interCharGaps;
+  const rightEdgeX = input.pageWidth - MICR_RIGHT_MARGIN_INCHES;
+  return {
+    leftX: rightEdgeX - totalWidth,
+    baselineY: input.checkBottomY - MICR_BASELINE_FROM_CHECK_BOTTOM_INCHES,
+    rightEdgeX,
+    totalWidth,
+  };
+}
+
 export function buildPrintConfig(
   settings: Omit<CheckPrintConfig, 'bank_name' | 'print_bank_info' | 'routing_number' | 'account_number'>,
   bankAccount: { bank_name: string | null; print_bank_info: boolean } | null,
@@ -107,7 +145,7 @@ function buildCityStateZip(settings: CheckPrintConfig): string {
 function renderCheckPageSync(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
   const pageWidth = 8.5;
   const margin = 0.5;
-  const checkHeight = 3.5; // Standard check-on-top height in inches
+  const checkHeight = CHECK_HEIGHT_INCHES;
 
   // Business info (top-left)
   doc.setFontSize(10);
@@ -296,9 +334,17 @@ async function renderMicrLine(
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
 
-  const micrY = 3.30;
-  const rightX = pageWidth - 0.5;
-  doc.text(renderable, rightX, micrY, { align: 'right', charSpace: 0.018 });
+  // jsPDF's `align: 'right'` ignores charSpace, so leftX is computed manually.
+  const measuredTextWidth = doc.getTextWidth(renderable);
+  const { leftX, baselineY } = computeMicrPlacement({
+    pageWidth,
+    checkBottomY: CHECK_HEIGHT_INCHES,
+    measuredTextWidth,
+    charCount: renderable.length,
+    charSpace: MICR_CHAR_SPACE_INCHES,
+  });
+
+  doc.text(renderable, leftX, baselineY, { charSpace: MICR_CHAR_SPACE_INCHES });
 
   doc.setFont('helvetica', 'normal');
 }

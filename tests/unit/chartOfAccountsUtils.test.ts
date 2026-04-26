@@ -1,6 +1,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createDefaultChartOfAccounts, DEFAULT_ACCOUNTS } from '@/lib/chartOfAccountsUtils';
+import {
+  createDefaultChartOfAccounts,
+  DEFAULT_ACCOUNTS,
+  isTransferCategoryType,
+} from '@/lib/chartOfAccountsUtils';
 
 // Mock Supabase client
 const mockUpsert = vi.fn();
@@ -83,6 +87,38 @@ describe('chartOfAccountsUtils', () => {
         const cashAccount = DEFAULT_ACCOUNTS.find(a => a.account_code === '1000');
         expect(cashAccount).toBeDefined();
         expect(cashAccount?.account_name).toBe('Cash & Cash Equivalents');
+    });
+  });
+
+  describe('isTransferCategoryType', () => {
+    it.each(['asset', 'liability', 'equity'] as const)(
+      'returns true for non-P&L type "%s"',
+      (type) => {
+        expect(isTransferCategoryType(type)).toBe(true);
+      },
+    );
+
+    it.each(['expense', 'cogs', 'revenue'] as const)(
+      'returns false for P&L type "%s"',
+      (type) => {
+        expect(isTransferCategoryType(type)).toBe(false);
+      },
+    );
+
+    it('returns false for null', () => {
+      expect(isTransferCategoryType(null)).toBe(false);
+    });
+
+    it('returns false for undefined', () => {
+      expect(isTransferCategoryType(undefined)).toBe(false);
+    });
+
+    it('returns false for an empty string', () => {
+      expect(isTransferCategoryType('')).toBe(false);
+    });
+
+    it('returns false for an unknown string', () => {
+      expect(isTransferCategoryType('something_else')).toBe(false);
     });
   });
 });

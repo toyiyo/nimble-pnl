@@ -1,4 +1,23 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import type { AccountType } from '@/hooks/useChartOfAccounts';
+
+const NON_PNL_ACCOUNT_TYPES: ReadonlySet<AccountType> = new Set([
+  'asset',
+  'liability',
+  'equity',
+]);
+
+/**
+ * Categories whose chart-of-accounts type is asset, liability, or equity
+ * are not P&L events — e.g. "Transfer Clearing Account" or "Inter-Account
+ * Transfer". The dashboard's income/expense aggregations must exclude them.
+ */
+export function isTransferCategoryType(
+  accountType: string | null | undefined,
+): boolean {
+  if (!accountType) return false;
+  return NON_PNL_ACCOUNT_TYPES.has(accountType as AccountType);
+}
 
 export const DEFAULT_ACCOUNTS = [
   // ASSETS (1000-1999)

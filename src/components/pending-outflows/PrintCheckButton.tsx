@@ -27,6 +27,7 @@ import { useCheckAuditLog } from '@/hooks/useCheckAuditLog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
 import {
   generateCheckPDF,
+  generateCheckPDFAsync,
   generateCheckFilename,
   buildPrintConfig,
   numberToWords,
@@ -43,7 +44,7 @@ interface PrintCheckButtonProps {
 export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const { selectedRestaurant } = useRestaurantContext();
   const { settings } = useCheckSettings();
-  const { accounts, defaultAccount, claimCheckNumbers: claimForAccount } = useCheckBankAccounts();
+  const { accounts, defaultAccount, claimCheckNumbers: claimForAccount, fetchAccountSecrets } = useCheckBankAccounts();
   const { logCheckAction } = useCheckAuditLog();
   const { updatePendingOutflow } = usePendingOutflowMutations();
 
@@ -78,13 +79,31 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
     setIsPrinting(true);
     try {
-      // Claim one check number via hook
+      // Fetch MICR secrets first so any failure aborts BEFORE we claim a check
+      // number or write a "printed" audit row that wouldn't match a real PDF.
+      let secrets: { routing_number: string; account_number: string } | null = null;
+      if (selectedAccount.print_bank_info) {
+        if (!selectedAccount.routing_number || !selectedAccount.account_number_last4) {
+          toast.error('Bank info incomplete. Open Check Settings to add the routing and account numbers, or turn off "Print bank info" for this account.');
+          return;
+        }
+        try {
+          secrets = await fetchAccountSecrets(selectedAccount.id);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Couldn't load bank info");
+          return;
+        }
+        if (!secrets) {
+          toast.error('Account number is missing. Re-enter it in Check Settings.');
+          return;
+        }
+      }
+
       const checkNumber = await claimForAccount.mutateAsync({
         accountId: selectedAccount.id,
         count: 1,
       });
 
-      // Update the existing pending outflow with check info BEFORE generating PDF
       await updatePendingOutflow.mutateAsync({
         id: expense.id,
         input: {
@@ -95,7 +114,6 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
         },
       });
 
-      // Audit log
       await logCheckAction.mutateAsync({
         check_number: checkNumber,
         payee_name: expense.vendor_name,
@@ -107,7 +125,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
         check_bank_account_id: selectedAccount.id,
       });
 
-      const pdf = generateCheckPDF(buildPrintConfig(settings, selectedAccount.bank_name), [
+      const checks = [
         {
           checkNumber,
           payeeName: expense.vendor_name,
@@ -115,7 +133,11 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
           issueDate: expense.issue_date,
           memo: memo.trim() || undefined,
         },
-      ]);
+      ];
+      const config = buildPrintConfig(settings, selectedAccount, secrets);
+      const pdf = selectedAccount.print_bank_info
+        ? await generateCheckPDFAsync(config, checks)
+        : generateCheckPDF(config, checks);
       const filename = generateCheckFilename(selectedRestaurant.restaurant.name, [checkNumber]);
       pdf.save(filename);
 

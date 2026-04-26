@@ -147,7 +147,13 @@ Use subagent-driven-development to parallelize independent tasks.
 
 **Skip condition:** None.
 
-## Phase 7: CodeRabbit Review
+## Phase 7: CodeRabbit Review (Local CLI)
+
+**This is the LOCAL CLI review only.** It is independent of the CodeRabbit
+GitHub bot that posts inline comments on the PR after push. The bot's
+comments are handled in Phase 9d, which is non-skippable. Don't conflate the
+two — passing the local CLI here does not mean the bot will have nothing
+to say after push.
 
 **Command:** `coderabbit review --plain --type committed`
 
@@ -256,22 +262,65 @@ For each actionable item:
 - **SonarCloud is a required gate** — quality gate MUST pass (coverage ≥80% on new code, zero critical issues).
 - Update `progress.md` at each iteration with what was fixed.
 
-### 9d: Done
+### 9d: Review-Comment Triage Gate (REQUIRED before declaring Done)
 
-When ALL of these are true:
+**CI green ≠ comments addressed.** A passing `gh pr checks` only means the
+status checks reported success. Review bots (CodeRabbit, Codex, Copilot) and
+human reviewers post inline comments that are NOT reflected in check status.
+Skipping this step has shipped real bugs.
+
+**Mandatory steps before claiming Done:**
+
+1. Run the queue refresh — fetches inline comments, issue comments, SonarCloud
+   issues, and quality-gate status into `dev-tools/review_queue.json`:
+   ```bash
+   dev-tools/refresh-queue.sh --pr <PR_NUMBER> --skip-tests
+   ```
+
+2. Explicitly fetch each review bot's comments by author and confirm none are
+   open. The queue ingest filters out chitchat but you must verify directly:
+   ```bash
+   # OWNER_REPO must be in "owner/repo" form, e.g., toyiyo/nimble-pnl.
+   # Easiest: derive it from the current checkout.
+   OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+   gh api "repos/$OWNER_REPO/pulls/<PR_NUMBER>/comments" --paginate \
+     | jq -r '.[] | select(.user.login | test("coderabbitai|codex|copilot"; "i"))
+              | "\(.user.login)\t\(.path):\(.line // .original_line)\t\(.body | .[0:140])"'
+   gh api "repos/$OWNER_REPO/issues/<PR_NUMBER>/comments" --paginate \
+     | jq -r '.[] | select(.user.login | test("coderabbitai|codex|copilot"; "i"))
+              | "\(.user.login)\t\(.body | .[0:200])"'
+   ```
+
+3. For every bot/human comment, classify and act:
+   - **Bug / security / correctness** → Fix it. Commit. Loop back to 9b.
+   - **Refactor / suggestion** → Decide: implement OR reply on the PR with
+     a short reason for declining (don't silently ignore).
+   - **Nit / informational** → Skip, but only after reading.
+
+4. **Red-flag thoughts** that mean STOP and re-triage:
+   - "CodeRabbit's check passed, so the comments must be fine" — WRONG. The
+     check just means the review ran, not that comments are addressed.
+   - "Codex doesn't have a check, so there's nothing to review" — WRONG.
+     Codex posts inline comments without a check status.
+   - "These are all minor" — Read each one. Some "minor" comments are real
+     bugs (missing combined `isPending`, false-positive regex, leaking
+     secrets across renders).
+
+### 9e: Done
+
+ALL of these MUST be true:
 - `gh pr checks` shows all checks passing
-- SonarCloud quality gate passes
+- SonarCloud quality gate passes (coverage ≥80% on new code, zero criticals)
+- 9d triage complete: every CodeRabbit/Codex/Copilot/human comment is either
+  fixed (with a commit referencing the comment) or replied-to with a reason
 - No open critical/major items in `dev-tools/review_queue.json`
 
 Then:
 - Update `progress.md` with `## Status: Ready for merge`
-- Notify the user: "PR #NNN is green and ready for review/merge" with a summary
-
-### 9e: Done
-
-When all CI checks pass and review comments are addressed:
-- Update `progress.md` with final status: `## Status: Ready for merge`
-- Notify the user: "PR #NNN is green and ready for review/merge" with a summary of what was built
+- Notify the user: "PR #NNN is green AND review comments addressed, ready for
+  review/merge" with a summary that includes the comment-triage outcome
+  (e.g., "12 review comments: 10 fixed in 3 commits, 2 declined with reply")
 
 **Skip condition:** None.
 

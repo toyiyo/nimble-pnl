@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { format } from 'date-fns';
+import { formatMicrLine } from './micrLine';
+import { registerMicrFont, toMicrPdfText } from '@/assets/fonts/micr-e13b';
 
 export interface CheckPrintConfig {
   business_name: string;
@@ -9,6 +11,9 @@ export interface CheckPrintConfig {
   business_state: string | null;
   business_zip: string | null;
   bank_name: string | null;
+  print_bank_info: boolean;
+  routing_number: string | null;
+  account_number: string | null;
 }
 
 export interface CheckData {
@@ -19,14 +24,24 @@ export interface CheckData {
   memo?: string;
 }
 
-export function buildPrintConfig(
-  settings: Omit<CheckPrintConfig, 'bank_name'>,
-  bankName: string | null,
-): CheckPrintConfig {
-  return { ...settings, bank_name: bankName };
+export interface PrintSecretsInput {
+  routing_number: string;
+  account_number: string;
 }
 
-// --- Number to words conversion ---
+export function buildPrintConfig(
+  settings: Omit<CheckPrintConfig, 'bank_name' | 'print_bank_info' | 'routing_number' | 'account_number'>,
+  bankAccount: { bank_name: string | null; print_bank_info: boolean } | null,
+  secrets: PrintSecretsInput | null,
+): CheckPrintConfig {
+  return {
+    ...settings,
+    bank_name: bankAccount?.bank_name ?? null,
+    print_bank_info: Boolean(bankAccount?.print_bank_info && secrets),
+    routing_number: secrets?.routing_number ?? null,
+    account_number: secrets?.account_number ?? null,
+  };
+}
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 const TEENS = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -46,42 +61,28 @@ function convertLessThanOneThousand(n: number): string {
   return remainder ? `${hundredsPart} ${convertLessThanOneThousand(remainder)}` : hundredsPart;
 }
 
-/**
- * Convert a dollar amount to words for check printing.
- * e.g. 1234.56 → "One Thousand Two Hundred Thirty-Four and 56/100"
- */
+function dollarsToWords(n: number): string {
+  if (n === 0) return 'Zero';
+  const billion = Math.floor(n / 1_000_000_000);
+  const million = Math.floor((n % 1_000_000_000) / 1_000_000);
+  const thousand = Math.floor((n % 1_000_000) / 1_000);
+  const remainder = n % 1_000;
+  let result = '';
+  if (billion) result += `${convertLessThanOneThousand(billion)} Billion `;
+  if (million) result += `${convertLessThanOneThousand(million)} Million `;
+  if (thousand) result += `${convertLessThanOneThousand(thousand)} Thousand `;
+  if (remainder) result += convertLessThanOneThousand(remainder);
+  return result.trim();
+}
+
 export function numberToWords(amount: number): string {
   if (amount < 0) return numberToWords(-amount);
   if (amount === 0) return 'Zero and 00/100';
-
-  // Use integer math to avoid floating-point precision issues
   const totalCents = Math.round(amount * 100);
-  const dollars = Math.floor(totalCents / 100);
   const cents = totalCents % 100;
-
-  function convertToWords(n: number): string {
-    if (n === 0) return 'Zero';
-
-    const billion = Math.floor(n / 1_000_000_000);
-    const million = Math.floor((n % 1_000_000_000) / 1_000_000);
-    const thousand = Math.floor((n % 1_000_000) / 1_000);
-    const remainder = n % 1_000;
-
-    let result = '';
-    if (billion) result += `${convertLessThanOneThousand(billion)} Billion `;
-    if (million) result += `${convertLessThanOneThousand(million)} Million `;
-    if (thousand) result += `${convertLessThanOneThousand(thousand)} Thousand `;
-    if (remainder) result += convertLessThanOneThousand(remainder);
-
-    return result.trim();
-  }
-
-  const dollarsInWords = convertToWords(dollars);
   const centsFormatted = cents.toString().padStart(2, '0');
-  return `${dollarsInWords} and ${centsFormatted}/100`;
+  return `${dollarsToWords(Math.floor(totalCents / 100))} and ${centsFormatted}/100`;
 }
-
-// --- Check PDF generation ---
 
 function formatCheckAmount(amount: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -103,20 +104,10 @@ function buildCityStateZip(settings: CheckPrintConfig): string {
   return parts.join(' ');
 }
 
-/**
- * Render one check page (top check layout):
- *  - Top third: the actual check
- *  - Middle third: payee record stub
- *  - Bottom third: company record stub
- */
-function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
+function renderCheckPageSync(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
   const pageWidth = 8.5;
   const margin = 0.5;
   const checkHeight = 3.5; // Standard check-on-top height in inches
-
-  // =====================
-  // TOP: Actual check
-  // =====================
 
   // Business info (top-left)
   doc.setFontSize(10);
@@ -181,7 +172,6 @@ function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckDat
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   const amountInWords = numberToWords(check.amount);
-  // Truncate if too long for the line
   const maxWordsWidth = pageWidth - margin - 1.6 - margin;
   let displayWords = amountInWords;
   while (doc.getTextWidth(displayWords) > maxWordsWidth && displayWords.length > 20) {
@@ -192,15 +182,24 @@ function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckDat
   doc.setFontSize(8);
   doc.text('DOLLARS', pageWidth - margin - 1.3, amountWordsY);
 
-  // Bank name
-  if (settings.bank_name) {
-    doc.setFontSize(9);
+  // Bank name sits above the payor block so it doesn't collide with long
+  // business names that center-extend across the top band. Shrink long names
+  // so they always fit between the page margins on a single line.
+  if (settings.print_bank_info && settings.bank_name) {
     doc.setFont('helvetica', 'bold');
-    doc.text(settings.bank_name, margin, 2.2);
+    const maxBankNameWidth = pageWidth - 2 * margin;
+    let bankFontSize = 11;
+    doc.setFontSize(bankFontSize);
+    while (doc.getTextWidth(settings.bank_name) > maxBankNameWidth && bankFontSize > 8) {
+      bankFontSize -= 0.5;
+      doc.setFontSize(bankFontSize);
+    }
+    doc.text(settings.bank_name, pageWidth / 2, 0.30, { align: 'center' });
   }
 
-  // Memo line
-  const memoY = 2.85;
+  // Memo line — moved up from y=2.85 to y=2.55 so the MICR clear band
+  // (bottom 5/8" of the check, y=2.875–3.50) stays empty.
+  const memoY = 2.55;
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.text('Memo', margin, memoY);
@@ -222,22 +221,15 @@ function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckDat
   doc.line(0, checkHeight, pageWidth, checkHeight);
   doc.setLineDashPattern([], 0);
 
-  // =====================
-  // MIDDLE: Payee record stub
-  // =====================
   const stub1Top = checkHeight + 0.15;
   renderStub(doc, 'PAYEE RECORD', check, formattedDate, stub1Top, margin, pageWidth);
 
-  // Perforation line between stubs
-  const stub1Bottom = 7.0; // 3.5" check + 3.5" stub1
+  const stub1Bottom = 7.0;
   doc.setLineDashPattern([2, 2], 0);
   doc.setLineWidth(0.003);
   doc.line(0, stub1Bottom, pageWidth, stub1Bottom);
   doc.setLineDashPattern([], 0);
 
-  // =====================
-  // BOTTOM: Company record stub
-  // =====================
   const stub2Top = stub1Bottom + 0.15;
   renderStub(doc, 'COMPANY RECORD', check, formattedDate, stub2Top, margin, pageWidth);
 }
@@ -283,10 +275,46 @@ function renderStub(
   doc.setDrawColor(0, 0, 0);
 }
 
+async function renderMicrLine(
+  doc: jsPDF,
+  check: CheckData,
+  settings: CheckPrintConfig,
+  pageWidth: number,
+): Promise<void> {
+  if (!settings.print_bank_info || !settings.routing_number || !settings.account_number) {
+    return;
+  }
+  const fontFamily = await registerMicrFont(doc);
+  const micr = formatMicrLine({
+    checkNumber: check.checkNumber,
+    routingNumber: settings.routing_number,
+    accountNumber: settings.account_number,
+  });
+  const renderable = toMicrPdfText(micr);
+
+  doc.setFont(fontFamily, 'normal');
+  doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
+
+  const micrY = 3.30;
+  const rightX = pageWidth - 0.5;
+  doc.text(renderable, rightX, micrY, { align: 'right', charSpace: 0.018 });
+
+  doc.setFont('helvetica', 'normal');
+}
+
+async function renderCheckPage(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
+  renderCheckPageSync(doc, settings, check);
+  await renderMicrLine(doc, check, settings, 8.5);
+}
+
 export function generateCheckPDF(
   settings: CheckPrintConfig,
   checks: CheckData[],
 ): jsPDF {
+  if (settings.print_bank_info) {
+    throw new Error('print_bank_info requires generateCheckPDFAsync (font loading is async)');
+  }
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'in',
@@ -295,8 +323,26 @@ export function generateCheckPDF(
 
   checks.forEach((check, index) => {
     if (index > 0) doc.addPage();
-    renderCheckPage(doc, settings, check);
+    renderCheckPageSync(doc, settings, check);
   });
+
+  return doc;
+}
+
+export async function generateCheckPDFAsync(
+  settings: CheckPrintConfig,
+  checks: CheckData[],
+): Promise<jsPDF> {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'in',
+    format: 'letter',
+  });
+
+  for (let i = 0; i < checks.length; i++) {
+    if (i > 0) doc.addPage();
+    await renderCheckPage(doc, settings, checks[i]);
+  }
 
   return doc;
 }

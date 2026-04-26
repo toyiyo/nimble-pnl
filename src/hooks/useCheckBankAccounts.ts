@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -13,6 +13,11 @@ export interface CheckBankAccount {
   next_check_number: number;
   is_default: boolean;
   is_active: boolean;
+  // MICR-printing fields. account_number_encrypted is intentionally NOT exposed —
+  // plaintext is fetched on demand via fetchAccountSecrets.
+  routing_number: string | null;
+  account_number_last4: string | null;
+  print_bank_info: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +30,12 @@ export interface UpsertCheckBankAccountInput {
   next_check_number?: number;
   is_default?: boolean;
   is_active?: boolean;
+  print_bank_info?: boolean;
+}
+
+export interface CheckBankAccountSecrets {
+  routing_number: string;
+  account_number: string;
 }
 
 export function useCheckBankAccounts() {
@@ -38,7 +49,7 @@ export function useCheckBankAccounts() {
       if (!restaurantId) throw new Error('No restaurant selected');
       const { data, error } = await supabase
         .from('check_bank_accounts' as any)
-        .select('id, restaurant_id, account_name, bank_name, connected_bank_id, next_check_number, is_default, is_active, created_at, updated_at')
+        .select('id, restaurant_id, account_name, bank_name, connected_bank_id, next_check_number, is_default, is_active, routing_number, account_number_last4, print_bank_info, created_at, updated_at')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .order('is_default', { ascending: false })
@@ -158,7 +169,56 @@ export function useCheckBankAccounts() {
     },
   });
 
-  // Auto-create check bank accounts from connected banks when none exist
+  const saveAccountSecrets = useMutation({
+    mutationFn: async ({ id, routing, account }: { id: string; routing: string; account: string }) => {
+      const { error } = await (supabase.rpc as any)('set_check_bank_account_secrets', {
+        p_id: id,
+        p_routing: routing,
+        p_account: account,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['check-bank-accounts', restaurantId] });
+    },
+  });
+
+  const updateAccountRouting = useMutation({
+    mutationFn: async ({ id, routing }: { id: string; routing: string }) => {
+      const { error } = await (supabase.rpc as any)('update_check_bank_account_routing', {
+        p_id: id,
+        p_routing: routing,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['check-bank-accounts', restaurantId] });
+    },
+  });
+
+  const clearAccountSecrets = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await (supabase.rpc as any)('clear_check_bank_account_secrets', {
+        p_id: id,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['check-bank-accounts', restaurantId] });
+    },
+  });
+
+  const fetchAccountSecrets = useCallback(
+    async (id: string): Promise<CheckBankAccountSecrets | null> => {
+      const { data, error } = await (supabase.rpc as any)('get_check_bank_account_secrets', { p_id: id });
+      if (error) throw new Error(error.message);
+      if (!Array.isArray(data) || data.length === 0) return null;
+      const { routing_number, account_number } = data[0] as CheckBankAccountSecrets;
+      return { routing_number, account_number };
+    },
+    [],
+  );
+
   const autoCreatedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -206,5 +266,9 @@ export function useCheckBankAccounts() {
     saveAccount,
     deleteAccount,
     claimCheckNumbers,
+    saveAccountSecrets,
+    updateAccountRouting,
+    clearAccountSecrets,
+    fetchAccountSecrets,
   };
 }

@@ -162,8 +162,10 @@ async function renderMicrLine(doc, check, settings, pageWidth) {
 
 **Integration (`checkPrinting.test.ts`):**
 - after `generateCheckPDFAsync`, parse PDF stream and extract the MICR `Td`/`Tc`
-- assert the cumulative text X position + estimated width is `≤ 8.5 − 1.5"`
-  (allows for measurement noise but rejects regressions of the original bug)
+- assert the `Td` X (leftX) falls in `(0.5", 4.5")` — rules out both the
+  original right-edge overshoot bug and any future left-margin collision
+- assert the rendered right edge is exactly `pageWidth − 1.9375"` by calling
+  `computeMicrPlacement` directly with the same inputs
 - assert the `Td` Y is in clear-band range (3.0625"–3.3125" for 3.5" check)
 
 ## Out of scope

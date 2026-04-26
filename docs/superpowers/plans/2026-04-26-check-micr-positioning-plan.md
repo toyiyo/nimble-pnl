@@ -15,6 +15,13 @@ amount field, which receiving banks encode).
 
 **Tech Stack:** jsPDF 3.x, vitest, jsdom, MICR-E13B TTF (already bundled).
 
+**Setup:** Commit/push commands use `$WORKTREE` for the worktree path. Set it
+once at the start of your session:
+
+```bash
+export WORKTREE="/path/to/your/check-micr-positioning/worktree"
+```
+
 ---
 
 ### File Structure
@@ -195,9 +202,9 @@ Expected: PASS — all 7 tests green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/check-micr-positioning add \
+git -C "$WORKTREE" add \
   src/utils/checkPrinting.ts tests/unit/computeMicrPlacement.test.ts
-git -C /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/check-micr-positioning commit -m "feat(checks): add ANSI X9 MICR placement helper"
+git -C "$WORKTREE" commit -m "feat(checks): add ANSI X9 MICR placement helper"
 ```
 
 ---
@@ -381,9 +388,9 @@ Expected: PASS — no regressions in other unit tests.
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/check-micr-positioning add \
+git -C "$WORKTREE" add \
   src/utils/checkPrinting.ts tests/unit/checkPrinting.test.ts
-git -C /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/check-micr-positioning commit -m "fix(checks): position MICR per ANSI X9 — right edge at position 14 (1.9375\" from right)"
+git -C "$WORKTREE" commit -m "fix(checks): position MICR per ANSI X9 — right edge at position 14 (1.9375\" from right)"
 ```
 
 ---
@@ -441,7 +448,7 @@ If issues found, fix and re-run `npm run test`.
 - [ ] **Step 3: Commit if changes were made**
 
 ```bash
-git -C /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/check-micr-positioning commit -am "refactor(checks): simplify MICR placement helper"
+git -C "$WORKTREE" commit -am "refactor(checks): simplify MICR placement helper"
 ```
 
 ---
@@ -461,7 +468,7 @@ Run CodeRabbit CLI on the branch diff. Triage findings:
 - [ ] **Step 1: Push the branch**
 
 ```bash
-git -C /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/check-micr-positioning push -u origin fix/check-micr-positioning
+git -C "$WORKTREE" push -u origin fix/check-micr-positioning
 ```
 
 - [ ] **Step 2: Open PR via the `pr` skill**

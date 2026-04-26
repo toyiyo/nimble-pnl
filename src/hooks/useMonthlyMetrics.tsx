@@ -610,7 +610,7 @@ export function useMonthlyMetrics(
 
         // Calculate labor for just this month window (same underlying compensation logic as Payroll)
         const { dailyCosts: monthLaborCosts } = calculateActualLaborCost(
-          typedEmployees,
+          typedEmployees as any,
           monthPunches,
           clampedStart,
           clampedEnd

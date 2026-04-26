@@ -51,7 +51,7 @@ export function useAvailableShifts(
   const { trades, loading: tradesLoading } = useMarketplaceTrades(restaurantId, employeeId);
 
   const items = useMemo(
-    () => mergeAvailableShifts(openShifts, trades),
+    () => mergeAvailableShifts(openShifts, trades as any),
     [openShifts, trades],
   );
 

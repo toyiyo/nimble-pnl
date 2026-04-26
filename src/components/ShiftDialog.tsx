@@ -209,7 +209,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
         );
       }
     } else {
-      createShift.mutate(shiftData, {
+      createShift.mutate(shiftData as any, {
         onSuccess: () => {
           onOpenChange(false);
           resetForm();

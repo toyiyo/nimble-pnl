@@ -1,52 +1,25 @@
+Apply targeted TypeScript type assertions across 13 files to bypass out-of-sync Supabase generated types and unblock the production build. No logic changes — purely type-level fixes (`as any` / `as unknown as X`) following the pattern already used elsewhere in the codebase.
 
+## Files to fix
 
-## Bug: Weekly Brief page shows "No brief generated" due to timezone date shift
+1. `src/components/MLKitBarcodeScanner.tsx` — cast `BarcodeFormat.EanThirteen/EanEight` as `any`
+2. `src/components/financial-statements/IncomeStatement.tsx` — cast `'amortization'` comparison as `any`
+3. `src/components/scheduling/ShiftImportSheet.tsx` — fix `onDrop` handler element type
+4. `src/hooks/useCheckBankAccounts.ts` — cast destructured query results as `any`
+5. `src/hooks/useCopyWeekShifts.ts` — cast `p_shifts` payload as `any`
+6. `src/hooks/useDeviceToken.ts` — cast `device_tokens` table name as `any`
+7. `src/hooks/useEmployeeAreas.tsx` — cast `area` select result as `any`
+8. `src/hooks/useSSO.tsx` — remove undeclared `data` from return shorthand
+9. `src/hooks/useSchedulePlanTemplates.ts` — cast result via `as unknown as SchedulePlanTemplate[]`
+10. `src/hooks/useTimePunches.tsx` — cast result via `as unknown as TimePunch[]`
+11. `src/hooks/useTipServerEarnings.tsx` — cast joined result as `any[]`
+12. `src/pages/EmployeeTips.tsx` — cast `shareMethod` to `ShareMethod`
+13. `src/pages/RestaurantSettings.tsx` — cast geofence update payload as `any`
 
-### Root Cause
+## After fixes
 
-The `getMostRecentSunday()` function in `src/hooks/useWeeklyBrief.ts` has a **timezone bug**. It calculates the correct Sunday in local time, but then calls `.toISOString().split('T')[0]` which converts to **UTC before extracting the date string**. For US timezones (UTC-5 to UTC-8), this shifts the date forward by one day in the evening hours.
+Run `npm run build` (or `tsc --noEmit`) to confirm the build passes, then the next publish will deploy successfully.
 
-**Example (your case):**
-- Your local time: Monday Feb 16, ~9 PM CST
-- Correct Sunday: Feb 15
-- `setDate()` sets it to Feb 15 in local time
-- `toISOString()` converts to UTC: Feb 16 03:00 UTC
-- `.split('T')[0]` extracts `"2026-02-16"` instead of `"2026-02-15"`
+## Note
 
-The brief exists in the database with `brief_week_end = 2026-02-15`, but the UI queries for `2026-02-16`, so nothing is found.
-
-The same bug exists in the `generate-weekly-brief` edge function dispatcher, but that runs server-side in UTC so it has not caused issues there.
-
-### Fix
-
-**File: `src/hooks/useWeeklyBrief.ts`** -- Replace `toISOString()` with local date formatting:
-
-```typescript
-// BEFORE (buggy):
-export function getMostRecentSunday(): string {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const lastSunday = new Date(now);
-  lastSunday.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
-  return lastSunday.toISOString().split('T')[0];
-}
-
-// AFTER (fixed):
-export function getMostRecentSunday(): string {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const lastSunday = new Date(now);
-  lastSunday.setDate(now.getDate() - (dayOfWeek === 0 ? 7 : dayOfWeek));
-  const yyyy = lastSunday.getFullYear();
-  const mm = String(lastSunday.getMonth() + 1).padStart(2, '0');
-  const dd = String(lastSunday.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-```
-
-This uses `getFullYear()`, `getMonth()`, and `getDate()` which all return **local** values, avoiding the UTC shift entirely.
-
-### Scope
-- One function change in one file
-- No database changes needed
-- The brief data already exists correctly in the database
+These are temporary workarounds. The proper long-term fix is to regenerate Supabase types (`.claude/commands/sync-types.md`) so the generated types match the actual database schema. That can be a follow-up task.

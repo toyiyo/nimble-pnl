@@ -24,7 +24,7 @@ export interface ExpenseTransaction {
   chart_of_accounts: {
     account_name: string;
     account_subtype: string;
-    account_type: string;
+    account_type: string | null;
   } | null;
 }
 
@@ -36,7 +36,7 @@ export interface PendingOutflowRecord {
   chart_account: {
     account_name: string;
     account_subtype: string;
-    account_type: string;
+    account_type: string | null;
   } | null;
 }
 
@@ -47,7 +47,7 @@ export interface SplitDetail {
   chart_of_accounts: {
     account_name: string;
     account_subtype: string;
-    account_type: string;
+    account_type: string | null;
   } | null;
 }
 

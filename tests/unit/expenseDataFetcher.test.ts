@@ -168,16 +168,20 @@ describe('fetchExpenseData', () => {
       chart_of_accounts: null,
     } as never);
 
-    const result = await fetchExpenseData({
-      restaurantId: 'r-1',
-      startDate: new Date('2026-04-01'),
-      endDate: new Date('2026-04-30'),
-    });
+    try {
+      const result = await fetchExpenseData({
+        restaurantId: 'r-1',
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2026-04-30'),
+      });
 
-    const splitAmounts = result.splitDetails.map((s) => s.amount);
-    expect(splitAmounts).toContain(50);
-    expect(splitAmounts).not.toContain(70);
-
-    txnRows.pop();
+      const splitAmounts = result.splitDetails.map((s) => s.amount);
+      expect(splitAmounts).toContain(50);
+      expect(splitAmounts).not.toContain(70);
+    } finally {
+      // Restore shared fixture even if assertions throw, so subsequent tests
+      // don't see the split-parent row leaked into txnRows.
+      txnRows.pop();
+    }
   });
 });

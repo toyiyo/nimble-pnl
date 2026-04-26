@@ -5,7 +5,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+const VisuallyHidden = ({ children }: { children: React.ReactNode }) => (
+  <span style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0,0,0,0)', whiteSpace: 'nowrap', border: 0 }}>{children}</span>
+);
 import { ImageViewer } from '@/components/attachments/ImageViewer';
 import {
   Sheet,

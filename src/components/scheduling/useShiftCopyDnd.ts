@@ -82,7 +82,7 @@ export function buildCopyPayload(shift: Shift, targetDay: string, targetEmployee
     locked: false,
     published_at: null,
     published_by: null,
-  };
+  } as any;
 }
 
 // ---------------------------------------------------------------------------

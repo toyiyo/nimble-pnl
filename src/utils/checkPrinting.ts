@@ -33,41 +33,22 @@ export interface PrintSecretsInput {
 // MICR placement (ANSI X9.100-160-1)
 // ---------------------------------------------------------------------------
 
-/**
- * Reserved horizontal margin between the rightmost issuer-printed MICR
- * character and the right edge of the check. Per ANSI X9.100-160-1, positions
- * 1–12 (rightmost 1.5") are the AMOUNT field encoded by the receiving bank,
- * and position 13 is a mandatory blank spacer. The on-us symbol (⑈) closing
- * the account number must therefore land at position 14:
- *   5/16" (right edge of position 1) + 13 × 1/8" = 1.9375"
- * Encroaching closer to the right edge risks colliding with the bank's
- * amount-field encoder and the check getting rejected.
- */
+// ANSI X9.100-160-1 reserves positions 1–12 (rightmost 1.5") for the amount
+// field encoded by the receiving bank, plus position 13 as a mandatory blank.
+// The on-us symbol (⑈) must land at position 14: 5/16" + 13 × 1/8" = 1.9375".
 export const MICR_RIGHT_MARGIN_INCHES = 1.9375;
 
-/**
- * Vertical baseline of the MICR text, measured from the bottom of the check.
- * ANSI allows 3/16"–7/16"; we use the 5/16" midpoint, which matches Toast's
- * observed production placement (~0.314").
- */
+// ANSI allows 3/16"–7/16" from the check bottom; 5/16" is the midpoint and
+// matches observed production placement (~0.314").
 export const MICR_BASELINE_FROM_CHECK_BOTTOM_INCHES = 0.3125;
 
-export interface MicrPlacementInput {
+export function computeMicrPlacement(input: {
   pageWidth: number;
   checkBottomY: number;
   measuredTextWidth: number;
   charCount: number;
   charSpace: number;
-}
-
-export interface MicrPlacement {
-  leftX: number;
-  baselineY: number;
-  rightEdgeX: number;
-  totalWidth: number;
-}
-
-export function computeMicrPlacement(input: MicrPlacementInput): MicrPlacement {
+}): { leftX: number; baselineY: number; rightEdgeX: number; totalWidth: number } {
   const interCharGaps = Math.max(0, input.charCount - 1);
   const totalWidth = input.measuredTextWidth + input.charSpace * interCharGaps;
   const rightEdgeX = input.pageWidth - MICR_RIGHT_MARGIN_INCHES;
@@ -346,9 +327,7 @@ async function renderMicrLine(
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
 
-  // jsPDF's `align: 'right'` ignores charSpace when measuring, so we compute
-  // leftX manually — otherwise the rendered right edge overshoots by
-  // (N − 1) × charSpace and the line walks off the page.
+  // jsPDF's `align: 'right'` ignores charSpace, so leftX is computed manually.
   const charSpace = 0.018;
   const measuredTextWidth = doc.getTextWidth(renderable);
   const { leftX, baselineY } = computeMicrPlacement({

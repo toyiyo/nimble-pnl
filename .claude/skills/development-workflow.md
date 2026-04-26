@@ -280,10 +280,14 @@ Skipping this step has shipped real bugs.
 2. Explicitly fetch each review bot's comments by author and confirm none are
    open. The queue ingest filters out chitchat but you must verify directly:
    ```bash
-   gh api "repos/$OWNER_REPO/pulls/<PR>/comments" --paginate \
+   # OWNER_REPO must be in "owner/repo" form, e.g., toyiyo/nimble-pnl.
+   # Easiest: derive it from the current checkout.
+   OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
+   gh api "repos/$OWNER_REPO/pulls/<PR_NUMBER>/comments" --paginate \
      | jq -r '.[] | select(.user.login | test("coderabbitai|codex|copilot"; "i"))
               | "\(.user.login)\t\(.path):\(.line // .original_line)\t\(.body | .[0:140])"'
-   gh api "repos/$OWNER_REPO/issues/<PR>/comments" --paginate \
+   gh api "repos/$OWNER_REPO/issues/<PR_NUMBER>/comments" --paginate \
      | jq -r '.[] | select(.user.login | test("coderabbitai|codex|copilot"; "i"))
               | "\(.user.login)\t\(.body | .[0:200])"'
    ```

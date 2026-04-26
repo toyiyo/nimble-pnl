@@ -79,36 +79,8 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
     setIsPrinting(true);
     try {
-      // Claim one check number via hook
-      const checkNumber = await claimForAccount.mutateAsync({
-        accountId: selectedAccount.id,
-        count: 1,
-      });
-
-      // Update the existing pending outflow with check info BEFORE generating PDF
-      await updatePendingOutflow.mutateAsync({
-        id: expense.id,
-        input: {
-          payment_method: 'check',
-          reference_number: String(checkNumber),
-          notes: memo.trim() || expense.notes,
-          check_bank_account_id: selectedAccount.id,
-        },
-      });
-
-      // Audit log
-      await logCheckAction.mutateAsync({
-        check_number: checkNumber,
-        payee_name: expense.vendor_name,
-        amount: expense.amount,
-        issue_date: expense.issue_date,
-        memo: memo.trim() || null,
-        action: 'printed',
-        pending_outflow_id: expense.id,
-        check_bank_account_id: selectedAccount.id,
-      });
-
-      // If MICR printing is enabled, fetch encrypted secrets and use the async path.
+      // Fetch MICR secrets first so any failure aborts BEFORE we claim a check
+      // number or write a "printed" audit row that wouldn't match a real PDF.
       let secrets: { routing_number: string; account_number: string } | null = null;
       if (selectedAccount.print_bank_info) {
         if (!selectedAccount.routing_number || !selectedAccount.account_number_last4) {
@@ -126,6 +98,32 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
           return;
         }
       }
+
+      const checkNumber = await claimForAccount.mutateAsync({
+        accountId: selectedAccount.id,
+        count: 1,
+      });
+
+      await updatePendingOutflow.mutateAsync({
+        id: expense.id,
+        input: {
+          payment_method: 'check',
+          reference_number: String(checkNumber),
+          notes: memo.trim() || expense.notes,
+          check_bank_account_id: selectedAccount.id,
+        },
+      });
+
+      await logCheckAction.mutateAsync({
+        check_number: checkNumber,
+        payee_name: expense.vendor_name,
+        amount: expense.amount,
+        issue_date: expense.issue_date,
+        memo: memo.trim() || null,
+        action: 'printed',
+        pending_outflow_id: expense.id,
+        check_bank_account_id: selectedAccount.id,
+      });
 
       const checks = [
         {

@@ -158,13 +158,31 @@ function PrintChecksContent() {
     setIsPrinting(true);
 
     try {
-      // Claim check numbers atomically via hook
+      // Fetch MICR secrets first so any failure aborts BEFORE we claim check
+      // numbers or write "printed" audit rows that wouldn't match a real PDF.
+      let secrets: { routing_number: string; account_number: string } | null = null;
+      if (selectedAccount.print_bank_info) {
+        if (!selectedAccount.routing_number || !selectedAccount.account_number_last4) {
+          toast.error('Bank info incomplete. Open Check Settings to add the routing and account numbers, or turn off "Print bank info" for this account.');
+          return;
+        }
+        try {
+          secrets = await fetchAccountSecrets(selectedAccount.id);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Couldn't load bank info");
+          return;
+        }
+        if (!secrets) {
+          toast.error('Account number is missing. Re-enter it in Check Settings.');
+          return;
+        }
+      }
+
       const startNumber = await claimCheckNumbers.mutateAsync({
         accountId: selectedAccount.id,
         count: selectedRows.length,
       });
 
-      // Build check data
       const checks: CheckData[] = selectedRows.map((row, i) => ({
         checkNumber: startNumber + i,
         payeeName: row.payeeName.trim(),
@@ -173,7 +191,6 @@ function PrintChecksContent() {
         memo: row.memo.trim() || undefined,
       }));
 
-      // Create pending outflows + audit entries BEFORE generating PDF
       for (const check of checks) {
         const outflow = await createPendingOutflow.mutateAsync({
           vendor_name: check.payeeName,
@@ -194,25 +211,6 @@ function PrintChecksContent() {
           pending_outflow_id: outflow.id,
           check_bank_account_id: selectedAccount.id,
         });
-      }
-
-      // If MICR printing is enabled for this account, fetch encrypted secrets and use the async path.
-      let secrets: { routing_number: string; account_number: string } | null = null;
-      if (selectedAccount.print_bank_info) {
-        if (!selectedAccount.routing_number || !selectedAccount.account_number_last4) {
-          toast.error('Bank info incomplete. Open Check Settings to add the routing and account numbers, or turn off "Print bank info" for this account.');
-          return;
-        }
-        try {
-          secrets = await fetchAccountSecrets(selectedAccount.id);
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : "Couldn't load bank info");
-          return;
-        }
-        if (!secrets) {
-          toast.error('Account number is missing. Re-enter it in Check Settings.');
-          return;
-        }
       }
 
       const config = buildPrintConfig(settings, selectedAccount, secrets);
@@ -246,17 +244,8 @@ function PrintChecksContent() {
         ? accounts.find((a) => a.id === entry.check_bank_account_id)
         : selectedAccount;
 
-      await logCheckAction.mutateAsync({
-        check_number: entry.check_number,
-        payee_name: entry.payee_name,
-        amount: entry.amount,
-        issue_date: entry.issue_date,
-        memo: entry.memo,
-        action: 'reprinted',
-        check_bank_account_id: entry.check_bank_account_id ?? selectedAccount?.id ?? null,
-      });
-
-      // Reprint uses the same secrets path as primary print when the account opts into MICR.
+      // Fetch MICR secrets first so a failure aborts BEFORE we write the
+      // "reprinted" audit row.
       let secrets: { routing_number: string; account_number: string } | null = null;
       if (reprintAccount?.print_bank_info) {
         if (!reprintAccount.routing_number || !reprintAccount.account_number_last4) {
@@ -274,6 +263,16 @@ function PrintChecksContent() {
           return;
         }
       }
+
+      await logCheckAction.mutateAsync({
+        check_number: entry.check_number,
+        payee_name: entry.payee_name,
+        amount: entry.amount,
+        issue_date: entry.issue_date,
+        memo: entry.memo,
+        action: 'reprinted',
+        check_bank_account_id: entry.check_bank_account_id ?? selectedAccount?.id ?? null,
+      });
 
       const reprintChecks = [{
         checkNumber: entry.check_number,

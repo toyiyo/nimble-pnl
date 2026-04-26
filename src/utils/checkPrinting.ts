@@ -182,10 +182,12 @@ function renderCheckPageSync(doc: jsPDF, settings: CheckPrintConfig, check: Chec
   doc.setFontSize(8);
   doc.text('DOLLARS', pageWidth - margin - 1.3, amountWordsY);
 
+  // Bank name sits above the payor block so it doesn't collide with long
+  // business names that center-extend across the top band.
   if (settings.print_bank_info && settings.bank_name) {
-    doc.setFontSize(10);
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text(settings.bank_name, pageWidth / 2, 0.55, { align: 'center' });
+    doc.text(settings.bank_name, pageWidth / 2, 0.30, { align: 'center' });
   }
 
   // Memo line — moved up from y=2.85 to y=2.55 so the MICR clear band

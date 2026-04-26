@@ -159,21 +159,36 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
         is_default: formData.is_default,
         print_bank_info: formData.print_bank_info,
       };
+      let saved: Awaited<ReturnType<typeof saveAccount.mutateAsync>>;
       try {
-        const saved = await saveAccount.mutateAsync(input);
-        // Persist encrypted secrets only when MICR is enabled and the user supplied a fresh account number.
-        if (formData.print_bank_info && formData.account_number.length >= 4) {
+        saved = await saveAccount.mutateAsync(input);
+      } catch {
+        // saveAccount surfaces its own error toast via onError.
+        return;
+      }
+
+      // Persist encrypted secrets only when MICR is enabled and the user supplied a fresh account number.
+      if (formData.print_bank_info && formData.account_number.length >= 4) {
+        try {
           await saveAccountSecrets.mutateAsync({
             id: saved.id,
             routing: formData.routing_number,
             account: formData.account_number,
           });
+        } catch (e) {
+          // Account row exists with print_bank_info=true but secrets failed.
+          // Keep the form open so the user can retry without losing their input.
+          toast.error(
+            e instanceof Error
+              ? `Account saved but bank info couldn't be encrypted: ${e.message}`
+              : "Account saved but bank info couldn't be encrypted. Please re-enter and save again.",
+          );
+          return;
         }
-        setEditingAccount(null);
-        setIsAddingAccount(false);
-      } catch {
-        // Error toast is handled by the mutation's onError callback
       }
+
+      setEditingAccount(null);
+      setIsAddingAccount(false);
     },
     [saveAccount, saveAccountSecrets],
   );

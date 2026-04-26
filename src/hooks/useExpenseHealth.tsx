@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { format, parseISO } from "date-fns";
+import { isTransferCategoryType } from "@/lib/chartOfAccountsUtils";
 
 // Processing fee detection patterns
 const PROCESSING_FEE_PATTERNS = [
@@ -41,12 +42,17 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
         throw new Error("No restaurant selected");
       }
 
-      // Fetch transactions for the period (including both posted and pending)
+      // Fetch transactions for the period (including both posted and pending).
+      // is_transfer = false drops paired transfers; the post-fetch
+      // isTransferCategoryType filter additionally drops rows whose category
+      // type is asset/liability/equity (e.g. "Transfer Clearing Account"),
+      // which categorize_bank_transaction does not flag as is_transfer.
       let txQuery = supabase
         .from('bank_transactions')
-        .select('transaction_date, amount, status, description, merchant_name, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype)')
+        .select('transaction_date, amount, status, description, merchant_name, category_id, is_split, chart_of_accounts!category_id(account_name, account_subtype, account_type)')
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .in('status', ['posted', 'pending'])
+        .eq('is_transfer', false)
         .gte('transaction_date', format(startDate, 'yyyy-MM-dd'))
         .lte('transaction_date', format(endDate, 'yyyy-MM-dd'));
 
@@ -59,14 +65,21 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
 
       const txns = transactions || [];
 
+      // Drop rows whose category's account_type is asset/liability/equity
+      // (e.g. Transfer Clearing Account). These are not P&L events and must
+      // not inflate revenue, expense, or uncategorized totals.
+      const pnlTxns = txns.filter(
+        (t) => !isTransferCategoryType(t.chart_of_accounts?.account_type),
+      );
+
       // Calculate revenue (inflows)
-      const revenue = txns
+      const revenue = pnlTxns
         .filter(t => t.amount > 0)
         .reduce((sum, t) => sum + t.amount, 0);
 
       // Calculate food cost (COGS)
       const foodCost = Math.abs(
-        txns
+        pnlTxns
           .filter(t => {
             if (t.amount >= 0) return false;
             if (!t.category_id || !t.chart_of_accounts) return false;
@@ -79,7 +92,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
 
       // Calculate labor cost
       const laborCost = Math.abs(
-        txns
+        pnlTxns
           .filter(t => {
             if (t.amount >= 0) return false;
             if (!t.category_id || !t.chart_of_accounts) return false;
@@ -92,7 +105,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
 
       // Calculate processing fees
       const processingFees = Math.abs(
-        txns
+        pnlTxns
           .filter(t => {
             if (t.amount >= 0) return false;
             const desc = (t.description || '').toLowerCase();
@@ -106,7 +119,7 @@ export function useExpenseHealth(startDate: Date, endDate: Date, bankAccountId: 
       // Calculate uncategorized spend - only transactions with NO category_id assigned
       // Note: Split transactions have category_id NULL but their categories are in bank_transaction_splits
       // So we exclude them from uncategorized count
-      const outflows = txns.filter(t => t.amount < 0);
+      const outflows = pnlTxns.filter(t => t.amount < 0);
       const totalOutflows = Math.abs(outflows.reduce((sum, t) => sum + t.amount, 0));
       const uncategorizedSpend = Math.abs(
         outflows.filter(t => !t.category_id && !t.is_split).reduce((sum, t) => sum + t.amount, 0)

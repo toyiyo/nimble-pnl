@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## Category: Domain — Bank Transactions / P&L
+
+### [2026-04-26] Two transfer mechanisms must both be filtered out of P&L
+- **Mistake:** Bank transactions assigned a Transfer category (asset/liability/equity-typed chart-of-accounts row, e.g. "Transfer Clearing Account") were rendered as Expenses on the dashboard. The read path filtered only on `is_transfer = false`, but `categorize_bank_transaction` does NOT flip `is_transfer` when assigning an asset-typed category — only the `mark_as_transfer` RPC does. So categorize-then-view was leaking transfers into expense aggregations.
+- **Correction:** Added `isTransferCategoryType(account_type)` helper and applied it as a second exclusion (alongside `is_transfer = false`) to every read-path aggregation: `expenseDataFetcher` (transactions, pendingOutflows, splitDetails), `useExpenseHealth`, `useBankTransactions`, and the `Index.tsx` daily-spending filter. Also added pgTAP test pinning that `categorize_bank_transaction` does NOT auto-flip `is_transfer` — if that ever changes, the read-path filter must be revisited.
+- **Rule:** A transaction is a transfer if EITHER `is_transfer = true` OR its category's `account_type` is `asset|liability|equity`. Every P&L read path must apply both filters. When adding a new aggregation hook, copy the dual-filter pattern.
+
+---
+
+## Category: TypeScript / React
+
+### [2026-04-26] Widening an interface requires grepping all `as ... []` casts
+- **Mistake:** Widened `BankTransaction.chart_account` to include `account_type: string | null`, then updated the projection in the primary `useBankTransactions` hook. Missed a sibling hook `useBankTransactionsWithRelations` that does `as unknown as BankTransaction[]` against a projection that still only selected `account_name`. Typecheck happily passed because `as unknown as` is unsafe by design. CodeRabbit caught it; would have shipped silent `undefined` for any future consumer applying the new transfer-exclusion filter through that hook.
+- **Correction:** Added `account_type` to the second projection too. Lesson committed alongside fix.
+- **Rule:** When widening an interface used by Supabase row casts, grep `as unknown as <Type>` AND `as <Type>[]` and verify every matching select projection now includes the new fields. Typecheck cannot catch projection drift behind `as unknown as`.
+
+---
+
 ## Category: Supabase Edge Functions
 
 ### [2026-04-21] Edge function error handling — HTTP codes vs 200 workaround

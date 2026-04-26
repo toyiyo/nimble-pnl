@@ -57,6 +57,7 @@ export interface BankTransaction {
   chart_account?: {
     id: string;
     account_name: string;
+    account_type: string | null;
   } | null;
   // Linked outflow data (pending_outflows via reverse FK)
   linked_outflows?: Array<{
@@ -139,7 +140,8 @@ const buildBaseQuery = (restaurantId: string) =>
       ),
       chart_account:chart_of_accounts!category_id(
         id,
-        account_name
+        account_name,
+        account_type
       ),
       linked_outflows:pending_outflows!linked_bank_transaction_id(
         vendor_name,
@@ -380,7 +382,8 @@ export function useBankTransactionsWithRelations(restaurantId: string | null | u
             bank_account_balances(id, account_mask, account_name)
           ),
           chart_account:chart_of_accounts!category_id(
-            account_name
+            account_name,
+            account_type
           ),
           supplier:suppliers(
             id,

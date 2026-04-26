@@ -40,6 +40,7 @@ import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart'
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
 import { useOpsInboxCount } from '@/hooks/useOpsInbox';
 import { useSubscription } from '@/hooks/useSubscription';
+import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
 import { format, startOfDay, endOfDay, differenceInDays, startOfMonth, endOfMonth, subMonths, subDays } from 'date-fns';
 import {
   DollarSign,
@@ -311,7 +312,8 @@ const Index = () => {
       const transactionDate = new Date(t.transaction_date);
       return (
         t.amount < 0 && // Expenses are negative
-        !t.is_transfer && // Exclude transfers
+        !t.is_transfer && // Exclude paired transfers
+        !isTransferCategoryType(t.chart_account?.account_type) && // Exclude asset/liability/equity-categorized
         !t.excluded_reason && // Exclude transactions marked as excluded
         transactionDate >= thirtyDaysAgo // Last 30 days only
       );

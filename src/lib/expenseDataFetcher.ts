@@ -182,8 +182,7 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
     if (splitsError) {
       console.error('Error fetching split details:', splitsError);
     } else {
-      splitDetails = (splits || []) as SplitDetail[];
-      splitDetails = splitDetails.filter(
+      splitDetails = ((splits || []) as SplitDetail[]).filter(
         (s) => !isTransferCategoryType(s.chart_of_accounts?.account_type),
       );
     }

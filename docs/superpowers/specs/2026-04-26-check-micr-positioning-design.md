@@ -86,22 +86,14 @@ const MICR_RIGHT_MARGIN_INCHES = 1.9375;
 // Toast's observed 0.314" placement.
 const MICR_BASELINE_FROM_CHECK_BOTTOM_INCHES = 0.3125;
 
-interface MicrPlacementInput {
+// Types are inlined on the function (used in only one place).
+export function computeMicrPlacement(input: {
   pageWidth: number;        // inches
   checkBottomY: number;     // inches from top of page
   measuredTextWidth: number; // doc.getTextWidth(renderable)
   charCount: number;
   charSpace: number;        // inches
-}
-
-interface MicrPlacement {
-  leftX: number;
-  baselineY: number;
-  rightEdgeX: number;
-  totalWidth: number;
-}
-
-export function computeMicrPlacement(input: MicrPlacementInput): MicrPlacement {
+}): { leftX: number; baselineY: number; rightEdgeX: number; totalWidth: number } {
   const totalWidth =
     input.measuredTextWidth + input.charSpace * Math.max(0, input.charCount - 1);
   const rightEdgeX = input.pageWidth - MICR_RIGHT_MARGIN_INCHES;

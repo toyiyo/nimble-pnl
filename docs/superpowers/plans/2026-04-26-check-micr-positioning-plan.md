@@ -22,6 +22,19 @@ once at the start of your session:
 export WORKTREE="/path/to/your/check-micr-positioning/worktree"
 ```
 
+> **Note (as-built):** This document is a historical snapshot of the plan
+> followed during implementation. The shipped code differs in two minor ways
+> from what's drafted below:
+> 1. `computeMicrPlacement` uses inline parameter/return types instead of
+>    named `MicrPlacementInput` / `MicrPlacement` interfaces (one call site,
+>    so naming the types added boilerplate without payoff).
+> 2. The `checkBottomY: 3.5` literal in `renderMicrLine` and the
+>    `charSpace = 0.018` literal are hoisted to module-level constants
+>    (`CHECK_HEIGHT_INCHES`, `MICR_CHAR_SPACE_INCHES`) shared with
+>    `renderCheckPageSync`.
+>
+> Line-number references in the steps below are approximate.
+
 ---
 
 ### File Structure

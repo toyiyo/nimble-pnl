@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { computeMicrPlacement } from '../../src/utils/checkPrinting';
 
 describe('computeMicrPlacement', () => {
-  it('places right edge 1.9375" from the right (ANSI X9 position 14)', () => {
+  it('CRITICAL: places right edge 1.9375" from the right (ANSI X9 position 14)', () => {
     const placement = computeMicrPlacement({
       pageWidth: 8.5,
       checkBottomY: 3.5,
@@ -14,7 +14,7 @@ describe('computeMicrPlacement', () => {
     expect(placement.rightEdgeX).toBeCloseTo(6.5625, 4);
   });
 
-  it('baseline lands 0.3125" from the bottom of the check (ANSI midpoint)', () => {
+  it('CRITICAL: baseline lands 0.3125" from the bottom of the check (ANSI midpoint)', () => {
     const placement = computeMicrPlacement({
       pageWidth: 8.5,
       checkBottomY: 3.5,
@@ -26,7 +26,7 @@ describe('computeMicrPlacement', () => {
     expect(placement.baselineY).toBeCloseTo(3.1875, 4);
   });
 
-  it('totalWidth = measuredTextWidth + charSpace × (N − 1)', () => {
+  it('CRITICAL: totalWidth = measuredTextWidth + charSpace × (N − 1)', () => {
     const placement = computeMicrPlacement({
       pageWidth: 8.5,
       checkBottomY: 3.5,
@@ -37,7 +37,7 @@ describe('computeMicrPlacement', () => {
     expect(placement.totalWidth).toBeCloseTo(4.0 + 0.018 * 31, 6);
   });
 
-  it('leftX = rightEdgeX − totalWidth', () => {
+  it('CRITICAL: leftX = rightEdgeX − totalWidth', () => {
     const placement = computeMicrPlacement({
       pageWidth: 8.5,
       checkBottomY: 3.5,
@@ -51,7 +51,7 @@ describe('computeMicrPlacement', () => {
     );
   });
 
-  it('charSpace = 0 makes totalWidth equal measuredTextWidth', () => {
+  it('CRITICAL: charSpace = 0 makes totalWidth equal measuredTextWidth', () => {
     const placement = computeMicrPlacement({
       pageWidth: 8.5,
       checkBottomY: 3.5,
@@ -62,7 +62,7 @@ describe('computeMicrPlacement', () => {
     expect(placement.totalWidth).toBe(4.0);
   });
 
-  it('N = 1 yields zero inter-character gaps', () => {
+  it('CRITICAL: N = 1 yields zero inter-character gaps', () => {
     const placement = computeMicrPlacement({
       pageWidth: 8.5,
       checkBottomY: 3.5,
@@ -73,7 +73,19 @@ describe('computeMicrPlacement', () => {
     expect(placement.totalWidth).toBe(0.13);
   });
 
-  it('leftX stays positive at max-realistic MICR width (17-digit account)', () => {
+  it('CRITICAL: charCount = 0 has no inter-character gaps (defensive Math.max guard)', () => {
+    const placement = computeMicrPlacement({
+      pageWidth: 8.5,
+      checkBottomY: 3.5,
+      measuredTextWidth: 0,
+      charCount: 0,
+      charSpace: 0.018,
+    });
+    expect(placement.totalWidth).toBe(0);
+    expect(placement.leftX).toBeCloseTo(placement.rightEdgeX, 6);
+  });
+
+  it('CRITICAL: leftX stays positive at max-realistic MICR width (17-digit account)', () => {
     // ⑈9999999⑈ + 2 spaces + ⑆111000614⑆ + 2 spaces + 17-digit account + ⑈
     // ≈ 9 + 2 + 11 + 2 + 18 = 42 chars × ~0.13" = 5.46" + 41 × 0.018" = 0.74"
     // Total ≈ 6.2" — leaves leftX ≈ 0.36" on an 8.5" page

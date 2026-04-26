@@ -42,6 +42,13 @@ export const MICR_RIGHT_MARGIN_INCHES = 1.9375;
 // matches observed production placement (~0.314").
 export const MICR_BASELINE_FROM_CHECK_BOTTOM_INCHES = 0.3125;
 
+// Standard check-on-top height in inches. Shared with renderCheckPageSync.
+const CHECK_HEIGHT_INCHES = 3.5;
+
+// MICR-E13B inter-character spacing (inches). Tuned to render close to the
+// ANSI 8 cpi pitch with the bundled TTF.
+const MICR_CHAR_SPACE_INCHES = 0.018;
+
 export function computeMicrPlacement(input: {
   pageWidth: number;
   checkBottomY: number;
@@ -138,7 +145,7 @@ function buildCityStateZip(settings: CheckPrintConfig): string {
 function renderCheckPageSync(doc: jsPDF, settings: CheckPrintConfig, check: CheckData) {
   const pageWidth = 8.5;
   const margin = 0.5;
-  const checkHeight = 3.5; // Standard check-on-top height in inches
+  const checkHeight = CHECK_HEIGHT_INCHES;
 
   // Business info (top-left)
   doc.setFontSize(10);
@@ -328,17 +335,16 @@ async function renderMicrLine(
   doc.setTextColor(0, 0, 0);
 
   // jsPDF's `align: 'right'` ignores charSpace, so leftX is computed manually.
-  const charSpace = 0.018;
   const measuredTextWidth = doc.getTextWidth(renderable);
   const { leftX, baselineY } = computeMicrPlacement({
     pageWidth,
-    checkBottomY: 3.5,
+    checkBottomY: CHECK_HEIGHT_INCHES,
     measuredTextWidth,
     charCount: renderable.length,
-    charSpace,
+    charSpace: MICR_CHAR_SPACE_INCHES,
   });
 
-  doc.text(renderable, leftX, baselineY, { charSpace });
+  doc.text(renderable, leftX, baselineY, { charSpace: MICR_CHAR_SPACE_INCHES });
 
   doc.setFont('helvetica', 'normal');
 }

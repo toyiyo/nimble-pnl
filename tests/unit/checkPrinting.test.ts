@@ -500,7 +500,7 @@ describe('generateCheckPDF', () => {
   // edge lands at pageWidth − 1.9375" (ANSI X9 position 14, where the on-us
   // field meets the receiving-bank-encoded amount field).
   // -------------------------------------------------------------------------
-  it('MICR line Td X is consistent with computeMicrPlacement, not align: "right" (PR #479 regression)', async () => {
+  it('CRITICAL: MICR line Td X is consistent with computeMicrPlacement, not align: "right" (PR #479 regression)', async () => {
     const config: CheckPrintConfig = {
       business_name: 'X',
       business_address_line1: null,
@@ -547,7 +547,7 @@ describe('generateCheckPDF', () => {
     expect(tdY_in_from_top).toBeLessThanOrEqual(3.35);
   });
 
-  it('MICR right edge lands at pageWidth − 1.9375" (ANSI X9 position 14)', async () => {
+  it('CRITICAL: MICR right edge lands at pageWidth − 1.9375" (ANSI X9 position 14)', async () => {
     // computeMicrPlacement is the source of truth for where the right edge
     // lands. This test asserts the constants and math directly, separate from
     // jsPDF's PDF-stream encoding which is brittle to assert against.

@@ -45,9 +45,14 @@ export const MICR_BASELINE_FROM_CHECK_BOTTOM_INCHES = 0.3125;
 // Standard check-on-top height in inches. Shared with renderCheckPageSync.
 const CHECK_HEIGHT_INCHES = 3.5;
 
-// MICR-E13B inter-character spacing (inches). Tuned to render close to the
-// ANSI 8 cpi pitch with the bundled TTF.
-const MICR_CHAR_SPACE_INCHES = 0.018;
+// ANSI X9.27 spec: MICR-E13B at 0.117" character height + 0.125" pitch
+// (8 cpi). Our bundled TTF (unitsPerEm=4096) reaches both at exactly 18pt;
+// see docs/superpowers/specs/2026-04-26-check-micr-font-size-design.md.
+const MICR_FONT_POINT_SIZE = 18;
+
+// Zero — the font's own advance width at MICR_FONT_POINT_SIZE is already
+// the 0.125" 8 cpi pitch, so any extra Tc overshoots the spec.
+const MICR_CHAR_SPACE_INCHES = 0;
 
 export function computeMicrPlacement(input: {
   pageWidth: number;
@@ -331,7 +336,7 @@ async function renderMicrLine(
   const renderable = toMicrPdfText(micr);
 
   doc.setFont(fontFamily, 'normal');
-  doc.setFontSize(12);
+  doc.setFontSize(MICR_FONT_POINT_SIZE);
   doc.setTextColor(0, 0, 0);
 
   // jsPDF's `align: 'right'` ignores charSpace, so leftX is computed manually.

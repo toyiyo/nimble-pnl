@@ -99,4 +99,22 @@ describe('computeMicrPlacement', () => {
     expect(placement.leftX).toBeGreaterThan(0);
     expect(placement.leftX).toBeGreaterThan(0.25);
   });
+
+  it('CRITICAL: production geometry — 32-char line at 18pt charSpace=0 leaves leftX ≈ 2.5625"', () => {
+    // 32 chars × 0.125" (8 cpi at 18pt with the bundled TTF) = 4.0"
+    // rightEdgeX = 8.5 − 1.9375 = 6.5625"
+    // leftX     = 6.5625 − 4.0 = 2.5625"
+    const placement = computeMicrPlacement({
+      pageWidth: 8.5,
+      checkBottomY: 3.5,
+      measuredTextWidth: 4.0,
+      charCount: 32,
+      charSpace: 0,
+    });
+    expect(placement.totalWidth).toBe(4.0);
+    expect(placement.leftX).toBeCloseTo(2.5625, 4);
+    // Also confirm the line still has > 2" of clear space on the left
+    // (matches Toast's observed behavior).
+    expect(placement.leftX).toBeGreaterThan(2.0);
+  });
 });

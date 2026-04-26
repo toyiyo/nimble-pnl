@@ -55,7 +55,14 @@ const emptyAccountForm: AccountFormState = {
 export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogProps) {
   const { selectedRestaurant } = useRestaurantContext();
   const { settings, saveSettings } = useCheckSettings();
-  const { accounts, saveAccount, saveAccountSecrets, deleteAccount } = useCheckBankAccounts();
+  const {
+    accounts,
+    saveAccount,
+    saveAccountSecrets,
+    updateAccountRouting,
+    clearAccountSecrets,
+    deleteAccount,
+  } = useCheckBankAccounts();
 
   const [form, setForm] = useState<UpsertCheckSettingsInput>({
     business_name: '',
@@ -151,6 +158,7 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
         }
       }
 
+      const previousAccount = formData.id ? accounts.find((a) => a.id === formData.id) : null;
       const input: UpsertCheckBankAccountInput = {
         id: formData.id,
         account_name: formData.account_name,
@@ -167,31 +175,65 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
         return;
       }
 
-      // Persist encrypted secrets only when MICR is enabled and the user supplied a fresh account number.
-      if (formData.print_bank_info && formData.account_number.length >= 4) {
-        try {
+      // Decide which secrets-side action to take after the account row saves.
+      const hasFreshAccount = formData.account_number.length >= 4;
+      const routingChanged = previousAccount?.routing_number !== formData.routing_number;
+      const wasEverEncrypted =
+        !!previousAccount?.account_number_last4 || !!previousAccount?.routing_number;
+
+      try {
+        if (formData.print_bank_info && hasFreshAccount) {
+          // User supplied a new account number — write both routing + account.
           await saveAccountSecrets.mutateAsync({
             id: saved.id,
             routing: formData.routing_number,
             account: formData.account_number,
           });
-        } catch (e) {
-          // Account row exists with print_bank_info=true but secrets failed.
-          // Keep the form open so the user can retry without losing their input.
-          toast.error(
-            e instanceof Error
-              ? `Account saved but bank info couldn't be encrypted: ${e.message}`
-              : "Account saved but bank info couldn't be encrypted. Please re-enter and save again.",
-          );
-          return;
+        } else if (formData.print_bank_info && previousAccount && routingChanged) {
+          // Routing-only edit: keep the encrypted account, just update routing.
+          await updateAccountRouting.mutateAsync({
+            id: saved.id,
+            routing: formData.routing_number,
+          });
+        } else if (!formData.print_bank_info && wasEverEncrypted) {
+          // Toggle was turned off — wipe stored routing + encrypted account so
+          // re-enabling the toggle doesn't silently print stale bank info.
+          await clearAccountSecrets.mutateAsync({ id: saved.id });
         }
+      } catch (e) {
+        // Account row exists; secrets-side mutation failed. Move the form into
+        // edit mode for the saved row so retries UPDATE instead of INSERTing.
+        setEditingAccount({
+          id: saved.id,
+          account_name: saved.account_name,
+          bank_name: saved.bank_name ?? '',
+          next_check_number: saved.next_check_number,
+          is_default: saved.is_default,
+          print_bank_info: saved.print_bank_info,
+          routing_number: formData.routing_number,
+          account_number: formData.account_number,
+          account_number_last4: saved.account_number_last4 ?? null,
+        });
+        setIsAddingAccount(false);
+        toast.error(
+          e instanceof Error
+            ? `Account saved but bank info update failed: ${e.message}`
+            : "Account saved but bank info update failed. Please retry from the edit form.",
+        );
+        return;
       }
 
       setEditingAccount(null);
       setIsAddingAccount(false);
     },
-    [saveAccount, saveAccountSecrets],
+    [accounts, saveAccount, saveAccountSecrets, updateAccountRouting, clearAccountSecrets],
   );
+
+  const isSavingAccount =
+    saveAccount.isPending ||
+    saveAccountSecrets.isPending ||
+    updateAccountRouting.isPending ||
+    clearAccountSecrets.isPending;
 
   const handleConfirmDelete = useCallback(
     async (accountId: string) => {
@@ -359,7 +401,7 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
                     <AccountInlineForm
                       key={account.id}
                       initial={editingAccount}
-                      isSaving={saveAccount.isPending}
+                      isSaving={isSavingAccount}
                       onSave={handleSaveAccount}
                       onCancel={handleCancelAccountForm}
                     />
@@ -431,7 +473,7 @@ export function CheckSettingsDialog({ open, onOpenChange }: CheckSettingsDialogP
               {isAddingAccount && (
                 <AccountInlineForm
                   initial={emptyAccountForm}
-                  isSaving={saveAccount.isPending}
+                  isSaving={isSavingAccount}
                   onSave={handleSaveAccount}
                   onCancel={handleCancelAccountForm}
                 />

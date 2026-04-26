@@ -183,6 +183,31 @@ export function useCheckBankAccounts() {
     },
   });
 
+  const updateAccountRouting = useMutation({
+    mutationFn: async ({ id, routing }: { id: string; routing: string }) => {
+      const { error } = await (supabase.rpc as any)('update_check_bank_account_routing', {
+        p_id: id,
+        p_routing: routing,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['check-bank-accounts', restaurantId] });
+    },
+  });
+
+  const clearAccountSecrets = useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const { error } = await (supabase.rpc as any)('clear_check_bank_account_secrets', {
+        p_id: id,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['check-bank-accounts', restaurantId] });
+    },
+  });
+
   const fetchAccountSecrets = useCallback(
     async (id: string): Promise<CheckBankAccountSecrets | null> => {
       const { data, error } = await (supabase.rpc as any)('get_check_bank_account_secrets', { p_id: id });
@@ -242,6 +267,8 @@ export function useCheckBankAccounts() {
     deleteAccount,
     claimCheckNumbers,
     saveAccountSecrets,
+    updateAccountRouting,
+    clearAccountSecrets,
     fetchAccountSecrets,
   };
 }

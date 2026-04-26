@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => {
   return {
     saveAccount: vi.fn(),
     saveAccountSecrets: vi.fn(),
+    updateAccountRouting: vi.fn(),
+    clearAccountSecrets: vi.fn(),
     deleteAccount: vi.fn(),
     fetchAccountSecrets: vi.fn(),
     saveSettings: vi.fn(),
@@ -54,6 +56,8 @@ vi.mock('@/hooks/useCheckBankAccounts', () => ({
     accounts: [],
     saveAccount: { mutateAsync: mocks.saveAccount, isPending: false },
     saveAccountSecrets: { mutateAsync: mocks.saveAccountSecrets, isPending: false },
+    updateAccountRouting: { mutateAsync: mocks.updateAccountRouting, isPending: false },
+    clearAccountSecrets: { mutateAsync: mocks.clearAccountSecrets, isPending: false },
     deleteAccount: { mutateAsync: mocks.deleteAccount, isPending: false },
     fetchAccountSecrets: mocks.fetchAccountSecrets,
   }),
@@ -90,6 +94,10 @@ beforeEach(() => {
   mocks.saveAccount.mockResolvedValue({ id: 'new-id', account_name: 'Operating' });
   mocks.saveAccountSecrets.mockReset();
   mocks.saveAccountSecrets.mockResolvedValue(undefined);
+  mocks.updateAccountRouting.mockReset();
+  mocks.updateAccountRouting.mockResolvedValue(undefined);
+  mocks.clearAccountSecrets.mockReset();
+  mocks.clearAccountSecrets.mockResolvedValue(undefined);
   mocks.deleteAccount.mockReset();
   mocks.fetchAccountSecrets.mockReset();
   mocks.saveSettings.mockReset();

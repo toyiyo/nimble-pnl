@@ -46,6 +46,7 @@ import { FeatureGate } from '@/components/subscription';
 import { CheckSettingsDialog } from '@/components/checks/CheckSettingsDialog';
 import {
   generateCheckPDF,
+  generateCheckPDFAsync,
   generateCheckFilename,
   buildPrintConfig,
   numberToWords,
@@ -93,7 +94,7 @@ export default function PrintChecks() {
 function PrintChecksContent() {
   const { selectedRestaurant } = useRestaurantContext();
   const { settings, isLoading: settingsLoading } = useCheckSettings();
-  const { accounts, defaultAccount, isLoading: accountsLoading, claimCheckNumbers } = useCheckBankAccounts();
+  const { accounts, defaultAccount, isLoading: accountsLoading, claimCheckNumbers, fetchAccountSecrets } = useCheckBankAccounts();
   const { auditLog, isLoading: auditLoading, logCheckAction } = useCheckAuditLog();
   const { createPendingOutflow } = usePendingOutflowMutations();
   const { suppliers } = useSuppliers();
@@ -195,7 +196,29 @@ function PrintChecksContent() {
         });
       }
 
-      const pdf = generateCheckPDF(buildPrintConfig(settings, selectedAccount.bank_name), checks);
+      // If MICR printing is enabled for this account, fetch encrypted secrets and use the async path.
+      let secrets: { routing_number: string; account_number: string } | null = null;
+      if (selectedAccount.print_bank_info) {
+        if (!selectedAccount.routing_number || !selectedAccount.account_number_last4) {
+          toast.error('Bank info incomplete. Open Check Settings to add the routing and account numbers, or turn off "Print bank info" for this account.');
+          return;
+        }
+        try {
+          secrets = await fetchAccountSecrets(selectedAccount.id);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Couldn't load bank info");
+          return;
+        }
+        if (!secrets) {
+          toast.error('Account number is missing. Re-enter it in Check Settings.');
+          return;
+        }
+      }
+
+      const config = buildPrintConfig(settings, selectedAccount, secrets);
+      const pdf = selectedAccount.print_bank_info
+        ? await generateCheckPDFAsync(config, checks)
+        : generateCheckPDF(config, checks);
       const filename = generateCheckFilename(
         selectedRestaurant.restaurant.name,
         checks.map((c) => c.checkNumber),
@@ -233,16 +256,36 @@ function PrintChecksContent() {
         check_bank_account_id: entry.check_bank_account_id ?? selectedAccount?.id ?? null,
       });
 
-      const pdf = generateCheckPDF(
-        buildPrintConfig(settings, reprintAccount?.bank_name ?? null),
-        [{
-          checkNumber: entry.check_number,
-          payeeName: entry.payee_name,
-          amount: entry.amount,
-          issueDate: entry.issue_date,
-          memo: entry.memo ?? undefined,
-        }],
-      );
+      // Reprint uses the same secrets path as primary print when the account opts into MICR.
+      let secrets: { routing_number: string; account_number: string } | null = null;
+      if (reprintAccount?.print_bank_info) {
+        if (!reprintAccount.routing_number || !reprintAccount.account_number_last4) {
+          toast.error('Bank info incomplete for this account. Open Check Settings to add it, or turn off "Print bank info".');
+          return;
+        }
+        try {
+          secrets = await fetchAccountSecrets(reprintAccount.id);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Couldn't load bank info");
+          return;
+        }
+        if (!secrets) {
+          toast.error('Account number is missing. Re-enter it in Check Settings.');
+          return;
+        }
+      }
+
+      const reprintChecks = [{
+        checkNumber: entry.check_number,
+        payeeName: entry.payee_name,
+        amount: entry.amount,
+        issueDate: entry.issue_date,
+        memo: entry.memo ?? undefined,
+      }];
+      const reprintConfig = buildPrintConfig(settings, reprintAccount ?? null, secrets);
+      const pdf = reprintAccount?.print_bank_info
+        ? await generateCheckPDFAsync(reprintConfig, reprintChecks)
+        : generateCheckPDF(reprintConfig, reprintChecks);
       const filename = generateCheckFilename(
         selectedRestaurant.restaurant.name,
         [entry.check_number],

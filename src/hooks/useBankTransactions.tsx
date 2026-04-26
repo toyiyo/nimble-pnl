@@ -382,7 +382,8 @@ export function useBankTransactionsWithRelations(restaurantId: string | null | u
             bank_account_balances(id, account_mask, account_name)
           ),
           chart_account:chart_of_accounts!category_id(
-            account_name
+            account_name,
+            account_type
           ),
           supplier:suppliers(
             id,

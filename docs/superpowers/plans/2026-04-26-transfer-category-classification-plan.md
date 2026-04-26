@@ -21,7 +21,7 @@
 | `src/lib/expenseDataFetcher.ts` | Modify — widen `chart_of_accounts` shape with `account_type`, add `account_type` to all 3 SELECT projections, filter results through `isTransferCategoryType` |
 | `tests/unit/expenseDataFetcher.test.ts` | Create — mocked Supabase, asserts asset/liability/equity-typed rows are excluded from each of the 3 returned arrays |
 | `src/hooks/useExpenseHealth.tsx` | Modify — add the missing `.eq('is_transfer', false)`, add `account_type` to projection, exclude transfer-typed rows from revenue + outflow + uncategorized reductions |
-| `tests/unit/useExpenseHealth.test.ts` | Create — mocked Supabase, asserts revenue / foodCost / laborCost / uncategorizedSpend exclude transfer-typed rows |
+| `tests/unit/useExpenseHealth.test.tsx` | Create — mocked Supabase, asserts revenue / foodCost / laborCost / uncategorizedSpend exclude transfer-typed rows |
 | `src/hooks/useBankTransactions.tsx` | Modify — add `account_type` to the embedded `chart_account` projection (line 140-143) and to the `BankTransaction.chart_account` interface (line 57-60) |
 | `src/pages/Index.tsx` | Modify — daily-spending filter at lines 310-318, exclude rows where `chart_account.account_type` is asset/liability/equity |
 | `supabase/tests/categorize_transfer_account.sql` | Create — pgTAP test pinning that `categorize_bank_transaction` does NOT touch `is_transfer`, and that the chart_of_accounts join exposes `account_type` |
@@ -507,12 +507,12 @@ git commit -m "fix(dashboard): exclude transfer-typed categories from expense ag
 ## Task 3: Fix `useExpenseHealth` (revenue + outflow + uncategorized)
 
 **Files:**
-- Create: `tests/unit/useExpenseHealth.test.ts`
+- Create: `tests/unit/useExpenseHealth.test.tsx`
 - Modify: `src/hooks/useExpenseHealth.tsx`
 
 - [ ] **Step 3.1: Write failing test**
 
-Create `tests/unit/useExpenseHealth.test.ts`:
+Create `tests/unit/useExpenseHealth.test.tsx`:
 
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -667,7 +667,7 @@ describe('useExpenseHealth', () => {
 - [ ] **Step 3.2: Run test, watch it fail**
 
 ```bash
-npm run test -- tests/unit/useExpenseHealth.test.ts
+npm run test -- tests/unit/useExpenseHealth.test.tsx
 ```
 
 Expected: both tests fail. (`is_transfer` filter not applied; revenue includes the transfer inflow.)
@@ -706,7 +706,7 @@ const pnlTxns = txns.filter(
 - [ ] **Step 3.4: Run test, watch it pass**
 
 ```bash
-npm run test -- tests/unit/useExpenseHealth.test.ts
+npm run test -- tests/unit/useExpenseHealth.test.tsx
 ```
 
 Expected: both tests pass.
@@ -714,7 +714,7 @@ Expected: both tests pass.
 - [ ] **Step 3.5: Commit**
 
 ```bash
-git add src/hooks/useExpenseHealth.tsx tests/unit/useExpenseHealth.test.ts
+git add src/hooks/useExpenseHealth.tsx tests/unit/useExpenseHealth.test.tsx
 git commit -m "fix(dashboard): is_transfer + transfer-typed exclusion in expense health"
 ```
 

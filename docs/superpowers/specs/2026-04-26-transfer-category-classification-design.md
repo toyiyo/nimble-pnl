@@ -98,7 +98,7 @@ Assert the returned `transactions`, `pendingOutflows`, and `splitDetails` arrays
 
 Mock the supabase response with mixed account types and assert revenue, foodCost, laborCost, and uncategorizedSpend exclude `asset|liability|equity`-typed rows. Also assert the new `is_transfer = false` filter is applied (verify the call args via spy).
 
-### 4. pgTAP test: `supabase/tests/categorize_transfer_account.test.sql`
+### 4. pgTAP test: `supabase/tests/categorize_transfer_account.sql`
 
 End-to-end DB-level reproduction:
 1. Seed restaurant + chart of accounts (insert "Transfer Clearing Account" with `account_type='asset'`)

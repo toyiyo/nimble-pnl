@@ -183,10 +183,17 @@ function renderCheckPageSync(doc: jsPDF, settings: CheckPrintConfig, check: Chec
   doc.text('DOLLARS', pageWidth - margin - 1.3, amountWordsY);
 
   // Bank name sits above the payor block so it doesn't collide with long
-  // business names that center-extend across the top band.
+  // business names that center-extend across the top band. Shrink long names
+  // so they always fit between the page margins on a single line.
   if (settings.print_bank_info && settings.bank_name) {
-    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
+    const maxBankNameWidth = pageWidth - 2 * margin;
+    let bankFontSize = 11;
+    doc.setFontSize(bankFontSize);
+    while (doc.getTextWidth(settings.bank_name) > maxBankNameWidth && bankFontSize > 8) {
+      bankFontSize -= 0.5;
+      doc.setFontSize(bankFontSize);
+    }
     doc.text(settings.bank_name, pageWidth / 2, 0.30, { align: 'center' });
   }
 

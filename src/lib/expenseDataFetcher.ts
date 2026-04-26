@@ -8,6 +8,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
 
 export interface ExpenseTransaction {
   id: string;
@@ -23,6 +24,7 @@ export interface ExpenseTransaction {
   chart_of_accounts: {
     account_name: string;
     account_subtype: string;
+    account_type: string;
   } | null;
 }
 
@@ -34,6 +36,7 @@ export interface PendingOutflowRecord {
   chart_account: {
     account_name: string;
     account_subtype: string;
+    account_type: string;
   } | null;
 }
 
@@ -44,6 +47,7 @@ export interface SplitDetail {
   chart_of_accounts: {
     account_name: string;
     account_subtype: string;
+    account_type: string;
   } | null;
 }
 
@@ -69,10 +73,12 @@ export interface ExpenseDataResult {
 
 /**
  * Fetches unified expense data from all relevant sources.
- * 
+ *
  * This ensures consistency across all expense-related hooks by using the same:
  * - Transaction status filters (posted + pending)
- * - Transfer exclusion (is_transfer = false)
+ * - Transfer exclusion (is_transfer = false) AND category-type exclusion
+ *   (asset / liability / equity categories are not P&L events — e.g. a
+ *   "Transfer Clearing Account" assignment that does not flip is_transfer)
  * - Pending outflows inclusion (unmatched checks)
  * - Split transaction handling
  */
@@ -100,7 +106,7 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
       category_id,
       is_split,
       ai_confidence,
-      chart_of_accounts!category_id(account_name, account_subtype)
+      chart_of_accounts!category_id(account_name, account_subtype, account_type)
     `)
     .eq('restaurant_id', restaurantId)
     .in('status', ['posted', 'pending'])
@@ -119,6 +125,14 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
 
   const txns = (transactions || []) as ExpenseTransaction[];
 
+  // Exclude rows whose category's account_type is asset/liability/equity.
+  // These represent transfers (e.g. "Transfer Clearing Account") that are not
+  // P&L events but are not flagged with is_transfer when categorize_bank_transaction
+  // is used to assign them. See docs/superpowers/specs/2026-04-26-transfer-category-classification-design.md.
+  const filteredTxns = txns.filter(
+    (t) => !isTransferCategoryType(t.chart_of_accounts?.account_type),
+  );
+
   // 2. Fetch pending outflows (unmatched checks only)
   const { data: pendingOutflows, error: poError } = await supabase
     .from('pending_outflows')
@@ -127,7 +141,7 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
       category_id,
       issue_date,
       status,
-      chart_account:chart_of_accounts!category_id(account_name, account_subtype)
+      chart_account:chart_of_accounts!category_id(account_name, account_subtype, account_type)
     `)
     .eq('restaurant_id', restaurantId)
     .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
@@ -139,13 +153,17 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
 
   const pendingOutflowRecords = (pendingOutflows || []) as PendingOutflowRecord[];
 
+  const filteredPendingOutflows = pendingOutflowRecords.filter(
+    (p) => !isTransferCategoryType(p.chart_account?.account_type),
+  );
+
   // 3. Fetch split transaction details for split parent transactions
   // Filter to only current period transactions for split lookup
-  const currentPeriodTxns = txns.filter(t => {
+  const currentPeriodTxns = filteredTxns.filter(t => {
     const txnDate = new Date(t.transaction_date);
     return txnDate >= startDate && txnDate <= endDate;
   });
-  
+
   const splitParentIds = currentPeriodTxns.filter(t => t.is_split).map(t => t.id);
 
   let splitDetails: SplitDetail[] = [];
@@ -157,7 +175,7 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
         transaction_id,
         amount,
         category_id,
-        chart_of_accounts:chart_of_accounts!category_id(account_name, account_subtype)
+        chart_of_accounts:chart_of_accounts!category_id(account_name, account_subtype, account_type)
       `)
       .in('transaction_id', splitParentIds);
 
@@ -165,31 +183,34 @@ export async function fetchExpenseData(params: ExpenseDataParams): Promise<Expen
       console.error('Error fetching split details:', splitsError);
     } else {
       splitDetails = (splits || []) as SplitDetail[];
+      splitDetails = splitDetails.filter(
+        (s) => !isTransferCategoryType(s.chart_of_accounts?.account_type),
+      );
     }
   }
 
   // Separate current and previous period transactions if needed
   if (includePreviousPeriod) {
-    const currentTransactions = txns.filter(t => {
+    const currentTransactions = filteredTxns.filter(t => {
       const txnDate = new Date(t.transaction_date);
       return txnDate >= startDate && txnDate <= endDate;
     });
-    const previousTransactions = txns.filter(t => {
+    const previousTransactions = filteredTxns.filter(t => {
       const txnDate = new Date(t.transaction_date);
       return txnDate >= previousPeriodStart && txnDate < startDate;
     });
 
     return {
       transactions: currentTransactions,
-      pendingOutflows: pendingOutflowRecords,
+      pendingOutflows: filteredPendingOutflows,
       splitDetails,
       previousPeriodTransactions: previousTransactions,
     };
   }
 
   return {
-    transactions: txns,
-    pendingOutflows: pendingOutflowRecords,
+    transactions: filteredTxns,
+    pendingOutflows: filteredPendingOutflows,
     splitDetails,
   };
 }

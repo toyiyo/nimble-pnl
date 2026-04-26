@@ -39,6 +39,9 @@ const mocks = vi.hoisted(() => {
     deleteAccount: vi.fn(),
     fetchAccountSecrets: vi.fn(),
     saveSettings: vi.fn(),
+    // Mutable per-test accounts list. Tests that exercise edit branches
+    // mutate this directly before render(); the mock reads it on every call.
+    accounts: [] as Array<Record<string, unknown>>,
     stableSettings,
     stableRestaurant,
   };
@@ -53,7 +56,7 @@ vi.mock('@/hooks/useCheckSettings', () => ({
 
 vi.mock('@/hooks/useCheckBankAccounts', () => ({
   useCheckBankAccounts: () => ({
-    accounts: [],
+    accounts: mocks.accounts,
     saveAccount: { mutateAsync: mocks.saveAccount, isPending: false },
     saveAccountSecrets: { mutateAsync: mocks.saveAccountSecrets, isPending: false },
     updateAccountRouting: { mutateAsync: mocks.updateAccountRouting, isPending: false },
@@ -77,6 +80,7 @@ vi.mock('sonner', () => ({
 }));
 
 import { CheckSettingsDialog } from '@/components/checks/CheckSettingsDialog';
+import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,6 +105,9 @@ beforeEach(() => {
   mocks.deleteAccount.mockReset();
   mocks.fetchAccountSecrets.mockReset();
   mocks.saveSettings.mockReset();
+  mocks.accounts.length = 0;
+  (toast.error as ReturnType<typeof vi.fn>).mockReset();
+  (toast.success as ReturnType<typeof vi.fn>).mockReset();
 });
 
 function openAddForm() {
@@ -219,9 +226,143 @@ describe('CheckSettingsDialog — Bank info for printing', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
 
-    // Give any async handlers a chance to fire.
-    await new Promise((r) => setTimeout(r, 50));
+    // Validation rejects synchronously and returns; a microtask flush is
+    // enough to let any hypothetical onClick promises settle before we
+    // assert "not called".
+    await Promise.resolve();
     expect(mocks.saveAccount).not.toHaveBeenCalled();
     expect(mocks.saveAccountSecrets).not.toHaveBeenCalled();
+  });
+
+  it('clears stored secrets when toggling print_bank_info off on a previously-encrypted account', async () => {
+    mocks.accounts.push({
+      id: 'acct-1',
+      account_name: 'Operating',
+      bank_name: 'Chase',
+      next_check_number: 1001,
+      is_default: true,
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number_last4: '9096',
+    });
+    mocks.saveAccount.mockResolvedValue({
+      id: 'acct-1',
+      account_name: 'Operating',
+      bank_name: 'Chase',
+      next_check_number: 1001,
+      is_default: true,
+      print_bank_info: false,
+      account_number_last4: '9096',
+    });
+
+    render(
+      React.createElement(CheckSettingsDialog, { open: true, onOpenChange: () => {} }),
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /edit Operating/i }));
+    // Toggle off (it starts on for this account).
+    togglePrintBankInfo();
+    fireEvent.click(screen.getByRole('button', { name: /^update$/i }));
+
+    await waitFor(() => {
+      expect(mocks.saveAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'acct-1', print_bank_info: false }),
+      );
+    });
+    await waitFor(() => {
+      expect(mocks.clearAccountSecrets).toHaveBeenCalledWith({ id: 'acct-1' });
+    });
+    expect(mocks.saveAccountSecrets).not.toHaveBeenCalled();
+    expect(mocks.updateAccountRouting).not.toHaveBeenCalled();
+  });
+
+  it('updates routing only when account number is left masked and routing changes', async () => {
+    mocks.accounts.push({
+      id: 'acct-1',
+      account_name: 'Operating',
+      bank_name: 'Chase',
+      next_check_number: 1001,
+      is_default: true,
+      print_bank_info: true,
+      routing_number: '111000614',
+      account_number_last4: '9096',
+    });
+    mocks.saveAccount.mockResolvedValue({
+      id: 'acct-1',
+      account_name: 'Operating',
+      bank_name: 'Chase',
+      next_check_number: 1001,
+      is_default: true,
+      print_bank_info: true,
+      account_number_last4: '9096',
+    });
+
+    render(
+      React.createElement(CheckSettingsDialog, { open: true, onOpenChange: () => {} }),
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: /edit Operating/i }));
+    // Print toggle is already on; change only routing, leave account untouched.
+    fireEvent.change(screen.getByLabelText(/routing number/i), {
+      target: { value: '021000021' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^update$/i }));
+
+    await waitFor(() => {
+      expect(mocks.updateAccountRouting).toHaveBeenCalledWith({
+        id: 'acct-1',
+        routing: '021000021',
+      });
+    });
+    expect(mocks.saveAccountSecrets).not.toHaveBeenCalled();
+    expect(mocks.clearAccountSecrets).not.toHaveBeenCalled();
+  });
+
+  it('shows a recovery toast and keeps the form open when secrets save fails after a fresh account create', async () => {
+    const savedRow = {
+      id: 'new-id',
+      account_name: 'Operating',
+      bank_name: 'Chase',
+      next_check_number: 1001,
+      is_default: false,
+      print_bank_info: true,
+      account_number_last4: null,
+    };
+    // Simulate React Query refetch: as soon as saveAccount resolves, the
+    // accounts list contains the new row (so the edit-form branch can match).
+    mocks.saveAccount.mockImplementation(async () => {
+      mocks.accounts.push(savedRow);
+      return savedRow;
+    });
+    mocks.saveAccountSecrets.mockRejectedValueOnce(new Error('Encryption key not configured'));
+
+    render(
+      React.createElement(CheckSettingsDialog, { open: true, onOpenChange: () => {} }),
+      { wrapper },
+    );
+    openAddForm();
+    fireEvent.change(screen.getByLabelText(/account name/i), {
+      target: { value: 'Operating' },
+    });
+    togglePrintBankInfo();
+    fireEvent.change(screen.getByLabelText(/routing number/i), {
+      target: { value: '111000614' },
+    });
+    fireEvent.change(screen.getByLabelText(/^account number$/i), {
+      target: { value: '2907959096' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/Account saved but bank info update failed/i),
+      );
+    });
+    // Form flipped to EDIT mode for the just-saved row — the submit button
+    // is now "Update" (not "Add"). This guards against the duplicate-INSERT
+    // bug that would otherwise occur on retry.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^update$/i })).toBeInTheDocument();
+    });
   });
 });

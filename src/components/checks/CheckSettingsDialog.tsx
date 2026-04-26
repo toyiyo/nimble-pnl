@@ -617,7 +617,7 @@ function AccountInlineForm({ initial, isSaving, onSave, onCancel }: AccountInlin
         {/* Bank info for printing — toggle reveals routing + account inputs */}
         <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
           <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">
-            <h3 className="text-[13px] font-semibold text-foreground">Bank info for printing</h3>
+            <h5 className="text-[13px] font-semibold text-foreground">Bank info for printing</h5>
             <Switch
               id={`${formId}-print-bank-info`}
               checked={local.print_bank_info}

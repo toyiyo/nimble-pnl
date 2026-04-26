@@ -463,9 +463,13 @@ describe('generateCheckPDF', () => {
       { checkNumber: 239, payeeName: 'X', amount: 1, issueDate: '2026-04-25' },
     ]);
     const output = doc.output();
-    expect(output).toMatch(/111000614/);
-    expect(output).toMatch(/2907959096/);
-    expect(output).toMatch(/239/);
+    // Routing number and account number are MICR-only digits; matching them
+    // alone (and asserting their relative order) is uniquely diagnostic of the
+    // MICR line. /239/ would also match the "Check #: 239" stub text.
+    const routingIdx = output.indexOf('111000614');
+    const accountIdx = output.indexOf('2907959096');
+    expect(routingIdx).toBeGreaterThan(-1);
+    expect(accountIdx).toBeGreaterThan(routingIdx);
   });
 
   it('does NOT render the MICR line when print_bank_info is false', async () => {

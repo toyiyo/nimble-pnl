@@ -13,13 +13,22 @@ describe('formatMicrLine', () => {
     );
   });
 
-  it('right-pads check number with no leading zeros (raw decimal)', () => {
+  it('renders multi-digit check numbers as raw decimal (no padding, no leading zeros)', () => {
     const result = formatMicrLine({
       checkNumber: 1001,
       routingNumber: '111000614',
       accountNumber: '12345',
     });
     expect(result).toContain(`${MICR_ON_US}1001${MICR_ON_US}`);
+  });
+
+  it('renders single-digit check numbers as a single digit between on-us flags', () => {
+    const result = formatMicrLine({
+      checkNumber: 7,
+      routingNumber: '111000614',
+      accountNumber: '12345',
+    });
+    expect(result).toContain(`${MICR_ON_US}7${MICR_ON_US}`);
   });
 
   it('throws on an invalid routing number', () => {

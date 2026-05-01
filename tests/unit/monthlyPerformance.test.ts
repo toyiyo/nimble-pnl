@@ -315,6 +315,10 @@ describe('calculateMonthlyPerformance — April 2026 fixture (regression anchor)
     expect(result.grossRevenueCents).toBe(7445800);
     expect(result.discountsCents).toBe(143900);
     expect(result.netRevenueCents).toBe(7301900);
+    expect(result.salesTaxCents).toBe(0);
+    expect(result.tipsCents).toBe(0);
+    expect(result.otherLiabilitiesCents).toBe(0);
+    expect(result.passThroughTotalCents).toBe(0);
     expect(result.cogsCents).toBe(2556200);
     expect(result.actualLaborCents).toBe(3295900);
     expect(result.pendingLaborCents).toBe(1652800);
@@ -322,8 +326,8 @@ describe('calculateMonthlyPerformance — April 2026 fixture (regression anchor)
     expect(result.actualExpensesCents).toBe(11122000);
     expect(result.projectedExpensesCents).toBe(12774800);
     expect(result.otherExpensesCents).toBe(5269900);
-    expect(result.actualNetProfitCents).toBe(-3820100);
-    expect(result.projectedNetProfitCents).toBe(-5472900);
+    expect(result.actualNetProfitCents).toBe(-3820100);   // loss: -$38,201
+    expect(result.projectedNetProfitCents).toBe(-5472900); // loss: -$54,729
     expect(result.posCollectedFromBreakdownCents).toBe(7445800); // gross only — no pass-through this fixture
     expect(result.posReconciliationDeltaCents).toBeNull();
   });

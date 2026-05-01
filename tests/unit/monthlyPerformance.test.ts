@@ -132,16 +132,30 @@ describe('calculateMonthlyPerformance — costs', () => {
   });
 
   it('computes other expenses as actualExpenses - cogs - actualLabor (no pending labor)', () => {
-    const result = calculateMonthlyPerformance(
-      makeInput({
-        expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
-        pendingLabor: 16528,
-      })
-    );
+    const baseInput = makeInput({
+      expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
+      pendingLabor: 16528,
+    });
+    const result = calculateMonthlyPerformance(baseInput);
     expect(result.actualExpensesCents).toBe(11122000);
     expect(result.otherExpensesCents).toBe(5269900); // 111220 - 25562 - 32959
-    // Pending labor must NOT be in otherExpenses
-    expect(result.otherExpensesCents).not.toBe(5269900 + 1652800);
+
+    // otherExpenses must be invariant under pendingLabor changes — if pending
+    // labor leaked into otherExpenses, varying it would shift the result.
+    const noPending = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
+        pendingLabor: 0,
+      })
+    );
+    const morePending = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
+        pendingLabor: 99999,
+      })
+    );
+    expect(noPending.otherExpensesCents).toBe(result.otherExpensesCents);
+    expect(morePending.otherExpensesCents).toBe(result.otherExpensesCents);
   });
 
   it('floors otherExpenses at 0 when subtraction would go negative (rounding edge)', () => {

@@ -220,3 +220,61 @@ describe('calculateMonthlyPerformance — profit', () => {
     expect(result.actualNetProfitCents).toBe(result.projectedNetProfitCents);
   });
 });
+
+describe('calculateMonthlyPerformance — POS reconciliation', () => {
+  it('delta is null when no posReportedTotal is supplied', () => {
+    const result = calculateMonthlyPerformance(makeInput());
+    expect(result.posReportedCents).toBeNull();
+    expect(result.posReconciliationDeltaCents).toBeNull();
+  });
+
+  it('delta is 0 when posReportedTotal equals derived POS', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 100, discounts: 0, netRevenue: 100,
+          salesTax: 8, tips: 5, otherLiabilities: 2, totalCollectedAtPos: 115,
+        },
+        posReportedTotal: 115,
+      })
+    );
+    expect(result.posReconciliationDeltaCents).toBe(0);
+  });
+
+  it('delta is signed when posReportedTotal differs from derived POS', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 100, discounts: 0, netRevenue: 100,
+          salesTax: 0, tips: 0, otherLiabilities: 0, totalCollectedAtPos: 100,
+        },
+        posReportedTotal: 105,
+      })
+    );
+    expect(result.posReconciliationDeltaCents).toBe(500); // posReported - derived
+  });
+});
+
+describe('calculateMonthlyPerformance — decimal safety + idempotence', () => {
+  it('100 inputs of $0.01 sum to exactly $1.00 in cents', () => {
+    let totalCents = 0;
+    for (let i = 0; i < 100; i++) {
+      totalCents += toCents(0.01);
+    }
+    expect(totalCents).toBe(100); // exactly $1.00, not 100.00000000000007
+  });
+
+  it('returns identical results when called twice with the same input', () => {
+    const input = makeInput({
+      revenue: {
+        grossRevenue: 74458, discounts: 1439, netRevenue: 73019,
+        salesTax: 0, tips: 0, otherLiabilities: 0, totalCollectedAtPos: 74458,
+      },
+      expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
+      pendingLabor: 16528,
+    });
+    const a = calculateMonthlyPerformance(input);
+    const b = calculateMonthlyPerformance(input);
+    expect(a).toEqual(b);
+  });
+});

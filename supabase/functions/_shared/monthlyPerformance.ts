@@ -9,7 +9,7 @@
  * Dollars in (Number), cents out (Number). The caller divides by 100 for display.
  *
  * Used by:
- * - Frontend: src/components/MonthlyBreakdownTable.tsx (Task 9 of this plan)
+ * - Frontend: src/components/MonthlyBreakdownTable.tsx
  *
  * Pattern follows: supabase/functions/_shared/periodMetrics.ts
  */
@@ -86,6 +86,8 @@ export interface MonthlyPerformanceResult {
 /** Convert a dollars-as-Number value to integer cents, rounding half-away-from-zero. */
 export function toCents(dollars: number): number {
   if (!Number.isFinite(dollars)) return 0;
+  // Math.round(-0.5) returns -0 in JS (not -1). The sign/abs pattern
+  // gives true half-away-from-zero for negative values.
   return Math.sign(dollars) * Math.round(Math.abs(dollars) * 100);
 }
 

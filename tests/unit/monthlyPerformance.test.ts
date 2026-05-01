@@ -2,8 +2,8 @@
  * Monthly Performance Tests
  *
  * Tests the single source of truth for the dashboard's Monthly Performance
- * table. The April 2026 fixture below is the regression anchor — these
- * exact numbers must keep matching what the UI renders.
+ * table. An April 2026 regression fixture (added in Task 6) will pin the
+ * exact numbers the UI renders.
  */
 
 import { describe, it, expect } from 'vitest';

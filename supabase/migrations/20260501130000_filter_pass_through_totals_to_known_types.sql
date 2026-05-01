@@ -34,4 +34,13 @@ COMMENT ON FUNCTION public.get_pass_through_totals IS
 'Aggregates pass-through items (tax, tip, service_charge, discount, fee) from unified_sales.
 Returns totals grouped by adjustment_type, avoiding the 1000 row limit issue.
 Only the five known adjustment types are returned; unknown types (void, refund, etc.)
-are excluded so they cannot leak into POS Collected via the useRevenueBreakdown hook.';
+are excluded so they cannot leak into POS Collected via the useRevenueBreakdown hook.
+NOTE: If a new POS adjustment_type is added, update both this IN list (via a new
+migration) AND the PASS_THROUGH_OTHER_LIABILITY_TYPES set in
+src/hooks/useMonthlyMetrics.tsx / useRevenueBreakdown.tsx so it surfaces in the dashboard.';
+
+-- Re-grant execute permission. CREATE OR REPLACE preserves grants in
+-- production today, but emitting GRANT here matches the convention used
+-- by the original migration (20251201100000_aggregate_pass_through_totals.sql)
+-- and protects fresh-database setups against migration-order surprises.
+GRANT EXECUTE ON FUNCTION public.get_pass_through_totals(UUID, DATE, DATE) TO authenticated;

@@ -44,6 +44,9 @@ BEGIN
       -- Liability-categorized sales are accounted for in
       -- monthly_categorized_liabilities; counting them here too caused
       -- gross_revenue (and therefore total_collected_at_pos) to double-count.
+      -- account_type_enum is (asset, liability, equity, revenue, expense);
+      -- only liability is excluded here. asset/equity/expense are not
+      -- expected on unified_sales rows but pass through if they ever appear.
       AND (coa.account_type IS NULL OR coa.account_type = 'revenue')
       AND NOT EXISTS (
         SELECT 1 FROM unified_sales child

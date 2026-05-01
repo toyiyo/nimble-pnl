@@ -283,3 +283,48 @@ describe('calculateMonthlyPerformance — decimal safety + idempotence', () => {
     expect(a).toEqual(b);
   });
 });
+
+describe('calculateMonthlyPerformance — April 2026 fixture (regression anchor)', () => {
+  it('produces every documented value in cents from the user-reported April 2026 numbers', () => {
+    const result = calculateMonthlyPerformance({
+      revenue: {
+        grossRevenue: 74458,             // categorized 58,359 + uncategorized 16,099
+        discounts: 1439,
+        netRevenue: 73019,
+        salesTax: 0,                     // sales tax was inside grossRevenue under
+                                         // the buggy RPC; after the RPC fix the
+                                         // breakdown supplies these as
+                                         // pass-through values; this fixture
+                                         // mirrors the corrected breakdown's
+                                         // outputs (sales tax / tips not
+                                         // separately reported in the April
+                                         // example, so 0 is correct here)
+        tips: 0,
+        otherLiabilities: 0,
+        totalCollectedAtPos: 74458,
+      },
+      expenses: {
+        totalExpenses: 111220,
+        foodCost: 25562,                 // food + beverage cost
+        actualLaborCost: 32959,          // BOH + FOH + Mgmt + Payroll Taxes
+      },
+      pendingLabor: 16528,
+      posReportedTotal: null,
+    });
+
+    expect(result.grossRevenueCents).toBe(7445800);
+    expect(result.discountsCents).toBe(143900);
+    expect(result.netRevenueCents).toBe(7301900);
+    expect(result.cogsCents).toBe(2556200);
+    expect(result.actualLaborCents).toBe(3295900);
+    expect(result.pendingLaborCents).toBe(1652800);
+    expect(result.laborIncludingPendingCents).toBe(4948700);
+    expect(result.actualExpensesCents).toBe(11122000);
+    expect(result.projectedExpensesCents).toBe(12774800);
+    expect(result.otherExpensesCents).toBe(5269900);
+    expect(result.actualNetProfitCents).toBe(-3820100);
+    expect(result.projectedNetProfitCents).toBe(-5472900);
+    expect(result.posCollectedFromBreakdownCents).toBe(7445800); // gross only — no pass-through this fixture
+    expect(result.posReconciliationDeltaCents).toBeNull();
+  });
+});

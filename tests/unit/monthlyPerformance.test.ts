@@ -177,3 +177,46 @@ describe('calculateMonthlyPerformance — costs', () => {
     expect(result.projectedExpensesCents).toBe(11122000 + 1652800);
   });
 });
+
+describe('calculateMonthlyPerformance — profit', () => {
+  it('actualNetProfit = netRevenue - actualExpenses', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 0, discounts: 0, netRevenue: 73019,
+          salesTax: 0, tips: 0, otherLiabilities: 0, totalCollectedAtPos: 0,
+        },
+        expenses: { totalExpenses: 111220, foodCost: 0, actualLaborCost: 0 },
+      })
+    );
+    expect(result.actualNetProfitCents).toBe(7301900 - 11122000); // -3,820,100
+  });
+
+  it('projectedNetProfit = netRevenue - projectedExpenses (subtracts pending labor)', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 0, discounts: 0, netRevenue: 73019,
+          salesTax: 0, tips: 0, otherLiabilities: 0, totalCollectedAtPos: 0,
+        },
+        expenses: { totalExpenses: 111220, foodCost: 0, actualLaborCost: 0 },
+        pendingLabor: 16528,
+      })
+    );
+    expect(result.projectedNetProfitCents).toBe(7301900 - 11122000 - 1652800); // -5,472,900
+  });
+
+  it('projectedNetProfit equals actualNetProfit when pendingLabor is 0', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 0, discounts: 0, netRevenue: 50000,
+          salesTax: 0, tips: 0, otherLiabilities: 0, totalCollectedAtPos: 0,
+        },
+        expenses: { totalExpenses: 30000, foodCost: 0, actualLaborCost: 0 },
+        pendingLabor: 0,
+      })
+    );
+    expect(result.actualNetProfitCents).toBe(result.projectedNetProfitCents);
+  });
+});

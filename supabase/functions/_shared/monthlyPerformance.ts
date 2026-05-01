@@ -134,6 +134,10 @@ export function calculateMonthlyPerformance(
     actualExpensesCents - cogsCents - actualLaborCents
   );
 
+  // Profit
+  const actualNetProfitCents = netRevenueCents - actualExpensesCents;
+  const projectedNetProfitCents = netRevenueCents - projectedExpensesCents;
+
   return {
     grossRevenueCents,
     discountsCents,
@@ -152,8 +156,7 @@ export function calculateMonthlyPerformance(
     otherExpensesCents,
     actualExpensesCents,
     projectedExpensesCents,
-    // Profit placeholders until Task 4
-    actualNetProfitCents: 0,
-    projectedNetProfitCents: 0,
+    actualNetProfitCents,
+    projectedNetProfitCents,
   };
 }

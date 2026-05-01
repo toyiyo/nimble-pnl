@@ -8,6 +8,9 @@
  * All math is performed in integer cents to avoid floating-point drift.
  * Dollars in (Number), cents out (Number). The caller divides by 100 for display.
  *
+ * Used by:
+ * - Frontend: src/components/MonthlyBreakdownTable.tsx (Task 9 of this plan)
+ *
  * Pattern follows: supabase/functions/_shared/periodMetrics.ts
  */
 
@@ -18,11 +21,16 @@ export interface MonthlyPerformanceInput {
   revenue: {
     grossRevenue: number;
     discounts: number;
+    /** Net after discounts AND refunds — caller must deduct both before passing. */
     netRevenue: number;
     salesTax: number;
     tips: number;
     otherLiabilities: number;
-    /** Already equals grossRevenue + salesTax + tips + otherLiabilities at the source. */
+    /** NOT CONSUMED. The module re-derives POS-collected as
+     *  grossRevenue + salesTax + tips + otherLiabilities. This field is
+     *  accepted purely so callers can pass their hook's revenue shape via
+     *  spread; the upstream value is intentionally ignored to guarantee
+     *  the summary card and the breakdown read the same derived total. */
     totalCollectedAtPos: number;
   };
   /** Expense aggregates from useMonthlyExpenses for the same month (dollars). */
@@ -78,7 +86,7 @@ export interface MonthlyPerformanceResult {
 /** Convert a dollars-as-Number value to integer cents, rounding half-away-from-zero. */
 export function toCents(dollars: number): number {
   if (!Number.isFinite(dollars)) return 0;
-  return Math.round(dollars * 100);
+  return Math.sign(dollars) * Math.round(Math.abs(dollars) * 100);
 }
 
 // ===== MAIN FUNCTION =====

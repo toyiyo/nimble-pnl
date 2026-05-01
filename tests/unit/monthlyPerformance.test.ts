@@ -108,3 +108,58 @@ describe('calculateMonthlyPerformance — revenue and pass-through', () => {
     expect(result.posCollectedFromBreakdownCents).toBe(11500);
   });
 });
+
+describe('calculateMonthlyPerformance — costs', () => {
+  it('passes food cost through as cogsCents', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 0, foodCost: 25562, actualLaborCost: 0 },
+      })
+    );
+    expect(result.cogsCents).toBe(2556200);
+  });
+
+  it('passes actual labor (incl. payroll taxes already in source) through', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 0, foodCost: 0, actualLaborCost: 32959 },
+        pendingLabor: 16528,
+      })
+    );
+    expect(result.actualLaborCents).toBe(3295900);
+    expect(result.pendingLaborCents).toBe(1652800);
+    expect(result.laborIncludingPendingCents).toBe(4948700);
+  });
+
+  it('computes other expenses as actualExpenses - cogs - actualLabor (no pending labor)', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
+        pendingLabor: 16528,
+      })
+    );
+    expect(result.actualExpensesCents).toBe(11122000);
+    expect(result.otherExpensesCents).toBe(5269900); // 111220 - 25562 - 32959
+    // Pending labor must NOT be in otherExpenses
+    expect(result.otherExpensesCents).not.toBe(5269900 + 1652800);
+  });
+
+  it('floors otherExpenses at 0 when subtraction would go negative (rounding edge)', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 100, foodCost: 60, actualLaborCost: 50 },
+      })
+    );
+    expect(result.otherExpensesCents).toBe(0);
+  });
+
+  it('computes projectedExpenses as actualExpenses + pendingLabor', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 111220, foodCost: 0, actualLaborCost: 0 },
+        pendingLabor: 16528,
+      })
+    );
+    expect(result.projectedExpensesCents).toBe(11122000 + 1652800);
+  });
+});

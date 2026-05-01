@@ -118,6 +118,22 @@ export function calculateMonthlyPerformance(
   const posReconciliationDeltaCents =
     posReportedCents == null ? null : posReportedCents - posCollectedFromBreakdownCents;
 
+  // Costs
+  const cogsCents = toCents(input.expenses.foodCost);
+  const actualLaborCents = toCents(input.expenses.actualLaborCost);
+  const pendingLaborCents = toCents(input.pendingLabor);
+  const laborIncludingPendingCents = actualLaborCents + pendingLaborCents;
+
+  const actualExpensesCents = toCents(input.expenses.totalExpenses);
+  const projectedExpensesCents = actualExpensesCents + pendingLaborCents;
+
+  // otherExpenses = actual - cogs - actualLabor. Floor at 0: rounding in the
+  // source data can make this slightly negative when COGS + labor ≈ total.
+  const otherExpensesCents = Math.max(
+    0,
+    actualExpensesCents - cogsCents - actualLaborCents
+  );
+
   return {
     grossRevenueCents,
     discountsCents,
@@ -129,14 +145,14 @@ export function calculateMonthlyPerformance(
     posCollectedFromBreakdownCents,
     posReportedCents,
     posReconciliationDeltaCents,
-    // Costs + profit are placeholders until Tasks 3-4
-    cogsCents: 0,
-    actualLaborCents: 0,
-    pendingLaborCents: 0,
-    laborIncludingPendingCents: 0,
-    otherExpensesCents: 0,
-    actualExpensesCents: 0,
-    projectedExpensesCents: 0,
+    cogsCents,
+    actualLaborCents,
+    pendingLaborCents,
+    laborIncludingPendingCents,
+    otherExpensesCents,
+    actualExpensesCents,
+    projectedExpensesCents,
+    // Profit placeholders until Task 4
     actualNetProfitCents: 0,
     projectedNetProfitCents: 0,
   };

@@ -115,7 +115,7 @@ export interface MonthlyPerformanceResult {
   actualLaborCents: number;
   pendingLaborCents: number;
   laborIncludingPendingCents: number;
-  otherExpensesCents: number;     // actualExpenses - cogs - actualLabor
+  otherExpensesCents: number;     // max(0, actualExpenses - cogs - actualLabor); floors at 0
   actualExpensesCents: number;    // expenses.totalExpenses
   projectedExpensesCents: number; // actualExpenses + pendingLabor
 

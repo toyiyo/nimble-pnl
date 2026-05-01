@@ -115,7 +115,9 @@ export interface MonthlyPerformanceResult {
 /** Convert a dollars-as-Number value to integer cents, rounding half-away-from-zero. */
 export function toCents(dollars: number): number {
   if (!Number.isFinite(dollars)) return 0;
-  return Math.round(dollars * 100);
+  // Math.round(-0.5) returns -0 in JS (not -1). The sign/abs pattern
+  // gives true half-away-from-zero for negative values, so toCents(-0.005) === -1.
+  return Math.sign(dollars) * Math.round(Math.abs(dollars) * 100);
 }
 
 // ===== MAIN FUNCTION =====

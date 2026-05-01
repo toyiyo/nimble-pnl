@@ -9,10 +9,7 @@ import { format, parse, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useRevenueBreakdown } from "@/hooks/useRevenueBreakdown";
 import { useMonthlyExpenses } from "@/hooks/useMonthlyExpenses";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
-import {
-  calculateMonthlyPerformance,
-  type MonthlyPerformanceResult,
-} from '../../supabase/functions/_shared/monthlyPerformance';
+import { calculateMonthlyPerformance } from "../../supabase/functions/_shared/monthlyPerformance";
 
 interface MonthlyData {
   period: string;
@@ -220,7 +217,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
                   
-                  const perf: MonthlyPerformanceResult = calculateMonthlyPerformance({
+                  const perf = calculateMonthlyPerformance({
                     revenue: {
                       grossRevenue: month.gross_revenue,
                       discounts: month.discounts,

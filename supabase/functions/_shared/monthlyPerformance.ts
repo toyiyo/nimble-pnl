@@ -92,7 +92,50 @@ export function toCents(dollars: number): number {
 // ===== MAIN FUNCTION =====
 
 export function calculateMonthlyPerformance(
-  _input: MonthlyPerformanceInput
+  input: MonthlyPerformanceInput
 ): MonthlyPerformanceResult {
-  throw new Error('not implemented');
+  // Revenue
+  const grossRevenueCents = toCents(input.revenue.grossRevenue);
+  const discountsCents = toCents(input.revenue.discounts);
+  const netRevenueCents = toCents(input.revenue.netRevenue);
+
+  // Pass-through
+  const salesTaxCents = toCents(input.revenue.salesTax);
+  const tipsCents = toCents(input.revenue.tips);
+  const otherLiabilitiesCents = toCents(input.revenue.otherLiabilities);
+  const passThroughTotalCents =
+    salesTaxCents + tipsCents + otherLiabilitiesCents;
+
+  // POS — always derive from the breakdown (gross + pass-through), don't trust
+  // the caller-supplied totalCollectedAtPos field. This is the rule that fixes
+  // the $90,475 vs $87,332 mismatch: there is one POS number, sourced from
+  // breakdown.
+  const posCollectedFromBreakdownCents = grossRevenueCents + passThroughTotalCents;
+  const posReportedCents =
+    input.posReportedTotal == null ? null : toCents(input.posReportedTotal);
+  const posReconciliationDeltaCents =
+    posReportedCents == null ? null : posReportedCents - posCollectedFromBreakdownCents;
+
+  return {
+    grossRevenueCents,
+    discountsCents,
+    netRevenueCents,
+    salesTaxCents,
+    tipsCents,
+    otherLiabilitiesCents,
+    passThroughTotalCents,
+    posCollectedFromBreakdownCents,
+    posReportedCents,
+    posReconciliationDeltaCents,
+    // Costs + profit are placeholders until Tasks 3-4
+    cogsCents: 0,
+    actualLaborCents: 0,
+    pendingLaborCents: 0,
+    laborIncludingPendingCents: 0,
+    otherExpensesCents: 0,
+    actualExpensesCents: 0,
+    projectedExpensesCents: 0,
+    actualNetProfitCents: 0,
+    projectedNetProfitCents: 0,
+  };
 }

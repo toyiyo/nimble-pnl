@@ -256,12 +256,17 @@ describe('calculateMonthlyPerformance — POS reconciliation', () => {
 });
 
 describe('calculateMonthlyPerformance — decimal safety + idempotence', () => {
-  it('100 inputs of $0.01 sum to exactly $1.00 in cents', () => {
+  it('handles repeated cent values and dollar-space float drift', () => {
+    // toCents returns integers, so summing many integer-cent values is exact.
     let totalCents = 0;
     for (let i = 0; i < 100; i++) {
       totalCents += toCents(0.01);
     }
-    expect(totalCents).toBe(100); // exactly $1.00, not 100.00000000000007
+    expect(totalCents).toBe(100);
+
+    // The real float-drift risk is summing in dollar space before converting:
+    // 0.1 + 0.2 === 0.30000000000000004. toCents must round that to 30.
+    expect(toCents(0.1 + 0.2)).toBe(30);
   });
 
   it('returns identical results when called twice with the same input', () => {

@@ -9,6 +9,7 @@ import { format, parse, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useRevenueBreakdown } from "@/hooks/useRevenueBreakdown";
 import { useMonthlyExpenses } from "@/hooks/useMonthlyExpenses";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
+import { calculateMonthlyPerformance } from "../../supabase/functions/_shared/monthlyPerformance";
 
 interface MonthlyData {
   period: string;
@@ -216,14 +217,36 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const monthDate = parse(month.period, 'yyyy-MM', new Date());
                   const expenseMonth = getExpenseDataForMonth(month.period);
                   
-                  const foodCost = month.food_cost > 0 ? month.food_cost : (expenseMonth?.foodCost ?? 0);
-                  const pendingLaborCost = month.pending_labor_cost;
-                  const actualLaborCost = expenseMonth?.laborCost ?? month.actual_labor_cost;
-                  const laborCost = pendingLaborCost + actualLaborCost;
-                  const totalExpenses = expenseMonth
-                    ? expenseMonth.totalExpenses + pendingLaborCost
-                    : month.food_cost + laborCost;
-                  const otherExpenses = Math.max(0, totalExpenses - foodCost - laborCost);
+                  const perf = calculateMonthlyPerformance({
+                    revenue: {
+                      grossRevenue: month.gross_revenue,
+                      discounts: month.discounts,
+                      netRevenue: month.net_revenue,
+                      salesTax: month.sales_tax,
+                      tips: month.tips,
+                      otherLiabilities: month.other_liabilities,
+                      totalCollectedAtPos: month.total_collected_at_pos,
+                    },
+                    expenses: {
+                      totalExpenses: expenseMonth?.totalExpenses ?? (month.food_cost + month.actual_labor_cost),
+                      foodCost: expenseMonth?.foodCost ?? month.food_cost,
+                      actualLaborCost: expenseMonth?.laborCost ?? month.actual_labor_cost,
+                    },
+                    pendingLabor: month.pending_labor_cost,
+                    posReportedTotal: null,
+                  });
+
+                  const foodCost = perf.cogsCents / 100;
+                  const pendingLaborCost = perf.pendingLaborCents / 100;
+                  const actualLaborCost = perf.actualLaborCents / 100;
+                  const laborCost = perf.laborIncludingPendingCents / 100;
+                  const otherExpenses = perf.otherExpensesCents / 100;
+                  const actualNetProfit = perf.actualNetProfitCents / 100;
+                  const projectedNetProfit = perf.projectedNetProfitCents / 100;
+                  const posCollected = perf.posCollectedFromBreakdownCents / 100;
+                  const posReconciliationDelta = perf.posReconciliationDeltaCents == null
+                    ? null
+                    : perf.posReconciliationDeltaCents / 100;
                   
                   const foodCostPercent = month.net_revenue > 0 
                     ? (foodCost / month.net_revenue) * 100 
@@ -263,7 +286,7 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <span className="font-semibold text-xs sm:text-sm text-blue-600">
-                            {formatCurrency(month.total_collected_at_pos)}
+                            {formatCurrency(posCollected)}
                           </span>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
@@ -309,28 +332,38 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                           </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
-                          {(() => {
-                            const netRevenue = month.net_revenue;
-                            const profit = netRevenue - totalExpenses;
-                            const profitMargin = netRevenue > 0 ? (profit / netRevenue) * 100 : 0;
-                            
-                            return (
-                              <div className="flex flex-col items-end gap-0.5 sm:gap-1">
-                                <span className={`font-bold text-xs sm:text-sm ${
-                                  profit > 0 
-                                    ? 'text-primary' 
-                                    : profit < 0 
-                                    ? 'text-destructive'
+                          <div className="flex flex-col items-end gap-0.5 sm:gap-1">
+                            <span className={`font-bold text-xs sm:text-sm ${
+                              actualNetProfit > 0 ? 'text-primary'
+                                : actualNetProfit < 0 ? 'text-destructive'
+                                : 'text-foreground'
+                            }`}>
+                              {formatCurrency(actualNetProfit)}
+                            </span>
+                            <span className="text-[10px] sm:text-xs text-blue-600">
+                              Actual
+                              {month.net_revenue > 0
+                                ? ` (${((actualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
+                                : ''}
+                            </span>
+                            {pendingLaborCost > 0 && (
+                              <>
+                                <span className={`font-semibold text-xs sm:text-sm ${
+                                  projectedNetProfit > 0 ? 'text-primary'
+                                    : projectedNetProfit < 0 ? 'text-destructive'
                                     : 'text-foreground'
                                 }`}>
-                                  {formatCurrency(profit)}
+                                  {formatCurrency(projectedNetProfit)}
                                 </span>
-                                <span className="text-[10px] sm:text-xs text-muted-foreground">
-                                  {profitMargin.toFixed(1)}%
+                                <span className="text-[10px] sm:text-xs text-amber-600">
+                                  Projected (incl. pending labor)
+                                  {month.net_revenue > 0
+                                    ? ` (${((projectedNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
+                                    : ''}
                                 </span>
-                              </div>
-                            );
-                          })()}
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           {month.profitChangePercent !== null ? (
@@ -602,6 +635,20 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                                       </div>
                                     )}
                                   </div>
+                                </div>
+                              )}
+
+                              {posReconciliationDelta !== null && posReconciliationDelta !== 0 && (
+                                <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                  <div className="flex flex-col">
+                                    <span className="text-[12px] font-medium text-foreground">POS reconciliation</span>
+                                    <span className="text-[11px] text-muted-foreground">
+                                      Reported by POS vs derived from breakdown
+                                    </span>
+                                  </div>
+                                  <span className="text-[14px] font-semibold tabular-nums">
+                                    {formatCurrency(posReconciliationDelta)}
+                                  </span>
                                 </div>
                               )}
 

@@ -4,7 +4,7 @@
 -- restricts gross_revenue to revenue-categorized + uncategorized sales only.
 
 BEGIN;
-SELECT plan(3);
+SELECT plan(4);
 
 SELECT
   '00000000-0000-0000-0000-000000000222'::uuid AS restaurant_id,
@@ -26,8 +26,9 @@ VALUES
   ('00000000-0000-0000-0000-000000000602', :'restaurant_id', '2200', 'Sales Tax Payable', 'liability', 'other_current_liabilities', 'credit')
 ON CONFLICT DO NOTHING;
 
--- One revenue-categorized sale ($100) and one liability-categorized sale ($10)
--- in the same month. The buggy RPC reported gross_revenue=110 here.
+-- One revenue-categorized sale ($100), one liability-categorized sale ($10),
+-- and one uncategorized sale ($50) in the same month.
+-- The buggy RPC reported gross_revenue=110 here.
 INSERT INTO unified_sales (
   id, restaurant_id, pos_system, external_order_id, external_item_id, item_name,
   quantity, unit_price, total_price, sale_date, item_type,
@@ -38,16 +39,19 @@ INSERT INTO unified_sales (
     '00000000-0000-0000-0000-000000000601', NULL, NULL),
   ('00000000-0000-0000-0000-000000000702', :'restaurant_id', 'test', 'ord-l-1', 'item-l-1',
     'POS Sales Tax', 1, 10, 10, '2026-04-15', 'sale', true,
-    '00000000-0000-0000-0000-000000000602', NULL, NULL);
+    '00000000-0000-0000-0000-000000000602', NULL, NULL),
+  ('00000000-0000-0000-0000-000000000703', :'restaurant_id', 'test', 'ord-u-1', 'item-u-1',
+    'Uncategorized Item', 1, 50, 50, '2026-04-15', 'sale', false,
+    NULL, NULL, NULL);
 
--- gross_revenue must be 100 (NOT 110 — the liability-categorized sale must
--- not contribute to gross).
+-- gross_revenue must be 150 (100 revenue-categorized + 50 uncategorized via
+-- the IS NULL branch; NOT 160 — the liability-categorized $10 must stay out).
 SELECT is(
   (SELECT gross_revenue::numeric(10,2)
    FROM get_monthly_sales_metrics(:'restaurant_id', :'date_from', :'date_to')
    WHERE period = '2026-04'),
-  100.00::numeric,
-  'gross_revenue excludes liability-categorized sales'
+  150.00::numeric,
+  'gross_revenue includes revenue-categorized AND uncategorized (NULL category_id) sales but excludes liability-categorized'
 );
 
 -- The same liability-categorized sale must show up in sales_tax (it has
@@ -60,13 +64,24 @@ SELECT is(
   'sales_tax still picks up liability-categorized sales-tax items'
 );
 
--- Sanity: gross + sales_tax = 110 (no double-count).
+-- Sanity: gross + sales_tax = 160 (no double-count).
 SELECT is(
   (SELECT (gross_revenue + sales_tax)::numeric(10,2)
    FROM get_monthly_sales_metrics(:'restaurant_id', :'date_from', :'date_to')
    WHERE period = '2026-04'),
-  110.00::numeric,
+  160.00::numeric,
   'gross_revenue + sales_tax equals the actual money collected (no double-count)'
+);
+
+-- Explicit coverage for the IS NULL branch of the account_type filter:
+-- without it, uncategorized sales (NULL category_id → NULL coa.account_type
+-- after LEFT JOIN) would silently drop out of gross_revenue.
+SELECT is(
+  (SELECT gross_revenue::numeric(10,2)
+   FROM get_monthly_sales_metrics(:'restaurant_id', :'date_from', :'date_to')
+   WHERE period = '2026-04'),
+  150.00::numeric,
+  'uncategorized sales still count toward gross_revenue (NULL category_id pass-through)'
 );
 
 SELECT * FROM finish();

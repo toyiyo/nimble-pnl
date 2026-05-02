@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, isTipLiability } from './utils/passThroughAdjustments';
 import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
-import { calculateActualLaborCost } from '@/services/laborCalculations';
+import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 
 // Re-export types/functions from shared module for backwards compatibility
@@ -513,6 +513,25 @@ export function useMonthlyMetrics(
         console.warn('Failed to fetch manual payments:', manualPaymentsError);
       }
 
+      // Tip splits within the query window (joined parent for restaurant_id + split_date)
+      const { data: tipSplitItems, error: tipSplitItemsError } = await supabase
+        .from('tip_split_items')
+        .select('amount, employee_id, tip_splits!inner(restaurant_id, split_date)')
+        .eq('tip_splits.restaurant_id', restaurantId)
+        .gte('tip_splits.split_date', fromStr)
+        .lte('tip_splits.split_date', toStr);
+
+      if (tipSplitItemsError) {
+        console.warn('Failed to fetch tip split items:', tipSplitItemsError);
+      }
+
+      type TipSplitRow = {
+        amount: number;
+        employee_id: string;
+        tip_splits: { restaurant_id: string; split_date: string };
+      };
+      const typedTipSplits = (tipSplitItems ?? []) as TipSplitRow[];
+
       // Convert time punches to the expected format
       interface DBTimePunch {
         id: string;
@@ -587,7 +606,7 @@ export function useMonthlyMetrics(
         });
       }
 
-      // Calculate labor costs PER MONTH separately to match Payroll period-based calculations
+      // Calculate labor costs PER MONTH separately using ISO-week OT banding + tipsOwed.
       // For the *current* month, we clamp the month end to the query's dateTo (month-to-date)
       // so Monthly Performance matches Payroll/Performance Overview for in-progress months.
       const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
@@ -597,77 +616,47 @@ export function useMonthlyMetrics(
         const monthEndFull = endOfMonth(monthStart);
         const monthKey = format(monthStart, 'yyyy-MM');
 
-        // Clamp edges of the overall query window (first/last month can be partial)
+        // Clamp to the overall query window (first/last month can be partial).
         const clampedStart = monthStart < dateFrom ? dateFrom : monthStart;
         const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
         if (clampedStart > clampedEnd) continue;
 
-        // Filter time punches for this specific month window
-        const monthPunches = typedPunches.filter((punch) => {
-          const punchDate = new Date(punch.punch_time);
-          return punchDate >= clampedStart && punchDate <= clampedEnd;
-        });
-
-        // Calculate labor for just this month window (same underlying compensation logic as Payroll)
-        const { dailyCosts: monthLaborCosts } = calculateActualLaborCost(
-          typedEmployees as any,
-          monthPunches,
-          clampedStart,
-          clampedEnd
-        );
-
-        // Build per-job payments map for this month window only
-        const monthPerJobPayments = new Map<string, number>();
-        (manualPaymentsData || []).forEach((payment: { date: string; allocated_cost: number }) => {
-          const paymentDate = new Date(payment.date);
-          if (paymentDate >= clampedStart && paymentDate <= clampedEnd) {
-            const current = monthPerJobPayments.get(payment.date) || 0;
-            monthPerJobPayments.set(payment.date, current + (payment.allocated_cost / 100));
-          }
-        });
-
-        // Aggregate labor for this month window
-        let monthPendingLabor = 0;
-
-        monthLaborCosts.forEach((day) => {
-          monthPendingLabor += day.total_cost;
-          // Add per-job payments for this date (if any)
-          const perJobAmount = monthPerJobPayments.get(day.date) || 0;
-          monthPendingLabor += perJobAmount;
-        });
-
-        // Also add per-job payments for dates not in laborDailyCosts
-        monthPerJobPayments.forEach((amount, dateStr) => {
-          const alreadyProcessed = monthLaborCosts.some((d) => d.date === dateStr);
-          if (!alreadyProcessed) {
-            monthPendingLabor += amount;
-          }
-        });
-
-        // Ensure month exists in map
-        if (!monthlyMap.has(monthKey)) {
-          monthlyMap.set(monthKey, {
-            period: monthKey,
-            gross_revenue: 0,
-            total_collected_at_pos: 0,
-            net_revenue: 0,
-            discounts: 0,
-            refunds: 0,
-            sales_tax: 0,
-            tips: 0,
-            other_liabilities: 0,
-            food_cost: 0,
-            labor_cost: 0,
-            pending_labor_cost: 0,
-            actual_labor_cost: 0,
-            has_data: true,
-          });
+        // Build per-employee tipsOwed for *this* month from typedTipSplits.
+        // amount is stored as integer cents in the DB (tip_split_items.amount -- cents).
+        const tipsOwedByEmployee = new Map<string, number>();
+        for (const row of typedTipSplits) {
+          const splitDate = new Date(row.tip_splits.split_date + 'T12:00:00');
+          if (splitDate < clampedStart || splitDate > clampedEnd) continue;
+          // amount is already in integer cents — no conversion needed.
+          tipsOwedByEmployee.set(
+            row.employee_id,
+            (tipsOwedByEmployee.get(row.employee_id) ?? 0) + row.amount
+          );
         }
 
-        const month = monthlyMap.get(monthKey)!;
-        const pendingCents = Math.round(monthPendingLabor * 100);
-        month.pending_labor_cost += pendingCents;
-        month.labor_cost += pendingCents;
+        // OT-D labor for this month (ISO-week banding + tipsOwed).
+        const { actualLaborCents } = calculateActualLaborCostForMonth({
+          employees: typedEmployees as any,
+          timePunches: typedPunches,
+          tipsOwedByEmployee,
+          monthStart: clampedStart,
+          monthEnd: clampedEnd,
+        });
+
+        // Per-job manual payments for this month window.
+        let monthPerJobCents = 0;
+        (manualPaymentsData ?? []).forEach(
+          (payment: { date: string; allocated_cost: number }) => {
+            const paymentDate = new Date(payment.date);
+            if (paymentDate >= clampedStart && paymentDate <= clampedEnd) {
+              monthPerJobCents += payment.allocated_cost; // already in cents
+            }
+          }
+        );
+
+        const month = ensureMonth(monthKey);
+        month.pending_labor_cost += actualLaborCents + monthPerJobCents;
+        month.labor_cost += actualLaborCents + monthPerJobCents;
       }
 
       // Aggregate actual labor costs from bank transactions

@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-
-const COGS_SUBTYPES = new Set(['food_cost', 'cost_of_goods_sold', 'beverage_cost', 'packaging_cost']);
+import { aggregateFinancialCOGSByDate, type BankTransactionRow, type PendingOutflowRow } from '@/services/cogsCalculations';
 
 export interface FinancialCOGSData {
   date: string;
@@ -120,40 +119,13 @@ export function useCOGSFromFinancials(
       if (pendingError) throw pendingError;
 
       // ---------------------------------------------------------------
-      // Aggregate all sources by date
+      // Aggregate all sources by date using shared pure helper
       // ---------------------------------------------------------------
-      const dateMap = new Map<string, number>();
-
-      // Source 1: Non-split bank transactions
-      (bankTxns || []).forEach((txn) => {
-        const account = txn.chart_of_accounts as { account_subtype?: string } | null;
-        if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
-          const date = format(new Date(txn.transaction_date), 'yyyy-MM-dd');
-          const cost = Math.abs(txn.amount);
-          dateMap.set(date, (dateMap.get(date) || 0) + cost);
-        }
-      });
-
-      // Source 2: Split line items
-      splitItems.forEach((split) => {
-        const account = split.chart_of_accounts as { account_subtype?: string } | null;
-        if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
-          const date = parentDateMap.get(split.transaction_id);
-          if (date) {
-            const cost = Math.abs(split.amount);
-            dateMap.set(date, (dateMap.get(date) || 0) + cost);
-          }
-        }
-      });
-
-      // Source 3: Pending outflows
-      (pendingTxns || []).forEach((txn) => {
-        const account = txn.chart_of_accounts as { account_subtype?: string } | null;
-        if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
-          const date = txn.issue_date;
-          const cost = Math.abs(txn.amount);
-          dateMap.set(date, (dateMap.get(date) || 0) + cost);
-        }
+      const dateMap = aggregateFinancialCOGSByDate({
+        bankTxns: (bankTxns || []) as BankTransactionRow[],
+        splitItems,
+        parentDateMap,
+        pendingTxns: (pendingTxns || []) as PendingOutflowRow[],
       });
 
       // Convert to sorted array

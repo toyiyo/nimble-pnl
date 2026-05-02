@@ -2,6 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
+import {
+  aggregateInventoryCOGSByDate,
+  aggregateFinancialCOGSByDate,
+  type BankTransactionRow,
+  type PendingOutflowRow,
+} from '@/services/cogsCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -233,8 +239,8 @@ export function useMonthlyMetrics(
       }
 
       // Fetch financial COGS when method uses financial data
-      const COGS_SUBTYPES = new Set(['food_cost', 'cost_of_goods_sold', 'beverage_cost', 'packaging_cost']);
-      const financialCOGSByMonth = new Map<string, number>();
+      // financialCOGSByDay: yyyy-MM-dd → dollars (produced by shared pure helper)
+      let financialCOGSByDay: Map<string, number> = new Map();
       if (cogsMethod === 'financials' || cogsMethod === 'combined') {
         // Non-split bank transactions with COGS subtypes
         const { data: cogsTxns, error: cogsTxnsError } = await supabase
@@ -250,14 +256,6 @@ export function useMonthlyMetrics(
           .limit(10000);
         if (cogsTxnsError) throw cogsTxnsError;
 
-        (cogsTxns || []).forEach((txn: any) => {
-          const subtype = (txn.chart_of_accounts as any)?.account_subtype;
-          if (subtype && COGS_SUBTYPES.has(subtype)) {
-            const monthKey = format(new Date(txn.transaction_date), 'yyyy-MM');
-            financialCOGSByMonth.set(monthKey, (financialCOGSByMonth.get(monthKey) || 0) + Math.round(Math.abs(txn.amount) * 100));
-          }
-        });
-
         // Split line items with COGS subtypes
         const { data: splitParents } = await supabase
           .from('bank_transactions')
@@ -270,26 +268,27 @@ export function useMonthlyMetrics(
           .lte('transaction_date', toStr)
           .limit(10000);
 
-        const splitParentIds = (splitParents || []).map((p: any) => p.id);
-        if (splitParentIds.length > 0) {
-          const parentDateMap = new Map<string, string>();
-          (splitParents || []).forEach((p: any) => parentDateMap.set(p.id, format(new Date(p.transaction_date), 'yyyy-MM')));
+        type SplitParentRow = { id: string; transaction_date: string };
+        const splitParentIds = (splitParents || []).map((p: SplitParentRow) => p.id);
+        let splitItems: Array<{
+          transaction_id: string;
+          amount: number;
+          chart_of_accounts: { account_subtype?: string } | null;
+        }> = [];
+        // Day-keyed parentDateMap (yyyy-MM-dd) — required by shared helper
+        const parentDateMap = new Map<string, string>();
+        (splitParents || []).forEach((p: SplitParentRow) =>
+          parentDateMap.set(p.id, format(new Date(p.transaction_date), 'yyyy-MM-dd'))
+        );
 
+        if (splitParentIds.length > 0) {
           const { data: splits } = await supabase
             .from('bank_transaction_splits')
             .select('transaction_id, amount, chart_of_accounts!category_id(account_subtype)')
             .in('transaction_id', splitParentIds)
             .limit(10000);
 
-          (splits || []).forEach((s: any) => {
-            const subtype = (s.chart_of_accounts as any)?.account_subtype;
-            if (subtype && COGS_SUBTYPES.has(subtype)) {
-              const monthKey = parentDateMap.get(s.transaction_id);
-              if (monthKey) {
-                financialCOGSByMonth.set(monthKey, (financialCOGSByMonth.get(monthKey) || 0) + Math.round(Math.abs(s.amount) * 100));
-              }
-            }
-          });
+          splitItems = (splits || []) as typeof splitItems;
         }
 
         // Pending outflows with COGS subtypes
@@ -303,12 +302,13 @@ export function useMonthlyMetrics(
           .lte('issue_date', toStr)
           .limit(10000);
 
-        (cogsPending || []).forEach((txn: any) => {
-          const subtype = (txn.chart_of_accounts as any)?.account_subtype;
-          if (subtype && COGS_SUBTYPES.has(subtype)) {
-            const monthKey = format(new Date(txn.issue_date), 'yyyy-MM');
-            financialCOGSByMonth.set(monthKey, (financialCOGSByMonth.get(monthKey) || 0) + Math.round(Math.abs(txn.amount) * 100));
-          }
+        // Aggregate all financial sources into a per-day dollar map via shared pure helper.
+        // COGS_SUBTYPES filtering happens inside the helper.
+        financialCOGSByDay = aggregateFinancialCOGSByDate({
+          bankTxns: (cogsTxns || []) as BankTransactionRow[],
+          splitItems,
+          parentDateMap,
+          pendingTxns: (cogsPending || []) as PendingOutflowRow[],
         });
       }
 
@@ -452,23 +452,23 @@ export function useMonthlyMetrics(
       }));
 
       // Inventory COGS (when method is 'inventory' or 'combined')
+      // Inventory COGS: use shared helper to get day→dollars map, then bucket to months (cents).
       if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
-        foodCostsData?.forEach((transaction) => {
-          const transactionDate = transaction.transaction_date
-            ? normalizeToLocalDate(transaction.transaction_date, 'inventory_transactions.transaction_date')
-            : normalizeToLocalDate(transaction.created_at, 'inventory_transactions.created_at');
-          if (!transactionDate) return;
-          const month = ensureMonth(format(transactionDate, 'yyyy-MM'));
-          month.food_cost += Math.round(Math.abs(transaction.total_cost || 0) * 100);
-        });
+        const invDaily = aggregateInventoryCOGSByDate(foodCostsData ?? []);
+        for (const [dateKey, dollars] of invDaily) {
+          const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
+          const cents = Math.round(Math.abs(dollars) * 100);
+          ensureMonth(monthKey).food_cost += cents;
+        }
       }
 
-      // Financial COGS (when method is 'financials' or 'combined')
+      // Financial COGS: financialCOGSByDay is day→dollars; bucket to months (cents).
       if (cogsMethod === 'financials' || cogsMethod === 'combined') {
-        financialCOGSByMonth.forEach((costCents, monthKey) => {
-          const month = ensureMonth(monthKey);
-          month.food_cost += costCents;
-        });
+        for (const [dateKey, dollars] of financialCOGSByDay) {
+          const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
+          const cents = Math.round(Math.abs(dollars) * 100);
+          ensureMonth(monthKey).food_cost += cents;
+        }
       }
 
       // Calculate labor costs PER MONTH separately using ISO-week OT banding + tipsOwed.

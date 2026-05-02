@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { aggregateInventoryCOGSByDate } from '@/services/cogsCalculations';
 
 export interface FoodCostData {
   date: string;
@@ -48,18 +49,10 @@ export function useFoodCosts(
 
       if (error) throw error;
 
-      // Aggregate by date (use transaction_date if available, otherwise created_at)
-      const dailyMap = new Map<string, number>();
-      
-      data?.forEach((transaction) => {
-        const transactionDate = transaction.transaction_date 
-          ? transaction.transaction_date 
-          : format(new Date(transaction.created_at), 'yyyy-MM-dd');
-        // Use Math.abs() because inventory costs may be stored as negative values (accounting convention)
-        // but profit calculations expect positive cost values
-        const cost = Math.abs(transaction.total_cost || 0);
-        dailyMap.set(transactionDate, (dailyMap.get(transactionDate) || 0) + cost);
-      });
+      // Aggregate by date using shared pure helper (single source of truth).
+      // Use transaction_date when present; fall back to created_at date part.
+      // Math.abs() is applied inside the helper (costs may be stored as negatives).
+      const dailyMap = aggregateInventoryCOGSByDate(data ?? []);
 
       const dailyCosts: FoodCostData[] = Array.from(dailyMap.entries())
         .map(([date, total_cost]) => ({ date, total_cost }))

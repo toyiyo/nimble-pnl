@@ -18,7 +18,7 @@ export const COGS_SUBTYPES = new Set([
 export interface InventoryTransactionRow {
   created_at: string;
   transaction_date: string | null;
-  total_cost: number;
+  total_cost: number | null;
 }
 
 export interface BankTransactionRow {

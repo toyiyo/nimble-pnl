@@ -7,6 +7,7 @@ import {
   aggregateFinancialCOGSByDate,
   type BankTransactionRow,
   type PendingOutflowRow,
+  type SplitItemRow,
 } from '@/services/cogsCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -270,11 +271,7 @@ export function useMonthlyMetrics(
 
         type SplitParentRow = { id: string; transaction_date: string };
         const splitParentIds = (splitParents || []).map((p: SplitParentRow) => p.id);
-        let splitItems: Array<{
-          transaction_id: string;
-          amount: number;
-          chart_of_accounts: { account_subtype?: string } | null;
-        }> = [];
+        let splitItems: SplitItemRow[] = [];
         // Day-keyed parentDateMap (yyyy-MM-dd) — required by shared helper
         const parentDateMap = new Map<string, string>();
         (splitParents || []).forEach((p: SplitParentRow) =>
@@ -457,8 +454,7 @@ export function useMonthlyMetrics(
         const invDaily = aggregateInventoryCOGSByDate(foodCostsData ?? []);
         for (const [dateKey, dollars] of invDaily) {
           const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
-          const cents = Math.round(Math.abs(dollars) * 100);
-          ensureMonth(monthKey).food_cost += cents;
+          ensureMonth(monthKey).food_cost += toC(dollars);
         }
       }
 
@@ -466,8 +462,7 @@ export function useMonthlyMetrics(
       if (cogsMethod === 'financials' || cogsMethod === 'combined') {
         for (const [dateKey, dollars] of financialCOGSByDay) {
           const monthKey = dateKey.slice(0, 7); // yyyy-MM-dd → yyyy-MM
-          const cents = Math.round(Math.abs(dollars) * 100);
-          ensureMonth(monthKey).food_cost += cents;
+          ensureMonth(monthKey).food_cost += toC(dollars);
         }
       }
 

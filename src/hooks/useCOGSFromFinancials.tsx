@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { aggregateFinancialCOGSByDate, type BankTransactionRow, type PendingOutflowRow } from '@/services/cogsCalculations';
+import { aggregateFinancialCOGSByDate, type BankTransactionRow, type PendingOutflowRow, type SplitItemRow } from '@/services/cogsCalculations';
 
 export interface FinancialCOGSData {
   date: string;
@@ -79,11 +79,7 @@ export function useCOGSFromFinancials(
 
       if (splitParentError) throw splitParentError;
 
-      let splitItems: Array<{
-        transaction_id: string;
-        amount: number;
-        chart_of_accounts: { account_subtype?: string } | null;
-      }> = [];
+      let splitItems: SplitItemRow[] = [];
 
       const splitParentIds = (splitParents || []).map((p) => p.id);
       if (splitParentIds.length > 0) {

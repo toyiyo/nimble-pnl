@@ -113,7 +113,6 @@ export function reduceRevenueBreakdownPassThrough(
 // Helper: merge categorized adjustments into a category map (exported for tests)
 // ---------------------------------------------------------------------------
 
-// Helper: merge categorized adjustments into a category map (exported for tests)
 export function mergeCategorizedAdjustments(
   categoryMap: Map<string, RevenueCategory>,
   adjustments: any[] | null

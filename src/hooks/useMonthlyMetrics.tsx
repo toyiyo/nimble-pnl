@@ -1,18 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
-import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, isTipLiability } from './utils/passThroughAdjustments';
-import { classifyAdjustmentIntoMonth } from '../../supabase/functions/_shared/monthlyMetrics';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import type { TimePunch } from '@/types/timeTracking';
-
-// Re-export types/functions from shared module for backwards compatibility
-export { 
-  classifyAdjustmentIntoMonth, 
-  createEmptyMonth,
-  type MonthlyMapMonth,
-  type AdjustmentInput 
-} from '../../supabase/functions/_shared/monthlyMetrics';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -31,14 +22,86 @@ export interface MonthlyMetrics {
   has_data: boolean;
 }
 
-// RPC response type for get_monthly_sales_metrics
-interface MonthlySalesMetricsRow {
-  period: string;
-  gross_revenue: number;
-  sales_tax: number;
-  tips: number;
-  other_liabilities: number;
-  discounts: number;
+const PASS_THROUGH_OTHER_LIABILITY_TYPES = new Set(['service_charge', 'fee']);
+
+export interface MonthRevenueTotals {
+  grossRevenueCents: number;
+  discountsCents: number;
+  netRevenueCents: number;
+  salesTaxCents: number;
+  tipsCents: number;
+  otherLiabilitiesCents: number;
+  posCollectedCents: number;
+}
+
+const toC = (n: number): number =>
+  Number.isFinite(n) ? Math.sign(n) * Math.round(Math.abs(n) * 100) : 0;
+
+/**
+ * Pull revenue + pass-through totals for the period from the same RPCs that
+ * useRevenueBreakdown uses, so the summary cards equal the breakdown panel
+ * by construction.
+ *
+ * Inputs are dollars (numeric). All math is in integer cents.
+ */
+export async function fetchMonthRevenueTotals(
+  client: SupabaseClient,
+  restaurantId: string,
+  fromStr: string,
+  toStr: string
+): Promise<MonthRevenueTotals> {
+  const [{ data: revRows, error: revErr }, { data: passRows, error: passErr }] = await Promise.all([
+    client.rpc('get_revenue_by_account', {
+      p_restaurant_id: restaurantId,
+      p_date_from: fromStr,
+      p_date_to: toStr,
+    }),
+    client.rpc('get_pass_through_totals', {
+      p_restaurant_id: restaurantId,
+      p_date_from: fromStr,
+      p_date_to: toStr,
+    }),
+  ]);
+
+  if (revErr) throw revErr;
+  if (passErr) throw passErr;
+
+  let categorizedCents = 0;
+  let uncategorizedCents = 0;
+  for (const r of revRows ?? []) {
+    if (r.is_categorized) categorizedCents += toC(Number(r.total_amount ?? 0));
+    else uncategorizedCents += toC(Number(r.total_amount ?? 0));
+  }
+  const grossRevenueCents = categorizedCents + uncategorizedCents;
+
+  let salesTaxCents = 0;
+  let tipsCents = 0;
+  let otherLiabilitiesCents = 0;
+  let discountsCents = 0;
+  for (const p of passRows ?? []) {
+    const amt = toC(Number(p.total_amount ?? 0));
+    if (p.adjustment_type === 'tax') salesTaxCents += amt;
+    else if (p.adjustment_type === 'tip') tipsCents += amt;
+    else if (p.adjustment_type === 'discount') discountsCents += Math.abs(amt);
+    else if (PASS_THROUGH_OTHER_LIABILITY_TYPES.has(p.adjustment_type)) {
+      otherLiabilitiesCents += amt;
+    }
+    // unknown types ignored: Migration A guarantees only tax/tip/service_charge/discount/fee here.
+  }
+
+  const netRevenueCents = grossRevenueCents - discountsCents;
+  const posCollectedCents =
+    grossRevenueCents + salesTaxCents + tipsCents + otherLiabilitiesCents;
+
+  return {
+    grossRevenueCents,
+    discountsCents,
+    netRevenueCents,
+    salesTaxCents,
+    tipsCents,
+    otherLiabilitiesCents,
+    posCollectedCents,
+  };
 }
 
 /**
@@ -86,249 +149,65 @@ export function useMonthlyMetrics(
         return null;
       };
 
-      // Try optimized RPC function first (no row limit issues)
-      const { data: rpcMetrics, error: rpcError } = await supabase
-        .rpc('get_monthly_sales_metrics', {
-          p_restaurant_id: restaurantId,
-          p_date_from: fromStr,
-          p_date_to: toStr
-        });
-
-      // Build monthly map for combining with costs data
+      // Build monthly map (cents-based) for combining with COGS + labor below.
       const monthlyMap = new Map<string, {
         period: string;
-        gross_revenue: number; // in cents
-        total_collected_at_pos: number; // in cents
-        net_revenue: number; // in cents
-        discounts: number; // in cents
-        refunds: number; // in cents
-        sales_tax: number; // in cents
-        tips: number; // in cents
-        other_liabilities: number; // in cents
-        food_cost: number; // in cents
-        labor_cost: number; // in cents
-        pending_labor_cost: number; // in cents
-        actual_labor_cost: number; // in cents
+        gross_revenue: number; // cents
+        total_collected_at_pos: number; // cents
+        net_revenue: number; // cents
+        discounts: number; // cents
+        refunds: number; // cents
+        sales_tax: number; // cents
+        tips: number; // cents
+        other_liabilities: number; // cents
+        food_cost: number; // cents
+        labor_cost: number; // cents
+        pending_labor_cost: number; // cents
+        actual_labor_cost: number; // cents
         has_data: boolean;
       }>();
 
-      if (!rpcError && rpcMetrics && rpcMetrics.length > 0) {
-        // Use RPC data - it's already aggregated correctly
-        // Values come in dollars, convert to cents for internal consistency
-        const typedMetrics = rpcMetrics as MonthlySalesMetricsRow[];
-        typedMetrics.forEach((row) => {
-          const grossRevenueC = Math.round((Number(row.gross_revenue) || 0) * 100);
-          const salesTaxC = Math.round((Number(row.sales_tax) || 0) * 100);
-          const tipsC = Math.round((Number(row.tips) || 0) * 100);
-          const otherLiabilitiesC = Math.round((Number(row.other_liabilities) || 0) * 100);
-          const discountsC = Math.round((Number(row.discounts) || 0) * 100);
-
-          monthlyMap.set(row.period, {
-            period: row.period,
-            gross_revenue: grossRevenueC,
-            total_collected_at_pos: grossRevenueC + salesTaxC + tipsC + otherLiabilitiesC,
-            net_revenue: grossRevenueC - discountsC,
-            discounts: discountsC,
-            refunds: 0, // Not tracked in RPC yet
-            sales_tax: salesTaxC,
-            tips: tipsC,
-            other_liabilities: otherLiabilitiesC,
-            food_cost: 0,
-            labor_cost: 0,
-            pending_labor_cost: 0,
-            actual_labor_cost: 0,
-            has_data: true,
-          });
-        });
-      } else {
-        // Fallback to original implementation if RPC not available
-        if (rpcError) {
-          console.warn('Failed to fetch monthly metrics via RPC, falling back to individual queries:', rpcError);
-        }
-
-        // Fetch sales excluding pass-through items (adjustment_type IS NOT NULL)
-        // Pass-through items include: tips, sales tax, service charges, discounts, fees
-        // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-        const { data: salesData, error: salesError } = await supabase
-          .from('unified_sales')
-          .select(`
-            id,
-            sale_date,
-            total_price,
-            item_type,
-            item_name,
-            parent_sale_id,
-            is_categorized,
-            chart_account:chart_of_accounts!category_id(
-              account_type,
-              account_subtype,
-              account_name
-            )
-          `)
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', fromStr)
-          .lte('sale_date', toStr)
-          .is('adjustment_type', null)
-          .limit(10000); // Override Supabase's default 1000 row limit
-
-        if (salesError) throw salesError;
-
-        // Fetch adjustments separately (Square/Clover pass-through items)
-        // Include category/chart_account when present so categorized adjustments
-        // can be classified by their chart account (sales_tax/tips/other liabilities).
-        // Note: Supabase has a default limit of 1000 rows, so we need to set a higher limit
-        const { data: adjustmentsData, error: adjustmentsError } = await supabase
-          .from('unified_sales')
-          .select(`
-            sale_date,
-            adjustment_type,
-            total_price,
-            item_name,
-            is_categorized,
-            category_id,
-            chart_account:chart_of_accounts!category_id(
-              id,
-              account_code,
-              account_name,
-              account_type,
-              account_subtype
-            )
-          `)
-          .eq('restaurant_id', restaurantId)
-          .gte('sale_date', fromStr)
-          .lte('sale_date', toStr)
-          .not('adjustment_type', 'is', null)
-          .limit(10000); // Override Supabase's default 1000 row limit
-
-        if (adjustmentsError) throw adjustmentsError;
-
-      // Split out pass-through rows that may have been ingested without adjustment_type
-      const { revenue: revenueSales, passThrough: passThroughSales } = splitPassThroughSales(salesData);
-
-      // Filter out parent sales that have been split into children
-      // Include: unsplit sales (no children) + all child splits
-      const parentIdsWithChildren = new Set(
-        revenueSales
-          ?.filter((s: any) => s.parent_sale_id !== null)
-          .map((s: any) => s.parent_sale_id) || []
-      );
-
-      const filteredSales = revenueSales?.filter((s: any) => 
-        !parentIdsWithChildren.has(s.id)
-      ) || [];
-      const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustmentsData, passThroughSales as any);
-
-      filteredSales?.forEach((sale) => {
-        const saleDate = normalizeToLocalDate(sale.sale_date, 'sale_date');
-        if (!saleDate) {
-          return;
-        }
-        const monthKey = format(saleDate, 'yyyy-MM');
-
+      const ensureMonth = (monthKey: string) => {
         if (!monthlyMap.has(monthKey)) {
           monthlyMap.set(monthKey, {
             period: monthKey,
-            gross_revenue: 0,
-            total_collected_at_pos: 0,
-            net_revenue: 0,
-            discounts: 0,
-            refunds: 0,
-            sales_tax: 0,
-            tips: 0,
-            other_liabilities: 0,
-            food_cost: 0,
-            labor_cost: 0,
-            pending_labor_cost: 0,
-            actual_labor_cost: 0,
+            gross_revenue: 0, total_collected_at_pos: 0, net_revenue: 0,
+            discounts: 0, refunds: 0, sales_tax: 0, tips: 0, other_liabilities: 0,
+            food_cost: 0, labor_cost: 0, pending_labor_cost: 0, actual_labor_cost: 0,
             has_data: false,
           });
         }
+        return monthlyMap.get(monthKey)!;
+      };
 
-        const month = monthlyMap.get(monthKey)!;
-        month.has_data = true;
+      // Source revenue + POS from the same RPCs useRevenueBreakdown uses.
+      // Per month so we can clamp the first and last partial months to the query window.
+      const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
+      for (const rawMonthStart of monthsInRange) {
+        const monthStart = startOfMonth(rawMonthStart);
+        const monthEndFull = endOfMonth(monthStart);
+        const clampedStart = monthStart < dateFrom ? dateFrom : monthStart;
+        const clampedEnd = monthEndFull > dateTo ? dateTo : monthEndFull;
+        if (clampedStart > clampedEnd) continue;
 
-        // Only process categorized sales (skip uncategorized to match useRevenueBreakdown logic)
-        if (!sale.is_categorized || !sale.chart_account) {
-          // Uncategorized sales are treated as revenue for reporting purposes
-          // Match useRevenueBreakdown logic: normalize item_type to lowercase for comparison
-          if (String(sale.item_type || 'sale').toLowerCase() === 'sale') {
-            month.gross_revenue += Math.round(sale.total_price * 100);
-          }
-          return;
-        }
+        const monthKey = format(monthStart, 'yyyy-MM');
+        const totals = await fetchMonthRevenueTotals(
+          supabase,
+          restaurantId,
+          format(clampedStart, 'yyyy-MM-dd'),
+          format(clampedEnd, 'yyyy-MM-dd')
+        );
 
-        // Categorize based on account_type FIRST (to match useRevenueBreakdown logic)
-        // Then use item_type to determine if it's a discount/refund
-        // Use cents to avoid floating-point precision errors
-        const normalizedItemType = String(sale.item_type || 'sale').toLowerCase();
-        
-        // Handle discounts and refunds first (regardless of account_type)
-        if (normalizedItemType === 'discount') {
-          month.discounts += Math.round(Math.abs(sale.total_price) * 100);
-          return;
-        }
-        
-        if (normalizedItemType === 'refund') {
-          month.refunds += Math.round(Math.abs(sale.total_price) * 100);
-          return;
-        }
-        
-        // Now categorize by account_type (matching useRevenueBreakdown)
-        if (sale.chart_account.account_type === 'revenue') {
-          // All revenue account items go to gross_revenue (regardless of item_type)
-          // This matches useRevenueBreakdown which includes all categorized revenue
-          month.gross_revenue += Math.round(sale.total_price * 100);
-        } else if (sale.chart_account.account_type === 'liability') {
-          // Categorize liabilities by checking BOTH subtype and account_name
-          const subtype = sale.chart_account.account_subtype?.toLowerCase() || '';
-          const accountName = sale.chart_account.account_name?.toLowerCase() || '';
-
-          if ((subtype.includes('sales') && subtype.includes('tax')) ||
-              (accountName.includes('sales') && accountName.includes('tax'))) {
-            month.sales_tax += Math.round(sale.total_price * 100);
-          } else if (isTipLiability(subtype, accountName)) {
-            month.tips += Math.round(sale.total_price * 100);
-          } else {
-            month.other_liabilities += Math.round(sale.total_price * 100);
-          }
-        }
-        // Account type is neither revenue nor liability - skip
-      });
-
-      // Process adjustments (Square/Clover pass-through items)
-      allAdjustments?.forEach((adjustment) => {
-        const adjustmentDate = normalizeToLocalDate(adjustment.sale_date, 'adjustment.sale_date');
-        if (!adjustmentDate) {
-          return;
-        }
-        const monthKey = format(adjustmentDate, 'yyyy-MM');
-
-        if (!monthlyMap.has(monthKey)) {
-          monthlyMap.set(monthKey, {
-            period: monthKey,
-            gross_revenue: 0,
-            total_collected_at_pos: 0,
-            net_revenue: 0,
-            discounts: 0,
-            refunds: 0,
-            sales_tax: 0,
-            tips: 0,
-            other_liabilities: 0,
-            food_cost: 0,
-            labor_cost: 0,
-            pending_labor_cost: 0,
-            actual_labor_cost: 0,
-            has_data: false,
-          });
-        }
-
-        const month = monthlyMap.get(monthKey)!;
-        month.has_data = true;
-
-          // Use shared helper to classify and add adjustment to the month object
-          classifyAdjustmentIntoMonth(month as any, adjustment as any);
-      });
-      } // End of fallback else block
+        const month = ensureMonth(monthKey);
+        month.gross_revenue          = totals.grossRevenueCents;
+        month.discounts              = totals.discountsCents;
+        month.net_revenue            = totals.netRevenueCents;
+        month.sales_tax              = totals.salesTaxCents;
+        month.tips                   = totals.tipsCents;
+        month.other_liabilities      = totals.otherLiabilitiesCents;
+        month.total_collected_at_pos = totals.posCollectedCents;
+        month.has_data               = true;
+      }
 
       // Fetch COGS preference setting
       const { data: settingsData } = await supabase
@@ -572,20 +451,6 @@ export function useMonthlyMetrics(
         contractor_payment_interval: emp.contractor_payment_interval as ContractorPaymentInterval | undefined,
       }));
 
-      // Aggregate COGS by month based on selected method
-      const ensureMonth = (monthKey: string) => {
-        if (!monthlyMap.has(monthKey)) {
-          monthlyMap.set(monthKey, {
-            period: monthKey,
-            gross_revenue: 0, total_collected_at_pos: 0, net_revenue: 0,
-            discounts: 0, refunds: 0, sales_tax: 0, tips: 0, other_liabilities: 0,
-            food_cost: 0, labor_cost: 0, pending_labor_cost: 0, actual_labor_cost: 0,
-            has_data: true,
-          });
-        }
-        return monthlyMap.get(monthKey)!;
-      };
-
       // Inventory COGS (when method is 'inventory' or 'combined')
       if (cogsMethod === 'inventory' || cogsMethod === 'combined') {
         foodCostsData?.forEach((transaction) => {
@@ -609,8 +474,6 @@ export function useMonthlyMetrics(
       // Calculate labor costs PER MONTH separately using ISO-week OT banding + tipsOwed.
       // For the *current* month, we clamp the month end to the query's dateTo (month-to-date)
       // so Monthly Performance matches Payroll/Performance Overview for in-progress months.
-      const monthsInRange = eachMonthOfInterval({ start: dateFrom, end: dateTo });
-
       for (const rawMonthStart of monthsInRange) {
         const monthStart = startOfMonth(rawMonthStart);
         const monthEndFull = endOfMonth(monthStart);
@@ -665,29 +528,8 @@ export function useMonthlyMetrics(
         if (account?.account_subtype === 'labor') {
           const transactionDate = normalizeToLocalDate(txn.transaction_date, 'bank_transactions.transaction_date');
           if (!transactionDate) return;
-          
           const monthKey = format(transactionDate, 'yyyy-MM');
-          
-          if (!monthlyMap.has(monthKey)) {
-            monthlyMap.set(monthKey, {
-              period: monthKey,
-              gross_revenue: 0,
-              total_collected_at_pos: 0,
-              net_revenue: 0,
-              discounts: 0,
-              refunds: 0,
-              sales_tax: 0,
-              tips: 0,
-              other_liabilities: 0,
-              food_cost: 0,
-              labor_cost: 0,
-              pending_labor_cost: 0,
-              actual_labor_cost: 0,
-              has_data: true,
-            });
-          }
-
-          const month = monthlyMap.get(monthKey)!;
+          const month = ensureMonth(monthKey);
           const actualCost = Math.round(Math.abs(txn.amount || 0) * 100);
           month.actual_labor_cost += actualCost;
           month.labor_cost += actualCost;
@@ -700,29 +542,8 @@ export function useMonthlyMetrics(
         if (account?.account_subtype === 'labor') {
           const issueDate = normalizeToLocalDate(txn.issue_date, 'pending_outflows.issue_date');
           if (!issueDate) return;
-          
           const monthKey = format(issueDate, 'yyyy-MM');
-          
-          if (!monthlyMap.has(monthKey)) {
-            monthlyMap.set(monthKey, {
-              period: monthKey,
-              gross_revenue: 0,
-              total_collected_at_pos: 0,
-              net_revenue: 0,
-              discounts: 0,
-              refunds: 0,
-              sales_tax: 0,
-              tips: 0,
-              other_liabilities: 0,
-              food_cost: 0,
-              labor_cost: 0,
-              pending_labor_cost: 0,
-              actual_labor_cost: 0,
-              has_data: true,
-            });
-          }
-
-          const month = monthlyMap.get(monthKey)!;
+          const month = ensureMonth(monthKey);
           const actualCost = Math.round(Math.abs(txn.amount || 0) * 100);
           month.actual_labor_cost += actualCost;
           month.labor_cost += actualCost;

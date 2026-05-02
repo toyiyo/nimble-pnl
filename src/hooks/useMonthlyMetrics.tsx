@@ -562,11 +562,11 @@ export function useMonthlyMetrics(
         other_liabilities: Math.round(month.other_liabilities) / 100,
         food_cost: Math.round(month.food_cost) / 100,
         labor_cost: Math.round(month.labor_cost) / 100,
-  pending_labor_cost: Math.round(month.pending_labor_cost) / 100,
-  actual_labor_cost: Math.round(month.actual_labor_cost) / 100,
+        pending_labor_cost: Math.round(month.pending_labor_cost) / 100,
+        actual_labor_cost: Math.round(month.actual_labor_cost) / 100,
         has_data: month.has_data,
-        net_revenue: Math.round(month.gross_revenue - month.discounts - month.refunds) / 100,
-        total_collected_at_pos: Math.round(month.gross_revenue + month.sales_tax + month.tips + month.other_liabilities) / 100,
+        net_revenue: Math.round(month.net_revenue) / 100,
+        total_collected_at_pos: Math.round(month.total_collected_at_pos) / 100,
       }));
 
       // Sort by period descending (most recent first)

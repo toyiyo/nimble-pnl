@@ -1,0 +1,6 @@
+[
+  { "account_id": "e18ea603-f492-4d87-98d7-f476c250e3ae", "account_code": "4000", "account_name": "Sales – Food",                          "account_type": "revenue", "account_subtype": "food_sales",      "total_amount": 52219.60, "transaction_count": 2690, "is_categorized": true  },
+  { "account_id": null,                                    "account_code": "UNCATEGORIZED", "account_name": "Uncategorized Sales",           "account_type": "revenue", "account_subtype": "uncategorized",  "total_amount": 17564.22, "transaction_count": 1124, "is_categorized": false },
+  { "account_id": "a4d26275-130d-428c-badc-a96e983cfcda", "account_code": "4020", "account_name": "Sales – Alcohol",                       "account_type": "revenue", "account_subtype": "alcohol_sales",  "total_amount": 3110.00,  "transaction_count": 384,  "is_categorized": true  },
+  { "account_id": "a445620d-1b6b-439a-b1c3-50bdb67e0619", "account_code": "4010", "account_name": "Sales – Beverages (Non-Alcoholic)",     "account_type": "revenue", "account_subtype": "beverage_sales", "total_amount": 3024.00,  "transaction_count": 704,  "is_categorized": true  }
+]

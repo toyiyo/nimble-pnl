@@ -188,7 +188,9 @@ export function useRevenueBreakdown(
       // If RPC functions are available, use aggregated data
       if (passThroughTotals && revenueByAccount) {
         // Normalize RPC rows into typed objects for the pure reducer.
-        const passThroughRows: RevenueBreakdownPassThroughRow[] = (passThroughTotals as any[]).map((row: any) => ({
+        const passThroughRows: RevenueBreakdownPassThroughRow[] = (
+          passThroughTotals as Array<Record<string, unknown>>
+        ).map((row) => ({
           adjustment_type: String(row.adjustment_type ?? ''),
           total_amount: Number(row.total_amount) || 0,
           transaction_count: Number(row.transaction_count) || 0,

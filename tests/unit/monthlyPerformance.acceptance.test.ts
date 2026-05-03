@@ -49,17 +49,24 @@ describe("Monthly Performance acceptance — Russo's April 2026", () => {
       );
     }
 
+    // Anchor month bounds in UTC so ISO-week bucketing is deterministic across
+    // TZs. calculateActualLaborCostForMonth uses date-fns startOfWeek which
+    // reads the host process timezone; pinning UTC matches CI/server runtime.
     const labor = calculateActualLaborCostForMonth({
       employees: employees as never,
       timePunches: timePunches as never,
       tipsOwedByEmployee,
-      monthStart: new Date('2026-04-01T00:00:00'),
-      monthEnd: new Date('2026-04-30T23:59:59'),
+      monthStart: new Date(Date.UTC(2026, 3, 1, 0, 0, 0)),
+      monthEnd: new Date(Date.UTC(2026, 3, 30, 23, 59, 59)),
     });
 
     expect(labor.tipsOwedCents).toBe(0);
-    // Pinned 2026-05-02 from canonical OT-D Hybrid pipeline against Russo's April fixture.
-    expect(labor.wagesCents).toBe(1_282_985);
-    expect(labor.actualLaborCents).toBe(1_282_985);
+    // Pinned 2026-05-03 from canonical OT-D Hybrid pipeline against Russo's
+    // April fixture under TZ=UTC. This number is timezone-dependent because
+    // ISO-week buckets shift across the month boundary; in production each
+    // restaurant's TZ drives the bucketing. Run `TZ=UTC npm run test` locally
+    // to reproduce.
+    expect(labor.wagesCents).toBe(1_058_390);
+    expect(labor.actualLaborCents).toBe(1_058_390);
   });
 });

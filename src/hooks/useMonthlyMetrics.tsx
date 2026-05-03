@@ -112,13 +112,10 @@ export async function fetchMonthRevenueTotals(
 }
 
 /**
- * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities) 
- * and source tables (inventory_transactions + daily_labor_costs + bank transactions/pending outflows for costs).
- * 
- * Labor costs now include:
- * - Pending labor: from daily_labor_costs (time punches - scheduled/accrued)
- * - Actual labor: from bank_transactions and pending_outflows (paid labor)
- * 
+ * Hook to fetch monthly aggregated metrics from unified_sales (revenue + liabilities)
+ * and source tables (inventory_transactions, time_punches, daily_labor_allocations,
+ * bank_transactions, and pending_outflows for costs).
+ *
  * ✅ Use this hook for monthly performance tables
  * ❌ Don't use getMonthlyData() from useDailyPnL (incorrect/outdated)
  */
@@ -408,25 +405,9 @@ export function useMonthlyMetrics(
       };
       const typedTipSplits = (tipSplitItems ?? []) as TipSplitRow[];
 
-      // Convert time punches to the expected format
-      interface DBTimePunch {
-        id: string;
-        employee_id: string;
-        restaurant_id: string;
-        punch_time: string;
-        punch_type: string;
-        created_at: string;
-        updated_at: string;
-        shift_id: string | null;
-        notes: string | null;
-        photo_path: string | null;
-        device_info: string | null;
-        location: unknown;
-        created_by: string | null;
-        modified_by: string | null;
-      }
-
-      const typedPunches: TimePunch[] = (timePunchesData || []).map((punch: DBTimePunch) => ({
+      // Convert time punches to the expected format: cast punch_type to the union
+      // and narrow location from the DB's JSON to the typed shape.
+      const typedPunches: TimePunch[] = (timePunchesData || []).map((punch: any) => ({
         ...punch,
         punch_type: punch.punch_type as TimePunch['punch_type'],
         location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location

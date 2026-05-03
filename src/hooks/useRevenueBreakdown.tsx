@@ -96,7 +96,7 @@ export function reduceRevenueBreakdownPassThrough(
   for (const row of rows) {
     const type = row?.adjustment_type;
     if (!KNOWN_PASS_THROUGH_TYPES.has(type)) continue;
-    const cents = toC(Number(row?.total_amount) || 0);
+    const cents = toC(Number(row?.total_amount));
     switch (type) {
       case 'tax':            taxCents += cents; break;
       case 'tip':            tipsCents += cents; break;
@@ -152,9 +152,6 @@ export function useRevenueBreakdown(
     queryKey: ['revenue-breakdown', restaurantId, fromStr, toStr],
     queryFn: async (): Promise<RevenueBreakdownData | null> => {
       if (!restaurantId) return null;
-
-      const fromStr = dateFrom.toISOString().split('T')[0];
-      const toStr = dateTo.toISOString().split('T')[0];
 
       // Use database aggregation for efficient totals (no row limit issues)
       // This replaces fetching individual records and processing in JavaScript
@@ -494,8 +491,6 @@ export function useRevenueBreakdown(
       ) || [];
 
       const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustments, passThroughSales);
-
-      const totalCount = filteredSales.length;
 
       // Separate categorized and uncategorized sales
       const categorizedSales = filteredSales?.filter((s: any) => s.is_categorized && s.chart_account) || [];

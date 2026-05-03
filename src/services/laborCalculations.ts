@@ -811,7 +811,7 @@ export function calculateActualLaborCostForMonth(
 
       // Distribute pay across days proportional to hours; last day takes the
       // rounding remainder so the daily sum equals the weekly total to the cent.
-      const dateKeys = Array.from(hoursByDate.keys()).sort();
+      const dateKeys = Array.from(hoursByDate.keys()).sort((a, b) => a.localeCompare(b));
       let distributed = 0;
       for (let i = 0; i < dateKeys.length; i++) {
         const dateKey = dateKeys[i];

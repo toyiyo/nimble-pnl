@@ -407,13 +407,24 @@ export function useMonthlyMetrics(
 
       // Convert time punches to the expected format: cast punch_type to the union
       // and narrow location from the DB's JSON to the typed shape.
-      const typedPunches: TimePunch[] = (timePunchesData || []).map((punch: any) => ({
-        ...punch,
-        punch_type: punch.punch_type as TimePunch['punch_type'],
-        location: punch.location && typeof punch.location === 'object' && 'latitude' in punch.location && 'longitude' in punch.location
-          ? punch.location as { latitude: number; longitude: number }
-          : undefined,
-      }));
+      type RawPunch = Omit<TimePunch, 'punch_type' | 'location'> & {
+        punch_type: string;
+        location: unknown;
+      };
+      const typedPunches: TimePunch[] = (timePunchesData || []).map((p) => {
+        const punch = p as RawPunch;
+        return {
+          ...punch,
+          punch_type: punch.punch_type as TimePunch['punch_type'],
+          location:
+            punch.location &&
+            typeof punch.location === 'object' &&
+            'latitude' in punch.location &&
+            'longitude' in punch.location
+              ? (punch.location as { latitude: number; longitude: number })
+              : undefined,
+        };
+      });
 
       // Cast employees to the correct type - the DB returns strings but we need union types
       type EmployeeStatus = 'active' | 'inactive' | 'terminated';

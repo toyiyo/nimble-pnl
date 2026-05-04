@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeAdjustmentsWithPassThrough, splitPassThroughSales, classifyPassThroughItem, isTipLiability } from './utils/passThroughAdjustments';
 import type { PassThroughType } from './utils/passThroughAdjustments';
@@ -144,9 +145,15 @@ export function useRevenueBreakdown(
   dateFrom: Date, 
   dateTo: Date
 ) {
-  // Format dates as strings for stable query key
-  const fromStr = dateFrom.toISOString().split('T')[0];
-  const toStr = dateTo.toISOString().split('T')[0];
+  // Format dates in local time so the RPC bounds match the calendar month
+  // the user selected. .toISOString() emits UTC: in a UTC- offset (Americas)
+  // an end-of-month local timestamp lands on the next day in UTC, pulling
+  // next month's day 1 into the breakdown; in a UTC+ offset (Asia) the
+  // start-of-month timestamp lands on the previous day in UTC, dropping
+  // this month's day 1. useMonthlyMetrics formats bounds with date-fns
+  // format(), and the two hooks must agree.
+  const fromStr = format(dateFrom, 'yyyy-MM-dd');
+  const toStr = format(dateTo, 'yyyy-MM-dd');
   
   return useQuery({
     queryKey: ['revenue-breakdown', restaurantId, fromStr, toStr],

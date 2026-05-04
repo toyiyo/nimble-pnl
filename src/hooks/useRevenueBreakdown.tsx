@@ -48,7 +48,71 @@ export interface RevenueBreakdownData {
   categorization_rate: number;
 }
 
+// ---------------------------------------------------------------------------
+// Module-scope helpers
+// ---------------------------------------------------------------------------
+
+/** Convert a dollar amount to integer cents (eliminates floating-point drift). */
+function toC(n: number): number {
+  return Math.round((n || 0) * 100);
+}
+
+/** Convert integer cents back to dollars. */
+function fromC(c: number): number {
+  return Math.round(c) / 100;
+}
+
+// The five adjustment types the RPC and client-side reduction are authorised to handle.
+const KNOWN_PASS_THROUGH_TYPES = new Set(['tax', 'tip', 'service_charge', 'discount', 'fee']);
+
+export interface RevenueBreakdownPassThroughRow {
+  adjustment_type: string;
+  total_amount: number;
+  transaction_count: number;
+}
+
+export interface RevenueBreakdownPassThroughTotals {
+  taxCents: number;
+  tipsCents: number;
+  discountsCents: number;
+  otherLiabilitiesCents: number;
+}
+
+/**
+ * Reduce the get_pass_through_totals RPC rows into the four cent buckets the
+ * Revenue Breakdown panel needs. UNKNOWN adjustment types (void, refund, etc.)
+ * are deliberately dropped — they must NEVER leak into POS Collected.
+ *
+ * Discounts are reported as a positive cents amount (Math.abs).
+ */
+export function reduceRevenueBreakdownPassThrough(
+  rows: RevenueBreakdownPassThroughRow[]
+): RevenueBreakdownPassThroughTotals {
+  let taxCents = 0;
+  let tipsCents = 0;
+  let discountsCents = 0;
+  let otherLiabilitiesCents = 0;
+
+  for (const row of rows) {
+    const type = row?.adjustment_type;
+    if (!KNOWN_PASS_THROUGH_TYPES.has(type)) continue;
+    const cents = toC(Number(row?.total_amount));
+    switch (type) {
+      case 'tax':            taxCents += cents; break;
+      case 'tip':            tipsCents += cents; break;
+      case 'discount':       discountsCents += Math.abs(cents); break;
+      case 'service_charge': otherLiabilitiesCents += cents; break;
+      case 'fee':            otherLiabilitiesCents += cents; break;
+    }
+  }
+
+  return { taxCents, tipsCents, discountsCents, otherLiabilitiesCents };
+}
+
+// ---------------------------------------------------------------------------
 // Helper: merge categorized adjustments into a category map (exported for tests)
+// ---------------------------------------------------------------------------
+
 export function mergeCategorizedAdjustments(
   categoryMap: Map<string, RevenueCategory>,
   adjustments: any[] | null
@@ -89,13 +153,6 @@ export function useRevenueBreakdown(
     queryFn: async (): Promise<RevenueBreakdownData | null> => {
       if (!restaurantId) return null;
 
-      // Integer cents helpers to eliminate floating-point errors
-      const toC = (n: number) => Math.round((n || 0) * 100);
-      const fromC = (c: number) => Math.round(c) / 100;
-
-      const fromStr = dateFrom.toISOString().split('T')[0];
-      const toStr = dateTo.toISOString().split('T')[0];
-
       // Use database aggregation for efficient totals (no row limit issues)
       // This replaces fetching individual records and processing in JavaScript
       
@@ -127,26 +184,35 @@ export function useRevenueBreakdown(
 
       // If RPC functions are available, use aggregated data
       if (passThroughTotals && revenueByAccount) {
-        // Process pass-through totals
+        // Normalize RPC rows into typed objects for the pure reducer.
+        const passThroughRows: RevenueBreakdownPassThroughRow[] = (
+          passThroughTotals as Array<Record<string, unknown>>
+        ).map((row) => ({
+          adjustment_type: String(row.adjustment_type ?? ''),
+          total_amount: Number(row.total_amount) || 0,
+          transaction_count: Number(row.transaction_count) || 0,
+        }));
+
+        // Build a lookup map for per-type transaction_count (used by adjustmentsBreakdown UI below).
         const passThroughMap = new Map<string, { total_amount: number; transaction_count: number }>();
-        (passThroughTotals as any[]).forEach((row: any) => {
+        passThroughRows.forEach((row) => {
           passThroughMap.set(row.adjustment_type, {
-            total_amount: Number(row.total_amount) || 0,
-            transaction_count: Number(row.transaction_count) || 0
+            total_amount: row.total_amount,
+            transaction_count: row.transaction_count,
           });
         });
 
-        const knownTypes = new Set(['tax', 'tip', 'service_charge', 'discount', 'fee']);
-        const adjustmentTaxC = toC(passThroughMap.get('tax')?.total_amount || 0);
-        const adjustmentTipsC = toC(passThroughMap.get('tip')?.total_amount || 0);
+        // Reduce to the four cent buckets. Unknown types (void, refund, etc.) are DROPPED.
+        const pt = reduceRevenueBreakdownPassThrough(passThroughRows);
+        const adjustmentTaxC = pt.taxCents;
+        const adjustmentTipsC = pt.tipsCents;
+        const adjustmentDiscountsC = pt.discountsCents;
+        // service_charge + fee are merged into otherLiabilitiesCents by the helper.
+        const adjustmentOtherLiabilitiesC = pt.otherLiabilitiesCents;
+        // Keep separate variables for service_charge and fee so the UI breakdown array
+        // can still surface them as distinct line items.
         const adjustmentServiceChargeC = toC(passThroughMap.get('service_charge')?.total_amount || 0);
-        const adjustmentDiscountsC = toC(Math.abs(passThroughMap.get('discount')?.total_amount || 0));
         const adjustmentFeesC = toC(passThroughMap.get('fee')?.total_amount || 0);
-        // Catch any adjustment types not explicitly handled (parity with all-months path)
-        let adjustmentOtherC = 0;
-        passThroughMap.forEach((val, key) => {
-          if (!knownTypes.has(key)) adjustmentOtherC += toC(val.total_amount);
-        });
 
         // Process revenue by account
         const categories: RevenueCategory[] = [];
@@ -265,7 +331,9 @@ export function useRevenueBreakdown(
         // totalTaxC/totalTipsC already includes the adjustment amount — don't add again.
         const combinedTaxC = hadCategorizedTax ? totalTaxC + adjustmentTaxC : totalTaxC;
         const combinedTipsC = hadCategorizedTips ? totalTipsC + adjustmentTipsC : totalTipsC;
-        const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC + adjustmentOtherC;
+        // adjustmentOtherLiabilitiesC already encodes service_charge + fee (only known types).
+        // Unknown types were dropped by reduceRevenueBreakdownPassThrough — NOT bucketed here.
+        const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentOtherLiabilitiesC;
         const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
 
         // Calculate final totals
@@ -424,8 +492,6 @@ export function useRevenueBreakdown(
 
       const allAdjustments = normalizeAdjustmentsWithPassThrough(adjustments, passThroughSales);
 
-      const totalCount = filteredSales.length;
-
       // Separate categorized and uncategorized sales
       const categorizedSales = filteredSales?.filter((s: any) => s.is_categorized && s.chart_account) || [];
       // Only include actual 'sale' items in uncategorized (exclude refunds, voids, pass-throughs)
@@ -570,7 +636,9 @@ export function useRevenueBreakdown(
       const adjustmentServiceChargeC = adjBuckets.get('service_charge')?.totalC || 0;
       const adjustmentDiscountsC = adjBuckets.get('discount')?.totalC || 0;
       const adjustmentFeesC = adjBuckets.get('fee')?.totalC || 0;
-      const adjustmentOtherC = adjBuckets.get('other')?.totalC || 0;
+      // Deliberately NOT reading adjBuckets.get('other') — unknown types must NOT
+      // leak into POS Collected. classifyPassThroughItem returns 'other' for items
+      // whose adjustment_type is not one of the five known values; we drop those.
 
       // Build adjustments breakdown array
       const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
@@ -615,10 +683,12 @@ export function useRevenueBreakdown(
         });
       }
 
-      // Combine categorized amounts with adjustment amounts
+      // Combine categorized amounts with adjustment amounts.
+      // Unknown adjustment types (classified as 'other' by classifyPassThroughItem) are
+      // intentionally excluded — they must NEVER leak into POS Collected.
       const combinedTaxC = totalTaxC + adjustmentTaxC;
       const combinedTipsC = totalTipsC + adjustmentTipsC;
-      const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC + adjustmentOtherC;
+      const combinedOtherLiabilitiesC = totalOtherLiabilitiesC + adjustmentServiceChargeC + adjustmentFeesC;
       const combinedDiscountsC = totalDiscountsC + adjustmentDiscountsC;
       
       // Totals in cents - use combined values including adjustments

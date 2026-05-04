@@ -22,7 +22,9 @@ import {
   calculateSalaryForPeriod,
   calculateContractorPayForPeriod,
 } from '@/utils/compensationCalculations';
-import { parseWorkPeriods } from '@/utils/payrollCalculations';
+import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculations';
+import { startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
+import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -697,4 +699,147 @@ export function getEmployeeDailyRateDescription(employee: Employee): string {
     default:
       return 'Unknown';
   }
+}
+
+// ============================================================================
+// Monthly Labor Cost (ISO-week OT banding + tipsOwed)
+// ============================================================================
+
+export interface MonthlyLaborInput {
+  employees: Employee[];
+  timePunches: TimePunch[];
+  /**
+   * Per-employee tipsOwed for the calendar month, in integer cents.
+   * Caller is responsible for filtering tip_split_items to the month
+   * before passing.
+   */
+  tipsOwedByEmployee: Map<string, number>;
+  monthStart: Date;
+  monthEnd: Date;
+}
+
+export interface MonthlyLaborResult {
+  /** Wages for the month (regular + OT + double-time + salary + contractor + daily-rate), integer cents. */
+  wagesCents: number;
+  /** Tips the restaurant owes employees attributed to this month, integer cents. */
+  tipsOwedCents: number;
+  /** wages + tipsOwed, integer cents. */
+  actualLaborCents: number;
+}
+
+/**
+ * Calculate actual labor cost for a calendar month using ISO-week OT banding.
+ *
+ * For hourly employees: bucket each punch into the ISO week that contains it
+ * (startOfWeek with WEEK_STARTS_ON), call calculateEmployeePay over the FULL
+ * week (so OT bands are computed on the full 40h+ week), and distribute the
+ * week's wage pay across the days actually worked in proportion to per-day
+ * hours. Days outside [monthStart, monthEnd] are excluded; the days inside
+ * the month sum to that month's contribution from the week.
+ *
+ * For salary / contractor / daily_rate employees: there's no OT band to
+ * preserve, so calculateEmployeePay is called directly over the calendar
+ * month window — same proration logic as the existing `calculateActualLaborCost`.
+ *
+ * tipsOwed is added on top of wages — caller passes a Map<employee_id, cents>
+ * pre-filtered to tip_splits whose split_date falls in [monthStart, monthEnd].
+ */
+export function calculateActualLaborCostForMonth(
+  input: MonthlyLaborInput
+): MonthlyLaborResult {
+  const { employees, timePunches, tipsOwedByEmployee, monthStart, monthEnd } = input;
+
+  let wagesCents = 0;
+
+  for (const employee of employees) {
+    const employeePunches = timePunches.filter((p) => p.employee_id === employee.id);
+    const compType = employee.compensation_type ?? 'hourly';
+
+    if (compType !== 'hourly') {
+      // No OT to band — call calculateEmployeePay over the calendar-month window.
+      const pay = calculateEmployeePay(
+        employee,
+        employeePunches,
+        0, // tips intentionally 0; tipsOwed added separately below
+        monthStart,
+        monthEnd
+      );
+      wagesCents +=
+        pay.regularPay + pay.overtimePay + pay.doubleTimePay +
+        pay.salaryPay + pay.contractorPay + pay.dailyRatePay;
+      continue;
+    }
+
+    // Hourly: bucket punches by ISO week (matching Payroll's banding semantics).
+    const punchesByWeek = new Map<string, TimePunch[]>();
+    for (const p of employeePunches) {
+      const punchDate = new Date(p.punch_time);
+      const weekStart = startOfWeek(punchDate, { weekStartsOn: WEEK_STARTS_ON });
+      const weekKey = formatDate(weekStart, 'yyyy-MM-dd');
+      const arr = punchesByWeek.get(weekKey) ?? [];
+      arr.push(p);
+      punchesByWeek.set(weekKey, arr);
+    }
+
+    for (const [weekKey, weekPunches] of punchesByWeek) {
+      // Anchor at noon to avoid DST/UTC-midnight issues.
+      const weekStart = new Date(weekKey + 'T12:00:00');
+      const weekEnd = endOfWeek(weekStart, { weekStartsOn: WEEK_STARTS_ON });
+
+      const pay = calculateEmployeePay(
+        employee,
+        weekPunches,
+        0,
+        weekStart,
+        weekEnd
+      );
+      const weekWageCents = pay.regularPay + pay.overtimePay + pay.doubleTimePay;
+      if (weekWageCents <= 0) continue;
+
+      // Compute per-day hours for the week using parseWorkPeriods (consistent
+      // with the existing calculateActualLaborCost).
+      const { periods } = parseWorkPeriods(weekPunches);
+      const hoursByDate = new Map<string, number>();
+      for (const period of periods) {
+        if (period.isBreak) continue;
+        const dateKey = formatDateUTC(period.startTime);
+        hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
+      }
+
+      const totalHours = Array.from(hoursByDate.values()).reduce((a, b) => a + b, 0);
+      if (totalHours <= 0) continue;
+
+      // Distribute pay across days proportional to hours; last day takes the
+      // rounding remainder so the daily sum equals the weekly total to the cent.
+      const dateKeys = Array.from(hoursByDate.keys()).sort((a, b) => a.localeCompare(b));
+      let distributed = 0;
+      for (let i = 0; i < dateKeys.length; i++) {
+        const dateKey = dateKeys[i];
+        const hours = hoursByDate.get(dateKey)!;
+        const isLast = i === dateKeys.length - 1;
+        const dayCents = isLast
+          ? weekWageCents - distributed
+          : Math.round((weekWageCents * hours) / totalHours);
+        distributed += dayCents;
+
+        // Only count this day if it falls inside the calendar-month window.
+        const dayDate = new Date(dateKey + 'T12:00:00');
+        if (dayDate >= monthStart && dayDate <= monthEnd) {
+          wagesCents += dayCents;
+        }
+      }
+    }
+  }
+
+  // tipsOwed: caller already filtered to this month by split_date.
+  let tipsOwedCents = 0;
+  tipsOwedByEmployee.forEach((cents) => {
+    tipsOwedCents += cents;
+  });
+
+  return {
+    wagesCents,
+    tipsOwedCents,
+    actualLaborCents: wagesCents + tipsOwedCents,
+  };
 }

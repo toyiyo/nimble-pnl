@@ -1,0 +1,5 @@
+[
+  { "adjustment_type": "discount", "total_amount": -1477.40, "transaction_count": 322 },
+  { "adjustment_type": "tax",      "total_amount": 5974.88,  "transaction_count": 1215 },
+  { "adjustment_type": "tip",      "total_amount": 10381.78, "transaction_count": 953 }
+]

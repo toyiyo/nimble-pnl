@@ -6,9 +6,11 @@ import {
   TRIAL_DURATION_DAYS,
   accountCreatedFlagKey,
   clearStoredAttribution,
+  firstPnlViewedFlagKey,
   getStoredAttribution,
   isInternalEmail,
   recordAuthEvents,
+  recordFirstPnlViewed,
   recordPosIntegrationCompleted,
   storeAttribution,
 } from '../../src/lib/analytics';
@@ -363,5 +365,107 @@ describe('recordPosIntegrationCompleted', () => {
       pos_provider: 'square',
       seconds_from_trial_start: 1,
     });
+  });
+});
+
+describe('recordFirstPnlViewed', () => {
+  const FIXED_NOW = new Date('2026-05-07T12:00:00Z');
+  const CREATED_AT = new Date(FIXED_NOW.getTime() - 120_000).toISOString(); // 120s earlier
+
+  let posthog: { identify: ReturnType<typeof vi.fn>; capture: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    localStorage.clear();
+    posthog = { identify: vi.fn(), capture: vi.fn() };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('fires first_pnl_viewed once with seconds_from_trial_start and has_real_data:true', () => {
+    recordFirstPnlViewed({
+      userId: 'user-pnl-1',
+      hasRealData: true,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).toHaveBeenCalledWith('first_pnl_viewed', {
+      seconds_from_trial_start: 120,
+      has_real_data: true,
+    });
+    expect(localStorage.getItem(firstPnlViewedFlagKey('user-pnl-1'))).toBeTruthy();
+  });
+
+  it('does not double-fire when flag is already set', () => {
+    localStorage.setItem(firstPnlViewedFlagKey('user-pnl-2'), '1');
+
+    recordFirstPnlViewed({
+      userId: 'user-pnl-2',
+      hasRealData: true,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it('passes has_real_data:false when there is no revenue yet', () => {
+    recordFirstPnlViewed({
+      userId: 'user-pnl-3',
+      hasRealData: false,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('first_pnl_viewed', expect.objectContaining({
+      has_real_data: false,
+    }));
+  });
+
+  it('handles missing userCreatedAt by sending null seconds_from_trial_start', () => {
+    recordFirstPnlViewed({
+      userId: 'user-pnl-4',
+      hasRealData: true,
+      userCreatedAt: null,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('first_pnl_viewed', {
+      seconds_from_trial_start: null,
+      has_real_data: true,
+    });
+  });
+
+  it('does nothing when userId is empty', () => {
+    recordFirstPnlViewed({
+      userId: '',
+      hasRealData: true,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it('survives if posthog.capture throws (no rethrow, flag still set)', () => {
+    posthog.capture = vi.fn(() => {
+      throw new Error('posthog blew up');
+    });
+
+    expect(() => recordFirstPnlViewed({
+      userId: 'user-pnl-5',
+      hasRealData: true,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    })).not.toThrow();
   });
 });

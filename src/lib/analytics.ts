@@ -132,6 +132,55 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
   }
 }
 
+const FIRST_PNL_VIEWED_FLAG_PREFIX = 'pnl_first_view_seen_';
+
+export function firstPnlViewedFlagKey(userId: string): string {
+  return `${FIRST_PNL_VIEWED_FLAG_PREFIX}${userId}`;
+}
+
+export interface RecordFirstPnlViewedOptions {
+  userId: string;
+  hasRealData: boolean;
+  userCreatedAt: string | null | undefined;
+  posthog: PostHogLike;
+  now?: Date;
+}
+
+export function recordFirstPnlViewed(options: RecordFirstPnlViewedOptions): void {
+  const { userId, hasRealData, userCreatedAt, posthog } = options;
+  if (!userId) return;
+
+  const flagKey = firstPnlViewedFlagKey(userId);
+  let alreadySeen = false;
+  try {
+    alreadySeen = !!localStorage.getItem(flagKey);
+  } catch {
+    alreadySeen = false;
+  }
+  if (alreadySeen) return;
+
+  const now = options.now ?? new Date();
+  const seconds_from_trial_start = userCreatedAt
+    ? Math.floor((now.getTime() - new Date(userCreatedAt).getTime()) / 1000)
+    : null;
+
+  try {
+    posthog.capture('first_pnl_viewed', {
+      seconds_from_trial_start,
+      has_real_data: hasRealData,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[analytics] recordFirstPnlViewed failed:', msg);
+  }
+
+  try {
+    localStorage.setItem(flagKey, '1');
+  } catch {
+    // ignore
+  }
+}
+
 export interface RecordPosIntegrationCompletedOptions {
   posProvider: string;
   userCreatedAt: string | null | undefined;

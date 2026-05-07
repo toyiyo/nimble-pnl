@@ -29,19 +29,17 @@ const Auth = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Guard: Auth.tsx is also the OAuth callback URI. Only persist attribution
-    // when UTM params are present, so an OAuth redirect (which has ?code=…
-    // but no utm_*) can't overwrite first-touch attribution captured earlier.
-    // Check all five standard UTM params, not just the three primary ones —
-    // some campaigns send only utm_term or utm_content.
+    // Auth.tsx is also the OAuth callback URI. We want first-touch UTMs and
+    // legitimate referrers (e.g. user clicked a link from a blog post with no
+    // UTM tags), but we DON'T want an OAuth redirect to capture the OAuth
+    // provider's domain as the referrer. The narrowest signal for that is the
+    // OAuth response params: providers always echo back `?code=…` on success
+    // and `?error=…` on denial. Skip those; storeAttribution itself takes care
+    // of first-touch preservation for the rest.
     const params = new URLSearchParams(window.location.search);
-    const hasUtm =
-      params.has('utm_source') ||
-      params.has('utm_medium') ||
-      params.has('utm_campaign') ||
-      params.has('utm_term') ||
-      params.has('utm_content');
-    if (!hasUtm) return;
+    const isOAuthCallback =
+      params.has('code') || params.has('error') || params.has('error_description');
+    if (isOAuthCallback) return;
     storeAttribution(window.location.search, document.referrer, window.location.pathname);
   }, []);
 

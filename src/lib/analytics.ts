@@ -131,3 +131,29 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
     console.error('[analytics] recordAuthEvents failed:', msg);
   }
 }
+
+export interface RecordPosIntegrationCompletedOptions {
+  posProvider: string;
+  userCreatedAt: string | null | undefined;
+  posthog: PostHogLike;
+  now?: Date;
+}
+
+export function recordPosIntegrationCompleted(options: RecordPosIntegrationCompletedOptions): void {
+  const { posProvider, userCreatedAt, posthog } = options;
+  const now = options.now ?? new Date();
+
+  const seconds_from_trial_start = userCreatedAt
+    ? Math.floor((now.getTime() - new Date(userCreatedAt).getTime()) / 1000)
+    : null;
+
+  try {
+    posthog.capture('pos_integration_completed', {
+      pos_provider: posProvider,
+      seconds_from_trial_start,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[analytics] recordPosIntegrationCompleted failed:', msg);
+  }
+}

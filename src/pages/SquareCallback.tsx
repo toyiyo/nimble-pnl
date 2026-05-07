@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import posthog from 'posthog-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { recordPosIntegrationCompleted } from '@/lib/analytics';
 
 const SquareCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processing Square connection...');
 
@@ -87,6 +91,11 @@ const SquareCallback = () => {
 
         setStatus('success');
         setMessage('Successfully connected to Square!');
+        recordPosIntegrationCompleted({
+          posProvider: 'square',
+          userCreatedAt: user?.created_at,
+          posthog,
+        });
         toast({
           title: "Connection Successful",
           description: "Square connected! Webhooks are registered and real-time P&L updates are now active.",

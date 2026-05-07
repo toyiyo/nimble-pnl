@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import posthog from 'posthog-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { recordPosIntegrationCompleted } from '@/lib/analytics';
 
 export default function CloverCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Connecting to Clover...');
 
@@ -54,7 +58,12 @@ export default function CloverCallback() {
 
         setStatus('success');
         setMessage('Successfully connected to Clover!');
-        
+        recordPosIntegrationCompleted({
+          posProvider: 'clover',
+          userCreatedAt: user?.created_at,
+          posthog,
+        });
+
         toast({
           title: "Connection Successful",
           description: "Your Clover account has been connected",

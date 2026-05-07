@@ -9,6 +9,7 @@ import {
   getStoredAttribution,
   isInternalEmail,
   recordAuthEvents,
+  recordPosIntegrationCompleted,
   storeAttribution,
 } from '../../src/lib/analytics';
 
@@ -294,5 +295,73 @@ describe('recordAuthEvents', () => {
       posthog,
       now: FIXED_NOW,
     })).not.toThrow();
+  });
+});
+
+describe('recordPosIntegrationCompleted', () => {
+  const FIXED_NOW = new Date('2026-05-07T12:00:00Z');
+  const CREATED_AT = new Date(FIXED_NOW.getTime() - 90_000).toISOString(); // 90s earlier
+
+  let posthog: { identify: ReturnType<typeof vi.fn>; capture: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    posthog = { identify: vi.fn(), capture: vi.fn() };
+  });
+
+  it('captures pos_integration_completed with provider and seconds_from_trial_start', () => {
+    recordPosIntegrationCompleted({
+      posProvider: 'square',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(posthog.capture).toHaveBeenCalledWith('pos_integration_completed', {
+      pos_provider: 'square',
+      seconds_from_trial_start: 90,
+    });
+  });
+
+  it('handles missing userCreatedAt by sending null seconds_from_trial_start', () => {
+    recordPosIntegrationCompleted({
+      posProvider: 'toast',
+      userCreatedAt: null,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('pos_integration_completed', {
+      pos_provider: 'toast',
+      seconds_from_trial_start: null,
+    });
+  });
+
+  it('survives if posthog.capture throws (no rethrow)', () => {
+    posthog.capture = vi.fn(() => {
+      throw new Error('posthog blew up');
+    });
+
+    expect(() => recordPosIntegrationCompleted({
+      posProvider: 'clover',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    })).not.toThrow();
+  });
+
+  it('floors fractional seconds', () => {
+    const createdAt = new Date(FIXED_NOW.getTime() - 1_500).toISOString(); // 1.5s ago
+    recordPosIntegrationCompleted({
+      posProvider: 'square',
+      userCreatedAt: createdAt,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('pos_integration_completed', {
+      pos_provider: 'square',
+      seconds_from_trial_start: 1,
+    });
   });
 });

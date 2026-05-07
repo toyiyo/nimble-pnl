@@ -1,7 +1,9 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
+import posthog from 'posthog-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Capacitor } from '@capacitor/core';
+import { recordAuthEvents } from '@/lib/analytics';
 
 interface AuthContextType {
   user: User | null;
@@ -102,6 +104,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
   }, [handleAuthStateChange]);
+
+  // Fire PostHog identify + signup/login events when the user resolves.
+  // Telemetry must never break auth, so recordAuthEvents wraps everything in try/catch.
+  // Email is passed locally so recordAuthEvents can compute is_internal, then dropped —
+  // it is NOT forwarded to PostHog.
+  useEffect(() => {
+    if (!user?.id) return;
+    recordAuthEvents({
+      userId: user.id,
+      email: user.email,
+      createdAt: user.created_at,
+      posthog,
+    });
+  }, [user?.id]);
 
   const signIn = async (email: string, password: string) => {
     try {

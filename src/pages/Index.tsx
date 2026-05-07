@@ -1,7 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
+import posthog from 'posthog-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { usePermissions } from '@/hooks/usePermissions';
+import { recordFirstPnlViewed } from '@/lib/analytics';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -210,6 +212,16 @@ const Index = () => {
       prime_cost_percentage: periodMetrics.primeCostPercentage,
     };
   }, [periodMetrics]);
+
+  useEffect(() => {
+    if (!user?.id || !periodData) return;
+    recordFirstPnlViewed({
+      userId: user.id,
+      hasRealData: periodData.net_revenue > 0,
+      userCreatedAt: user.created_at,
+      posthog,
+    });
+  }, [user?.id, user?.created_at, periodData]);
 
   // Calculate previous period data for comparison
   const periodLength = differenceInDays(selectedPeriod.to, selectedPeriod.from) + 1;

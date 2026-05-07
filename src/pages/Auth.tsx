@@ -15,6 +15,7 @@ import { Building, ArrowRight, Shield } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { supabase } from '@/integrations/supabase/client';
 import { signInWithOAuthNative } from '@/utils/nativeRedirect';
+import { storeAttribution } from '@/lib/analytics';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -26,6 +27,21 @@ const Auth = () => {
   const { checkSSORequired, initiateSSO } = useSSO();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Auth.tsx is also the OAuth callback URI. We want first-touch UTMs and
+    // legitimate referrers (e.g. user clicked a link from a blog post with no
+    // UTM tags), but we DON'T want an OAuth redirect to capture the OAuth
+    // provider's domain as the referrer. The narrowest signal for that is the
+    // OAuth response params: providers always echo back `?code=…` on success
+    // and `?error=…` on denial. Skip those; storeAttribution itself takes care
+    // of first-touch preservation for the rest.
+    const params = new URLSearchParams(window.location.search);
+    const isOAuthCallback =
+      params.has('code') || params.has('error') || params.has('error_description');
+    if (isOAuthCallback) return;
+    storeAttribution(window.location.search, document.referrer, window.location.pathname);
+  }, []);
 
   useEffect(() => {
     if (user) {

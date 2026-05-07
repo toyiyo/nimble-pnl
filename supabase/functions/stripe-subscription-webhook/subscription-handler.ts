@@ -1,5 +1,6 @@
 import Stripe from "https://esm.sh/stripe@20.1.0";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { captureServerEvent } from "../_shared/posthogServer.ts";
 
 // Volume discount coupon IDs (same as in checkout function)
 const VOLUME_COUPONS: Record<number, string> = {
@@ -325,6 +326,22 @@ export async function processSubscriptionEvent(
         console.error("[SUBSCRIPTION-WEBHOOK] Failed to update restaurant:", updateError);
       } else {
         console.log("[SUBSCRIPTION-WEBHOOK] Restaurant subscription updated:", restaurantId, updateData);
+
+        if (event.type === "customer.subscription.created") {
+          const userId = subscription.metadata?.user_id;
+          if (userId) {
+            await captureServerEvent({
+              distinctId: userId,
+              event: "subscription_created",
+              properties: {
+                tier,
+                period,
+                mrr_cents: subscription.items.data[0]?.price.unit_amount ?? null,
+                stripe_subscription_id: subscription.id,
+              },
+            });
+          }
+        }
       }
       return;
     }
@@ -354,9 +371,19 @@ export async function processSubscriptionEvent(
         } else {
           console.log("[SUBSCRIPTION-WEBHOOK] Restaurant subscription canceled:", restaurant.id);
 
-          // Sync volume discounts - may need to reduce discount tier for remaining restaurants
           const userId = subscription.metadata?.user_id;
           if (userId) {
+            await captureServerEvent({
+              distinctId: userId,
+              event: "subscription_canceled",
+              properties: {
+                tier: subscription.metadata?.tier ?? null,
+                period: subscription.metadata?.period ?? null,
+                stripe_subscription_id: subscription.id,
+              },
+            });
+
+            // Sync volume discounts - may need to reduce discount tier for remaining restaurants
             try {
               await syncVolumeDiscountsForOwner(userId, supabaseAdmin, stripe);
             } catch (error) {

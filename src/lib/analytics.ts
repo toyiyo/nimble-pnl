@@ -138,6 +138,11 @@ export function firstPnlViewedFlagKey(userId: string): string {
   return `${FIRST_PNL_VIEWED_FLAG_PREFIX}${userId}`;
 }
 
+function secondsSinceCreated(now: Date, userCreatedAt: string | null | undefined): number | null {
+  if (!userCreatedAt) return null;
+  return Math.floor((now.getTime() - new Date(userCreatedAt).getTime()) / 1000);
+}
+
 export interface RecordFirstPnlViewedOptions {
   userId: string;
   hasRealData: boolean;
@@ -160,9 +165,7 @@ export function recordFirstPnlViewed(options: RecordFirstPnlViewedOptions): void
   if (alreadySeen) return;
 
   const now = options.now ?? new Date();
-  const seconds_from_trial_start = userCreatedAt
-    ? Math.floor((now.getTime() - new Date(userCreatedAt).getTime()) / 1000)
-    : null;
+  const seconds_from_trial_start = secondsSinceCreated(now, userCreatedAt);
 
   try {
     posthog.capture('first_pnl_viewed', {
@@ -191,10 +194,7 @@ export interface RecordPosIntegrationCompletedOptions {
 export function recordPosIntegrationCompleted(options: RecordPosIntegrationCompletedOptions): void {
   const { posProvider, userCreatedAt, posthog } = options;
   const now = options.now ?? new Date();
-
-  const seconds_from_trial_start = userCreatedAt
-    ? Math.floor((now.getTime() - new Date(userCreatedAt).getTime()) / 1000)
-    : null;
+  const seconds_from_trial_start = secondsSinceCreated(now, userCreatedAt);
 
   try {
     posthog.capture('pos_integration_completed', {

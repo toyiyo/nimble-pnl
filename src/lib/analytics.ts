@@ -59,3 +59,75 @@ export function clearStoredAttribution(): void {
     // Ignore
   }
 }
+
+export const NEW_SIGNUP_WINDOW_MS = 5 * 60 * 1000;
+export const TRIAL_DURATION_DAYS = 14;
+const ACCOUNT_CREATED_FLAG_PREFIX = 'posthog_account_created_';
+
+export function accountCreatedFlagKey(userId: string): string {
+  return `${ACCOUNT_CREATED_FLAG_PREFIX}${userId}`;
+}
+
+export interface PostHogLike {
+  identify(distinctId: string, properties?: Record<string, unknown>): void;
+  capture(event: string, properties?: Record<string, unknown>): void;
+}
+
+export interface RecordAuthEventsOptions {
+  userId: string;
+  email: string | null | undefined;
+  createdAt: string | null | undefined;
+  posthog: PostHogLike;
+  now?: Date;
+}
+
+export function recordAuthEvents(options: RecordAuthEventsOptions): void {
+  const { userId, email, createdAt, posthog } = options;
+  if (!userId) return;
+
+  const now = options.now ?? new Date();
+  const isRecentSignup = createdAt
+    ? now.getTime() - new Date(createdAt).getTime() <= NEW_SIGNUP_WINDOW_MS
+    : false;
+
+  let flagAlreadySet = false;
+  try {
+    flagAlreadySet = !!localStorage.getItem(accountCreatedFlagKey(userId));
+  } catch {
+    flagAlreadySet = false;
+  }
+
+  try {
+    if (isRecentSignup && !flagAlreadySet) {
+      const attribution = getStoredAttribution();
+      const trialEndsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+      const safeEmail = email ?? null;
+      posthog.identify(userId, {
+        email: safeEmail,
+        signup_source: attribution?.utm_source || attribution?.referrer || 'direct',
+        signup_medium: attribution?.utm_medium || 'organic',
+        signup_campaign: attribution?.utm_campaign ?? null,
+        is_internal: isInternalEmail(safeEmail),
+      });
+
+      posthog.capture('account_created', { email: safeEmail });
+      posthog.capture('trial_started', { trial_ends_at: trialEndsAt });
+
+      try {
+        localStorage.setItem(accountCreatedFlagKey(userId), '1');
+      } catch {
+        // ignore
+      }
+
+      clearStoredAttribution();
+    } else {
+      posthog.identify(userId, {
+        last_login_at: now.toISOString(),
+      });
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[analytics] recordAuthEvents failed:', msg);
+  }
+}

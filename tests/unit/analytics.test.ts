@@ -2,9 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   ATTRIBUTION_STORAGE_KEY,
   INTERNAL_DOMAINS,
+  NEW_SIGNUP_WINDOW_MS,
+  TRIAL_DURATION_DAYS,
+  accountCreatedFlagKey,
   clearStoredAttribution,
   getStoredAttribution,
   isInternalEmail,
+  recordAuthEvents,
   storeAttribution,
 } from '../../src/lib/analytics';
 
@@ -119,5 +123,176 @@ describe('storeAttribution / getStoredAttribution / clearStoredAttribution', () 
     expect(() => storeAttribution('?utm_source=google', '', '/auth')).not.toThrow();
     setItemMock.mockRestore();
     Storage.prototype.setItem = original;
+  });
+});
+
+describe('recordAuthEvents', () => {
+  const FIXED_NOW = new Date('2026-05-07T12:00:00Z');
+  const RECENT_CREATED_AT = new Date(FIXED_NOW.getTime() - 30_000).toISOString();
+  const OLD_CREATED_AT = new Date(FIXED_NOW.getTime() - NEW_SIGNUP_WINDOW_MS - 1).toISOString();
+
+  let posthog: { identify: ReturnType<typeof vi.fn>; capture: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    localStorage.clear();
+    posthog = { identify: vi.fn(), capture: vi.fn() };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('fires identify + account_created + trial_started for a fresh signup', () => {
+    storeAttribution('?utm_source=google&utm_medium=cpc&utm_campaign=launch', '', '/auth');
+
+    recordAuthEvents({
+      userId: 'user-1',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).toHaveBeenCalledTimes(1);
+    expect(posthog.identify).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      email: 'jose@example.com',
+      signup_source: 'google',
+      signup_medium: 'cpc',
+      signup_campaign: 'launch',
+      is_internal: false,
+    }));
+
+    expect(posthog.capture).toHaveBeenCalledTimes(2);
+    expect(posthog.capture).toHaveBeenCalledWith('account_created', { email: 'jose@example.com' });
+    const trialEndsAt = new Date(FIXED_NOW.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    expect(posthog.capture).toHaveBeenCalledWith('trial_started', { trial_ends_at: trialEndsAt });
+
+    expect(localStorage.getItem(accountCreatedFlagKey('user-1'))).toBeTruthy();
+    expect(localStorage.getItem(ATTRIBUTION_STORAGE_KEY)).toBeNull();
+  });
+
+  it('marks @easyshifthq.com users as is_internal:true', () => {
+    recordAuthEvents({
+      userId: 'user-internal',
+      email: 'jose@easyshifthq.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).toHaveBeenCalledWith('user-internal', expect.objectContaining({
+      is_internal: true,
+    }));
+  });
+
+  it('falls back to referrer when UTM is absent', () => {
+    storeAttribution('', 'https://google.com', '/auth');
+
+    recordAuthEvents({
+      userId: 'user-2',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).toHaveBeenCalledWith('user-2', expect.objectContaining({
+      signup_source: 'https://google.com',
+      signup_medium: 'organic',
+    }));
+  });
+
+  it('uses "direct" / "organic" when no attribution stored', () => {
+    recordAuthEvents({
+      userId: 'user-3',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).toHaveBeenCalledWith('user-3', expect.objectContaining({
+      signup_source: 'direct',
+      signup_medium: 'organic',
+      signup_campaign: null,
+    }));
+  });
+
+  it('does not double-fire account_created if the flag is set', () => {
+    localStorage.setItem(accountCreatedFlagKey('user-4'), '1');
+
+    recordAuthEvents({
+      userId: 'user-4',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).not.toHaveBeenCalledWith('account_created', expect.anything());
+    expect(posthog.capture).not.toHaveBeenCalledWith('trial_started', expect.anything());
+    // Returning users still get an identify with last_login_at
+    expect(posthog.identify).toHaveBeenCalledWith('user-4', expect.objectContaining({
+      last_login_at: expect.any(String),
+    }));
+  });
+
+  it('treats users with old created_at as returning users (only last_login_at)', () => {
+    recordAuthEvents({
+      userId: 'user-5',
+      email: 'jose@example.com',
+      createdAt: OLD_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+    expect(posthog.identify).toHaveBeenCalledTimes(1);
+    expect(posthog.identify).toHaveBeenCalledWith('user-5', expect.objectContaining({
+      last_login_at: FIXED_NOW.toISOString(),
+    }));
+  });
+
+  it('does nothing when userId is empty', () => {
+    recordAuthEvents({
+      userId: '',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).not.toHaveBeenCalled();
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it('handles missing email gracefully (still identifies, is_internal:false)', () => {
+    recordAuthEvents({
+      userId: 'user-6',
+      email: null,
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).toHaveBeenCalledWith('user-6', expect.objectContaining({
+      email: null,
+      is_internal: false,
+    }));
+    expect(posthog.capture).toHaveBeenCalledWith('account_created', { email: null });
+  });
+
+  it('survives if posthog.capture throws (no rethrow)', () => {
+    posthog.capture = vi.fn(() => {
+      throw new Error('posthog blew up');
+    });
+
+    expect(() => recordAuthEvents({
+      userId: 'user-7',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    })).not.toThrow();
   });
 });

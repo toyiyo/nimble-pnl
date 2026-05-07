@@ -40,6 +40,17 @@ describe('isInternalEmail', () => {
     expect(isInternalEmail('foo@')).toBe(false);
   });
 
+  it('matches subdomain emails (e.g. user@mail.easyshifthq.com)', () => {
+    expect(isInternalEmail('jose@mail.easyshifthq.com')).toBe(true);
+    expect(isInternalEmail('jose@app.easyshifthq.com')).toBe(true);
+  });
+
+  it('does NOT false-match domains that merely contain the internal domain', () => {
+    // '@evil-easyshifthq.com' ends with 'easyshifthq.com' but is a different host
+    expect(isInternalEmail('attacker@evil-easyshifthq.com')).toBe(false);
+    expect(isInternalEmail('attacker@notreallyeasyshifthq.com')).toBe(false);
+  });
+
   it('exposes INTERNAL_DOMAINS as a readonly array', () => {
     expect(INTERNAL_DOMAINS).toContain('@easyshifthq.com');
   });
@@ -302,6 +313,39 @@ describe('recordAuthEvents', () => {
       now: FIXED_NOW,
     })).not.toThrow();
   });
+
+  it('does not re-fire account_created if trial_started capture throws (atomic dedup)', () => {
+    // Simulate: account_created succeeds, trial_started throws.
+    let callCount = 0;
+    posthog.capture = vi.fn(() => {
+      callCount += 1;
+      if (callCount === 2) throw new Error('posthog blew up on second call');
+    });
+
+    recordAuthEvents({
+      userId: 'user-partial-fail',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    // Flag must be set even though trial_started threw, so the next call
+    // within the 5-min window does not re-fire account_created.
+    expect(localStorage.getItem(accountCreatedFlagKey('user-partial-fail'))).toBeTruthy();
+
+    // Second call: should treat user as returning (no account_created).
+    posthog.capture = vi.fn();
+    recordAuthEvents({
+      userId: 'user-partial-fail',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+    expect(posthog.capture).not.toHaveBeenCalledWith('account_created', expect.anything());
+    expect(posthog.capture).not.toHaveBeenCalledWith('account_created');
+  });
 });
 
 describe('recordPosIntegrationCompleted', () => {
@@ -459,7 +503,7 @@ describe('recordFirstPnlViewed', () => {
     expect(posthog.capture).not.toHaveBeenCalled();
   });
 
-  it('survives if posthog.capture throws (no rethrow, flag still set)', () => {
+  it('survives if posthog.capture throws (no rethrow)', () => {
     posthog.capture = vi.fn(() => {
       throw new Error('posthog blew up');
     });
@@ -471,5 +515,34 @@ describe('recordFirstPnlViewed', () => {
       posthog,
       now: FIXED_NOW,
     })).not.toThrow();
+  });
+
+  it('does NOT set the flag if capture throws, so a retry can succeed later', () => {
+    posthog.capture = vi.fn(() => {
+      throw new Error('posthog blew up');
+    });
+
+    recordFirstPnlViewed({
+      userId: 'user-pnl-retry',
+      hasRealData: true,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    // Flag must NOT be set on capture failure, so the next view can retry.
+    expect(localStorage.getItem(firstPnlViewedFlagKey('user-pnl-retry'))).toBeNull();
+
+    // Retry: capture works this time. Event fires and flag is set.
+    posthog.capture = vi.fn();
+    recordFirstPnlViewed({
+      userId: 'user-pnl-retry',
+      hasRealData: true,
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(firstPnlViewedFlagKey('user-pnl-retry'))).toBeTruthy();
   });
 });

@@ -309,6 +309,8 @@ Deno.test("subscription_canceled derives tier and period from price (not stale m
     // Should reflect actual price, not stale metadata.
     assertEquals(capture.events[0].properties?.tier, "pro");
     assertEquals(capture.events[0].properties?.period, "annual");
+    // mrr_cents normalized: 299000 / 12 = 24916.67 → rounds to 24917
+    assertEquals(capture.events[0].properties?.mrr_cents, 24917);
   } finally {
     _setCaptureFnForTesting(null);
   }

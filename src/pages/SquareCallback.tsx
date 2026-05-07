@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import posthog from 'posthog-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -118,9 +118,12 @@ const SquareCallback = () => {
 
   // Fire analytics once both the OAuth exchange succeeded AND user is resolved.
   // useAuth resolves async on this redirect page, so reading user inside
-  // handleCallback would always see null.
+  // handleCallback would always see null. The useRef guard prevents duplicate
+  // sends when the user object identity changes (e.g. background token refresh).
+  const analyticsFiredRef = useRef(false);
   useEffect(() => {
-    if (status !== 'success' || !user) return;
+    if (status !== 'success' || !user || analyticsFiredRef.current) return;
+    analyticsFiredRef.current = true;
     recordPosIntegrationCompleted({
       posProvider: 'square',
       userCreatedAt: user.created_at,

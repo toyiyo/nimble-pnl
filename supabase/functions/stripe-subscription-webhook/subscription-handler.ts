@@ -415,13 +415,14 @@ export async function processSubscriptionEvent(
 
           const userId = subscription.metadata?.user_id;
           if (userId) {
-            const { tier: canceledTier, period: canceledPeriod } = deriveTierPeriodMrrFromSubscription(subscription);
+            const { tier: canceledTier, period: canceledPeriod, mrr_cents } = deriveTierPeriodMrrFromSubscription(subscription);
             await captureServerEvent({
               distinctId: userId,
               event: "subscription_canceled",
               properties: {
                 tier: canceledTier ?? subscription.metadata?.tier ?? null,
                 period: canceledPeriod ?? subscription.metadata?.period ?? null,
+                mrr_cents,
                 stripe_subscription_id: subscription.id,
               },
             });

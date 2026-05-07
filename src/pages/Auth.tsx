@@ -32,8 +32,15 @@ const Auth = () => {
     // Guard: Auth.tsx is also the OAuth callback URI. Only persist attribution
     // when UTM params are present, so an OAuth redirect (which has ?code=…
     // but no utm_*) can't overwrite first-touch attribution captured earlier.
+    // Check all five standard UTM params, not just the three primary ones —
+    // some campaigns send only utm_term or utm_content.
     const params = new URLSearchParams(window.location.search);
-    const hasUtm = params.has('utm_source') || params.has('utm_medium') || params.has('utm_campaign');
+    const hasUtm =
+      params.has('utm_source') ||
+      params.has('utm_medium') ||
+      params.has('utm_campaign') ||
+      params.has('utm_term') ||
+      params.has('utm_content');
     if (!hasUtm) return;
     storeAttribution(window.location.search, document.referrer, window.location.pathname);
   }, []);

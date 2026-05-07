@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import posthog from 'posthog-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -84,8 +84,12 @@ export default function CloverCallback() {
   }, [searchParams, navigate, toast]);
 
   // Fire analytics once both the OAuth exchange succeeded AND user is resolved.
+  // useRef guard prevents duplicate sends if the user object identity changes
+  // (e.g. background token refresh) while status is still 'success'.
+  const analyticsFiredRef = useRef(false);
   useEffect(() => {
-    if (status !== 'success' || !user) return;
+    if (status !== 'success' || !user || analyticsFiredRef.current) return;
+    analyticsFiredRef.current = true;
     recordPosIntegrationCompleted({
       posProvider: 'clover',
       userCreatedAt: user.created_at,

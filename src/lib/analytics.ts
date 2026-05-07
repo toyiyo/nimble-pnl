@@ -14,7 +14,17 @@ export interface SignupAttribution {
 export function isInternalEmail(email?: string | null): boolean {
   if (!email) return false;
   const lower = email.toLowerCase();
-  return INTERNAL_DOMAINS.some((domain) => lower.endsWith(domain.toLowerCase()));
+  const atIdx = lower.indexOf('@');
+  if (atIdx === -1) return false;
+  const host = lower.slice(atIdx); // includes leading '@', e.g. '@mail.easyshifthq.com'
+  return INTERNAL_DOMAINS.some((domain) => {
+    // domain format: '@easyshifthq.com'. Match exact host, or any subdomain
+    // (i.e., host ends with '.easyshifthq.com'). The leading '.' prevents
+    // false positives like '@evil-easyshifthq.com'.
+    if (host === domain) return true;
+    const subdomainSuffix = '.' + domain.slice(1); // '.easyshifthq.com'
+    return host.endsWith(subdomainSuffix);
+  });
 }
 
 export function storeAttribution(search: string, referrer: string, landingPage: string): void {
@@ -99,6 +109,17 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
 
   try {
     if (isRecentSignup && !flagAlreadySet) {
+      // Set the dedup flag BEFORE firing events so a partial failure
+      // (e.g. trial_started throws after account_created succeeds) doesn't
+      // re-fire account_created on the next session restore. account_created
+      // is a one-time signup signal — losing it on a transient outage is
+      // preferable to double-counting it.
+      try {
+        localStorage.setItem(accountCreatedFlagKey(userId), '1');
+      } catch {
+        // ignore
+      }
+
       const attribution = getStoredAttribution();
       const trialEndsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
@@ -114,12 +135,6 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
 
       posthog.capture('account_created');
       posthog.capture('trial_started', { trial_ends_at: trialEndsAt });
-
-      try {
-        localStorage.setItem(accountCreatedFlagKey(userId), '1');
-      } catch {
-        // ignore
-      }
 
       clearStoredAttribution();
     } else {
@@ -173,15 +188,17 @@ export function recordFirstPnlViewed(options: RecordFirstPnlViewedOptions): void
       seconds_from_trial_start,
       has_real_data: hasRealData,
     });
+    // Flag is written ONLY on successful capture so a transient PostHog
+    // failure on first view doesn't permanently suppress the event —
+    // the next dashboard view will retry until it lands.
+    try {
+      localStorage.setItem(flagKey, '1');
+    } catch {
+      // ignore
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[analytics] recordFirstPnlViewed failed:', msg);
-  }
-
-  try {
-    localStorage.setItem(flagKey, '1');
-  } catch {
-    // ignore
   }
 }
 

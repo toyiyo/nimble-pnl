@@ -15,6 +15,7 @@ import { Building, ArrowRight, Shield } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { supabase } from '@/integrations/supabase/client';
 import { signInWithOAuthNative } from '@/utils/nativeRedirect';
+import { storeAttribution } from '@/lib/analytics';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -26,6 +27,10 @@ const Auth = () => {
   const { checkSSORequired, initiateSSO } = useSSO();
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    storeAttribution(window.location.search, document.referrer, window.location.pathname);
+  }, []);
 
   useEffect(() => {
     if (user) {

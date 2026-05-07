@@ -9,6 +9,7 @@ import {
   firstPnlViewedFlagKey,
   getStoredAttribution,
   isInternalEmail,
+  posIntegrationCompletedFlagKey,
   recordAuthEvents,
   recordFirstPnlViewed,
   recordPosIntegrationCompleted,
@@ -110,6 +111,38 @@ describe('storeAttribution / getStoredAttribution / clearStoredAttribution', () 
 
     expect(second?.utm_source).toBe('google');
     expect(second?.captured_at).toBe(first?.captured_at);
+  });
+
+  it('preserves first-touch when an OAuth callback arrives with referrer but no UTM', () => {
+    // Simulate user landing first with UTM:
+    storeAttribution('?utm_source=google&utm_medium=cpc', '', '/auth');
+    const first = getStoredAttribution();
+
+    // Then an OAuth provider redirect (e.g. ?code=… and referrer=accounts.google.com)
+    // arrives without any UTM. We should NOT clobber the original UTM-based
+    // attribution with a referrer that just describes the OAuth hop.
+    storeAttribution('?code=abc123', 'https://accounts.google.com', '/auth');
+    const second = getStoredAttribution();
+
+    expect(second?.utm_source).toBe('google');
+    expect(second?.utm_medium).toBe('cpc');
+    expect(second?.captured_at).toBe(first?.captured_at);
+  });
+
+  it('treats utm_term / utm_content as fresh UTM and overwrites earlier referrer-only entry', () => {
+    // Earlier: only referrer captured.
+    storeAttribution('', 'https://google.com', '/auth');
+    const first = getStoredAttribution();
+    expect(first?.utm_source).toBeNull();
+    expect(first?.referrer).toBe('https://google.com');
+
+    // Later: hits with utm_term only (no source/medium/campaign). hasUtm should
+    // still trigger a write because utm_term/utm_content count as fresh data —
+    // proving fresh write by the referrer being overwritten to ''.
+    storeAttribution('?utm_term=brand', '', '/auth');
+    const second = getStoredAttribution();
+    expect(second?.utm_source).toBeNull();
+    expect(second?.referrer).toBe('');
   });
 
   it('returns null when key missing', () => {
@@ -355,11 +388,17 @@ describe('recordPosIntegrationCompleted', () => {
   let posthog: { identify: ReturnType<typeof vi.fn>; capture: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
+    localStorage.clear();
     posthog = { identify: vi.fn(), capture: vi.fn() };
+  });
+
+  afterEach(() => {
+    localStorage.clear();
   });
 
   it('captures pos_integration_completed with provider and seconds_from_trial_start', () => {
     recordPosIntegrationCompleted({
+      userId: 'user-pos-1',
       posProvider: 'square',
       userCreatedAt: CREATED_AT,
       posthog,
@@ -371,10 +410,12 @@ describe('recordPosIntegrationCompleted', () => {
       pos_provider: 'square',
       seconds_from_trial_start: 90,
     });
+    expect(localStorage.getItem(posIntegrationCompletedFlagKey('user-pos-1', 'square'))).toBeTruthy();
   });
 
   it('handles missing userCreatedAt by sending null seconds_from_trial_start', () => {
     recordPosIntegrationCompleted({
+      userId: 'user-pos-2',
       posProvider: 'toast',
       userCreatedAt: null,
       posthog,
@@ -393,6 +434,7 @@ describe('recordPosIntegrationCompleted', () => {
     });
 
     expect(() => recordPosIntegrationCompleted({
+      userId: 'user-pos-3',
       posProvider: 'clover',
       userCreatedAt: CREATED_AT,
       posthog,
@@ -403,6 +445,7 @@ describe('recordPosIntegrationCompleted', () => {
   it('floors fractional seconds', () => {
     const createdAt = new Date(FIXED_NOW.getTime() - 1_500).toISOString(); // 1.5s ago
     recordPosIntegrationCompleted({
+      userId: 'user-pos-4',
       posProvider: 'square',
       userCreatedAt: createdAt,
       posthog,
@@ -413,6 +456,84 @@ describe('recordPosIntegrationCompleted', () => {
       pos_provider: 'square',
       seconds_from_trial_start: 1,
     });
+  });
+
+  it('does not double-fire when the per-(user, provider) flag is already set', () => {
+    localStorage.setItem(posIntegrationCompletedFlagKey('user-pos-dup', 'square'), '1');
+
+    recordPosIntegrationCompleted({
+      userId: 'user-pos-dup',
+      posProvider: 'square',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when userId is empty', () => {
+    recordPosIntegrationCompleted({
+      userId: '',
+      posProvider: 'square',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+  });
+
+  it('does NOT set the flag if capture throws, so a retry can succeed later', () => {
+    posthog.capture = vi.fn(() => {
+      throw new Error('posthog blew up');
+    });
+
+    recordPosIntegrationCompleted({
+      userId: 'user-pos-retry',
+      posProvider: 'toast',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(localStorage.getItem(posIntegrationCompletedFlagKey('user-pos-retry', 'toast'))).toBeNull();
+
+    // Retry: capture works this time.
+    posthog.capture = vi.fn();
+    recordPosIntegrationCompleted({
+      userId: 'user-pos-retry',
+      posProvider: 'toast',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(posIntegrationCompletedFlagKey('user-pos-retry', 'toast'))).toBeTruthy();
+  });
+
+  it('keeps per-provider dedup independent (square does not block toast)', () => {
+    recordPosIntegrationCompleted({
+      userId: 'user-pos-multi',
+      posProvider: 'square',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+
+    // Different provider for the same user — should still fire.
+    recordPosIntegrationCompleted({
+      userId: 'user-pos-multi',
+      posProvider: 'toast',
+      userCreatedAt: CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+    expect(posthog.capture).toHaveBeenCalledTimes(2);
+    expect(posthog.capture).toHaveBeenLastCalledWith('pos_integration_completed', expect.objectContaining({
+      pos_provider: 'toast',
+    }));
   });
 });
 

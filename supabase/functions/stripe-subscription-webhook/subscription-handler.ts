@@ -376,8 +376,10 @@ export async function processSubscriptionEvent(
               distinctId: userId,
               event: "subscription_created",
               properties: {
-                tier,
-                period,
+                // Coerce to null so PostHog never sees `undefined` (matches
+                // subscription_canceled, which already does the same).
+                tier: tier ?? null,
+                period: period ?? null,
                 mrr_cents,
                 stripe_subscription_id: subscription.id,
               },

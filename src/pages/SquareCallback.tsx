@@ -125,6 +125,7 @@ const SquareCallback = () => {
     if (status !== 'success' || !user || analyticsFiredRef.current) return;
     analyticsFiredRef.current = true;
     recordPosIntegrationCompleted({
+      userId: user.id,
       posProvider: 'square',
       userCreatedAt: user.created_at,
       posthog,

@@ -91,6 +91,7 @@ export default function CloverCallback() {
     if (status !== 'success' || !user || analyticsFiredRef.current) return;
     analyticsFiredRef.current = true;
     recordPosIntegrationCompleted({
+      userId: user.id,
       posProvider: 'clover',
       userCreatedAt: user.created_at,
       posthog,

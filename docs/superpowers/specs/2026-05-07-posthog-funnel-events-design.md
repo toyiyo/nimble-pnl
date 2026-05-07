@@ -52,14 +52,14 @@ Events: `account_created`, `trial_started`, `pos_integration_completed`, `first_
 ### `account_created` (browser, fired in `useAuth.tsx`)
 **Distinct ID:** `session.user.id`
 **Person properties** set via `posthog.identify(...)`:
-- `email` (string)
 - `signup_source` (string) — from stored attribution: `utm_source` || `referrer` || `'direct'`
 - `signup_medium` (string) — `utm_medium` || `'organic'`
 - `signup_campaign` (string | null)
-- `is_internal` (boolean) — `isInternalEmail(email)`
+- `is_internal` (boolean) — `isInternalEmail(email)` (email is read locally only and never forwarded to PostHog)
 
-**Event properties:**
-- `email` (string)
+**Event properties:** none
+
+**PII note:** Email is intentionally NOT sent to PostHog. We only need it locally to compute `is_internal`; the boolean is sufficient for funnel filtering. Distinct ID is the Supabase `user.id`, which is already pseudonymous.
 
 ### `trial_started` (browser, fired in `useAuth.tsx`)
 - `trial_ends_at` (ISO string, +14 days from `now()`)
@@ -77,18 +77,16 @@ Events: `account_created`, `trial_started`, `pos_integration_completed`, `first_
 - `has_real_data` (boolean) — `periodData.net_revenue > 0`
 
 ### `subscription_created` / `subscription_canceled` (server, in Stripe webhook)
-**Distinct ID:** `userId` looked up from `restaurants.stripe_subscription_id` → owner via `user_restaurants`.
-**Event properties (`subscription_created`):**
-- `tier` (`'starter' | 'growth' | 'pro'`) — already computed in handler
-- `billing_period` (`'monthly' | 'annual'`)
-- `mrr_cents` (number) — `price.unit_amount`
-- `is_annual` (boolean)
-- `restaurant_id` (string)
+**Distinct ID:** `subscription.metadata.user_id` (set when the checkout session was created — no DB lookup required at fire time).
+**Event properties (both events, identical shape):**
+- `tier` (`'starter' | 'growth' | 'pro' | null`) — derived from `price.id` first, then substring/amount fallback, finally metadata; `null` if all fail
+- `period` (`'monthly' | 'annual' | null`) — from `price.recurring.interval` (preferred over metadata, which can be stale after plan changes)
+- `mrr_cents` (number | null) — **always monthly**. For annual prices, `Math.round(price.unit_amount / 12)` so the metric is comparable across billing periods. `null` if no price amount is set.
+- `stripe_subscription_id` (string)
 
-**Event properties (`subscription_canceled`):**
-- `restaurant_id` (string)
+We fire `subscription_created` inside the `customer.subscription.created` case (NOT `customer.subscription.updated`) to avoid double-firing on plan changes. We fire `subscription_canceled` from `customer.subscription.deleted`. For canceled events, we re-derive `tier`/`period` from the subscription's current price (with metadata fallback) because Stripe metadata can be stale after upgrades/downgrades.
 
-We fire `subscription_created` inside the `customer.subscription.created` case (NOT `customer.subscription.updated`) to avoid double-firing on plan changes. We fire `subscription_canceled` from `customer.subscription.deleted`.
+All four shared properties use `?? null` coercion so PostHog never sees `undefined` — the property either has a real value or is explicitly null.
 
 ## Files to add
 
@@ -121,14 +119,16 @@ export async function captureServerEvent(input: ServerEventInput): Promise<void>
 ### `src/hooks/useAuth.tsx`
 - Add new `useEffect` on `[user?.id]` that:
   - If `user` is set AND `localStorage[\`posthog_account_created_${user.id}\`]` is empty AND `user.created_at` is within 5 minutes:
+    - Set the localStorage flag FIRST (atomic dedup — see note below)
     - Read attribution via `getStoredAttribution()`
-    - Call `posthog.identify(user.id, { email, signup_source, signup_medium, signup_campaign, is_internal })`
-    - `posthog.capture('account_created', { email })`
+    - Call `posthog.identify(user.id, { signup_source, signup_medium, signup_campaign, is_internal })` — **no email**
+    - `posthog.capture('account_created')` — no payload
     - `posthog.capture('trial_started', { trial_ends_at })`
-    - Set localStorage flag
     - Clear stored attribution
   - Else if `user` is set AND flag exists: fire `posthog.identify(user.id, { last_login_at })` (returning user)
 - Don't touch `signIn`/`signUp`/`signOut` business logic.
+
+**Atomic dedup note:** The flag is set BEFORE captures fire. If `trial_started` throws after `account_created` succeeded, we'd otherwise re-fire `account_created` on the next mount within the 5-min window — losing the one-time signup signal is preferable to double-counting it. (The asymmetric helpers `recordFirstPnlViewed` and `recordPosIntegrationCompleted` set their flags only on success because they're naturally retryable on the next view/connect.)
 
 ### `src/pages/Auth.tsx`
 - Add `useEffect` on `[]` (mount-only):

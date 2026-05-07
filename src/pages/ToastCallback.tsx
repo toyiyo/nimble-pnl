@@ -124,6 +124,7 @@ const ToastCallback = () => {
     if (status !== 'success' || !user || analyticsFiredRef.current) return;
     analyticsFiredRef.current = true;
     recordPosIntegrationCompleted({
+      userId: user.id,
       posProvider: 'toast',
       userCreatedAt: user.created_at,
       posthog,

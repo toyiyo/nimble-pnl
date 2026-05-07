@@ -32,9 +32,33 @@ export function storeAttribution(search: string, referrer: string, landingPage: 
   const utm_source = params.get('utm_source');
   const utm_medium = params.get('utm_medium');
   const utm_campaign = params.get('utm_campaign');
+  // utm_term and utm_content aren't persisted on the SignupAttribution shape,
+  // but their presence still counts as "fresh UTM data" for purposes of
+  // overwriting any earlier referrer-only attribution.
+  const hasUtm = Boolean(
+    utm_source ||
+      utm_medium ||
+      utm_campaign ||
+      params.get('utm_term') ||
+      params.get('utm_content'),
+  );
 
-  const hasFreshData = Boolean(utm_source || utm_medium || utm_campaign || referrer);
-  if (!hasFreshData) return;
+  // No UTM and no referrer → nothing worth capturing.
+  if (!hasUtm && !referrer) return;
+
+  // First-touch preservation: if attribution is already stored and the
+  // current call has no UTM (e.g. an OAuth callback redirect that arrives
+  // with `?code=…` and a referrer pointing at the OAuth provider), keep
+  // the existing entry rather than clobbering it.
+  if (!hasUtm) {
+    let existing: string | null = null;
+    try {
+      existing = localStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+    } catch {
+      existing = null;
+    }
+    if (existing) return;
+  }
 
   const attribution: SignupAttribution = {
     utm_source,
@@ -202,7 +226,14 @@ export function recordFirstPnlViewed(options: RecordFirstPnlViewedOptions): void
   }
 }
 
+const POS_INTEGRATION_COMPLETED_FLAG_PREFIX = 'pos_integration_completed_';
+
+export function posIntegrationCompletedFlagKey(userId: string, posProvider: string): string {
+  return `${POS_INTEGRATION_COMPLETED_FLAG_PREFIX}${userId}_${posProvider}`;
+}
+
 export interface RecordPosIntegrationCompletedOptions {
+  userId: string;
   posProvider: string;
   userCreatedAt: string | null | undefined;
   posthog: PostHogLike;
@@ -210,7 +241,22 @@ export interface RecordPosIntegrationCompletedOptions {
 }
 
 export function recordPosIntegrationCompleted(options: RecordPosIntegrationCompletedOptions): void {
-  const { posProvider, userCreatedAt, posthog } = options;
+  const { userId, posProvider, userCreatedAt, posthog } = options;
+  if (!userId) return;
+
+  // Per-(user, provider) dedup. The caller-side useRef already prevents
+  // re-fires within a single mount, but a remount (page refresh on the
+  // OAuth-success state, or navigating back to the callback URL) would
+  // reset the ref and re-fire. localStorage survives those.
+  const flagKey = posIntegrationCompletedFlagKey(userId, posProvider);
+  let alreadySent = false;
+  try {
+    alreadySent = !!localStorage.getItem(flagKey);
+  } catch {
+    alreadySent = false;
+  }
+  if (alreadySent) return;
+
   const now = options.now ?? new Date();
   const seconds_from_trial_start = secondsSinceCreated(now, userCreatedAt);
 
@@ -219,6 +265,12 @@ export function recordPosIntegrationCompleted(options: RecordPosIntegrationCompl
       pos_provider: posProvider,
       seconds_from_trial_start,
     });
+    // Flag set only on successful capture, mirroring recordFirstPnlViewed.
+    try {
+      localStorage.setItem(flagKey, '1');
+    } catch {
+      // ignore
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[analytics] recordPosIntegrationCompleted failed:', msg);

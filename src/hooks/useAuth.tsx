@@ -107,6 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Fire PostHog identify + signup/login events when the user resolves.
   // Telemetry must never break auth, so recordAuthEvents wraps everything in try/catch.
+  // Email is passed locally so recordAuthEvents can compute is_internal, then dropped —
+  // it is NOT forwarded to PostHog.
   useEffect(() => {
     if (!user?.id) return;
     recordAuthEvents({
@@ -115,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createdAt: user.created_at,
       posthog,
     });
-  }, [user?.id, user?.email, user?.created_at]);
+  }, [user?.id]);
 
   const signIn = async (email: string, password: string) => {
     try {

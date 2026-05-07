@@ -145,6 +145,44 @@ export const PRICE_ID_TO_TIER: Record<string, "starter" | "growth" | "pro"> = {
   [priceIdMapping.proAnnual]: "pro",
 };
 
+/**
+ * Derive tier, period, and normalized MRR (cents) from a subscription's price.
+ * MRR is always monthly: annual prices are divided by 12 so the metric is comparable.
+ */
+function deriveTierPeriodMrrFromSubscription(subscription: Stripe.Subscription): {
+  tier: string | null;
+  period: "monthly" | "annual" | null;
+  mrr_cents: number | null;
+} {
+  const item = subscription.items.data[0];
+  if (!item) return { tier: null, period: null, mrr_cents: null };
+
+  const price = item.price;
+  const priceId = price.id;
+  const interval = price.recurring?.interval;
+  const period: "monthly" | "annual" = interval === "year" ? "annual" : "monthly";
+
+  let tier: string | null = PRICE_ID_TO_TIER[priceId] ?? null;
+  if (!tier) {
+    if (priceId.includes("starter")) tier = "starter";
+    else if (priceId.includes("growth")) tier = "growth";
+    else if (priceId.includes("pro")) tier = "pro";
+  }
+  if (!tier && price.unit_amount) {
+    const amount = price.unit_amount;
+    if (amount === 9900 || amount === 99000) tier = "starter";
+    else if (amount === 19900 || amount === 199000) tier = "growth";
+    else if (amount === 29900 || amount === 299000) tier = "pro";
+  }
+
+  const rawAmount = price.unit_amount ?? null;
+  const mrr_cents = rawAmount !== null && period === "annual"
+    ? Math.round(rawAmount / 12)
+    : rawAmount;
+
+  return { tier, period, mrr_cents };
+}
+
 export async function processSubscriptionEvent(
   event: Stripe.Event,
   supabaseAdmin: SupabaseClient,
@@ -285,11 +323,14 @@ export async function processSubscriptionEvent(
         console.log("[SUBSCRIPTION-WEBHOOK] Using metadata tier (may be stale):", tier);
       }
 
-      let period = subscription.metadata?.period;
-      if (!period && subscription.items.data[0]) {
+      // Derive period from price first - DON'T trust metadata as Stripe doesn't update it on plan changes
+      let period: string | undefined;
+      if (subscription.items.data[0]) {
         const interval = subscription.items.data[0].price.recurring?.interval;
         period = interval === "year" ? "annual" : "monthly";
       }
+      // Last resort: fall back to metadata
+      if (!period) period = subscription.metadata?.period;
 
       const updateData: Record<string, any> = {
         subscription_status: subscriptionStatus,
@@ -330,13 +371,14 @@ export async function processSubscriptionEvent(
         if (event.type === "customer.subscription.created") {
           const userId = subscription.metadata?.user_id;
           if (userId) {
+            const { mrr_cents } = deriveTierPeriodMrrFromSubscription(subscription);
             await captureServerEvent({
               distinctId: userId,
               event: "subscription_created",
               properties: {
                 tier,
                 period,
-                mrr_cents: subscription.items.data[0]?.price.unit_amount ?? null,
+                mrr_cents,
                 stripe_subscription_id: subscription.id,
               },
             });
@@ -373,12 +415,13 @@ export async function processSubscriptionEvent(
 
           const userId = subscription.metadata?.user_id;
           if (userId) {
+            const { tier: canceledTier, period: canceledPeriod } = deriveTierPeriodMrrFromSubscription(subscription);
             await captureServerEvent({
               distinctId: userId,
               event: "subscription_canceled",
               properties: {
-                tier: subscription.metadata?.tier ?? null,
-                period: subscription.metadata?.period ?? null,
+                tier: canceledTier ?? subscription.metadata?.tier ?? null,
+                period: canceledPeriod ?? subscription.metadata?.period ?? null,
                 stripe_subscription_id: subscription.id,
               },
             });

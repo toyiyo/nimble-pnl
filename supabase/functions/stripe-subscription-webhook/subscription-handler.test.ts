@@ -224,3 +224,92 @@ Deno.test("customer.subscription.deleted fires subscription_canceled PostHog eve
     _setCaptureFnForTesting(null);
   }
 });
+
+Deno.test("subscription_created normalizes annual mrr_cents to monthly", async () => {
+  const supabaseMock = createSupabaseMock();
+  const capture = captureMock();
+  _setCaptureFnForTesting(capture.fn);
+
+  try {
+    const event = makeSubscriptionEvent("customer.subscription.created", {
+      items: {
+        data: [
+          {
+            price: {
+              id: "price_growth_annual",
+              recurring: { interval: "year" },
+              unit_amount: 199000, // $1,990/year
+            },
+          },
+        ],
+      },
+    });
+
+    await processSubscriptionEvent(event, supabaseMock as any, createStripeMock());
+
+    assertEquals(capture.events.length, 1);
+    assertEquals(capture.events[0].properties?.period, "annual");
+    // 199000 / 12 = 16583.33 → rounds to 16583
+    assertEquals(capture.events[0].properties?.mrr_cents, 16583);
+  } finally {
+    _setCaptureFnForTesting(null);
+  }
+});
+
+Deno.test("subscription_canceled derives tier and period from price (not stale metadata)", async () => {
+  const calls: any[] = [];
+  const supabaseMock = {
+    calls,
+    from(table: string) {
+      if (table !== "restaurants") throw new Error(`Unexpected table ${table}`);
+      return {
+        update: (data: Record<string, unknown>) => ({
+          eq: (col: string, val: string) => {
+            calls.push({ type: "update", data, col, val });
+            return { error: null };
+          },
+        }),
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { id: "rest_abc" } }),
+          }),
+        }),
+      };
+    },
+  };
+  const capture = captureMock();
+  _setCaptureFnForTesting(capture.fn);
+
+  try {
+    // Metadata says "starter/monthly" (stale from upgrade), but price says pro/annual.
+    const event = makeSubscriptionEvent("customer.subscription.deleted", {
+      metadata: {
+        restaurant_id: "rest_abc",
+        user_id: "user_xyz",
+        tier: "starter",
+        period: "monthly",
+      },
+      items: {
+        data: [
+          {
+            price: {
+              id: "price_pro_annual",
+              recurring: { interval: "year" },
+              unit_amount: 299000,
+            },
+          },
+        ],
+      },
+    });
+
+    await processSubscriptionEvent(event, supabaseMock as any, createStripeMock());
+
+    assertEquals(capture.events.length, 1);
+    assertEquals(capture.events[0].event, "subscription_canceled");
+    // Should reflect actual price, not stale metadata.
+    assertEquals(capture.events[0].properties?.tier, "pro");
+    assertEquals(capture.events[0].properties?.period, "annual");
+  } finally {
+    _setCaptureFnForTesting(null);
+  }
+});

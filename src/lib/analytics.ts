@@ -102,16 +102,17 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
       const attribution = getStoredAttribution();
       const trialEndsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+      // Email is used locally to compute is_internal and then discarded —
+      // it is NOT forwarded to PostHog (PII minimization).
       const safeEmail = email ?? null;
       posthog.identify(userId, {
-        email: safeEmail,
         signup_source: attribution?.utm_source || attribution?.referrer || 'direct',
         signup_medium: attribution?.utm_medium || 'organic',
         signup_campaign: attribution?.utm_campaign ?? null,
         is_internal: isInternalEmail(safeEmail),
       });
 
-      posthog.capture('account_created', { email: safeEmail });
+      posthog.capture('account_created');
       posthog.capture('trial_started', { trial_ends_at: trialEndsAt });
 
       try {

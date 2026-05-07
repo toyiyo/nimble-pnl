@@ -29,6 +29,12 @@ const Auth = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Guard: Auth.tsx is also the OAuth callback URI. Only persist attribution
+    // when UTM params are present, so an OAuth redirect (which has ?code=…
+    // but no utm_*) can't overwrite first-touch attribution captured earlier.
+    const params = new URLSearchParams(window.location.search);
+    const hasUtm = params.has('utm_source') || params.has('utm_medium') || params.has('utm_campaign');
+    if (!hasUtm) return;
     storeAttribution(window.location.search, document.referrer, window.location.pathname);
   }, []);
 

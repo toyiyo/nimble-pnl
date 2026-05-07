@@ -158,15 +158,17 @@ describe('recordAuthEvents', () => {
 
     expect(posthog.identify).toHaveBeenCalledTimes(1);
     expect(posthog.identify).toHaveBeenCalledWith('user-1', expect.objectContaining({
-      email: 'jose@example.com',
       signup_source: 'google',
       signup_medium: 'cpc',
       signup_campaign: 'launch',
       is_internal: false,
     }));
+    // PII: email is NOT forwarded to PostHog
+    const identifyProps = posthog.identify.mock.calls[0][1];
+    expect(identifyProps).not.toHaveProperty('email');
 
     expect(posthog.capture).toHaveBeenCalledTimes(2);
-    expect(posthog.capture).toHaveBeenCalledWith('account_created', { email: 'jose@example.com' });
+    expect(posthog.capture).toHaveBeenCalledWith('account_created');
     const trialEndsAt = new Date(FIXED_NOW.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
     expect(posthog.capture).toHaveBeenCalledWith('trial_started', { trial_ends_at: trialEndsAt });
 
@@ -279,10 +281,12 @@ describe('recordAuthEvents', () => {
     });
 
     expect(posthog.identify).toHaveBeenCalledWith('user-6', expect.objectContaining({
-      email: null,
       is_internal: false,
     }));
-    expect(posthog.capture).toHaveBeenCalledWith('account_created', { email: null });
+    // PII: email is NOT forwarded to PostHog even when null
+    const identifyProps = posthog.identify.mock.calls[0][1];
+    expect(identifyProps).not.toHaveProperty('email');
+    expect(posthog.capture).toHaveBeenCalledWith('account_created');
   });
 
   it('survives if posthog.capture throws (no rethrow)', () => {

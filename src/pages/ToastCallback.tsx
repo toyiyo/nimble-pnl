@@ -91,11 +91,6 @@ const ToastCallback = () => {
 
         setStatus('success');
         setMessage('Successfully connected to Toast!');
-        recordPosIntegrationCompleted({
-          posProvider: 'toast',
-          userCreatedAt: user?.created_at,
-          posthog,
-        });
         toast({
           title: "Connection Successful",
           description: "Toast connected! You can now sync your data.",
@@ -120,6 +115,16 @@ const ToastCallback = () => {
 
     handleCallback();
   }, [searchParams, navigate, toast]);
+
+  // Fire analytics once both the OAuth exchange succeeded AND user is resolved.
+  useEffect(() => {
+    if (status !== 'success' || !user) return;
+    recordPosIntegrationCompleted({
+      posProvider: 'toast',
+      userCreatedAt: user.created_at,
+      posthog,
+    });
+  }, [status, user]);
 
   const getIcon = () => {
     switch (status) {

@@ -58,11 +58,6 @@ export default function CloverCallback() {
 
         setStatus('success');
         setMessage('Successfully connected to Clover!');
-        recordPosIntegrationCompleted({
-          posProvider: 'clover',
-          userCreatedAt: user?.created_at,
-          posthog,
-        });
 
         toast({
           title: "Connection Successful",
@@ -87,6 +82,16 @@ export default function CloverCallback() {
 
     handleCallback();
   }, [searchParams, navigate, toast]);
+
+  // Fire analytics once both the OAuth exchange succeeded AND user is resolved.
+  useEffect(() => {
+    if (status !== 'success' || !user) return;
+    recordPosIntegrationCompleted({
+      posProvider: 'clover',
+      userCreatedAt: user.created_at,
+      posthog,
+    });
+  }, [status, user]);
 
   const getIcon = () => {
     switch (status) {

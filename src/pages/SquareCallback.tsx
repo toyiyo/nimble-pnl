@@ -91,11 +91,6 @@ const SquareCallback = () => {
 
         setStatus('success');
         setMessage('Successfully connected to Square!');
-        recordPosIntegrationCompleted({
-          posProvider: 'square',
-          userCreatedAt: user?.created_at,
-          posthog,
-        });
         toast({
           title: "Connection Successful",
           description: "Square connected! Webhooks are registered and real-time P&L updates are now active.",
@@ -120,6 +115,18 @@ const SquareCallback = () => {
 
     handleCallback();
   }, [searchParams, navigate, toast]);
+
+  // Fire analytics once both the OAuth exchange succeeded AND user is resolved.
+  // useAuth resolves async on this redirect page, so reading user inside
+  // handleCallback would always see null.
+  useEffect(() => {
+    if (status !== 'success' || !user) return;
+    recordPosIntegrationCompleted({
+      posProvider: 'square',
+      userCreatedAt: user.created_at,
+      posthog,
+    });
+  }, [status, user]);
 
   const getIcon = () => {
     switch (status) {

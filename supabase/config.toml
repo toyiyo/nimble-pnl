@@ -225,3 +225,9 @@ verify_jwt = false
 
 [functions.sling-bulk-sync]
 verify_jwt = false
+
+[functions.trial-expiry-emails]
+verify_jwt = false
+
+[functions.unsubscribe-email]
+verify_jwt = false

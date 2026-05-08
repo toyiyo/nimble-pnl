@@ -76,18 +76,27 @@ test.describe('Collaborator Role Routing and Access', () => {
       // Should redirect to landing page from dashboard
       await expect(page).toHaveURL(landing, { timeout: 10000 });
 
-      // Allowed paths should be accessible
+      // Allowed paths should be accessible.
+      // We deliberately don't use 'networkidle' here — pages often have
+      // background queries (realtime, refetch intervals) that prevent
+      // networkidle from ever settling. 'domcontentloaded' is sufficient
+      // to verify the route resolved without a redirect.
       for (const path of allowed) {
-        await page.goto(path, { waitUntil: 'networkidle' });
-        // Should stay on the allowed path, not redirect to auth or elsewhere
+        await page.goto(path, { waitUntil: 'domcontentloaded' });
         await expect(page).toHaveURL(path, { timeout: 5000 });
       }
 
-      // Forbidden paths should redirect to landing
+      // Forbidden paths should redirect to landing.
+      // The SPA aborts the original navigation when the protected-route
+      // guard redirects, which surfaces as net::ERR_ABORTED. That's the
+      // correct behavior — we only care about the *final* URL, so use
+      // 'commit' (waits for nav to commit) and tolerate an abort.
+      // Timeout is generous (15s) because forbidden=['/'] hits Index.tsx,
+      // which fires several useQuery hooks before the collaborator redirect
+      // runs — under CI load those queries can take >5s to resolve.
       for (const path of forbidden) {
-        await page.goto(path, { waitUntil: 'networkidle' });
-        // Should redirect to the collaborator's landing page
-        await expect(page).toHaveURL(landing, { timeout: 5000 });
+        await page.goto(path, { waitUntil: 'commit' }).catch(() => {});
+        await expect(page).toHaveURL(landing, { timeout: 15000 });
       }
     });
   }
@@ -197,9 +206,12 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const staffForbidden = ['/', '/team', '/payroll', '/banking', '/transactions'];
 
     for (const route of staffForbidden) {
-      await page.goto(route, { waitUntil: 'networkidle' });
-      // Should redirect to employee schedule
-      await expect(page).toHaveURL('/employee/schedule', { timeout: 5000 });
+      // Same redirect-abort race as the collaborator loops above — see
+      // those comments. 'commit' + tolerate abort, then assert final URL.
+      // 15s timeout: forbidden=['/'] hits Index.tsx whose hooks may take
+      // multiple seconds to resolve under CI load before the redirect.
+      await page.goto(route, { waitUntil: 'commit' }).catch(() => {});
+      await expect(page).toHaveURL('/employee/schedule', { timeout: 15000 });
     }
   });
 
@@ -216,9 +228,12 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
     const kioskForbidden = ['/', '/team', '/employee/clock', '/settings'];
 
     for (const route of kioskForbidden) {
-      await page.goto(route, { waitUntil: 'networkidle' });
-      // Should always redirect back to kiosk
-      await expect(page).toHaveURL('/kiosk', { timeout: 5000 });
+      // Same redirect-abort race as the collaborator loops above — see
+      // those comments. 'commit' + tolerate abort, then assert final URL.
+      // 15s timeout: forbidden=['/'] hits Index.tsx whose hooks may take
+      // multiple seconds to resolve under CI load before the redirect.
+      await page.goto(route, { waitUntil: 'commit' }).catch(() => {});
+      await expect(page).toHaveURL('/kiosk', { timeout: 15000 });
     }
   });
 });

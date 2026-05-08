@@ -54,7 +54,11 @@ function Unsubscribe() {
         <div className="flex justify-center mb-8">
           <AppLogo />
         </div>
-        <div className="rounded-xl border border-border/40 bg-background p-8">
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          className="rounded-xl border border-border/40 bg-background p-8"
+        >
           {status === 'pending' && <PendingView />}
           {status === 'success' && <SuccessView list={list} />}
           {status === 'invalid' && <InvalidView />}

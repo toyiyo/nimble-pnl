@@ -25,9 +25,22 @@ import {
 
 const JSON_HEADERS = { ...corsHeaders, 'Content-Type': 'application/json' };
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: JSON_HEADERS }
+    );
   }
 
   const fromEmail = Deno.env.get('TRIAL_EMAIL_FROM');
@@ -50,6 +63,19 @@ serve(async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({ error: 'Service not configured' }),
       { status: 500, headers: JSON_HEADERS }
+    );
+  }
+
+  // verify_jwt is disabled at the function level (pg_net cron passes
+  // the service-role key, not a user JWT), so we authenticate the
+  // caller in-function: only the cron job (or a human invoking with
+  // the same key for backfill) is allowed to trigger bulk sends.
+  const auth = req.headers.get('authorization') ?? '';
+  const expected = `Bearer ${serviceRoleKey}`;
+  if (!timingSafeEqual(auth, expected)) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: JSON_HEADERS }
     );
   }
 

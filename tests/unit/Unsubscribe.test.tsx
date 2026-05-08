@@ -87,9 +87,8 @@ describe('Unsubscribe page', () => {
         <Unsubscribe />
       </MemoryRouter>
     );
-    // Allow micro-tasks to settle
-    await new Promise((r) => setTimeout(r, 30));
-    // Effect dependencies are stable, so the new render should not retrigger.
-    expect(invokeMock.mock.calls.length).toBeLessThanOrEqual(2);
+    // Effect dependencies (token + list) are stable across the rerender,
+    // so the second mount must not retrigger the network call.
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
   });
 });

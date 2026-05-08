@@ -13,15 +13,13 @@ interface InsertCall {
   source?: string | null;
 }
 
-function makeInsert(): { calls: InsertCall[]; fn: UnsubInsertFn; failWith?: string } {
+function makeInsert(): { calls: InsertCall[]; fn: UnsubInsertFn } {
   const calls: InsertCall[] = [];
-  let failWith: string | undefined;
   const fn: UnsubInsertFn = async (row) => {
     calls.push(row);
-    if (failWith) return { error: { message: failWith } };
     return { error: null };
   };
-  return { calls, fn, failWith };
+  return { calls, fn };
 }
 
 describe('processUnsubscribe', () => {

@@ -51,21 +51,28 @@ export async function processUnsubscribe(
     return { status: 400, body: { error: 'Invalid list' } };
   }
 
-  const verified = await verifyUnsubscribe(req.token, deps.secret);
-  if (!verified) {
-    return { status: 401, body: { error: 'Invalid or expired token' } };
-  }
-  if (verified.list !== req.list) {
-    return { status: 400, body: { error: 'List mismatch' } };
-  }
+  try {
+    const verified = await verifyUnsubscribe(req.token, deps.secret);
+    if (!verified) {
+      return { status: 401, body: { error: 'Invalid or expired token' } };
+    }
+    if (verified.list !== req.list) {
+      return { status: 400, body: { error: 'List mismatch' } };
+    }
 
-  const { error } = await deps.insert({
-    user_id: verified.user_id,
-    list: verified.list,
-    source: deps.source ?? 'email_link',
-  });
-  if (error) {
-    return { status: 500, body: { error: error.message } };
+    const { error } = await deps.insert({
+      user_id: verified.user_id,
+      list: verified.list,
+      source: deps.source ?? 'email_link',
+    });
+    if (error) {
+      return { status: 500, body: { error: error.message } };
+    }
+    return { status: 200, body: { ok: true } };
+  } catch (e) {
+    // Preserve the {status, body} contract even if a dependency throws
+    // — the Deno entry expects a result object, not an exception.
+    console.error('[unsubscribe] unexpected error:', (e as Error).message);
+    return { status: 500, body: { error: 'Unexpected error' } };
   }
-  return { status: 200, body: { ok: true } };
 }

@@ -24,6 +24,17 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const tokenSecret = Deno.env.get('UNSUBSCRIBE_TOKEN_SECRET');
+  if (!supabaseUrl || !serviceRoleKey || !tokenSecret) {
+    console.error('[unsubscribe-email] missing required env');
+    return new Response(
+      JSON.stringify({ error: 'Service not configured' }),
+      { status: 500, headers: JSON_HEADERS }
+    );
+  }
+
   let body: { token?: string; list?: UnsubList };
   try {
     body = await req.json();
@@ -33,11 +44,14 @@ serve(async (req: Request): Promise<Response> => {
       { status: 400, headers: JSON_HEADERS }
     );
   }
+  if (!body.token || !body.list) {
+    return new Response(
+      JSON.stringify({ error: 'Missing token or list' }),
+      { status: 400, headers: JSON_HEADERS }
+    );
+  }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  );
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   const insert: UnsubInsertFn = async (row) => {
     const { error } = await supabase
@@ -47,14 +61,8 @@ serve(async (req: Request): Promise<Response> => {
   };
 
   const result = await processUnsubscribe(
-    {
-      token: body.token ?? '',
-      list: (body.list ?? '') as UnsubList,
-    },
-    {
-      secret: Deno.env.get('UNSUBSCRIBE_TOKEN_SECRET') ?? '',
-      insert,
-    }
+    { token: body.token, list: body.list },
+    { secret: tokenSecret, insert }
   );
 
   return new Response(JSON.stringify(result.body), {

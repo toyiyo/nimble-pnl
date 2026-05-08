@@ -34,9 +34,18 @@ serve(async (req: Request): Promise<Response> => {
   const appUrl = Deno.env.get('APP_URL');
   const resendApiKey = Deno.env.get('RESEND_API_KEY');
   const unsubscribeSecret = Deno.env.get('UNSUBSCRIBE_TOKEN_SECRET');
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   // Fail fast: a missing TRIAL_EMAIL_FROM or APP_URL silently breaks
   // unsubscribe links and sender identity, so we never want a fallback here.
-  if (!fromEmail || !appUrl || !resendApiKey || !unsubscribeSecret) {
+  if (
+    !fromEmail ||
+    !appUrl ||
+    !resendApiKey ||
+    !unsubscribeSecret ||
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
     console.error('[trial-expiry-emails] missing required env');
     return new Response(
       JSON.stringify({ error: 'Service not configured' }),
@@ -44,10 +53,7 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  );
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
   const resend = new Resend(resendApiKey);
 
   const fetchCandidates: FetchCandidatesFn = async () => {

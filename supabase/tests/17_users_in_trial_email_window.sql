@@ -195,8 +195,9 @@ BEGIN
       (ids.u_canceled,         'canceled@example.com'),
       (ids.u_grandfathered,    'grandfathered@example.com'),
       (ids.u_pastdue,          'pastdue@example.com'),
-      (ids.u_internal_eshq,    'staff@easyshifthq.com'),
-      (ids.u_internal_camiluke,'staff@camiluke.com'),
+      -- Mixed case to lock case-insensitive (ILIKE) internal exclusion.
+      (ids.u_internal_eshq,    'Staff@EasyShiftHQ.com'),
+      (ids.u_internal_camiluke,'Staff@CamiLuke.com'),
       (ids.u_pos_square,       'pos-sq@example.com'),
       (ids.u_pos_toast,        'pos-tt@example.com'),
       (ids.u_pos_clover,       'pos-cl@example.com'),

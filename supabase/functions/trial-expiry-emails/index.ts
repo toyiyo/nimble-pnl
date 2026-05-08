@@ -25,19 +25,18 @@ import {
 
 const JSON_HEADERS = { ...corsHeaders, 'Content-Type': 'application/json' };
 
-const FROM_EMAIL =
-  Deno.env.get('TRIAL_EMAIL_FROM') ??
-  'Jose at EasyShiftHQ <jose.delgado@easyshifthq.com>';
-const APP_URL = Deno.env.get('APP_URL') ?? 'https://app.easyshifthq.com';
-
 serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const fromEmail = Deno.env.get('TRIAL_EMAIL_FROM');
+  const appUrl = Deno.env.get('APP_URL');
   const resendApiKey = Deno.env.get('RESEND_API_KEY');
   const unsubscribeSecret = Deno.env.get('UNSUBSCRIBE_TOKEN_SECRET');
-  if (!resendApiKey || !unsubscribeSecret) {
+  // Fail fast: a missing TRIAL_EMAIL_FROM or APP_URL silently breaks
+  // unsubscribe links and sender identity, so we never want a fallback here.
+  if (!fromEmail || !appUrl || !resendApiKey || !unsubscribeSecret) {
     console.error('[trial-expiry-emails] missing required env');
     return new Response(
       JSON.stringify({ error: 'Service not configured' }),
@@ -89,8 +88,8 @@ serve(async (req: Request): Promise<Response> => {
     send,
     record,
     capture,
-    fromEmail: FROM_EMAIL,
-    appUrl: APP_URL,
+    fromEmail,
+    appUrl,
     unsubscribeSecret,
   });
 

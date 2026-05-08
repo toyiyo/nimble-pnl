@@ -61,8 +61,9 @@ BEGIN
       ON p.user_id = u.id
     WHERE r.subscription_status = 'trialing'
       AND u.email IS NOT NULL
-      AND u.email NOT LIKE '%@easyshifthq.com'
-      AND u.email NOT LIKE '%@camiluke.com'
+      -- Case-insensitive: users may have signed up with mixed-case domains
+      AND u.email NOT ILIKE '%@easyshifthq.com'
+      AND u.email NOT ILIKE '%@camiluke.com'
   )
   SELECT
     c.restaurant_id,

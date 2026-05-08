@@ -16,10 +16,12 @@ function Unsubscribe() {
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   useEffect(() => {
+    setErrorMsg('');
     if (!token || !list || !VALID_LISTS.has(list)) {
       setStatus('invalid');
       return;
     }
+    setStatus('pending');
 
     let cancelled = false;
     const run = async () => {
@@ -65,8 +67,11 @@ function Unsubscribe() {
 
 function PendingView() {
   return (
-    <div className="flex flex-col items-center text-center gap-3 py-4">
-      <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" aria-hidden />
+    <div role="status" className="flex flex-col items-center text-center gap-3 py-4">
+      <Loader2
+        aria-label="Unsubscribing"
+        className="h-8 w-8 text-muted-foreground animate-spin"
+      />
       <p className="text-[14px] text-muted-foreground">Unsubscribing you…</p>
     </div>
   );

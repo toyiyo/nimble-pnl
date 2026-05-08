@@ -17,7 +17,7 @@
 
 BEGIN;
 
-SELECT plan(18);
+SELECT plan(19);
 
 SET LOCAL role TO postgres;
 
@@ -292,8 +292,9 @@ UNION ALL SELECT u_manager, r_manager, 'manager' FROM _ids;
 -- POS connections (one per per-POS-test restaurant)
 INSERT INTO public.square_connections (restaurant_id, merchant_id, access_token)
 SELECT r_pos_square, 'merchant-sq', 'token-sq' FROM _ids;
-INSERT INTO public.toast_connections (restaurant_id, toast_restaurant_guid, access_token)
-SELECT r_pos_toast, 'guid-tt', 'token-tt' FROM _ids;
+INSERT INTO public.toast_connections
+  (restaurant_id, client_id, client_secret_encrypted, toast_restaurant_guid)
+SELECT r_pos_toast, 'client-tt', 'secret-tt', 'guid-tt' FROM _ids;
 INSERT INTO public.clover_connections (restaurant_id, merchant_id, access_token)
 SELECT r_pos_clover, 'merchant-cl', 'token-cl' FROM _ids;
 INSERT INTO public.shift4_connections (restaurant_id, merchant_id, secret_key)

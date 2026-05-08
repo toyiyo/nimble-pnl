@@ -20,7 +20,6 @@ import {
   type FetchCandidatesFn,
   type SendEmailFn,
   type RecordSentFn,
-  type TelemetryFn,
   type TrialEmailRow,
 } from '../_shared/trialExpiryEmailsHandler.ts';
 
@@ -83,13 +82,7 @@ serve(async (req: Request): Promise<Response> => {
     return { error: error ? { message: error.message } : null };
   };
 
-  const capture: TelemetryFn = async (input) => {
-    await captureServerEvent({
-      distinctId: input.distinctId,
-      event: input.event,
-      properties: input.properties,
-    });
-  };
+  const capture = captureServerEvent;
 
   const result = await runTrialExpiryEmails({
     fetchCandidates,

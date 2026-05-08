@@ -1,10 +1,8 @@
 // Trial-expiry email templates — 4 types × 2 variants.
 //
-// Pure module. No Deno-specific imports so it runs in Vitest unit tests as
-// well as inside the edge function. The voice is operator-to-operator,
-// signed by Jose. Each variant tunes around whether the restaurant has
-// connected a POS (the activation milestone) — `not_activated` pushes
-// activation, `activated` pushes subscribing.
+// Pure module: no Deno-specific imports, so it runs in Vitest as well as the
+// edge function. Each variant branches on whether the restaurant has connected
+// a POS — `not_activated` pushes activation, `activated` pushes subscribing.
 
 export type EmailType = 'halfway' | '3_days' | 'tomorrow' | 'expired';
 export type Variant = 'activated' | 'not_activated';

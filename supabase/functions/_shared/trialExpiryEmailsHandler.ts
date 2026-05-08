@@ -73,8 +73,7 @@ export interface TrialEmailRunResult {
 }
 
 function firstNameOf(full?: string | null): string {
-  if (!full) return '';
-  const trimmed = full.trim();
+  const trimmed = full?.trim();
   if (!trimmed) return '';
   return trimmed.split(/\s+/)[0];
 }

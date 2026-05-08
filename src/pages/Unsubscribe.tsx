@@ -8,7 +8,7 @@ type Status = 'pending' | 'success' | 'error' | 'invalid';
 
 const VALID_LISTS = new Set(['trial_lifecycle', 'marketing', 'all']);
 
-const Unsubscribe = () => {
+function Unsubscribe() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
   const list = params.get('list') ?? '';
@@ -61,7 +61,7 @@ const Unsubscribe = () => {
       </div>
     </div>
   );
-};
+}
 
 function PendingView() {
   return (

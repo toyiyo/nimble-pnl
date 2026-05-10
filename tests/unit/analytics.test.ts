@@ -3,17 +3,23 @@ import {
   ATTRIBUTION_STORAGE_KEY,
   INTERNAL_DOMAINS,
   NEW_SIGNUP_WINDOW_MS,
+  SIGNUP_ACCOUNT_ROLE_STORAGE_KEY,
+  SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY,
+  SIGNUP_PATH_STORAGE_KEY,
   TRIAL_DURATION_DAYS,
   accountCreatedFlagKey,
   clearStoredAttribution,
+  clearStoredSignupPath,
   firstPnlViewedFlagKey,
   getStoredAttribution,
   isInternalEmail,
   posIntegrationCompletedFlagKey,
+  readStoredSignupClassification,
   recordAuthEvents,
   recordFirstPnlViewed,
   recordPosIntegrationCompleted,
   storeAttribution,
+  storeSignupPath,
 } from '../../src/lib/analytics';
 
 describe('isInternalEmail', () => {
@@ -170,6 +176,95 @@ describe('storeAttribution / getStoredAttribution / clearStoredAttribution', () 
     expect(() => storeAttribution('?utm_source=google', '', '/auth')).not.toThrow();
     setItemMock.mockRestore();
     Storage.prototype.setItem = original;
+  });
+});
+
+describe('storeSignupPath / readStoredSignupClassification / clearStoredSignupPath', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('storeSignupPath writes path and role keys', () => {
+    storeSignupPath('self_serve', 'owner');
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBe('self_serve');
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBe('owner');
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('storeSignupPath writes invited_to_org_id when provided', () => {
+    storeSignupPath('invitation_accept', 'manager', 'org-123');
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBe('invitation_accept');
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBe('manager');
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBe('org-123');
+  });
+
+  it('storeSignupPath does not write invited_to_org_id when null is passed', () => {
+    storeSignupPath('invitation_accept', 'employee', null);
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('readStoredSignupClassification returns self_serve defaults when nothing stored', () => {
+    const result = readStoredSignupClassification('/auth');
+    expect(result).toEqual({
+      signup_path: 'self_serve',
+      account_role: 'owner',
+      invited_to_org_id: null,
+    });
+  });
+
+  it('readStoredSignupClassification derives invitation_accept from /accept-invitation pathname', () => {
+    const result = readStoredSignupClassification('/accept-invitation?token=abc');
+    expect(result).toEqual({
+      signup_path: 'invitation_accept',
+      account_role: 'employee',
+      invited_to_org_id: null,
+    });
+  });
+
+  it('readStoredSignupClassification returns stored values when present', () => {
+    storeSignupPath('invitation_accept', 'manager', 'org-456');
+    const result = readStoredSignupClassification('/auth');
+    expect(result).toEqual({
+      signup_path: 'invitation_accept',
+      account_role: 'manager',
+      invited_to_org_id: 'org-456',
+    });
+  });
+
+  it('readStoredSignupClassification: invitation_accept without role falls back to employee', () => {
+    localStorage.setItem(SIGNUP_PATH_STORAGE_KEY, 'invitation_accept');
+    const result = readStoredSignupClassification('/auth');
+    expect(result.signup_path).toBe('invitation_accept');
+    expect(result.account_role).toBe('employee');
+  });
+
+  it('readStoredSignupClassification: self_serve always returns null org id even with stale value', () => {
+    // Defensive: a stale invited_to_org_id key from a prior incomplete flow
+    // should not leak into a self_serve classification.
+    localStorage.setItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY, 'stale-org');
+    const result = readStoredSignupClassification('/auth');
+    expect(result.signup_path).toBe('self_serve');
+    expect(result.invited_to_org_id).toBeNull();
+  });
+
+  it('clearStoredSignupPath removes all three keys', () => {
+    storeSignupPath('invitation_accept', 'manager', 'org-789');
+    clearStoredSignupPath();
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('storeSignupPath survives a localStorage that throws on setItem (no rethrow)', () => {
+    const setItemMock = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    expect(() => storeSignupPath('self_serve', 'owner')).not.toThrow();
+    setItemMock.mockRestore();
   });
 });
 

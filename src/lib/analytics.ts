@@ -94,6 +94,77 @@ export function clearStoredAttribution(): void {
   }
 }
 
+export const SIGNUP_PATH_STORAGE_KEY = 'signup_path';
+export const SIGNUP_ACCOUNT_ROLE_STORAGE_KEY = 'signup_account_role';
+export const SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY = 'signup_invited_to_org_id';
+
+export type SignupPath = 'self_serve' | 'invitation_accept';
+
+export interface SignupClassification {
+  signup_path: SignupPath;
+  account_role: string;
+  invited_to_org_id: string | null;
+}
+
+const ACCEPT_INVITATION_PATHNAME_PREFIX = '/accept-invitation';
+
+function defaultRoleForPath(path: SignupPath): string {
+  return path === 'invitation_accept' ? 'employee' : 'owner';
+}
+
+export function storeSignupPath(
+  path: SignupPath,
+  accountRole: string,
+  invitedToOrgId?: string | null,
+): void {
+  try {
+    localStorage.setItem(SIGNUP_PATH_STORAGE_KEY, path);
+    localStorage.setItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY, accountRole);
+    if (invitedToOrgId) {
+      localStorage.setItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY, invitedToOrgId);
+    }
+  } catch {
+    // Storage disabled / quota exceeded — analytics must never block signup.
+  }
+}
+
+export function readStoredSignupClassification(currentPathname: string): SignupClassification {
+  let storedPath: string | null = null;
+  let storedRole: string | null = null;
+  let storedOrgId: string | null = null;
+  try {
+    storedPath = localStorage.getItem(SIGNUP_PATH_STORAGE_KEY);
+    storedRole = localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY);
+    storedOrgId = localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY);
+  } catch {
+    // Fall through to defaults.
+  }
+
+  const isInvitationByPathname =
+    typeof currentPathname === 'string' &&
+    currentPathname.startsWith(ACCEPT_INVITATION_PATHNAME_PREFIX);
+  const signup_path: SignupPath =
+    storedPath === 'invitation_accept' || isInvitationByPathname
+      ? 'invitation_accept'
+      : 'self_serve';
+
+  const account_role =
+    storedRole && storedRole.length > 0 ? storedRole : defaultRoleForPath(signup_path);
+  const invited_to_org_id = signup_path === 'invitation_accept' ? storedOrgId : null;
+
+  return { signup_path, account_role, invited_to_org_id };
+}
+
+export function clearStoredSignupPath(): void {
+  try {
+    localStorage.removeItem(SIGNUP_PATH_STORAGE_KEY);
+    localStorage.removeItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY);
+    localStorage.removeItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
 export const NEW_SIGNUP_WINDOW_MS = 5 * 60 * 1000;
 export const TRIAL_DURATION_DAYS = 14;
 const ACCOUNT_CREATED_FLAG_PREFIX = 'posthog_account_created_';

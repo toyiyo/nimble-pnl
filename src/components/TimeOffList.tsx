@@ -12,7 +12,7 @@ import {
   Clock,
   User,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDateOnly } from '@/lib/dateOnly';
 import { TimeOffRequest } from '@/types/scheduling';
 import { useTimeOffRequests, useApproveTimeOffRequest, useRejectTimeOffRequest, useDeleteTimeOffRequest } from '@/hooks/useTimeOffRequests';
 import { TimeOffRequestDialog } from './TimeOffRequestDialog';
@@ -141,8 +141,8 @@ export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         <span>
-                          {format(new Date(request.start_date), 'MMM d, yyyy')} - 
-                          {format(new Date(request.end_date), 'MMM d, yyyy')}
+                          {formatDateOnly(request.start_date, 'MMM d, yyyy')} -{' '}
+                          {formatDateOnly(request.end_date, 'MMM d, yyyy')}
                         </span>
                       </div>
                     </div>

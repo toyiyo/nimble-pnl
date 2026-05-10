@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import * as dateFnsTz from 'date-fns-tz';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -10,6 +8,7 @@ import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
 import { useCreateTimeOffRequest, useUpdateTimeOffRequest } from '@/hooks/useTimeOffRequests';
 import { TimeOffRequest } from '@/types/scheduling';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -34,9 +33,6 @@ export const TimeOffRequestDialog = ({
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
   const [reason, setReason] = useState('');
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { fromZonedTime } = dateFnsTz;
 
   const createRequest = useCreateTimeOffRequest();
   const updateRequest = useUpdateTimeOffRequest();
@@ -44,8 +40,8 @@ export const TimeOffRequestDialog = ({
   useEffect(() => {
     if (request) {
       setEmployeeId(request.employee_id);
-      setStartDate(new Date(request.start_date));
-      setEndDate(new Date(request.end_date));
+      setStartDate(parseDateOnly(request.start_date));
+      setEndDate(parseDateOnly(request.end_date));
       setReason(request.reason || '');
     } else {
       setEmployeeId(defaultEmployeeId || '');
@@ -58,12 +54,6 @@ export const TimeOffRequestDialog = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Convert start/end dates to UTC using provided timezone; fallback is identity
-    const toUTCDate = (date: Date) => {
-      const converter = fromZonedTime ?? ((value: Date) => value);
-      return converter(date, restaurantTimezone).toISOString().substring(0, 10);
-    };
-
     if (!employeeId || !startDate || !endDate) {
       return;
     }
@@ -71,8 +61,8 @@ export const TimeOffRequestDialog = ({
     const requestData = {
       restaurant_id: restaurantId,
       employee_id: employeeId,
-      start_date: toUTCDate(startDate),
-      end_date: toUTCDate(endDate),
+      start_date: toDateOnlyString(startDate),
+      end_date: toDateOnlyString(endDate),
       reason: reason || undefined,
       status: 'pending' as const,
       requested_at: new Date().toISOString(),

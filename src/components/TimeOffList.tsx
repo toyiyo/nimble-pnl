@@ -106,7 +106,10 @@ export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
 
       <TimeOffRequestDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditingRequest(undefined);
+        }}
         restaurantId={restaurantId}
         request={editingRequest}
       />

@@ -42,7 +42,7 @@ describe('TimeOffList', () => {
       loading: true,
     });
     render(<TimeOffList restaurantId="rest-1" />, { wrapper });
-    expect(document.querySelectorAll('[data-testid="skeleton"], .animate-pulse').length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-testid="time-off-loading"]')).toBeInTheDocument();
   });
 
   it('renders the empty hero when there are zero requests of any kind', () => {

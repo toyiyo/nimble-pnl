@@ -28,7 +28,7 @@ interface TimeOffListProps {
   restaurantId: string;
 }
 
-export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
+export function TimeOffList({ restaurantId }: TimeOffListProps) {
   const { timeOffRequests, loading } = useTimeOffRequests(restaurantId);
   const approveRequest = useApproveTimeOffRequest();
   const rejectRequest = useRejectTimeOffRequest();
@@ -38,15 +38,23 @@ export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [requestToDelete, setRequestToDelete] = useState<TimeOffRequest | null>(null);
 
-  const handleEdit = (request: TimeOffRequest) => {
+  function handleEdit(request: TimeOffRequest) {
     setEditingRequest(request);
     setDialogOpen(true);
-  };
-  const handleApprove = (request: TimeOffRequest) =>
+  }
+  function handleApprove(request: TimeOffRequest) {
     approveRequest.mutate({ id: request.id, restaurantId });
-  const handleReject = (request: TimeOffRequest) =>
+  }
+  function handleReject(request: TimeOffRequest) {
     rejectRequest.mutate({ id: request.id, restaurantId });
-  const handleDelete = (request: TimeOffRequest) => setRequestToDelete(request);
+  }
+  function handleDelete(request: TimeOffRequest) {
+    setRequestToDelete(request);
+  }
+  function handleDialogOpenChange(open: boolean) {
+    setDialogOpen(open);
+    if (!open) setEditingRequest(undefined);
+  }
 
   const confirmDelete = () => {
     if (requestToDelete) {
@@ -106,10 +114,7 @@ export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
 
       <TimeOffRequestDialog
         open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setEditingRequest(undefined);
-        }}
+        onOpenChange={handleDialogOpenChange}
         restaurantId={restaurantId}
         request={editingRequest}
       />
@@ -135,4 +140,4 @@ export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
       </AlertDialog>
     </>
   );
-};
+}

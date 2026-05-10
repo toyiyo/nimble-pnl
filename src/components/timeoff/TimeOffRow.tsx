@@ -72,13 +72,12 @@ export const TimeOffRow = memo(function TimeOffRow({
           <span className="text-[14px] font-medium text-foreground truncate">
             {request.employee?.name || 'Unknown employee'}
           </span>
-          {!isPending && (
+          {isPending ? (
+            <span className="text-[12px] text-muted-foreground">{formatDaysAgo(days)}</span>
+          ) : (
             <Badge variant="outline" className={`text-[11px] ${STATUS_BADGE[request.status].className}`}>
               {STATUS_BADGE[request.status].label}
             </Badge>
-          )}
-          {isPending && (
-            <span className="text-[12px] text-muted-foreground">{formatDaysAgo(days)}</span>
           )}
         </div>
         <div className="flex items-center gap-1 text-[13px] text-muted-foreground mt-1">

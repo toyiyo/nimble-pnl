@@ -203,8 +203,8 @@ const EmployeePortal = () => {
                   </div>
                   <div className="space-y-1">
                     <p className="font-medium">
-                      {formatDateOnly(request.start_date, 'MMM d, yyyy')} -{' '}
-                      {formatDateOnly(request.end_date, 'MMM d, yyyy')}
+                      {formatDateOnly(request.start_date)} -{' '}
+                      {formatDateOnly(request.end_date)}
                     </p>
                     {request.reason && (
                       <p className="text-sm text-muted-foreground">{request.reason}</p>

@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatCurrency } from "@/lib/utils";
-import { format } from "date-fns";
+import { formatDateOnly } from "@/lib/dateOnly";
 import type { Invoice } from "@/hooks/useInvoices";
 import type { Restaurant } from "@/hooks/useRestaurants";
 
@@ -59,11 +59,11 @@ export function InvoicePreviewDialog({
                 {invoice.invoice_number || `Draft`}
               </p>
               <p className="text-[13px] text-muted-foreground">
-                {format(new Date(invoice.invoice_date), 'MMMM d, yyyy')}
+                {formatDateOnly(invoice.invoice_date, 'MMMM d, yyyy')}
               </p>
               {invoice.due_date && (
                 <p className="text-[13px] text-muted-foreground">
-                  Due: {format(new Date(invoice.due_date), 'MMMM d, yyyy')}
+                  Due: {formatDateOnly(invoice.due_date, 'MMMM d, yyyy')}
                 </p>
               )}
             </div>

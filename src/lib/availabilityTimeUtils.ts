@@ -16,9 +16,9 @@ export function utcTimeToLocalTime(
   const timeParts = utcTime.split(':');
   const normalizedTime = timeParts.length === 2 ? `${utcTime}:00` : utcTime;
 
-  const refYear = referenceDate.getUTCFullYear();
-  const refMonth = String(referenceDate.getUTCMonth() + 1).padStart(2, '0');
-  const refDay = String(referenceDate.getUTCDate()).padStart(2, '0');
+  const refYear = referenceDate.getFullYear();
+  const refMonth = String(referenceDate.getMonth() + 1).padStart(2, '0');
+  const refDay = String(referenceDate.getDate()).padStart(2, '0');
 
   const utcDate = new Date(`${refYear}-${refMonth}-${refDay}T${normalizedTime}Z`);
   const zoned = toZonedTime(utcDate, timezone);
@@ -43,9 +43,9 @@ export function localTimeToUtcTime(
   const timeParts = localTime.split(':');
   const normalizedTime = timeParts.length === 2 ? `${localTime}:00` : localTime;
 
-  const refYear = referenceDate.getUTCFullYear();
-  const refMonth = String(referenceDate.getUTCMonth() + 1).padStart(2, '0');
-  const refDay = String(referenceDate.getUTCDate()).padStart(2, '0');
+  const refYear = referenceDate.getFullYear();
+  const refMonth = String(referenceDate.getMonth() + 1).padStart(2, '0');
+  const refDay = String(referenceDate.getDate()).padStart(2, '0');
 
   const dateStr = `${refYear}-${refMonth}-${refDay}T${normalizedTime}`;
   const utcDate = fromZonedTime(dateStr, timezone);

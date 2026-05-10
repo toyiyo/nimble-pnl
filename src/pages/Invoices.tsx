@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { formatCurrency } from "@/lib/utils";
+import { formatDateOnly } from "@/lib/dateOnly";
 import { useToast } from "@/hooks/use-toast";
 import { FeatureGate } from "@/components/subscription";
 
@@ -262,7 +263,7 @@ export default function Invoices() {
                         </div>
                         <div className="text-sm text-muted-foreground space-y-1">
                           <div>{invoice.customers?.name}</div>
-                          <div>Due: {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "Not set"}</div>
+                          <div>Due: {invoice.due_date ? formatDateOnly(invoice.due_date) : "Not set"}</div>
                         </div>
                       </div>
                       <div className="text-right">

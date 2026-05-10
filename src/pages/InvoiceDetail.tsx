@@ -37,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatCurrency } from "@/lib/utils";
+import { formatDateOnly } from "@/lib/dateOnly";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Capacitor } from '@capacitor/core';
@@ -510,12 +511,12 @@ export default function InvoiceDetail() {
             <CardContent className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Invoice Date</span>
-                <span>{format(new Date(invoice.invoice_date), 'MMM d, yyyy')}</span>
+                <span>{formatDateOnly(invoice.invoice_date, 'MMM d, yyyy')}</span>
               </div>
               {invoice.due_date && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Due Date</span>
-                  <span>{format(new Date(invoice.due_date), 'MMM d, yyyy')}</span>
+                  <span>{formatDateOnly(invoice.due_date, 'MMM d, yyyy')}</span>
                 </div>
               )}
               {invoice.paid_at && (

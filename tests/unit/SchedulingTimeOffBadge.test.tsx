@@ -14,7 +14,12 @@ describe('TimeOffTabBadge', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders nothing for negative or NaN counts (defensive)', () => {
+  it('renders nothing for negative counts (defensive)', () => {
+    const { container } = render(<TimeOffTabBadge count={-1} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing for NaN counts (defensive)', () => {
     const { container } = render(<TimeOffTabBadge count={Number.NaN} />);
     expect(container).toBeEmptyDOMElement();
   });
@@ -22,6 +27,6 @@ describe('TimeOffTabBadge', () => {
   it('uses warning-tinted styling consistent with the trades badge', () => {
     render(<TimeOffTabBadge count={1} />);
     const badge = screen.getByText('1');
-    expect(badge.className).toMatch(/warning|amber/);
+    expect(badge).toHaveClass('bg-warning');
   });
 });

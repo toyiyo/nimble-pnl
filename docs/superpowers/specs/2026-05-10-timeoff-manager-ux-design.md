@@ -92,15 +92,17 @@ parent and partitioned by status:
   not the primary action). The 80-char reason preview expands on click.
 - `<DecidedHistory requests={decided} onDelete />` — collapsible
   (`<Collapsible>`), default closed. Header shows total count. Internal
-  filter chips for `All | Approved | Rejected`. Rows are read-only
-  (status badge + delete) and dense.
+  filter chips for `All | Approved | Rejected`, default `All`. Rows are
+  read-only (status badge + delete) and dense. Sorted by `start_date`
+  desc inside the section so the existing audit ordering is preserved.
 
 ### Tab badge (`Scheduling.tsx`)
 
 Compute `pendingTimeOffCount = timeOffRequests.filter(r => r.status === 'pending').length`
-in the same hook used by `TimeOffList` (lifted to the page so the badge
-can read it without prop-drilling). Render a `<Badge>` next to "Time-Off"
-with the same warning-tinted style as `pendingTradeCount`.
+in the same hook the page already calls. Render a `<Badge>` *inside* the
+`Time-Off` `TabsTrigger` (same position as the trades-tab badge), hidden
+when count is 0. Style mirrors `pendingTradeCount` —
+`bg-warning/15 text-warning border border-warning/30 text-xs`.
 
 ### Email fix (`buildEmails.ts`)
 

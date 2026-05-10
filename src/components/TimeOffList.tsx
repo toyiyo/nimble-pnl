@@ -141,8 +141,8 @@ export const TimeOffList = ({ restaurantId }: TimeOffListProps) => {
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         <span>
-                          {formatDateOnly(request.start_date, 'MMM d, yyyy')} -{' '}
-                          {formatDateOnly(request.end_date, 'MMM d, yyyy')}
+                          {formatDateOnly(request.start_date)} -{' '}
+                          {formatDateOnly(request.end_date)}
                         </span>
                       </div>
                     </div>

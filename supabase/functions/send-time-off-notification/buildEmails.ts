@@ -23,6 +23,7 @@ export interface BuildEmailsInput {
 export interface BuildEmailsResult {
   emails: string[];
   employeeIncluded: boolean;
+  /** Count of manager profile rows with a non-null email. May differ from `emails.length` after dedup if a manager email also matches the employee email. */
   managersFound: number;
   managerLookupError?: string;
 }

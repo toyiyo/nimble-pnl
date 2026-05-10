@@ -15,7 +15,7 @@ import { Building, ArrowRight, Shield } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import { supabase } from '@/integrations/supabase/client';
 import { signInWithOAuthNative } from '@/utils/nativeRedirect';
-import { storeAttribution } from '@/lib/analytics';
+import { SIGNUP_PATH_STORAGE_KEY, storeAttribution, storeSignupPath } from '@/lib/analytics';
 
 const Auth = () => {
   const [email, setEmail] = useState('');
@@ -41,6 +41,13 @@ const Auth = () => {
       params.has('code') || params.has('error') || params.has('error_description');
     if (isOAuthCallback) return;
     storeAttribution(window.location.search, document.referrer, window.location.pathname);
+
+    // Tag the signup path so recordAuthEvents can disambiguate self-serve
+    // from invitation accepts. Only write if not already set — an
+    // /accept-invitation flow may have set it first; preserve first-touch.
+    if (!localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)) {
+      storeSignupPath('self_serve', 'owner');
+    }
   }, []);
 
   useEffect(() => {

@@ -5,6 +5,7 @@ import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import {
   aggregateInventoryCOGSByDate,
   aggregateFinancialCOGSByDate,
+  toUtcDayKey,
   type BankTransactionRow,
   type PendingOutflowRow,
   type SplitItemRow,
@@ -57,7 +58,11 @@ export async function fetchMonthRevenueTotals(
   fromStr: string,
   toStr: string
 ): Promise<MonthRevenueTotals> {
-  const [{ data: revRows, error: revErr }, { data: passRows, error: passErr }] = await Promise.all([
+  const [
+    { data: revRows, error: revErr },
+    { data: passRows, error: passErr },
+    { data: unifiedRows, error: unifiedErr },
+  ] = await Promise.all([
     client.rpc('get_revenue_by_account', {
       p_restaurant_id: restaurantId,
       p_date_from: fromStr,
@@ -68,10 +73,25 @@ export async function fetchMonthRevenueTotals(
       p_date_from: fromStr,
       p_date_to: toStr,
     }),
+    // Source of truth for "Collected at POS" — matches the deposit and the
+    // POS Sales page filter total. The legacy `gross + tax + tips + other`
+    // formula excludes void/discount offset rows in unified_sales.total_price
+    // and disagrees with both. See useUnifiedSalesTotals for the same call.
+    client.rpc('get_unified_sales_totals', {
+      p_restaurant_id: restaurantId,
+      p_start_date: fromStr,
+      p_end_date: toStr,
+    }),
   ]);
 
   if (revErr) throw revErr;
   if (passErr) throw passErr;
+  // Soft-fail on the unified RPC: if it errors, fall back to the legacy
+  // `gross + tax + tips + other` formula below rather than tank the whole
+  // monthly metrics query. Matches useRevenueBreakdown's behavior.
+  if (unifiedErr) {
+    console.warn('Failed to fetch unified sales totals, falling back to legacy posCollected formula:', unifiedErr);
+  }
 
   let categorizedCents = 0;
   let uncategorizedCents = 0;
@@ -97,8 +117,9 @@ export async function fetchMonthRevenueTotals(
   }
 
   const netRevenueCents = grossRevenueCents - discountsCents;
-  const posCollectedCents =
-    grossRevenueCents + salesTaxCents + tipsCents + otherLiabilitiesCents;
+  const posCollectedCents = unifiedErr
+    ? grossRevenueCents + salesTaxCents + tipsCents + otherLiabilitiesCents
+    : toC(Number(unifiedRows?.[0]?.collected_at_pos ?? 0));
 
   return {
     grossRevenueCents,
@@ -133,25 +154,11 @@ export function useMonthlyMetrics(
       const fromStr = format(dateFrom, 'yyyy-MM-dd');
       const toStr = format(dateTo, 'yyyy-MM-dd');
 
-      const normalizeToLocalDate = (rawDate: string | null | undefined, fieldName: string) => {
-        if (!rawDate) {
-          return null;
-        }
-
-        const parsed = new Date(rawDate);
-        if (!Number.isNaN(parsed.getTime())) {
-          return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
-        }
-
-        const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(rawDate);
-        if (match) {
-          const [, year, month, day] = match;
-          return new Date(Number(year), Number(month) - 1, Number(day));
-        }
-
-        console.warn(`[useMonthlyMetrics] Unable to parse ${fieldName}:`, rawDate);
-        return null;
-      };
+      // bank_transactions.transaction_date is TIMESTAMPTZ; pending_outflows.issue_date
+      // is DATE. Slice to yyyy-MM-dd then take first 7 chars for the month bucket.
+      // See toUtcDayKey for the TZ rationale.
+      const monthKeyFor = (raw: string | null | undefined): string | null =>
+        raw ? toUtcDayKey(raw).slice(0, 7) : null;
 
       // Build monthly map (cents-based) for combining with COGS + labor below.
       const monthlyMap = new Map<string, {
@@ -269,11 +276,13 @@ export function useMonthlyMetrics(
         type SplitParentRow = { id: string; transaction_date: string };
         const splitParentIds = (splitParents || []).map((p: SplitParentRow) => p.id);
         let splitItems: SplitItemRow[] = [];
-        // Day-keyed parentDateMap (yyyy-MM-dd) — required by shared helper
+        // Day-keyed parentDateMap (yyyy-MM-dd) — required by shared helper.
+        // Use the canonical UTC day key so split items bucket the same way as
+        // the direct bank-txn rows (see toUtcDayKey).
         const parentDateMap = new Map<string, string>();
-        (splitParents || []).forEach((p: SplitParentRow) =>
-          parentDateMap.set(p.id, format(new Date(p.transaction_date), 'yyyy-MM-dd'))
-        );
+        for (const p of splitParents || [] as SplitParentRow[]) {
+          parentDateMap.set(p.id, toUtcDayKey(p.transaction_date));
+        }
 
         if (splitParentIds.length > 0) {
           const { data: splits } = await supabase
@@ -513,9 +522,8 @@ export function useMonthlyMetrics(
       bankLabor?.forEach((txn: any) => {
         const account = txn.chart_of_accounts as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
-          const transactionDate = normalizeToLocalDate(txn.transaction_date, 'bank_transactions.transaction_date');
-          if (!transactionDate) return;
-          const monthKey = format(transactionDate, 'yyyy-MM');
+          const monthKey = monthKeyFor(txn.transaction_date);
+          if (!monthKey) return;
           const month = ensureMonth(monthKey);
           const actualCost = Math.round(Math.abs(txn.amount || 0) * 100);
           month.actual_labor_cost += actualCost;
@@ -527,9 +535,8 @@ export function useMonthlyMetrics(
       pendingLabor?.forEach((txn: any) => {
         const account = txn.chart_account as { account_subtype?: string } | null;
         if (account?.account_subtype === 'labor') {
-          const issueDate = normalizeToLocalDate(txn.issue_date, 'pending_outflows.issue_date');
-          if (!issueDate) return;
-          const monthKey = format(issueDate, 'yyyy-MM');
+          const monthKey = monthKeyFor(txn.issue_date);
+          if (!monthKey) return;
           const month = ensureMonth(monthKey);
           const actualCost = Math.round(Math.abs(txn.amount || 0) * 100);
           month.actual_labor_cost += actualCost;

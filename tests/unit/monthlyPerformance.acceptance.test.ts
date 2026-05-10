@@ -20,6 +20,22 @@ describe("Monthly Performance acceptance — Russo's April 2026", () => {
         if (name === 'get_pass_through_totals') {
           return Promise.resolve({ data: passThroughTotals, error: null });
         }
+        if (name === 'get_unified_sales_totals') {
+          // Russo's April 2026 had no void/discount offset rows in unified_sales,
+          // so SUM(total_price) equals the legacy `gross + tax + tips + other`
+          // formula ($92,274.48). May 2026 is where the two formulas diverge.
+          return Promise.resolve({
+            data: [{
+              total_count: 0,
+              revenue: 75917.82,
+              discounts: 1477.40,
+              pass_through_amount: 7012.66,
+              unique_items: 0,
+              collected_at_pos: 92274.48,
+            }],
+            error: null,
+          });
+        }
         return Promise.resolve({ data: [], error: null });
       }),
     };

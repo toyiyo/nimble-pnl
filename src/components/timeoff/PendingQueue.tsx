@@ -26,17 +26,17 @@ export function PendingQueue({
   return (
     <section
       aria-label="Pending time-off requests"
-      className="rounded-xl border border-amber-500/20 bg-amber-500/5 overflow-hidden"
+      className="rounded-xl border border-warning/20 bg-warning/5 overflow-hidden"
     >
-      <header className="flex items-center justify-between px-5 py-3 border-b border-amber-500/15 bg-amber-500/10">
+      <header className="flex items-center justify-between px-5 py-3 border-b border-warning/15 bg-warning/10">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
-            <Inbox className="h-4 w-4 text-amber-700" />
+          <div className="h-8 w-8 rounded-lg bg-warning/15 flex items-center justify-center">
+            <Inbox className="h-4 w-4 text-warning" />
           </div>
           <h3 className="text-[14px] font-semibold text-foreground">Action needed</h3>
         </div>
         {requests.length > 0 && (
-          <span className="text-[11px] font-medium text-amber-700 px-2 py-0.5 rounded-md bg-amber-500/15">
+          <span className="text-[11px] font-medium text-warning px-2 py-0.5 rounded-md bg-warning/15">
             {requests.length}
           </span>
         )}

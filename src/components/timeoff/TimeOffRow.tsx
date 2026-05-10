@@ -25,9 +25,9 @@ interface TimeOffRowProps {
 }
 
 const STATUS_BADGE: Record<TimeOffRequest['status'], { label: string; className: string; icon: typeof Check }> = {
-  approved: { label: 'Approved', className: 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30', icon: Check },
-  rejected: { label: 'Rejected', className: 'bg-rose-500/15 text-rose-700 border-rose-500/30', icon: X },
-  pending: { label: 'Pending', className: 'bg-amber-500/15 text-amber-700 border-amber-500/30', icon: Clock },
+  approved: { label: 'Approved', className: 'bg-success/15 text-success border-success/30', icon: Check },
+  rejected: { label: 'Rejected', className: 'bg-destructive/15 text-destructive border-destructive/30', icon: X },
+  pending: { label: 'Pending', className: 'bg-warning/15 text-warning border-warning/30', icon: Clock },
 };
 
 function formatDaysAgo(days: number): string {
@@ -103,7 +103,7 @@ export const TimeOffRow = memo(function TimeOffRow({
             size="sm"
             onClick={() => onApprove(request)}
             disabled={isApproving}
-            className="h-9 px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-[13px] font-medium"
+            className="h-9 px-3 rounded-lg bg-success text-success-foreground hover:bg-success/90 text-[13px] font-medium"
             aria-label={`Approve time-off for ${request.employee?.name ?? 'employee'}`}
           >
             <Check className="h-4 w-4 mr-1" />

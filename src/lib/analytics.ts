@@ -218,6 +218,14 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
       const attribution = getStoredAttribution();
       const trialEndsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+      // Classify signup path. The entry-page components (Auth.tsx for self-serve,
+      // AcceptInvitation.tsx for invites) write the signup_path/account_role keys
+      // to localStorage on mount. Fall back to deriving from the current pathname
+      // for the edge case where localStorage was unavailable at entry-page mount.
+      const initialPathname =
+        typeof window !== 'undefined' && window.location ? window.location.pathname : '';
+      const classification = readStoredSignupClassification(initialPathname);
+
       // Email is used locally to compute is_internal and then discarded —
       // it is NOT forwarded to PostHog (PII minimization).
       const safeEmail = email ?? null;
@@ -226,12 +234,24 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
         signup_medium: attribution?.utm_medium || 'organic',
         signup_campaign: attribution?.utm_campaign ?? null,
         is_internal: isInternalEmail(safeEmail),
+        ...classification,
       });
 
-      posthog.capture('account_created');
-      posthog.capture('trial_started', { trial_ends_at: trialEndsAt });
+      posthog.capture('account_created', { ...classification });
+
+      // trial_started fires only for self-serve signups. Invited team members
+      // join an existing tenant's existing subscription/trial — they don't
+      // start their own. team_member_joined gives us a separate top-of-funnel
+      // for "team growth at existing customers" without polluting the prospect
+      // funnel.
+      if (classification.signup_path === 'self_serve') {
+        posthog.capture('trial_started', { trial_ends_at: trialEndsAt, ...classification });
+      } else {
+        posthog.capture('team_member_joined', { ...classification });
+      }
 
       clearStoredAttribution();
+      clearStoredSignupPath();
     } else {
       posthog.identify(userId, {
         last_login_at: now.toISOString(),

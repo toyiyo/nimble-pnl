@@ -45,10 +45,14 @@ describe('daysSince', () => {
     expect(daysSince('2026-05-10T08:00:00Z', now)).toBe(0);
   });
 
-  it('returns the floor of elapsed full days', () => {
+  it('counts calendar days regardless of time-of-day', () => {
     const now = new Date('2026-05-10T12:00:00Z');
+    // 48h apart and crossing two calendar boundaries.
     expect(daysSince('2026-05-08T12:00:00Z', now)).toBe(2);
-    expect(daysSince('2026-05-08T13:00:00Z', now)).toBe(1);
+    // Only 47h apart but still crosses two calendar boundaries (May 8 → May 10).
+    expect(daysSince('2026-05-08T13:00:00Z', now)).toBe(2);
+    // 1 calendar day delta (May 9 → May 10).
+    expect(daysSince('2026-05-09T23:59:00Z', now)).toBe(1);
   });
 
   it('returns 0 for a future timestamp (defensive, not negative)', () => {

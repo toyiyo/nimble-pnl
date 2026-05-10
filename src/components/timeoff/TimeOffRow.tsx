@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar, Check, X, Edit, Trash2, User, Clock } from 'lucide-react';
 import { TimeOffRequest } from '@/types/scheduling';
 import { parseDateLocal } from '@/lib/dateUtils';
+import { daysSince } from '@/lib/timeOffUtils';
 
 const REASON_PREVIEW_MAX = 80;
 
@@ -29,21 +30,6 @@ const STATUS_BADGE: Record<TimeOffRequest['status'], { label: string; className:
   pending: { label: 'Pending', className: 'bg-amber-500/15 text-amber-700 border-amber-500/30', icon: Clock },
 };
 
-/**
- * Count calendar days between two dates (ignoring time-of-day).
- * Uses UTC date parts so the result is timezone-agnostic and
- * matches the test fixture which crosses calendar days in UTC.
- */
-function calendarDaysSince(iso: string, now: Date): number {
-  const then = new Date(iso);
-  // Truncate both to UTC midnight for calendar-day comparison
-  const thenMidnight = Date.UTC(then.getUTCFullYear(), then.getUTCMonth(), then.getUTCDate());
-  const nowMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const diff = nowMidnight - thenMidnight;
-  if (diff < 0) return 0;
-  return Math.round(diff / (1000 * 60 * 60 * 24));
-}
-
 function formatDaysAgo(days: number): string {
   if (days === 0) return 'requested today';
   if (days === 1) return 'requested 1 day ago';
@@ -66,7 +52,7 @@ export const TimeOffRow = memo(function TimeOffRow({
   isApproving,
   isRejecting,
 }: TimeOffRowProps) {
-  const days = useMemo(() => calendarDaysSince(request.created_at, now ?? new Date()), [request.created_at, now]);
+  const days = useMemo(() => daysSince(request.created_at, now), [request.created_at, now]);
   const dateRange = useMemo(() => {
     const start = format(parseDateLocal(request.start_date), 'MMM d, yyyy');
     const end = format(parseDateLocal(request.end_date), 'MMM d, yyyy');

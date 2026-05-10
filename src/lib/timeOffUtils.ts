@@ -30,12 +30,19 @@ export function partitionByStatus(requests: TimeOffRequest[]): Partitioned {
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 /**
- * Whole days elapsed since `iso`. Negative inputs (future dates) clamp to 0.
- * `now` is injectable for deterministic tests.
+ * Calendar-day delta between `iso` and `now`, ignoring time-of-day.
+ *
+ * "Requested 2 days ago" should mean "submitted on a date 2 calendar days
+ * before today," not "submitted 48 full hours ago" — managers reason in
+ * dates, not 24h blocks. Both timestamps are truncated to UTC midnight
+ * before subtracting. Future timestamps clamp to 0 so the UI never shows
+ * a negative count. `now` is injectable for deterministic tests.
  */
 export function daysSince(iso: string, now: Date = new Date()): number {
-  const then = new Date(iso).getTime();
-  const diff = now.getTime() - then;
+  const then = new Date(iso);
+  const thenUtc = Date.UTC(then.getUTCFullYear(), then.getUTCMonth(), then.getUTCDate());
+  const nowUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const diff = nowUtc - thenUtc;
   if (diff < 0) return 0;
-  return Math.floor(diff / MS_PER_DAY);
+  return Math.round(diff / MS_PER_DAY);
 }

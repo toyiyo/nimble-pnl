@@ -12,6 +12,7 @@ import { CheckCircle, XCircle, Clock, Users, Building, ArrowLeft } from 'lucide-
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 import { Separator } from '@/components/ui/separator';
 import { classifyInvitationError } from '@/lib/invitationUtils';
+import { storeSignupPath } from '@/lib/analytics';
 
 interface InvitationDetails {
   email: string;
@@ -43,6 +44,15 @@ export function AcceptInvitation() {
       validateInvitation();
     }
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    // Tag the signup path BEFORE auth completes so recordAuthEvents can
+    // distinguish invited employees from prospective customers. Use the
+    // invitation's role when known (e.g. 'manager', 'chef'); fall back to
+    // 'employee' while the invitation is still validating.
+    storeSignupPath('invitation_accept', invitation?.role ?? 'employee');
+  }, [token, invitation?.role]);
 
   useEffect(() => {
     if (user && invitation && user.email === invitation.email) {

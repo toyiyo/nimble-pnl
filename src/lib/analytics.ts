@@ -94,6 +94,71 @@ export function clearStoredAttribution(): void {
   }
 }
 
+export const SIGNUP_PATH_STORAGE_KEY = 'signup_path';
+export const SIGNUP_ACCOUNT_ROLE_STORAGE_KEY = 'signup_account_role';
+export const SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY = 'signup_invited_to_org_id';
+
+export type SignupPath = 'self_serve' | 'invitation_accept';
+
+export interface SignupClassification {
+  signup_path: SignupPath;
+  account_role: string;
+  invited_to_org_id: string | null;
+}
+
+const ACCEPT_INVITATION_PATHNAME_PREFIX = '/accept-invitation';
+
+export function storeSignupPath(
+  path: SignupPath,
+  accountRole: string,
+  invitedToOrgId?: string | null,
+): void {
+  try {
+    localStorage.setItem(SIGNUP_PATH_STORAGE_KEY, path);
+    localStorage.setItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY, accountRole);
+    if (invitedToOrgId) {
+      localStorage.setItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY, invitedToOrgId);
+    }
+  } catch {
+    // Storage disabled / quota exceeded — analytics must never block signup.
+  }
+}
+
+export function readStoredSignupClassification(currentPathname: string): SignupClassification {
+  let storedPath: string | null = null;
+  let storedRole: string | null = null;
+  let storedOrgId: string | null = null;
+  try {
+    storedPath = localStorage.getItem(SIGNUP_PATH_STORAGE_KEY);
+    storedRole = localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY);
+    storedOrgId = localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY);
+  } catch {
+    // Fall through to defaults.
+  }
+
+  const isInvitationByPathname = currentPathname.startsWith(ACCEPT_INVITATION_PATHNAME_PREFIX);
+  const signup_path: SignupPath =
+    storedPath === 'invitation_accept' || isInvitationByPathname
+      ? 'invitation_accept'
+      : 'self_serve';
+
+  const defaultRole = signup_path === 'invitation_accept' ? 'employee' : 'owner';
+  const account_role = storedRole || defaultRole;
+  const invited_to_org_id = signup_path === 'invitation_accept' ? storedOrgId : null;
+
+  return { signup_path, account_role, invited_to_org_id };
+}
+
+export function clearStoredSignupPath(): void {
+  try {
+    localStorage.removeItem(SIGNUP_PATH_STORAGE_KEY);
+    localStorage.removeItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY);
+    localStorage.removeItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY);
+  } catch {
+    // Ignore
+  }
+}
+
 export const NEW_SIGNUP_WINDOW_MS = 5 * 60 * 1000;
 export const TRIAL_DURATION_DAYS = 14;
 const ACCOUNT_CREATED_FLAG_PREFIX = 'posthog_account_created_';
@@ -147,6 +212,13 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
       const attribution = getStoredAttribution();
       const trialEndsAt = new Date(now.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
+      // Classify signup path. The entry-page components (Auth.tsx for self-serve,
+      // AcceptInvitation.tsx for invites) write the signup_path/account_role keys
+      // to localStorage on mount. Fall back to deriving from the current pathname
+      // for the edge case where localStorage was unavailable at entry-page mount.
+      const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '';
+      const classification = readStoredSignupClassification(initialPathname);
+
       // Email is used locally to compute is_internal and then discarded —
       // it is NOT forwarded to PostHog (PII minimization).
       const safeEmail = email ?? null;
@@ -155,12 +227,24 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
         signup_medium: attribution?.utm_medium || 'organic',
         signup_campaign: attribution?.utm_campaign ?? null,
         is_internal: isInternalEmail(safeEmail),
+        ...classification,
       });
 
-      posthog.capture('account_created');
-      posthog.capture('trial_started', { trial_ends_at: trialEndsAt });
+      posthog.capture('account_created', { ...classification });
+
+      // trial_started fires only for self-serve signups. Invited team members
+      // join an existing tenant's existing subscription/trial — they don't
+      // start their own. team_member_joined gives us a separate top-of-funnel
+      // for "team growth at existing customers" without polluting the prospect
+      // funnel.
+      if (classification.signup_path === 'self_serve') {
+        posthog.capture('trial_started', { trial_ends_at: trialEndsAt, ...classification });
+      } else {
+        posthog.capture('team_member_joined', { ...classification });
+      }
 
       clearStoredAttribution();
+      clearStoredSignupPath();
     } else {
       posthog.identify(userId, {
         last_login_at: now.toISOString(),

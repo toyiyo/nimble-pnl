@@ -3,17 +3,23 @@ import {
   ATTRIBUTION_STORAGE_KEY,
   INTERNAL_DOMAINS,
   NEW_SIGNUP_WINDOW_MS,
+  SIGNUP_ACCOUNT_ROLE_STORAGE_KEY,
+  SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY,
+  SIGNUP_PATH_STORAGE_KEY,
   TRIAL_DURATION_DAYS,
   accountCreatedFlagKey,
   clearStoredAttribution,
+  clearStoredSignupPath,
   firstPnlViewedFlagKey,
   getStoredAttribution,
   isInternalEmail,
   posIntegrationCompletedFlagKey,
+  readStoredSignupClassification,
   recordAuthEvents,
   recordFirstPnlViewed,
   recordPosIntegrationCompleted,
   storeAttribution,
+  storeSignupPath,
 } from '../../src/lib/analytics';
 
 describe('isInternalEmail', () => {
@@ -173,6 +179,95 @@ describe('storeAttribution / getStoredAttribution / clearStoredAttribution', () 
   });
 });
 
+describe('storeSignupPath / readStoredSignupClassification / clearStoredSignupPath', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('storeSignupPath writes path and role keys', () => {
+    storeSignupPath('self_serve', 'owner');
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBe('self_serve');
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBe('owner');
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('storeSignupPath writes invited_to_org_id when provided', () => {
+    storeSignupPath('invitation_accept', 'manager', 'org-123');
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBe('invitation_accept');
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBe('manager');
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBe('org-123');
+  });
+
+  it('storeSignupPath does not write invited_to_org_id when null is passed', () => {
+    storeSignupPath('invitation_accept', 'employee', null);
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('readStoredSignupClassification returns self_serve defaults when nothing stored', () => {
+    const result = readStoredSignupClassification('/auth');
+    expect(result).toEqual({
+      signup_path: 'self_serve',
+      account_role: 'owner',
+      invited_to_org_id: null,
+    });
+  });
+
+  it('readStoredSignupClassification derives invitation_accept from /accept-invitation pathname', () => {
+    const result = readStoredSignupClassification('/accept-invitation?token=abc');
+    expect(result).toEqual({
+      signup_path: 'invitation_accept',
+      account_role: 'employee',
+      invited_to_org_id: null,
+    });
+  });
+
+  it('readStoredSignupClassification returns stored values when present', () => {
+    storeSignupPath('invitation_accept', 'manager', 'org-456');
+    const result = readStoredSignupClassification('/auth');
+    expect(result).toEqual({
+      signup_path: 'invitation_accept',
+      account_role: 'manager',
+      invited_to_org_id: 'org-456',
+    });
+  });
+
+  it('readStoredSignupClassification: invitation_accept without role falls back to employee', () => {
+    localStorage.setItem(SIGNUP_PATH_STORAGE_KEY, 'invitation_accept');
+    const result = readStoredSignupClassification('/auth');
+    expect(result.signup_path).toBe('invitation_accept');
+    expect(result.account_role).toBe('employee');
+  });
+
+  it('readStoredSignupClassification: self_serve always returns null org id even with stale value', () => {
+    // Defensive: a stale invited_to_org_id key from a prior incomplete flow
+    // should not leak into a self_serve classification.
+    localStorage.setItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY, 'stale-org');
+    const result = readStoredSignupClassification('/auth');
+    expect(result.signup_path).toBe('self_serve');
+    expect(result.invited_to_org_id).toBeNull();
+  });
+
+  it('clearStoredSignupPath removes all three keys', () => {
+    storeSignupPath('invitation_accept', 'manager', 'org-789');
+    clearStoredSignupPath();
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('storeSignupPath survives a localStorage that throws on setItem (no rethrow)', () => {
+    const setItemMock = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+    expect(() => storeSignupPath('self_serve', 'owner')).not.toThrow();
+    setItemMock.mockRestore();
+  });
+});
+
 describe('recordAuthEvents', () => {
   const FIXED_NOW = new Date('2026-05-07T12:00:00Z');
   const RECENT_CREATED_AT = new Date(FIXED_NOW.getTime() - 30_000).toISOString();
@@ -206,15 +301,27 @@ describe('recordAuthEvents', () => {
       signup_medium: 'cpc',
       signup_campaign: 'launch',
       is_internal: false,
+      signup_path: 'self_serve',
+      account_role: 'owner',
+      invited_to_org_id: null,
     }));
     // PII: email is NOT forwarded to PostHog
     const identifyProps = posthog.identify.mock.calls[0][1];
     expect(identifyProps).not.toHaveProperty('email');
 
     expect(posthog.capture).toHaveBeenCalledTimes(2);
-    expect(posthog.capture).toHaveBeenCalledWith('account_created');
+    expect(posthog.capture).toHaveBeenCalledWith('account_created', {
+      signup_path: 'self_serve',
+      account_role: 'owner',
+      invited_to_org_id: null,
+    });
     const trialEndsAt = new Date(FIXED_NOW.getTime() + TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-    expect(posthog.capture).toHaveBeenCalledWith('trial_started', { trial_ends_at: trialEndsAt });
+    expect(posthog.capture).toHaveBeenCalledWith('trial_started', {
+      trial_ends_at: trialEndsAt,
+      signup_path: 'self_serve',
+      account_role: 'owner',
+      invited_to_org_id: null,
+    });
 
     expect(localStorage.getItem(accountCreatedFlagKey('user-1'))).toBeTruthy();
     expect(localStorage.getItem(ATTRIBUTION_STORAGE_KEY)).toBeNull();
@@ -330,7 +437,11 @@ describe('recordAuthEvents', () => {
     // PII: email is NOT forwarded to PostHog even when null
     const identifyProps = posthog.identify.mock.calls[0][1];
     expect(identifyProps).not.toHaveProperty('email');
-    expect(posthog.capture).toHaveBeenCalledWith('account_created');
+    expect(posthog.capture).toHaveBeenCalledWith('account_created', {
+      signup_path: 'self_serve',
+      account_role: 'owner',
+      invited_to_org_id: null,
+    });
   });
 
   it('survives if posthog.capture throws (no rethrow)', () => {
@@ -378,6 +489,106 @@ describe('recordAuthEvents', () => {
     });
     expect(posthog.capture).not.toHaveBeenCalledWith('account_created', expect.anything());
     expect(posthog.capture).not.toHaveBeenCalledWith('account_created');
+  });
+
+  it('classifies invitation_accept from localStorage and fires team_member_joined instead of trial_started', () => {
+    storeSignupPath('invitation_accept', 'manager');
+
+    recordAuthEvents({
+      userId: 'user-invite-1',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.identify).toHaveBeenCalledWith('user-invite-1', expect.objectContaining({
+      signup_path: 'invitation_accept',
+      account_role: 'manager',
+      invited_to_org_id: null,
+    }));
+
+    expect(posthog.capture).toHaveBeenCalledWith('account_created', {
+      signup_path: 'invitation_accept',
+      account_role: 'manager',
+      invited_to_org_id: null,
+    });
+    expect(posthog.capture).toHaveBeenCalledWith('team_member_joined', {
+      signup_path: 'invitation_accept',
+      account_role: 'manager',
+      invited_to_org_id: null,
+    });
+    expect(posthog.capture).not.toHaveBeenCalledWith('trial_started', expect.anything());
+  });
+
+  it('derives invitation_accept from /accept-invitation pathname when localStorage is empty', () => {
+    // Stub window.location.pathname for this test.
+    const originalLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, pathname: '/accept-invitation' },
+    });
+
+    try {
+      recordAuthEvents({
+        userId: 'user-invite-fallback',
+        email: 'jose@example.com',
+        createdAt: RECENT_CREATED_AT,
+        posthog,
+        now: FIXED_NOW,
+      });
+
+      expect(posthog.capture).toHaveBeenCalledWith('account_created', {
+        signup_path: 'invitation_accept',
+        account_role: 'employee',
+        invited_to_org_id: null,
+      });
+      expect(posthog.capture).toHaveBeenCalledWith('team_member_joined', expect.objectContaining({
+        signup_path: 'invitation_accept',
+      }));
+      expect(posthog.capture).not.toHaveBeenCalledWith('trial_started', expect.anything());
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: originalLocation,
+      });
+    }
+  });
+
+  it('clears signup_path localStorage keys on success alongside attribution', () => {
+    storeAttribution('?utm_source=google', '', '/auth');
+    storeSignupPath('invitation_accept', 'chef');
+
+    recordAuthEvents({
+      userId: 'user-cleanup',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(localStorage.getItem(ATTRIBUTION_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_PATH_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_ACCOUNT_ROLE_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(SIGNUP_INVITED_TO_ORG_ID_STORAGE_KEY)).toBeNull();
+  });
+
+  it('passes invited_to_org_id through when stored', () => {
+    storeSignupPath('invitation_accept', 'staff', 'org-xyz');
+
+    recordAuthEvents({
+      userId: 'user-org-id',
+      email: 'jose@example.com',
+      createdAt: RECENT_CREATED_AT,
+      posthog,
+      now: FIXED_NOW,
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('account_created', {
+      signup_path: 'invitation_accept',
+      account_role: 'staff',
+      invited_to_org_id: 'org-xyz',
+    });
   });
 });
 

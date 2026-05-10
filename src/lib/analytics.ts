@@ -108,10 +108,6 @@ export interface SignupClassification {
 
 const ACCEPT_INVITATION_PATHNAME_PREFIX = '/accept-invitation';
 
-function defaultRoleForPath(path: SignupPath): string {
-  return path === 'invitation_accept' ? 'employee' : 'owner';
-}
-
 export function storeSignupPath(
   path: SignupPath,
   accountRole: string,
@@ -140,16 +136,14 @@ export function readStoredSignupClassification(currentPathname: string): SignupC
     // Fall through to defaults.
   }
 
-  const isInvitationByPathname =
-    typeof currentPathname === 'string' &&
-    currentPathname.startsWith(ACCEPT_INVITATION_PATHNAME_PREFIX);
+  const isInvitationByPathname = currentPathname.startsWith(ACCEPT_INVITATION_PATHNAME_PREFIX);
   const signup_path: SignupPath =
     storedPath === 'invitation_accept' || isInvitationByPathname
       ? 'invitation_accept'
       : 'self_serve';
 
-  const account_role =
-    storedRole && storedRole.length > 0 ? storedRole : defaultRoleForPath(signup_path);
+  const defaultRole = signup_path === 'invitation_accept' ? 'employee' : 'owner';
+  const account_role = storedRole || defaultRole;
   const invited_to_org_id = signup_path === 'invitation_accept' ? storedOrgId : null;
 
   return { signup_path, account_role, invited_to_org_id };
@@ -222,8 +216,7 @@ export function recordAuthEvents(options: RecordAuthEventsOptions): void {
       // AcceptInvitation.tsx for invites) write the signup_path/account_role keys
       // to localStorage on mount. Fall back to deriving from the current pathname
       // for the edge case where localStorage was unavailable at entry-page mount.
-      const initialPathname =
-        typeof window !== 'undefined' && window.location ? window.location.pathname : '';
+      const initialPathname = typeof window !== 'undefined' ? window.location.pathname : '';
       const classification = readStoredSignupClassification(initialPathname);
 
       // Email is used locally to compute is_internal and then discarded —

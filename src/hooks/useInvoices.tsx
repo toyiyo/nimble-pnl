@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { computeProcessingFeeCents } from "@/lib/invoiceUtils";
+import { toDateOnlyString } from "@/lib/dateOnly";
 
 export type InvoiceStatus = 'draft' | 'open' | 'paid' | 'void' | 'uncollectible';
 
@@ -322,7 +323,7 @@ export const useInvoices = (restaurantId: string | null) => {
           amount_paid: 0,
           amount_remaining: totalCents,
           due_date: data.dueDate || null,
-          invoice_date: new Date().toISOString().split('T')[0],
+          invoice_date: toDateOnlyString(new Date()),
           description: data.description || null,
           footer: data.footer || null,
           memo: data.memo || null,

@@ -21,9 +21,13 @@ const baseRequest: TimeOffRequest = {
     name: 'Shy Harrison',
     user_id: 'u1',
     is_active: true,
+    position: 'Server',
+    status: 'active',
+    compensation_type: 'hourly',
+    hourly_rate: 1500,
     created_at: '2026-04-01T00:00:00Z',
     updated_at: '2026-04-01T00:00:00Z',
-  } as any,
+  },
 };
 
 const fixedNow = new Date('2026-05-10T12:00:00Z');

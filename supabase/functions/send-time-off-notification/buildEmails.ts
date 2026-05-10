@@ -1,13 +1,19 @@
 /**
  * Resolves email recipients for a time-off notification.
  *
- * Type-agnostic: accepts any object with a `.from()` method that returns the
- * expected chain shape. This lets the real Deno Supabase client and mocks
- * from Vitest both satisfy the same interface.
+ * Uses two sequential queries instead of a PostgREST embed because
+ * `public.profiles` has no foreign key to `auth.users` (or to anything),
+ * so an embed like `select('user_id, profiles:user_id(email)')` silently
+ * returns null and managers stop receiving emails. See spec
+ * 2026-05-10-timeoff-manager-ux-design.md.
+ *
+ * Type-agnostic: accepts any object with a `.from()` method that returns
+ * the expected chain shape, so the real Deno Supabase client and Vitest
+ * stubs both satisfy the same interface.
  */
 
 export interface BuildEmailsInput {
-  supabase: ApproverQueryClient;
+  supabase: TwoStepQueryClient;
   restaurantId: string;
   employeeEmail?: string | null;
   notifyEmployee: boolean;
@@ -17,26 +23,35 @@ export interface BuildEmailsInput {
 export interface BuildEmailsResult {
   emails: string[];
   employeeIncluded: boolean;
+  /** Count of manager profile rows with a non-null email. May differ from `emails.length` after dedup if a manager email also matches the employee email. */
   managersFound: number;
   managerLookupError?: string;
 }
 
-interface ApproverQueryClient {
-  from(table: string): {
-    select(columns: string): {
-      eq(column: string, value: string): {
-        in(column: string, values: string[]): Promise<{
-          data: ManagerRow[] | null;
-          error: { message: string } | null;
-        }>;
-      };
+interface UserRestaurantsChain {
+  select(columns: string): {
+    eq(column: string, value: string): {
+      in(column: string, values: string[]): Promise<{
+        data: { user_id: string }[] | null;
+        error: { message: string } | null;
+      }>;
     };
   };
 }
 
-interface ManagerRow {
-  user_id: string;
-  profiles: { email?: string | null } | null;
+interface ProfilesChain {
+  select(columns: string): {
+    in(column: string, values: string[]): Promise<{
+      data: { user_id: string; email: string | null }[] | null;
+      error: { message: string } | null;
+    }>;
+  };
+}
+
+interface TwoStepQueryClient {
+  from(table: 'user_restaurants'): UserRestaurantsChain;
+  from(table: 'profiles'): ProfilesChain;
+  from(table: string): UserRestaurantsChain | ProfilesChain;
 }
 
 export async function buildEmails(
@@ -61,20 +76,31 @@ export async function buildEmails(
   }
 
   if (notifyManagers) {
-    const { data: managers, error } = await supabase
-      .from('user_restaurants')
-      .select('user_id, profiles:user_id(email)')
+    const { data: roleRows, error: rolesErr } = await (supabase.from(
+      'user_restaurants',
+    ) as UserRestaurantsChain)
+      .select('user_id')
       .eq('restaurant_id', restaurantId)
       .in('role', ['owner', 'manager']);
 
-    if (error) {
-      managerLookupError = error.message;
-    } else if (managers) {
-      for (const m of managers) {
-        const email = m?.profiles?.email;
-        if (email) {
-          emails.push(email);
-          managersFound++;
+    if (rolesErr) {
+      managerLookupError = rolesErr.message;
+    } else if (roleRows && roleRows.length > 0) {
+      const userIds = roleRows.map((r) => r.user_id);
+      const { data: profileRows, error: profErr } = await (supabase.from(
+        'profiles',
+      ) as ProfilesChain)
+        .select('user_id, email')
+        .in('user_id', userIds);
+
+      if (profErr) {
+        managerLookupError = profErr.message;
+      } else if (profileRows) {
+        for (const p of profileRows) {
+          if (p.email) {
+            emails.push(p.email);
+            managersFound++;
+          }
         }
       }
     }

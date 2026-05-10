@@ -12,7 +12,9 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { FeatureGate } from '@/components/subscription';
 import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries, useSeriesInfo } from '@/hooks/useShifts';
 import { useShiftTrades } from '@/hooks/useShiftTrades';
+import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
+import { TimeOffTabBadge } from './SchedulingTimeOffTabBadge';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
@@ -373,6 +375,8 @@ const Scheduling = () => {
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const { templates } = useShiftTemplates(restaurantId);
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
+  const { timeOffRequests } = useTimeOffRequests(restaurantId);
+  const pendingTimeOffCount = timeOffRequests.filter((r) => r.status === 'pending').length;
   const deleteShift = useDeleteShift();
   const deleteShiftSeries = useDeleteShiftSeries();
   const updateShiftSeries = useUpdateShiftSeries();
@@ -1089,10 +1093,11 @@ const Scheduling = () => {
           </TabsTrigger>
           <TabsTrigger
             value="timeoff"
-            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2"
+            className="data-[state=active]:bg-background data-[state=active]:shadow-sm px-4 py-2.5 gap-2 relative"
           >
             <CalendarX className="h-4 w-4" />
             <span className="hidden sm:inline">Time-Off</span>
+            <TimeOffTabBadge count={pendingTimeOffCount} />
           </TabsTrigger>
           <TabsTrigger
             value="availability"

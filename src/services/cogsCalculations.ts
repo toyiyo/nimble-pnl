@@ -1,5 +1,3 @@
-import { format } from 'date-fns';
-
 /**
  * Canonical set of chart-of-accounts subtypes that represent Cost of Goods Sold.
  * Single source of truth — previously duplicated in useCOGSFromFinancials and useMonthlyMetrics.
@@ -10,6 +8,19 @@ export const COGS_SUBTYPES = new Set([
   'beverage_cost',
   'packaging_cost',
 ]);
+
+/**
+ * Returns the canonical UTC day key (`yyyy-MM-dd`) for a Postgres
+ * date-or-timestamptz field.
+ *
+ * `bank_transactions.transaction_date` is TIMESTAMPTZ — Postgres returns it as
+ * an ISO string like `'2026-05-01T00:00:00+00:00'`. Parsing with `new Date()`
+ * and re-formatting in the host TZ shifts a 00:00 UTC row backwards a day in
+ * any UTC- offset, dropping it into the previous month. `pending_outflows.
+ * issue_date` is DATE — already `'yyyy-MM-dd'`. Both shapes share their first
+ * 10 chars, so slicing is stable across host timezones.
+ */
+export const toUtcDayKey = (raw: string): string => raw.slice(0, 10);
 
 // ---------------------------------------------------------------------------
 // Row-shape types (lowest-common-denominator of what each Supabase query returns)
@@ -56,9 +67,7 @@ export function aggregateInventoryCOGSByDate(
   const dailyMap = new Map<string, number>();
 
   for (const row of rows) {
-    const dateKey = row.transaction_date
-      ? row.transaction_date
-      : format(new Date(row.created_at), 'yyyy-MM-dd');
+    const dateKey = toUtcDayKey(row.transaction_date ?? row.created_at);
 
     const cost = Math.abs(row.total_cost || 0);
     dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + cost);
@@ -102,7 +111,7 @@ export function aggregateFinancialCOGSByDate({
   for (const txn of bankTxns) {
     const account = txn.chart_of_accounts;
     if (account?.account_subtype && COGS_SUBTYPES.has(account.account_subtype)) {
-      const date = format(new Date(txn.transaction_date), 'yyyy-MM-dd');
+      const date = toUtcDayKey(txn.transaction_date);
       const cost = Math.abs(txn.amount);
       dateMap.set(date, (dateMap.get(date) || 0) + cost);
     }

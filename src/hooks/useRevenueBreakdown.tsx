@@ -63,6 +63,9 @@ function fromC(c: number): number {
   return Math.round(c) / 100;
 }
 
+/** Row shape returned by get_unified_sales_totals. Explicit cast avoids `any`. */
+type UnifiedSalesTotalsRow = { collected_at_pos?: number | string | null };
+
 // The five adjustment types the RPC and client-side reduction are authorised to handle.
 const KNOWN_PASS_THROUGH_TYPES = new Set(['tax', 'tip', 'service_charge', 'discount', 'fee']);
 
@@ -102,7 +105,7 @@ export function reduceRevenueBreakdownPassThrough(
       case 'tax':            taxCents += cents; break;
       case 'tip':            tipsCents += cents; break;
       case 'discount':       discountsCents += Math.abs(cents); break;
-      case 'service_charge': otherLiabilitiesCents += cents; break;
+      case 'service_charge':
       case 'fee':            otherLiabilitiesCents += cents; break;
     }
   }
@@ -162,7 +165,7 @@ export function useRevenueBreakdown(
 
       // Use database aggregation for efficient totals (no row limit issues)
       // This replaces fetching individual records and processing in JavaScript
-      
+
       // 1. Get pass-through totals using RPC (tax, tips, service_charge, discount, fee)
       const { data: passThroughTotals, error: passThroughError } = await supabase
         .rpc('get_pass_through_totals', {
@@ -188,6 +191,23 @@ export function useRevenueBreakdown(
         console.warn('Failed to fetch revenue by account via RPC, falling back to individual query:', revenueError);
         // Fall back to original query method if RPC not available
       }
+
+      // 3. Source of truth for "Collected at POS": SUM(unified_sales.total_price).
+      // Matches the deposit and the POS Sales page filter total. The legacy
+      // `gross + tax + tips + other` formula excludes void/discount offset rows
+      // and disagrees with both. This is the same RPC useUnifiedSalesTotals uses.
+      const { data: unifiedSalesTotals, error: unifiedError } = await supabase
+        .rpc('get_unified_sales_totals', {
+          p_restaurant_id: restaurantId,
+          p_start_date: fromStr,
+          p_end_date: toStr,
+        });
+
+      if (unifiedError) {
+        console.warn('Failed to fetch unified sales totals via RPC:', unifiedError);
+      }
+      const unifiedRow = (unifiedSalesTotals as UnifiedSalesTotalsRow[] | null)?.[0];
+      const collectedAtPosFromRPC = Number(unifiedRow?.collected_at_pos ?? 0);
 
       // If RPC functions are available, use aggregated data
       if (passThroughTotals && revenueByAccount) {
@@ -346,7 +366,14 @@ export function useRevenueBreakdown(
         // Calculate final totals
         const grossRevenueC = categorizedRevenueC + uncategorizedRevenueC;
         const netRevenueC = grossRevenueC - combinedDiscountsC - totalRefundsC;
-        const totalCollectedAtPOSC = grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC;
+        // Collected at POS = SUM(unified_sales.total_price) from get_unified_sales_totals.
+        // This matches the deposit and the POS Sales page total — the old formula
+        // (gross + tax + tips + other) excludes void/discount offset rows. If the
+        // unified RPC failed, fall back to the legacy formula so the panel still
+        // renders something rather than zeroing out silently.
+        const totalCollectedAtPOSC = unifiedError
+          ? grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC
+          : toC(collectedAtPosFromRPC);
 
         // Build adjustments breakdown array
         const adjustmentsBreakdown: AdjustmentBreakdown[] = [];
@@ -712,8 +739,13 @@ export function useRevenueBreakdown(
       const totalTips = fromC(combinedTipsC);
       const totalOtherLiabilities = fromC(combinedOtherLiabilitiesC);
       
-      // Calculate total collected at POS (revenue + pass-through collections)
-      const totalCollectedAtPOSC = grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC;
+      // Collected at POS = SUM(unified_sales.total_price) from get_unified_sales_totals.
+      // Matches the deposit and the POS Sales page total. If the RPC failed, fall
+      // back to the legacy formula so the panel still renders something.
+      const totalCollectedAtPOSC =
+        unifiedError
+          ? grossRevenueC + combinedTaxC + combinedTipsC + combinedOtherLiabilitiesC
+          : toC(collectedAtPosFromRPC);
       const totalCollectedAtPOS = fromC(totalCollectedAtPOSC);
       
       // Calculate categorization rate based on revenue dollars

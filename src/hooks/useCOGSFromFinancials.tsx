@@ -1,7 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
-import { aggregateFinancialCOGSByDate, type BankTransactionRow, type PendingOutflowRow, type SplitItemRow } from '@/services/cogsCalculations';
+import {
+  aggregateFinancialCOGSByDate,
+  toUtcDayKey,
+  type BankTransactionRow,
+  type PendingOutflowRow,
+  type SplitItemRow,
+} from '@/services/cogsCalculations';
 
 export interface FinancialCOGSData {
   date: string;
@@ -93,11 +99,13 @@ export function useCOGSFromFinancials(
         splitItems = (splits || []) as typeof splitItems;
       }
 
-      // Build a lookup for split parent dates
+      // Build a lookup for split parent dates.
+      // Use the canonical UTC day key so split items bucket the same way as the
+      // direct bank-txn rows (see toUtcDayKey for the TZ rationale).
       const parentDateMap = new Map<string, string>();
-      (splitParents || []).forEach((p) => {
-        parentDateMap.set(p.id, format(new Date(p.transaction_date), 'yyyy-MM-dd'));
-      });
+      for (const p of splitParents || []) {
+        parentDateMap.set(p.id, toUtcDayKey(p.transaction_date));
+      }
 
       // ---------------------------------------------------------------
       // Source 3: Pending outflows (unmatched) categorised as COGS

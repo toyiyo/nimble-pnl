@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fetchMonthRevenueTotals } from '@/hooks/useMonthlyMetrics';
 
 describe('fetchMonthRevenueTotals', () => {
-  it('returns gross = categorized + uncategorized, net = gross − discounts, POS = gross + tax + tips + otherLiabilities', async () => {
+  it('returns gross = categorized + uncategorized, net = gross − discounts, and posCollected from get_unified_sales_totals', async () => {
     const supabaseMock = {
       rpc: vi.fn((name: string) => {
         if (name === 'get_revenue_by_account') {
@@ -26,12 +26,28 @@ describe('fetchMonthRevenueTotals', () => {
             error: null,
           });
         }
+        if (name === 'get_unified_sales_totals') {
+          // Deposit-matching SUM(unified_sales.total_price). Different from
+          // the legacy `gross + tax + tips + other` ($6,575.00) because
+          // unified_sales also contains void/discount offset rows.
+          return Promise.resolve({
+            data: [{
+              total_count: 13,
+              revenue: 5000,
+              discounts: 100,
+              pass_through_amount: 575,
+              unique_items: 10,
+              collected_at_pos: 6420.50,
+            }],
+            error: null,
+          });
+        }
         return Promise.resolve({ data: [], error: null });
       }),
     };
 
     const result = await fetchMonthRevenueTotals(
-      supabaseMock as any,
+      supabaseMock as never,
       'r1',
       '2026-04-01',
       '2026-04-30'
@@ -43,6 +59,7 @@ describe('fetchMonthRevenueTotals', () => {
     expect(result.salesTaxCents).toBe(30_000);
     expect(result.tipsCents).toBe(20_000);
     expect(result.otherLiabilitiesCents).toBe(7_500);   // service_charge 50 + fee 25
-    expect(result.posCollectedCents).toBe(657_500); // gross + tax + tips + otherL
+    // posCollected now comes from get_unified_sales_totals.collected_at_pos.
+    expect(result.posCollectedCents).toBe(642_050);
   });
 });

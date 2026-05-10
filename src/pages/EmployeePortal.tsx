@@ -23,7 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { formatDateOnly } from '@/lib/dateOnly';
+import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 import { TimeOffRequest, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
@@ -348,7 +348,7 @@ const EmployeePortal = () => {
           >
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
               <div className="font-medium shrink-0">
-                {format(new Date(exception.date), 'MMM d, yyyy')}
+                {formatDateOnly(exception.date, 'MMM d, yyyy')}
               </div>
               {exception.is_available ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -357,7 +357,7 @@ const EmployeePortal = () => {
                   </Badge>
                     {exception.start_time && exception.end_time && (
                       <span className="text-sm text-muted-foreground">
-                        {formatTimeInRestaurantTz(exception.start_time, new Date(exception.date))} - {formatTimeInRestaurantTz(exception.end_time, new Date(exception.date))}
+                        {formatTimeInRestaurantTz(exception.start_time, parseDateOnly(exception.date))} - {formatTimeInRestaurantTz(exception.end_time, parseDateOnly(exception.date))}
                       </span>
                     )}
                 </div>

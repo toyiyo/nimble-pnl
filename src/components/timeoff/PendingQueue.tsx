@@ -1,5 +1,5 @@
-import { CalendarCheck, Inbox } from 'lucide-react';
 import { TimeOffRow } from './TimeOffRow';
+import { CalendarCheck, Inbox } from 'lucide-react';
 import { TimeOffRequest } from '@/types/scheduling';
 
 interface PendingQueueProps {

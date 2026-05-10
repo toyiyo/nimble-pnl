@@ -23,6 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { formatDateOnly } from '@/lib/dateOnly';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 import { TimeOffRequest, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
@@ -202,8 +203,8 @@ const EmployeePortal = () => {
                   </div>
                   <div className="space-y-1">
                     <p className="font-medium">
-                      {format(new Date(request.start_date), 'MMM d, yyyy')} -{' '}
-                      {format(new Date(request.end_date), 'MMM d, yyyy')}
+                      {formatDateOnly(request.start_date, 'MMM d, yyyy')} -{' '}
+                      {formatDateOnly(request.end_date, 'MMM d, yyyy')}
                     </p>
                     {request.reason && (
                       <p className="text-sm text-muted-foreground">{request.reason}</p>

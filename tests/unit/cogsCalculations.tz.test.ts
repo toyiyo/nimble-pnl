@@ -17,7 +17,10 @@ process.env.TZ = 'America/Chicago';
 import { describe, it, expect } from 'vitest';
 import {
   aggregateFinancialCOGSByDate,
+  aggregateInventoryCOGSByDate,
+  toUtcDayKey,
   type BankTransactionRow,
+  type InventoryTransactionRow,
   type PendingOutflowRow,
   type SplitItemRow,
 } from '@/services/cogsCalculations';
@@ -126,5 +129,82 @@ describe('aggregateFinancialCOGSByDate — TZ bucketing', () => {
     });
 
     expect(result.get('2026-05-01')).toBeCloseTo(175, 2);
+  });
+});
+
+describe('aggregateInventoryCOGSByDate — TZ bucketing', () => {
+  it('uses transaction_date when present and slices to UTC day key', () => {
+    const rows: InventoryTransactionRow[] = [
+      {
+        // TIMESTAMPTZ-shaped value at 00:00 UTC. In Chicago a naive
+        // `new Date(...)` reformat would yield 2026-04-30; toUtcDayKey
+        // must keep it on 2026-05-01.
+        transaction_date: '2026-05-01T00:00:00+00:00',
+        created_at: '2026-04-30T18:00:00+00:00',
+        total_cost: 12.34,
+      },
+    ];
+
+    const result = aggregateInventoryCOGSByDate(rows);
+
+    expect(result.get('2026-05-01')).toBeCloseTo(12.34, 2);
+    expect(result.has('2026-04-30')).toBe(false);
+  });
+
+  it('falls back to created_at when transaction_date is null', () => {
+    const rows: InventoryTransactionRow[] = [
+      {
+        transaction_date: null,
+        created_at: '2026-05-02T00:00:00+00:00',
+        total_cost: 7.5,
+      },
+    ];
+
+    const result = aggregateInventoryCOGSByDate(rows);
+
+    expect(result.get('2026-05-02')).toBeCloseTo(7.5, 2);
+  });
+
+  it('sums multiple rows that resolve to the same UTC day key', () => {
+    const rows: InventoryTransactionRow[] = [
+      {
+        transaction_date: '2026-05-01T00:00:00+00:00',
+        created_at: '2026-04-30T20:00:00+00:00',
+        total_cost: 10,
+      },
+      {
+        transaction_date: null,
+        created_at: '2026-05-01T05:00:00+00:00',
+        total_cost: -5, // Math.abs → 5
+      },
+    ];
+
+    const result = aggregateInventoryCOGSByDate(rows);
+
+    expect(result.get('2026-05-01')).toBeCloseTo(15, 2);
+  });
+
+  it('treats null total_cost as 0', () => {
+    const rows: InventoryTransactionRow[] = [
+      {
+        transaction_date: '2026-05-01T00:00:00+00:00',
+        created_at: '2026-05-01T00:00:00+00:00',
+        total_cost: null,
+      },
+    ];
+
+    const result = aggregateInventoryCOGSByDate(rows);
+
+    expect(result.get('2026-05-01')).toBe(0);
+  });
+});
+
+describe('toUtcDayKey', () => {
+  it('returns the first 10 chars of an ISO timestamp', () => {
+    expect(toUtcDayKey('2026-05-01T00:00:00+00:00')).toBe('2026-05-01');
+  });
+
+  it('passes a yyyy-MM-dd DATE value through unchanged', () => {
+    expect(toUtcDayKey('2026-05-01')).toBe('2026-05-01');
   });
 });

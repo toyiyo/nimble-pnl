@@ -101,7 +101,7 @@ export const TimeOffRow = memo(function TimeOffRow({
             type="button"
             size="sm"
             onClick={() => onApprove(request)}
-            disabled={isApproving}
+            disabled={isApproving || isRejecting}
             className="h-9 px-3 rounded-lg bg-success text-success-foreground hover:bg-success/90 text-[13px] font-medium"
             aria-label={`Approve time-off for ${request.employee?.name ?? 'employee'}`}
           >
@@ -113,7 +113,7 @@ export const TimeOffRow = memo(function TimeOffRow({
             size="sm"
             variant="outline"
             onClick={() => onReject(request)}
-            disabled={isRejecting}
+            disabled={isApproving || isRejecting}
             className="h-9 px-3 rounded-lg text-[13px] font-medium"
             aria-label={`Reject time-off for ${request.employee?.name ?? 'employee'}`}
           >

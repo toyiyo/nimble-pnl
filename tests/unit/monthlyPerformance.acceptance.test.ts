@@ -1,3 +1,11 @@
+// Pin TZ=UTC for this file before any imports execute. The labor wages
+// assertion below is ISO-week-bucketed, and `calculateActualLaborCostForMonth`
+// uses `date-fns` `startOfWeek`, which reads `process.env.TZ`. Other test files
+// (e.g. `cogsCalculations.tz.test.ts`, `useMonthlyExpenses.tz.test.ts`) pin
+// `TZ=America/Chicago` to exercise TZ-shift bugs. Without this guard, the env
+// mutation bleeds into this worker and shifts the OT-D Hybrid week boundary.
+process.env.TZ = 'UTC';
+
 import { describe, it, expect, vi } from 'vitest';
 import { fetchMonthRevenueTotals } from '@/hooks/useMonthlyMetrics';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';

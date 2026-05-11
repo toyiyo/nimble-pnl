@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { getAccountDisplayName, isLaborSubtype, isFoodCostSubtype } from '@/lib/expenseCategoryUtils';
 import { fetchExpenseData } from '@/lib/expenseDataFetcher';
+import { toUtcDayKey } from '@/services/cogsCalculations';
 
 export interface MonthlyExpenseCategory {
   category: string;
@@ -87,7 +88,10 @@ export function useMonthlyExpenses(
 
       // Process bank transactions (skip split parents - use split details instead)
       transactions.filter(t => !t.is_split).forEach(t => {
-        const monthKey = format(new Date(t.transaction_date), 'yyyy-MM');
+        // Bucket by the UTC date stored on the row, not the host-local day.
+        // `format(new Date(raw), 'yyyy-MM')` is host-TZ-dependent and shifts a
+        // UTC 00:00 timestamp into the previous month for TZs west of UTC.
+        const monthKey = toUtcDayKey(t.transaction_date).slice(0, 7);
         const month = ensureMonth(monthKey);
         const txnAmount = Math.abs(t.amount);
         
@@ -113,7 +117,7 @@ export function useMonthlyExpenses(
         const parentTxn = transactions.find(t => t.id === split.transaction_id);
         if (!parentTxn) return;
 
-        const monthKey = format(new Date(parentTxn.transaction_date), 'yyyy-MM');
+        const monthKey = toUtcDayKey(parentTxn.transaction_date).slice(0, 7);
         const month = ensureMonth(monthKey);
         const splitAmount = split.amount; // Split amounts are already positive
         
@@ -135,7 +139,10 @@ export function useMonthlyExpenses(
 
       // Process pending outflows (not yet matched to bank transactions)
       pendingOutflows.forEach(t => {
-        const monthKey = format(new Date(t.issue_date), 'yyyy-MM');
+        // pending_outflows.issue_date is a DATE column ('YYYY-MM-DD').
+        // `new Date('2026-05-01')` => 00:00 UTC, which renders as 2026-04-30
+        // in TZs west of UTC. slice the canonical string instead.
+        const monthKey = toUtcDayKey(t.issue_date).slice(0, 7);
         const month = ensureMonth(monthKey);
         const txnAmount = t.amount; // Pending outflows are stored as positive amounts
         

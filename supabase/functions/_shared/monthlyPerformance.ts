@@ -26,12 +26,13 @@ export interface MonthlyPerformanceInput {
     salesTax: number;
     tips: number;
     otherLiabilities: number;
-    /** NOT CONSUMED. The module re-derives POS-collected as
-     *  grossRevenue + salesTax + tips + otherLiabilities. This field is
-     *  accepted purely so callers can pass their hook's revenue shape via
-     *  spread; the upstream value is intentionally ignored to guarantee
-     *  the summary card and the breakdown read the same derived total. */
-    totalCollectedAtPos: number;
+    /** Deposit-matching POS-collected total in dollars. Pass the value from
+     *  `get_unified_sales_totals.collected_at_pos` (= SUM of
+     *  `unified_sales.total_price`), which includes negative Toast
+     *  void/discount offset rows the legacy `gross + tax + tips + other`
+     *  breakdown misses. Pass `null` (or omit) to fall back to the legacy
+     *  breakdown formula. `0` is treated as a valid zero-collected period. */
+    totalCollectedAtPos?: number | null;
   };
   /** Expense aggregates from useMonthlyExpenses for the same month (dollars). */
   expenses: {
@@ -108,11 +109,16 @@ export function calculateMonthlyPerformance(
   const passThroughTotalCents =
     salesTaxCents + tipsCents + otherLiabilitiesCents;
 
-  // POS — always derive from the breakdown (gross + pass-through), don't trust
-  // the caller-supplied totalCollectedAtPos field. This is the rule that fixes
-  // the $90,475 vs $87,332 mismatch: there is one POS number, sourced from
-  // breakdown.
-  const posCollectedFromBreakdownCents = grossRevenueCents + passThroughTotalCents;
+  // POS — prefer the caller-supplied deposit-matching total (from
+  // `get_unified_sales_totals.collected_at_pos`, which includes Toast
+  // void/discount offset rows). Fall back to the legacy
+  // `gross + tax + tips + other_liabilities` breakdown only when the caller
+  // explicitly passes null/undefined. `0` is a valid value, not a "missing"
+  // sentinel — a genuinely zero-collected period must round-trip to zero.
+  const posCollectedFromBreakdownCents =
+    input.revenue.totalCollectedAtPos != null
+      ? toCents(input.revenue.totalCollectedAtPos)
+      : grossRevenueCents + passThroughTotalCents;
   const posReportedCents =
     input.posReportedTotal == null ? null : toCents(input.posReportedTotal);
   const posReconciliationDeltaCents =

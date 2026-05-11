@@ -91,7 +91,27 @@ describe('calculateMonthlyPerformance — revenue and pass-through', () => {
     expect(result.passThroughTotalCents).toBe(1500);
   });
 
-  it('derives POS collected as gross + pass-through (ignoring caller-supplied totalCollectedAtPos)', () => {
+  it('prefers caller-supplied totalCollectedAtPos over the legacy gross+passthrough formula', () => {
+    // Russo May 2026 shape: legacy formula would return $32,950.80, but
+    // get_unified_sales_totals.collected_at_pos is the deposit-matching truth
+    // at $31,596.36. The shared helper now passes that value through.
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 26_903.04,
+          discounts: 625.04,
+          netRevenue: 26_278.00,
+          salesTax: 2_101.05,
+          tips: 3_946.71,
+          otherLiabilities: 0,
+          totalCollectedAtPos: 31_596.36,
+        },
+      })
+    );
+    expect(result.posCollectedFromBreakdownCents).toBe(3_159_636);
+  });
+
+  it('falls back to legacy gross+passthrough when totalCollectedAtPos is null', () => {
     const result = calculateMonthlyPerformance(
       makeInput({
         revenue: {
@@ -101,11 +121,45 @@ describe('calculateMonthlyPerformance — revenue and pass-through', () => {
           salesTax: 8,
           tips: 5,
           otherLiabilities: 2,
-          totalCollectedAtPos: 999, // intentionally wrong
+          totalCollectedAtPos: null as unknown as number,
         },
       })
     );
-    expect(result.posCollectedFromBreakdownCents).toBe(11500);
+    expect(result.posCollectedFromBreakdownCents).toBe(11_500);
+  });
+
+  it('falls back to legacy gross+passthrough when totalCollectedAtPos is omitted (undefined)', () => {
+    const input = makeInput({
+      revenue: {
+        grossRevenue: 100,
+        discounts: 0,
+        netRevenue: 100,
+        salesTax: 8,
+        tips: 5,
+        otherLiabilities: 2,
+        totalCollectedAtPos: 0,
+      },
+    });
+    delete (input.revenue as Partial<MonthlyPerformanceInput['revenue']>)
+      .totalCollectedAtPos;
+
+    const result = calculateMonthlyPerformance(input);
+    expect(result.posCollectedFromBreakdownCents).toBe(11_500);
+  });
+
+  it('treats 0 as a valid totalCollectedAtPos (not a missing sentinel)', () => {
+    // A genuinely-zero period must round-trip to zero, not silently fall back
+    // to a non-zero pass-through formula.
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        revenue: {
+          grossRevenue: 0, discounts: 0, netRevenue: 0,
+          salesTax: 0, tips: 0, otherLiabilities: 0,
+          totalCollectedAtPos: 0,
+        },
+      })
+    );
+    expect(result.posCollectedFromBreakdownCents).toBe(0);
   });
 });
 

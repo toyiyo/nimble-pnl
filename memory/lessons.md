@@ -120,6 +120,16 @@
   3. `git worktree add .claude/worktrees/<feature> <feature>` then `git stash pop` inside the worktree.
 - **Why the earlier recovery was wrong:** `git branch <feature> HEAD` only snapshots committed HEAD; `git reset --hard origin/main` then destroys the working tree. The most common case this HARD-GATE catches is uncommitted edits, so skipping the stash defeats the point.
 
+### [2026-05-16] `npx skills add` agent slug is `claude-code`, one per invocation
+- **Mistake:** Tried `npx skills add -g -a "Claude Code" -y …` (space-and-caps form, rejected as "Invalid agents") and then `-a claude-code,codex` (comma list, also rejected). Wasted two install rounds on the 10-skill bundle.
+- **Correction:** The CLI expects a single lowercase-hyphen slug per `-a`. Valid form: `-a claude-code` or `-a codex` — never quoted, never comma-separated. Install once per agent if you need both sides.
+- **Rule:** When a CLI rejects with "Invalid agents/values/etc.," try the lowercase-hyphenated slug form first before trying alternate quoting. Documented bundles should always use the canonical slug.
+
+### [2026-05-16] External CLI dependencies must `::skip::` cleanly, not fail the workflow
+- **Mistake (latent):** Author's `/opt/homebrew/bin/codex` was a dangling symlink (Cask install left it pointing at a nonexistent path). A naive runner script that did `codex exec …` would have died mid-pipe and broken the Phase 7a fan-out.
+- **Correction:** The Codex adversarial runner checks **both** `command -v codex` AND `codex --version` before doing any work, and emits a `::skip:: <reason>` line + `exit 0` if either fails. The workflow treats adversarial review as best-effort — Claude reviewers still run.
+- **Rule:** Any optional external tool the workflow invokes via Bash must (a) detect presence + executability, (b) skip with a structured marker line, (c) exit 0 so the caller can keep going. Never let a missing/broken third-party CLI hard-fail a multi-stage workflow.
+
 ---
 
 ## Category: Database (PostgREST / Supabase)

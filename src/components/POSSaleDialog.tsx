@@ -325,9 +325,9 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-0 gap-0 border-border/40">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-hidden p-0 gap-0 border-border/40 flex flex-col">
         {/* Apple-style header */}
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+        <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
               <Receipt className="h-5 w-5 text-foreground" />
@@ -344,7 +344,8 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex-1 min-h-0 flex flex-col">
+            <div data-testid="pos-sale-scroll-body" className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {/* Item Name Field */}
             <FormField
               control={form.control}
@@ -815,8 +816,13 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
               </div>
             )}
 
-            {/* Footer Actions */}
-            <div className="flex gap-2 pt-4 border-t border-border/40">
+            </div>
+
+            {/* Sticky footer actions — stays visible regardless of viewport height */}
+            <div
+              data-testid="pos-sale-footer"
+              className="flex-shrink-0 flex gap-2 px-6 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)] border-t border-border/40 bg-background"
+            >
               <Button
                 type="button"
                 variant="ghost"

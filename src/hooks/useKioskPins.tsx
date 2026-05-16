@@ -59,6 +59,10 @@ type UpsertPinInput = {
   force_reset?: boolean;
   allowSimpleSequence?: boolean;
   actor?: 'manager' | 'self';
+  // When true, suppress the per-save toast so callers that surface their own
+  // confirmation UI (e.g. PinRevealDialog after bulk auto-generate) don't stack
+  // N toasts on top of a modal.
+  silent?: boolean;
 };
 
 export const useUpsertEmployeePin = () => {
@@ -118,6 +122,7 @@ export const useUpsertEmployeePin = () => {
         record: data as EmployeePin,
         actor: payload.actor ?? 'manager',
         action: 'reset' as const,
+        silent: payload.silent ?? false,
       };
     },
     onSuccess: (result) => {
@@ -138,13 +143,15 @@ export const useUpsertEmployeePin = () => {
           });
       }
 
-      toast({
-        title: 'PIN saved',
-        description:
-          result.actor === 'self'
-            ? 'Your new PIN is ready below.'
-            : 'New PIN ready to share securely with the employee.',
-      });
+      if (!result.silent) {
+        toast({
+          title: 'PIN saved',
+          description:
+            result.actor === 'self'
+              ? 'Your new PIN is ready below.'
+              : 'New PIN ready to share securely with the employee.',
+        });
+      }
     },
     onError: (error: Error) => {
       toast({

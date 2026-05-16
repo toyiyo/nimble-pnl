@@ -4,9 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { useUpsertEmployeePin } from '@/hooks/useKioskPins';
 
-const { upsertSelectMock, functionsInvokeMock } = vi.hoisted(() => ({
+const { upsertSelectMock, functionsInvokeMock, toastMock } = vi.hoisted(() => ({
   upsertSelectMock: vi.fn(),
   functionsInvokeMock: vi.fn().mockResolvedValue({ data: { ok: true }, error: null }),
+  toastMock: vi.fn(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -25,7 +26,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 vi.mock('@/hooks/use-toast', () => ({
-  useToast: () => ({ toast: vi.fn() }),
+  useToast: () => ({ toast: toastMock }),
 }));
 
 const wrapper = ({ children }: { children: React.ReactNode }) => {
@@ -108,5 +109,36 @@ describe('useUpsertEmployeePin', () => {
     expect(outcome.pin).toBe('1357');
     expect(outcome.record.id).toBe('pin-1');
     await waitFor(() => expect(functionsInvokeMock).toHaveBeenCalled());
+  });
+
+  it('toasts on success by default', async () => {
+    const { result } = renderHook(() => useUpsertEmployeePin(), { wrapper });
+    await result.current.mutateAsync({
+      restaurant_id: 'r1',
+      employee_id: 'e1',
+      pin: '1357',
+      actor: 'manager',
+    });
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'PIN saved' })
+      )
+    );
+  });
+
+  it('suppresses the success toast when silent=true (used by bulk auto-generate)', async () => {
+    const { result } = renderHook(() => useUpsertEmployeePin(), { wrapper });
+    await result.current.mutateAsync({
+      restaurant_id: 'r1',
+      employee_id: 'e1',
+      pin: '1357',
+      actor: 'manager',
+      silent: true,
+    });
+    // Give onSuccess a tick to run.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'PIN saved' })
+    );
   });
 });

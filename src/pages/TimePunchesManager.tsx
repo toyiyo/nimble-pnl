@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -102,6 +102,14 @@ const TimePunchesManager = () => {
   const [pinForceReset, setPinForceReset] = useState(false);
   const [revealedPins, setRevealedPins] = useState<RevealedPin[]>([]);
   const [revealOpen, setRevealOpen] = useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   const { account: kioskAccount, loading: kioskAccountLoading, createOrRotate } = useKioskServiceAccount(restaurantId);
   const [generatedKioskCreds, setGeneratedKioskCreds] = useState<{ email: string; password: string } | null>(null);
 
@@ -168,7 +176,9 @@ const TimePunchesManager = () => {
         force_reset: pinForceReset,
         allowSimpleSequence: pinPolicy.allowSimpleSequences,
         actor: 'manager',
+        silent: true,
       });
+      if (!isMountedRef.current) return;
       setRevealedPins([
         {
           employeeId: pinDialogEmployee.id,
@@ -197,6 +207,7 @@ const TimePunchesManager = () => {
 
     const generatedReveals: RevealedPin[] = [];
     for (const emp of missing) {
+      if (!isMountedRef.current) break;
       const candidate = generatePolicyPin();
       try {
         const result = await upsertPin.mutateAsync({
@@ -207,6 +218,7 @@ const TimePunchesManager = () => {
           force_reset: pinPolicy.forceResetOnNext,
           allowSimpleSequence: pinPolicy.allowSimpleSequences,
           actor: 'manager',
+          silent: true,
         });
         generatedReveals.push({
           employeeId: emp.id,
@@ -220,6 +232,7 @@ const TimePunchesManager = () => {
       }
     }
 
+    if (!isMountedRef.current) return;
     if (generatedReveals.length > 0) {
       setRevealedPins(generatedReveals);
       setRevealOpen(true);

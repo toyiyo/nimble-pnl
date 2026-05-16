@@ -61,25 +61,49 @@ display it in a reveal modal instead of throwing it away.
 - For the **single-employee path**, replace the current inline green
   "Saved: 1234" panel with the same modal (so the UX is consistent and the
   shared warning copy lives in one place).
-- Modal contents:
-  - Header: "PINs ready to share" with a warning subtitle: *"PINs are
-    hashed in the database. You can't view them again after closing —
-    distribute now."*
-  - Table: `Name | Position | PIN | Copy` rows.
-  - Footer actions: **Copy all** (formatted `Alice — 1234` lines, one per
-    employee), **Print** (opens `window.print()` against a printer-friendly
-    card layout already inside the dialog), and **Done**.
+- Modal composition (Apple/Notion aesthetic per CLAUDE.md):
+  - `DialogContent` with `p-0 gap-0`, internal scroll container, sticky
+    footer so action bar stays visible on long lists.
+  - Header: icon-in-box pattern (`h-10 w-10 rounded-xl bg-muted/50` +
+    `KeyRound`), title "PINs ready to share" (`text-[17px] font-semibold`),
+    subtitle: *"Distribute these now — they're hashed after you close."*
+  - Amber warning strip directly below the header
+    (`bg-amber-500/10 border-amber-500/20 rounded-lg` with
+    `AlertTriangle`): *"You won't see these PINs again after closing this
+    dialog."*
+  - List body: one row per employee. The **PIN is the typographic focal
+    point** — render in `text-[28px] font-mono tracking-[0.3em]
+    text-foreground`. Employee name (`text-[14px] font-medium`) and
+    position (`text-[12px] text-muted-foreground`) sit to the left in a
+    smaller column. Right edge: per-row copy icon-button that swaps to a
+    `Check` icon + "Copied" tooltip for 1.5s, with an `aria-live="polite"`
+    region announcing "PIN for {name} copied."
+  - Row entrance: staggered fade + 4px upward translate, 50ms delay per
+    row, CSS-only (`animation-delay: calc(var(--i) * 50ms)`). One
+    orchestrated reveal moment, no scattered micro-interactions.
+  - Sticky footer (`border-t border-border/40 bg-background`): **Copy
+    all** (newline-delimited `Alice — 1234`), **Print** (triggers
+    `window.print()` against an embedded print-only layout), **Done**.
+- Print stylesheet (`@media print` inside the component): hides modal
+  chrome, renders one cut-slip card per page with the employee name and
+  the PIN at `text-[48px] font-mono tracking-[0.3em]`. Page-break-inside:
+  avoid per slip.
 - The reveal modal is the only place the PIN appears outside the
   generation moment.
 
 ### B. Manager — Hint about non-delivery
 
-In `EmployeePinsCard` and the existing per-employee PIN dialog, add a small
-muted-tone hint:
+In `EmployeePinsCard`, add an amber info strip
+(`bg-amber-500/10 border border-amber-500/20 rounded-lg`, the existing
+"AI suggestion panel" pattern from CLAUDE.md) placed **above** the
+"Generate N missing" button — so expectations are set before the manager
+clicks, not after. Icon: `Info`. Copy:
 
 > *"Resetting a PIN doesn't email the new digits. We'll notify the
-> employee that you changed it — you'll need to share the new PIN in
-> person."*
+> employee that you changed it — share the new PIN with them in person."*
+
+The same copy (no banner) appears in the per-employee PIN dialog as
+muted helper text below the input field.
 
 This sets correct expectations and reduces "why didn't they get it?"
 support questions.
@@ -119,20 +143,38 @@ New page + route:
 
 - Route: `/employee/pin`, registered under the existing employee guard in
   `src/App.tsx` next to `/employee/timecard`, `/employee/portal`, etc.
-- Page layout (Apple/Notion style from CLAUDE.md):
-  - Header card: "Kiosk PIN"
-  - Status row: "PIN set" + "Last used `X days ago`" *or* "No PIN yet —
-    create one below."
-  - Primary action: **Generate a new PIN** — calls `useUpsertEmployeePin`
-    with `actor: 'self'`, `force_reset: false`, restaurant's current
-    `min_length`. On success, shows the PIN in a green reveal panel with
-    a Copy button.
-  - Secondary action: **Type my own PIN** — collapses to an input + confirm
-    field using the same validation as `PinChangeDialog`
-    (`min_length`, `isSimpleSequence` if not allowed).
-  - Reminder text: *"For security we never store readable PINs. If you
-    forget yours, generate a new one here."*
-- Add a `Kiosk PIN` entry to `EmployeeMore.tsx`'s `mainItems` list.
+- Page composition (Apple/Notion):
+  - Page title row at the top (matches `/employee/more`):
+    `<h1 className="text-[20px] font-bold">Kiosk PIN</h1>`.
+  - Single hero card (`rounded-xl border border-border/40 bg-background`)
+    with the icon-in-box header pattern: `h-10 w-10 rounded-xl
+    bg-muted/50` containing `KeyRound`, title "Kiosk PIN"
+    (`text-[17px] font-semibold`), subtitle "Use this PIN on the kiosk to
+    clock in" (`text-[13px] text-muted-foreground`).
+  - Status pill row using existing badge palette:
+    - Emerald (`bg-emerald-500/10 text-emerald-700 border-emerald-500/20`)
+      → "PIN set · Last used 3 days ago"
+    - Amber (`bg-amber-500/10 ...`) → "Temporary PIN · Change it on the
+      kiosk" (when `force_reset = true`)
+    - Gray (`bg-muted text-muted-foreground`) → "No PIN yet"
+  - Segmented toggle (Apple-style underline tabs from CLAUDE.md) between
+    **Generate for me** (default) and **Type my own**. Single panel
+    swaps content based on selection — calmer than stacked buttons.
+  - **Generate for me** panel: large primary button "Generate a new
+    PIN". On click, calls `useUpsertEmployeePin` with `actor: 'self'`,
+    `force_reset: false`, restaurant's current `min_length`. Success
+    state replaces the button with the reveal panel: PIN at
+    `text-[36px] font-mono tracking-[0.3em]` in an emerald-tinted card,
+    Copy button, helper line *"This is your only chance to see this
+    number. We'll hash it for storage."*
+  - **Type my own** panel: numeric input + confirm input, same
+    validation as `PinChangeDialog` (`min_length`, `isSimpleSequence`
+    when not allowed). Save button disabled until valid + matching.
+    Success state is the same reveal panel.
+  - Bottom muted helper: *"For security we never store readable PINs.
+    If you forget yours, generate a new one here."*
+- Add a `Kiosk PIN` entry to `EmployeeMore.tsx`'s `mainItems` list with
+  the `KeyRound` icon.
 
 The page reuses the existing `useEmployeePins` query (filtered to the
 caller's `employee_id`) and `useUpsertEmployeePin` mutation. No new server
@@ -147,15 +189,65 @@ Current RLS in `20251125100000_add_kiosk_mode.sql`:
 - `employee_pins_manage` (INSERT/UPDATE/DELETE) restricts to
   `role in ('owner', 'manager')`.
 
-That blocks employees from generating their own PIN. We need a narrower
-INSERT/UPDATE policy that lets an employee write only the row whose
+That blocks employees from generating their own PIN. We need narrower
+INSERT/UPDATE policies that let an employee write only the row whose
 `employee_id` matches the employee row linked to `auth.uid()`.
 
-**Schema impact:** add a new RLS policy
-`employee_pins_self_manage` that allows INSERT/UPDATE when
-`employee_pins.employee_id = (SELECT id FROM employees WHERE
-user_id = auth.uid() AND restaurant_id = employee_pins.restaurant_id)`.
-DELETE remains manager-only.
+**Schema impact:** add two policies — `employee_pins_self_insert` and
+`employee_pins_self_update` — using the Supabase-recommended
+`(select auth.uid())` wrapping pattern for query-cached evaluation
+(HIGH-impact perf rule from `supabase-postgres-best-practices`). DELETE
+remains manager-only.
+
+```sql
+-- Drop-if-exists then create, since Postgres lacks
+-- CREATE POLICY IF NOT EXISTS. Lets the migration be re-run safely.
+drop policy if exists employee_pins_self_insert on public.employee_pins;
+create policy employee_pins_self_insert on public.employee_pins
+  for insert
+  with check (
+    employee_id = (
+      select id from public.employees
+      where user_id = (select auth.uid())
+        and restaurant_id = employee_pins.restaurant_id
+        and is_active = true
+    )
+  );
+
+drop policy if exists employee_pins_self_update on public.employee_pins;
+create policy employee_pins_self_update on public.employee_pins
+  for update
+  using (
+    employee_id = (
+      select id from public.employees
+      where user_id = (select auth.uid())
+        and restaurant_id = employee_pins.restaurant_id
+        and is_active = true
+    )
+  )
+  with check (
+    employee_id = (
+      select id from public.employees
+      where user_id = (select auth.uid())
+        and restaurant_id = employee_pins.restaurant_id
+        and is_active = true
+    )
+  );
+```
+
+Two policies (insert + update) rather than one `for all` because we
+deliberately want DELETE to remain manager-only. The `is_active = true`
+check piggybacks on the existing activation system — deactivated
+employees can't bypass deactivation by setting a new PIN.
+
+Index sanity check:
+- `idx_employees_user_id` already exists (`20251114100100_*.sql`).
+- `employee_pins_employee_unique` already covers `(restaurant_id,
+  employee_id)`.
+- The `employees` table's own RLS policy
+  `Staff can read their own employee record`
+  (`USING (user_id = auth.uid())`) makes the subquery resolvable for the
+  authenticated employee.
 
 This is a small additive migration — no data backfill, no schema column
 changes.

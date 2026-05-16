@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Trash2, Edit, Download, Search, Camera, MapPin, MapPinOff, Eye,
   ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Table as TableIcon,
-  LayoutGrid, List, Code, KeyRound, PenLine, Settings2
+  LayoutGrid, List, Code, PenLine, Settings2
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
@@ -57,7 +57,13 @@ import {
   MobileTimeEntry,
   TimePunchUploadSheet,
 } from '@/components/time-tracking';
-import { StatusSummary, KioskModeCard, EmployeePinsCard } from '@/components/time-clock';
+import {
+  StatusSummary,
+  KioskModeCard,
+  EmployeePinsCard,
+  PinRevealDialog,
+  type RevealedPin,
+} from '@/components/time-clock';
 
 const SIGNED_URL_BUFFER_MS = 5 * 60 * 1000;
 
@@ -94,7 +100,8 @@ const TimePunchesManager = () => {
   const [pinDialogEmployee, setPinDialogEmployee] = useState<Employee | null>(null);
   const [pinValue, setPinValue] = useState('');
   const [pinForceReset, setPinForceReset] = useState(false);
-  const [lastSavedPin, setLastSavedPin] = useState<string | null>(null);
+  const [revealedPins, setRevealedPins] = useState<RevealedPin[]>([]);
+  const [revealOpen, setRevealOpen] = useState(false);
   const { account: kioskAccount, loading: kioskAccountLoading, createOrRotate } = useKioskServiceAccount(restaurantId);
   const [generatedKioskCreds, setGeneratedKioskCreds] = useState<{ email: string; password: string } | null>(null);
 
@@ -143,13 +150,11 @@ const TimePunchesManager = () => {
     setPinDialogEmployee(employee);
     setPinForceReset(pinPolicy.forceResetOnNext);
     setPinValue(generatePolicyPin());
-    setLastSavedPin(null);
   };
 
   const closePinDialog = () => {
     setPinDialogEmployee(null);
     setPinValue('');
-    setLastSavedPin(null);
   };
 
   const handleSavePin = async () => {
@@ -162,12 +167,18 @@ const TimePunchesManager = () => {
         min_length: pinPolicy.minLength,
         force_reset: pinForceReset,
         allowSimpleSequence: pinPolicy.allowSimpleSequences,
+        actor: 'manager',
       });
-      setLastSavedPin(result.pin);
-      toast({
-        title: 'PIN saved',
-        description: `Share this PIN with ${pinDialogEmployee.name} securely.`,
-      });
+      setRevealedPins([
+        {
+          employeeId: pinDialogEmployee.id,
+          name: pinDialogEmployee.name,
+          position: pinDialogEmployee.position,
+          pin: result.pin,
+        },
+      ]);
+      setRevealOpen(true);
+      closePinDialog();
     } catch (error) {
       console.error('Error saving PIN', error);
     }
@@ -184,30 +195,34 @@ const TimePunchesManager = () => {
       return;
     }
 
-    let generated = 0;
+    const generatedReveals: RevealedPin[] = [];
     for (const emp of missing) {
       const candidate = generatePolicyPin();
       try {
-        await upsertPin.mutateAsync({
+        const result = await upsertPin.mutateAsync({
           restaurant_id: restaurantId,
           employee_id: emp.id,
           pin: candidate,
           min_length: pinPolicy.minLength,
           force_reset: pinPolicy.forceResetOnNext,
           allowSimpleSequence: pinPolicy.allowSimpleSequences,
+          actor: 'manager',
         });
-        generated += 1;
+        generatedReveals.push({
+          employeeId: emp.id,
+          name: emp.name,
+          position: emp.position,
+          pin: result.pin,
+        });
       } catch (error) {
         console.error('Error generating PIN', error);
         break;
       }
     }
 
-    if (generated > 0) {
-      toast({
-        title: 'PINs generated',
-        description: `Created PINs for ${generated} employee${generated === 1 ? '' : 's'}.`,
-      });
+    if (generatedReveals.length > 0) {
+      setRevealedPins(generatedReveals);
+      setRevealOpen(true);
     }
   };
 
@@ -959,7 +974,6 @@ const TimePunchesManager = () => {
                 onChange={(e) => {
                   const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 6);
                   setPinValue(digitsOnly);
-                  setLastSavedPin(null);
                 }}
                 aria-label="Employee PIN"
                 className="text-center text-2xl tracking-widest font-mono"
@@ -979,15 +993,6 @@ const TimePunchesManager = () => {
               <Switch checked={pinForceReset} onCheckedChange={setPinForceReset} />
             </div>
 
-            {lastSavedPin && (
-              <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
-                <div className="flex items-center gap-2 font-semibold text-primary">
-                  <KeyRound className="h-4 w-4" />
-                  Saved: {lastSavedPin}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Share privately. PIN is stored hashed.</p>
-              </div>
-            )}
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setPinValue(generatePolicyPin())}>
@@ -1222,6 +1227,15 @@ const TimePunchesManager = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <PinRevealDialog
+        open={revealOpen}
+        pins={revealedPins}
+        onOpenChange={(open) => {
+          setRevealOpen(open);
+          if (!open) setRevealedPins([]);
+        }}
+      />
     </div>
   );
 };

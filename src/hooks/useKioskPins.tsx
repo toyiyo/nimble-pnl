@@ -58,6 +58,7 @@ type UpsertPinInput = {
   min_length?: number;
   force_reset?: boolean;
   allowSimpleSequence?: boolean;
+  actor?: 'manager' | 'self';
 };
 
 export const useUpsertEmployeePin = () => {
@@ -112,13 +113,37 @@ export const useUpsertEmployeePin = () => {
         throw error;
       }
 
-      return { pin: pinToUse, record: data as EmployeePin };
+      return {
+        pin: pinToUse,
+        record: data as EmployeePin,
+        actor: payload.actor ?? 'manager',
+        action: 'reset' as const,
+      };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: pinQueryKey(result.record.restaurant_id) });
+
+      if (result.actor === 'manager') {
+        supabase.functions
+          .invoke('notify-pin-changed', {
+            body: {
+              restaurantId: result.record.restaurant_id,
+              employeeId: result.record.employee_id,
+              action: result.action,
+              actor: 'manager',
+            },
+          })
+          .catch((err) => {
+            console.warn('notify-pin-changed invoke failed', err);
+          });
+      }
+
       toast({
         title: 'PIN saved',
-        description: `New PIN ready to share securely with the employee.`,
+        description:
+          result.actor === 'self'
+            ? 'Your new PIN is ready below.'
+            : 'New PIN ready to share securely with the employee.',
       });
     },
     onError: (error: Error) => {

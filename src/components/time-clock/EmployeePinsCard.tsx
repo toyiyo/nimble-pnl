@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { Employee } from '@/types/scheduling';
 import { EmployeePinWithEmployee } from '@/hooks/useKioskPins';
@@ -49,7 +49,14 @@ export function EmployeePinsCard({
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <Info className="h-4 w-4 text-amber-600 dark:text-amber-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+          <p className="text-[13px] text-amber-800 dark:text-amber-300">
+            PIN resets don't email the digits — share them with the employee yourself.
+            The employee gets a notification that their PIN changed.
+          </p>
+        </div>
         {pinsLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-14 w-full" />

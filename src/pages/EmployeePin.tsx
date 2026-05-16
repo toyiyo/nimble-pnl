@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useTimePunches';
 import { useEmployeePins, useUpsertEmployeePin } from '@/hooks/useKioskPins';
@@ -33,10 +33,18 @@ function EmployeePin() {
 
   const minLength = myPin?.min_length ?? MIN_LENGTH;
   const typedTooShort = typed.length > 0 && typed.length < minLength;
-  const typedSimple = typed.length >= 3 && isSimpleSequence(typed);
+  const typedSimple = typed.length >= minLength && isSimpleSequence(typed);
   const confirmMismatch = confirm.length > 0 && confirm !== typed;
   const canSubmitTyped =
     typed.length >= minLength && !typedSimple && confirm === typed && !upsertPin.isPending;
+
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   if (empLoading || pinsLoading) {
     return (
@@ -59,9 +67,13 @@ function EmployeePin() {
     setError(null);
     let candidate = generateNumericPin(minLength);
     let attempts = 0;
-    while (isSimpleSequence(candidate) && attempts < 6) {
+    while (isSimpleSequence(candidate) && attempts < 20) {
       candidate = generateNumericPin(minLength);
       attempts++;
+    }
+    if (isSimpleSequence(candidate)) {
+      setError('Could not generate a strong PIN. Please try again.');
+      return;
     }
     try {
       const result = await upsertPin.mutateAsync({
@@ -72,8 +84,10 @@ function EmployeePin() {
         force_reset: false,
         actor: 'self',
       });
+      if (!isMountedRef.current) return;
       setRevealed(result.pin);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Could not save PIN.');
     }
   };
@@ -90,8 +104,10 @@ function EmployeePin() {
         force_reset: false,
         actor: 'self',
       });
+      if (!isMountedRef.current) return;
       setRevealed(result.pin);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(err instanceof Error ? err.message : 'Could not save PIN.');
     }
   };

@@ -61,6 +61,7 @@ describe('EmployeePin page', () => {
           employee_id: 'e1',
           actor: 'self',
           force_reset: false,
+          pin: expect.stringMatching(/^\d{4,6}$/),
         })
       );
     });

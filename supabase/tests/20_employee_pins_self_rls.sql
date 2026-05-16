@@ -68,11 +68,14 @@ SELECT is(
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}', true);
 
--- Test 5: Deactivated employee cannot update
--- Reset to superuser to flip is_active, then switch back to Alice
+-- Test 5: Deactivated employee cannot update.
+-- Reset to superuser to flip is_active + status (the CHECK constraint
+-- employees_status_active_sync requires them to move together).
 RESET ROLE;
 SELECT set_config('request.jwt.claims', NULL, true);
-UPDATE employees SET is_active = false WHERE id = '00000000-0000-0000-0000-0000000000c1';
+UPDATE employees
+   SET is_active = false, status = 'inactive'
+ WHERE id = '00000000-0000-0000-0000-0000000000c1';
 
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}', true);

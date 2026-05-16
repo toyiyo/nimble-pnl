@@ -9,7 +9,19 @@ description: "MANDATORY — invoke BEFORE any implementation, feature, bugfix, o
 
 This skill defines the mandatory development pipeline for every task. Follow each phase in order. Skip conditions are documented per phase.
 
-The workflow is designed for **autonomous execution**: after the user approves the plan (Phase 2), Claude executes Phases 3–9 without requiring human prompts. The user is only notified when the PR is green and ready for review, or when Claude is genuinely stuck.
+The workflow is designed for **autonomous execution**: after the user approves the plan (Phase 3), Claude executes Phases 4–9 without requiring human prompts. The user is only notified when the PR is green and ready for review, or when Claude is genuinely stuck.
+
+**Two defense-in-depth phases** complement the linear flow:
+
+- **Phase 2.5 — Design Review:** Always-on Supabase + Frontend reviewers
+  inspect the design doc against best-practice skills before any code is
+  written. Catching a design mistake here is roughly 10× cheaper than
+  catching it in PR review.
+- **Phase 7 — Multi-Model Code Review:** Four Claude reviewers (security,
+  performance, maintainability, sound-logic) and one Codex adversarial
+  reviewer fan out in parallel against the branch diff. CodeRabbit local
+  CLI is the final gate, not the only gate — this avoids "Claude grading
+  its own homework" and reduces dependence on one third-party reviewer.
 
 ### Progress Tracking
 
@@ -103,6 +115,79 @@ If `git stash push` reports "No local changes to save," skip step 3's `git stash
 
 **Skip condition:** None. Every task gets at least a brief design pass.
 
+## Phase 2.5: Design Review
+
+**Trigger:** Runs immediately after the design doc is committed (end of
+Phase 2), before Phase 3 (Plan) starts.
+
+**Why it exists:** Design mistakes compound through TDD into reviewable
+code. Catching them at the design-doc stage is roughly 10× cheaper than
+catching them in PR review. The Supabase + Frontend dimensions are the
+two surfaces where mistakes are most expensive in this codebase.
+
+### Sub-agents (run in parallel)
+
+Invoke both via the `Agent` tool with `subagent_type=general-purpose`,
+passing the design doc path. Prompts live at:
+
+- `.claude/agents/supabase-design-reviewer.md`
+- `.claude/agents/frontend-design-reviewer.md`
+
+#### `supabase-design-reviewer`
+
+- **Runs when:** Design touches DB schema, RLS, edge functions, RPC,
+  migrations, or any `restaurant_id`-scoped table. Detected by scanning
+  the design doc for: `supabase`, `migration`, `rpc`, `rls`,
+  `edge function`, `.sql`.
+- **Skill loadout:** `supabase-postgres-best-practices`,
+  `supabase-audit-rls`, `postgresql-code-review`.
+- **Reviews:** RLS coverage, migration safety, edge-function CPU/memory,
+  unified-sales hygiene, indexes implied by query patterns, function
+  semantics, idempotency, timezone discipline, secret encryption.
+
+#### `frontend-design-reviewer`
+
+- **Runs when:** Design touches UI/components, dialogs, forms, pages,
+  styling, mobile/viewport behaviour. Detected by scanning for:
+  `component`, `dialog`, `form`, `page`, `mobile`, `viewport`,
+  `tailwind`, `shadcn`, `Apple/Notion`, or `src/components/`.
+- **Skill loadout:** `frontend-design`, `accessibility`, `performance`,
+  `shadcn`.
+- **Reviews:** CLAUDE.md compliance (typography, semantic tokens,
+  three-state rendering), accessibility (aria, focus, keyboard),
+  performance (virtualization, memoization, single-dialog pattern,
+  React Query staleTime), shadcn idioms, routing, form ergonomics.
+
+### Skip conditions
+
+- **Supabase reviewer:** Skipped only when the design touches no
+  DB/edge-function/SQL surface (keyword-based). When ambiguous, run it.
+- **Frontend reviewer:** Skipped only when no UI/component surface is
+  touched. When ambiguous, run it.
+- **Both skipped** when the task is a workflow- or doc-only change
+  (e.g., editing this file).
+- **Hard rule:** When the keyword detection says "applicable," neither
+  reviewer may be silently skipped.
+
+### Folding feedback in
+
+After both reviewers return:
+
+1. Read the combined concerns list.
+2. For each `critical` or `major` concern, decide:
+   - **Fix in design** → Edit the design doc, commit the change.
+   - **Defer with rationale** → Add a "Decided trade-offs" section to
+     the design doc explaining why the concern is accepted as-is.
+3. For `minor` concerns, decide:
+   - **Fix in design** → Edit + commit.
+   - **Skip** → Note in retrospective so the reviewer prompt can be
+     refined later.
+4. Proceed to Phase 3 only after the design doc reflects every accepted
+   concern.
+
+**Skip condition:** Workflow/doc-only changes (per the keyword
+detection above). Otherwise never.
+
 ## Phase 3: Plan
 
 **Invoke:** `superpowers:writing-plans`
@@ -147,13 +232,99 @@ Use subagent-driven-development to parallelize independent tasks.
 
 **Skip condition:** None.
 
-## Phase 7: CodeRabbit Review (Local CLI)
+## Phase 7: Multi-Model Code Review
 
-**This is the LOCAL CLI review only.** It is independent of the CodeRabbit
-GitHub bot that posts inline comments on the PR after push. The bot's
-comments are handled in Phase 9d, which is non-skippable. Don't conflate the
-two — passing the local CLI here does not mean the bot will have nothing
-to say after push.
+Phase 7 is **three sub-phases** that run sequentially: 7a fans out five
+parallel reviewers, 7b folds their findings into commits, 7c runs
+CodeRabbit local CLI as the final gate. The intent is to defeat "Claude
+grading its own homework" and to stop putting all review eggs in one
+third-party basket.
+
+```
+Phase 6  Simplify
+   │
+   ▼
+Phase 7a  Multi-model fan-out (PARALLEL)
+   ├─ Agent: security-reviewer
+   ├─ Agent: performance-reviewer
+   ├─ Agent: maintainability-reviewer
+   ├─ Agent: sound-logic-reviewer
+   └─ Bash:  dev-tools/codex-adversarial-review.sh
+   │
+   ▼
+Phase 7b  Fold findings: classify, fix actionable, commit
+   │
+   ▼
+Phase 7c  CodeRabbit local CLI (final gate, max 3 iterations)
+   │
+   ▼
+Phase 8  Verify
+```
+
+### 7a — Multi-model fan-out (parallel)
+
+Inputs handed to every reviewer:
+
+- `git diff origin/main...HEAD`
+- `git log origin/main..HEAD --oneline`
+- The Phase 2 design doc.
+
+**Four Claude reviewers.** Each is an `Agent` call with
+`subagent_type=feature-dev:code-reviewer` and the prompt loaded from
+`.claude/agents/<name>.md`. Launch them in a **single message with four
+tool calls** so they run concurrently.
+
+| Reviewer | Skills | Severity tag |
+|---|---|---|
+| `security-reviewer` | `security-best-practices`, `supabase-audit-rls` | `security:<level>` |
+| `performance-reviewer` | `performance`, `vercel-react-best-practices` | `performance:<level>` |
+| `maintainability-reviewer` | `typescript-react-reviewer`, `shadcn` | `maintainability:<level>` |
+| `sound-logic-reviewer` | `vercel-react-best-practices`, `requesting-code-review` | `logic:<level>` |
+
+**One Codex adversarial reviewer.** Shell out via `Bash`:
+
+```bash
+dev-tools/codex-adversarial-review.sh main
+```
+
+The script writes its output to `dev-tools/codex-review-output.md`.
+
+**Codex prerequisite:** `codex` CLI must be on PATH and the binary must
+launch (`codex --version`). If either fails, the script emits a
+`::skip::` line and exits 0. Adversarial review is **best-effort** —
+the four Claude reviewers still run.
+
+```bash
+# Install / repair if missing
+brew install --cask codex && codex login
+# If the symlink is dangling:
+brew reinstall --cask codex
+```
+
+### 7b — Fold findings
+
+1. Collect every `critical` and `major` finding from all five reviewers
+   (including Codex's `dev-tools/codex-review-output.md`).
+2. Deduplicate: same `file:line` from multiple reviewers → keep highest
+   severity, merge messages.
+3. Classify each:
+   - **Actionable bug / security / correctness** → Fix it. Commit:
+     `fix(review): <area> — addresses <reviewer> finding`.
+   - **Style / nit** → Skip (CodeRabbit Phase 7c catches these).
+   - **False positive** → Note in retrospective; skip.
+4. After fixes commit, **re-invoke any reviewer that flagged a fixed
+   issue** to confirm the fix resolved it.
+
+`minor` findings are deferred to CodeRabbit and/or the retrospective.
+
+### 7c — CodeRabbit local CLI (final gate)
+
+This is the existing CodeRabbit step. It is still **non-skippable**, but
+its role narrows: it's the *final consistency check*, not the *primary
+review*. Most issues should have been caught by 7a.
+
+**Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
+comments on the PR are handled separately in Phase 9d.
 
 **Command:** `coderabbit review --plain --type committed`
 
@@ -173,9 +344,14 @@ Iteration 1: Run coderabbit review --plain --type committed
                 +-- Still has findings --> Report to user for manual decision
 ```
 
-**Important:** Use `--type committed` to review all committed changes on the branch. Parse the output for actionable suggestions vs informational notes. Only fix actionable items.
+Use `--type committed` to review all committed changes on the branch.
+Parse the output for actionable suggestions vs informational notes. Only
+fix actionable items.
 
-**Skip condition:** None.
+**Skip condition for the whole phase:** None. 7a and 7c always run on
+any task that produces code. 7a is skipped only when the task is
+workflow- or doc-only (no diff under `src/`, `supabase/`, or
+`dev-tools/`).
 
 ## Phase 8: Verify (Local)
 
@@ -356,12 +532,23 @@ Review the entire workflow session and capture lessons learned:
 
 After the user approves the plan (end of Phase 3), the workflow should run autonomously through Phases 4–9 without requiring human input. The only exceptions where you should pause and ask:
 
-1. **Ambiguous review comments** (Phase 9d) — When a reviewer's intent is unclear
-2. **Persistent CI failures** (Phase 9c) — After 5 failed iterations
-3. **Architectural decisions** — When a fix requires changing the approved design
-4. **Genuine blockers** — Environment issues, missing credentials, etc.
+1. **Phase 2.5 design-reviewer raises a `critical` concern** that is not
+   purely a fix-in-design (architecturally ambiguous, requires changing
+   the approved approach). `major` concerns that can be folded into the
+   design doc are handled autonomously by editing the doc + committing.
+2. **Phase 7b actionable finding** that is architecturally ambiguous —
+   i.e., fixing it requires changing the design approved in Phase 2.
+3. **Ambiguous review comments** (Phase 9d) — When a reviewer's intent
+   is unclear.
+4. **Persistent CI failures** (Phase 9c) — After 5 failed iterations.
+5. **Architectural decisions** — When a fix requires changing the
+   approved design.
+6. **Genuine blockers** — Environment issues, missing credentials, etc.
 
-For everything else — test failures, lint errors, CodeRabbit findings, CI red — diagnose and fix autonomously. Each failure is structured feedback, not a reason to stop.
+For everything else — test failures, lint errors, design-review `minor`
+or `major` findings, Phase 7 multi-model findings, CodeRabbit findings,
+CI red — diagnose and fix autonomously. Each failure is structured
+feedback, not a reason to stop.
 
 ### Context Recovery
 
@@ -380,11 +567,14 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 0. Consult Lessons | Read `memory/lessons.md` + `progress.md` | Never |
 | 1. Isolate | `superpowers:using-git-worktrees` | Already in a dedicated worktree |
 | 2. Brainstorm | `superpowers:brainstorming` | Never |
+| 2.5 Design Review | Agents: `supabase-design-reviewer` + `frontend-design-reviewer` (parallel) | Workflow/doc-only changes; per-reviewer skip if domain untouched |
 | 3. Plan | `superpowers:writing-plans` | Never |
 | 4. Build | `superpowers:test-driven-development` | Never |
 | 5. UI Review | `frontend-design:frontend-design` | No UI changes |
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
-| 7. CodeRabbit | `coderabbit review --plain --type committed` | Never |
+| 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic` + `dev-tools/codex-adversarial-review.sh` (parallel) | Workflow/doc-only changes (no code diff) |
+| 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
+| 7c CodeRabbit | `coderabbit review --plain --type committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9. Ship & CI Loop | Push → PR → CI loop → Review loop | Never |
 | 10. Retrospective | Write to `memory/lessons.md` | No corrections occurred |

@@ -50,6 +50,9 @@ describe('useUpsertEmployeePin', () => {
       },
       error: null,
     });
+    // Re-arm the resolved value defensively. clearAllMocks only zeros call
+    // counts, but being explicit keeps test ordering independent.
+    functionsInvokeMock.mockResolvedValue({ data: { ok: true }, error: null });
   });
 
   it('invokes notify-pin-changed when actor is manager', async () => {
@@ -85,6 +88,25 @@ describe('useUpsertEmployeePin', () => {
       employee_id: 'e1',
       pin: '1357',
     });
+    await waitFor(() => {
+      expect(functionsInvokeMock).toHaveBeenCalledWith('notify-pin-changed', {
+        body: { restaurantId: 'r1', employeeId: 'e1', action: 'reset', actor: 'manager' },
+      });
+    });
+  });
+
+  it('mutation still resolves when notify-pin-changed invoke rejects', async () => {
+    functionsInvokeMock.mockRejectedValueOnce(new Error('network down'));
+    const { result } = renderHook(() => useUpsertEmployeePin(), { wrapper });
+    // mutateAsync MUST resolve (not reject) because the notification is fire-and-forget.
+    const outcome = await result.current.mutateAsync({
+      restaurant_id: 'r1',
+      employee_id: 'e1',
+      pin: '1357',
+      actor: 'manager',
+    });
+    expect(outcome.pin).toBe('1357');
+    expect(outcome.record.id).toBe('pin-1');
     await waitFor(() => expect(functionsInvokeMock).toHaveBeenCalled());
   });
 });

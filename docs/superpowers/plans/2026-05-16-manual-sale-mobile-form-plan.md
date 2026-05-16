@@ -27,7 +27,8 @@ Run vitest, confirm Task 1 tests now pass.
 Create `tests/unit/POSSaleDialog.scroll.test.tsx`. Mock hooks following the
 pattern in `tests/unit/CheckSettingsDialog.test.tsx`.
 
-1. Test: outermost dialog content has `max-h-[85vh] flex flex-col`.
+1. Test: outermost dialog content has `max-h-[85vh] overflow-hidden flex flex-col`
+   (outer is height-capped and non-scrolling so only the inner body scrolls).
 2. Test: a scrollable form body (`flex-1 overflow-y-auto`) wraps the form fields.
 3. Test: a fixed footer (`flex-shrink-0` with `border-t`) contains both
    `Cancel` and `Record Sale` buttons.

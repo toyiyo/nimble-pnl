@@ -27,7 +27,7 @@ vi.mock('@/hooks/useRecipes', () => ({
 }));
 
 describe('POSSaleDialog layout — sticky footer', () => {
-  it('renders the outer DialogContent with max-h-[85vh] + flex flex-col so the box has a height cap and can host a sticky footer', () => {
+  it('renders the outer DialogContent with max-h-[85vh] + overflow-hidden + flex flex-col so the box has a height cap and only the inner body scrolls', () => {
     render(
       <POSSaleDialog
         open
@@ -39,6 +39,7 @@ describe('POSSaleDialog layout — sticky footer', () => {
 
     const content = screen.getByRole('dialog');
     expect(content.className).toContain('max-h-[85vh]');
+    expect(content.className).toContain('overflow-hidden');
     expect(content.className).toContain('flex-col');
   });
 

@@ -53,13 +53,20 @@ SELECT throws_ok(
   'Alice cannot insert a pin row for Bob'
 );
 
--- Test 4: Alice's DELETE silently affects zero rows (no self-delete policy)
+-- Test 4: Alice's DELETE silently affects zero rows (no self-delete policy).
+-- Verify with superuser read-back so the assertion isn't entangled with the
+-- SELECT policy (which today permits Alice, but shouldn't be assumed).
 DELETE FROM employee_pins WHERE employee_id = '00000000-0000-0000-0000-0000000000c1';
+RESET ROLE;
+SELECT set_config('request.jwt.claims', NULL, true);
 SELECT is(
   (SELECT count(*)::int FROM employee_pins WHERE employee_id = '00000000-0000-0000-0000-0000000000c1'),
   1,
   'Alice cannot delete her own employee_pins row (no self-delete policy)'
 );
+-- Restore Alice's JWT context for Test 5
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}', true);
 
 -- Test 5: Deactivated employee cannot update
 -- Reset to superuser to flip is_active, then switch back to Alice

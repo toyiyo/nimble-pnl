@@ -16,7 +16,7 @@
 
 ### New
 - `supabase/migrations/20260516120000_employee_self_pin_rls.sql` — RLS policies for employee self-manage
-- `supabase/tests/10_employee_pins_self_rls.sql` — pgTAP test for the new policies
+- `supabase/tests/20_employee_pins_self_rls.sql` — pgTAP test for the new policies
 - `supabase/functions/notify-pin-changed/index.ts` — push + email notification edge function
 - `src/components/time-clock/PinRevealDialog.tsx` — one-time reveal modal
 - `src/pages/EmployeePin.tsx` — employee self-service page
@@ -38,11 +38,11 @@
 
 **Files:**
 - Create: `supabase/migrations/20260516120000_employee_self_pin_rls.sql`
-- Create: `supabase/tests/10_employee_pins_self_rls.sql`
+- Create: `supabase/tests/20_employee_pins_self_rls.sql`
 
 - [ ] **Step 1: Write the failing pgTAP test**
 
-Create `supabase/tests/10_employee_pins_self_rls.sql`:
+Create `supabase/tests/20_employee_pins_self_rls.sql`:
 
 ```sql
 BEGIN;
@@ -122,7 +122,7 @@ ROLLBACK;
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test:db -- -f 10_employee_pins_self_rls.sql`
+Run: `npm run test:db -- -f 20_employee_pins_self_rls.sql`
 Expected: tests 1, 2, 5 fail because no self-manage policy exists yet (insert/update denied for Alice).
 
 - [ ] **Step 3: Create the migration**
@@ -173,14 +173,14 @@ comment on policy employee_pins_self_update on public.employee_pins is
 
 - [ ] **Step 4: Reset DB and re-run the test**
 
-Run: `npm run db:reset && npm run test:db -- -f 10_employee_pins_self_rls.sql`
+Run: `npm run db:reset && npm run test:db -- -f 20_employee_pins_self_rls.sql`
 Expected: all 6 tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add supabase/migrations/20260516120000_employee_self_pin_rls.sql \
-        supabase/tests/10_employee_pins_self_rls.sql
+        supabase/tests/20_employee_pins_self_rls.sql
 git commit -m "feat(db): RLS policies for employee self-manage of kiosk PIN"
 ```
 

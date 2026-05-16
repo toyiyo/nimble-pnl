@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useTimePunches';
 import { useEmployeePins, useUpsertEmployeePin } from '@/hooks/useKioskPins';
@@ -168,31 +168,59 @@ function EmployeePin() {
 
         <div className="px-5 pt-3">
           <div className="flex items-center" role="tablist" aria-label="Choose how to set your PIN">
-            {(['generate', 'type'] as const).map((t) => (
-              <button
-                key={t}
-                role="tab"
-                aria-selected={tab === t}
-                onClick={() => {
-                  setTab(t);
-                  setRevealed(null);
-                  setError(null);
-                }}
-                className={cn(
-                  'relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors',
-                  tab === t ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {t === 'generate' ? 'Generate for me' : 'Type my own'}
-                {tab === t && (
-                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
-                )}
-              </button>
-            ))}
+            {(['generate', 'type'] as const).map((t) => {
+              const selected = tab === t;
+              const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+                if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') {
+                  return;
+                }
+                e.preventDefault();
+                const next = t === 'generate' ? 'type' : 'generate';
+                setTab(next);
+                setRevealed(null);
+                setError(null);
+                // Move focus to the newly selected tab. The roving tabIndex
+                // (selected ? 0 : -1) below means only the active tab takes
+                // sequential keyboard focus, matching the WAI-ARIA tablist
+                // pattern.
+                document.getElementById(`employee-pin-tab-${next}`)?.focus();
+              };
+              return (
+                <button
+                  key={t}
+                  id={`employee-pin-tab-${t}`}
+                  role="tab"
+                  type="button"
+                  aria-selected={selected}
+                  aria-controls={`employee-pin-panel-${t}`}
+                  tabIndex={selected ? 0 : -1}
+                  onKeyDown={onTabKeyDown}
+                  onClick={() => {
+                    setTab(t);
+                    setRevealed(null);
+                    setError(null);
+                  }}
+                  className={cn(
+                    'relative px-0 py-3 mr-6 text-[14px] font-medium transition-colors',
+                    selected ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {t === 'generate' ? 'Generate for me' : 'Type my own'}
+                  {selected && (
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-foreground" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="px-5 py-5 space-y-4">
+        <div
+          id={`employee-pin-panel-${tab}`}
+          role="tabpanel"
+          aria-labelledby={`employee-pin-tab-${tab}`}
+          className="px-5 py-5 space-y-4"
+        >
           {revealed ? (
             <div className="p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
               <div className="text-[12px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-medium">

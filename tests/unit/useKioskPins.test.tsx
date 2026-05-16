@@ -82,20 +82,6 @@ describe('useUpsertEmployeePin', () => {
     expect(functionsInvokeMock).not.toHaveBeenCalled();
   });
 
-  it('defaults to actor=manager when omitted (back-compat)', async () => {
-    const { result } = renderHook(() => useUpsertEmployeePin(), { wrapper });
-    await result.current.mutateAsync({
-      restaurant_id: 'r1',
-      employee_id: 'e1',
-      pin: '1357',
-    });
-    await waitFor(() => {
-      expect(functionsInvokeMock).toHaveBeenCalledWith('notify-pin-changed', {
-        body: { restaurantId: 'r1', employeeId: 'e1', action: 'reset', actor: 'manager' },
-      });
-    });
-  });
-
   it('mutation still resolves when notify-pin-changed invoke rejects', async () => {
     functionsInvokeMock.mockRejectedValueOnce(new Error('network down'));
     const { result } = renderHook(() => useUpsertEmployeePin(), { wrapper });
@@ -108,6 +94,22 @@ describe('useUpsertEmployeePin', () => {
     });
     expect(outcome.pin).toBe('1357');
     expect(outcome.record.id).toBe('pin-1');
+    await waitFor(() => expect(functionsInvokeMock).toHaveBeenCalled());
+  });
+
+  it('mutation still resolves when invoke returns {error} without throwing', async () => {
+    // supabase.functions.invoke resolves with {error} on HTTP failures rather
+    // than rejecting. The hook must treat that the same as a rejection: log
+    // and continue, never surface the failure to the caller.
+    functionsInvokeMock.mockResolvedValueOnce({ data: null, error: { message: 'edge function 500' } });
+    const { result } = renderHook(() => useUpsertEmployeePin(), { wrapper });
+    const outcome = await result.current.mutateAsync({
+      restaurant_id: 'r1',
+      employee_id: 'e1',
+      pin: '1357',
+      actor: 'manager',
+    });
+    expect(outcome.pin).toBe('1357');
     await waitFor(() => expect(functionsInvokeMock).toHaveBeenCalled());
   });
 
@@ -135,8 +137,8 @@ describe('useUpsertEmployeePin', () => {
       actor: 'manager',
       silent: true,
     });
-    // Give onSuccess a tick to run.
-    await new Promise((r) => setTimeout(r, 0));
+    // Wait for the onSuccess hook to complete instead of guessing with setTimeout(0).
+    await waitFor(() => expect(upsertSelectMock).toHaveBeenCalled());
     expect(toastMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: 'PIN saved' })
     );

@@ -331,6 +331,10 @@ const KioskMode = () => {
       pin: newPin,
       min_length: minLength,
       force_reset: false,
+      // Kiosk force-reset flow: the employee is physically at the kiosk
+      // choosing their own new PIN, so this is a self-actor change. A manager
+      // notification would be incorrect here.
+      actor: 'self',
     });
 
     // Close dialog

@@ -30,6 +30,7 @@ create policy employee_pins_self_update on public.employee_pins
       select 1 from public.employees
       where id = employee_pins.employee_id
         and user_id = (select auth.uid())
+        and restaurant_id = employee_pins.restaurant_id
         and is_active = true
     )
   )

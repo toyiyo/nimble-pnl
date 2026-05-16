@@ -4,27 +4,33 @@
 BEGIN;
 SELECT plan(5);
 
--- Setup
+-- Setup. Use DO UPDATE (not DO NOTHING) on idempotency-relevant columns so a
+-- re-run with mutated state from a previous failure still produces the fixture
+-- this test depends on.
 INSERT INTO auth.users (id, email) VALUES
   ('00000000-0000-0000-0000-0000000000a1', 'mgr-pinrls@test.local'),
   ('00000000-0000-0000-0000-0000000000a2', 'alice-pinrls@test.local'),
   ('00000000-0000-0000-0000-0000000000a3', 'bob-pinrls@test.local')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 INSERT INTO restaurants (id, name) VALUES
   ('00000000-0000-0000-0000-0000000000b1', 'PinRLS Test Cafe')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 INSERT INTO user_restaurants (restaurant_id, user_id, role) VALUES
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a1', 'manager'),
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a2', 'staff'),
   ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a3', 'staff')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (restaurant_id, user_id) DO UPDATE SET role = EXCLUDED.role;
 
 INSERT INTO employees (id, restaurant_id, user_id, name, position, is_active, status, compensation_type) VALUES
   ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a2', 'Alice PinRLS', 'server', true, 'active', 'hourly'),
   ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000a3', 'Bob PinRLS',   'server', true, 'active', 'hourly')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+  restaurant_id = EXCLUDED.restaurant_id,
+  user_id = EXCLUDED.user_id,
+  is_active = EXCLUDED.is_active,
+  status = EXCLUDED.status;
 
 -- Switch to Alice's JWT context
 SET LOCAL role = 'authenticated';
@@ -40,7 +46,8 @@ SELECT lives_ok(
 -- Test 2: Alice can update her own pin row
 SELECT lives_ok(
   $$ UPDATE employee_pins SET pin_hash = 'bbb'
-     WHERE employee_id = '00000000-0000-0000-0000-0000000000c1' $$,
+     WHERE restaurant_id = '00000000-0000-0000-0000-0000000000b1'
+       AND employee_id   = '00000000-0000-0000-0000-0000000000c1' $$,
   'Alice can update her own employee_pins row'
 );
 
@@ -55,12 +62,18 @@ SELECT throws_ok(
 
 -- Test 4: Alice's DELETE silently affects zero rows (no self-delete policy).
 -- Verify with superuser read-back so the assertion isn't entangled with the
--- SELECT policy (which today permits Alice, but shouldn't be assumed).
-DELETE FROM employee_pins WHERE employee_id = '00000000-0000-0000-0000-0000000000c1';
+-- SELECT policy (which today permits Alice, but shouldn't be assumed). Scope
+-- by both restaurant_id and employee_id so a stray fixture row in another
+-- restaurant can never satisfy the count.
+DELETE FROM employee_pins
+ WHERE restaurant_id = '00000000-0000-0000-0000-0000000000b1'
+   AND employee_id   = '00000000-0000-0000-0000-0000000000c1';
 RESET ROLE;
 SELECT set_config('request.jwt.claims', NULL, true);
 SELECT is(
-  (SELECT count(*)::int FROM employee_pins WHERE employee_id = '00000000-0000-0000-0000-0000000000c1'),
+  (SELECT count(*)::int FROM employee_pins
+     WHERE restaurant_id = '00000000-0000-0000-0000-0000000000b1'
+       AND employee_id   = '00000000-0000-0000-0000-0000000000c1'),
   1,
   'Alice cannot delete her own employee_pins row (no self-delete policy)'
 );
@@ -82,9 +95,13 @@ SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000
 
 -- The deactivated Alice's UPDATE should affect zero rows (RLS USING clause excludes her row).
 -- Use a similar count-based assertion since RLS denials on UPDATE are silent, not error.
-UPDATE employee_pins SET pin_hash = 'zzz' WHERE employee_id = '00000000-0000-0000-0000-0000000000c1';
+UPDATE employee_pins SET pin_hash = 'zzz'
+ WHERE restaurant_id = '00000000-0000-0000-0000-0000000000b1'
+   AND employee_id   = '00000000-0000-0000-0000-0000000000c1';
 SELECT is(
-  (SELECT pin_hash FROM employee_pins WHERE employee_id = '00000000-0000-0000-0000-0000000000c1'),
+  (SELECT pin_hash FROM employee_pins
+     WHERE restaurant_id = '00000000-0000-0000-0000-0000000000b1'
+       AND employee_id   = '00000000-0000-0000-0000-0000000000c1'),
   'bbb',
   'Deactivated Alice cannot update her pin row (pin_hash unchanged)'
 );

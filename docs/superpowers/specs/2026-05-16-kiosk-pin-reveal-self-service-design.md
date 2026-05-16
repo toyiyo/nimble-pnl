@@ -254,7 +254,7 @@ changes.
 
 ## Data flow
 
-```
+```text
 Manager bulk-generate
   └─► loop over missing employees
         ├─► useUpsertEmployeePin (per employee)

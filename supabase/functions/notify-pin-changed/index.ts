@@ -15,34 +15,78 @@ interface RequestBody {
   actor: 'manager' | 'self';
 }
 
+const json = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
+  // Fail fast if the function is misconfigured — never call createClient with
+  // empty strings, which would silently produce an unauthenticated client.
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error('notify-pin-changed: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    return json(500, { error: 'Server misconfigured' });
+  }
+
   try {
+    // 1. Caller authentication — the body fields (restaurantId, employeeId,
+    // actor) are TRUSTED INPUT downstream, so they must come from a verified
+    // manager/owner of that restaurant. Without this gate any authenticated
+    // user could trigger a spoofed "manager updated your PIN" notification
+    // for any employee at any restaurant.
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return json(401, { error: 'Missing authorization' });
+    }
+
+    // Use the service role to validate the caller's JWT and look up roles.
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const token = authHeader.slice('Bearer '.length);
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return json(401, { error: 'Invalid authorization' });
+    }
+    const callerId = userData.user.id;
+
     const body: RequestBody = await req.json();
     if (!body.restaurantId || !body.employeeId || !body.action || !body.actor) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json(400, { error: 'Missing required fields' });
     }
     if (!['manager', 'self'].includes(body.actor) || !['created', 'reset'].includes(body.action)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid actor or action value' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json(400, { error: 'Invalid actor or action value' });
+    }
+
+    // 2. Permission check — only an owner/manager of body.restaurantId may
+    // dispatch a manager-actor notification. The self-actor branch short-
+    // circuits to 204 below, but we still required a valid JWT above so an
+    // unauthenticated client cannot probe the endpoint.
+    if (body.actor === 'manager') {
+      const { data: roleRow, error: roleErr } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', callerId)
+        .eq('restaurant_id', body.restaurantId)
+        .maybeSingle();
+      if (roleErr) {
+        console.error('notify-pin-changed: role lookup failed', roleErr);
+        return json(500, { error: 'Internal server error' });
+      }
+      if (!roleRow || (roleRow.role !== 'owner' && roleRow.role !== 'manager')) {
+        return json(403, { error: 'Forbidden' });
+      }
     }
 
     // Employees don't need a notification when they reset their own PIN.
     if (body.actor === 'self') {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: employee, error: empErr } = await supabase
       .from('employees')
@@ -56,10 +100,7 @@ const handler = async (req: Request): Promise<Response> => {
         empErr,
         employeeId: body.employeeId,
       });
-      return new Response(
-        JSON.stringify({ ok: true, skipped: 'employee_not_found' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json(200, { ok: true, skipped: 'employee_not_found' });
     }
 
     const { data: restaurant } = await supabase
@@ -142,16 +183,11 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    return new Response(
-      JSON.stringify({ ok: true }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json(200, { ok: true });
   } catch (err) {
+    // Log the full error server-side; do NOT leak details to the caller.
     console.error('notify-pin-changed error', err);
-    return new Response(
-      JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json(500, { error: 'Internal server error' });
   }
 };
 

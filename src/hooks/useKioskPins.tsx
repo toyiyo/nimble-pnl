@@ -58,7 +58,10 @@ type UpsertPinInput = {
   min_length?: number;
   force_reset?: boolean;
   allowSimpleSequence?: boolean;
-  actor?: 'manager' | 'self';
+  // Required: drives whether the employee gets a "manager updated your PIN"
+  // notification. Callers must be explicit so the kiosk-mode forced-reset path
+  // (employee initiates) doesn't accidentally fire a manager notification.
+  actor: 'manager' | 'self';
   // When true, suppress the per-save toast so callers that surface their own
   // confirmation UI (e.g. PinRevealDialog after bulk auto-generate) don't stack
   // N toasts on top of a modal.
@@ -120,7 +123,7 @@ export const useUpsertEmployeePin = () => {
       return {
         pin: pinToUse,
         record: data as EmployeePin,
-        actor: payload.actor ?? 'manager',
+        actor: payload.actor,
         action: 'reset' as const,
         silent: payload.silent ?? false,
       };
@@ -129,6 +132,8 @@ export const useUpsertEmployeePin = () => {
       queryClient.invalidateQueries({ queryKey: pinQueryKey(result.record.restaurant_id) });
 
       if (result.actor === 'manager') {
+        // supabase.functions.invoke resolves with { data, error } on HTTP
+        // failures (it does NOT reject), so we must inspect both branches.
         supabase.functions
           .invoke('notify-pin-changed', {
             body: {
@@ -138,8 +143,13 @@ export const useUpsertEmployeePin = () => {
               actor: 'manager',
             },
           })
+          .then(({ error }) => {
+            if (error) {
+              console.warn('notify-pin-changed invoke returned error', error);
+            }
+          })
           .catch((err) => {
-            console.warn('notify-pin-changed invoke failed', err);
+            console.warn('notify-pin-changed invoke threw', err);
           });
       }
 

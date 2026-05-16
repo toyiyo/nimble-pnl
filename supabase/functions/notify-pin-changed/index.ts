@@ -28,16 +28,21 @@ const handler = async (req: Request): Promise<Response> => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    if (!['manager', 'self'].includes(body.actor) || !['created', 'reset'].includes(body.action)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid actor or action value' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Employees don't need a notification when they reset their own PIN.
     if (body.actor === 'self') {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: employee, error: empErr } = await supabase
       .from('employees')
@@ -64,16 +69,24 @@ const handler = async (req: Request): Promise<Response> => {
       .maybeSingle();
     const restaurantName = restaurant?.name ?? 'your restaurant';
 
-    // Push notification (no-op if no device tokens; never throw)
+    // Push notification (no-op if no device tokens; never throw).
+    // send-push-notification verifies the Authorization header equals
+    // "Bearer ${SUPABASE_SERVICE_ROLE_KEY}" verbatim, so supabase.functions.invoke
+    // (which sends the caller's user JWT) would silently 401. Use raw fetch.
     if (employee.user_id) {
       try {
-        await supabase.functions.invoke('send-push-notification', {
-          body: {
+        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
             user_id: employee.user_id,
             title: 'Kiosk PIN updated',
             body: `Your manager updated your kiosk PIN at ${restaurantName}.`,
             data: { type: 'pin_changed', restaurant_id: body.restaurantId },
-          },
+          }),
         });
       } catch (pushErr) {
         console.warn('notify-pin-changed: push failed', pushErr);
@@ -87,11 +100,14 @@ const handler = async (req: Request): Promise<Response> => {
         try {
           const resend = new Resend(resendKey);
           const safeName = escapeHtml(employee.name ?? 'there');
+          // safeRestaurant is HTML-escaped for the body; subjectRestaurant is plain
+          // text (CR/LF stripped) so entities like "&amp;" don't leak into the header.
           const safeRestaurant = escapeHtml(restaurantName).replace(/[\r\n]/g, ' ');
+          const subjectRestaurant = restaurantName.replace(/[\r\n]/g, ' ');
           await resend.emails.send({
             from: 'EasyShiftHQ <notifications@easyshifthq.com>',
             to: [employee.email],
-            subject: `Your kiosk PIN was updated at ${safeRestaurant}`,
+            subject: `Your kiosk PIN was updated at ${subjectRestaurant}`,
             html: `
               <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
                 ${generateHeader()}

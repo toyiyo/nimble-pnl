@@ -46,6 +46,7 @@ import Employees from "./pages/Employees";
 import EmployeeClock from "./pages/EmployeeClock";
 import EmployeePortal from "./pages/EmployeePortal";
 import EmployeeTimecard from "./pages/EmployeeTimecard";
+import EmployeePin from "./pages/EmployeePin";
 import EmployeePay from "./pages/EmployeePay";
 import EmployeeSchedule from "./pages/EmployeeSchedule";
 import AvailableShiftsPage from "./pages/AvailableShiftsPage";
@@ -220,7 +221,7 @@ function StaffRoleChecker({
   }
 
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
-  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pay', '/employee/schedule', '/employee/shifts', '/employee/tips', '/employee/more', '/settings'];
+  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pin', '/employee/pay', '/employee/schedule', '/employee/shifts', '/employee/tips', '/employee/more', '/settings'];
   const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
 
   // If user is staff and trying to access restricted route
@@ -264,6 +265,7 @@ const App = () => (
           <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
           <Route path="/employee/portal" element={<ProtectedRoute allowStaff={true}><EmployeePortal /></ProtectedRoute>} />
           <Route path="/employee/timecard" element={<ProtectedRoute allowStaff={true}><EmployeeTimecard /></ProtectedRoute>} />
+          <Route path="/employee/pin" element={<ProtectedRoute allowStaff={true}><EmployeePin /></ProtectedRoute>} />
           <Route path="/employee/pay" element={<ProtectedRoute allowStaff={true}><EmployeePay /></ProtectedRoute>} />
           <Route path="/employee/schedule" element={<ProtectedRoute allowStaff={true}><EmployeeSchedule /></ProtectedRoute>} />
           <Route path="/employee/shifts" element={<ProtectedRoute allowStaff={true}><AvailableShiftsPage /></ProtectedRoute>} />

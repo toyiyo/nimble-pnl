@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Clock, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Clock, KeyRound, CalendarCheck, ShoppingBag, Coins, Settings, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 interface NavItem {
@@ -11,6 +11,7 @@ interface NavItem {
 
 const mainItems: NavItem[] = [
   { path: '/employee/timecard', label: 'Timecard', description: 'Hours worked this period', icon: Clock },
+  { path: '/employee/pin', label: 'Kiosk PIN', description: 'Manage your clock-in PIN', icon: KeyRound },
   { path: '/employee/portal', label: 'Requests', description: 'Time off & availability', icon: CalendarCheck },
   { path: '/employee/shifts', label: 'Shift Marketplace', description: 'Pick up available shifts', icon: ShoppingBag },
   { path: '/employee/tips', label: 'Tips', description: 'Tip history & breakdown', icon: Coins },

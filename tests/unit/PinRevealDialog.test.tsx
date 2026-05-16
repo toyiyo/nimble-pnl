@@ -47,4 +47,12 @@ describe('PinRevealDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /done/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it('announces a manual-copy fallback when clipboard.writeText rejects', async () => {
+    writeTextMock.mockRejectedValueOnce(new Error('clipboard denied'));
+    render(<PinRevealDialog open pins={sample} onOpenChange={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /copy pin for alice ng/i }));
+    // The fallback announce text mentions the literal PIN so the manager can still see it.
+    expect(await screen.findByText(/copy failed.*4729 manually/i)).toBeInTheDocument();
+  });
 });

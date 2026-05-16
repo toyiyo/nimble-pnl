@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { KeyRound, AlertTriangle, Copy, Check, Printer } from 'lucide-react';
@@ -21,18 +21,42 @@ const formatBulk = (pins: RevealedPin[]) =>
 
 export function PinRevealDialog({ open, pins, onOpenChange }: PinRevealDialogProps) {
   const [announce, setAnnounce] = useState('');
+  // Bumped on every announce so repeated identical strings still re-fire screen-reader output.
+  const [announceSeq, setAnnounceSeq] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const clearCopiedTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (clearCopiedTimer.current) window.clearTimeout(clearCopiedTimer.current);
+    },
+    []
+  );
+
+  const announceMessage = (msg: string) => {
+    setAnnounce(msg);
+    setAnnounceSeq((s) => s + 1);
+  };
 
   const copyOne = async (p: RevealedPin) => {
-    await navigator.clipboard.writeText(p.pin);
-    setCopiedId(p.employeeId);
-    setAnnounce(`PIN for ${p.name} copied.`);
-    window.setTimeout(() => setCopiedId(null), 1500);
+    try {
+      await navigator.clipboard.writeText(p.pin);
+      setCopiedId(p.employeeId);
+      announceMessage(`PIN for ${p.name} copied.`);
+      if (clearCopiedTimer.current) window.clearTimeout(clearCopiedTimer.current);
+      clearCopiedTimer.current = window.setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      announceMessage(`Copy failed — please copy ${p.pin} manually.`);
+    }
   };
 
   const copyAll = async () => {
-    await navigator.clipboard.writeText(formatBulk(pins));
-    setAnnounce(`Copied ${pins.length} PIN${pins.length === 1 ? '' : 's'}.`);
+    try {
+      await navigator.clipboard.writeText(formatBulk(pins));
+      announceMessage(`Copied ${pins.length} PIN${pins.length === 1 ? '' : 's'}.`);
+    } catch {
+      announceMessage('Copy failed — please use Print instead.');
+    }
   };
 
   const print = () => {
@@ -117,6 +141,7 @@ export function PinRevealDialog({ open, pins, onOpenChange }: PinRevealDialogPro
           className="sr-only"
         >
           {announce}
+          <span aria-hidden="true" style={{ display: 'none' }}>{announceSeq}</span>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border/40 bg-background sticky bottom-0 print:hidden">

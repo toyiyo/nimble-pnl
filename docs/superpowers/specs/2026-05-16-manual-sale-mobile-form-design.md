@@ -161,6 +161,6 @@ the primitive change is backward compatible by `tailwind-merge` semantics.
   (e.g. `MapPOSItemDialog`) gains an outer `overflow-y-auto`. Inner
   `flex-1 overflow-y-auto` regions still work because the inner div claims
   the remaining flex space, and the outer only scrolls if total content
-  exceeds `max-h-[80vh]` (its own override).
+  exceeds `max-h-[85vh]` (its own override).
   **Mitigation:** Manual smoke test of `MapPOSItemDialog`,
   `ManualMatchDialog` in the dev server.

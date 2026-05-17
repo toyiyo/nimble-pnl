@@ -89,6 +89,22 @@ export function shiftsOverlap(a: GeneratedShift, b: GeneratedShift): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
 
+/**
+ * Normalize a position string for matching. Lowercases, trims, collapses
+ * internal whitespace, and strips a trailing -s plural unless the word ends
+ * in -ss ("Hostess", "Buss") or is too short (stem <= 4 chars: "Bus", "Gas").
+ *
+ * Lets "Line Cook" / "line cook" / "Cooks" / "Cook" all match.
+ */
+export function normalizePosition(s: string | null | undefined): string {
+  if (!s) return "";
+  const lower = s.trim().toLowerCase().replace(/\s+/g, " ");
+  if (lower.length > 4 && lower.endsWith("s") && !lower.endsWith("ss")) {
+    return lower.slice(0, -1);
+  }
+  return lower;
+}
+
 // ─── Main Validation Function ─────────────────────────────────────────────────
 
 /**
@@ -134,11 +150,11 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 4. Position matches (case-insensitive)
+    // 4. Position matches (normalized: case, whitespace, trailing -s plural)
     const assignedPosition = ctx.employeePositions.get(shift.employee_id);
     if (
       assignedPosition === undefined ||
-      assignedPosition.toLowerCase() !== shift.position.toLowerCase()
+      normalizePosition(assignedPosition) !== normalizePosition(shift.position)
     ) {
       drop(
         "POSITION_MISMATCH",

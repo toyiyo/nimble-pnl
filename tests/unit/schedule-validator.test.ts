@@ -192,3 +192,52 @@ describe('validateGeneratedShifts', () => {
     expect(result.dropped).toHaveLength(0);
   });
 });
+
+// ─── Position Normalization Tests ───────────────────────────────────────────
+
+describe('validateGeneratedShifts — position normalization', () => {
+  it('matches "Line Cook" employee with "line cook" shift (case-insensitive)', () => {
+    const ctx = makeContext({
+      employeePositions: new Map([['emp-1', 'Line Cook']]),
+    });
+    const shift = makeShift({ position: 'line cook' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+
+  it('matches "Cook " (trailing space) employee with "Cook" shift', () => {
+    const ctx = makeContext({
+      employeePositions: new Map([['emp-1', 'Cook ']]),
+    });
+    const shift = makeShift({ position: 'Cook' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+
+  it('matches "Servers" (plural) employee with "server" shift', () => {
+    const ctx = makeContext({
+      employeePositions: new Map([['emp-1', 'Servers']]),
+    });
+    const shift = makeShift({ position: 'server' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+
+  it('preserves "Hostess" (ends in ss, does not strip)', () => {
+    const ctx = makeContext({
+      employeePositions: new Map([['emp-1', 'Hostess']]),
+    });
+    const shift = makeShift({ position: 'Hostess' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+
+  it('preserves short stems like "Bus" (stem length <= 4)', () => {
+    const ctx = makeContext({
+      employeePositions: new Map([['emp-1', 'Bus']]),
+    });
+    const shift = makeShift({ position: 'Bus' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+});

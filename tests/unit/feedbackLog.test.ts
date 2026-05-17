@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// CommonJS import — feedback-log.js is plain Node, no TS
 import {
   sanitize,
   appendRow,
@@ -37,11 +36,16 @@ describe('feedback-log: sanitize', () => {
     );
   });
 
-  it('CRITICAL: truncates output longer than 2000 chars with ellipsis marker', () => {
+  it('CRITICAL: truncates output to hard 2000-char cap with ellipsis marker', () => {
     const input = 'a'.repeat(5000);
     const out = sanitize(input);
-    expect(out.length).toBeLessThanOrEqual(2000 + '… [truncated]'.length);
+    expect(out.length).toBeLessThanOrEqual(2000);
     expect(out.endsWith('… [truncated]')).toBe(true);
+  });
+
+  it('CRITICAL: redacts Bearer tokens regardless of case', () => {
+    expect(sanitize('Authorization: bearer abc.def.ghi')).toContain('<redacted-token>');
+    expect(sanitize('Authorization: BEARER abc.def.ghi')).toContain('<redacted-token>');
   });
 
   it('passes through clean text unchanged', () => {
@@ -91,6 +95,9 @@ describe('feedback-log: appendRow', () => {
   });
 
   it('throws on missing id field', () => {
+    // Type cast needed to feed an intentionally malformed payload (missing required `id`)
+    // and assert the runtime validation. The CLI/library boundary is the right place
+    // to validate, so the test mirrors what an untyped caller can pass.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(() => appendRow({ signature: 'a' } as any)).toThrow(/id/i);
   });
@@ -113,6 +120,19 @@ describe('feedback-log: queryBySignature', () => {
 
   it('returns empty array when log does not exist', () => {
     expect(queryBySignature('anything')).toEqual([]);
+  });
+
+  it('skips malformed JSONL lines instead of throwing', () => {
+    appendRow({ id: '1', signature: 's', filed_at: '2026-05-16T00:00:00Z' });
+    appendFileSync(logPath, 'this is not json\n', 'utf8');
+    appendRow({ id: '2', signature: 's', filed_at: '2026-05-16T01:00:00Z' });
+    const rows = queryBySignature('s');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r: { id: string }) => r.id).sort()).toEqual(['1', '2']);
+  });
+
+  it('throws when --since is not a valid ISO timestamp', () => {
+    expect(() => queryBySignature('s', { since: 'not-a-date' })).toThrow(/ISO/);
   });
 
   it('returns rows matching the signature', () => {

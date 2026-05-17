@@ -35,7 +35,7 @@ User feedback arrives through PostHog surveys, error tracking, and rageclicks. I
 
 ### Invocation
 
-```
+```text
 /triage-feedback                    # default: last 7 days, signals from all sources, review mode
 /triage-feedback --window 24h       # narrow window
 /triage-feedback --include errors   # restrict signal sources (comma-separated)
@@ -44,7 +44,7 @@ User feedback arrives through PostHog surveys, error tracking, and rageclicks. I
 
 ### Flow
 
-```
+```text
 1. PULL signals (PostHog MCP)
    - survey-sent events in window with $survey_response_*, distinct_id
    - Error tracking issues: first_seen in window OR rising volume
@@ -109,7 +109,7 @@ The markdown command MUST pipe any user-supplied text through `sanitize` before 
 
 ### Helper script CLI
 
-```
+```bash
 node dev-tools/feedback-log.js append <json>
   # appends one JSONL row, ensures ~/.nimble-pnl/ exists, idempotent on id
 

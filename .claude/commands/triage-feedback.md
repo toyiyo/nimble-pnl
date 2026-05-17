@@ -24,7 +24,7 @@ Before doing anything, verify these MCPs are connected by attempting a discovery
 
 If any are missing, print:
 
-```
+```text
 ⚠ <name> MCP not connected. Connect it before re-running.
 ```
 
@@ -160,7 +160,7 @@ The sanitizer strips emails, UUIDs, JWTs, Bearer tokens, and `restaurant_id=` qu
 ## Logs (sanitized excerpt)
 <details><summary>Backend logs ±10min</summary>
 
-```
+```text
 <up to 20 lines, sanitized>
 ```
 
@@ -199,25 +199,35 @@ Print the title + body for each candidate. Then:
 
 ### 6. LOG
 
-For every candidate (filed OR skipped due to dedup), append a row:
+For every candidate (filed OR skipped due to dedup), append a row. Build the JSON with `jq --arg` so quotes/newlines/backslashes in raw feedback text are escaped safely — a bare heredoc would produce invalid JSON the moment a reporter wrote `"` or a literal newline:
 
 ```bash
-node dev-tools/feedback-log.js append "$(cat <<EOF
-{
-  "id": "<uuid>",
-  "signature": "<sig>",
-  "gh_issue_number": <number or null>,
-  "signal_type": "survey|error|rageclick",
-  "signal_timestamp": "<ISO>",
-  "reporter_email": "<email or null>",
-  "reporter_name": "<name or null>",
-  "feedback_text": "<raw, NOT sanitized — local only>",
-  "restaurant_id": "<uuid or null>",
-  "route": "<route>",
-  "filed_at": "<ISO now>"
-}
-EOF
-)"
+ROW_JSON="$(jq -n \
+  --arg id "<uuid>" \
+  --arg signature "<sig>" \
+  --argjson gh_issue_number "<number or null>" \
+  --arg signal_type "survey|error|rageclick" \
+  --arg signal_timestamp "<ISO>" \
+  --arg reporter_email "<email or null>" \
+  --arg reporter_name "<name or null>" \
+  --arg feedback_text "<raw, NOT sanitized — local only>" \
+  --arg restaurant_id "<uuid or null>" \
+  --arg route "<route>" \
+  --arg filed_at "<ISO now>" \
+  '{
+    id: $id,
+    signature: $signature,
+    gh_issue_number: $gh_issue_number,
+    signal_type: $signal_type,
+    signal_timestamp: $signal_timestamp,
+    reporter_email: $reporter_email,
+    reporter_name: $reporter_name,
+    feedback_text: $feedback_text,
+    restaurant_id: $restaurant_id,
+    route: $route,
+    filed_at: $filed_at
+  }')"
+node dev-tools/feedback-log.js append "$ROW_JSON"
 ```
 
 The helper is idempotent on `id` — safe to re-run.
@@ -226,7 +236,7 @@ The helper is idempotent on `id` — safe to re-run.
 
 End with a short tally:
 
-```
+```text
 Triage-feedback complete.
   Signals scanned:        <N>
   Skipped (dedup open):   <N>

@@ -1,19 +1,19 @@
-'use strict';
-
-const fs = require('node:fs');
-const path = require('node:path');
-const os = require('node:os');
+#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
 // Sanitizer patterns — order matters: restaurant_id and tokens before email/uuid
 // so a URL containing both is fully redacted without double-replacing.
 const RESTAURANT_ID_PARAM = /restaurant_id=([^&\s"']+)/gi;
 const JWT = /\beyJ[\w-]+\.[\w-]+\.[\w-]+\b/g;
-const BEARER = /Bearer\s+[A-Za-z0-9._\-+/=]+/g;
+const BEARER = /\bBearer\s+[A-Za-z0-9._\-+/=]+\b/gi;
 const EMAIL = /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g;
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const MAX_LEN = 2000;
+const TRUNC_SUFFIX = '… [truncated]';
 
-function sanitize(text) {
+export function sanitize(text) {
   if (typeof text !== 'string') return '';
   let out = text
     .replace(RESTAURANT_ID_PARAM, 'restaurant_id=<redacted>')
@@ -21,14 +21,17 @@ function sanitize(text) {
     .replace(BEARER, '<redacted-token>')
     .replace(EMAIL, '<redacted-email>')
     .replace(UUID, '<redacted-uuid>');
-  if (out.length > MAX_LEN) out = out.slice(0, MAX_LEN) + '… [truncated]';
+  if (out.length > MAX_LEN) {
+    const budget = Math.max(0, MAX_LEN - TRUNC_SUFFIX.length);
+    out = out.slice(0, budget) + TRUNC_SUFFIX;
+  }
   return out;
 }
 
 // Test seam — allows unit tests to redirect file I/O without touching env vars.
 let _testLogPath = null;
 
-function _resetLogPathForTests(p) {
+export function _resetLogPathForTests(p) {
   _testLogPath = p;
 }
 
@@ -45,10 +48,17 @@ function readAllRows() {
     .readFileSync(p, 'utf8')
     .split('\n')
     .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line));
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        // Skip malformed lines so one bad row can't block append/query.
+        return [];
+      }
+    });
 }
 
-function appendRow(row) {
+export function appendRow(row) {
   if (!row || typeof row !== 'object') throw new Error('row must be an object');
   if (!row.id || typeof row.id !== 'string') throw new Error('row.id (string) is required');
   const p = getLogPath();
@@ -59,11 +69,17 @@ function appendRow(row) {
   return true;
 }
 
-function queryBySignature(signature, opts = {}) {
+export function queryBySignature(signature, opts = {}) {
   if (typeof signature !== 'string' || signature.length === 0) {
     throw new Error('signature (non-empty string) is required');
   }
-  const since = opts.since ? Date.parse(opts.since) : null;
+  let since = null;
+  if (opts.since) {
+    since = Date.parse(opts.since);
+    if (Number.isNaN(since)) {
+      throw new Error('opts.since must be a valid ISO timestamp');
+    }
+  }
   return readAllRows().filter((row) => {
     if (row.signature !== signature) return false;
     if (since !== null) {
@@ -83,7 +99,7 @@ function readStdin() {
   });
 }
 
-async function runCli(argv, io = {}) {
+export async function runCli(argv, io = {}) {
   const stdout = io.stdout || ((s) => process.stdout.write(s));
   const [sub, ...rest] = argv;
 
@@ -118,14 +134,7 @@ async function runCli(argv, io = {}) {
   }
 }
 
-if (require.main === module) {
+// Only run CLI if invoked directly (matches sibling dev-tools/ pattern).
+if (import.meta.url === `file://${process.argv[1]}`) {
   runCli(process.argv.slice(2)).then((code) => process.exit(code));
 }
-
-module.exports = {
-  sanitize,
-  appendRow,
-  queryBySignature,
-  runCli,
-  _resetLogPathForTests,
-};

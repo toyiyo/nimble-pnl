@@ -68,7 +68,7 @@ describe('SplitSaleView — semantic tokens only (no direct blue colors)', () =>
         formatCurrency={(n) => `$${n.toFixed(2)}`}
       />,
     );
-    expect(container.innerHTML).toContain('p-3');
-    expect(container.innerHTML).toContain('sm:p-4');
+    expect(container.innerHTML).toMatch(/\bp-3\b/);
+    expect(container.innerHTML).toMatch(/\bsm:p-4\b/);
   });
 });

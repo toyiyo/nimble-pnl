@@ -101,7 +101,9 @@ User feedback arrives through PostHog surveys, error tracking, and rageclicks. I
 - Strip UUIDs (`[0-9a-f]{8}-[0-9a-f]{4}-...`)
 - Strip bearer tokens / JWTs (`Bearer \S+`, `eyJ[\w-]+\.[\w-]+\.[\w-]+`)
 - Replace `restaurant_id=<uuid>` with `restaurant_id=<redacted>`
-- Truncate `feedback_text` excerpt to first 200 chars; only sanitized form goes in the issue summary; raw stays local
+- Hard-cap sanitized output at 2000 chars (any longer text is suffixed with `… [truncated]`)
+
+The 2000-char cap is a defense-in-depth ceiling on what the sanitizer will return; the slash command separately limits the `feedback_text` excerpt it embeds in the issue summary to a short one-liner derived from the first ~200 chars of the sanitized text. Raw feedback stays local.
 
 The markdown command MUST pipe any user-supplied text through `sanitize` before composing the issue body. This is the single chokepoint — easier to audit than scattered regex.
 
@@ -118,7 +120,7 @@ node dev-tools/feedback-log.js sanitize
   # reads stdin, writes sanitized text to stdout
 ```
 
-Exit codes: 0 success, 1 invalid args, 2 IO error.
+Exit codes: 0 success, 1 error (any failure — invalid args, IO, parse). The helper is local-only and not scripted against by callers that need to distinguish error classes, so a single non-zero code keeps the implementation simple.
 
 ## Testing strategy
 

@@ -12,32 +12,32 @@ import {
 } from '../../dev-tools/feedback-log.js';
 
 describe('feedback-log: sanitize', () => {
-  it('strips email addresses', () => {
+  it('CRITICAL: strips email addresses', () => {
     expect(sanitize('contact monica@rushbowls.com about this')).toBe(
       'contact <redacted-email> about this',
     );
   });
 
-  it('strips UUIDs', () => {
+  it('CRITICAL: strips UUIDs', () => {
     expect(sanitize('user 4bb07d19-bb65-4661-89c6-bb537b0fa1de failed')).toBe(
       'user <redacted-uuid> failed',
     );
   });
 
-  it('strips bearer tokens and JWT-shaped strings', () => {
+  it('CRITICAL: strips bearer tokens and JWT-shaped strings', () => {
     expect(sanitize('Authorization: Bearer abc.def.ghi')).toContain('<redacted-token>');
     expect(sanitize('token eyJhbGciOi.eyJzdWIiOi.signaturepart')).toContain(
       '<redacted-token>',
     );
   });
 
-  it('redacts restaurant_id query/url segments', () => {
+  it('CRITICAL: redacts restaurant_id query/url segments', () => {
     expect(sanitize('restaurant_id=ae87f51e-e2c0-44f4-b6bb-3953d5bbdbff')).toBe(
       'restaurant_id=<redacted>',
     );
   });
 
-  it('truncates output longer than 2000 chars with ellipsis marker', () => {
+  it('CRITICAL: truncates output longer than 2000 chars with ellipsis marker', () => {
     const input = 'a'.repeat(5000);
     const out = sanitize(input);
     expect(out.length).toBeLessThanOrEqual(2000 + '… [truncated]'.length);

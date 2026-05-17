@@ -15,8 +15,8 @@ const splitSale: UnifiedSaleItem = {
   externalOrderId: 'ord-1',
   is_split: true,
   child_splits: [
-    { id: 'child-1', itemName: 'Burger', totalPrice: 15 } as any,
-    { id: 'child-2', itemName: 'Fries', totalPrice: 10 } as any,
+    { id: 'child-1', itemName: 'Burger', totalPrice: 15 } as unknown as UnifiedSaleItem,
+    { id: 'child-2', itemName: 'Fries', totalPrice: 10 } as unknown as UnifiedSaleItem,
   ],
 } as UnifiedSaleItem;
 

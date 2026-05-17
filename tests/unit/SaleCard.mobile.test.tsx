@@ -82,7 +82,7 @@ describe('SaleCard — mobile responsive classes', () => {
     const saleWithSuggestion: UnifiedSaleItem = {
       ...baseSale,
       suggested_category_id: 'cat-1',
-      chart_account: { id: 'acc-1', account_name: 'Food', account_code: '4000' } as any,
+      chart_account: { id: 'acc-1', account_name: 'Food', account_code: '4000' },
     } as UnifiedSaleItem;
     const { container } = render(<SaleCard {...baseProps} sale={saleWithSuggestion} />);
     const html = container.innerHTML;
@@ -94,7 +94,7 @@ describe('SaleCard — mobile responsive classes', () => {
     const categorizedSale: UnifiedSaleItem = {
       ...baseSale,
       is_categorized: true,
-      chart_account: { id: 'acc-1', account_name: 'Food', account_code: '4000' } as any,
+      chart_account: { id: 'acc-1', account_name: 'Food', account_code: '4000' },
     } as UnifiedSaleItem;
     const { container } = render(<SaleCard {...baseProps} sale={categorizedSale} />);
     // Target the Edit button specifically (the small button inside the categorized badge block)

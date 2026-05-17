@@ -778,7 +778,7 @@ export default function POSSales() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-[2rem] md:text-[2.5rem] font-semibold tracking-tight text-foreground">
+              <h1 className="text-[2rem] sm:text-[2.5rem] font-semibold tracking-tight text-foreground">
                 Sales
               </h1>
               <span className="inline-flex flex-wrap items-center gap-1.5 px-2 sm:px-2.5 py-1 text-xs font-medium rounded-full bg-muted text-muted-foreground">

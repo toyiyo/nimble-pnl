@@ -792,43 +792,7 @@ export default function POSSales() {
           </div>
 
           {/* Action buttons - Apple style */}
-          <div className="flex items-center gap-2">
-            {hasAnyConnectedSystem() && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSyncSales}
-                disabled={isSyncing}
-                className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
-                {isSyncing ? "Syncing" : "Sync"}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowRulesDialog(true)}
-              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
-            >
-              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
-              Rules
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setActiveTab("import")}
-              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
-            >
-              <UploadIcon className="h-3.5 w-3.5 mr-1.5" />
-              Import
-            </Button>
-            <ExportDropdown
-              onExportCSV={handleExportCSV}
-              onExportPDF={handleExportPDF}
-              isExporting={isExporting}
-            />
-            <div className="w-px h-5 bg-border mx-1" />
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={() => {
                 setActiveTab("manual");
@@ -836,11 +800,50 @@ export default function POSSales() {
                 setShowSaleDialog(true);
               }}
               size="sm"
-              className="h-8 px-3 text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 rounded-lg transition-colors shadow-sm"
+              className="order-last sm:order-none h-8 px-3 text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 rounded-lg transition-colors shadow-sm"
             >
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               Add Sale
             </Button>
+            {hasAnyConnectedSystem() && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSyncSales}
+                disabled={isSyncing}
+                aria-label="Sync sales"
+                className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 sm:mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">{isSyncing ? "Syncing" : "Sync"}</span>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowRulesDialog(true)}
+              aria-label="Category rules"
+              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <Settings2 className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Rules</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setActiveTab("import")}
+              aria-label="Import sales"
+              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <UploadIcon className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+            <ExportDropdown
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              isExporting={isExporting}
+            />
+            <div className="hidden sm:block w-px h-5 bg-border mx-1" />
           </div>
         </div>
       </header>

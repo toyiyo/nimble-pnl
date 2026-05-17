@@ -244,7 +244,6 @@ const KioskMode = () => {
     }
   };
 
-  // Helper: Validate PIN and lock state
   const validatePinInput = (): string | null => {
     if (!restaurantId) {
       return 'Kiosk is not tied to a location. Ask a manager to relaunch from Time Punches.';
@@ -258,7 +257,6 @@ const KioskMode = () => {
     return null;
   };
 
-  // Helper: Validate punch status
   const validatePunchStatus = (status: PunchStatus | null, action: PunchAction): string | null => {
     if (action === 'clock_in' && status?.is_clocked_in) {
       return 'You are already clocked in.';
@@ -269,19 +267,14 @@ const KioskMode = () => {
     return null;
   };
 
-  // Helper: Handle offline queue
   const handleOfflineQueue = async (
     action: PunchAction,
-    pin: string,
     context: Awaited<ReturnType<typeof collectPunchContext>> | null,
     employeeId?: string
   ) => {
-    const offline = isLikelyOffline();
-    if (offline && pin) {
-      await queuePunchOffline(action, pin, context, employeeId);
-      return true;
-    }
-    return false;
+    if (!isLikelyOffline()) return false;
+    await queuePunchOffline(action, context, employeeId);
+    return true;
   };
 
   // The kiosk is the only authenticated identity on this device; we use that
@@ -314,15 +307,11 @@ const KioskMode = () => {
     setErrorMessage(null);
     setStatusMessage(null);
 
-    // Snapshot inputs that the late onSuccess/onError need (they may otherwise
-    // see cleared state since we wipe pinInput as soon as the punch is taken).
-    const submittedPin = pinInput;
-
     let pinMatch: Awaited<ReturnType<typeof verifyPinForRestaurant>> = null;
     let context: Awaited<ReturnType<typeof collectPunchContext>> | null = null;
 
     try {
-      pinMatch = await verifyPinForRestaurant(restaurantId, submittedPin);
+      pinMatch = await verifyPinForRestaurant(restaurantId, pinInput);
       if (!pinMatch) {
         registerFailure();
         releaseLock();
@@ -343,7 +332,6 @@ const KioskMode = () => {
     } catch (error: unknown) {
       const handledOffline = await handleOfflineQueue(
         action,
-        submittedPin,
         context,
         pinMatch?.employee_id
       );
@@ -391,16 +379,20 @@ const KioskMode = () => {
       },
       {
         onSuccess: () => {
+          // pinMatch is guaranteed non-null: the early-return guards above
+          // would have exited before we reach this closure.
+          const match = pinMatch!;
+
           // force_reset is a security-critical flow (an admin-issued reset
           // forces the employee to pick a new PIN). We MUST wait until the
           // punch has actually persisted before opening the change dialog —
           // otherwise an offline/failed punch would still trigger the PIN
           // reset UX, which is misleading.
-          if (pinMatch!.force_reset) {
+          if (match.force_reset) {
             setPinChangeEmployee({
-              id: pinMatch!.employee_id,
+              id: match.employee_id,
               name: employeeName,
-              pinId: pinMatch!.id,
+              pinId: match.id,
             });
             setPinChangeDialogOpen(true);
           } else {
@@ -409,13 +401,13 @@ const KioskMode = () => {
             supabase
               .from('employee_pins')
               .update({ last_used_at: nowIso })
-              .eq('id', pinMatch!.id)
+              .eq('id', match.id)
               .then(() => {}, () => {});
           }
 
-          if (action === 'clock_out' && pinMatch!.employee) {
+          if (action === 'clock_out' && match.employee) {
             setTipSubmissionEmployee({
-              id: pinMatch!.employee_id,
+              id: match.employee_id,
               name: employeeName,
             });
             setTipDialogOpen(true);
@@ -428,7 +420,6 @@ const KioskMode = () => {
         onError: async (error: unknown) => {
           const handledOffline = await handleOfflineQueue(
             action,
-            submittedPin,
             context,
             pinMatch?.employee_id
           );
@@ -541,7 +532,6 @@ const KioskMode = () => {
 
   const queuePunchOffline = async (
     action: PunchAction,
-    pin: string,
     context: Awaited<ReturnType<typeof collectPunchContext>> | null,
     employeeId?: string
   ) => {

@@ -48,7 +48,6 @@ export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [videoReady, setVideoReady] = useState(false);
 
   const startCamera = useCallback(async () => {
   if (import.meta.env.DEV) { console.log('🎥 Starting camera...'); }

@@ -1205,7 +1205,7 @@ export default function POSSales() {
                   {/* Virtualized list container - Apple-style clean scrolling */}
                   <div
                     ref={salesListRef}
-                    className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
+                    className="h-[calc(100vh-180px)] [height:calc(100dvh-180px)] min-h-[400px] sm:h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
                   >
                     <div
                       style={{
@@ -1222,7 +1222,7 @@ export default function POSSales() {
                         if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
                           return (
                             <div
-                              key={virtualRow.index}
+                              key={sale.id}
                               data-index={virtualRow.index}
                               ref={salesVirtualizer.measureElement}
                               style={{
@@ -1246,7 +1246,7 @@ export default function POSSales() {
                         // Regular sale card (non-split) - using extracted SaleCard component
                         return (
                           <div
-                            key={virtualRow.index}
+                            key={sale.id}
                             data-index={virtualRow.index}
                             ref={salesVirtualizer.measureElement}
                             style={{

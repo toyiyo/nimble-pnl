@@ -25,9 +25,11 @@ const baseProps = {
 describe('POSSalesDashboard — mobile layout', () => {
   it('outer row stacks on mobile, switches to flex-row at sm+', () => {
     const { container } = render(<POSSalesDashboard {...baseProps} />);
-    const html = container.innerHTML;
-    expect(html).toMatch(/\bflex-col\b/);
-    expect(html).toMatch(/\bsm:flex-row\b/);
-    expect(html).toMatch(/\bsm:items-center\b/);
+    const outerRow = container.querySelector('[class*="sm:flex-row"]');
+    expect(outerRow).not.toBeNull();
+    const className = outerRow?.className ?? '';
+    expect(className).toMatch(/\bflex-col\b/);
+    expect(className).toMatch(/\bsm:flex-row\b/);
+    expect(className).toMatch(/\bsm:items-center\b/);
   });
 });

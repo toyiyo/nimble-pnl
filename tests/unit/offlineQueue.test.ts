@@ -171,4 +171,66 @@ describe('offlineQueue — flushing mutex', () => {
     expect(isLikelyOffline()).toBe(false);
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: original });
   });
+
+  it('randomId falls back to crypto.getRandomValues when randomUUID is unavailable', async () => {
+    // Spy crypto so randomUUID is missing but getRandomValues remains.
+    const realRandomUUID = (globalThis.crypto as Crypto).randomUUID;
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const e1 = await addQueuedPunch({
+        restaurant_id: 'r1',
+        employee_id: 'e1',
+        punch_type: 'clock_in',
+        punch_time: new Date().toISOString(),
+      });
+      const e2 = await addQueuedPunch({
+        restaurant_id: 'r1',
+        employee_id: 'e2',
+        punch_type: 'clock_in',
+        punch_time: new Date().toISOString(),
+      });
+      // Both ids took the getRandomValues path → hex suffix.
+      expect(e1.id).toMatch(/^kiosk-\d+-[0-9a-f]{16}$/);
+      expect(e2.id).toMatch(/^kiosk-\d+-[0-9a-f]{16}$/);
+      expect(e1.id).not.toBe(e2.id);
+    } finally {
+      Object.defineProperty(globalThis.crypto, 'randomUUID', {
+        configurable: true,
+        value: realRandomUUID,
+      });
+    }
+  });
+
+  it('randomId falls back to a monotonic counter when crypto is entirely unavailable', async () => {
+    const realDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      const e1 = await addQueuedPunch({
+        restaurant_id: 'r1',
+        employee_id: 'e1',
+        punch_type: 'clock_in',
+        punch_time: new Date().toISOString(),
+      });
+      const e2 = await addQueuedPunch({
+        restaurant_id: 'r1',
+        employee_id: 'e2',
+        punch_type: 'clock_in',
+        punch_time: new Date().toISOString(),
+      });
+      // Counter fallback uses a plain integer suffix, not 16-char hex.
+      expect(e1.id).toMatch(/^kiosk-\d+-\d+$/);
+      expect(e2.id).toMatch(/^kiosk-\d+-\d+$/);
+      expect(e1.id).not.toBe(e2.id);
+    } finally {
+      if (realDescriptor) {
+        Object.defineProperty(globalThis, 'crypto', realDescriptor);
+      }
+    }
+  });
 });

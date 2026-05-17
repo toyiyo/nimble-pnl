@@ -89,7 +89,7 @@ const buildContext = async (timeoutMs: number): Promise<PunchContextResult> => {
  * `getCurrentPosition`.
  */
 export function startPunchContext(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<PunchContextResult> {
-  if (inFlight) return inFlight;
+  if (inFlight !== null) return inFlight;
   inFlight = buildContext(timeoutMs).finally(() => {
     if (inFlightTimeout) clearTimeout(inFlightTimeout);
     inFlightTimeout = setTimeout(() => {
@@ -106,7 +106,7 @@ export function startPunchContext(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise
  * of starting a redundant `getCurrentPosition`.
  */
 export async function collectPunchContext(timeoutMs = DEFAULT_LOCATION_TIMEOUT) {
-  if (inFlight) return inFlight;
+  if (inFlight !== null) return inFlight;
   return buildContext(timeoutMs);
 }
 

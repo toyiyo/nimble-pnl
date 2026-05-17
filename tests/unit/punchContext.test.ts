@@ -190,4 +190,45 @@ describe('startPunchContext', () => {
     expect(getCurrentPosition).toHaveBeenCalledTimes(2);
     expect(p1).not.toBe(p2);
   });
+
+  it('clears the cached promise ~10s after the original fix resolves so the next shift gets a fresh position', async () => {
+    vi.useFakeTimers();
+    try {
+      const getCurrentPosition = vi.fn((success: PositionCallback) => {
+        success({
+          coords: {
+            latitude: 10,
+            longitude: 20,
+            accuracy: 5,
+            altitude: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: Date.now(),
+        } as GeolocationPosition);
+      });
+      Object.defineProperty(navigator, 'geolocation', {
+        configurable: true,
+        value: { getCurrentPosition },
+      });
+
+      const first = startPunchContext(3000);
+      await vi.runOnlyPendingTimersAsync();
+      await first;
+
+      // The reset timer is armed in `.finally()`; advance past the reuse
+      // window so the inFlight cache is cleared.
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      // Next call must start a fresh getCurrentPosition.
+      const second = startPunchContext(3000);
+      await vi.runOnlyPendingTimersAsync();
+      await second;
+
+      expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

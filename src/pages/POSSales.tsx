@@ -1405,8 +1405,9 @@ export default function POSSales() {
                               <span className="text-muted-foreground ml-1">sales</span>
                             </div>
                             <button
+                              type="button"
                               onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                             >
                               Check impact
                             </button>

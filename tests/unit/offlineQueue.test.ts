@@ -115,8 +115,13 @@ describe('offlineQueue — flushing mutex', () => {
     expect(result.flushed).toBe(1);
     expect(sendPunch).toHaveBeenCalledTimes(1);
     const arg = sendPunch.mock.calls[0][0] as { photoBlob?: Blob };
-    // photoBlob is rehydrated from the data URL on flush.
-    expect(arg.photoBlob).toBeInstanceOf(Blob);
+    // photoBlob is rehydrated from the data URL on flush. Duck-typed because
+    // `dataUrlToBlob` goes through fetch().blob() whose Blob constructor isn't
+    // reference-identical to the global `Blob` under CI's undici-backed jsdom.
+    expect(arg.photoBlob).toBeDefined();
+    expect(arg.photoBlob?.type).toBe('image/jpeg');
+    expect(typeof arg.photoBlob?.size).toBe('number');
+    expect(arg.photoBlob?.size).toBeGreaterThan(0);
   });
 
   it('preserves all not-yet-attempted entries when one send fails mid-flush', async () => {

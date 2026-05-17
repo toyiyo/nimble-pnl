@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 // CommonJS import — feedback-log.js is plain Node, no TS
-import { sanitize } from '../../dev-tools/feedback-log.js';
+import {
+  sanitize,
+  appendRow,
+  _resetLogPathForTests,
+} from '../../dev-tools/feedback-log.js';
 
 describe('feedback-log: sanitize', () => {
   it('strips email addresses', () => {
@@ -39,5 +46,50 @@ describe('feedback-log: sanitize', () => {
     expect(sanitize('Scroll does not work on /pos-sales')).toBe(
       'Scroll does not work on /pos-sales',
     );
+  });
+});
+
+describe('feedback-log: appendRow', () => {
+  let dir: string;
+  let logPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'feedback-log-test-'));
+    logPath = join(dir, 'feedback-log.jsonl');
+    _resetLogPathForTests(logPath);
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetLogPathForTests(null);
+  });
+
+  it('creates parent directory if missing', () => {
+    const nested = join(dir, 'a', 'b', 'log.jsonl');
+    _resetLogPathForTests(nested);
+    appendRow({ id: '1', signature: 'x', filed_at: '2026-05-16T00:00:00Z' });
+    expect(existsSync(nested)).toBe(true);
+  });
+
+  it('appends a JSONL line per call', () => {
+    appendRow({ id: '1', signature: 'a', filed_at: '2026-05-16T00:00:00Z' });
+    appendRow({ id: '2', signature: 'b', filed_at: '2026-05-16T00:01:00Z' });
+    const contents = readFileSync(logPath, 'utf8');
+    const lines = contents.trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]).id).toBe('1');
+    expect(JSON.parse(lines[1]).id).toBe('2');
+  });
+
+  it('is idempotent on duplicate id (does not append again)', () => {
+    appendRow({ id: '1', signature: 'a', filed_at: '2026-05-16T00:00:00Z' });
+    appendRow({ id: '1', signature: 'a', filed_at: '2026-05-16T00:00:00Z' });
+    const lines = readFileSync(logPath, 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+  });
+
+  it('throws on missing id field', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => appendRow({ signature: 'a' } as any)).toThrow(/id/i);
   });
 });

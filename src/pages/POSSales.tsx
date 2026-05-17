@@ -781,7 +781,7 @@ export default function POSSales() {
               <h1 className="text-[2rem] md:text-[2.5rem] font-semibold tracking-tight text-foreground">
                 Sales
               </h1>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-muted text-muted-foreground">
+              <span className="inline-flex flex-wrap items-center gap-1.5 px-2 sm:px-2.5 py-1 text-xs font-medium rounded-full bg-muted text-muted-foreground">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                 {selectedRestaurant.restaurant.name}
               </span>
@@ -871,7 +871,7 @@ export default function POSSales() {
       {/* AI Categorization Section */}
       <Card className="border-border/50">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
@@ -881,13 +881,20 @@ export default function POSSales() {
                 Automatically categorize POS sales to chart of accounts
               </p>
             </div>
-            <Button 
+            <Button
               onClick={handleCategorizeClick}
               disabled={isCategorizingPending || uncategorizedSalesCount === 0}
-              className="gap-2"
+              className="gap-2 w-full sm:w-auto"
             >
               <Sparkles className="h-4 w-4" />
-              {isCategorizingPending ? "Categorizing..." : "AI Categorize Sales"}
+              {isCategorizingPending ? (
+                "Categorizing..."
+              ) : (
+                <>
+                  <span className="hidden sm:inline">AI Categorize Sales</span>
+                  <span className="sm:hidden">AI Categorize</span>
+                </>
+              )}
             </Button>
           </div>
         </CardHeader>

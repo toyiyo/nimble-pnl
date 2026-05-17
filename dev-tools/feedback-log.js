@@ -56,4 +56,19 @@ function appendRow(row) {
   return true;
 }
 
-module.exports = { sanitize, appendRow, _resetLogPathForTests };
+function queryBySignature(signature, opts = {}) {
+  if (typeof signature !== 'string' || signature.length === 0) {
+    throw new Error('signature (non-empty string) is required');
+  }
+  const since = opts.since ? Date.parse(opts.since) : null;
+  return readAllRows().filter((row) => {
+    if (row.signature !== signature) return false;
+    if (since !== null) {
+      const t = Date.parse(row.filed_at);
+      if (Number.isNaN(t) || t < since) return false;
+    }
+    return true;
+  });
+}
+
+module.exports = { sanitize, appendRow, queryBySignature, _resetLogPathForTests };

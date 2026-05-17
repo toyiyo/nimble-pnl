@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   sanitize,
   appendRow,
+  queryBySignature,
   _resetLogPathForTests,
 } from '../../dev-tools/feedback-log.js';
 
@@ -91,5 +92,42 @@ describe('feedback-log: appendRow', () => {
   it('throws on missing id field', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(() => appendRow({ signature: 'a' } as any)).toThrow(/id/i);
+  });
+});
+
+describe('feedback-log: queryBySignature', () => {
+  let dir: string;
+  let logPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'feedback-log-test-'));
+    logPath = join(dir, 'log.jsonl');
+    _resetLogPathForTests(logPath);
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetLogPathForTests(null);
+  });
+
+  it('returns empty array when log does not exist', () => {
+    expect(queryBySignature('anything')).toEqual([]);
+  });
+
+  it('returns rows matching the signature', () => {
+    appendRow({ id: '1', signature: 'pos-sales:scroll', filed_at: '2026-05-16T00:00:00Z' });
+    appendRow({ id: '2', signature: 'pos-sales:scroll', filed_at: '2026-05-16T01:00:00Z' });
+    appendRow({ id: '3', signature: 'dashboard:tz', filed_at: '2026-05-16T02:00:00Z' });
+    const rows = queryBySignature('pos-sales:scroll');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r: { id: string }) => r.id).sort()).toEqual(['1', '2']);
+  });
+
+  it('filters by since (ISO timestamp)', () => {
+    appendRow({ id: '1', signature: 's', filed_at: '2026-05-01T00:00:00Z' });
+    appendRow({ id: '2', signature: 's', filed_at: '2026-05-15T00:00:00Z' });
+    const rows = queryBySignature('s', { since: '2026-05-10T00:00:00Z' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('2');
   });
 });

@@ -1,0 +1,210 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, existsSync, appendFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  sanitize,
+  appendRow,
+  queryBySignature,
+  runCli,
+  _resetLogPathForTests,
+} from '../../dev-tools/feedback-log.js';
+
+describe('feedback-log: sanitize', () => {
+  it('CRITICAL: strips email addresses', () => {
+    expect(sanitize('contact monica@rushbowls.com about this')).toBe(
+      'contact <redacted-email> about this',
+    );
+  });
+
+  it('CRITICAL: strips UUIDs', () => {
+    expect(sanitize('user 4bb07d19-bb65-4661-89c6-bb537b0fa1de failed')).toBe(
+      'user <redacted-uuid> failed',
+    );
+  });
+
+  it('CRITICAL: strips bearer tokens and JWT-shaped strings', () => {
+    expect(sanitize('Authorization: Bearer abc.def.ghi')).toContain('<redacted-token>');
+    expect(sanitize('token eyJhbGciOi.eyJzdWIiOi.signaturepart')).toContain(
+      '<redacted-token>',
+    );
+  });
+
+  it('CRITICAL: redacts restaurant_id query/url segments', () => {
+    expect(sanitize('restaurant_id=ae87f51e-e2c0-44f4-b6bb-3953d5bbdbff')).toBe(
+      'restaurant_id=<redacted>',
+    );
+  });
+
+  it('CRITICAL: truncates output to hard 2000-char cap with ellipsis marker', () => {
+    const input = 'a'.repeat(5000);
+    const out = sanitize(input);
+    expect(out.length).toBeLessThanOrEqual(2000);
+    expect(out.endsWith('… [truncated]')).toBe(true);
+  });
+
+  it('CRITICAL: redacts Bearer tokens regardless of case', () => {
+    expect(sanitize('Authorization: bearer abc.def.ghi')).toContain('<redacted-token>');
+    expect(sanitize('Authorization: BEARER abc.def.ghi')).toContain('<redacted-token>');
+  });
+
+  it('passes through clean text unchanged', () => {
+    expect(sanitize('Scroll does not work on /pos-sales')).toBe(
+      'Scroll does not work on /pos-sales',
+    );
+  });
+});
+
+describe('feedback-log: appendRow', () => {
+  let dir: string;
+  let logPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'feedback-log-test-'));
+    logPath = join(dir, 'feedback-log.jsonl');
+    _resetLogPathForTests(logPath);
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetLogPathForTests(null);
+  });
+
+  it('creates parent directory if missing', () => {
+    const nested = join(dir, 'a', 'b', 'log.jsonl');
+    _resetLogPathForTests(nested);
+    appendRow({ id: '1', signature: 'x', filed_at: '2026-05-16T00:00:00Z' });
+    expect(existsSync(nested)).toBe(true);
+  });
+
+  it('appends a JSONL line per call', () => {
+    appendRow({ id: '1', signature: 'a', filed_at: '2026-05-16T00:00:00Z' });
+    appendRow({ id: '2', signature: 'b', filed_at: '2026-05-16T00:01:00Z' });
+    const contents = readFileSync(logPath, 'utf8');
+    const lines = contents.trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]).id).toBe('1');
+    expect(JSON.parse(lines[1]).id).toBe('2');
+  });
+
+  it('is idempotent on duplicate id (does not append again)', () => {
+    appendRow({ id: '1', signature: 'a', filed_at: '2026-05-16T00:00:00Z' });
+    appendRow({ id: '1', signature: 'a', filed_at: '2026-05-16T00:00:00Z' });
+    const lines = readFileSync(logPath, 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+  });
+
+  it('throws on missing id field', () => {
+    // Type cast needed to feed an intentionally malformed payload (missing required `id`)
+    // and assert the runtime validation. The CLI/library boundary is the right place
+    // to validate, so the test mirrors what an untyped caller can pass.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => appendRow({ signature: 'a' } as any)).toThrow(/id/i);
+  });
+});
+
+describe('feedback-log: queryBySignature', () => {
+  let dir: string;
+  let logPath: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'feedback-log-test-'));
+    logPath = join(dir, 'log.jsonl');
+    _resetLogPathForTests(logPath);
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetLogPathForTests(null);
+  });
+
+  it('returns empty array when log does not exist', () => {
+    expect(queryBySignature('anything')).toEqual([]);
+  });
+
+  it('skips malformed JSONL lines instead of throwing', () => {
+    appendRow({ id: '1', signature: 's', filed_at: '2026-05-16T00:00:00Z' });
+    appendFileSync(logPath, 'this is not json\n', 'utf8');
+    appendRow({ id: '2', signature: 's', filed_at: '2026-05-16T01:00:00Z' });
+    const rows = queryBySignature('s');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r: { id: string }) => r.id).sort()).toEqual(['1', '2']);
+  });
+
+  it('throws when --since is not a valid ISO timestamp', () => {
+    expect(() => queryBySignature('s', { since: 'not-a-date' })).toThrow(/ISO/);
+  });
+
+  it('returns rows matching the signature', () => {
+    appendRow({ id: '1', signature: 'pos-sales:scroll', filed_at: '2026-05-16T00:00:00Z' });
+    appendRow({ id: '2', signature: 'pos-sales:scroll', filed_at: '2026-05-16T01:00:00Z' });
+    appendRow({ id: '3', signature: 'dashboard:tz', filed_at: '2026-05-16T02:00:00Z' });
+    const rows = queryBySignature('pos-sales:scroll');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r: { id: string }) => r.id).sort()).toEqual(['1', '2']);
+  });
+
+  it('filters by since (ISO timestamp)', () => {
+    appendRow({ id: '1', signature: 's', filed_at: '2026-05-01T00:00:00Z' });
+    appendRow({ id: '2', signature: 's', filed_at: '2026-05-15T00:00:00Z' });
+    const rows = queryBySignature('s', { since: '2026-05-10T00:00:00Z' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('2');
+  });
+});
+
+describe('feedback-log: CLI', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'feedback-log-cli-'));
+    _resetLogPathForTests(join(dir, 'log.jsonl'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetLogPathForTests(null);
+  });
+
+  it('append subcommand parses JSON arg and appends', async () => {
+    const exit = await runCli([
+      'append',
+      JSON.stringify({
+        id: 'cli-1',
+        signature: 's',
+        filed_at: '2026-05-16T00:00:00Z',
+      }),
+    ]);
+    expect(exit).toBe(0);
+    const rows = queryBySignature('s');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('cli-1');
+  });
+
+  it('query subcommand prints matching rows as JSON array', async () => {
+    appendRow({ id: 'q-1', signature: 'foo', filed_at: '2026-05-16T00:00:00Z' });
+    const out: string[] = [];
+    const exit = await runCli(['query', '--signature', 'foo'], {
+      stdout: (line: string) => out.push(line),
+    });
+    expect(exit).toBe(0);
+    const parsed = JSON.parse(out.join(''));
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].id).toBe('q-1');
+  });
+
+  it('sanitize subcommand reads stdin and writes sanitized stdout', async () => {
+    const out: string[] = [];
+    const exit = await runCli(['sanitize'], {
+      stdin: 'email is monica@example.com',
+      stdout: (line: string) => out.push(line),
+    });
+    expect(exit).toBe(0);
+    expect(out.join('')).toContain('<redacted-email>');
+  });
+
+  it('returns exit 1 on unknown subcommand', async () => {
+    const exit = await runCli(['nope']);
+    expect(exit).toBe(1);
+  });
+});

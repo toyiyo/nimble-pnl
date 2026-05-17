@@ -43,10 +43,15 @@ const baseProps: SaleCardProps = {
 describe('SaleCard — mobile responsive classes', () => {
   it('action row is always visible on mobile, hover-only at sm+', () => {
     const { container } = render(<SaleCard {...baseProps} />);
-    const html = container.innerHTML;
-    expect(html).toContain('opacity-100');
-    expect(html).toContain('sm:opacity-0');
-    expect(html).toContain('sm:group-hover:opacity-100');
+    // Target the action-row div specifically — it's the unique element carrying
+    // sm:group-hover:opacity-100 in this component.
+    const actionRow = container.querySelector(
+      '[class*="sm:group-hover:opacity-100"]',
+    ) as HTMLElement | null;
+    expect(actionRow).not.toBeNull();
+    expect(actionRow!.className).toContain('opacity-100');
+    expect(actionRow!.className).toContain('sm:opacity-0');
+    expect(actionRow!.className).toContain('sm:group-hover:opacity-100');
   });
 
   it('card padding uses px-3 on mobile and sm:px-4 at sm+', () => {
@@ -92,8 +97,13 @@ describe('SaleCard — mobile responsive classes', () => {
       chart_account: { id: 'acc-1', account_name: 'Food', account_code: '4000' } as any,
     } as UnifiedSaleItem;
     const { container } = render(<SaleCard {...baseProps} sale={categorizedSale} />);
-    const html = container.innerHTML;
-    expect(html).toContain('opacity-100');
-    expect(html).toContain('sm:opacity-0');
+    // Target the Edit button specifically (the small button inside the categorized badge block)
+    const editBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Edit',
+    ) as HTMLButtonElement | undefined;
+    expect(editBtn).toBeDefined();
+    expect(editBtn!.className).toContain('opacity-100');
+    expect(editBtn!.className).toContain('sm:opacity-0');
+    expect(editBtn!.className).toContain('sm:group-hover:opacity-100');
   });
 });

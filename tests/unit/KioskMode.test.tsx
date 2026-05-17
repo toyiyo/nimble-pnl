@@ -35,6 +35,7 @@ const {
   hasQueuedPunchesMock,
   isLikelyOfflineMock,
   flushQueuedPunchesMock,
+  addQueuedPunchMock,
   imageCaptureCaptureFnMock,
   imageCaptureStopMock,
 } = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ const {
   hasQueuedPunchesMock: vi.fn(() => false),
   isLikelyOfflineMock: vi.fn(() => false),
   flushQueuedPunchesMock: vi.fn(async () => ({ remaining: 0, flushed: 0 })),
+  addQueuedPunchMock: vi.fn(),
   imageCaptureCaptureFnMock: vi.fn(() => Promise.resolve<Blob | null>(null)),
   imageCaptureStopMock: vi.fn(),
 }));
@@ -144,7 +146,7 @@ vi.mock('@/utils/offlineQueue', () => ({
   hasQueuedPunches: hasQueuedPunchesMock,
   isLikelyOffline: isLikelyOfflineMock,
   flushQueuedPunches: flushQueuedPunchesMock,
-  addQueuedPunch: vi.fn(),
+  addQueuedPunch: addQueuedPunchMock,
 }));
 
 vi.mock('@/components/ImageCapture', () => {
@@ -369,6 +371,52 @@ describe('KioskMode — optimistic flow', () => {
     // Error message takes its place.
     expect(screen.getByText(/relation does not exist/)).toBeDefined();
   });
+
+  it('does NOT roll back a newer employee\'s success when an older punch errors late', async () => {
+    // Regression for the rollback-scope bug: punch A goes in-flight, punch B
+    // completes optimistically (showing employee B in the status chip), then
+    // punch A's mutate errors. Without the op-id guard, A's onError would
+    // restore the snapshot it took at A's start (lastResult = null) and erase
+    // employee B's visible success chip.
+    const onErrorByOpId: Array<(err: unknown) => void> = [];
+    createPunchMutateMock.mockImplementation((_payload, opts) => {
+      if (opts?.onError) onErrorByOpId.push(opts.onError);
+    });
+    isLikelyOfflineMock.mockReturnValue(false);
+
+    render(<KioskMode />, { wrapper });
+
+    // Punch A — employee e1 "Jose".
+    verifyPinForRestaurantMock.mockResolvedValueOnce(okPinMatch);
+    enterPin('1234');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+    await screen.findByText(/Jose Delgado/);
+
+    // Punch B — employee e2 "Other".
+    verifyPinForRestaurantMock.mockResolvedValueOnce({
+      ...okPinMatch,
+      id: 'pin-2',
+      employee_id: 'e2',
+      employee: { id: 'e2', name: 'Other Employee', position: 'server' },
+    });
+    enterPin('5678');
+    fireEvent.click(screen.getByRole('button', { name: /Clock In/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Skip photo/i }));
+    await screen.findByText(/Other Employee/);
+
+    // Now punch A's mutate errors (server was slow). With the bug, A's
+    // rollback would clobber B's "Other Employee" chip with null. With the
+    // fix, opIdRef has moved past A's id and the rollback is skipped.
+    await act(async () => {
+      onErrorByOpId[0]?.(new Error('Stale failure from A'));
+    });
+
+    // Employee B's chip is still visible.
+    expect(screen.queryByText(/Other Employee/)).not.toBeNull();
+    // A's stale error message must NOT have replaced B's success.
+    expect(screen.queryByText(/Stale failure from A/)).toBeNull();
+  });
 });
 
 describe('KioskMode — re-entry guard', () => {
@@ -402,15 +450,6 @@ describe('KioskMode — offline queue carries photoBlob argument (not state)', (
     imageCaptureCaptureFnMock.mockResolvedValue(blob);
     isLikelyOfflineMock.mockReturnValue(true);
 
-    const addQueuedPunchSpy = vi.fn();
-    const { addQueuedPunch } = await import('@/utils/offlineQueue');
-    (addQueuedPunch as unknown as { mockImplementation?: (fn: typeof addQueuedPunchSpy) => void })
-      .mockImplementation?.(addQueuedPunchSpy);
-    // Fall through: if mockImplementation isn't exposed (the module is fully
-    // mocked above), re-mock via the alias path used in the file under test.
-    // The test still verifies behavior because the assertion below runs only
-    // if the spy was actually wired.
-
     let capturedOnError: ((err: unknown) => void) | null = null;
     createPunchMutateMock.mockImplementation((_payload, opts) => {
       capturedOnError = opts?.onError ?? null;
@@ -429,10 +468,12 @@ describe('KioskMode — offline queue carries photoBlob argument (not state)', (
       capturedOnError?.(new Error('Network down'));
     });
 
-    if (addQueuedPunchSpy.mock.calls.length > 0) {
-      const [, photoBlob] = addQueuedPunchSpy.mock.calls[0];
-      expect(photoBlob).toBe(blob);
-    }
+    // Unconditional: the photo blob threaded through handlePunch MUST reach
+    // addQueuedPunch as its second arg, otherwise the offline queue silently
+    // drops the photo for a punch the user thought captured one.
+    expect(addQueuedPunchMock).toHaveBeenCalledTimes(1);
+    const [, photoBlobArg] = addQueuedPunchMock.mock.calls[0];
+    expect(photoBlobArg).toBe(blob);
   });
 });
 

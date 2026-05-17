@@ -119,6 +119,45 @@ describe('offlineQueue — flushing mutex', () => {
     expect(arg.photoBlob).toBeInstanceOf(Blob);
   });
 
+  it('preserves all not-yet-attempted entries when one send fails mid-flush', async () => {
+    // Seed three queued entries; sendPunch succeeds for #1, throws on #2.
+    // Before the fix, #3 would be silently dropped because the loop pushed
+    // only the failed entry then broke.
+    await addQueuedPunch({
+      restaurant_id: 'r1',
+      employee_id: 'e1',
+      punch_type: 'clock_in',
+      punch_time: new Date().toISOString(),
+    });
+    await addQueuedPunch({
+      restaurant_id: 'r1',
+      employee_id: 'e2',
+      punch_type: 'clock_in',
+      punch_time: new Date().toISOString(),
+    });
+    await addQueuedPunch({
+      restaurant_id: 'r1',
+      employee_id: 'e3',
+      punch_type: 'clock_in',
+      punch_time: new Date().toISOString(),
+    });
+
+    let calls = 0;
+    const sendPunch = vi.fn(async () => {
+      calls += 1;
+      if (calls === 2) throw new Error('Network down on #2');
+      return null;
+    });
+
+    const result = await flushQueuedPunches(sendPunch);
+
+    expect(result.flushed).toBe(1);
+    // The remaining queue must contain BOTH the failed entry and the never-
+    // attempted entry, not just the failed one. The fix changed
+    // `remaining.push(entry); break` to also append `queue.slice(i + 1)`.
+    expect(result.remaining).toBe(2);
+  });
+
   it('isLikelyOffline reflects navigator.onLine', () => {
     const original = navigator.onLine;
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });

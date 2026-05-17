@@ -57,10 +57,20 @@ const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
   return res.blob();
 };
 
-const randomId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `kiosk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+let idCounter = 0;
+const randomId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `kiosk-${Date.now()}-${hex}`;
+  }
+  idCounter += 1;
+  return `kiosk-${Date.now()}-${idCounter}`;
+};
 
 export const addQueuedPunch = async (
   payload: QueuedKioskPunch['payload'],
@@ -89,7 +99,7 @@ export const addQueuedPunch = async (
   return entry;
 };
 
-type PunchSender = (input: QueuedKioskPunch['payload'] & { photoBlob?: Blob }) => Promise<any>;
+type PunchSender = (input: QueuedKioskPunch['payload'] & { photoBlob?: Blob }) => Promise<unknown>;
 
 // Module-level guard: when several `onSuccess` handlers fire in quick
 // succession during a shift change, each used to call `flushQueuedPunches`
@@ -110,7 +120,8 @@ export const flushQueuedPunches = async (sendPunch: PunchSender) => {
     let flushed = 0;
     const remaining: QueuedKioskPunch[] = [];
 
-    for (const entry of queue) {
+    for (let i = 0; i < queue.length; i += 1) {
+      const entry = queue[i];
       try {
         const photoBlob =
           entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
@@ -135,7 +146,9 @@ export const flushQueuedPunches = async (sendPunch: PunchSender) => {
         flushed += 1;
       } catch (error) {
         console.warn('Failed to flush kiosk punch, will retry later', error);
-        remaining.push(entry);
+        // Preserve the failed entry AND every entry we never attempted —
+        // otherwise a network failure on entry 1 of 5 silently drops 2-5.
+        remaining.push(entry, ...queue.slice(i + 1));
         break;
       }
     }

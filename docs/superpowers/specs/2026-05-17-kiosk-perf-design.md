@@ -47,7 +47,7 @@ Apply **Option B (quick wins + optimistic UI)** with the EmployeeClock photo str
 
 After the fix:
 
-```
+```text
 Tap Confirm / Skip
   ↓ close camera dialog immediately      (~16 ms render)
   ↓ verify PIN                            (~100 ms — single DB hit)

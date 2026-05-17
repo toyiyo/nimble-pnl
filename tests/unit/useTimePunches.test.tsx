@@ -4,9 +4,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { useCreateTimePunch } from '@/hooks/useTimePunches';
 
-const { getUserMock, getSessionMock, insertSingleMock, toastMock, uploadMock } = vi.hoisted(() => ({
+const {
+  getUserMock,
+  getSessionMock,
+  insertMock,
+  insertSingleMock,
+  toastMock,
+  uploadMock,
+} = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   getSessionMock: vi.fn(),
+  insertMock: vi.fn(),
   insertSingleMock: vi.fn(),
   toastMock: vi.fn(),
   uploadMock: vi.fn(),
@@ -19,11 +27,14 @@ vi.mock('@/integrations/supabase/client', () => ({
       getSession: getSessionMock,
     },
     from: () => ({
-      insert: () => ({
-        select: () => ({
-          single: insertSingleMock,
-        }),
-      }),
+      insert: (...args: unknown[]) => {
+        insertMock(...args);
+        return {
+          select: () => ({
+            single: insertSingleMock,
+          }),
+        };
+      },
     }),
     storage: {
       from: () => ({
@@ -83,11 +94,13 @@ describe('useCreateTimePunch — auth source', () => {
     await result.current.mutateAsync(validPayload());
 
     // The hook composes the insert as { ...punchData, photo_path, created_by: user?.id }.
-    // The single mock has been called once; we can't easily inspect the row from this
-    // shape of mock, but a missing session would have made user.id undefined and the
-    // success path still works — so we additionally assert that the INSERT did fire
-    // (covering the wired return path).
-    expect(insertSingleMock).toHaveBeenCalled();
+    // Assert the actual row passed to insert() carries created_by = the session user
+    // id — the previous version only checked that INSERT fired, which would pass even
+    // if created_by were undefined.
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ created_by: 'u1' }),
+    );
   });
 });
 

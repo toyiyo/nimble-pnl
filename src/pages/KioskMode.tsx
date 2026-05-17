@@ -132,6 +132,11 @@ const KioskMode = () => {
     };
   }, []);
 
+  // Monotonic counter for in-flight punch mutations. Used by onError to detect
+  // whether a newer optimistic punch has already overwritten the UI state we
+  // were about to roll back to — see the optimistic/rollback comment below.
+  const opIdRef = useRef(0);
+
   // Only run flushQueuedPunches on mount, but always use the latest mutateAsync
   const mutateRef = useRef<typeof createPunch.mutateAsync>(createPunch.mutateAsync);
   useEffect(() => {
@@ -189,7 +194,9 @@ const KioskMode = () => {
     // RPC chain completes.
     resetCameraState();
     handlePunch(action, null).catch((err) => {
-      console.error('Skip-photo punch failed', err);
+      if (import.meta.env.DEV) {
+        console.error('Skip-photo punch failed', err);
+      }
       releaseLock();
     });
   };
@@ -287,6 +294,10 @@ const KioskMode = () => {
     photoBlob: Blob | null
   ) => {
     if (!isLikelyOffline()) return false;
+    // Without an employee_id the queued entry can never flush — it would just
+    // re-throw on every retry. Reject the enqueue so the caller surfaces the
+    // PIN/auth error instead.
+    if (!employeeId) return false;
     await queuePunchOffline(action, context, employeeId, photoBlob);
     return true;
   };
@@ -369,6 +380,13 @@ const KioskMode = () => {
     const employeeRole = match.employee?.position || undefined;
     const previousLastResult = lastResult;
     const previousStatusMessage = statusMessage;
+    // Bump the op-id so a later onError can tell whether the visible UI is
+    // still ours. If a newer punch (different employee) has overwritten the
+    // chip/status since we set them, opIdRef.current will be ahead of myOpId
+    // and we must NOT roll back — doing so would erase the newer employee's
+    // success feedback.
+    opIdRef.current += 1;
+    const myOpId = opIdRef.current;
 
     resetAttempts();
     setPinInput('');
@@ -456,14 +474,22 @@ const KioskMode = () => {
           );
           if (handledOffline) return;
 
-          // Roll back: optimistic UI, optimistic cache, optimistic attempt
-          // reset. Without rolling back resetAttempts, a server failure leaves
-          // the lockout counter cleared even though no punch persisted.
-          setLastResult(previousLastResult);
-          setStatusMessage(previousStatusMessage);
+          // Always invalidate the punchStatus cache for this employee — it is
+          // keyed by employee_id so it can't clobber a different employee's
+          // newer success.
           queryClient.invalidateQueries({ queryKey: ['punchStatus', match.employee_id] });
-          const message = error instanceof Error ? error.message : 'Unable to record punch.';
-          setErrorMessage(message);
+
+          // Only roll back UI feedback if our optimistic update is still what
+          // the user sees. If a newer punch has already overwritten the chip,
+          // restoring `previousLastResult`/`previousStatusMessage` would erase
+          // that newer employee's success. In that case we also swallow the
+          // error message so the screen reflects the most recent state.
+          if (opIdRef.current === myOpId) {
+            setLastResult(previousLastResult);
+            setStatusMessage(previousStatusMessage);
+            const message = error instanceof Error ? error.message : 'Unable to record punch.';
+            setErrorMessage(message);
+          }
         },
       }
     );
@@ -563,7 +589,7 @@ const KioskMode = () => {
   const queuePunchOffline = async (
     action: PunchAction,
     context: Awaited<ReturnType<typeof collectPunchContext>> | null,
-    employeeId: string | undefined,
+    employeeId: string,
     photoBlob: Blob | null
   ) => {
     if (!restaurantId) return false;
@@ -855,10 +881,13 @@ const KioskMode = () => {
         open={cameraDialogOpen}
         onOpenChange={(open) => {
           if (!open) {
-            // Block dismiss while a punch is mid-flight so an ESC/backdrop tap
-            // can't slip through the optimistic window and let a rapid second
-            // tap re-enter against a still-fresh status cache.
-            if (processingRef.current || createPunch.isPending) return;
+            // Block dismiss only while *this* employee's punch is still mid-
+            // flight. `createPunch.isPending` is intentionally NOT checked
+            // here: the optimistic flow releases processingRef as soon as we
+            // snapshot state, so by the time the next employee opens this
+            // dialog, the previous mutation may still be pending — and the
+            // next employee must still be able to ESC/backdrop out.
+            if (processingRef.current) return;
             // Route through resetCameraState so the MediaStream tracks get
             // stopped — otherwise dismissing the dialog leaves the camera on.
             resetCameraState();
@@ -942,7 +971,9 @@ const KioskMode = () => {
                 }
                 resetCameraState();
                 handlePunch(action, blob).catch((err) => {
-                  console.error('Confirm-punch failed', err);
+                  if (import.meta.env.DEV) {
+                    console.error('Confirm-punch failed', err);
+                  }
                   releaseLock();
                 });
               }}

@@ -89,7 +89,7 @@ export const SaleCard = memo(function SaleCard({
 
   return (
     <div
-      className={`group flex items-start gap-3 px-4 py-3 border-b border-border/40 transition-colors ${
+      className={`group flex items-start gap-3 px-3 py-3 sm:px-4 border-b border-border/40 transition-colors ${
         isSelected ? 'bg-primary/5' : hasSuggestion ? 'bg-amber-500/5' : 'hover:bg-muted/30'
       } ${isSelectionMode ? 'cursor-pointer' : ''}`}
       style={style}
@@ -153,7 +153,7 @@ export const SaleCard = memo(function SaleCard({
                     <AlertTriangle className="h-3 w-3 text-amber-500" />
                   )}
                   <ExternalLink className="h-3 w-3" />
-                  <span className="truncate max-w-[120px]">{recipe.name}</span>
+                  <span className="truncate max-w-[120px] sm:max-w-[180px]">{recipe.name}</span>
                   {recipe.profitMargin != null && (
                     <span className="font-medium">({recipe.profitMargin.toFixed(0)}%)</span>
                   )}
@@ -176,7 +176,7 @@ export const SaleCard = memo(function SaleCard({
           </div>
 
           {/* Right side: Amount and quantity */}
-          <div className="text-right shrink-0">
+          <div className="text-right shrink-0 min-w-[72px]">
             {sale.totalPrice != null && (
               <p className="text-[15px] font-semibold text-foreground tabular-nums">
                 ${sale.totalPrice.toFixed(2)}
@@ -190,7 +190,7 @@ export const SaleCard = memo(function SaleCard({
 
         {/* AI suggestion panel */}
         {hasSuggestion && sale.chart_account && (
-          <div className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
             <div className="flex items-center gap-2 min-w-0">
               <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
               <span className="text-[13px] text-foreground truncate">
@@ -253,7 +253,7 @@ export const SaleCard = memo(function SaleCard({
                 e.stopPropagation();
                 onSetEditingCategory(sale.id);
               }}
-              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
             >
               Edit
             </button>
@@ -300,7 +300,7 @@ export const SaleCard = memo(function SaleCard({
 
         {/* Action buttons - show on hover or focus */}
         {!isEditingCategory && (
-          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
             {/* Categorize button - only for items without suggestion and not categorized */}
             {!hasSuggestion && !sale.is_categorized && (
               <button

@@ -41,7 +41,7 @@ export function BulkActionBar({
         "bg-background border border-border rounded-2xl shadow-2xl",
         "px-4 py-3 sm:px-6 sm:py-4 flex items-center gap-4",
         "animate-in slide-in-from-bottom-8 duration-300",
-        "max-w-[95vw] md:max-w-4xl w-full md:w-auto",
+        "max-w-[95vw] sm:max-w-4xl w-full sm:w-auto",
         className
       )}
       role="toolbar"

@@ -772,10 +772,10 @@ export default function POSSales() {
   }
 
   return (
-    <div className="space-y-8 md:space-y-10 max-w-[1400px] mx-auto">
+    <div className="space-y-8 sm:space-y-10 max-w-[1400px] mx-auto">
       {/* Apple/Notion-inspired Header */}
       <header className="space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-[2rem] md:text-[2.5rem] font-semibold tracking-tight text-foreground">

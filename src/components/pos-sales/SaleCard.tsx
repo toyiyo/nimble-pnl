@@ -143,6 +143,7 @@ export const SaleCard = memo(function SaleCard({
               {/* Recipe badge */}
               {recipe ? (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onNavigateToRecipe(recipe.id);
@@ -160,6 +161,7 @@ export const SaleCard = memo(function SaleCard({
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMapPOSItem(sale.itemName);
@@ -249,6 +251,7 @@ export const SaleCard = memo(function SaleCard({
               {sale.chart_account.account_code} · {sale.chart_account.account_name}
             </span>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSetEditingCategory(sale.id);
@@ -304,6 +307,7 @@ export const SaleCard = memo(function SaleCard({
             {/* Categorize button - only for items without suggestion and not categorized */}
             {!hasSuggestion && !sale.is_categorized && (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onSetEditingCategory(sale.id);
@@ -316,6 +320,7 @@ export const SaleCard = memo(function SaleCard({
             {/* Split - always available for non-split items */}
             {!sale.is_split && (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onSplit(sale);
@@ -328,6 +333,7 @@ export const SaleCard = memo(function SaleCard({
             )}
             {/* Check impact - always available */}
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSimulateDeduction(sale.itemName, sale.quantity);
@@ -339,12 +345,12 @@ export const SaleCard = memo(function SaleCard({
             {/* Create rule - for categorized items */}
             {sale.is_categorized && (
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onSuggestRule(sale);
                 }}
                 className="inline-flex items-center text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-                title="Create rule"
               >
                 <Settings2 className="h-3 w-3 mr-1" />
                 Create rule
@@ -354,6 +360,7 @@ export const SaleCard = memo(function SaleCard({
             {isManualSale && canEditManualSales && (
               <>
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onEdit(sale);
@@ -363,6 +370,7 @@ export const SaleCard = memo(function SaleCard({
                   Edit
                 </button>
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(sale.id);

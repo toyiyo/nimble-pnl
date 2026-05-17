@@ -12,6 +12,13 @@ describe('POSSales — mobile responsive tokens stay in source', () => {
     expect(SOURCE).toContain('flex flex-wrap items-center gap-2');
   });
 
+  it('outer page wrapper + header row use sm: not md:', () => {
+    expect(SOURCE).toContain('space-y-8 sm:space-y-10');
+    expect(SOURCE).toContain('flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between');
+    expect(SOURCE).not.toMatch(/space-y-8 md:space-y-10/);
+    expect(SOURCE).not.toMatch(/flex flex-col gap-4 md:flex-row/);
+  });
+
   it('Add Sale uses order-last sm:order-none for wrap behavior', () => {
     expect(SOURCE).toContain('order-last sm:order-none');
   });

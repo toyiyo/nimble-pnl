@@ -106,4 +106,17 @@ describe('SaleCard — mobile responsive classes', () => {
     expect(editBtn!.className).toContain('sm:opacity-0');
     expect(editBtn!.className).toContain('sm:group-hover:opacity-100');
   });
+
+  it('action-row buttons all have type="button" to prevent form-submit defaulting', () => {
+    const { container } = render(<SaleCard {...baseProps} />);
+    // The action-row labels visible on a non-categorized, non-suggestion, manual sale
+    const labels = ['Categorize', 'Split', 'Check impact', 'Edit', 'Delete'];
+    for (const label of labels) {
+      const btn = Array.from(container.querySelectorAll('button')).find(
+        (b) => b.textContent?.trim() === label,
+      ) as HTMLButtonElement | undefined;
+      expect(btn, `button "${label}" should exist`).toBeDefined();
+      expect(btn!.type, `button "${label}" should have type="button"`).toBe('button');
+    }
+  });
 });

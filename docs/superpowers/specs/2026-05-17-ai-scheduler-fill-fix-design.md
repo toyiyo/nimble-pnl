@@ -3,7 +3,7 @@
 **Date:** 2026-05-17
 **Author:** Jose M Delgado (with Claude Code)
 **Branch:** `worktree-ai-scheduler-fill-fix`
-**Status:** Design — approved, ready for design-review
+**Status:** Design — approved, design-review folded (2026-05-17)
 
 ## Problem
 
@@ -103,11 +103,12 @@ Surgical, in-flight fixes inside the edge function, validator, and prompt builde
 |---|---|
 | `supabase/functions/_shared/schedule-validator.ts` | (a) Normalize positions; (b) Overnight-aware `withinWindow` and `shiftsOverlap`. Module stays pure. |
 | `supabase/functions/_shared/schedule-prompt-builder.ts` | (a) Render 7 days per employee (mark missing as unavailable); (b) Add per-template required headcount field; (c) Add "Fill every required slot" as a hard rule; (d) Add note that all times are restaurant local. |
-| `supabase/functions/_shared/availability-tz.ts` (new) | Pure utility: `convertAvailabilityToLocal(rows, restaurantTimezone, weekStart)` → returns per-employee 7-day local-time map, splitting overnight windows that cross local midnight into two rows on adjacent local days. Pure function, fully unit-tested. |
+| `supabase/functions/_shared/availability-tz.ts` (new) | Pure utility: `convertRecurringToLocal` + `convertExceptionsToLocal`. Both return `LocalAvail[]` in restaurant local time, splitting rows whose conversion crosses local midnight into two rows on adjacent local days. Bare-specifier import of `date-fns-tz`. Pure function, fully unit-tested. |
+| `supabase/functions/deno.json` (new) | Import map pinning `date-fns-tz` to `npm:date-fns-tz@3.2.0` for the Deno runtime. |
 | `supabase/functions/_shared/staffing-requirements.ts` (new) | Pure utility: `computeRequiredStaff(templates, minCrew, priorPatterns, hourlySales)` → returns `Map<templateId, Map<day, requiredCount>>`. Fully unit-tested. |
-| `supabase/functions/generate-schedule/index.ts` | (a) Fetch restaurant timezone in the parallel batch; (b) Apply `convertAvailabilityToLocal` before building the prompt + validator map; (c) Read `min_crew` (JSONB) into `staffingSettings`; (d) Compute `requiredStaffPerTemplate` and pass to prompt; (e) `max_tokens: 16384`; (f) Detect `finish_reason === "length"` and skip with a logged warning; (g) Add structured logs for prompt size, model attempts, dropped reasons summary, fill ratio; (h) Zero-shift → HTTP 422 + diagnostic. |
-| `src/hooks/useGenerateSchedule.ts` | Surface new 422 diagnostic via `toast` (no behaviour change on success). |
-| `src/components/scheduling/ShiftPlanner/GenerateScheduleDialog.tsx` | Results view: "X of Y slots filled, Z dropped" line. |
+| `supabase/functions/generate-schedule/index.ts` | (a) Fetch restaurant timezone in the parallel batch (10th query) with null-safety default to `"UTC"`; (b) Apply `convertRecurringToLocal` + `convertExceptionsToLocal` before building the prompt + validator map; (c) Read `min_crew` (JSONB) into `staffingSettings`; (d) Compute `requiredStaffPerTemplate` and pass to prompt; (e) `max_tokens: 16384`; (f) Detect `finish_reason === "length"` and skip with a logged warning; (g) Add structured logs for prompt size, model attempts, dropped reasons summary, fill ratio; (h) Zero-shift → HTTP 422 + diagnostic (codes only, no UUIDs); (i) Include `total_required_slots` and `dropped_reason_summary` in success metadata. |
+| `src/hooks/useGenerateSchedule.ts` | (a) Add `ScheduleDiagnostic` interface; (b) Read 422 body via `FunctionsHttpError.context`, rethrow as `ScheduleGenerationError` carrying the diagnostic; (c) Format toast as single-line summary in `onError`; (d) Drop the `if (data.shifts.length === 0) return;` early return so invalidate always fires. |
+| `src/components/scheduling/ShiftPlanner/GenerateScheduleDialog.tsx` | (a) "Filled X of Y required slots" line gated on `total_required_slots > 0`; (b) Replace `key={i}` with `key={reason}` (or `${reason}-${i}`) in dropped-reasons lists; (c) `aria-hidden` on decorative icons; (d) Wrap subtitle in `<DialogDescription>`; (e) Restructure DialogContent to flex layout so footer is sticky on short viewports. |
 | `src/lib/scheduleWarnings.ts` | Already handles overnight in `timeRangesOverlap` — confirm and update tests if needed. |
 
 ### Bug-fix detail
@@ -116,62 +117,103 @@ Surgical, in-flight fixes inside the edge function, validator, and prompt builde
 
 ```typescript
 // supabase/functions/_shared/availability-tz.ts (new)
-import { toZonedTime } from "https://esm.sh/date-fns-tz@3";
+import { toZonedTime } from "date-fns-tz";
 
-interface RawAvail {
+interface RawRecurringAvail {
   employee_id: string;
-  day_of_week: number;       // 0=Sun..6=Sat (in UTC)
+  // The user's local day of week (0=Sun..6=Sat) as selected in the
+  // AvailabilityDialog UI. The column carries no timezone metadata.
+  day_of_week: number;
   is_available: boolean;
-  start_time: string | null; // HH:MM:SS UTC
-  end_time: string | null;   // HH:MM:SS UTC
+  // Stored as UTC-valued clock time (no timezone metadata on the TIME column).
+  // Written by `localTimeToUtcTime` in AvailabilityDialog.tsx:82-83.
+  start_time: string | null; // HH:MM:SS
+  end_time: string | null;   // HH:MM:SS
+}
+
+interface RawExceptionAvail {
+  employee_id: string;
+  date: string;              // YYYY-MM-DD, local calendar date
+  is_available: boolean;
+  start_time: string | null; // HH:MM:SS, UTC-valued clock time
+  end_time: string | null;   // HH:MM:SS, UTC-valued clock time
 }
 
 interface LocalAvail {
   employee_id: string;
-  day_of_week: number;       // 0=Sun..6=Sat (in restaurant local)
+  day_of_week: number;       // 0=Sun..6=Sat in restaurant local
   is_available: boolean;
   start_time: string | null; // HH:MM:SS local
   end_time: string | null;   // HH:MM:SS local
-  isOvernight: boolean;
+  isOvernight: boolean;      // end_local < start_local
 }
 
-export function convertAvailabilityToLocal(
-  rows: RawAvail[],
+export function convertRecurringToLocal(
+  rows: RawRecurringAvail[],
   restaurantTimezone: string,
-  weekStart: string,           // YYYY-MM-DD
+  weekStart: string,
+): LocalAvail[] { ... }
+
+export function convertExceptionsToLocal(
+  rows: RawExceptionAvail[],
+  restaurantTimezone: string,
 ): LocalAvail[] { ... }
 ```
 
-For each `(day_of_week, start_UTC, end_UTC)`:
+For each row:
 
-1. Compose UTC ISO using the date within `weekStart`'s week that matches that day of week (handles DST correctly for the target week).
-2. Convert start and end to restaurant local time.
-3. If the resulting local-day differs from the original day_of_week (rare — happens when conversion crosses a date boundary), split the row across the local days it touches.
-4. Mark `isOvernight: true` if `end_local < start_local`.
+1. Anchor the UTC clock time to a real UTC instant using a reference date — for recurring rows, the date within `weekStart`'s week that matches the row's `day_of_week`; for exceptions, the row's `date` itself. This handles DST correctly for the specific week.
+2. Convert that UTC instant to restaurant local time via `toZonedTime`.
+3. If the resulting local-day differs from the original `day_of_week` (or, for exceptions, the original `date`), split the row across the local days it touches (`Mon 17:00–24:00` + `Tue 00:00–01:00`).
+4. Mark `isOvernight: true` if `end_local < start_local` after splitting.
 
-Pure function. Unit tests cover: same-day, crossing-midnight-into-next-local-day, crossing-midnight-into-previous-local-day, DST spring forward, DST fall back, exceptions table (date-specific) handled identically.
+**Restaurant timezone fetch + null safety:** Add a 10th parallel query for `restaurants.timezone`. If the result is null/missing or the column is empty (legacy rows pre-dating the `20251001022351` migration), default to `"UTC"` and log a warning. UTC defaulting means no conversion is applied, which is the safest fallback — it matches today's broken behavior, not a worse one.
+
+```typescript
+const restaurantTimezone =
+  restaurantResult.data?.timezone && typeof restaurantResult.data.timezone === "string"
+    ? restaurantResult.data.timezone
+    : "UTC";
+if (restaurantTimezone === "UTC" && restaurantResult.data?.timezone !== "UTC") {
+  console.warn(`[generate-schedule] No timezone for restaurant ${restaurant_id}; defaulting to UTC.`);
+}
+```
+
+**Dependency wiring:** `date-fns-tz` is already in `package.json` (`^3.2.0`). For the new shared module to import it as a bare specifier (so Vitest can resolve it) AND work in Deno edge runtime:
+
+- Use `import { toZonedTime } from "date-fns-tz"` (bare specifier) in `availability-tz.ts`.
+- Create `supabase/functions/deno.json` with an import map: `{ "imports": { "date-fns-tz": "npm:date-fns-tz@3.2.0" } }`. Pinned to 3.2.0 exactly to avoid esm.sh floating-version drift seen in `square-webhooks`.
+- Vitest resolves the bare specifier via the existing npm install.
+
+Pure function. Unit tests cover: same-day, crossing midnight into next local day, crossing midnight into previous local day, DST spring forward, DST fall back, null/empty timezone (returns rows unchanged with `day_of_week` preserved), exceptions parity with recurring.
 
 #### Bug 2 — Overnight-aware validator
 
 ```typescript
 function withinWindow(shiftStart: number, shiftEnd: number, windowStart: number, windowEnd: number): boolean {
-  if (windowEnd >= windowStart) {
-    // Normal window
+  const shiftIsOvernight = shiftEnd <= shiftStart;
+  const windowIsOvernight = windowEnd < windowStart;
+
+  if (!windowIsOvernight) {
+    // Normal window. Shift must also be normal (no overnight shift fits a
+    // non-overnight window without spilling past midnight).
+    if (shiftIsOvernight) return false;
     return shiftStart >= windowStart && shiftEnd <= windowEnd;
   }
-  // Overnight: window is [windowStart, 1440) ∪ [0, windowEnd]
-  // For simplicity, normalize shift to a single contiguous interval
-  // by adding 1440 to shiftEnd if it appears wrapped; but if the prompt
-  // tells AI shifts use the same local frame, a single-day shift cannot
-  // span the wrap point. So: shift must be ENTIRELY in [windowStart, 1440)
-  // OR ENTIRELY in [0, windowEnd].
+
+  // Overnight window [windowStart, 24:00) ∪ [0, windowEnd].
+  if (shiftIsOvernight) {
+    // Both halves must lie within their respective sides of the window.
+    return shiftStart >= windowStart && shiftEnd <= windowEnd;
+  }
+  // Normal shift fitting entirely in one side of the overnight window.
   const inEvening = shiftStart >= windowStart && shiftEnd <= 1440;
   const inMorning = shiftStart >= 0 && shiftEnd <= windowEnd;
   return inEvening || inMorning;
 }
 
 function shiftsOverlap(a: GeneratedShift, b: GeneratedShift): boolean {
-  // Normalize each shift: if end < start, treat as overnight (end + 1440)
+  // Normalize each shift: if end <= start, treat as overnight (end + 1440)
   let aStart = timeToMinutes(a.start_time);
   let aEnd = timeToMinutes(a.end_time);
   if (aEnd <= aStart) aEnd += 1440;
@@ -182,14 +224,23 @@ function shiftsOverlap(a: GeneratedShift, b: GeneratedShift): boolean {
 }
 ```
 
-Unit tests for: normal-vs-normal, normal-vs-overnight window, overnight-vs-overnight, shift exactly at boundary, etc.
+Note the `shiftIsOvernight` guard in the normal-window branch — without it, an overnight shift `22:00–02:00` (shiftEnd=120) would falsely pass `shiftEnd <= windowEnd=1380` against a normal `08:00–23:00` window.
+
+Unit tests for: normal-vs-normal, normal-vs-overnight window, overnight-shift-vs-normal-window rejected, overnight-shift-vs-overnight-window, shift exactly at boundary, etc.
 
 #### Bug 3 — Position normalization
 
 ```typescript
 function normalizePosition(s: string | null | undefined): string {
   if (!s) return "";
-  return s.trim().toLowerCase().replace(/s$/, "").replace(/\s+/g, " ");
+  const lower = s.trim().toLowerCase().replace(/\s+/g, " ");
+  // Strip trailing plural -s ONLY if the stem is at least 4 chars and the
+  // word doesn't end in "ss" (Hostess, Buss). This avoids corruption of
+  // singular nouns that happen to end in -s.
+  if (lower.length > 4 && lower.endsWith("s") && !lower.endsWith("ss")) {
+    return lower.slice(0, -1);
+  }
+  return lower;
 }
 ```
 
@@ -197,10 +248,13 @@ function normalizePosition(s: string | null | undefined): string {
 - `"Cook "` → `"cook"`
 - `"Servers"` → `"server"`
 - `"Server"` → `"server"`
+- `"Hostess"` → `"hostess"` (preserved — ends in `ss`)
+- `"Buss"` → `"buss"` (preserved — ends in `ss`)
+- `"Bus"` → `"bus"` (preserved — stem length ≤ 4)
 
-Validator uses `normalizePosition(emp.position) === normalizePosition(shift.position)`. Prompt builder applies the same normalization when rendering positions, and includes a note: "Position strings match case-insensitively after trimming whitespace and singular/plural normalization."
+Validator uses `normalizePosition(emp.position) === normalizePosition(shift.position)`. Prompt builder keeps original capitalization in the rendered text (so the AI sees natural strings) but the validator compares post-normalization. Add a note in the system prompt: "Position strings on shifts you generate must match an employee's position exactly as shown; case and trailing whitespace are ignored, and trailing -s plurals normalize."
 
-This avoids needing a separate alias table. If the user later wants strict matching, we add an opt-in flag.
+This avoids needing a separate alias table. If the user later wants strict matching or alias-driven cross-training, we add an opt-in flag.
 
 #### Bug 4 — Complete 7-day availability map
 
@@ -259,11 +313,13 @@ Rule 10 (budget) is rephrased to soft: "Among schedules that meet required headc
 ```typescript
 if (settingsRow) {
   const result: Record<string, { min: number }> = {};
-  // Read min_crew JSONB
+  // Read min_crew JSONB. Keys are user-facing position strings
+  // (e.g., "Server", "Line Cook"); normalize at the comparison site,
+  // not here, so the prompt can echo the original strings to the AI.
   if (settingsRow.min_crew && typeof settingsRow.min_crew === "object") {
     for (const [position, count] of Object.entries(settingsRow.min_crew as Record<string, unknown>)) {
       if (typeof count === "number" && count > 0) {
-        result[normalizePosition(position)] = { min: count };
+        result[position] = { min: count };
       }
     }
   }
@@ -272,6 +328,8 @@ if (settingsRow) {
   if (Object.keys(result).length > 0) staffingSettings = result;
 }
 ```
+
+`computeRequiredStaff` does the position-name match via `normalizePosition(template.position) === normalizePosition(crewKey)`, so prompt rendering can keep original strings.
 
 Pass `min_staff` separately to `computeRequiredStaff` as a sanity floor.
 
@@ -295,25 +353,46 @@ for (const modelConfig of SCHEDULE_MODELS) {
 }
 ```
 
-#### Bug 8 — Zero-shift guardrail
+#### Bug 8 — Zero-shift guardrail + structured drop codes
+
+To avoid leaking employee UUIDs in the diagnostic body and server logs (raised by both reviewers), refactor `DroppedShift.reason` (a free-text string) into a structured `{ code: DropCode; message: string }` pair:
+
+```typescript
+// schedule-validator.ts
+export type DropCode =
+  | "EXCLUDED"
+  | "UNKNOWN_EMPLOYEE"
+  | "UNKNOWN_TEMPLATE"
+  | "POSITION_MISMATCH"
+  | "UNAVAILABLE_DAY"
+  | "OUTSIDE_WINDOW"
+  | "DOUBLE_BOOKING";
+
+interface DroppedShift {
+  shift: GeneratedShift;
+  code: DropCode;
+  message: string; // human-readable, MAY contain UUIDs for server-side debug
+}
+```
+
+The 422 diagnostic and server log aggregate by `code` only — never by `message`:
 
 ```typescript
 if (validShifts.length === 0) {
-  const reasonCounts: Record<string, number> = {};
-  for (const r of droppedReasons) {
-    const key = r.split(":")[0]; // group by category
-    reasonCounts[key] = (reasonCounts[key] ?? 0) + 1;
+  const reasonCounts: Record<DropCode, number> = {} as Record<DropCode, number>;
+  for (const d of droppedShifts) {
+    reasonCounts[d.code] = (reasonCounts[d.code] ?? 0) + 1;
   }
   return new Response(
     JSON.stringify({
-      error: "AI generated no valid shifts. Common drop reasons below; check employee positions, availability, and templates.",
+      error: "AI generated no valid shifts. Check employee positions, availability, and templates.",
       diagnostic: {
         total_employees: employees.length,
         total_templates: templates.length,
         total_required_slots: totalRequiredSlots,
         total_generated: generatedShifts.length,
         total_dropped: droppedShifts.length,
-        drop_reason_summary: reasonCounts,
+        drop_reason_summary: reasonCounts, // { POSITION_MISMATCH: 12, UNAVAILABLE_DAY: 4, ... }
         model_used: aiResult.model,
       },
     }),
@@ -322,20 +401,103 @@ if (validShifts.length === 0) {
 }
 ```
 
-`useGenerateSchedule.ts` parses the 422 body and shows the diagnostic via `toast.error`.
+For the success path, also surface `total_required_slots` and a stripped `dropped_reasons` (codes only, no UUIDs):
+
+```typescript
+metadata: {
+  ...,
+  total_required_slots: totalRequiredSlots,
+  total_valid: validShifts.length,
+  total_dropped: droppedShifts.length,
+  dropped_reason_summary: reasonCounts, // replaces dropped_reasons free-text array
+}
+```
+
+The existing `dropped_reasons: string[]` field is kept as well for backwards compatibility with the dialog, but it now emits the human messages without UUIDs (or UUID-redacted variants).
+
+**Frontend hook update — `useGenerateSchedule.ts`:**
+
+`supabase.functions.invoke` returns a `FunctionsHttpError` for non-2xx responses; the body is on `error.context` (Response). Default error handling discards the diagnostic:
+
+```typescript
+import { FunctionsHttpError } from "@supabase/functions-js";
+
+export interface ScheduleDiagnostic {
+  total_employees: number;
+  total_templates: number;
+  total_required_slots: number;
+  total_generated: number;
+  total_dropped: number;
+  drop_reason_summary: Record<string, number>;
+  model_used: string;
+}
+
+class ScheduleGenerationError extends Error {
+  diagnostic?: ScheduleDiagnostic;
+  constructor(message: string, diagnostic?: ScheduleDiagnostic) {
+    super(message);
+    this.diagnostic = diagnostic;
+  }
+}
+
+// inside mutationFn, after the invoke:
+if (error) {
+  if (error instanceof FunctionsHttpError) {
+    const body = await (error.context as Response).json().catch(() => null);
+    if (body?.diagnostic) {
+      throw new ScheduleGenerationError(body.error ?? "No valid shifts generated", body.diagnostic);
+    }
+  }
+  throw new Error(error.message || "Failed to generate schedule");
+}
+
+// in onError:
+const diag = err instanceof ScheduleGenerationError ? err.diagnostic : undefined;
+const top = diag?.drop_reason_summary
+  ? Object.entries(diag.drop_reason_summary).sort((a, b) => b[1] - a[1])[0]
+  : null;
+const description = diag
+  ? `Filled 0 of ${diag.total_required_slots} required slots.` +
+    (top ? ` Top reason: ${top[0]} (${top[1]}).` : "") +
+    " Check employee positions, availability, and templates."
+  : err.message;
+toast({ variant: "destructive", title: "Could not generate schedule", description });
+```
+
+**Always invalidate on success:** the current `if (data.shifts.length === 0) return;` early return in `onSuccess` (line ~96) is no longer needed (zero-shift now returns 422). Remove it so `queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] })` always runs.
 
 #### Observability
 
 ```typescript
 const promptStr = promptResult.messages.map(m => m.content).join("\n");
 console.log(`[generate-schedule] Prompt: ${promptStr.length} chars, ~${Math.round(promptStr.length / 4)} tokens`);
-console.log(`[generate-schedule] Employees: ${employees.length}, Templates: ${templates.length}, Required slots: ${totalRequiredSlots}`);
+console.log(`[generate-schedule] Employees: ${employees.length}, Templates: ${templates.length}, Required slots: ${totalRequiredSlots}, TZ: ${restaurantTimezone}`);
 // ... after generation:
 console.log(`[generate-schedule] Generated: ${generatedShifts.length}, Valid: ${validShifts.length}, Dropped: ${droppedShifts.length}`);
-console.log(`[generate-schedule] Drop reason summary: ${JSON.stringify(reasonCounts)}`);
+console.log(`[generate-schedule] Drop reason summary: ${JSON.stringify(reasonCounts)}`); // codes only, no UUIDs
 ```
 
-Dialog results view adds one line: `"Filled X of Y required slots."` Already shows dropped count.
+**Dialog results view** (`GenerateScheduleDialog.tsx`):
+
+- New line, gated on `total_required_slots > 0`:
+  ```tsx
+  {result.metadata.total_required_slots > 0 && (
+    <p className="text-[13px] text-muted-foreground mt-1">
+      Filled {result.metadata.total_valid} of {result.metadata.total_required_slots} required slots.
+    </p>
+  )}
+  ```
+- Use stable keys in `dropped_reasons.map`: `key={reason}` (or `${reason}-${i}` if duplicates are possible). Replaces the existing `key={i}` anti-pattern at lines 364 and 391.
+- Decorative icons (`<Sparkles />`, `<Lock />`) get `aria-hidden="true"` since the buttons already have an `aria-label` or visible text.
+- Wrap the dialog subtitle paragraph in `<DialogDescription>` for screen-reader association.
+- Restructure `DialogContent` to use flex layout so the footer doesn't get clipped on short viewports:
+  ```tsx
+  <DialogContent className="max-w-lg p-0 gap-0 border-border/40 flex flex-col max-h-[80vh]">
+    <DialogHeader ...>...</DialogHeader>
+    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">...</div>
+    <div className="px-6 py-4 border-t ...">...</div>
+  </DialogContent>
+  ```
 
 ## Testing strategy
 
@@ -385,3 +547,17 @@ Skipped — the AI scheduler integration test would require mocking OpenRouter; 
 - **Decided trade-off: No data migration.** We leave existing UTC-stored availability alone. The runtime conversion is the single source of correctness. This means `AvailabilityDialog` and `TeamAvailabilityGrid` (which already convert UTC↔local for display) stay unchanged. Future cleanup (moving to local storage) is a separate, larger project.
 - **Decided trade-off: Position normalization is a simple regex, not an alias table.** If trim/lowercase/plural-strip isn't enough, we'll add an explicit alias table in a follow-up. Most reported drops should be eliminated by normalization alone.
 - **Decided trade-off: `requiredStaffPerSlot` is computed, not configured per-template.** Restaurants can already set `min_crew` per position. Per-template explicit headcount is more flexible but adds a UI surface; deferred to a follow-up.
+
+## Design-review folded findings (2026-05-17)
+
+Both reviewers (Supabase + Frontend) ran on the initial design. Critical + major findings are folded into the sections above. Notable deferred items:
+
+- **`restaurants.timezone` `NOT NULL` migration** (Supabase minor) — deferred to a follow-up. The edge-function null-default to UTC is the runtime safety net; tightening the column is a schema change with backfill that doesn't belong in this PR.
+- **`total_valid` vs `total_generated` JSDoc** (Frontend minor) — fold into `useGenerateSchedule.ts` as inline comments when implementing; not a separate task.
+- **`max_tokens: 16384` as I/O bound, not CPU** (Supabase minor) — documented here for the record. Edge-function wall-clock timeout (not CPU budget) is the binding constraint; OpenRouter call latency is what matters.
+
+Folded as fixes in this design (see relevant sections above):
+
+- 5 critical: esm.sh URL imports (→ bare specifier + deno.json import map), 422 UUID leak (→ structured `DropCode` enum), `RawAvail` TIME-column documentation, explicit null-check on `restaurants.timezone`, `useGenerateSchedule` reading `FunctionsHttpError.context.json()`.
+- 9 major: `withinWindow` overnight-shift guard, `normalizePosition` stem-length + `ss`-guard, structured reason codes, frontend hook 422-body extraction code, `convertExceptionsToLocal` parity, `min_crew` position-name strategy, typed `ScheduleDiagnostic`, gated "Filled X of Y" line, removed zero-shift early-return invalidate skip, single-line toast description, stable keys for `dropped_reasons`.
+- Frontend minor: aria-hidden on decorative icons, `DialogDescription` wrapping, DialogContent flex layout for sticky footer.

@@ -961,7 +961,7 @@ export default function POSSales() {
           {/* Apple/Notion-style filter bar */}
           <div className="space-y-4">
             {/* Search and date row */}
-            <div className="flex flex-col md:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               {/* Search input - clean Apple style */}
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" aria-hidden="true" />
@@ -975,24 +975,24 @@ export default function POSSales() {
               </div>
 
               {/* Date range - compact */}
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="flex flex-1 sm:flex-none items-center gap-2">
+                <div className="relative flex-1 sm:flex-none">
                   <Input
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     aria-label="Start date"
-                    className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    className="h-9 w-full sm:w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
                 <span className="text-muted-foreground/50 text-sm" aria-hidden="true">–</span>
-                <div className="relative">
+                <div className="relative flex-1 sm:flex-none">
                   <Input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     aria-label="End date"
-                    className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    className="h-9 w-full sm:w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
               </div>
@@ -1011,10 +1011,11 @@ export default function POSSales() {
                     setSortBy('date');
                     setSortDirection('desc');
                   }}
+                  aria-label="Clear filters"
                   className="h-9 px-3 text-[13px] text-muted-foreground hover:text-foreground"
                 >
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  Clear
+                  <X className="h-3.5 w-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Clear</span>
                 </Button>
               )}
             </div>

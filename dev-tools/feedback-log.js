@@ -71,4 +71,61 @@ function queryBySignature(signature, opts = {}) {
   });
 }
 
-module.exports = { sanitize, appendRow, queryBySignature, _resetLogPathForTests };
+async function runCli(argv, io = {}) {
+  const stdout = io.stdout || ((s) => process.stdout.write(s));
+  const stdin = io.stdin;
+  const [sub, ...rest] = argv;
+
+  try {
+    if (sub === 'append') {
+      const json = rest[0];
+      if (!json) throw new Error('append requires a JSON arg');
+      const row = JSON.parse(json);
+      appendRow(row);
+      return 0;
+    }
+    if (sub === 'query') {
+      const sigIdx = rest.indexOf('--signature');
+      if (sigIdx === -1 || !rest[sigIdx + 1]) {
+        throw new Error('query requires --signature <sig>');
+      }
+      const sinceIdx = rest.indexOf('--since');
+      const opts = {};
+      if (sinceIdx !== -1) opts.since = rest[sinceIdx + 1];
+      const rows = queryBySignature(rest[sigIdx + 1], opts);
+      stdout(JSON.stringify(rows));
+      return 0;
+    }
+    if (sub === 'sanitize') {
+      const text = stdin !== undefined ? stdin : await readStdin();
+      stdout(sanitize(text));
+      return 0;
+    }
+    process.stderr.write(`Unknown subcommand: ${sub}\n`);
+    return 1;
+  } catch (err) {
+    process.stderr.write(`Error: ${err.message}\n`);
+    return 1;
+  }
+}
+
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => (data += chunk));
+    process.stdin.on('end', () => resolve(data));
+  });
+}
+
+if (require.main === module) {
+  runCli(process.argv.slice(2)).then((code) => process.exit(code));
+}
+
+module.exports = {
+  sanitize,
+  appendRow,
+  queryBySignature,
+  runCli,
+  _resetLogPathForTests,
+};

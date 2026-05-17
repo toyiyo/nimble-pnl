@@ -7,6 +7,7 @@ import {
   sanitize,
   appendRow,
   queryBySignature,
+  runCli,
   _resetLogPathForTests,
 } from '../../dev-tools/feedback-log.js';
 
@@ -129,5 +130,61 @@ describe('feedback-log: queryBySignature', () => {
     const rows = queryBySignature('s', { since: '2026-05-10T00:00:00Z' });
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe('2');
+  });
+});
+
+describe('feedback-log: CLI', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'feedback-log-cli-'));
+    _resetLogPathForTests(join(dir, 'log.jsonl'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _resetLogPathForTests(null);
+  });
+
+  it('append subcommand parses JSON arg and appends', async () => {
+    const exit = await runCli([
+      'append',
+      JSON.stringify({
+        id: 'cli-1',
+        signature: 's',
+        filed_at: '2026-05-16T00:00:00Z',
+      }),
+    ]);
+    expect(exit).toBe(0);
+    const rows = queryBySignature('s');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('cli-1');
+  });
+
+  it('query subcommand prints matching rows as JSON array', async () => {
+    appendRow({ id: 'q-1', signature: 'foo', filed_at: '2026-05-16T00:00:00Z' });
+    const out: string[] = [];
+    const exit = await runCli(['query', '--signature', 'foo'], {
+      stdout: (line: string) => out.push(line),
+    });
+    expect(exit).toBe(0);
+    const parsed = JSON.parse(out.join(''));
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].id).toBe('q-1');
+  });
+
+  it('sanitize subcommand reads stdin and writes sanitized stdout', async () => {
+    const out: string[] = [];
+    const exit = await runCli(['sanitize'], {
+      stdin: 'email is monica@example.com',
+      stdout: (line: string) => out.push(line),
+    });
+    expect(exit).toBe(0);
+    expect(out.join('')).toContain('<redacted-email>');
+  });
+
+  it('returns exit 1 on unknown subcommand', async () => {
+    const exit = await runCli(['nope']);
+    expect(exit).toBe(1);
   });
 });

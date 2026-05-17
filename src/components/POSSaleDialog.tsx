@@ -531,7 +531,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
             />
 
             {/* Quantity and Price Row */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="quantity"
@@ -610,7 +610,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
             />
 
             {/* Date and Time Row */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="saleDate"
@@ -662,7 +662,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                   <span className="text-[11px] text-muted-foreground">Optional</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField
                     control={form.control}
                     name="taxAmount"

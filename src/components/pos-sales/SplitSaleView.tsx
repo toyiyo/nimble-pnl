@@ -20,14 +20,14 @@ export function SplitSaleView({ sale, onEdit, onSplit, formatCurrency }: SplitSa
   const totalSplitAmount = childSplits.reduce((sum, split) => sum + (split.totalPrice || 0), 0);
 
   return (
-    <Card className="w-full transition-all hover:shadow-md border-l-4 border-l-blue-500">
-      <CardContent className="p-4 space-y-3">
+    <Card className="w-full transition-all hover:shadow-md border-l-4 border-l-foreground/20">
+      <CardContent className="p-3 sm:p-4 space-y-3">
         {/* Parent Sale Header */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h4 className="font-semibold text-base">{sale.itemName}</h4>
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              <Badge variant="secondary">
                 Split Sale
               </Badge>
             </div>
@@ -76,7 +76,7 @@ export function SplitSaleView({ sale, onEdit, onSplit, formatCurrency }: SplitSa
 
         {/* Expanded Split Items */}
         {isExpanded && (
-          <div className="space-y-2 pl-4 border-l-2 border-blue-200 dark:border-blue-800">
+          <div className="space-y-2 pl-4 border-l-2 border-border/40">
             {childSplits.map((split) => (
               <div
                 key={split.id}

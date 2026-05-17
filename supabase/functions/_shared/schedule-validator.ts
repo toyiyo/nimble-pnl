@@ -32,9 +32,21 @@ export interface ValidationContext {
   existingShifts: GeneratedShift[];
 }
 
-interface DroppedShift {
+export type DropCode =
+  | "EXCLUDED"
+  | "UNKNOWN_EMPLOYEE"
+  | "UNKNOWN_TEMPLATE"
+  | "POSITION_MISMATCH"
+  | "UNAVAILABLE_DAY"
+  | "OUTSIDE_WINDOW"
+  | "DOUBLE_BOOKING";
+
+export interface DroppedShift {
   shift: GeneratedShift;
-  reason: string;
+  code: DropCode;
+  /** Human-readable message that MAY contain UUIDs for server-side debugging.
+   *  Never include this verbatim in client-facing responses. */
+  message: string;
 }
 
 export interface ValidationResult {
@@ -101,23 +113,24 @@ export function validateGeneratedShifts(
   const dropped: DroppedShift[] = [];
 
   for (const shift of shifts) {
-    const drop = (reason: string) => dropped.push({ shift, reason });
+    const drop = (code: DropCode, message: string) =>
+      dropped.push({ shift, code, message });
 
     // 1. Excluded employee
     if (ctx.excludedEmployeeIds.has(shift.employee_id)) {
-      drop(`Employee ${shift.employee_id} is excluded from scheduling`);
+      drop("EXCLUDED", `Employee ${shift.employee_id} is excluded from scheduling`);
       continue;
     }
 
     // 2. Employee exists
     if (!ctx.employeeIds.has(shift.employee_id)) {
-      drop(`Unknown employee ID: ${shift.employee_id}`);
+      drop("UNKNOWN_EMPLOYEE", `Unknown employee ID: ${shift.employee_id}`);
       continue;
     }
 
     // 3. Template exists
     if (!ctx.templateIds.has(shift.template_id)) {
-      drop(`Unknown template ID: ${shift.template_id}`);
+      drop("UNKNOWN_TEMPLATE", `Unknown template ID: ${shift.template_id}`);
       continue;
     }
 
@@ -128,6 +141,7 @@ export function validateGeneratedShifts(
       assignedPosition.toLowerCase() !== shift.position.toLowerCase()
     ) {
       drop(
+        "POSITION_MISMATCH",
         `Position mismatch for employee ${shift.employee_id}: assigned "${assignedPosition}", shift requests "${shift.position}"`,
       );
       continue;
@@ -140,6 +154,7 @@ export function validateGeneratedShifts(
 
     if (!slot || !slot.isAvailable) {
       drop(
+        "UNAVAILABLE_DAY",
         `Employee ${shift.employee_id} is not available on day ${dayOfWeek} (${shift.day})`,
       );
       continue;
@@ -154,6 +169,7 @@ export function validateGeneratedShifts(
 
       if (shiftStart < windowStart || shiftEnd > windowEnd) {
         drop(
+          "OUTSIDE_WINDOW",
           `Shift time ${shift.start_time}-${shift.end_time} is outside availability window ` +
             `${slot.startTime}-${slot.endTime} for employee ${shift.employee_id}`,
         );
@@ -178,6 +194,7 @@ export function validateGeneratedShifts(
 
     if (hasOverlap) {
       drop(
+        "DOUBLE_BOOKING",
         `Double-booking: employee ${shift.employee_id} already has an overlapping shift on ${shift.day}`,
       );
       continue;

@@ -7,6 +7,7 @@ import {
   type GeneratedShift,
   type ValidationContext,
   type AvailabilitySlot,
+  type DropCode,
 } from '../../supabase/functions/_shared/schedule-validator';
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/employee/i);
+    expect(result.dropped[0].code).toBe('UNKNOWN_EMPLOYEE');
   });
 
   it('drops shifts with unknown template_id', () => {
@@ -112,7 +113,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/template/i);
+    expect(result.dropped[0].code).toBe('UNKNOWN_TEMPLATE');
   });
 
   it('drops shifts where employee position does not match', () => {
@@ -122,7 +123,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/position/i);
+    expect(result.dropped[0].code).toBe('POSITION_MISMATCH');
   });
 
   it('drops shifts where employee is not available on that day', () => {
@@ -132,7 +133,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/available/i);
+    expect(result.dropped[0].code).toBe('UNAVAILABLE_DAY');
   });
 
   it('drops shifts outside availability time window', () => {
@@ -148,7 +149,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/time window|availability window/i);
+    expect(result.dropped[0].code).toBe('OUTSIDE_WINDOW');
   });
 
   it('drops double-booked shifts (same employee, overlapping times)', () => {
@@ -158,7 +159,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift1, shift2], ctx);
     expect(result.valid).toHaveLength(1);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/double.book|overlap/i);
+    expect(result.dropped[0].code).toBe('DOUBLE_BOOKING');
   });
 
   it('drops shifts for excluded employees', () => {
@@ -167,7 +168,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/excluded/i);
+    expect(result.dropped[0].code).toBe('EXCLUDED');
   });
 
   it('drops shifts that overlap with existing shifts', () => {
@@ -178,7 +179,7 @@ describe('validateGeneratedShifts', () => {
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
-    expect(result.dropped[0].reason).toMatch(/double.book|overlap/i);
+    expect(result.dropped[0].code).toBe('DOUBLE_BOOKING');
   });
 
   it('allows two non-overlapping shifts for same employee on same day', () => {

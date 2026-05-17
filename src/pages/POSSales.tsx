@@ -1055,7 +1055,7 @@ export default function POSSales() {
               </div>
 
               {/* Divider */}
-              <div className="h-5 w-px bg-border/60 hidden md:block" />
+              <div className="h-5 w-px bg-border/60 hidden sm:block" />
 
               {/* Recipe filter */}
               <div className="flex items-center gap-2">
@@ -1082,7 +1082,7 @@ export default function POSSales() {
               </div>
 
               {/* Divider */}
-              <div className="h-5 w-px bg-border/60 hidden md:block" />
+              <div className="h-5 w-px bg-border/60 hidden sm:block" />
 
               {/* View mode */}
               <div className="flex items-center gap-2">
@@ -1112,7 +1112,7 @@ export default function POSSales() {
               </div>
 
               {/* Sort controls */}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
                 <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
                   <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
                     <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />

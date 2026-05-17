@@ -843,7 +843,6 @@ export default function POSSales() {
               onExportPDF={handleExportPDF}
               isExporting={isExporting}
             />
-            <div className="hidden sm:block w-px h-5 bg-border mx-1" />
           </div>
         </div>
       </header>

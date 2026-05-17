@@ -3,7 +3,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, Edit, Split } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { UnifiedSaleItem } from "@/types/pos";
 import { format } from "date-fns";
 

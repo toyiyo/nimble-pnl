@@ -40,7 +40,7 @@ describe('BulkActionBar — mobile clearance', () => {
         actions={[{ label: 'Delete', onClick: () => {} }]}
       />,
     );
-    const divider = container.querySelector('.bg-border.flex-shrink-0');
+    const divider = container.querySelector('div.h-8.w-px.bg-border');
     expect(divider).not.toBeNull();
     expect(divider?.className).toMatch(/\bhidden\b/);
     expect(divider?.className).toMatch(/\bsm:block\b/);

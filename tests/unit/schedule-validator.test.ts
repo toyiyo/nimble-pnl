@@ -4,6 +4,7 @@ import {
   getDayOfWeek,
   timeToMinutes,
   shiftsOverlap,
+  withinWindow,
   type GeneratedShift,
   type ValidationContext,
   type AvailabilitySlot,
@@ -237,6 +238,81 @@ describe('validateGeneratedShifts — position normalization', () => {
       employeePositions: new Map([['emp-1', 'Bus']]),
     });
     const shift = makeShift({ position: 'Bus' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+});
+
+// ─── Overnight Window & Overlap Tests ────────────────────────────────────────
+
+describe('shiftsOverlap — overnight handling', () => {
+  it('detects overlap between 22:00-02:00 and 01:00-05:00', () => {
+    const a = makeShift({ start_time: '22:00:00', end_time: '02:00:00' });
+    const b = makeShift({ start_time: '01:00:00', end_time: '05:00:00' });
+    expect(shiftsOverlap(a, b)).toBe(true);
+  });
+
+  it('does not flag 22:00-02:00 and 05:00-12:00 as overlapping', () => {
+    const a = makeShift({ start_time: '22:00:00', end_time: '02:00:00' });
+    const b = makeShift({ start_time: '05:00:00', end_time: '12:00:00' });
+    expect(shiftsOverlap(a, b)).toBe(false);
+  });
+});
+
+describe('validateGeneratedShifts — overnight availability window', () => {
+  it('accepts shift 22:00-02:00 within window 18:00-06:00', () => {
+    const ctx = makeContext({
+      availability: new Map([
+        ['emp-1:1', { isAvailable: true, startTime: '18:00:00', endTime: '06:00:00' }],
+      ]),
+    });
+    const shift = makeShift({ start_time: '22:00:00', end_time: '02:00:00' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+
+  it('rejects shift 12:00-18:00 against overnight window 18:00-06:00', () => {
+    const ctx = makeContext({
+      availability: new Map([
+        ['emp-1:1', { isAvailable: true, startTime: '18:00:00', endTime: '06:00:00' }],
+      ]),
+    });
+    const shift = makeShift({ start_time: '12:00:00', end_time: '18:00:00' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped[0].code).toBe('OUTSIDE_WINDOW');
+  });
+
+  it('rejects overnight shift 22:00-02:00 against normal window 08:00-23:00', () => {
+    const ctx = makeContext({
+      availability: new Map([
+        ['emp-1:1', { isAvailable: true, startTime: '08:00:00', endTime: '23:00:00' }],
+      ]),
+    });
+    const shift = makeShift({ start_time: '22:00:00', end_time: '02:00:00' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped[0].code).toBe('OUTSIDE_WINDOW');
+  });
+
+  it('accepts evening half 20:00-23:30 of overnight window 18:00-06:00', () => {
+    const ctx = makeContext({
+      availability: new Map([
+        ['emp-1:1', { isAvailable: true, startTime: '18:00:00', endTime: '06:00:00' }],
+      ]),
+    });
+    const shift = makeShift({ start_time: '20:00:00', end_time: '23:30:00' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+  });
+
+  it('accepts morning half 02:00-05:00 of overnight window 18:00-06:00', () => {
+    const ctx = makeContext({
+      availability: new Map([
+        ['emp-1:1', { isAvailable: true, startTime: '18:00:00', endTime: '06:00:00' }],
+      ]),
+    });
+    const shift = makeShift({ start_time: '02:00:00', end_time: '05:00:00' });
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(1);
   });

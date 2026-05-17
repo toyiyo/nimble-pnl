@@ -77,16 +77,74 @@ export function timeToMinutes(time: string): number {
 
 /**
  * Check if two shifts for the same employee on the same day overlap.
- * Overlap is defined as [start, end) intervals intersecting.
+ * Overnight shifts (end <= start) are normalized by adding 1440 to end.
  * Adjacent shifts (end == start) do not overlap.
+ *
+ * When one shift is overnight and the other is a normal early-morning shift
+ * (e.g. 01:00-05:00), we also check the early-morning shift shifted forward
+ * by 1440 min so both are in the same "day frame".
  */
 export function shiftsOverlap(a: GeneratedShift, b: GeneratedShift): boolean {
   const aStart = timeToMinutes(a.start_time);
-  const aEnd = timeToMinutes(a.end_time);
+  let aEnd = timeToMinutes(a.end_time);
+  const aOvernight = aEnd <= aStart;
+  if (aOvernight) aEnd += 1440;
+
   const bStart = timeToMinutes(b.start_time);
-  const bEnd = timeToMinutes(b.end_time);
-  // Overlaps if one starts before the other ends (exclusive)
-  return aStart < bEnd && bStart < aEnd;
+  let bEnd = timeToMinutes(b.end_time);
+  const bOvernight = bEnd <= bStart;
+  if (bOvernight) bEnd += 1440;
+
+  // Primary check: do the (possibly normalized) intervals overlap?
+  if (aStart < bEnd && bStart < aEnd) return true;
+
+  // Secondary check: when one is overnight, the other's early-morning portion
+  // may lie in the "next day frame" — shift b forward by 1440 and re-check.
+  if (aOvernight && !bOvernight) {
+    const bStart2 = bStart + 1440;
+    const bEnd2 = bEnd + 1440;
+    if (aStart < bEnd2 && bStart2 < aEnd) return true;
+  }
+  if (bOvernight && !aOvernight) {
+    const aStart2 = aStart + 1440;
+    const aEnd2 = aEnd + 1440;
+    if (aStart2 < bEnd && bStart < aEnd2) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Returns true if a shift [shiftStart, shiftEnd] (in minutes-from-midnight)
+ * fits entirely within an availability window [windowStart, windowEnd].
+ *
+ * Overnight handling:
+ * - A window where windowEnd < windowStart is treated as
+ *   [windowStart, 24:00) ∪ [00:00, windowEnd] (crosses midnight).
+ * - A shift where shiftEnd <= shiftStart is treated as overnight similarly.
+ * - An overnight shift cannot fit inside a non-overnight window.
+ * - A normal shift may fit inside either half of an overnight window.
+ */
+export function withinWindow(
+  shiftStart: number,
+  shiftEnd: number,
+  windowStart: number,
+  windowEnd: number,
+): boolean {
+  const shiftIsOvernight = shiftEnd <= shiftStart;
+  const windowIsOvernight = windowEnd < windowStart;
+
+  if (!windowIsOvernight) {
+    if (shiftIsOvernight) return false;
+    return shiftStart >= windowStart && shiftEnd <= windowEnd;
+  }
+
+  if (shiftIsOvernight) {
+    return shiftStart >= windowStart && shiftEnd <= windowEnd;
+  }
+  const inEvening = shiftStart >= windowStart && shiftEnd <= 1440;
+  const inMorning = shiftStart >= 0 && shiftEnd <= windowEnd;
+  return inEvening || inMorning;
 }
 
 /**
@@ -176,14 +234,14 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 6. Shift times within availability window (if specific hours set)
+    // 6. Shift times within availability window (overnight-aware)
     if (slot.startTime !== null && slot.endTime !== null) {
       const shiftStart = timeToMinutes(shift.start_time);
       const shiftEnd = timeToMinutes(shift.end_time);
       const windowStart = timeToMinutes(slot.startTime);
       const windowEnd = timeToMinutes(slot.endTime);
 
-      if (shiftStart < windowStart || shiftEnd > windowEnd) {
+      if (!withinWindow(shiftStart, shiftEnd, windowStart, windowEnd)) {
         drop(
           "OUTSIDE_WINDOW",
           `Shift time ${shift.start_time}-${shift.end_time} is outside availability window ` +

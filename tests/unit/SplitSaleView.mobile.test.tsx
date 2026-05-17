@@ -4,21 +4,32 @@ import { render, fireEvent } from '@testing-library/react';
 import { SplitSaleView } from '@/components/pos-sales/SplitSaleView';
 import { UnifiedSaleItem } from '@/types/pos';
 
-const splitSale: UnifiedSaleItem = {
+function makeSale(overrides: Partial<UnifiedSaleItem>): UnifiedSaleItem {
+  return {
+    id: 'sale-x',
+    restaurantId: 'rest-1',
+    posSystem: 'toast',
+    externalOrderId: 'ord-1',
+    itemName: 'Item',
+    quantity: 1,
+    saleDate: '2026-05-17',
+    syncedAt: '2026-05-17T12:34:00Z',
+    createdAt: '2026-05-17T12:34:00Z',
+    ...overrides,
+  };
+}
+
+const splitSale: UnifiedSaleItem = makeSale({
   id: 'parent-1',
   itemName: 'Combo Meal',
-  quantity: 1,
   totalPrice: 25,
-  saleDate: '2026-05-17',
   saleTime: '12:34',
-  posSystem: 'toast',
-  externalOrderId: 'ord-1',
   is_split: true,
   child_splits: [
-    { id: 'child-1', itemName: 'Burger', totalPrice: 15 } as unknown as UnifiedSaleItem,
-    { id: 'child-2', itemName: 'Fries', totalPrice: 10 } as unknown as UnifiedSaleItem,
+    makeSale({ id: 'child-1', itemName: 'Burger', totalPrice: 15 }),
+    makeSale({ id: 'child-2', itemName: 'Fries', totalPrice: 10 }),
   ],
-} as UnifiedSaleItem;
+});
 
 describe('SplitSaleView — semantic tokens only (no direct blue colors)', () => {
   it('contains no direct blue color tokens', () => {

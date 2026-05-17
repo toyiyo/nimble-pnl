@@ -24,6 +24,11 @@ export function mergePunchLocation(
 
 const DEFAULT_LOCATION_TIMEOUT = 3000;
 const DEFAULT_DEVICE_INFO_MAX = 100;
+// How long a resolved geolocation result stays addressable as the "in-flight"
+// promise. A second employee within this window reuses the same fix; after
+// it, the next punch starts a fresh getCurrentPosition so we don't ship a
+// stale (potentially wrong-restaurant) location for the next shift.
+const PUNCH_CONTEXT_REUSE_MS = 10_000;
 
 export function getDeviceInfo(maxLength = DEFAULT_DEVICE_INFO_MAX): string {
   if (typeof navigator === 'undefined') return 'unknown device';
@@ -58,10 +63,59 @@ export function getQuickLocation(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<
   });
 }
 
-export async function collectPunchContext(timeoutMs = DEFAULT_LOCATION_TIMEOUT) {
+type PunchContextResult = {
+  location: { latitude: number; longitude: number } | undefined;
+  device_info: string;
+};
+
+let inFlight: Promise<PunchContextResult> | null = null;
+let inFlightTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const buildContext = async (timeoutMs: number): Promise<PunchContextResult> => {
   const location = await getQuickLocation(timeoutMs);
   return {
     location,
     device_info: getDeviceInfo(),
   };
+};
+
+/**
+ * Kick off geolocation + device_info collection eagerly, returning a single
+ * shared promise across concurrent callers. Designed to be called the moment
+ * the user opens the camera dialog so the OS has a head start before they
+ * actually tap Confirm.
+ *
+ * The result is reused for ~10s; after that, the next call starts a fresh
+ * `getCurrentPosition`.
+ */
+export function startPunchContext(timeoutMs = DEFAULT_LOCATION_TIMEOUT): Promise<PunchContextResult> {
+  if (inFlight) return inFlight;
+  inFlight = buildContext(timeoutMs).finally(() => {
+    if (inFlightTimeout) clearTimeout(inFlightTimeout);
+    inFlightTimeout = setTimeout(() => {
+      inFlight = null;
+      inFlightTimeout = null;
+    }, PUNCH_CONTEXT_REUSE_MS);
+  });
+  return inFlight;
+}
+
+/**
+ * Collect punch context. If `startPunchContext` was already called (e.g. when
+ * the camera dialog opened), this awaits the same in-flight promise instead
+ * of starting a redundant `getCurrentPosition`.
+ */
+export async function collectPunchContext(timeoutMs = DEFAULT_LOCATION_TIMEOUT) {
+  if (inFlight) return inFlight;
+  return buildContext(timeoutMs);
+}
+
+/**
+ * Test-only escape hatch so isolated tests can re-arm `startPunchContext`.
+ * Production callers must not use this.
+ */
+export function _resetPunchContextForTests() {
+  if (inFlightTimeout) clearTimeout(inFlightTimeout);
+  inFlight = null;
+  inFlightTimeout = null;
 }

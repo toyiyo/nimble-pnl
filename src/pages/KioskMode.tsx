@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,15 +15,17 @@ import { useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import type { PunchStatus } from '@/types/timeTracking';
-import { collectPunchContext } from '@/utils/punchContext';
+import { collectPunchContext, startPunchContext } from '@/utils/punchContext';
 import { addQueuedPunch, flushQueuedPunches, hasQueuedPunches, isLikelyOffline } from '@/utils/offlineQueue';
 import type { QueuedKioskPunch } from '@/utils/offlineQueue';
 import { format } from 'date-fns';
-import { ImageCapture } from '@/components/ImageCapture';
+import { ImageCapture, type ImageCaptureHandle } from '@/components/ImageCapture';
 import { PinChangeDialog } from '@/components/kiosk/PinChangeDialog';
 import { TipSubmissionDialog } from '@/components/tips/TipSubmissionDialog';
 import { useEmployeeTips } from '@/hooks/useEmployeeTips';
 import { Clock, Lock, LogIn, LogOut, Shield, WifiOff, KeyRound, X, Loader2, CheckCircle } from 'lucide-react';
+
+const PUNCH_STATUS_CACHE_FRESH_MS = 5_000;
 
 const ATTEMPT_LIMIT = 5;
 const LOCKOUT_MS = 60_000;
@@ -37,6 +40,7 @@ const KioskMode = () => {
   const { user, signIn, signOut } = useAuth();
   const createPunch = useCreateTimePunch();
   const upsertPin = useUpsertEmployeePin();
+  const queryClient = useQueryClient();
 
   const restaurantId = kioskSession?.location_id || selectedRestaurant?.restaurant_id || null;
   const locationName = selectedRestaurant?.restaurant?.name || kioskSession?.location_id || 'Location';
@@ -69,7 +73,13 @@ const KioskMode = () => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [queuedCount, setQueuedCount] = useState<number>(hasQueuedPunches() ? 1 : 0);
   const [captureFn, setCaptureFn] = useState<(() => Promise<Blob | null>) | null>(null);
-  
+  const imageCaptureRef = useRef<ImageCaptureHandle>(null);
+  // Guards rapid double-taps on Skip/Confirm: React state flips on the next
+  // commit, so a synchronous re-entry on the same tick would otherwise slip
+  // through. The ref is set BEFORE `setProcessing(true)` and cleared at the
+  // same point as `setProcessing(false)`.
+  const processingRef = useRef(false);
+
   // PIN change dialog state
   const [pinChangeDialogOpen, setPinChangeDialogOpen] = useState(false);
   const [pinChangeEmployee, setPinChangeEmployee] = useState<{ id: string; name: string; pinId: string } | null>(null);
@@ -84,15 +94,29 @@ const KioskMode = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Disable zoom for kiosk mode
+  // Lock zoom for kiosk mode.
+  //
+  // WCAG 1.4.4 requires users to be able to zoom text to 200%. We
+  // deliberately violate it on this single page because:
+  //   - The PIN pad uses 24-32 px tap targets on a fixed-position grid.
+  //     Allowing zoom on a shared kiosk tablet means one employee can leave
+  //     the screen pinch-zoomed and the next employee can't see the keypad
+  //     or hit-test it correctly, blocking the entire timeclock.
+  //   - The page text is already sized for shared-tablet viewing (16-32 px
+  //     base) and the success Alert uses `role="status"` + `aria-live`, so
+  //     low-vision users still get the audio announcement.
+  //   - The kiosk is only ever launched via a manager flow that locks the
+  //     device into this page; it isn't a general-purpose web page.
+  // We restore the original viewport on unmount so the rest of the SPA is
+  // unaffected.
   useEffect(() => {
     const viewport = document.querySelector('meta[name="viewport"]');
     const originalContent = viewport?.getAttribute('content') || '';
-    
+
     if (viewport) {
       viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
     }
-    
+
     return () => {
       if (viewport) {
         viewport.setAttribute('content', originalContent);
@@ -134,14 +158,27 @@ const KioskMode = () => {
     setCameraDialogOpen(true);
     setCapturedPhotoBlob(null);
     setCameraError(null);
+    // Kick off geolocation immediately so the OS-level prompt and acquisition
+    // run in parallel with the camera initialising. By the time the employee
+    // taps Confirm or Skip the fix is usually already cached.
+    void startPunchContext(3000);
   };
 
   const handleSkipPhoto = () => {
-    if (pendingAction) {
-      handlePunch(pendingAction, null);
-    } else {
+    if (processingRef.current) return;
+    if (!pendingAction) {
       resetCameraState();
+      return;
     }
+    const action = pendingAction;
+    processingRef.current = true;
+    setProcessing(true);
+    // Tear down the camera FIRST so the preview goes away even if handlePunch
+    // takes a moment. This is the fix for the "Skip photo doesn't close the
+    // camera" bug — previously handlePunch awaited geolocation + status before
+    // ever calling resetCameraState.
+    resetCameraState();
+    void handlePunch(action, null);
   };
 
   const handleDigit = (digit: string) => {
@@ -172,6 +209,27 @@ const KioskMode = () => {
     });
     if (error) throw error;
     return data && data.length > 0 ? (data[0] as PunchStatus) : null;
+  };
+
+  // Hot-path status check. When the React Query cache for this employee was
+  // updated within the last few seconds AND there's nothing in the offline
+  // queue (which would mean our cache is potentially behind the server), reuse
+  // the cached value. Otherwise hit the RPC and seed the cache for next time.
+  // This is most useful in shift-change scenarios where the same employee
+  // punches multiple times in quick succession.
+  const resolvePunchStatus = async (employeeId: string): Promise<PunchStatus | null> => {
+    if (!hasQueuedPunches()) {
+      const state = queryClient.getQueryState<PunchStatus | null>(['punchStatus', employeeId]);
+      if (
+        state?.dataUpdatedAt &&
+        Date.now() - state.dataUpdatedAt < PUNCH_STATUS_CACHE_FRESH_MS
+      ) {
+        return state.data ?? null;
+      }
+    }
+    const status = await fetchPunchStatus(employeeId);
+    queryClient.setQueryData(['punchStatus', employeeId], status);
+    return status;
   };
 
   const registerFailure = () => {
@@ -226,98 +284,165 @@ const KioskMode = () => {
     return false;
   };
 
+  // The kiosk is the only authenticated identity on this device; we use that
+  // identity to fill `created_by` (server-side via `auth.getSession()` inside
+  // useCreateTimePunch). Employee identity comes from the PIN match below.
+  //
+  // The flow is OPTIMISTIC: we surface success to the user the moment we have
+  // verified the PIN and snapshotted state, then fire `createPunch.mutate(..)`
+  // in the background. If the server rejects we roll back the optimistic UI
+  // and surface an error or queue offline. This unblocks the next employee
+  // ~500ms-5s sooner than awaiting the INSERT round-trip.
+  //
+  // IMPORTANT: callers are expected to have set `processingRef.current = true`
+  // AND `setProcessing(true)` BEFORE invoking, so the lock survives the React
+  // commit boundary. We clear both right after the optimistic snapshot so the
+  // kiosk is free for the next punch while the network call is still running.
+  const releaseLock = () => {
+    processingRef.current = false;
+    setProcessing(false);
+  };
+
   const handlePunch = async (action: PunchAction, photoBlob?: Blob | null) => {
     const pinError = validatePinInput();
     if (pinError) {
       setErrorMessage(pinError);
+      releaseLock();
       return;
     }
 
-    setProcessing(true);
     setErrorMessage(null);
     setStatusMessage(null);
+
+    // Snapshot inputs that the late onSuccess/onError need (they may otherwise
+    // see cleared state since we wipe pinInput as soon as the punch is taken).
+    const submittedPin = pinInput;
 
     let pinMatch: Awaited<ReturnType<typeof verifyPinForRestaurant>> = null;
     let context: Awaited<ReturnType<typeof collectPunchContext>> | null = null;
 
     try {
-      pinMatch = await verifyPinForRestaurant(restaurantId, pinInput);
+      pinMatch = await verifyPinForRestaurant(restaurantId, submittedPin);
       if (!pinMatch) {
         registerFailure();
+        releaseLock();
         return;
       }
 
-      const status = await fetchPunchStatus(pinMatch.employee_id);
+      const status = await resolvePunchStatus(pinMatch.employee_id);
       const statusError = validatePunchStatus(status, action);
       if (statusError) {
         setErrorMessage(statusError);
+        releaseLock();
         return;
       }
 
+      // collectPunchContext reuses the in-flight promise started in
+      // startPunchFlow, so this typically returns near-instantly (<5ms).
       context = await collectPunchContext(3000);
+    } catch (error: unknown) {
+      const handledOffline = await handleOfflineQueue(
+        action,
+        submittedPin,
+        context,
+        pinMatch?.employee_id
+      );
+      if (!handledOffline) {
+        const message = error instanceof Error ? error.message : 'Unable to record punch.';
+        setErrorMessage(message);
+      }
+      releaseLock();
+      return;
+    }
 
-      await createPunch.mutateAsync({
-        restaurant_id: restaurantId,
+    // ----- Optimistic UI -----
+    const nowIso = new Date().toISOString();
+    const employeeName = pinMatch.employee?.name || 'Employee';
+    const employeeRole = pinMatch.employee?.position || undefined;
+    const previousLastResult = lastResult;
+    const previousStatusMessage = statusMessage;
+
+    resetAttempts();
+    setPinInput('');
+    setLastResult({
+      name: employeeName,
+      punchType: action,
+      timestamp: nowIso,
+      role: employeeRole,
+    });
+    setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
+    // Kiosk is now free for the next employee — the actual INSERT continues
+    // asynchronously below.
+    releaseLock();
+
+    // ----- Background mutation -----
+    createPunch.mutate(
+      {
+        restaurant_id: restaurantId!,
         employee_id: pinMatch.employee_id,
         punch_type: action,
-        punch_time: new Date().toISOString(),
+        punch_time: nowIso,
         notes: 'Kiosk PIN punch',
         location: context.location,
         device_info: context.device_info,
         photoBlob: photoBlob || undefined,
-      });
+        // We show our own success UI above — suppress the global toast.
+        silent: true,
+      },
+      {
+        onSuccess: () => {
+          // force_reset is a security-critical flow (an admin-issued reset
+          // forces the employee to pick a new PIN). We MUST wait until the
+          // punch has actually persisted before opening the change dialog —
+          // otherwise an offline/failed punch would still trigger the PIN
+          // reset UX, which is misleading.
+          if (pinMatch!.force_reset) {
+            setPinChangeEmployee({
+              id: pinMatch!.employee_id,
+              name: employeeName,
+              pinId: pinMatch!.id,
+            });
+            setPinChangeDialogOpen(true);
+          } else {
+            // Fire-and-forget: last_used_at is housekeeping, not on the hot
+            // path. Failures here must never block or surface to the user.
+            supabase
+              .from('employee_pins')
+              .update({ last_used_at: nowIso })
+              .eq('id', pinMatch!.id)
+              .then(() => {}, () => {});
+          }
 
-      const nowIso = new Date().toISOString();
+          if (action === 'clock_out' && pinMatch!.employee) {
+            setTipSubmissionEmployee({
+              id: pinMatch!.employee_id,
+              name: employeeName,
+            });
+            setTipDialogOpen(true);
+          }
 
-      // Check if this is a force_reset PIN - if so, show PIN change dialog BEFORE clearing force_reset
-      if (pinMatch.force_reset) {
-        setPinChangeEmployee({
-          id: pinMatch.employee_id,
-          name: pinMatch.employee?.name || 'Employee',
-          pinId: pinMatch.id,
-        });
-        setPinChangeDialogOpen(true);
-        // Do NOT update force_reset yet - will be done after employee sets new PIN
-      } else {
-        // Normal flow - just update last_used_at
-        await supabase
-          .from('employee_pins')
-          .update({ last_used_at: nowIso })
-          .eq('id', pinMatch.id);
-      }
+          if (queuedCount > 0) {
+            flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
+          }
+        },
+        onError: async (error: unknown) => {
+          const handledOffline = await handleOfflineQueue(
+            action,
+            submittedPin,
+            context,
+            pinMatch?.employee_id
+          );
+          if (handledOffline) return;
 
-      resetAttempts();
-      setPinInput('');
-      setLastResult({
-        name: pinMatch.employee?.name || 'Employee',
-        punchType: action,
-        timestamp: nowIso,
-        role: pinMatch.employee?.position || undefined,
-      });
-      setStatusMessage(action === 'clock_in' ? 'Clocked in' : 'Clocked out');
-      resetCameraState();
-      if (queuedCount > 0) {
-        flushQueuedPunches(sendQueuedPunch).then((result) => setQueuedCount(result.remaining));
+          // Roll back the optimistic UI so the employee sees the failure
+          // instead of a misleading "Clocked in" alert.
+          setLastResult(previousLastResult);
+          setStatusMessage(previousStatusMessage);
+          const message = error instanceof Error ? error.message : 'Unable to record punch.';
+          setErrorMessage(message);
+        },
       }
-      
-      // Show tip submission dialog after clock-out
-      if (action === 'clock_out' && pinMatch.employee) {
-        setTipSubmissionEmployee({
-          id: pinMatch.employee_id,
-          name: pinMatch.employee.name || 'Employee',
-        });
-        setTipDialogOpen(true);
-      }
-    } catch (error: unknown) {
-      const handledOffline = await handleOfflineQueue(action, pinInput, context, pinMatch?.employee_id);
-      if (!handledOffline) {
-        const message = error instanceof Error ? error.message : 'Unable to record punch.';
-        setErrorMessage(message);
-        resetCameraState();
-      }
-    } finally {
-      setProcessing(false);
-    }
+    );
   };
 
   const handleSaveNewPin = async (newPin: string) => {
@@ -404,10 +529,14 @@ const KioskMode = () => {
   };
 
   const resetCameraState = () => {
+    // Stop tracks first so we release the camera even if the dialog hasn't
+    // unmounted yet (e.g. when the same dialog stays open across animations).
+    imageCaptureRef.current?.stopCamera();
     setCameraDialogOpen(false);
     setCapturedPhotoBlob(null);
     setPendingAction(null);
     setCameraError(null);
+    setCaptureFn(null);
   };
 
   const queuePunchOffline = async (
@@ -511,7 +640,11 @@ const KioskMode = () => {
             </div>
 
             {statusMessage && lastResult && (
-              <Alert className="bg-emerald-500/10 border-emerald-500/30 text-white">
+              <Alert
+                role="status"
+                aria-live="polite"
+                className="bg-emerald-500/10 border-emerald-500/30 text-white"
+              >
                 <AlertDescription className="flex items-center justify-between">
                   <div>
                     <div className="font-semibold">{lastResult.name}</div>
@@ -700,12 +833,14 @@ const KioskMode = () => {
       <Dialog
         open={cameraDialogOpen}
         onOpenChange={(open) => {
-          setCameraDialogOpen(open);
           if (!open) {
-            setPendingAction(null);
-            setCapturedPhotoBlob(null);
-            setCameraError(null);
+            // Route through resetCameraState so the MediaStream tracks get
+            // stopped — otherwise dismissing the dialog via ESC or backdrop
+            // click leaves the camera light on.
+            resetCameraState();
+            return;
           }
+          setCameraDialogOpen(open);
         }}
       >
         <DialogContent className="sm:max-w-lg">
@@ -717,6 +852,7 @@ const KioskMode = () => {
           </DialogHeader>
           <div className="space-y-4">
             <ImageCapture
+              ref={imageCaptureRef}
               onImageCaptured={(blob) => setCapturedPhotoBlob(blob)}
               onError={(err) => setCameraError(err)}
               disabled={processing}
@@ -725,6 +861,12 @@ const KioskMode = () => {
               hideControls
               preferredFacingMode="user"
               onCaptureRef={(fn) => setCaptureFn(() => fn)}
+              // Match EmployeeClock's low-bandwidth profile: a 480-wide JPEG at
+              // q=0.6 averages ~30-80KB and uploads in well under a second
+              // even on a slow tablet. The buddy-punch verification doesn't
+              // need print-quality.
+              maxWidth={480}
+              quality={0.6}
             />
             {cameraError && <p className="text-xs text-destructive">{cameraError}</p>}
             <div className="space-y-2 text-sm text-muted-foreground">
@@ -748,13 +890,25 @@ const KioskMode = () => {
             </Button>
             <Button
               onClick={async () => {
-                if (!pendingAction) return;
-                resetCameraState();
+                if (processingRef.current || !pendingAction) return;
+                const action = pendingAction;
+                processingRef.current = true;
+                setProcessing(true);
+                // CRITICAL: capture must run BEFORE we stop the stream.
+                // The old code closed the dialog first and then awaited
+                // captureFn() — but with the camera torn down the canvas had
+                // nothing to draw and Confirm sometimes silently lost the
+                // photo. Now: capture → reset → punch.
                 let blob = capturedPhotoBlob;
                 if (!blob && captureFn) {
-                  blob = await captureFn();
+                  try {
+                    blob = await captureFn();
+                  } catch {
+                    blob = null;
+                  }
                 }
-                handlePunch(pendingAction, blob);
+                resetCameraState();
+                void handlePunch(action, blob);
               }}
               disabled={processing || !pendingAction}
             >

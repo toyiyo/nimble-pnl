@@ -1,9 +1,13 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera, Image as ImageIcon, Upload, X, Zap } from 'lucide-react';
 import { useNativeCamera } from '@/hooks/useNativeCamera';
 import { cn } from '@/lib/utils';
+
+export interface ImageCaptureHandle {
+  stopCamera: () => void;
+}
 
 interface ImageCaptureProps {
   onImageCaptured: (imageBlob: Blob, imageUrl: string) => void;
@@ -15,9 +19,15 @@ interface ImageCaptureProps {
   hideControls?: boolean;
   onCaptureRef?: (capture: () => Promise<Blob | null>) => void;
   preferredFacingMode?: 'user' | 'environment';
+  // When set, downscale the captured JPEG so its width is at most this many
+  // pixels and (if <= 480) request a lower-res getUserMedia ideal so the
+  // device doesn't spin up a 1080p stream just to encode a 480px image.
+  maxWidth?: number;
+  // JPEG quality in [0, 1]. Defaults to 0.8 to match the previous behaviour.
+  quality?: number;
 }
 
-export const ImageCapture: React.FC<ImageCaptureProps> = ({
+export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
   onImageCaptured,
   onError,
   className,
@@ -27,7 +37,9 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   hideControls = false,
   onCaptureRef,
   preferredFacingMode = 'environment',
-}) => {
+  maxWidth,
+  quality = 0.8,
+}, ref) => {
   const { isNative, takePhoto: takeNativePhoto } = useNativeCamera();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,20 +54,21 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   if (import.meta.env.DEV) { console.log('🎥 Starting camera...'); }
     setIsLoading(true);
 
+    // Kiosk path passes maxWidth=480; no point asking the device for 1080p
+    // just to downscale it. Keep high-res for the receipt/inventory paths.
+    const lowRes = typeof maxWidth === 'number' && maxWidth <= 480;
+    const videoConstraints = lowRes
+      ? { facingMode: preferredFacingMode, width: { ideal: 640, min: 480 }, height: { ideal: 480, min: 360 } }
+      : { facingMode: preferredFacingMode, width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } };
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: preferredFacingMode,
-          width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 }
-        }
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
 
   if (import.meta.env.DEV) { console.log('📹 Got media stream:', stream.id); }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        
+
         // Set up event handlers
         const handleLoadedMetadata = () => {
           if (import.meta.env.DEV) { console.log('🎬 Video metadata loaded'); }
@@ -100,7 +113,7 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
       setIsLoading(false);
       onError?.(error.message);
     }
-  }, [onError, preferredFacingMode]);
+  }, [onError, preferredFacingMode, maxWidth]);
 
   const stopCamera = useCallback(() => {
   if (import.meta.env.DEV) { console.log('🛑 Stopping camera...'); }
@@ -115,6 +128,11 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
     setIsStreaming(false);
     setIsLoading(false);
   }, []);
+
+  // Expose stopCamera so the parent (e.g. KioskMode) can tear the stream
+  // down synchronously before unmounting — otherwise the camera LED stays
+  // on for a render tick on low-end Android.
+  useImperativeHandle(ref, () => ({ stopCamera }), [stopCamera]);
 
   const capturePhoto = useCallback(async () => {
   if (import.meta.env.DEV) { console.log('📸 Capturing photo...'); }
@@ -139,11 +157,18 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
   return null;
     }
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0);
+    // Downscale on the canvas before encoding when maxWidth is set. The kiosk
+    // selfie path uses 480px; a 4–8x area reduction shrinks the JPEG from
+    // ~1 MB to ~50 KB and removes the CORS-preflighted upload from the
+    // critical path.
+    const scale = typeof maxWidth === 'number' && maxWidth > 0
+      ? Math.min(1, maxWidth / video.videoWidth)
+      : 1;
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  if (import.meta.env.DEV) { console.log(`📷 Photo captured: ${video.videoWidth}x${video.videoHeight}`); }
+  if (import.meta.env.DEV) { console.log(`📷 Photo captured: ${canvas.width}x${canvas.height} (source ${video.videoWidth}x${video.videoHeight}, scale ${scale.toFixed(2)}, q ${quality})`); }
 
     return new Promise<Blob | null>((resolve) => {
       canvas.toBlob((blob) => {
@@ -159,9 +184,9 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
           onError?.('Failed to capture photo');
           resolve(null);
         }
-      }, 'image/jpeg', 0.8);
+      }, 'image/jpeg', quality);
     });
-  }, [onImageCaptured, stopCamera, onError]);
+  }, [onImageCaptured, stopCamera, onError, maxWidth, quality]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -419,4 +444,6 @@ export const ImageCapture: React.FC<ImageCaptureProps> = ({
       </CardContent>
     </Card>
   );
-};
+});
+
+ImageCapture.displayName = 'ImageCapture';

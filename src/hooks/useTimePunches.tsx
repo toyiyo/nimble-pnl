@@ -87,14 +87,27 @@ export const useEmployeePunchStatus = (employeeId: string | null) => {
   };
 };
 
+type CreateTimePunchInput =
+  Omit<TimePunch, 'id' | 'created_at' | 'updated_at' | 'employee'>
+  & {
+    photoBlob?: Blob;
+    // Suppress the global success toast. Callers (e.g. KioskMode) that surface
+    // their own success UI use this to avoid stacking a toast on top.
+    silent?: boolean;
+  };
+
 export const useCreateTimePunch = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (punch: Omit<TimePunch, 'id' | 'created_at' | 'updated_at' | 'employee'> & { photoBlob?: Blob }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+    mutationFn: async (punch: CreateTimePunchInput) => {
+      // getSession() reads the local cache (no network round-trip), whereas
+      // getUser() hits /auth/v1/user every call. On the kiosk hot path this
+      // saves 50-150 ms per punch.
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
       // Upload photo to storage if provided
       let photo_path: string | undefined;
       if (punch.photoBlob) {
@@ -102,7 +115,7 @@ export const useCreateTimePunch = () => {
           const timestamp = Date.now();
           const filename = `punch-${timestamp}.jpg`;
           const filePath = `${punch.restaurant_id}/${punch.employee_id}/${filename}`;
-          
+
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('time-clock-photos')
             .upload(filePath, punch.photoBlob, {
@@ -126,16 +139,16 @@ export const useCreateTimePunch = () => {
           // Continue without photo
         }
       }
-      
-      // Remove photoBlob from the punch data and add photo_path
-      const { photoBlob, ...punchData } = punch;
-      
+
+      // Remove photoBlob and silent from the punch data; both are local-only.
+      const { photoBlob, silent, ...punchData } = punch;
+
       const { data, error } = await supabase
         .from('time_punches')
         .insert({
           ...punchData,
           photo_path,
-          created_by: user?.id,
+          created_by: userId,
         })
         .select()
         .single();
@@ -143,10 +156,12 @@ export const useCreateTimePunch = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['timePunches', data.restaurant_id] });
       queryClient.invalidateQueries({ queryKey: ['punchStatus', data.employee_id] });
-      
+
+      if (variables?.silent) return;
+
       const punchTypeText = data.punch_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
       toast({
         title: 'Punch recorded',

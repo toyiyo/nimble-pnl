@@ -50,7 +50,7 @@ export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
   const [isLoading, setIsLoading] = useState(false);
 
   const startCamera = useCallback(async () => {
-  if (import.meta.env.DEV) { console.log('🎥 Starting camera...'); }
+    if (import.meta.env.DEV) { console.log('🎥 Starting camera...'); }
     setIsLoading(true);
 
     // Kiosk path passes maxWidth=480; no point asking the device for 1080p
@@ -60,16 +60,24 @@ export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
       ? { facingMode: preferredFacingMode, width: { ideal: 640, min: 480 }, height: { ideal: 480, min: 360 } }
       : { facingMode: preferredFacingMode, width: { ideal: 1920, min: 640 }, height: { ideal: 1080, min: 480 } };
 
+    // metadataFired guards the fallback path against the React-state closure
+    // race: `isLoading` here is captured at startCamera-time, so once
+    // setIsLoading(false) flips, the closure still reads `true` and would
+    // re-invoke handleLoadedMetadata. A local flag stays in sync with the
+    // actual lifecycle.
+    let metadataFired = false;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
 
-  if (import.meta.env.DEV) { console.log('📹 Got media stream:', stream.id); }
+      if (import.meta.env.DEV) { console.log('📹 Got media stream:', stream.id); }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
 
-        // Set up event handlers
         const handleLoadedMetadata = () => {
+          if (metadataFired) return;
+          metadataFired = true;
           if (import.meta.env.DEV) { console.log('🎬 Video metadata loaded'); }
           if (videoRef.current) {
             videoRef.current.play().then(() => {
@@ -77,16 +85,17 @@ export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
               setIsStreaming(true);
               setHasPermission(true);
               setIsLoading(false);
-            }).catch((error) => {
-              if (import.meta.env.DEV) { console.error('❌ Video play error:', error); }
-              onError?.(`Video play failed: ${error.message}`);
+            }).catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (import.meta.env.DEV) { console.error('❌ Video play error:', message); }
+              onError?.(`Video play failed: ${message}`);
               setIsLoading(false);
             });
           }
         };
 
-        const handleVideoError = (error: any) => {
-          if (import.meta.env.DEV) { console.error('❌ Video error:', error); }
+        const handleVideoError = (event: Event | string) => {
+          if (import.meta.env.DEV) { console.error('❌ Video error:', event); }
           onError?.('Video failed to load');
           setIsLoading(false);
         };
@@ -94,23 +103,27 @@ export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
         videoRef.current.onloadedmetadata = handleLoadedMetadata;
         videoRef.current.onerror = handleVideoError;
 
-        // Fallback timeout in case metadata never loads
+        // Some Android WebViews never fire `loadedmetadata` even after the
+        // stream attaches, so we poll once at 5s and force-resolve if the
+        // element reports it has metadata anyway.
         setTimeout(() => {
+          if (metadataFired) return;
           if (videoRef.current && videoRef.current.readyState >= 1) {
             if (import.meta.env.DEV) { console.log('🕒 Fallback: Video ready via timeout'); }
             handleLoadedMetadata();
-          } else if (isLoading) {
+          } else {
             if (import.meta.env.DEV) { console.log('🕒 Timeout: Stopping loading spinner'); }
             setIsLoading(false);
             onError?.('Camera initialization timed out');
           }
         }, 5000);
       }
-    } catch (error: any) {
-  if (import.meta.env.DEV) { console.error('❌ Camera access error:', error); }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (import.meta.env.DEV) { console.error('❌ Camera access error:', error); }
       setHasPermission(false);
       setIsLoading(false);
-      onError?.(error.message);
+      onError?.(message);
     }
   }, [onError, preferredFacingMode, maxWidth]);
 
@@ -219,8 +232,9 @@ export const ImageCapture = forwardRef<ImageCaptureHandle, ImageCaptureProps>(({
       } else {
         onError?.('Failed to capture photo');
       }
-    } catch (error: any) {
-      onError?.(error.message ?? 'Camera error');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Camera error';
+      onError?.(message);
     } finally {
       setIsLoading(false);
     }

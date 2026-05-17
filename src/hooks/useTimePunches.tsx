@@ -108,7 +108,6 @@ export const useCreateTimePunch = () => {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
 
-      // Upload photo to storage if provided
       let photo_path: string | undefined;
       if (punch.photoBlob) {
         try {
@@ -136,7 +135,6 @@ export const useCreateTimePunch = () => {
           }
         } catch (error) {
           console.error('Photo upload exception:', error);
-          // Continue without photo
         }
       }
 
@@ -184,16 +182,16 @@ export const useUpdateTimePunch = () => {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<TimePunch> & { id: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Remove employee data from updates if present
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+
       const { employee, ...punchUpdates } = updates as Partial<TimePunch>;
-      
+
       const { data, error } = await supabase
         .from('time_punches')
         .update({
           ...punchUpdates,
-          modified_by: user?.id,
+          modified_by: userId,
         })
         .eq('id', id)
         .select()
@@ -286,8 +284,8 @@ export const useBulkCreateTimePunches = () => {
 
   return useMutation({
     mutationFn: async ({ restaurantId, punches }: BulkCreateTimePunchesInput) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const createdBy = user?.id ?? null;
+      const { data: { session } } = await supabase.auth.getSession();
+      const createdBy = session?.user?.id ?? null;
       const insertedPunches: TimePunch[] = [];
 
       for (let i = 0; i < punches.length; i += chunkSize) {
@@ -389,8 +387,8 @@ export const useBulkCreateEmployeeTips = () => {
 
   return useMutation({
     mutationFn: async ({ restaurantId, tips }: BulkCreateEmployeeTipsInput) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const createdBy = user?.id ?? null;
+      const { data: { session } } = await supabase.auth.getSession();
+      const createdBy = session?.user?.id ?? null;
       const insertedTips: EmployeeTip[] = [];
 
       for (let i = 0; i < tips.length; i += chunkSize) {

@@ -70,9 +70,11 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
   // Create employee tip submission
   const { mutateAsync: submitTip, isPending: isSubmitting } = useMutation({
     mutationFn: async (input: CreateEmployeeTipInput) => {
-      const { data: user } = await supabase.auth.getUser();
+      // getSession() reads the local cache — the tip dialog is on the kiosk
+      // post-clock-out hot path, so we avoid the /auth/v1/user round-trip.
+      const { data: { session } } = await supabase.auth.getSession();
       const now = new Date();
-      
+
       const { data, error } = await supabase
         .from('employee_tips')
         .insert({
@@ -83,8 +85,8 @@ export function useEmployeeTips(restaurantId: string | null, employeeId?: string
           notes: input.notes,
           shift_id: input.shift_id,
           recorded_at: now.toISOString(),
-          tip_date: now.toISOString().split('T')[0], // YYYY-MM-DD format
-          created_by: user.user?.id,
+          tip_date: now.toISOString().split('T')[0],
+          created_by: session?.user?.id,
         })
         .select()
         .single();

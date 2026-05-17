@@ -91,46 +91,60 @@ export const addQueuedPunch = async (
 
 type PunchSender = (input: QueuedKioskPunch['payload'] & { photoBlob?: Blob }) => Promise<any>;
 
+// Module-level guard: when several `onSuccess` handlers fire in quick
+// succession during a shift change, each used to call `flushQueuedPunches`
+// concurrently. Without a mutex they would all read the same queue snapshot
+// from localStorage and resend the same entries up to N times. This serialises
+// to a single in-flight flush.
+let flushing = false;
+
 export const flushQueuedPunches = async (sendPunch: PunchSender) => {
-  const queue = loadQueue();
-  if (queue.length === 0) return { flushed: 0, remaining: 0 };
-
-  let flushed = 0;
-  const remaining: QueuedKioskPunch[] = [];
-
-  for (const entry of queue) {
-    try {
-      const photoBlob =
-        entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
-
-      const payload = entry.payload;
-      // Security: PIN verification must happen before queueing, not during flush
-      if (!payload.employee_id) {
-        throw new Error('Missing employee_id for queued punch');
-      }
-
-      const { restaurant_id, employee_id, punch_type, punch_time, notes, location, device_info } = payload;
-
-      await sendPunch({
-        restaurant_id,
-        employee_id,
-        punch_type,
-        punch_time,
-        notes,
-        location,
-        device_info,
-        photoBlob,
-      });
-      flushed += 1;
-    } catch (error) {
-      console.warn('Failed to flush kiosk punch, will retry later', error);
-      remaining.push(entry);
-      break; // Stop early to avoid hammering while offline
-    }
+  if (flushing) {
+    return { flushed: 0, remaining: loadQueue().length };
   }
+  flushing = true;
+  try {
+    const queue = loadQueue();
+    if (queue.length === 0) return { flushed: 0, remaining: 0 };
 
-  saveQueue(remaining);
-  return { flushed, remaining: remaining.length };
+    let flushed = 0;
+    const remaining: QueuedKioskPunch[] = [];
+
+    for (const entry of queue) {
+      try {
+        const photoBlob =
+          entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
+
+        const payload = entry.payload;
+        if (!payload.employee_id) {
+          throw new Error('Missing employee_id for queued punch');
+        }
+
+        const { restaurant_id, employee_id, punch_type, punch_time, notes, location, device_info } = payload;
+
+        await sendPunch({
+          restaurant_id,
+          employee_id,
+          punch_type,
+          punch_time,
+          notes,
+          location,
+          device_info,
+          photoBlob,
+        });
+        flushed += 1;
+      } catch (error) {
+        console.warn('Failed to flush kiosk punch, will retry later', error);
+        remaining.push(entry);
+        break;
+      }
+    }
+
+    saveQueue(remaining);
+    return { flushed, remaining: remaining.length };
+  } finally {
+    flushing = false;
+  }
 };
 
 export const hasQueuedPunches = () => loadQueue().length > 0;

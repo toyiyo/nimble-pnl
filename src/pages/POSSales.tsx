@@ -772,16 +772,16 @@ export default function POSSales() {
   }
 
   return (
-    <div className="space-y-8 md:space-y-10 max-w-[1400px] mx-auto">
+    <div className="space-y-8 sm:space-y-10 max-w-[1400px] mx-auto">
       {/* Apple/Notion-inspired Header */}
       <header className="space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-[2rem] md:text-[2.5rem] font-semibold tracking-tight text-foreground">
+              <h1 className="text-[2rem] sm:text-[2.5rem] font-semibold tracking-tight text-foreground">
                 Sales
               </h1>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-muted text-muted-foreground">
+              <span className="inline-flex flex-wrap items-center gap-1.5 px-2 sm:px-2.5 py-1 text-xs font-medium rounded-full bg-muted text-muted-foreground">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                 {selectedRestaurant.restaurant.name}
               </span>
@@ -792,43 +792,7 @@ export default function POSSales() {
           </div>
 
           {/* Action buttons - Apple style */}
-          <div className="flex items-center gap-2">
-            {hasAnyConnectedSystem() && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSyncSales}
-                disabled={isSyncing}
-                className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
-                {isSyncing ? "Syncing" : "Sync"}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowRulesDialog(true)}
-              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
-            >
-              <Settings2 className="h-3.5 w-3.5 mr-1.5" />
-              Rules
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setActiveTab("import")}
-              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
-            >
-              <UploadIcon className="h-3.5 w-3.5 mr-1.5" />
-              Import
-            </Button>
-            <ExportDropdown
-              onExportCSV={handleExportCSV}
-              onExportPDF={handleExportPDF}
-              isExporting={isExporting}
-            />
-            <div className="w-px h-5 bg-border mx-1" />
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={() => {
                 setActiveTab("manual");
@@ -836,11 +800,49 @@ export default function POSSales() {
                 setShowSaleDialog(true);
               }}
               size="sm"
-              className="h-8 px-3 text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 rounded-lg transition-colors shadow-sm"
+              className="order-last sm:order-none h-8 px-3 text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 rounded-lg transition-colors shadow-sm"
             >
               <Plus className="h-3.5 w-3.5 mr-1.5" />
               Add Sale
             </Button>
+            {hasAnyConnectedSystem() && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSyncSales}
+                disabled={isSyncing}
+                aria-label="Sync sales"
+                className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 sm:mr-1.5 ${isSyncing ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">{isSyncing ? "Syncing" : "Sync"}</span>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowRulesDialog(true)}
+              aria-label="Category rules"
+              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <Settings2 className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Rules</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setActiveTab("import")}
+              aria-label="Import sales"
+              className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg transition-colors"
+            >
+              <UploadIcon className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Import</span>
+            </Button>
+            <ExportDropdown
+              onExportCSV={handleExportCSV}
+              onExportPDF={handleExportPDF}
+              isExporting={isExporting}
+            />
           </div>
         </div>
       </header>
@@ -868,7 +870,7 @@ export default function POSSales() {
       {/* AI Categorization Section */}
       <Card className="border-border/50">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
@@ -878,13 +880,20 @@ export default function POSSales() {
                 Automatically categorize POS sales to chart of accounts
               </p>
             </div>
-            <Button 
+            <Button
               onClick={handleCategorizeClick}
               disabled={isCategorizingPending || uncategorizedSalesCount === 0}
-              className="gap-2"
+              className="gap-2 w-full sm:w-auto"
             >
               <Sparkles className="h-4 w-4" />
-              {isCategorizingPending ? "Categorizing..." : "AI Categorize Sales"}
+              {isCategorizingPending ? (
+                "Categorizing..."
+              ) : (
+                <>
+                  <span className="hidden sm:inline">AI Categorize Sales</span>
+                  <span className="sm:hidden">AI Categorize</span>
+                </>
+              )}
             </Button>
           </div>
         </CardHeader>
@@ -951,7 +960,7 @@ export default function POSSales() {
           {/* Apple/Notion-style filter bar */}
           <div className="space-y-4">
             {/* Search and date row */}
-            <div className="flex flex-col md:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               {/* Search input - clean Apple style */}
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60" aria-hidden="true" />
@@ -965,24 +974,24 @@ export default function POSSales() {
               </div>
 
               {/* Date range - compact */}
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="flex flex-1 sm:flex-none items-center gap-2">
+                <div className="relative flex-1 sm:flex-none">
                   <Input
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     aria-label="Start date"
-                    className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    className="h-9 w-full sm:w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
                 <span className="text-muted-foreground/50 text-sm" aria-hidden="true">–</span>
-                <div className="relative">
+                <div className="relative flex-1 sm:flex-none">
                   <Input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     aria-label="End date"
-                    className="h-9 w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                    className="h-9 w-full sm:w-[150px] text-[13px] bg-muted/40 border-0 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
               </div>
@@ -1001,10 +1010,11 @@ export default function POSSales() {
                     setSortBy('date');
                     setSortDirection('desc');
                   }}
+                  aria-label="Clear filters"
                   className="h-9 px-3 text-[13px] text-muted-foreground hover:text-foreground"
                 >
-                  <X className="h-3.5 w-3.5 mr-1" />
-                  Clear
+                  <X className="h-3.5 w-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Clear</span>
                 </Button>
               )}
             </div>
@@ -1044,7 +1054,7 @@ export default function POSSales() {
               </div>
 
               {/* Divider */}
-              <div className="h-5 w-px bg-border/60 hidden md:block" />
+              <div className="h-5 w-px bg-border/60 hidden sm:block" />
 
               {/* Recipe filter */}
               <div className="flex items-center gap-2">
@@ -1071,7 +1081,7 @@ export default function POSSales() {
               </div>
 
               {/* Divider */}
-              <div className="h-5 w-px bg-border/60 hidden md:block" />
+              <div className="h-5 w-px bg-border/60 hidden sm:block" />
 
               {/* View mode */}
               <div className="flex items-center gap-2">
@@ -1101,7 +1111,7 @@ export default function POSSales() {
               </div>
 
               {/* Sort controls */}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
                 <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
                   <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
                     <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
@@ -1194,7 +1204,7 @@ export default function POSSales() {
                   {/* Virtualized list container - Apple-style clean scrolling */}
                   <div
                     ref={salesListRef}
-                    className="h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
+                    className="h-[calc(100vh-180px)] [height:calc(100dvh-180px)] min-h-[400px] sm:h-[600px] overflow-auto rounded-xl border border-border/40 bg-background"
                   >
                     <div
                       style={{
@@ -1211,7 +1221,7 @@ export default function POSSales() {
                         if (sale.is_split && sale.child_splits && sale.child_splits.length > 0) {
                           return (
                             <div
-                              key={virtualRow.index}
+                              key={sale.id}
                               data-index={virtualRow.index}
                               ref={salesVirtualizer.measureElement}
                               style={{
@@ -1235,7 +1245,7 @@ export default function POSSales() {
                         // Regular sale card (non-split) - using extracted SaleCard component
                         return (
                           <div
-                            key={virtualRow.index}
+                            key={sale.id}
                             data-index={virtualRow.index}
                             ref={salesVirtualizer.measureElement}
                             style={{
@@ -1394,8 +1404,9 @@ export default function POSSales() {
                               <span className="text-muted-foreground ml-1">sales</span>
                             </div>
                             <button
+                              type="button"
                               onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                             >
                               Check impact
                             </button>

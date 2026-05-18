@@ -889,7 +889,7 @@ export const EnhancedCategoryRulesDialog = ({
                   )}
 
                   {/* Amount Range */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                         Min Amount <span className="font-normal">(Optional)</span>
@@ -969,7 +969,7 @@ export const EnhancedCategoryRulesDialog = ({
                   )}
 
                   {/* Priority and Auto-apply */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                         Priority <span className="font-normal">(higher = first)</span>

@@ -193,7 +193,7 @@ export function GenerateScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg p-0 gap-0 border-border/40 flex flex-col max-h-[80vh]">
+      <DialogContent className="max-w-lg p-0 gap-0 border-border/40 flex flex-col max-h-[80vh] overflow-hidden">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
@@ -365,7 +365,7 @@ export function GenerateScheduleDialog({
                 {generationResult.metadata.dropped_reasons.length > 0 && (
                   <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
                     <p className="text-[13px] font-medium text-foreground mb-2">Dropped suggestions</p>
-                    <ul className="space-y-1">
+                    <ul className="space-y-1 max-h-[180px] overflow-y-auto">
                       {generationResult.metadata.dropped_reasons.map((reason, i) => (
                         <li key={`${reason}-${i}`} className="text-[13px] text-muted-foreground">
                           {reason}
@@ -392,7 +392,7 @@ export function GenerateScheduleDialog({
                 {generationResult.metadata.dropped_reasons.length > 0 && (
                   <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
                     <p className="text-[13px] font-medium text-foreground mb-2">Reasons</p>
-                    <ul className="space-y-1">
+                    <ul className="space-y-1 max-h-[180px] overflow-y-auto">
                       {generationResult.metadata.dropped_reasons.map((reason, i) => (
                         <li key={`${reason}-${i}`} className="text-[13px] text-muted-foreground">
                           {reason}

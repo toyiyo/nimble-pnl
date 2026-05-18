@@ -490,8 +490,16 @@ serve(async (req) => {
     const requestBody = {
       ...promptResult,
       temperature: 0.3,
-      max_tokens: 8192,
+      max_tokens: 16384,
     };
+
+    // Observability: log size + counts before the AI call.
+    const promptStr = promptResult.messages.map((m) => m.content).join("\n");
+    console.log(
+      `[generate-schedule] Prompt: ${promptStr.length} chars (~${Math.round(promptStr.length / 4)} tokens), ` +
+        `employees=${employees.length}, templates=${templates.length}, ` +
+        `requiredSlots=${totalRequiredSlots}, tz=${restaurantTimezone}`,
+    );
 
     // ── Call AI with custom model chain ───────────────────────────────────────
     const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -502,21 +510,37 @@ serve(async (req) => {
     let aiResult: { data: { shifts: GeneratedShift[]; metadata: { estimated_cost: number; budget_variance_pct: number; notes: string } }; model: string } | null = null;
 
     for (const modelConfig of SCHEDULE_MODELS) {
-      console.log(`Trying model: ${modelConfig.name}`);
-      const response = await callModel(modelConfig, requestBody, openRouterApiKey, "generate-schedule", restaurant_id);
+      console.log(`[generate-schedule] Trying model: ${modelConfig.name}`);
+      const response = await callModel(
+        modelConfig,
+        requestBody,
+        openRouterApiKey,
+        "generate-schedule",
+        restaurant_id,
+      );
       if (!response || !response.ok) continue;
 
       try {
         const data = await response.json();
-        if (!data.choices?.[0]?.message?.content) continue;
-        const content = data.choices[0].message.content;
-        const cleaned = content
+        const choice = data.choices?.[0];
+        if (!choice?.message?.content) continue;
+        if (choice.finish_reason === "length") {
+          console.warn(
+            `[generate-schedule] Model ${modelConfig.name} truncated output ` +
+              `(finish_reason=length), skipping`,
+          );
+          continue;
+        }
+        const cleaned = choice.message.content
           .replace(/^```(?:json)?\s*\n?/i, "")
           .replace(/\n?```\s*$/i, "")
           .trim();
         aiResult = { data: JSON.parse(cleaned), model: modelConfig.name };
         break;
-      } catch {
+      } catch (err) {
+        console.warn(
+          `[generate-schedule] Model ${modelConfig.name} parse failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
         continue;
       }
     }
@@ -581,9 +605,44 @@ serve(async (req) => {
       validationCtx
     );
 
-    const droppedReasons = droppedShifts.map((d) => d.reason);
+    // ── Aggregate drop reasons by structured code (Bug 8 / no UUID leak) ─────
+    const dropReasonSummary: Record<string, number> = {};
+    for (const d of droppedShifts) {
+      dropReasonSummary[d.code] = (dropReasonSummary[d.code] ?? 0) + 1;
+    }
+    // Server-side log: full counts AND the human messages (UUIDs allowed in logs).
+    console.log(
+      `[generate-schedule] Generated=${generatedShifts.length}, ` +
+        `valid=${validShifts.length}, dropped=${droppedShifts.length}, ` +
+        `model=${aiResult.model}, requiredSlots=${totalRequiredSlots}`,
+    );
+    console.log(
+      `[generate-schedule] Drop reason summary: ${JSON.stringify(dropReasonSummary)}`,
+    );
 
-    // ── Build response ────────────────────────────────────────────────────────
+    // ── Zero-shift guardrail (Bug 8) ─────────────────────────────────────────
+    if (validShifts.length === 0) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "AI generated no valid shifts. Check employee positions, availability, and templates.",
+          diagnostic: {
+            total_employees: employees.length,
+            total_templates: templates.length,
+            total_required_slots: totalRequiredSlots,
+            total_generated: generatedShifts.length,
+            total_dropped: droppedShifts.length,
+            drop_reason_summary: dropReasonSummary,
+            model_used: aiResult.model,
+          },
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ── Build success response ───────────────────────────────────────────────
+    // dropped_reasons keeps human messages WITHOUT UUIDs for the dialog list.
+    const droppedReasons = droppedShifts.map((d) => d.message);
     const aiMetadata = aiResult.data.metadata ?? {};
 
     return new Response(
@@ -597,10 +656,12 @@ serve(async (req) => {
           total_generated: generatedShifts.length,
           total_valid: validShifts.length,
           total_dropped: droppedShifts.length,
+          total_required_slots: totalRequiredSlots,
+          drop_reason_summary: dropReasonSummary,
           dropped_reasons: droppedReasons,
         },
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error: unknown) {
     console.error("Error in generate-schedule:", error);

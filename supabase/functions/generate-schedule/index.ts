@@ -42,6 +42,14 @@ interface RequestPayload {
   excluded_employee_ids: string[];
 }
 
+interface AiResult {
+  data: {
+    shifts: GeneratedShift[];
+    metadata: { estimated_cost: number; budget_variance_pct: number; notes: string };
+  };
+  model: string;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -328,15 +336,12 @@ serve(async (req) => {
       const weekKey = new Date(shiftDate);
       weekKey.setDate(weekKey.getDate() - weekKey.getDay()); // start of that week
       const weekStr = weekKey.toISOString().split("T")[0];
-      const trackerKey = `${key}:${weekStr}`;
 
       if (!patternMap[key]) patternMap[key] = { totalCount: 0 };
       patternMap[key].totalCount += 1;
 
       if (!weekTracker[key]) weekTracker[key] = new Set();
-      if (!weekTracker[key].has(trackerKey)) {
-        weekTracker[key].add(trackerKey);
-      }
+      weekTracker[key].add(weekStr);
     }
 
     const priorSchedulePatterns: PriorPattern[] = Object.entries(patternMap).map(([key, counts]) => {
@@ -351,7 +356,7 @@ serve(async (req) => {
 
     // ── Build hourly sales patterns ──────────────────────────────────────────
     const salesRows = salesResult.data ?? [];
-    const salesAggMap: Record<string, { totalSales: number; weekCount: number }> = {};
+    const salesAggMap: Record<string, { totalSales: number }> = {};
     const salesWeekTracker: Record<string, Set<string>> = {};
 
     for (const sale of salesRows) {
@@ -371,7 +376,7 @@ serve(async (req) => {
       weekStart_.setDate(weekStart_.getDate() - weekStart_.getDay());
       const weekStr = weekStart_.toISOString().split("T")[0];
 
-      if (!salesAggMap[key]) salesAggMap[key] = { totalSales: 0, weekCount: 0 };
+      if (!salesAggMap[key]) salesAggMap[key] = { totalSales: 0 };
       salesAggMap[key].totalSales += sale.total_price ?? 0;
 
       if (!salesWeekTracker[key]) salesWeekTracker[key] = new Set();
@@ -507,7 +512,7 @@ serve(async (req) => {
       throw new Error("OPENROUTER_API_KEY environment variable is not set");
     }
 
-    let aiResult: { data: { shifts: GeneratedShift[]; metadata: { estimated_cost: number; budget_variance_pct: number; notes: string } }; model: string } | null = null;
+    let aiResult: AiResult | null = null;
 
     for (const modelConfig of SCHEDULE_MODELS) {
       console.log(`[generate-schedule] Trying model: ${modelConfig.name}`);
@@ -577,8 +582,7 @@ serve(async (req) => {
 
     // Build existing shifts as GeneratedShift format for overlap checking
     const existingAsGenerated: GeneratedShift[] = existingShifts.map((s) => {
-      const [y, m, d] = s.start_time.split('T')[0].split('-').map(Number);
-      const day = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const day = s.start_time.split('T')[0];
       const startTime = s.start_time.includes('T') ? s.start_time.split('T')[1].substring(0, 8) : s.start_time;
       const endTime = s.end_time?.includes('T') ? s.end_time.split('T')[1].substring(0, 8) : (s.end_time ?? '00:00:00');
       return {
@@ -644,7 +648,7 @@ serve(async (req) => {
     // dropped_reasons is UUID-free — derived from code + day + position only.
     // d.message MAY contain employee/template UUIDs (per validator JSDoc) so
     // we never ship it to the client.
-    const droppedReasons = droppedShifts.map((d) => {
+    const droppedReasons: string[] = droppedShifts.map((d) => {
       switch (d.code) {
         case "POSITION_MISMATCH":
           return `Position mismatch (${d.shift.position}) on ${d.shift.day}`;
@@ -660,6 +664,8 @@ serve(async (req) => {
           return `Unknown employee on ${d.shift.day}`;
         case "UNKNOWN_TEMPLATE":
           return `Unknown template on ${d.shift.day}`;
+        default:
+          return `Unknown drop reason on ${d.shift.day}`;
       }
     });
     const aiMetadata = aiResult.data.metadata ?? {};

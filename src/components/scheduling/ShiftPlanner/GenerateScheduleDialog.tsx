@@ -322,8 +322,16 @@ export function GenerateScheduleDialog({
 
         {/* Generating phase content */}
         {phase === 'generating' && (
-          <div className="flex-1 overflow-y-auto px-6 py-10 flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground" />
+          <div
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+            className="flex-1 overflow-y-auto px-6 py-10 flex flex-col items-center gap-3"
+          >
+            <div
+              aria-hidden="true"
+              className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground"
+            />
             <p className="text-[14px] text-muted-foreground">Generating schedule...</p>
           </div>
         )}

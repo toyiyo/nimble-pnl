@@ -137,12 +137,19 @@ export function useGenerateSchedule() {
 
       if (data.shifts.length === 0) return;
 
-      let description = `${data.shifts.length} shifts created — review and publish when ready.`;
+      const { total_required_slots: required, total_dropped: dropped } = data.metadata;
+      const filled = data.shifts.length;
+      // Surface underfill prominently — covers the user-reported "slots left open"
+      // case where the AI returns a partial schedule.
+      let description =
+        required > 0 && filled < required
+          ? `Filled ${filled} of ${required} required slots — review and publish when ready.`
+          : `${filled} shifts created — review and publish when ready.`;
       if (data.metadata.budget_variance_pct > 0) {
         description += ` Estimated cost is ${data.metadata.budget_variance_pct.toFixed(0)}% over budget.`;
       }
-      if (data.metadata.total_dropped > 0) {
-        description += ` ${data.metadata.total_dropped} suggestions were filtered out.`;
+      if (dropped > 0) {
+        description += ` ${dropped} suggestions were filtered out.`;
       }
       toast({ title: 'Schedule Generated', description });
     },
@@ -152,8 +159,14 @@ export function useGenerateSchedule() {
         diag?.drop_reason_summary && Object.keys(diag.drop_reason_summary).length > 0
           ? Object.entries(diag.drop_reason_summary).sort((a, b) => b[1] - a[1])[0]
           : null;
+      // total_generated may be > 0 when the AI produced shifts but every one
+      // was rejected by validation (e.g. wrong position, outside availability).
+      // Surfacing that count helps the user distinguish "AI returned nothing" from
+      // "AI returned plenty, all invalid".
+      const generated = diag?.total_generated ?? 0;
       const description = diag
-        ? `Filled 0 of ${diag.total_required_slots} required slots.` +
+        ? `Filled 0 of ${diag.total_required_slots} required slots` +
+          (generated > 0 ? ` (AI proposed ${generated}, all dropped).` : '.') +
           (top ? ` Top reason: ${top[0]} (${top[1]}).` : '') +
           ' Check employee positions, availability, and templates.'
         : error.message || 'Try again or build manually.';

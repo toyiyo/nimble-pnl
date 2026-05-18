@@ -4,6 +4,7 @@ import {
   getDayOfWeek,
   timeToMinutes,
   shiftsOverlap,
+  shiftsConflict,
   withinWindow,
   type GeneratedShift,
   type ValidationContext,
@@ -256,6 +257,101 @@ describe('shiftsOverlap — overnight handling', () => {
     const a = makeShift({ start_time: '22:00:00', end_time: '02:00:00' });
     const b = makeShift({ start_time: '05:00:00', end_time: '12:00:00' });
     expect(shiftsOverlap(a, b)).toBe(false);
+  });
+});
+
+describe('shiftsConflict — day-aware overlap', () => {
+  it('flags Mon 22:00-02:00 vs Tue 00:00-06:00 as conflict (overnight spillover)', () => {
+    const a = makeShift({ day: '2026-04-13', start_time: '22:00:00', end_time: '02:00:00' });
+    const b = makeShift({ day: '2026-04-14', start_time: '00:00:00', end_time: '06:00:00' });
+    expect(shiftsConflict(a, b)).toBe(true);
+    expect(shiftsConflict(b, a)).toBe(true); // symmetric
+  });
+
+  it('flags Tue 22:00-04:00 (overnight) vs Wed 03:00-09:00 as conflict', () => {
+    const a = makeShift({ day: '2026-04-14', start_time: '22:00:00', end_time: '04:00:00' });
+    const b = makeShift({ day: '2026-04-15', start_time: '03:00:00', end_time: '09:00:00' });
+    expect(shiftsConflict(a, b)).toBe(true);
+  });
+
+  it('does NOT flag Mon 22:00-02:00 vs Tue 02:30-08:00 (overnight ends before next starts)', () => {
+    const a = makeShift({ day: '2026-04-13', start_time: '22:00:00', end_time: '02:00:00' });
+    const b = makeShift({ day: '2026-04-14', start_time: '02:30:00', end_time: '08:00:00' });
+    expect(shiftsConflict(a, b)).toBe(false);
+  });
+
+  it('does NOT flag two normal day shifts on consecutive days', () => {
+    const a = makeShift({ day: '2026-04-13', start_time: '10:00:00', end_time: '18:00:00' });
+    const b = makeShift({ day: '2026-04-14', start_time: '10:00:00', end_time: '18:00:00' });
+    expect(shiftsConflict(a, b)).toBe(false);
+  });
+
+  it('does NOT flag two overnight shifts on consecutive days (back-to-back nights)', () => {
+    const a = makeShift({ day: '2026-04-13', start_time: '22:00:00', end_time: '02:00:00' });
+    const b = makeShift({ day: '2026-04-14', start_time: '22:00:00', end_time: '02:00:00' });
+    expect(shiftsConflict(a, b)).toBe(false);
+  });
+
+  it('does NOT flag shifts >1 day apart', () => {
+    const a = makeShift({ day: '2026-04-13', start_time: '22:00:00', end_time: '02:00:00' });
+    const b = makeShift({ day: '2026-04-15', start_time: '00:00:00', end_time: '06:00:00' });
+    expect(shiftsConflict(a, b)).toBe(false);
+  });
+
+  it('delegates to shiftsOverlap for same-day shifts', () => {
+    const a = makeShift({ day: '2026-04-13', start_time: '10:00:00', end_time: '16:00:00' });
+    const b = makeShift({ day: '2026-04-13', start_time: '14:00:00', end_time: '20:00:00' });
+    expect(shiftsConflict(a, b)).toBe(true);
+  });
+});
+
+describe('validateGeneratedShifts — cross-day double-booking', () => {
+  it('drops AI shift Tue 00:00-06:00 when existing shift Mon 22:00-02:00 is overnight', () => {
+    // emp-2 is available both Monday (day 1) and Tuesday (day 2).
+    // Existing shift is Monday 22:00 → Tuesday 02:00 (overnight).
+    // New AI-generated shift Tuesday 00:00-06:00 would collide.
+    const existing = makeShift({
+      employee_id: 'emp-2',
+      position: 'cook',
+      day: '2026-04-13',
+      start_time: '22:00:00',
+      end_time: '02:00:00',
+    });
+    const ctx = makeContext({ existingShifts: [existing] });
+    const aiShift = makeShift({
+      employee_id: 'emp-2',
+      position: 'cook',
+      day: '2026-04-14',
+      start_time: '00:00:00',
+      end_time: '06:00:00',
+    });
+    const result = validateGeneratedShifts([aiShift], ctx);
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('DOUBLE_BOOKING');
+  });
+
+  it('drops second AI shift Tue 00:00-06:00 when first AI shift Mon 22:00-02:00 is already valid', () => {
+    const ctx = makeContext();
+    const shift1 = makeShift({
+      employee_id: 'emp-2',
+      position: 'cook',
+      day: '2026-04-13',
+      start_time: '22:00:00',
+      end_time: '02:00:00',
+    });
+    const shift2 = makeShift({
+      employee_id: 'emp-2',
+      position: 'cook',
+      day: '2026-04-14',
+      start_time: '00:00:00',
+      end_time: '06:00:00',
+    });
+    const result = validateGeneratedShifts([shift1, shift2], ctx);
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0].day).toBe('2026-04-13');
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('DOUBLE_BOOKING');
   });
 });
 

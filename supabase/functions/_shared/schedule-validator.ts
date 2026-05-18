@@ -115,6 +115,44 @@ export function shiftsOverlap(a: GeneratedShift, b: GeneratedShift): boolean {
 }
 
 /**
+ * Day-aware conflict detection. Use this in the validator instead of
+ * shiftsOverlap when the two shifts may sit on different calendar days.
+ *
+ * - Same day: delegates to shiftsOverlap (keeps existing semantics, including
+ *   the early-morning heuristic).
+ * - Consecutive days (|aDay - bDay| == 1) AND at least one is overnight:
+ *   convert both to absolute minute intervals from a common reference and
+ *   check intersection. Catches the case where one shift ends past midnight
+ *   on day N and another starts in the morning of day N+1.
+ * - Otherwise: no conflict (non-overnight shifts on different days cannot
+ *   overlap, and shifts >1 day apart cannot overlap regardless).
+ */
+export function shiftsConflict(a: GeneratedShift, b: GeneratedShift): boolean {
+  if (a.day === b.day) return shiftsOverlap(a, b);
+
+  const aDayMs = Date.parse(`${a.day}T00:00:00Z`);
+  const bDayMs = Date.parse(`${b.day}T00:00:00Z`);
+  if (Number.isNaN(aDayMs) || Number.isNaN(bDayMs)) return false;
+  const dayDiff = Math.round((bDayMs - aDayMs) / 86_400_000);
+  if (Math.abs(dayDiff) !== 1) return false;
+
+  const aStart = timeToMinutes(a.start_time);
+  const aEnd = timeToMinutes(a.end_time);
+  const bStart = timeToMinutes(b.start_time);
+  const bEnd = timeToMinutes(b.end_time);
+  const aOvernight = aEnd <= aStart;
+  const bOvernight = bEnd <= bStart;
+  if (!aOvernight && !bOvernight) return false;
+
+  const aAbsStart = aStart;
+  const aAbsEnd = aOvernight ? aEnd + 1440 : aEnd;
+  const bAbsStart = bStart + dayDiff * 1440;
+  const bAbsEnd = (bOvernight ? bEnd + 1440 : bEnd) + dayDiff * 1440;
+
+  return aAbsStart < bAbsEnd && bAbsStart < aAbsEnd;
+}
+
+/**
  * Returns true if a shift [shiftStart, shiftEnd] (in minutes-from-midnight)
  * fits entirely within an availability window [windowStart, windowEnd].
  *
@@ -251,19 +289,19 @@ export function validateGeneratedShifts(
       }
     }
 
-    // 7. Double-booking check against already-valid shifts AND existing shifts
+    // 7. Double-booking check against already-valid shifts AND existing shifts.
+    // shiftsConflict is day-aware: it catches overnight shifts that spill into
+    // the next calendar day's morning (e.g. Mon 22:00-02:00 vs Tue 00:00-06:00).
     const hasOverlap =
       valid.some(
         (v) =>
           v.employee_id === shift.employee_id &&
-          v.day === shift.day &&
-          shiftsOverlap(v, shift),
+          shiftsConflict(v, shift),
       ) ||
       ctx.existingShifts.some(
         (e) =>
           e.employee_id === shift.employee_id &&
-          e.day === shift.day &&
-          shiftsOverlap(e, shift),
+          shiftsConflict(e, shift),
       );
 
     if (hasOverlap) {

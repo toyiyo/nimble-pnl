@@ -514,7 +514,23 @@ serve(async (req) => {
 
     let aiResult: AiResult | null = null;
 
+    // Wall-clock budget for the entire model fallback chain. Supabase edge
+    // functions hard-kill at ~150s; each callModel uses AbortSignal.timeout(30s)
+    // per attempt, so 5 models × ≥30s could exceed the limit and prevent any
+    // diagnostic response from reaching the client. Stop early with 60s
+    // headroom for response serialization.
+    const modelLoopStart = Date.now();
+    const MODEL_LOOP_BUDGET_MS = 90_000;
+
     for (const modelConfig of SCHEDULE_MODELS) {
+      const elapsed = Date.now() - modelLoopStart;
+      if (elapsed > MODEL_LOOP_BUDGET_MS) {
+        console.warn(
+          `[generate-schedule] Model chain wall-clock budget exhausted ` +
+            `(${elapsed}ms > ${MODEL_LOOP_BUDGET_MS}ms). Stopping early.`,
+        );
+        break;
+      }
       console.log(`[generate-schedule] Trying model: ${modelConfig.name}`);
       const response = await callModel(
         modelConfig,

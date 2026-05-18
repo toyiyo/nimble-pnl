@@ -49,49 +49,58 @@ function lookupMinCrew(
   return null;
 }
 
-function lookupPriorPattern(
+/** Build a lookup of (day, normalized position) → headcount from prior patterns. */
+function indexPriorPatterns(
   priorPatterns: PriorPattern[],
-  day: number,
-  position: string,
-): number | null {
-  const norm = normalizePosition(position);
+): Map<string, number> {
+  const out = new Map<string, number>();
   for (const p of priorPatterns) {
-    if (p.day_of_week === day && normalizePosition(p.position) === norm) {
-      return Math.max(1, Math.round(p.avg_count));
-    }
+    out.set(`${p.day_of_week}:${normalizePosition(p.position)}`, Math.max(1, Math.round(p.avg_count)));
   }
-  return null;
+  return out;
 }
 
-function isPeakHour(
+/** Build a lookup of day → set of peak hours (top quartile by avg_sales). */
+function indexPeakHours(
   hourlySales: HourlySales[],
-  day: number,
-  hour: number,
-): boolean {
-  const dayEntries = hourlySales.filter((h) => h.day_of_week === day);
-  if (dayEntries.length === 0) return false;
-  const sorted = [...dayEntries].sort((a, b) => b.avg_sales - a.avg_sales);
-  const quartileSize = Math.max(1, Math.ceil(sorted.length / 4));
-  const topQuartile = sorted.slice(0, quartileSize);
-  return topQuartile.some((h) => h.hour === hour);
+): Map<number, Set<number>> {
+  const byDay = new Map<number, HourlySales[]>();
+  for (const h of hourlySales) {
+    let entries = byDay.get(h.day_of_week);
+    if (!entries) {
+      entries = [];
+      byDay.set(h.day_of_week, entries);
+    }
+    entries.push(h);
+  }
+  const out = new Map<number, Set<number>>();
+  for (const [day, entries] of byDay) {
+    const sorted = [...entries].sort((a, b) => b.avg_sales - a.avg_sales);
+    const quartileSize = Math.max(1, Math.ceil(sorted.length / 4));
+    out.set(day, new Set(sorted.slice(0, quartileSize).map((h) => h.hour)));
+  }
+  return out;
 }
 
 export function computeRequiredStaff(
   input: ComputeInput,
 ): Map<string, Map<number, number>> {
+  const priorIndex = indexPriorPatterns(input.priorPatterns);
+  const peakIndex = indexPeakHours(input.hourlySales);
+  const floor = input.minStaff ?? 0;
+
   const out = new Map<string, Map<number, number>>();
   for (const tpl of input.templates) {
     const perDay = new Map<number, number>();
     const startHour = parseInt(tpl.start_time.split(":")[0], 10);
+    const normPos = normalizePosition(tpl.position);
+    // Per-template lookups that don't depend on day are hoisted out of the inner loop.
+    const fromMinCrew = lookupMinCrew(input.minCrew, tpl.position);
     for (const day of tpl.days) {
-      const fromMinCrew = lookupMinCrew(input.minCrew, tpl.position);
       const fromPattern =
-        fromMinCrew === null
-          ? lookupPriorPattern(input.priorPatterns, day, tpl.position)
-          : null;
+        fromMinCrew === null ? (priorIndex.get(`${day}:${normPos}`) ?? null) : null;
       const base = fromMinCrew ?? fromPattern ?? 1;
-      const peakBoost = isPeakHour(input.hourlySales, day, startHour) ? 1 : 0;
-      const floor = input.minStaff ?? 0;
+      const peakBoost = peakIndex.get(day)?.has(startHour) ? 1 : 0;
       perDay.set(day, Math.max(base + peakBoost, floor));
     }
     out.set(tpl.id, perDay);

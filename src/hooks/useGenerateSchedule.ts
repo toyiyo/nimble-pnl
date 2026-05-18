@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { fromZonedTime } from 'date-fns-tz';
+import { FunctionsHttpError } from '@supabase/functions-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,14 +21,32 @@ interface GeneratedShift {
   position: string;
 }
 
+/** Server returned a 422 with a diagnostic body. drop_reason_summary uses
+ *  DropCode keys (UPPER_SNAKE) and never contains employee UUIDs. */
+export interface ScheduleDiagnostic {
+  total_employees: number;
+  total_templates: number;
+  total_required_slots: number;
+  total_generated: number;
+  total_dropped: number;
+  drop_reason_summary: Record<string, number>;
+  model_used: string;
+}
+
 export interface GenerateScheduleMetadata {
   estimated_cost: number;
   budget_variance_pct: number;
   notes: string;
   model_used: string;
+  /** Shifts the AI produced (raw count) */
   total_generated: number;
+  /** Shifts that passed validation (= shifts.length) */
   total_valid: number;
   total_dropped: number;
+  /** Sum of required headcount across (template, day). Zero when staffing
+   *  settings are absent and no patterns exist. */
+  total_required_slots: number;
+  drop_reason_summary: Record<string, number>;
   dropped_reasons: string[];
 }
 
@@ -36,13 +55,21 @@ export interface GenerateScheduleResponse {
   metadata: GenerateScheduleMetadata;
 }
 
+export class ScheduleGenerationError extends Error {
+  diagnostic?: ScheduleDiagnostic;
+  constructor(message: string, diagnostic?: ScheduleDiagnostic) {
+    super(message);
+    this.name = 'ScheduleGenerationError';
+    this.diagnostic = diagnostic;
+  }
+}
+
 export function useGenerateSchedule() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (params: GenerateScheduleParams): Promise<GenerateScheduleResponse> => {
-      // 1. Call edge function
       const { data, error } = await supabase.functions.invoke('generate-schedule', {
         body: {
           restaurant_id: params.restaurantId,
@@ -52,16 +79,28 @@ export function useGenerateSchedule() {
         },
       });
 
-      if (error) throw new Error(error.message || 'Failed to generate schedule');
-      if (data.error) throw new Error(data.error);
+      if (error) {
+        // FunctionsHttpError carries the Response in `error.context`.
+        if (error instanceof FunctionsHttpError) {
+          const body = await (error.context as Response).json().catch(() => null);
+          if (body?.diagnostic) {
+            throw new ScheduleGenerationError(
+              body.error ?? 'No valid shifts generated',
+              body.diagnostic as ScheduleDiagnostic,
+            );
+          }
+        }
+        throw new Error(error.message || 'Failed to generate schedule');
+      }
+      if (data?.error) throw new Error(data.error);
 
       const response = data as GenerateScheduleResponse;
-
       if (response.shifts.length === 0) {
+        // With Bug 8 fixed the server returns 422 in this case, so this branch
+        // is defensive only. Skip insert and return the response.
         return response;
       }
 
-      // 2. Batch-insert shifts using restaurant timezone for correct UTC conversion
       const shiftsToInsert = response.shifts.map((shift) => {
         const startUtc = fromZonedTime(
           `${shift.day}T${shift.start_time}`,
@@ -71,7 +110,6 @@ export function useGenerateSchedule() {
           `${shift.day}T${shift.end_time}`,
           params.restaurantTimezone,
         ).toISOString();
-
         return {
           restaurant_id: params.restaurantId,
           employee_id: shift.employee_id,
@@ -93,9 +131,11 @@ export function useGenerateSchedule() {
       return response;
     },
     onSuccess: (data, variables) => {
-      if (data.shifts.length === 0) return;
-
+      // Always invalidate so the planner re-fetches even if the AI returned zero
+      // shifts (shouldn't happen with the 422 guardrail, but stays safe).
       queryClient.invalidateQueries({ queryKey: ['shifts', variables.restaurantId] });
+
+      if (data.shifts.length === 0) return;
 
       let description = `${data.shifts.length} shifts created — review and publish when ready.`;
       if (data.metadata.budget_variance_pct > 0) {
@@ -104,13 +144,22 @@ export function useGenerateSchedule() {
       if (data.metadata.total_dropped > 0) {
         description += ` ${data.metadata.total_dropped} suggestions were filtered out.`;
       }
-
       toast({ title: 'Schedule Generated', description });
     },
     onError: (error: Error) => {
+      const diag = error instanceof ScheduleGenerationError ? error.diagnostic : undefined;
+      const top =
+        diag?.drop_reason_summary && Object.keys(diag.drop_reason_summary).length > 0
+          ? Object.entries(diag.drop_reason_summary).sort((a, b) => b[1] - a[1])[0]
+          : null;
+      const description = diag
+        ? `Filled 0 of ${diag.total_required_slots} required slots.` +
+          (top ? ` Top reason: ${top[0]} (${top[1]}).` : '') +
+          ' Check employee positions, availability, and templates.'
+        : error.message || 'Try again or build manually.';
       toast({
         title: "Couldn't generate schedule",
-        description: error.message || 'Try again or build manually.',
+        description,
         variant: 'destructive',
       });
     },

@@ -641,8 +641,27 @@ serve(async (req) => {
     }
 
     // ── Build success response ───────────────────────────────────────────────
-    // dropped_reasons keeps human messages WITHOUT UUIDs for the dialog list.
-    const droppedReasons = droppedShifts.map((d) => d.message);
+    // dropped_reasons is UUID-free — derived from code + day + position only.
+    // d.message MAY contain employee/template UUIDs (per validator JSDoc) so
+    // we never ship it to the client.
+    const droppedReasons = droppedShifts.map((d) => {
+      switch (d.code) {
+        case "POSITION_MISMATCH":
+          return `Position mismatch (${d.shift.position}) on ${d.shift.day}`;
+        case "UNAVAILABLE_DAY":
+          return `Employee unavailable on ${d.shift.day}`;
+        case "OUTSIDE_WINDOW":
+          return `Outside availability window on ${d.shift.day}`;
+        case "DOUBLE_BOOKING":
+          return `Double-booking on ${d.shift.day} at ${d.shift.start_time}`;
+        case "EXCLUDED":
+          return `Excluded employee on ${d.shift.day}`;
+        case "UNKNOWN_EMPLOYEE":
+          return `Unknown employee on ${d.shift.day}`;
+        case "UNKNOWN_TEMPLATE":
+          return `Unknown template on ${d.shift.day}`;
+      }
+    });
     const aiMetadata = aiResult.data.metadata ?? {};
 
     return new Response(

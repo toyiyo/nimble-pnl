@@ -19,6 +19,12 @@ import {
   type ValidationContext,
   type AvailabilitySlot,
 } from "../_shared/schedule-validator.ts";
+import {
+  convertRecurringToLocal,
+  convertExceptionsToLocal,
+  type LocalAvail,
+} from "../_shared/availability-tz.ts";
+import { computeRequiredStaff } from "../_shared/staffing-requirements.ts";
 
 // Custom model chain for schedule generation (higher-capability models first)
 const SCHEDULE_MODELS: ModelConfig[] = [
@@ -99,7 +105,7 @@ serve(async (req) => {
     const fourWeeksAgoStr = fourWeeksAgo.toISOString().split("T")[0];
     const weekEndStr = weekEndDate.toISOString().split("T")[0];
 
-    // ── Fetch all scheduling data in parallel (9 queries) ──────────────────
+    // ── Fetch all scheduling data in parallel (10 queries) ──────────────────
     const [
       employeesResult,
       templatesResult,
@@ -110,6 +116,7 @@ serve(async (req) => {
       salesResult,
       operatingCostsResult,
       existingShiftsResult,
+      restaurantResult,
     ] = await Promise.all([
       // 1. Active employees
       supabase
@@ -180,7 +187,26 @@ serve(async (req) => {
         .gte("start_time", `${week_start}T00:00:00`)
         .lt("start_time", `${weekEndStr}T00:00:00`)
         .neq("status", "cancelled"),
+
+      // 10. Restaurant timezone (null-safe — defaults to UTC below)
+      supabase
+        .from("restaurants")
+        .select("timezone")
+        .eq("id", restaurant_id)
+        .maybeSingle(),
     ]);
+
+    // ── Resolve restaurant timezone ──────────────────────────────────────────
+    const restaurantTimezone: string =
+      restaurantResult.data?.timezone && typeof restaurantResult.data.timezone === "string"
+        ? restaurantResult.data.timezone
+        : "UTC";
+    if (!restaurantResult.data?.timezone) {
+      console.warn(
+        `[generate-schedule] No timezone for restaurant ${restaurant_id}; defaulting to UTC. ` +
+          `Availability conversion is a no-op for this run.`,
+      );
+    }
 
     // ── Validate fetched data ────────────────────────────────────────────────
     if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
@@ -230,37 +256,58 @@ serve(async (req) => {
       area: t.area ?? null,
     }));
 
-    // ── Build availability map ───────────────────────────────────────────────
-    // Start with recurring availability
+    // ── Build availability map (TZ-converted to restaurant local) ────────────
+    const recurringLocal: LocalAvail[] = convertRecurringToLocal(
+      (recurringAvailResult.data ?? []).map((r) => ({
+        employee_id: r.employee_id,
+        day_of_week: r.day_of_week,
+        is_available: r.is_available,
+        start_time: r.start_time ?? null,
+        end_time: r.end_time ?? null,
+      })),
+      restaurantTimezone,
+      week_start,
+    );
+
+    const exceptionsLocal: LocalAvail[] = convertExceptionsToLocal(
+      (availExceptionsResult.data ?? []).map((e) => ({
+        employee_id: e.employee_id,
+        date: e.date,
+        is_available: e.is_available,
+        start_time: e.start_time ?? null,
+        end_time: e.end_time ?? null,
+      })),
+      restaurantTimezone,
+    );
+
     const availability: Record<string, Record<number, AvailabilityDay>> = {};
-
-    for (const row of (recurringAvailResult.data ?? [])) {
-      if (!availability[row.employee_id]) availability[row.employee_id] = {};
-      availability[row.employee_id][row.day_of_week] = {
-        available: row.is_available,
-        start: row.start_time ?? undefined,
-        end: row.end_time ?? undefined,
+    const setSlot = (a: LocalAvail) => {
+      if (!availability[a.employee_id]) availability[a.employee_id] = {};
+      availability[a.employee_id][a.day_of_week] = {
+        available: a.is_available,
+        start: a.start_time ?? undefined,
+        end: a.end_time ?? undefined,
       };
-    }
+    };
+    for (const a of recurringLocal) setSlot(a);
+    // Exceptions override recurring on the same (employee, day)
+    for (const a of exceptionsLocal) setSlot(a);
 
-    // Override with availability exceptions for this week
-    for (const exc of (availExceptionsResult.data ?? [])) {
-      const [ey, em, ed] = exc.date.split('-').map(Number);
-      const dayOfWeek = new Date(ey, em - 1, ed).getDay();
-      if (!availability[exc.employee_id]) availability[exc.employee_id] = {};
-      availability[exc.employee_id][dayOfWeek] = {
-        available: exc.is_available,
-        start: exc.start_time ?? undefined,
-        end: exc.end_time ?? undefined,
-      };
-    }
-
-    // Employees with no availability records are assumed available all days
+    // Bug 4: complete every employee's 7-day map.
+    // - Zero records → assume available every day (legacy behavior).
+    // - Some records → missing days are UNAVAILABLE (was silently dropped before).
     for (const emp of employees) {
-      if (!availability[emp.id]) {
+      const empMap = availability[emp.id];
+      if (!empMap) {
         availability[emp.id] = {};
         for (let d = 0; d < 7; d++) {
           availability[emp.id][d] = { available: true };
+        }
+      } else {
+        for (let d = 0; d < 7; d++) {
+          if (!(d in empMap)) {
+            empMap[d] = { available: false };
+          }
         }
       }
     }
@@ -379,23 +426,49 @@ serve(async (req) => {
       });
 
     // ── Build staffing settings map ───────────────────────────────────────────
+    // staffing_settings.min_crew is a JSONB column keyed by user-facing
+    // position strings (e.g., {"Server": 2, "Line Cook": 1}). min_staff is a
+    // separate integer column treated as a per-slot floor (passed to
+    // computeRequiredStaff). The legacy "iterate min_* columns" approach
+    // (Bug 6) treated min_staff as a phantom "staff" position.
     let staffingSettings: Record<string, { min: number }> | null = null;
-    const settingsRow = staffingSettingsResult.data;
+    let minStaffFloor: number | null = null;
+    const settingsRow = staffingSettingsResult.data as
+      | { min_crew?: unknown; min_staff?: unknown }
+      | null;
     if (settingsRow) {
-      // staffing_settings columns are typically per-position minimums stored as JSONB
-      // or individual columns. Attempt to extract a generic map.
-      // Common pattern: { min_servers: 2, min_cooks: 1, ... } or { requirements: {...} }
-      const { id: _id, restaurant_id: _rid, created_at: _ca, updated_at: _ua, ...rest } = settingsRow as Record<string, unknown>;
       const result: Record<string, { min: number }> = {};
-      for (const [k, v] of Object.entries(rest)) {
-        if (k.startsWith("min_") && typeof v === "number") {
-          const position = k.replace(/^min_/, "").replace(/_/g, " ");
-          result[position] = { min: v };
+      if (settingsRow.min_crew && typeof settingsRow.min_crew === "object") {
+        for (const [position, count] of Object.entries(
+          settingsRow.min_crew as Record<string, unknown>,
+        )) {
+          if (typeof count === "number" && count > 0) {
+            result[position] = { min: count };
+          }
         }
       }
-      if (Object.keys(result).length > 0) {
-        staffingSettings = result;
+      if (Object.keys(result).length > 0) staffingSettings = result;
+      if (typeof settingsRow.min_staff === "number" && settingsRow.min_staff > 0) {
+        minStaffFloor = settingsRow.min_staff;
       }
+    }
+
+    // ── Compute per-slot required headcount (Bug 5 wiring) ───────────────────
+    const minCrewForCompute: Record<string, number> | null = staffingSettings
+      ? Object.fromEntries(
+          Object.entries(staffingSettings).map(([k, v]) => [k, v.min]),
+        )
+      : null;
+    const requiredStaff = computeRequiredStaff({
+      templates,
+      minCrew: minCrewForCompute,
+      minStaff: minStaffFloor,
+      priorPatterns: priorSchedulePatterns,
+      hourlySales: hourlySalesPatterns,
+    });
+    let totalRequiredSlots = 0;
+    for (const perDay of requiredStaff.values()) {
+      for (const count of perDay.values()) totalRequiredSlots += count;
     }
 
     // ── Build the prompt ──────────────────────────────────────────────────────
@@ -409,6 +482,7 @@ serve(async (req) => {
       hourlySalesPatterns,
       weeklyBudgetTarget,
       lockedShifts,
+      requiredStaff,
     };
 
     const promptResult = buildSchedulePrompt(scheduleContext);

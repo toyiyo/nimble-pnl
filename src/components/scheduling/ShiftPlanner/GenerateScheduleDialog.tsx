@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -160,7 +161,7 @@ export function GenerateScheduleDialog({
   const header = (() => {
     if (phase !== 'results') {
       return {
-        icon: <Sparkles className="h-5 w-5 text-violet-500" />,
+        icon: <Sparkles className="h-5 w-5 text-violet-500" aria-hidden="true" />,
         iconBg: 'bg-violet-500/10',
         title: 'Generate Schedule',
         subtitle: `AI will create shifts for ${formatDateRange(weekStart, weekEnd)}`,
@@ -168,7 +169,7 @@ export function GenerateScheduleDialog({
     }
     if (generationError) {
       return {
-        icon: <Info className="h-5 w-5 text-amber-500" />,
+        icon: <Info className="h-5 w-5 text-amber-500" aria-hidden="true" />,
         iconBg: 'bg-amber-500/10',
         title: 'Something Went Wrong',
         subtitle: 'The AI schedule generation failed',
@@ -176,14 +177,14 @@ export function GenerateScheduleDialog({
     }
     if (hasShifts) {
       return {
-        icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+        icon: <CheckCircle2 className="h-5 w-5 text-green-500" aria-hidden="true" />,
         iconBg: 'bg-green-500/10',
         title: 'Schedule Generated',
         subtitle: `${generationResult.shifts.length} shifts for ${formatDateRange(weekStart, weekEnd)}`,
       };
     }
     return {
-      icon: <Info className="h-5 w-5 text-amber-500" />,
+      icon: <Info className="h-5 w-5 text-amber-500" aria-hidden="true" />,
       iconBg: 'bg-amber-500/10',
       title: 'No Shifts Scheduled',
       subtitle: `No shifts could be created for ${formatDateRange(weekStart, weekEnd)}`,
@@ -192,7 +193,7 @@ export function GenerateScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+      <DialogContent className="max-w-lg p-0 gap-0 border-border/40 flex flex-col max-h-[80vh]">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
@@ -203,16 +204,16 @@ export function GenerateScheduleDialog({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 {header.title}
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {header.subtitle}
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         {/* Config phase content */}
         {phase === 'config' && (
-          <div className="px-6 py-5 space-y-5">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             {/* Section 1 — Employees */}
             <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">
@@ -273,7 +274,7 @@ export function GenerateScheduleDialog({
                           className="shrink-0"
                           aria-label={`Lock shift for ${employeeName}`}
                         />
-                        {isLocked && <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                        {isLocked && <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />}
                         <div className="min-w-0 flex-1">
                           <span className="text-[14px] font-medium text-foreground">{employeeName}</span>
                           <span className="text-[12px] text-muted-foreground ml-2">
@@ -297,7 +298,7 @@ export function GenerateScheduleDialog({
                   {Array.from(warningGroups.entries()).map(([type, group]) => (
                     <div key={type} className="space-y-1">
                       <div className="flex items-center gap-1.5">
-                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" aria-hidden="true" />
                         <span className="text-[13px] font-medium text-amber-600 dark:text-amber-400">
                           {group.items.length} {group.items.length === 1 ? 'employee' : 'employees'} — {group.label}
                         </span>
@@ -321,7 +322,7 @@ export function GenerateScheduleDialog({
 
         {/* Generating phase content */}
         {phase === 'generating' && (
-          <div className="px-6 py-10 flex flex-col items-center gap-3">
+          <div className="flex-1 overflow-y-auto px-6 py-10 flex flex-col items-center gap-3">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground" />
             <p className="text-[14px] text-muted-foreground">Generating schedule...</p>
           </div>
@@ -329,7 +330,7 @@ export function GenerateScheduleDialog({
 
         {/* Results phase content */}
         {phase === 'results' && (
-          <div className="px-6 py-5 space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
             {generationError ? (
               /* Error state */
               <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
@@ -355,13 +356,18 @@ export function GenerateScheduleDialog({
                       {generationResult.metadata.total_dropped} suggestions were filtered out.
                     </p>
                   )}
+                  {generationResult.metadata.total_required_slots > 0 && (
+                    <p className="text-[13px] text-muted-foreground mt-1">
+                      Filled {generationResult.metadata.total_valid} of {generationResult.metadata.total_required_slots} required slots.
+                    </p>
+                  )}
                 </div>
                 {generationResult.metadata.dropped_reasons.length > 0 && (
                   <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
                     <p className="text-[13px] font-medium text-foreground mb-2">Dropped suggestions</p>
                     <ul className="space-y-1">
                       {generationResult.metadata.dropped_reasons.map((reason, i) => (
-                        <li key={i} className="text-[13px] text-muted-foreground">
+                        <li key={`${reason}-${i}`} className="text-[13px] text-muted-foreground">
                           {reason}
                         </li>
                       ))}
@@ -388,7 +394,7 @@ export function GenerateScheduleDialog({
                     <p className="text-[13px] font-medium text-foreground mb-2">Reasons</p>
                     <ul className="space-y-1">
                       {generationResult.metadata.dropped_reasons.map((reason, i) => (
-                        <li key={i} className="text-[13px] text-muted-foreground">
+                        <li key={`${reason}-${i}`} className="text-[13px] text-muted-foreground">
                           {reason}
                         </li>
                       ))}
@@ -420,7 +426,7 @@ export function GenerateScheduleDialog({
               onClick={handleGenerate}
               aria-label="Generate schedule with AI"
             >
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
               Generate
             </Button>
           </div>

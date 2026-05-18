@@ -37,11 +37,11 @@ export function BulkActionBar({
   return (
     <div
       className={cn(
-        "fixed bottom-6 left-1/2 -translate-x-1/2 z-50",
+        "fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-50",
         "bg-background border border-border rounded-2xl shadow-2xl",
-        "px-6 py-4 flex items-center gap-4",
+        "px-4 py-3 sm:px-6 sm:py-4 flex items-center gap-4",
         "animate-in slide-in-from-bottom-8 duration-300",
-        "max-w-[95vw] md:max-w-4xl w-full md:w-auto",
+        "max-w-[95vw] sm:max-w-4xl w-full sm:w-auto",
         className
       )}
       role="toolbar"
@@ -64,7 +64,7 @@ export function BulkActionBar({
       </div>
 
       {/* Vertical divider */}
-      <div className="h-8 w-px bg-border flex-shrink-0" />
+      <div className="h-8 w-px bg-border flex-shrink-0 hidden sm:block" />
 
       {/* Primary actions */}
       <div className="flex items-center gap-2 flex-wrap">

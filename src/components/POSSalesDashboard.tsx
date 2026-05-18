@@ -95,7 +95,7 @@ export const POSSalesDashboard = ({
   return (
     <div className="space-y-3">
       {/* Apple/Notion-style metrics row */}
-      <div className="flex items-center gap-1">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-1">
         {/* Filtered context indicator */}
         {showFilteredContext && (
           <button

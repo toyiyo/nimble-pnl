@@ -57,10 +57,20 @@ const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
   return res.blob();
 };
 
-const randomId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `kiosk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+let idCounter = 0;
+const randomId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `kiosk-${Date.now()}-${hex}`;
+  }
+  idCounter += 1;
+  return `kiosk-${Date.now()}-${idCounter}`;
+};
 
 export const addQueuedPunch = async (
   payload: QueuedKioskPunch['payload'],
@@ -89,48 +99,65 @@ export const addQueuedPunch = async (
   return entry;
 };
 
-type PunchSender = (input: QueuedKioskPunch['payload'] & { photoBlob?: Blob }) => Promise<any>;
+type PunchSender = (input: QueuedKioskPunch['payload'] & { photoBlob?: Blob }) => Promise<unknown>;
+
+// Module-level guard: when several `onSuccess` handlers fire in quick
+// succession during a shift change, each used to call `flushQueuedPunches`
+// concurrently. Without a mutex they would all read the same queue snapshot
+// from localStorage and resend the same entries up to N times. This serialises
+// to a single in-flight flush.
+let flushing = false;
 
 export const flushQueuedPunches = async (sendPunch: PunchSender) => {
-  const queue = loadQueue();
-  if (queue.length === 0) return { flushed: 0, remaining: 0 };
-
-  let flushed = 0;
-  const remaining: QueuedKioskPunch[] = [];
-
-  for (const entry of queue) {
-    try {
-      const photoBlob =
-        entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
-
-      const payload = entry.payload;
-      // Security: PIN verification must happen before queueing, not during flush
-      if (!payload.employee_id) {
-        throw new Error('Missing employee_id for queued punch');
-      }
-
-      const { restaurant_id, employee_id, punch_type, punch_time, notes, location, device_info } = payload;
-
-      await sendPunch({
-        restaurant_id,
-        employee_id,
-        punch_type,
-        punch_time,
-        notes,
-        location,
-        device_info,
-        photoBlob,
-      });
-      flushed += 1;
-    } catch (error) {
-      console.warn('Failed to flush kiosk punch, will retry later', error);
-      remaining.push(entry);
-      break; // Stop early to avoid hammering while offline
-    }
+  if (flushing) {
+    return { flushed: 0, remaining: loadQueue().length };
   }
+  flushing = true;
+  try {
+    const queue = loadQueue();
+    if (queue.length === 0) return { flushed: 0, remaining: 0 };
 
-  saveQueue(remaining);
-  return { flushed, remaining: remaining.length };
+    let flushed = 0;
+    const remaining: QueuedKioskPunch[] = [];
+
+    for (let i = 0; i < queue.length; i += 1) {
+      const entry = queue[i];
+      try {
+        const photoBlob =
+          entry.payload.photoDataUrl ? await dataUrlToBlob(entry.payload.photoDataUrl) : undefined;
+
+        const payload = entry.payload;
+        if (!payload.employee_id) {
+          throw new Error('Missing employee_id for queued punch');
+        }
+
+        const { restaurant_id, employee_id, punch_type, punch_time, notes, location, device_info } = payload;
+
+        await sendPunch({
+          restaurant_id,
+          employee_id,
+          punch_type,
+          punch_time,
+          notes,
+          location,
+          device_info,
+          photoBlob,
+        });
+        flushed += 1;
+      } catch (error) {
+        console.warn('Failed to flush kiosk punch, will retry later', error);
+        // Preserve the failed entry AND every entry we never attempted —
+        // otherwise a network failure on entry 1 of 5 silently drops 2-5.
+        remaining.push(entry, ...queue.slice(i + 1));
+        break;
+      }
+    }
+
+    saveQueue(remaining);
+    return { flushed, remaining: remaining.length };
+  } finally {
+    flushing = false;
+  }
 };
 
 export const hasQueuedPunches = () => loadQueue().length > 0;

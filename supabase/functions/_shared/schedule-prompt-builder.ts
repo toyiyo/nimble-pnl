@@ -62,24 +62,31 @@ export interface ScheduleContext {
   hourlySalesPatterns: HourlySales[];
   weeklyBudgetTarget: number | null; // cents
   lockedShifts: LockedShift[];
+  /** Per-(template, day-of-week) required headcount. Computed by
+   *  staffing-requirements.computeRequiredStaff. Optional for backwards
+   *  compatibility with any callers that haven't been updated. */
+  requiredStaff?: Map<string, Map<number, number>> | null;
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const SYSTEM_PROMPT = `You are a restaurant schedule optimizer. Your job is to create an optimal weekly shift schedule.
 
+All times in this context are in the restaurant local clock (no timezone conversion needed). Position strings are matched case-insensitively and ignore trailing whitespace or trailing -s plurals — so "Line Cook" matches "line cook" and "Servers" matches "Server".
+
 RULES:
 1. ONLY use the provided shift templates as shift blocks — do not invent custom time ranges.
-2. ONLY assign employees to templates matching their position.
+2. ONLY assign employees to templates matching their position (per the normalization rule above).
 3. When a template has an area set, PREFER assigning employees from the same area. Only assign employees from a different area to that template if no same-area employees are available for that time slot. This is a soft preference — cross-area assignments are allowed as a fallback.
-4. ONLY assign employees on days/times they are available.
+4. ONLY assign employees on days/times they are available. The "Employee Availability" section lists all 7 days for every employee.
 5. Do NOT assign any employee more than once in the same time slot (no double-booking).
 6. Do NOT modify or reassign any locked shifts — they are fixed.
 7. Weight staffing toward peak sales hours — more staff during lunch/dinner rushes.
 8. If staffing settings specify minimum crew per position, meet those minimums when possible.
 9. If no staffing settings exist, use prior schedule patterns to infer typical staffing levels.
-10. Try to stay within the weekly labor budget target. If adequate coverage requires exceeding it, note the variance.
+10. Among schedules that meet required headcount (see Rule 12), prefer ones that stay within the weekly labor budget target.
 11. Full-time employees should be scheduled for more shifts, targeting 35-40 hours per week. Part-time employees should be scheduled for fewer shifts, targeting 15-25 hours per week. When both full-time and part-time employees are available for a slot, prefer the full-time employee unless they are already near 40 hours for the week.
+12. (HARD) Fill every required slot: for every (template, day) listed in "Required Headcount Per Slot", you MUST assign the required number of eligible-and-available employees. A slot may only be left below required headcount if there is NO eligible-and-available employee for it. Coverage is more important than budget — never under-fill to save cost.
 
 Return valid JSON only, matching the provided schema exactly.`;
 
@@ -149,16 +156,17 @@ function buildUserPrompt(ctx: ScheduleContext): string {
   });
   sections.push(`## Shift Templates\n${templatesSection.join('\n')}`);
 
-  // Employee availability
+  // Employee availability — always render 7 days per employee so the AI has
+  // an unambiguous picture. Missing days default to unavailable.
   const availLines: string[] = [];
-  for (const [empId, days] of Object.entries(ctx.availability)) {
-    const employee = ctx.employees.find((e) => e.id === empId);
-    const empName = employee ? employee.name : empId;
+  for (const employee of ctx.employees) {
+    const empId = employee.id;
+    const days = ctx.availability[empId] ?? {};
     const dayLines: string[] = [];
-    for (const [dayStr, avail] of Object.entries(days)) {
-      const dayNum = parseInt(dayStr, 10);
-      const dayName = DAY_NAMES[dayNum] ?? `Day ${dayNum}`;
-      if (!avail.available) {
+    for (let dayNum = 0; dayNum < 7; dayNum++) {
+      const dayName = DAY_NAMES[dayNum];
+      const avail = days[dayNum];
+      if (!avail || !avail.available) {
         dayLines.push(`  ${dayName}: unavailable`);
       } else if (avail.start && avail.end) {
         dayLines.push(`  ${dayName}: available ${avail.start}–${avail.end}`);
@@ -166,9 +174,9 @@ function buildUserPrompt(ctx: ScheduleContext): string {
         dayLines.push(`  ${dayName}: available (all day)`);
       }
     }
-    availLines.push(`${empName} (${empId}):\n${dayLines.join('\n')}`);
+    availLines.push(`${employee.name} (${empId}):\n${dayLines.join("\n")}`);
   }
-  sections.push(`## Employee Availability\n${availLines.join('\n\n')}`);
+  sections.push(`## Employee Availability\n${availLines.join("\n\n")}`);
 
   // Minimum staffing requirements
   if (ctx.staffingSettings && Object.keys(ctx.staffingSettings).length > 0) {
@@ -178,6 +186,28 @@ function buildUserPrompt(ctx: ScheduleContext): string {
     sections.push(`## Minimum Staffing Requirements\n${minLines.join('\n')}`);
   } else {
     sections.push(`## Minimum Staffing Requirements\nNo explicit minimums set — use prior schedule patterns below to infer typical staffing levels.`);
+  }
+
+  // Required headcount per (template, day) — drives Rule 12.
+  if (ctx.requiredStaff && ctx.requiredStaff.size > 0) {
+    const templateById = new Map(ctx.templates.map((t) => [t.id, t]));
+    const headcountLines: string[] = [];
+    for (const [tplId, perDay] of ctx.requiredStaff) {
+      const tpl = templateById.get(tplId);
+      if (!tpl) continue;
+      const dayParts: string[] = [];
+      for (const [day, count] of [...perDay.entries()].sort((a, b) => a[0] - b[0])) {
+        dayParts.push(`${DAY_NAMES[day] ?? `Day ${day}`}: ${count}`);
+      }
+      headcountLines.push(
+        `- [${tplId}] "${tpl.name}" | ${tpl.position} | ${dayParts.join(" | ")}`,
+      );
+    }
+    if (headcountLines.length > 0) {
+      sections.push(
+        `## Required Headcount Per Slot\nEach line lists the minimum staff to assign for that template on each active day.\n${headcountLines.join("\n")}`,
+      );
+    }
   }
 
   // Prior schedule patterns (4-week average)

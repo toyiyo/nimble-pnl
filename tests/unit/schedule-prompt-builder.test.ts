@@ -174,3 +174,62 @@ describe('buildSchedulePrompt', () => {
     expect(metaProps.notes).toBeDefined();
   });
 });
+
+describe('buildSchedulePrompt — fill-slot enhancements', () => {
+  it('renders 7 days per employee (including missing days as unavailable)', () => {
+    const ctx = makeContext({
+      // emp-1 has only Mon (1) and Tue (2) in availability
+      availability: {
+        'emp-1': {
+          1: { available: true, start: '10:00', end: '18:00' },
+          2: { available: false },
+        },
+        'emp-2': {
+          3: { available: true },
+        },
+      },
+    });
+    const result = buildSchedulePrompt(ctx);
+    const userContent = result.messages[1].content as string;
+    // All 7 day names should appear for emp-1
+    expect(userContent).toContain('Sunday');
+    expect(userContent).toContain('Monday');
+    expect(userContent).toContain('Tuesday');
+    expect(userContent).toContain('Wednesday');
+    expect(userContent).toContain('Thursday');
+    expect(userContent).toContain('Friday');
+    expect(userContent).toContain('Saturday');
+  });
+
+  it('renders a Required Headcount Per Slot section when requiredStaff provided', () => {
+    const requiredStaff = new Map<string, Map<number, number>>([
+      ['tpl-1', new Map([[1, 2], [2, 2], [3, 1]])],
+      ['tpl-2', new Map([[3, 3]])],
+    ]);
+    const result = buildSchedulePrompt(makeContext({ requiredStaff }));
+    const userContent = result.messages[1].content as string;
+    expect(userContent).toContain('Required Headcount Per Slot');
+    expect(userContent).toContain('tpl-1');
+    expect(userContent).toContain('Monday: 2');
+    expect(userContent).toContain('Tuesday: 2');
+  });
+
+  it('omits Required Headcount section when requiredStaff is null', () => {
+    const result = buildSchedulePrompt(makeContext({ requiredStaff: null }));
+    const userContent = result.messages[1].content as string;
+    expect(userContent).not.toContain('Required Headcount Per Slot');
+  });
+
+  it('includes a hard "fill every required slot" rule in the system prompt', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    expect(systemContent).toMatch(/fill .*required/i);
+    expect(systemContent.toLowerCase()).toContain('coverage');
+  });
+
+  it('includes a note that all times are restaurant local', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    expect(systemContent.toLowerCase()).toContain('restaurant local');
+  });
+});

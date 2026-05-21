@@ -1,5 +1,3 @@
-npm warn exec The following package was not found and will be installed: supabase@2.101.0
-Connecting to db 5432
 export type Json =
   | string
   | number
@@ -1176,7 +1174,6 @@ export type Database = {
         Row: {
           action: string
           amount: number
-          check_bank_account_id: string | null
           check_number: number
           created_at: string
           id: string
@@ -1192,7 +1189,6 @@ export type Database = {
         Insert: {
           action: string
           amount: number
-          check_bank_account_id?: string | null
           check_number: number
           created_at?: string
           id?: string
@@ -1208,7 +1204,6 @@ export type Database = {
         Update: {
           action?: string
           amount?: number
-          check_bank_account_id?: string | null
           check_number?: number
           created_at?: string
           id?: string
@@ -1222,13 +1217,6 @@ export type Database = {
           void_reason?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "check_audit_log_check_bank_account_id_fkey"
-            columns: ["check_bank_account_id"]
-            isOneToOne: false
-            referencedRelation: "check_bank_accounts"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "check_audit_log_pending_outflow_id_fkey"
             columns: ["pending_outflow_id"]
@@ -1245,74 +1233,9 @@ export type Database = {
           },
         ]
       }
-      check_bank_accounts: {
-        Row: {
-          account_name: string
-          account_number_encrypted: string | null
-          account_number_last4: string | null
-          bank_name: string | null
-          connected_bank_id: string | null
-          created_at: string
-          id: string
-          is_active: boolean
-          is_default: boolean
-          next_check_number: number
-          print_bank_info: boolean
-          restaurant_id: string
-          routing_number: string | null
-          updated_at: string
-        }
-        Insert: {
-          account_name: string
-          account_number_encrypted?: string | null
-          account_number_last4?: string | null
-          bank_name?: string | null
-          connected_bank_id?: string | null
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          is_default?: boolean
-          next_check_number?: number
-          print_bank_info?: boolean
-          restaurant_id: string
-          routing_number?: string | null
-          updated_at?: string
-        }
-        Update: {
-          account_name?: string
-          account_number_encrypted?: string | null
-          account_number_last4?: string | null
-          bank_name?: string | null
-          connected_bank_id?: string | null
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          is_default?: boolean
-          next_check_number?: number
-          print_bank_info?: boolean
-          restaurant_id?: string
-          routing_number?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "check_bank_accounts_connected_bank_id_fkey"
-            columns: ["connected_bank_id"]
-            isOneToOne: false
-            referencedRelation: "connected_banks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "check_bank_accounts_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       check_settings: {
         Row: {
+          bank_name: string | null
           business_address_line1: string | null
           business_address_line2: string | null
           business_city: string | null
@@ -1321,10 +1244,12 @@ export type Database = {
           business_zip: string | null
           created_at: string
           id: string
+          next_check_number: number
           restaurant_id: string
           updated_at: string
         }
         Insert: {
+          bank_name?: string | null
           business_address_line1?: string | null
           business_address_line2?: string | null
           business_city?: string | null
@@ -1333,10 +1258,12 @@ export type Database = {
           business_zip?: string | null
           created_at?: string
           id?: string
+          next_check_number?: number
           restaurant_id: string
           updated_at?: string
         }
         Update: {
+          bank_name?: string | null
           business_address_line1?: string | null
           business_address_line2?: string | null
           business_city?: string | null
@@ -1345,6 +1272,7 @@ export type Database = {
           business_zip?: string | null
           created_at?: string
           id?: string
+          next_check_number?: number
           restaurant_id?: string
           updated_at?: string
         }
@@ -2090,68 +2018,6 @@ export type Database = {
           },
         ]
       }
-      device_tokens: {
-        Row: {
-          created_at: string
-          id: string
-          platform: string
-          restaurant_id: string
-          token: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          platform: string
-          restaurant_id: string
-          token: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          platform?: string
-          restaurant_id?: string
-          token?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "device_tokens_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      email_unsubscribes: {
-        Row: {
-          id: string
-          list: string
-          source: string | null
-          unsubscribed_at: string
-          user_id: string
-        }
-        Insert: {
-          id?: string
-          list: string
-          source?: string | null
-          unsubscribed_at?: string
-          user_id: string
-        }
-        Update: {
-          id?: string
-          list?: string
-          source?: string | null
-          unsubscribed_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       employee_availability: {
         Row: {
           created_at: string | null
@@ -2502,7 +2368,6 @@ export type Database = {
       employees: {
         Row: {
           allocate_daily: boolean | null
-          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -2510,12 +2375,10 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
-          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
-          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -2542,7 +2405,6 @@ export type Database = {
         }
         Insert: {
           allocate_daily?: boolean | null
-          area?: string | null
           compensation_type?: string
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
@@ -2550,12 +2412,10 @@ export type Database = {
           daily_rate_amount?: number | null
           daily_rate_reference_days?: number | null
           daily_rate_reference_weekly?: number | null
-          date_of_birth?: string | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
-          employment_type?: string
           exempt_changed_at?: string | null
           exempt_changed_by?: string | null
           hire_date?: string | null
@@ -2582,7 +2442,6 @@ export type Database = {
         }
         Update: {
           allocate_daily?: boolean | null
-          area?: string | null
           compensation_type?: string
           contractor_payment_amount?: number | null
           contractor_payment_interval?: string | null
@@ -2590,12 +2449,10 @@ export type Database = {
           daily_rate_amount?: number | null
           daily_rate_reference_days?: number | null
           daily_rate_reference_weekly?: number | null
-          date_of_birth?: string | null
           deactivated_at?: string | null
           deactivated_by?: string | null
           deactivation_reason?: string | null
           email?: string | null
-          employment_type?: string
           exempt_changed_at?: string | null
           exempt_changed_by?: string | null
           hire_date?: string | null
@@ -3660,91 +3517,6 @@ export type Database = {
           },
         ]
       }
-      open_shift_claims: {
-        Row: {
-          claimed_by_employee_id: string
-          created_at: string
-          id: string
-          restaurant_id: string
-          resulting_shift_id: string | null
-          reviewed_at: string | null
-          reviewed_by: string | null
-          shift_date: string
-          shift_template_id: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          claimed_by_employee_id: string
-          created_at?: string
-          id?: string
-          restaurant_id: string
-          resulting_shift_id?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          shift_date: string
-          shift_template_id: string
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          claimed_by_employee_id?: string
-          created_at?: string
-          id?: string
-          restaurant_id?: string
-          resulting_shift_id?: string | null
-          reviewed_at?: string | null
-          reviewed_by?: string | null
-          shift_date?: string
-          shift_template_id?: string
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
-            columns: ["claimed_by_employee_id"]
-            isOneToOne: false
-            referencedRelation: "active_employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
-            columns: ["claimed_by_employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "open_shift_claims_claimed_by_employee_id_fkey"
-            columns: ["claimed_by_employee_id"]
-            isOneToOne: false
-            referencedRelation: "inactive_employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "open_shift_claims_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "open_shift_claims_resulting_shift_id_fkey"
-            columns: ["resulting_shift_id"]
-            isOneToOne: false
-            referencedRelation: "shifts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "open_shift_claims_shift_template_id_fkey"
-            columns: ["shift_template_id"]
-            isOneToOne: false
-            referencedRelation: "shift_templates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ops_inbox_item: {
         Row: {
           created_at: string
@@ -3932,7 +3704,6 @@ export type Database = {
         Row: {
           amount: number
           category_id: string | null
-          check_bank_account_id: string | null
           cleared_at: string | null
           created_at: string
           due_date: string | null
@@ -3952,7 +3723,6 @@ export type Database = {
         Insert: {
           amount: number
           category_id?: string | null
-          check_bank_account_id?: string | null
           cleared_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -3972,7 +3742,6 @@ export type Database = {
         Update: {
           amount?: number
           category_id?: string | null
-          check_bank_account_id?: string | null
           cleared_at?: string | null
           created_at?: string
           due_date?: string | null
@@ -3995,13 +3764,6 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "chart_of_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pending_outflows_check_bank_account_id_fkey"
-            columns: ["check_bank_account_id"]
-            isOneToOne: false
-            referencedRelation: "check_bank_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -5375,13 +5137,9 @@ export type Database = {
           cuisine_type: string | null
           ein: string | null
           entity_type: string | null
-          geofence_enforcement: string
-          geofence_radius_meters: number
           grandfathered_until: string | null
           id: string
-          latitude: number | null
           legal_name: string | null
-          longitude: number | null
           name: string
           phone: string | null
           state: string | null
@@ -5410,13 +5168,9 @@ export type Database = {
           cuisine_type?: string | null
           ein?: string | null
           entity_type?: string | null
-          geofence_enforcement?: string
-          geofence_radius_meters?: number
           grandfathered_until?: string | null
           id?: string
-          latitude?: number | null
           legal_name?: string | null
-          longitude?: number | null
           name: string
           phone?: string | null
           state?: string | null
@@ -5445,13 +5199,9 @@ export type Database = {
           cuisine_type?: string | null
           ein?: string | null
           entity_type?: string | null
-          geofence_enforcement?: string
-          geofence_radius_meters?: number
           grandfathered_until?: string | null
           id?: string
-          latitude?: number | null
           legal_name?: string | null
-          longitude?: number | null
           name?: string
           phone?: string | null
           state?: string | null
@@ -5609,52 +5359,12 @@ export type Database = {
           },
         ]
       }
-      schedule_plan_templates: {
-        Row: {
-          created_at: string
-          id: string
-          name: string
-          restaurant_id: string
-          shift_count: number
-          shifts: Json
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name: string
-          restaurant_id: string
-          shift_count: number
-          shifts: Json
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string
-          restaurant_id?: string
-          shift_count?: number
-          shifts?: Json
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "schedule_plan_templates_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       schedule_publications: {
         Row: {
           created_at: string | null
           id: string
           notes: string | null
           notification_sent: boolean
-          open_shifts_broadcast_at: string | null
-          open_shifts_broadcast_by: string | null
           published_at: string
           published_by: string
           restaurant_id: string
@@ -5667,8 +5377,6 @@ export type Database = {
           id?: string
           notes?: string | null
           notification_sent?: boolean
-          open_shifts_broadcast_at?: string | null
-          open_shifts_broadcast_by?: string | null
           published_at?: string
           published_by: string
           restaurant_id: string
@@ -5681,8 +5389,6 @@ export type Database = {
           id?: string
           notes?: string | null
           notification_sent?: boolean
-          open_shifts_broadcast_at?: string | null
-          open_shifts_broadcast_by?: string | null
           published_at?: string
           published_by?: string
           restaurant_id?: string
@@ -5890,9 +5596,7 @@ export type Database = {
       }
       shift_templates: {
         Row: {
-          area: string | null
           break_duration: number
-          capacity: number
           created_at: string | null
           days: number[]
           end_time: string
@@ -5905,9 +5609,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          area?: string | null
           break_duration?: number
-          capacity?: number
           created_at?: string | null
           days?: number[]
           end_time: string
@@ -5920,9 +5622,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          area?: string | null
           break_duration?: number
-          capacity?: number
           created_at?: string | null
           days?: number[]
           end_time?: string
@@ -6360,8 +6060,6 @@ export type Database = {
           recurrence_parent_id: string | null
           recurrence_pattern: Json | null
           restaurant_id: string
-          shift_template_id: string | null
-          source: string
           source_id: string | null
           source_type: string | null
           start_time: string
@@ -6384,8 +6082,6 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id: string
-          shift_template_id?: string | null
-          source?: string
           source_id?: string | null
           source_type?: string | null
           start_time: string
@@ -6408,8 +6104,6 @@ export type Database = {
           recurrence_parent_id?: string | null
           recurrence_pattern?: Json | null
           restaurant_id?: string
-          shift_template_id?: string | null
-          source?: string
           source_id?: string | null
           source_type?: string | null
           start_time?: string
@@ -6450,13 +6144,6 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shifts_shift_template_id_fkey"
-            columns: ["shift_template_id"]
-            isOneToOne: false
-            referencedRelation: "shift_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -7184,62 +6871,6 @@ export type Database = {
             foreignKeyName: "square_team_members_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      staffing_settings: {
-        Row: {
-          avg_ticket_size: number
-          created_at: string
-          id: string
-          lookback_weeks: number
-          manual_projections: Json | null
-          min_crew: Json | null
-          min_staff: number
-          open_shifts_enabled: boolean
-          require_shift_claim_approval: boolean
-          restaurant_id: string
-          target_labor_pct: number
-          target_splh: number
-          updated_at: string
-        }
-        Insert: {
-          avg_ticket_size?: number
-          created_at?: string
-          id?: string
-          lookback_weeks?: number
-          manual_projections?: Json | null
-          min_crew?: Json | null
-          min_staff?: number
-          open_shifts_enabled?: boolean
-          require_shift_claim_approval?: boolean
-          restaurant_id: string
-          target_labor_pct?: number
-          target_splh?: number
-          updated_at?: string
-        }
-        Update: {
-          avg_ticket_size?: number
-          created_at?: string
-          id?: string
-          lookback_weeks?: number
-          manual_projections?: Json | null
-          min_crew?: Json | null
-          min_staff?: number
-          open_shifts_enabled?: boolean
-          require_shift_claim_approval?: boolean
-          restaurant_id?: string
-          target_labor_pct?: number
-          target_splh?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "staffing_settings_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: true
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
@@ -8666,47 +8297,6 @@ export type Database = {
           },
         ]
       }
-      trial_emails_sent: {
-        Row: {
-          email_type: string
-          id: string
-          resend_message_id: string | null
-          restaurant_id: string
-          sent_at: string
-          trial_day_at_send: number
-          user_id: string
-          variant: string
-        }
-        Insert: {
-          email_type: string
-          id?: string
-          resend_message_id?: string | null
-          restaurant_id: string
-          sent_at?: string
-          trial_day_at_send: number
-          user_id: string
-          variant: string
-        }
-        Update: {
-          email_type?: string
-          id?: string
-          resend_message_id?: string | null
-          restaurant_id?: string
-          sent_at?: string
-          trial_day_at_send?: number
-          user_id?: string
-          variant?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "trial_emails_sent_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       unified_sales: {
         Row: {
           adjustment_type: string | null
@@ -8911,44 +8501,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "user_restaurants_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      web_push_subscriptions: {
-        Row: {
-          auth: string
-          created_at: string
-          endpoint: string
-          id: string
-          p256dh: string
-          restaurant_id: string
-          user_id: string
-        }
-        Insert: {
-          auth: string
-          created_at?: string
-          endpoint: string
-          id?: string
-          p256dh: string
-          restaurant_id: string
-          user_id: string
-        }
-        Update: {
-          auth?: string
-          created_at?: string
-          endpoint?: string
-          id?: string
-          p256dh?: string
-          restaurant_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "web_push_subscriptions_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -9241,7 +8793,6 @@ export type Database = {
       }
     }
     Functions: {
-      _check_account_encryption_key: { Args: never; Returns: string }
       _cleanup: { Args: never; Returns: boolean }
       _contract_on: { Args: { "": string }; Returns: unknown }
       _currtest: { Args: never; Returns: number }
@@ -9310,20 +8861,6 @@ export type Database = {
           total_count: number
         }[]
       }
-      apply_schedule_plan_template: {
-        Args: {
-          p_merge_mode?: string
-          p_restaurant_id: string
-          p_shifts: Json
-          p_target_end: string
-          p_target_start: string
-        }
-        Returns: Json
-      }
-      approve_open_shift_claim: {
-        Args: { p_claim_id: string; p_reviewer_note?: string }
-        Returns: Json
-      }
       approve_shift_trade: {
         Args: {
           p_manager_note?: string
@@ -9347,17 +8884,6 @@ export type Database = {
           p_start_date: string
         }
         Returns: Json
-      }
-      bulk_set_employee_availability: {
-        Args: {
-          p_availability: Json
-          p_employee_ids: string[]
-          p_restaurant_id: string
-        }
-        Returns: {
-          employees_updated: number
-          rows_inserted: number
-        }[]
       }
       calculate_asset_depreciation: {
         Args: {
@@ -9447,8 +8973,6 @@ export type Database = {
           p_start_time: string
         }
         Returns: {
-          available_end: string
-          available_start: string
           conflict_type: string
           has_conflict: boolean
           message: string
@@ -9482,26 +9006,13 @@ export type Database = {
           time_off_id: string
         }[]
       }
-      claim_check_numbers_for_account: {
-        Args: { p_account_id: string; p_count?: number }
+      claim_check_numbers: {
+        Args: { p_count?: number; p_restaurant_id: string }
         Returns: number
-      }
-      claim_open_shift: {
-        Args: {
-          p_employee_id: string
-          p_restaurant_id: string
-          p_shift_date: string
-          p_template_id: string
-        }
-        Returns: Json
       }
       cleanup_expired_invitations: { Args: never; Returns: undefined }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_rate_limit_logs: { Args: never; Returns: undefined }
-      clear_check_bank_account_secrets: {
-        Args: { p_id: string }
-        Returns: undefined
-      }
       col_is_null:
         | {
             Args: {
@@ -9598,15 +9109,6 @@ export type Database = {
         Args: { p_restaurant_id: string; p_week_end: string }
         Returns: Json
       }
-      copy_week_shifts: {
-        Args: {
-          p_restaurant_id: string
-          p_shifts: Json
-          p_target_end: string
-          p_target_start: string
-        }
-        Returns: Json
-      }
       create_restaurant_with_owner: {
         Args: {
           restaurant_address?: string
@@ -9628,7 +9130,6 @@ export type Database = {
         }
         Returns: {
           allocate_daily: boolean | null
-          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -9636,12 +9137,10 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
-          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
-          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -9677,14 +9176,9 @@ export type Database = {
         Args: { p_restaurant_id: string; p_transaction_id: string }
         Returns: Json
       }
-      delete_schedule_plan_template: {
-        Args: { p_restaurant_id: string; p_template_id: string }
-        Returns: undefined
-      }
       delete_shift_series: {
         Args: {
           p_from_time?: string
-          p_include_locked?: boolean
           p_parent_id: string
           p_restaurant_id: string
           p_scope: string
@@ -9789,13 +9283,6 @@ export type Database = {
       }
       generate_po_number: { Args: { p_restaurant_id: string }; Returns: string }
       get_account_subtypes: { Args: never; Returns: Json }
-      get_check_bank_account_secrets: {
-        Args: { p_id: string }
-        Returns: {
-          account_number: string
-          routing_number: string
-        }[]
-      }
       get_current_employee_id: {
         Args: { p_restaurant_id: string }
         Returns: string
@@ -9838,26 +9325,6 @@ export type Database = {
           period: string
           sales_tax: number
           tips: number
-        }[]
-      }
-      get_open_shifts: {
-        Args: {
-          p_restaurant_id: string
-          p_week_end: string
-          p_week_start: string
-        }
-        Returns: {
-          area: string
-          assigned_count: number
-          capacity: number
-          end_time: string
-          open_spots: number
-          pending_claims: number
-          position: string
-          shift_date: string
-          start_time: string
-          template_id: string
-          template_name: string
         }[]
       }
       get_owner_restaurant_count: {
@@ -10087,7 +9554,6 @@ export type Database = {
         }
         Returns: {
           allocate_daily: boolean | null
-          area: string | null
           compensation_type: string
           contractor_payment_amount: number | null
           contractor_payment_interval: string | null
@@ -10095,12 +9561,10 @@ export type Database = {
           daily_rate_amount: number | null
           daily_rate_reference_days: number | null
           daily_rate_reference_weekly: number | null
-          date_of_birth: string | null
           deactivated_at: string | null
           deactivated_by: string | null
           deactivation_reason: string | null
           email: string | null
-          employment_type: string
           exempt_changed_at: string | null
           exempt_changed_by: string | null
           hire_date: string | null
@@ -10136,10 +9600,6 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
-      reject_open_shift_claim: {
-        Args: { p_claim_id: string; p_reviewer_note?: string }
-        Returns: Json
-      }
       reject_shift_trade: {
         Args: {
           p_manager_note?: string
@@ -10155,10 +9615,6 @@ export type Database = {
       runtests:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }
-      save_schedule_plan_template: {
-        Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
-        Returns: Json
-      }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
         Returns: {
@@ -10169,10 +9625,6 @@ export type Database = {
           sku: string
           uom_purchase: string
         }[]
-      }
-      set_check_bank_account_secrets: {
-        Args: { p_account: string; p_id: string; p_routing: string }
-        Returns: undefined
       }
       set_preferred_product_supplier: {
         Args: {
@@ -10273,15 +9725,6 @@ export type Database = {
           }
       text_soundex: { Args: { "": string }; Returns: string }
       throws_ok: { Args: { "": string }; Returns: string }
-      time_within_window: {
-        Args: {
-          p_shift_end: string
-          p_shift_start: string
-          p_window_end: string
-          p_window_start: string
-        }
-        Returns: boolean
-      }
       toast_sync_financial_breakdown: {
         Args: { p_order_guid: string; p_restaurant_id: string }
         Returns: number
@@ -10290,7 +9733,6 @@ export type Database = {
         | { Args: { how_many: number }; Returns: boolean[] }
         | { Args: { how_many: number; why: string }; Returns: boolean[] }
         | { Args: { why: string }; Returns: boolean[] }
-        | { Args: { how_many: number; why: string }; Returns: boolean[] }
       todo_end: { Args: never; Returns: boolean[] }
       todo_start:
         | { Args: never; Returns: boolean[] }
@@ -10305,10 +9747,6 @@ export type Database = {
           p_week_start: string
         }
         Returns: number
-      }
-      update_check_bank_account_routing: {
-        Args: { p_id: string; p_routing: string }
-        Returns: undefined
       }
       update_prep_recipe_ingredients: {
         Args: { p_ingredients?: Json; p_prep_recipe_id: string }
@@ -10358,18 +9796,6 @@ export type Database = {
       user_is_internal_team: {
         Args: { p_restaurant_id: string }
         Returns: boolean
-      }
-      users_in_trial_email_window: {
-        Args: never
-        Returns: {
-          activated: boolean
-          email: string
-          email_type: string
-          full_name: string
-          restaurant_id: string
-          trial_day: number
-          user_id: string
-        }[]
       }
       verify_employee_can_login: {
         Args: { p_user_id?: string }

@@ -9267,6 +9267,17 @@ export type Database = {
         }
         Returns: Json
       }
+      bulk_set_employee_availability: {
+        Args: {
+          p_availability: Json
+          p_employee_ids: string[]
+          p_restaurant_id: string
+        }
+        Returns: {
+          employees_updated: number
+          rows_inserted: number
+        }[]
+      }
       calculate_asset_depreciation: {
         Args: {
           p_asset_id: string

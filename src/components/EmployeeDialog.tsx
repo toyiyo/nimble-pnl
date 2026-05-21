@@ -521,11 +521,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{employee ? 'Edit Employee' : 'Add New Employee'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto px-6 py-5">
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="name">
@@ -1045,8 +1046,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 />
               </div>
             </div>
+            </div>
 
-            <DialogFooter>
+            <DialogFooter className="px-6 py-4 border-t border-border/40">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>

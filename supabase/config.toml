@@ -178,6 +178,9 @@ verify_jwt = true
 [functions.notify-schedule-published]
 verify_jwt = true
 
+[functions.notify-availability-reminder]
+verify_jwt = true
+
 [functions.toast-save-credentials]
 verify_jwt = false
 

@@ -210,6 +210,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setContractorPaymentInterval('monthly');
     setDailyRateWeekly('');
     setDailyRateStandardDays('6');
+
+    // Reset create-mode availability prompt so subsequent "Add New Employee"
+    // opens default-on rather than persisting a prior "set later" choice.
+    setAvailabilityChoice('apply_default');
+    setAvailabilityExpanded(false);
   };
 
   const hasCompensationChanged = (

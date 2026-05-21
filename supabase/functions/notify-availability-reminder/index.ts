@@ -7,6 +7,11 @@ import {
   buildDeps,
 } from '../_shared/availabilityReminderHandler.ts';
 
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+if (!SUPABASE_URL) throw new Error('SUPABASE_URL is not configured');
+if (!SUPABASE_ANON_KEY) throw new Error('SUPABASE_ANON_KEY is not configured');
+
 const deps = buildDeps({
   env: {
     APP_URL: Deno.env.get('APP_URL') ?? undefined,
@@ -15,8 +20,8 @@ const deps = buildDeps({
   },
   createClient: (authHeader) =>
     createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY,
       { global: { headers: authHeader ? { Authorization: authHeader } : {} } },
     ) as never,
   sendEmail: (key, from, to, subject, html) => sendEmail(key, from, to, subject, html),

@@ -87,7 +87,7 @@ export function ShiftPlannerTab({
     deleteTemplate,
   } = useShiftTemplates(restaurantId);
 
-  const { availability } = useEmployeeAvailability(restaurantId);
+  const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
 
   // Compute template grid data
   const templateGridData = useMemo(
@@ -680,6 +680,7 @@ export function ShiftPlannerTab({
         employees={employees ?? []}
         templates={templates}
         availability={availability}
+        availabilityLoading={availabilityLoading}
         existingShifts={shifts}
         weekStart={weekStart}
         weekEnd={weekEnd}

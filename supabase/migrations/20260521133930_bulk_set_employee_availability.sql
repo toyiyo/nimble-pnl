@@ -29,6 +29,7 @@ AS $$
 DECLARE
   v_rows_inserted     INTEGER := 0;
   v_employees_updated INTEGER := 0;
+  v_unique_ids        UUID[];
 BEGIN
   -- Authz: caller must be owner/manager of the restaurant
   IF NOT public.user_has_restaurant_access(p_restaurant_id, true) THEN
@@ -40,6 +41,13 @@ BEGIN
     RETURN QUERY SELECT 0::INTEGER, 0::INTEGER;
     RETURN;
   END IF;
+
+  -- Dedupe input. Duplicates would otherwise be multiplied by the
+  -- unnest × jsonb_array_elements cross join, inserting duplicate rows
+  -- and inflating rows_inserted / employees_updated counts.
+  SELECT array_agg(DISTINCT eid)
+  INTO v_unique_ids
+  FROM unnest(p_employee_ids) AS eid;
 
   -- day_of_week range check
   IF EXISTS (
@@ -60,7 +68,7 @@ BEGIN
 
   -- Tenant validation: every employee_id belongs to p_restaurant_id
   IF EXISTS (
-    SELECT 1 FROM unnest(p_employee_ids) AS eid
+    SELECT 1 FROM unnest(v_unique_ids) AS eid
     WHERE NOT EXISTS (
       SELECT 1 FROM employees
       WHERE id = eid AND restaurant_id = p_restaurant_id
@@ -78,7 +86,7 @@ BEGIN
   deleted AS (
     DELETE FROM employee_availability
     WHERE restaurant_id = p_restaurant_id
-      AND employee_id = ANY(p_employee_ids)
+      AND employee_id = ANY(v_unique_ids)
       AND day_of_week IN (SELECT day_of_week FROM days_to_replace)
     RETURNING 1
   ),
@@ -92,13 +100,13 @@ BEGIN
       (a->>'start_time')::time,
       (a->>'end_time')::time,
       (a->>'is_available')::boolean
-    FROM unnest(p_employee_ids) AS eid
+    FROM unnest(v_unique_ids) AS eid
     CROSS JOIN jsonb_array_elements(p_availability) AS a
     RETURNING 1
   )
   SELECT
     COUNT(*) FILTER (WHERE TRUE)::INTEGER,
-    array_length(p_employee_ids, 1)
+    array_length(v_unique_ids, 1)
   INTO v_rows_inserted, v_employees_updated
   FROM inserted;
 

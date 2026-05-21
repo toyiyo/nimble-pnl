@@ -360,8 +360,9 @@ The {restaurant_name} team
 | File | Purpose |
 |---|---|
 | `supabase/migrations/<ts>_bulk_set_employee_availability.sql` | New RPC |
+| `supabase/migrations/<ts>_bulk_set_employee_availability_index.sql` | New composite index `idx_employee_availability_restaurant_employee_day` (`CREATE INDEX CONCURRENTLY` — must be its own migration since it cannot run inside a transaction) |
 
-No table schema changes. No new tables. No new indexes (existing `idx_employee_availability_employee_id` and `idx_employee_availability_restaurant_id` cover the RPC's queries).
+No table schema changes. No new tables. One new composite index (above) that exactly matches the RPC's `restaurant_id + employee_id + day_of_week` delete predicate.
 
 ### Tests
 
@@ -389,7 +390,7 @@ No table schema changes. No new tables. No new indexes (existing `idx_employee_a
 
 ### Accessibility
 
-- Banner has `role="status"` (consistent with PR #506's a11y pattern) so screen readers announce the count.
+- Banner has `role="alert" aria-live="polite"` (per the architecture section and design-review fold-ins) so screen readers announce the count as an actionable prompt.
 - Each action button has a descriptive label, not an icon alone.
 - BulkSetAvailabilityDialog: focus moves to dialog header on open; ESC closes; submit-disabled state when no employees selected.
 - 7-day grid uses semantic `<table>` with row headers per day.

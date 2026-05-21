@@ -71,72 +71,79 @@ export async function processAvailabilityReminder(
 ): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) return json({ error: 'Missing authorization header' }, 401);
+  try {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return json({ error: 'Missing authorization header' }, 401);
 
-  const supabase = deps.createClient(authHeader);
-  const { data: userRes, error: authErr } = await supabase.auth.getUser();
-  if (authErr || !userRes?.user) return json({ error: 'Unauthorized' }, 401);
+    const supabase = deps.createClient(authHeader);
+    const { data: userRes, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !userRes?.user) return json({ error: 'Unauthorized' }, 401);
 
-  const body = (await req.json().catch(() => null)) as
-    | { restaurant_id?: string; employee_ids?: string[] }
-    | null;
-  const restaurantId = body?.restaurant_id;
-  const employeeIds = body?.employee_ids ?? [];
-  if (!restaurantId || employeeIds.length === 0) {
-    return json({ error: 'restaurant_id and employee_ids are required' }, 400);
+    const body = (await req.json().catch(() => null)) as
+      | { restaurant_id?: string; employee_ids?: string[] }
+      | null;
+    const restaurantId = body?.restaurant_id;
+    const employeeIds = body?.employee_ids ?? [];
+    if (!restaurantId || employeeIds.length === 0) {
+      return json({ error: 'restaurant_id and employee_ids are required' }, 400);
+    }
+
+    const userRes2 = await supabase
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', userRes.user.id)
+      .eq('restaurant_id', restaurantId)
+      .single();
+    if (userRes2.error) return json({ error: 'Failed to verify access' }, 500);
+    const role = (userRes2.data as { role?: string } | null)?.role;
+    if (!role || !['owner', 'manager'].includes(role)) {
+      return json({ error: 'Access denied' }, 403);
+    }
+
+    const restRes = await supabase
+      .from('restaurants')
+      .select('name')
+      .eq('id', restaurantId)
+      .single();
+    if (restRes.error) return json({ error: 'Failed to load restaurant' }, 500);
+    const restaurantName = (restRes.data as { name?: string } | null)?.name ?? 'Your restaurant';
+
+    const empRes = await supabase
+      .from('employees')
+      .select('id, name, email, restaurant_id')
+      .eq('restaurant_id', restaurantId)
+      .in('id', employeeIds);
+    if (empRes.error) return json({ error: 'Failed to load employees' }, 500);
+    const employees = (empRes.data ?? []) as EmployeeRow[];
+
+    let sent = 0;
+    let skipped_no_email = 0;
+    let errors = 0;
+
+    const results = await Promise.allSettled(
+      employees.map(async (emp) => {
+        if (!emp.email) {
+          skipped_no_email++;
+          return;
+        }
+        const subject = `Set your availability — ${restaurantName}`;
+        const html = `
+          <p>Hi ${emp.name},</p>
+          <p>Your manager is preparing next week's schedule and you don't have availability set in EasyShift yet. Setting your availability helps you get scheduled for the shifts you can actually work.</p>
+          <p><a href="${deps.appUrl}/employee/portal">Set yours now</a></p>
+          <p>— The ${restaurantName} team</p>
+        `;
+        const ok = await deps.sendEmail(deps.resendApiKey, deps.fromEmail, emp.email, subject, html);
+        if (ok) sent++;
+        else errors++;
+      }),
+    );
+    for (const r of results) {
+      if (r.status === 'rejected') errors++;
+    }
+
+    return json({ sent, skipped_no_email, errors }, 200);
+  } catch {
+    return json({ error: 'Internal server error' }, 500);
   }
-
-  const userRes2 = await supabase
-    .from('user_restaurants')
-    .select('role')
-    .eq('user_id', userRes.user.id)
-    .eq('restaurant_id', restaurantId)
-    .single();
-  const role = (userRes2.data as { role?: string } | null)?.role;
-  if (!role || !['owner', 'manager'].includes(role)) {
-    return json({ error: 'Access denied' }, 403);
-  }
-
-  const restRes = await supabase
-    .from('restaurants')
-    .select('name')
-    .eq('id', restaurantId)
-    .single();
-  const restaurantName = (restRes.data as { name?: string } | null)?.name ?? 'Your restaurant';
-
-  const empRes = await supabase
-    .from('employees')
-    .select('id, name, email, restaurant_id')
-    .eq('restaurant_id', restaurantId)
-    .in('id', employeeIds);
-  const employees = (empRes.data ?? []) as EmployeeRow[];
-
-  let sent = 0;
-  let skipped_no_email = 0;
-  let errors = 0;
-
-  const results = await Promise.allSettled(
-    employees.map(async (emp) => {
-      if (!emp.email) {
-        skipped_no_email++;
-        return;
-      }
-      const subject = `Set your availability — ${restaurantName}`;
-      const html = `
-        <p>Hi ${emp.name},</p>
-        <p>Your manager is preparing next week's schedule and you don't have availability set in EasyShift yet. Setting your availability helps you get scheduled for the shifts you can actually work.</p>
-        <p><a href="${deps.appUrl}/availability">Set yours now</a></p>
-        <p>— The ${restaurantName} team</p>
-      `;
-      const ok = await deps.sendEmail(deps.resendApiKey, deps.fromEmail, emp.email, subject, html);
-      if (ok) sent++;
-      else errors++;
-    }),
-  );
-  for (const r of results) {
-    if (r.status === 'rejected') errors++;
-  }
-
-  return json({ sent, skipped_no_email, errors }, 200);
 }

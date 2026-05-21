@@ -42,10 +42,13 @@ interface GenerateScheduleDialogProps {
   onGenerate: (excludedEmployeeIds: string[], lockedShiftIds: string[]) => void;
   templates: ShiftTemplate[];
   availability: EmployeeAvailability[];
+  availabilityLoading?: boolean;
   generationResult: GenerateScheduleResponse | null;
   generationError: Error | null;
   onRetry: () => void;
 }
+
+type NormalizedEmployee = Employee & { status: 'active' | 'inactive' | 'terminated' };
 
 function formatDateRange(start: Date, end: Date): string {
   const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
@@ -74,6 +77,7 @@ export function GenerateScheduleDialog({
   onGenerate,
   templates,
   availability,
+  availabilityLoading = false,
   generationResult,
   generationError,
   onRetry,
@@ -85,10 +89,20 @@ export function GenerateScheduleDialog({
   const [bulkSheetOpen, setBulkSheetOpen] = useState(false);
   const reminder = useSendAvailabilityReminder();
 
-  const missingAvailabilityEmployees = useEmployeesMissingAvailability(
-    employees as { id: string; name: string; status: 'active' | 'inactive' | 'terminated' }[],
+  // Normalize status once so undefined-status employees are still considered
+  // for missing-availability detection and bulk-defaults selection.
+  const normalizedEmployees = useMemo<NormalizedEmployee[]>(
+    () => employees.map((e) => ({ ...e, status: e.status ?? 'active' })),
+    [employees],
+  );
+
+  const employeesMissingRaw = useEmployeesMissingAvailability(
+    normalizedEmployees,
     availability,
   );
+  // While availability is still loading, treat nobody as missing — otherwise
+  // the empty-array fallback would mass-target everyone with a reminder.
+  const missingAvailabilityEmployees = availabilityLoading ? [] : employeesMissingRaw;
 
   const defaultAvailability = useMemo(
     () => deriveDefaultAvailability({ templates }),
@@ -505,12 +519,7 @@ export function GenerateScheduleDialog({
         open={bulkSheetOpen}
         onOpenChange={setBulkSheetOpen}
         restaurantId={restaurantId}
-        employees={employees as {
-          id: string;
-          name: string;
-          status: 'active' | 'inactive' | 'terminated';
-          position?: string;
-        }[]}
+        employees={normalizedEmployees}
         preCheckedIds={missingAvailabilityEmployees.map((e) => e.id)}
         defaults={defaultAvailability}
       />

@@ -135,6 +135,155 @@ describe('processAvailabilityReminder', () => {
     const body = await res.json();
     expect(body).toEqual({ sent: 0, skipped_no_email: 1, errors: 1 });
   });
+
+  it('CTA links to /employee/portal, not /availability', async () => {
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1'] }),
+      }),
+      {
+        createClient: () => makeClient() as never,
+        sendEmail,
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    const html = sendEmail.mock.calls[0][4] as string;
+    expect(html).toContain('https://app/employee/portal');
+    expect(html).not.toContain('https://app/availability"');
+  });
+
+  it('returns 500 when user_restaurants query errors', async () => {
+    const client = makeClient();
+    client.from = vi.fn((table: string) => {
+      if (table === 'user_restaurants') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: null, error: { message: 'db down' } }),
+        };
+      }
+      return makeClient().from(table);
+    });
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1'] }),
+      }),
+      {
+        createClient: () => client as never,
+        sendEmail: vi.fn(),
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when restaurants query errors', async () => {
+    const client = makeClient();
+    client.from = vi.fn((table: string) => {
+      if (table === 'user_restaurants') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { role: 'owner' }, error: null }),
+        };
+      }
+      if (table === 'restaurants') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: null, error: { message: 'db down' } }),
+        };
+      }
+      return makeClient().from(table);
+    });
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1'] }),
+      }),
+      {
+        createClient: () => client as never,
+        sendEmail: vi.fn(),
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when employees query errors', async () => {
+    const client = makeClient();
+    client.from = vi.fn((table: string) => {
+      if (table === 'user_restaurants') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { role: 'owner' }, error: null }),
+        };
+      }
+      if (table === 'restaurants') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { name: "Wetzel's" }, error: null }),
+        };
+      }
+      if (table === 'employees') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockResolvedValue({ data: null, error: { message: 'db down' } }),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1'] }),
+      }),
+      {
+        createClient: () => client as never,
+        sendEmail: vi.fn(),
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when an unexpected exception is thrown', async () => {
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1'] }),
+      }),
+      {
+        createClient: () => {
+          throw new Error('boom');
+        },
+        sendEmail: vi.fn(),
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(500);
+  });
 });
 
 describe('buildDeps', () => {

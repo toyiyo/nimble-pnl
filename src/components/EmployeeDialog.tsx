@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,12 @@ import {
 import { suggestRateCorrections } from '@/hooks/useEmployeeLaborCosts';
 import { computeAge, isMinor } from '@/lib/employeeUtils';
 import { cn } from '@/lib/utils';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AvailabilityGrid, type AvailabilityRowValue } from '@/components/scheduling/availability/AvailabilityGrid';
+import { deriveDefaultAvailability } from '@/lib/availabilityDefaults';
+import { useShiftTemplates } from '@/hooks/useShiftTemplates';
+import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -114,6 +120,31 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
   const { toast } = useToast();
+
+  // --------------------------------------------------------------------------
+  // Default availability (create mode only)
+  // --------------------------------------------------------------------------
+  const isCreateMode = !employee;
+
+  const [availabilityChoice, setAvailabilityChoice] =
+    useState<'apply_default' | 'set_later'>('apply_default');
+  const [availabilityExpanded, setAvailabilityExpanded] = useState(false);
+
+  const { templates: shiftTemplatesForDefaults = [] } = useShiftTemplates(restaurantId);
+
+  const defaultAvailability = useMemo<AvailabilityRowValue[]>(
+    () => deriveDefaultAvailability({ templates: shiftTemplatesForDefaults }),
+    [shiftTemplatesForDefaults],
+  );
+  const [availabilityGrid, setAvailabilityGrid] =
+    useState<AvailabilityRowValue[]>(defaultAvailability);
+
+  useEffect(() => {
+    // Re-seed when templates load
+    setAvailabilityGrid(defaultAvailability);
+  }, [defaultAvailability]);
+
+  const bulkSetAvailability = useBulkSetAvailability({ silent: true });
 
   useEffect(() => {
     setEffectiveDate(getToday());
@@ -1046,6 +1077,48 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 />
               </div>
             </div>
+
+            {isCreateMode && (
+              <div className="space-y-3 pt-4 border-t border-border/40">
+                <Label className="text-[13px] font-semibold">Default availability</Label>
+                <RadioGroup
+                  value={availabilityChoice}
+                  onValueChange={(v) => setAvailabilityChoice(v as 'apply_default' | 'set_later')}
+                  className="space-y-2"
+                >
+                  <label className="flex items-start gap-2">
+                    <RadioGroupItem value="apply_default" id="avail-apply-default" aria-label="Apply default template" />
+                    <div className="flex-1">
+                      <p className="text-[14px] text-foreground">Apply default template</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        Mon–Sun {availabilityGrid[1]?.start_time?.slice(0, 5) ?? '09:00'}–{availabilityGrid[1]?.end_time?.slice(0, 5) ?? '17:00'}
+                      </p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2">
+                    <RadioGroupItem value="set_later" id="avail-set-later" aria-label="Set later" />
+                    <p className="text-[14px] text-foreground">Set later</p>
+                  </label>
+                </RadioGroup>
+
+                {availabilityChoice === 'apply_default' && (
+                  <Collapsible open={availabilityExpanded} onOpenChange={setAvailabilityExpanded}>
+                    <CollapsibleTrigger asChild>
+                      <Button type="button" variant="link" className="h-auto p-0 text-[13px]">
+                        {availabilityExpanded ? 'Hide' : 'Edit'}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-2">
+                      <AvailabilityGrid
+                        value={availabilityGrid}
+                        onChange={setAvailabilityGrid}
+                        idPrefix="employee-avail"
+                      />
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
+            )}
             </div>
 
             <DialogFooter className="px-6 py-4 border-t border-border/40">

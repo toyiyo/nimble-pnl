@@ -329,6 +329,22 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         return;
       }
 
+      if (isCreateMode && availabilityChoice === 'apply_default') {
+        try {
+          await bulkSetAvailability.mutateAsync({
+            restaurantId,
+            employeeIds: [newEmployee.id],
+            availability: availabilityGrid,
+          });
+        } catch {
+          toast({
+            title: 'Employee created',
+            description: `${name} was added but default availability didn't save. Set it manually from the team page.`,
+            variant: 'default',
+          });
+        }
+      }
+
       if (email?.trim()) {
         supabase.functions.invoke('send-team-invitation', {
           body: {

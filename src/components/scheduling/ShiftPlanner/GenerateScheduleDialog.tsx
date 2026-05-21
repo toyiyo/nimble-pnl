@@ -15,11 +15,17 @@ import { Sparkles, Lock, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import type { Shift, ShiftTemplate, EmployeeAvailability } from '@/types/scheduling';
 import { computeScheduleWarnings } from '@/lib/scheduleWarnings';
 import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
+import { MissingAvailabilityBanner } from '@/components/scheduling/availability/MissingAvailabilityBanner';
+import { BulkSetAvailabilitySheet } from '@/components/scheduling/availability/BulkSetAvailabilitySheet';
+import { useEmployeesMissingAvailability } from '@/hooks/useEmployeesMissingAvailability';
+import { useSendAvailabilityReminder } from '@/hooks/useSendAvailabilityReminder';
+import { deriveDefaultAvailability } from '@/lib/availabilityDefaults';
 
 interface Employee {
   id: string;
   name: string;
   position: string;
+  status?: 'active' | 'inactive' | 'terminated';
 }
 
 type DialogPhase = 'config' | 'generating' | 'results';
@@ -28,6 +34,7 @@ interface GenerateScheduleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employees: Employee[];
+  restaurantId: string;
   existingShifts: Shift[];
   weekStart: Date;
   weekEnd: Date;
@@ -59,6 +66,7 @@ export function GenerateScheduleDialog({
   open,
   onOpenChange,
   employees,
+  restaurantId,
   existingShifts,
   weekStart,
   weekEnd,
@@ -74,6 +82,18 @@ export function GenerateScheduleDialog({
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   // shifts to lock — empty means none locked
   const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
+  const [bulkSheetOpen, setBulkSheetOpen] = useState(false);
+  const reminder = useSendAvailabilityReminder();
+
+  const missingAvailabilityEmployees = useEmployeesMissingAvailability(
+    employees as { id: string; name: string; status: 'active' | 'inactive' | 'terminated' }[],
+    availability,
+  );
+
+  const defaultAvailability = useMemo(
+    () => deriveDefaultAvailability({ templates }),
+    [templates],
+  );
 
   // Derive phase from props
   const phase: DialogPhase = generationResult || generationError
@@ -104,6 +124,8 @@ export function GenerateScheduleDialog({
     [includedEmployees, templates, availability],
   );
 
+  const showBanner = missingAvailabilityEmployees.length > 0 && phase === 'config';
+
   const warningGroups = useMemo(() => {
     const groups = new Map<string, { label: string; items: typeof warnings }>();
     const typeLabels: Record<string, string> = {
@@ -113,12 +135,13 @@ export function GenerateScheduleDialog({
       no_time_overlap: 'No time overlap with templates',
     };
     for (const w of warnings) {
+      if (showBanner && w.type === 'no_availability') continue;
       const group = groups.get(w.type) ?? { label: typeLabels[w.type] ?? w.type, items: [] };
       group.items.push(w);
       groups.set(w.type, group);
     }
     return groups;
-  }, [warnings]);
+  }, [warnings, showBanner]);
 
   function toggleEmployee(id: string) {
     setExcludedIds((prev) => {
@@ -210,6 +233,20 @@ export function GenerateScheduleDialog({
             </div>
           </div>
         </DialogHeader>
+
+        {showBanner && (
+          <MissingAvailabilityBanner
+            count={missingAvailabilityEmployees.length}
+            onSetDefaults={() => setBulkSheetOpen(true)}
+            onSendReminder={() =>
+              reminder.mutate({
+                restaurantId,
+                employeeIds: missingAvailabilityEmployees.map((e) => e.id),
+              })
+            }
+            reminderPending={reminder.isPending}
+          />
+        )}
 
         {/* Config phase content */}
         {phase === 'config' && (
@@ -464,6 +501,19 @@ export function GenerateScheduleDialog({
           </div>
         )}
       </DialogContent>
+      <BulkSetAvailabilitySheet
+        open={bulkSheetOpen}
+        onOpenChange={setBulkSheetOpen}
+        restaurantId={restaurantId}
+        employees={employees as {
+          id: string;
+          name: string;
+          status: 'active' | 'inactive' | 'terminated';
+          position?: string;
+        }[]}
+        preCheckedIds={missingAvailabilityEmployees.map((e) => e.id)}
+        defaults={defaultAvailability}
+      />
     </Dialog>
   );
 }

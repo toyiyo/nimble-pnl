@@ -676,6 +676,7 @@ export function ShiftPlannerTab({
       <GenerateScheduleDialog
         open={generateDialogOpen}
         onOpenChange={handleGenerateDialogChange}
+        restaurantId={restaurantId}
         employees={employees ?? []}
         templates={templates}
         availability={availability}

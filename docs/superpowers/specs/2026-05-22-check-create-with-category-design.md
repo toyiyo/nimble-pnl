@@ -35,23 +35,78 @@ common path ("print this check and book it to Office Supplies") is one screen.
 - New chart-of-accounts UI. We reuse `SearchableAccountSelector`.
 - Schema changes. `pending_outflows.category_id` already exists.
 
-## Data model — no changes
+## Data model — minor hardening, no schema rewrite
+
+The column itself already exists:
 
 ```
 pending_outflows.category_id uuid NULL  REFERENCES chart_of_accounts(id)
 ```
 
-That column already exists and the relevant TypeScript types already accept
-it:
+…and the TypeScript types already accept it:
 
 - `CreatePendingOutflowInput.category_id?: string | null`
 - `UpdatePendingOutflowInput.category_id?: string | null`
 
 The `usePendingOutflows` query already joins
 `chart_account:chart_of_accounts!category_id(id, account_name)`, so reading
-the category back on the expenses list also already works.
+the category back on the expenses list already works.
 
-No migration. No RPC. No RLS change.
+**Two new migrations** are included (motivated by the Phase 2.5 supabase
+reviewer):
+
+### Migration A — same-restaurant FK guard
+
+Today the FK only enforces that `category_id` references *some* row in
+`chart_of_accounts`. It does not enforce that the referenced row's
+`restaurant_id` matches the outflow's `restaurant_id`. In normal UI flow
+this is invisible because the SELECT RLS on `chart_of_accounts` prevents
+the user from seeing other restaurants' accounts. But a malicious or
+buggy client could write a foreign `category_id` directly via the API.
+Since this feature is the first one to put a category picker on a
+high-volume create path, harden it now.
+
+```sql
+CREATE OR REPLACE FUNCTION assert_pending_outflow_category_same_restaurant()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.category_id IS NOT NULL THEN
+    PERFORM 1
+      FROM chart_of_accounts
+     WHERE id = NEW.category_id
+       AND restaurant_id = NEW.restaurant_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION
+        'pending_outflows.category_id % does not belong to restaurant %',
+        NEW.category_id, NEW.restaurant_id
+        USING ERRCODE = 'foreign_key_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER pending_outflows_category_same_restaurant
+BEFORE INSERT OR UPDATE OF category_id, restaurant_id ON pending_outflows
+FOR EACH ROW
+EXECUTE FUNCTION assert_pending_outflow_category_same_restaurant();
+```
+
+### Migration B — partial index on `category_id`
+
+Aggregation read paths (`expenseDataFetcher`, `useMonthlyMetrics`,
+`useExpenseHealth`) already join `chart_of_accounts!category_id` and
+will start hitting populated values much more often once this feature
+ships. Historical rows are mostly `NULL`, so a partial index is the
+right shape:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_pending_outflows_category
+  ON pending_outflows(category_id)
+  WHERE category_id IS NOT NULL;
+```
+
+No RPC change, no RLS policy change, no column changes.
 
 ## UI changes
 
@@ -73,6 +128,12 @@ interface CheckRow {
 
 `createEmptyRow()` initializes `categoryId: null`.
 
+**`updateRow` signature widening.** The existing helper is typed
+`(id, field: keyof CheckRow, value: string | boolean) => void`. `null`
+is not assignable to that union, so the signature widens to
+`string | boolean | null`. All existing callers pass `string` or
+`boolean`, so the widening is non-breaking.
+
 **Table layout.** Insert a new "Category" column between Memo and the trash
 button. Header cell follows the existing typography
 (`text-[12px] font-medium text-muted-foreground uppercase tracking-wider`).
@@ -93,25 +154,55 @@ height stays uniform. The selector is the same component used by
 search behavior, parent/child grouping, and keyboard navigation are
 already battle-tested.
 
-**Print handler.** In `handlePrint`, when iterating `selectedRows`:
+**Accessibility — per-row aria-label.** The header `<TableHead>Category`
+is a *column* label, not a per-cell programmatic label. Each row's
+combobox trigger needs its own accessible name. `SearchableAccountSelector`
+gains a new optional `triggerAriaLabel?: string` prop that gets forwarded
+to the underlying `<Button role="combobox">`. The Write Checks page
+passes `triggerAriaLabel={`Category for ${row.payeeName || 'check row ' + (rowIndex + 1)}`}`
+per row.
+
+**Popover collision padding.** `PopoverContent` (Radix) is portal-mounted
+so the `overflow-x-auto` wrapper does not clip it, but on narrow viewports
+the 350 px popover can collide with the right edge. Pass
+`collisionPadding={8}` on the popover content inside
+`SearchableAccountSelector`. (Already inside that component — a single
+file edit covers every consumer.)
+
+**Print handler.** Instead of relying on positional alignment between
+`checks[]` and `selectedRows[]` (fragile under later refactors), carry
+`categoryId` *on* the per-check intermediate value:
 
 ```ts
-const outflow = await createPendingOutflow.mutateAsync({
-  vendor_name: check.payeeName,
-  amount: check.amount,
-  payment_method: 'check',
-  reference_number: String(check.checkNumber),
-  issue_date: check.issueDate,
-  notes: check.memo ?? null,
-  category_id: row.categoryId ?? null,   // NEW
-});
+type CheckJob = CheckData & { categoryId: string | null };
+
+const jobs: CheckJob[] = selectedRows.map((row, i) => ({
+  checkNumber: startNumber + i,
+  payeeName: row.payeeName.trim(),
+  amount: parseFloat(row.amount),
+  issueDate: row.issueDate,
+  memo: row.memo.trim() || undefined,
+  categoryId: row.categoryId ?? null,
+}));
+
+for (const job of jobs) {
+  const outflow = await createPendingOutflow.mutateAsync({
+    vendor_name: job.payeeName,
+    amount: job.amount,
+    payment_method: 'check',
+    reference_number: String(job.checkNumber),
+    issue_date: job.issueDate,
+    notes: job.memo ?? null,
+    category_id: job.categoryId,
+  });
+  // …logCheckAction unchanged…
+}
 ```
 
-The check loop already iterates `selectedRows` post-validation; we need to
-zip the `row` reference into the loop so each `check` can look up its
-matching `categoryId`. (Simplest fix: replace the `for (const check of
-checks)` shape with `for (let i = 0; i < selectedRows.length; i++)` and
-read both `checks[i]` and `selectedRows[i]`.)
+`generateCheckPDF` then receives `jobs` cast/sliced to `CheckData[]`
+(the PDF renderer doesn't need `categoryId`). The categoryId travels
+with the row it came from, so any future filter/reorder of `jobs`
+keeps the category attached to the correct expense.
 
 **Reset.** `setRows([createEmptyRow()])` already clears state on success;
 `createEmptyRow` returns `categoryId: null`, so no extra reset wiring.
@@ -175,6 +266,15 @@ await updatePendingOutflow.mutateAsync({
   an extra column doesn't break narrow viewports — it just makes more
   horizontal scroll. Acceptable; matches today's behaviour for the wide
   layout.
+- `PrintCheckButton`'s `DialogContent` currently has no `max-h-[80vh]` /
+  `overflow-y-auto`. Adding the Category field is the natural moment to
+  add those classes so the dialog stays usable on phones with the
+  software keyboard open (the existing CLAUDE.md dialog template uses
+  exactly those classes).
+- `SearchableAccountSelector` currently emits two `console.log` calls on
+  every render (lines 70–71). Both new surfaces would re-emit them in
+  production. Removed in the same PR — one-line cleanup adjacent to the
+  prop and `collisionPadding` changes already required.
 
 ## Behaviour
 
@@ -252,11 +352,27 @@ Three cases in one file:
   via `getByRole('combobox')` / `getByRole('option', { name: ... })`
   rather than `getByText` where possible.
 
+### `supabase/tests/pending_outflows_category_same_restaurant.test.sql` (new)
+
+pgTAP test for Migration A. Two assertions:
+
+1. `lives_ok($$INSERT INTO pending_outflows (..., category_id) VALUES (..., <same-restaurant-account>)$$)`
+2. `throws_ok($$INSERT INTO pending_outflows (..., category_id) VALUES (..., <other-restaurant-account>)$$, '23503')`
+
+(ERRCODE `23503` = `foreign_key_violation`, which is what
+`RAISE EXCEPTION ... USING ERRCODE` emits.)
+
+Also a third assertion to cover the UPDATE path: insert with
+`category_id = NULL`, then attempt to update to a foreign category id;
+expect the same `23503`.
+
 ### Existing test impact
 
 - `tests/unit/checkPrinting.test.ts` (the PDF generation tests) is
   untouched — the PDF render doesn't take a category. No change there.
-- No pgTAP changes — schema is unchanged.
+- One Vitest fixture (`tests/unit/SearchableAccountSelector.test.tsx`,
+  if present) may need a small update to cover the new
+  `triggerAriaLabel` prop. Verified during implementation.
 
 ## Risk
 
@@ -266,9 +382,32 @@ Three cases in one file:
   field doesn't appear in the UI" (caught by render tests) or "the field
   appears but isn't passed through" (caught by mutation assertion tests).
 
+## Decided trade-offs (Phase 2.5 review)
+
+The Phase 2.5 frontend and supabase reviewers raised six concerns. Three
+are folded into the design above (cross-restaurant trigger, partial
+index, aria-label / collisionPadding / dialog overflow / console-log
+cleanup, positional-indexing refactor, `updateRow` typing widening). The
+remaining three are explicitly **deferred**:
+
+1. **`useChartOfAccounts` does not surface an `error` value to consumers.**
+   Pre-existing across five call sites. Mitigation: today the selector
+   shows the empty state on errors (data defaults to `[]`), so users
+   physically cannot pick a wrong value. Fixing the error surface is a
+   separate cross-cutting refactor.
+2. **`useChartOfAccounts` `staleTime: 5 * 60 * 1000` exceeds the
+   CLAUDE.md 60s cap.** Same pre-existing issue. Lowering it here would
+   reduce cache effectiveness for the five other call sites without a
+   user-visible win — chart-of-accounts edits are infrequent.
+3. **`useMonthlyMetrics` labor path matches on `account_subtype === 'labor'`
+   without applying `isTransferCategoryType`.** The supabase reviewer
+   noted this could double-count if a user creates an asset-typed
+   account with subtype "labor". Probability ≈ zero (asset/labor is a
+   nonsensical pairing in the seeded chart). Tracked but not in scope.
+
 ## Open questions
 
-None. All three design questions resolved in brainstorming:
+None. All three brainstorming questions resolved:
 
 - Q1 batch UI placement → per-row column in the table.
 - Q2 existing-expense flow → yes, add it there too for parity.

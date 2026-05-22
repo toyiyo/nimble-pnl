@@ -99,7 +99,10 @@ export function computeRequiredStaff(
     for (const day of tpl.days) {
       const fromPattern =
         fromMinCrew === null ? (priorIndex.get(`${day}:${normPos}`) ?? null) : null;
-      const base = fromMinCrew ?? fromPattern ?? 1;
+      // Fallback chain: explicit min_crew → historical pattern → template
+      // capacity → 1. Capacity restores the manager's stated headcount
+      // when neither staffing settings nor prior schedules exist.
+      const base = fromMinCrew ?? fromPattern ?? tpl.capacity ?? 1;
       const peakBoost = peakIndex.get(day)?.has(startHour) ? 1 : 0;
       perDay.set(day, Math.max(base + peakBoost, floor));
     }

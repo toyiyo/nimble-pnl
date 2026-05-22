@@ -136,7 +136,7 @@ serve(async (req) => {
       // 2. Active shift templates
       supabase
         .from("shift_templates")
-        .select("id, name, days, start_time, end_time, position, area")
+        .select("id, name, days, start_time, end_time, position, area, capacity")
         .eq("restaurant_id", restaurant_id)
         .eq("is_active", true),
 
@@ -262,6 +262,9 @@ serve(async (req) => {
       end_time: t.end_time,
       position: t.position ?? "Staff",
       area: t.area ?? null,
+      // DB constraint guarantees capacity >= 1 in real rows; the ?? 1
+      // covers test fixtures or any migration drift.
+      capacity: t.capacity ?? 1,
     }));
 
     // ── Build availability map (TZ-converted to restaurant local) ────────────

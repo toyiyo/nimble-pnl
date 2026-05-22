@@ -242,4 +242,22 @@ describe('buildSchedulePrompt — fill-slot enhancements', () => {
     expect(systemContent).toMatch(/only on the days listed/i);
     expect(systemContent.toLowerCase()).toContain('active days');
   });
+
+  // ── Bug F regression: Rule 5 must explicitly forbid overlapping/back-to-
+  // back same-day shifts for the same employee. The old wording ("not in
+  // the same time slot") was ambiguous and the LLM read it as exact-time
+  // match. In production it stacked Open (10:00-16:30) + Close (16:00-
+  // 23:30) on the same employee Fri/Sat/Sun; the validator then dropped
+  // the Close shift with DOUBLE_BOOKING, producing 2/4 close-weekend
+  // under-fill.
+  it('Rule 5 forbids overlapping same-day shifts and names the open+close case', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    expect(systemContent.toLowerCase()).toContain('overlap');
+    // The rule should call out the open+close pattern by name so the LLM
+    // sees a concrete example, not just abstract overlap language.
+    expect(systemContent.toLowerCase()).toMatch(/open .*close|close .*open/);
+    // The rule should also call out that even a one-minute overlap counts.
+    expect(systemContent.toLowerCase()).toMatch(/one[ -]minute|even.*minute/);
+  });
 });

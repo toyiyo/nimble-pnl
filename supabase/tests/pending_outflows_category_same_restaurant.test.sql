@@ -129,15 +129,17 @@ SELECT lives_ok(
   'same-restaurant update succeeds'
 );
 
--- 8. Partial index on category_id exists (non-null rows).
+-- 8. Composite partial index on (restaurant_id, category_id) exists for non-null rows.
 SELECT ok(
   EXISTS (
     SELECT 1 FROM pg_indexes
     WHERE schemaname = 'public'
       AND tablename = 'pending_outflows'
       AND indexname = 'idx_pending_outflows_category'
+      AND indexdef LIKE '%restaurant_id%category_id%'
+      AND indexdef LIKE '%category_id IS NOT NULL%'
   ),
-  'idx_pending_outflows_category index exists'
+  'idx_pending_outflows_category is a composite partial index on (restaurant_id, category_id) WHERE category_id IS NOT NULL'
 );
 
 SELECT * FROM finish();

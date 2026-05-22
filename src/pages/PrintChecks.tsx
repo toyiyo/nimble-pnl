@@ -190,40 +190,38 @@ function PrintChecksContent() {
         count: selectedRows.length,
       });
 
-      type CheckJob = CheckData & { categoryId: string | null };
-      const jobs: CheckJob[] = selectedRows.map((row, i) => ({
+      const checks: CheckData[] = selectedRows.map((row, i) => ({
         checkNumber: startNumber + i,
         payeeName: row.payeeName.trim(),
         amount: parseFloat(row.amount),
         issueDate: row.issueDate,
         memo: row.memo.trim() || undefined,
-        categoryId: row.categoryId,
       }));
 
-      for (const job of jobs) {
+      for (let i = 0; i < checks.length; i++) {
+        const check = checks[i];
+        const row = selectedRows[i];
         const outflow = await createPendingOutflow.mutateAsync({
-          vendor_name: job.payeeName,
-          amount: job.amount,
+          vendor_name: check.payeeName,
+          amount: check.amount,
           payment_method: 'check',
-          reference_number: String(job.checkNumber),
-          issue_date: job.issueDate,
-          notes: job.memo ?? null,
-          category_id: job.categoryId,
+          reference_number: String(check.checkNumber),
+          issue_date: check.issueDate,
+          notes: check.memo ?? null,
+          category_id: row.categoryId,
         });
 
         await logCheckAction.mutateAsync({
-          check_number: job.checkNumber,
-          payee_name: job.payeeName,
-          amount: job.amount,
-          issue_date: job.issueDate,
-          memo: job.memo ?? null,
+          check_number: check.checkNumber,
+          payee_name: check.payeeName,
+          amount: check.amount,
+          issue_date: check.issueDate,
+          memo: check.memo ?? null,
           action: 'printed',
           pending_outflow_id: outflow.id,
           check_bank_account_id: selectedAccount.id,
         });
       }
-
-      const checks: CheckData[] = jobs.map(({ categoryId: _ignored, ...rest }) => rest);
       const config = buildPrintConfig(settings, selectedAccount, secrets);
       const pdf = selectedAccount.print_bank_info
         ? await generateCheckPDFAsync(config, checks)
@@ -500,7 +498,7 @@ function PrintChecksContent() {
                         <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Memo
                         </TableHead>
-                        <TableHead scope="col" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Category
                         </TableHead>
                         <TableHead className="w-10" />

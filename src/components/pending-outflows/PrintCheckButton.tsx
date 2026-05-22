@@ -25,6 +25,7 @@ import { useCheckSettings } from '@/hooks/useCheckSettings';
 import { useCheckBankAccounts } from '@/hooks/useCheckBankAccounts';
 import { useCheckAuditLog } from '@/hooks/useCheckAuditLog';
 import { usePendingOutflowMutations } from '@/hooks/usePendingOutflows';
+import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
 import {
   generateCheckPDF,
   generateCheckPDFAsync,
@@ -52,12 +53,20 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
   const [memo, setMemo] = useState(expense.notes ?? '');
   const [isPrinting, setIsPrinting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    expense.category_id ?? null,
+  );
 
   // Reset memo only when opening (or expense changes before opening)
   useEffect(() => {
     if (!open) return;
     setMemo(expense.notes ?? '');
   }, [open, expense.notes]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedCategoryId(expense.category_id ?? null);
+  }, [open, expense.category_id]);
 
   // Initialize account selection once per open cycle
   useEffect(() => {
@@ -111,6 +120,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
           reference_number: String(checkNumber),
           notes: memo.trim() || expense.notes,
           check_bank_account_id: selectedAccount.id,
+          category_id: selectedCategoryId,
         },
       });
 
@@ -168,7 +178,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
@@ -235,6 +245,20 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="Purpose of payment"
                 className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+              />
+            </div>
+
+            {/* Category */}
+            <div className="space-y-2">
+              <Label htmlFor="print-check-category" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                Category (optional)
+              </Label>
+              <SearchableAccountSelector
+                value={selectedCategoryId ?? undefined}
+                onValueChange={(v) => setSelectedCategoryId(v || null)}
+                filterByTypes={['expense', 'cogs', 'asset']}
+                placeholder="Pick a chart-of-accounts category"
+                triggerAriaLabel="Category for this check"
               />
             </div>
           </div>

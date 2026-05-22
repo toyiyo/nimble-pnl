@@ -25,10 +25,10 @@ INSERT INTO public.chart_of_accounts
 VALUES
   ('00000000-0000-0000-0000-000000000b01',
    '00000000-0000-0000-0000-000000000a01',
-   '5100', 'Test Food Costs A', 'expense', 'debit'),
+   '5100', 'Test Food Costs A', 'cogs', 'debit'),
   ('00000000-0000-0000-0000-000000000b02',
    '00000000-0000-0000-0000-000000000a02',
-   '5100', 'Test Food Costs B', 'expense', 'debit')
+   '5100', 'Test Food Costs B', 'cogs', 'debit')
 ON CONFLICT (id) DO NOTHING;
 
 -- 1. Trigger function exists.

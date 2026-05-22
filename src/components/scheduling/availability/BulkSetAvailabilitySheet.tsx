@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AvailabilityGrid, type AvailabilityRowValue } from './AvailabilityGrid';
 import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
+import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 
 interface EmployeeLite {
   id: string;
@@ -22,15 +23,22 @@ interface BulkSetAvailabilitySheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restaurantId: string;
+  /**
+   * IANA tz of the restaurant (e.g. 'America/Chicago'). Required so the
+   * local-time grid values can be converted to the UTC contract that the
+   * employee_availability table follows.
+   */
+  restaurantTimezone: string;
   employees: EmployeeLite[];
   preCheckedIds: string[];
-  defaults: AvailabilityRowValue[];   // length 7
+  defaults: AvailabilityRowValue[];   // length 7, local-time
 }
 
 export function BulkSetAvailabilitySheet({
   open,
   onOpenChange,
   restaurantId,
+  restaurantTimezone,
   employees,
   preCheckedIds,
   defaults,
@@ -77,7 +85,7 @@ export function BulkSetAvailabilitySheet({
       await mutation.mutateAsync({
         restaurantId,
         employeeIds: Array.from(selectedIds),
-        availability: grid,
+        availability: convertAvailabilityWindowsToUtc(grid, restaurantTimezone),
       });
       onOpenChange(false);
     } catch {

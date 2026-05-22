@@ -16,6 +16,7 @@ const baseProps = {
   open: true,
   onOpenChange: vi.fn(),
   restaurantId: 'r1',
+  restaurantTimezone: 'UTC',
   employees: [
     { id: 'e1', name: 'Alice', status: 'active' as const, position: 'Server' },
     { id: 'e2', name: 'Bob',   status: 'active' as const, position: 'Cook' },
@@ -95,5 +96,29 @@ describe('BulkSetAvailabilitySheet', () => {
     expect(document.getElementById('bulk-avail-day-6')).not.toBeNull();
     // namespace must NOT collide with the employee-dialog version
     expect(document.getElementById('employee-avail-day-0')).toBeNull();
+  });
+
+  it('converts the local-time grid to UTC before submitting (non-UTC restaurant)', () => {
+    // Regression for the 2026-05-21 production bug: the sheet was saving
+    // restaurant-local times directly into employee_availability, which all
+    // readers treat as UTC. For a Chicago restaurant that means a 10:00–22:30
+    // local intent displayed back as 05:00–17:30. The submit path must convert
+    // local → UTC first so the round-trip is correct.
+    renderSheet({ ...baseProps, restaurantTimezone: 'America/Chicago' });
+    fireEvent.click(screen.getByRole('button', { name: /apply to 2 employees/i }));
+
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    const args = mutateMock.mock.calls[0][0];
+    const monday = args.availability.find(
+      (a: { day_of_week: number }) => a.day_of_week === 1,
+    );
+    // 10:00 Chicago local should NOT round-trip to UTC as 10:00; it must shift.
+    expect(monday.start_time).not.toBe('10:00:00');
+    expect(monday.start_time).not.toBe('10:00');
+    // closed-day rows must still pass through unchanged
+    const sunday = args.availability.find(
+      (a: { day_of_week: number }) => a.day_of_week === 0,
+    );
+    expect(sunday.is_available).toBe(false);
   });
 });

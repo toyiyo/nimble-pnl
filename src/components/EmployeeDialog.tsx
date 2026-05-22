@@ -39,6 +39,8 @@ import { AvailabilityGrid, type AvailabilityRowValue } from '@/components/schedu
 import { deriveDefaultAvailability } from '@/lib/availabilityDefaults';
 import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -120,6 +122,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
   const { toast } = useToast();
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   // --------------------------------------------------------------------------
   // Default availability (create mode only)
@@ -339,7 +343,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
           await bulkSetAvailability.mutateAsync({
             restaurantId,
             employeeIds: [newEmployee.id],
-            availability: availabilityGrid,
+            availability: convertAvailabilityWindowsToUtc(availabilityGrid, restaurantTimezone),
           });
         } catch {
           toast({

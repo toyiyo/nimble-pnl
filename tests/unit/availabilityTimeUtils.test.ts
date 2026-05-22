@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { utcTimeToLocalTime, localTimeToUtcTime } from '@/lib/availabilityTimeUtils';
+import {
+  utcTimeToLocalTime,
+  localTimeToUtcTime,
+  convertAvailabilityWindowsToUtc,
+} from '@/lib/availabilityTimeUtils';
 
 describe('utcTimeToLocalTime', () => {
   it('converts UTC time to CDT (summer) correctly', () => {
@@ -116,6 +120,64 @@ describe('local-midnight reference dates (parseDateOnly callers)', () => {
     const refDate = new Date(2026, 10, 1);
     const result = utcTimeToLocalTime('20:00:00', 'America/New_York', refDate);
     expect(result).toBe('15:00'); // EST (UTC-5), the correct anchor for Nov 1
+  });
+});
+
+describe('convertAvailabilityWindowsToUtc', () => {
+  // The exact production-data shape: a Chicago (CDT) restaurant saved
+  // 10:00–22:30 local hours via the bulk-set sheet. The writer must now
+  // convert those to UTC (15:00–03:30) so readers — which all assume the
+  // UTC contract on employee_availability — render them back correctly.
+
+  it('converts CDT local windows to UTC for available days', () => {
+    const refDate = new Date('2026-07-15T12:00:00Z');
+    const windows = [
+      { day_of_week: 1, start_time: '10:00', end_time: '22:30', is_available: true },
+      { day_of_week: 2, start_time: '10:00', end_time: '22:30', is_available: true },
+    ];
+    const out = convertAvailabilityWindowsToUtc(windows, 'America/Chicago', refDate);
+    expect(out).toEqual([
+      { day_of_week: 1, start_time: '15:00:00', end_time: '03:30:00', is_available: true },
+      { day_of_week: 2, start_time: '15:00:00', end_time: '03:30:00', is_available: true },
+    ]);
+  });
+
+  it('passes is_available=false rows through unchanged', () => {
+    const refDate = new Date('2026-07-15T12:00:00Z');
+    const windows = [
+      { day_of_week: 0, start_time: '09:00', end_time: '17:00', is_available: false },
+      { day_of_week: 1, start_time: '10:00', end_time: '22:30', is_available: true },
+    ];
+    const out = convertAvailabilityWindowsToUtc(windows, 'America/Chicago', refDate);
+    expect(out[0]).toEqual({
+      day_of_week: 0,
+      start_time: '09:00',
+      end_time: '17:00',
+      is_available: false,
+    });
+    expect(out[1].start_time).toBe('15:00:00');
+    expect(out[1].end_time).toBe('03:30:00');
+  });
+
+  it('is a no-op for UTC restaurants', () => {
+    const refDate = new Date('2026-07-15T12:00:00Z');
+    const windows = [
+      { day_of_week: 1, start_time: '10:00', end_time: '22:30', is_available: true },
+    ];
+    const out = convertAvailabilityWindowsToUtc(windows, 'UTC', refDate);
+    expect(out).toEqual([
+      { day_of_week: 1, start_time: '10:00:00', end_time: '22:30:00', is_available: true },
+    ]);
+  });
+
+  it('uses CST offset in winter for Chicago', () => {
+    const refDate = new Date('2026-01-15T12:00:00Z');
+    const windows = [
+      { day_of_week: 1, start_time: '10:00', end_time: '22:30', is_available: true },
+    ];
+    const out = convertAvailabilityWindowsToUtc(windows, 'America/Chicago', refDate);
+    expect(out[0].start_time).toBe('16:00:00');
+    expect(out[0].end_time).toBe('04:30:00');
   });
 });
 

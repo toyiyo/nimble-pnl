@@ -182,24 +182,43 @@ validator tests (`templateIds: new Set(['t1'])` →
 ### Commit 4 — Persist `shift_template_id` (Bug B)
 
 **Files:**
-- `src/hooks/useGenerateSchedule.ts` — add
-  `shift_template_id: shift.template_id || null` to the insert payload.
-  Use `|| null` rather than `??` because the LLM occasionally returns
-  empty strings; we want NULL in that case (the schema allows it and
-  the planner's fallback path remains correct).
+- `src/hooks/useGenerateSchedule.ts`:
+  - Widen `GeneratedShift.template_id` from `string` to
+    `string | null | undefined` so the type matches runtime reality
+    (the LLM sometimes emits empty strings; the schema accepts NULL).
+  - Add `shift_template_id: shift.template_id?.trim() || null` to the
+    insert payload. The `?.trim() || null` idiom collapses `undefined`,
+    `""`, and whitespace-only strings to NULL while preserving any
+    real UUID. Plain `|| null` would also work here (UUIDs are never
+    falsy strings), but the trim variant is explicit about the empty-
+    string case the design is guarding against, and is safe if
+    `template_id` ever widens to non-string types in future.
+- `src/hooks/useShiftPlanner.ts:142-160`: keep the legacy fallback
+  match path (manually-created shifts and the 24 in-flight AI rows
+  from the debug session still rely on it). Add a one-line comment
+  documenting why it stays.
 
 **Tests:**
-- `tests/unit/useGenerateSchedule.test.tsx` — assert that
-  `supabase.from('shifts').insert(...)` is called with rows that carry
-  the `shift_template_id` field from the LLM response. (The existing
-  hook test scaffolds a mock for the supabase client; we extend it to
-  capture the insert payload.)
+- `tests/unit/useGenerateSchedule.test.tsx` — strengthen the existing
+  `insertMock` to capture call arguments, and assert:
+  - With a real `template_id` on the LLM response, the inserted row
+    carries that value in `shift_template_id`.
+  - With an empty string `template_id`, the inserted row has
+    `shift_template_id: null`.
+  - The other fields (start/end UTC conversion, status, source) are
+    unchanged.
 
 ## Risk + rollback
 
-- **Schema:** no migration. Both `shift_templates.capacity` (read in
-  Bug A) and `shifts.shift_template_id` (written in Bug B) already
-  exist in production.
+- **Schema:** no *new* migration. Both
+  `shift_templates.capacity` (added in
+  `20260411221543_add_capacity_to_shift_templates.sql`, with
+  `DEFAULT 1` and `CHECK (capacity >= 1)`) and `shifts.shift_template_id`
+  (added in `20260416000000_add_shift_template_id.sql`, nullable with a
+  partial index) already exist in production. The mapper's
+  `?? 1` fallback for capacity is defensive against client-side test
+  fixtures that omit the field; the DB constraint guarantees the floor
+  in real data.
 - **Backward compat for the validator API:** the `ValidationContext`
   shape changes (`templateIds` → `templates`). This is a *shared
   internal type* — only `generate-schedule/index.ts` and the

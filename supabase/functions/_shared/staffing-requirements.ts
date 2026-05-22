@@ -94,7 +94,6 @@ export function computeRequiredStaff(
     const perDay = new Map<number, number>();
     const startHour = parseInt(tpl.start_time.split(":")[0], 10);
     const normPos = normalizePosition(tpl.position);
-    // Per-template lookups that don't depend on day are hoisted out of the inner loop.
     const fromMinCrew = lookupMinCrew(input.minCrew, tpl.position);
     for (const day of tpl.days) {
       const fromPattern =

@@ -114,8 +114,7 @@ export function useGenerateSchedule() {
         // Persist the template the AI bound this shift to. Without this,
         // the planner's template-bucket lookup falls back to (start, end,
         // position, day) matching, which collides across areas (e.g. two
-        // brands with identical open windows). Coerce empty/whitespace to
-        // null so the FK constraint stays happy.
+        // brands with identical open windows).
         const templateId = shift.template_id?.trim() || null;
         return {
           restaurant_id: params.restaurantId,

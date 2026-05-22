@@ -192,4 +192,46 @@ describe('computeRequiredStaff', () => {
     );
     expect(result.get('tpl-close')!.get(1)).toBe(5);
   });
+
+  // Guard against migration drift writing capacity=0/NaN — the DB CHECK
+  // catches new rows, but pre-existing rows could be malformed.
+  it('treats capacity of 0 as if it were 1 (no NaN/0 propagation)', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-bad',
+            name: 'Bad',
+            days: [1],
+            start_time: '10:00:00',
+            end_time: '16:00:00',
+            position: 'server',
+            area: null,
+            capacity: 0,
+          },
+        ],
+      }),
+    );
+    expect(result.get('tpl-bad')!.get(1)).toBe(1);
+  });
+
+  it('treats capacity of NaN as if it were 1', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-bad',
+            name: 'Bad',
+            days: [1],
+            start_time: '10:00:00',
+            end_time: '16:00:00',
+            position: 'server',
+            area: null,
+            capacity: Number.NaN,
+          },
+        ],
+      }),
+    );
+    expect(result.get('tpl-bad')!.get(1)).toBe(1);
+  });
 });

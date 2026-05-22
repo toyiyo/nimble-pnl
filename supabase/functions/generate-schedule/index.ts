@@ -263,7 +263,8 @@ serve(async (req) => {
       position: t.position ?? "Staff",
       area: t.area ?? null,
       // DB constraint guarantees capacity >= 1 in real rows; the ?? 1
-      // covers test fixtures or any migration drift.
+      // covers test fixtures or any migration drift. Defensive guard for
+      // 0/NaN lives in staffing-requirements.ts.
       capacity: t.capacity ?? 1,
     }));
 
@@ -586,7 +587,7 @@ serve(async (req) => {
     const employeePositions = new Map(employees.map((e) => [e.id, e.position]));
     // Validator needs template days-of-week so it can drop shifts placed on
     // a day the template isn't active for (Bug C).
-    const validatorTemplates = new Map(
+    const templateDays = new Map(
       templates.map((t) => [t.id, { days: t.days }] as const),
     );
 
@@ -621,7 +622,7 @@ serve(async (req) => {
     const validationCtx: ValidationContext = {
       employeeIds,
       employeePositions,
-      templates: validatorTemplates,
+      templates: templateDays,
       availability: availabilityMap,
       excludedEmployeeIds: new Set(excluded_employee_ids),
       existingShifts: existingAsGenerated,

@@ -214,11 +214,11 @@ export function normalizePosition(s: string | null | undefined): string {
  * 1. Employee not excluded
  * 2. Employee exists
  * 3. Template exists
- * 3b. Template is active on the shift's day-of-week
- * 4. Position matches employee's assigned position (case-insensitive)
- * 5. Employee is available on that day of week
- * 6. Shift times fall within availability time window (if specific hours set)
- * 7. No double-booking (same employee, overlapping times on same day)
+ * 4. Template is active on the shift's day-of-week
+ * 5. Position matches employee's assigned position (case-insensitive)
+ * 6. Employee is available on that day of week
+ * 7. Shift times fall within availability time window (if specific hours set)
+ * 8. No double-booking (same employee, overlapping times on same day)
  *
  * For double-booking: first valid shift wins.
  */
@@ -252,8 +252,8 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 3b. Template is active on this day-of-week (Bug C). Catches the case
-    //     where a weekend-only template gets assigned on a weekday, etc.
+    // 4. Template is active on this day-of-week. Catches the case where a
+    //    weekend-only template gets assigned on a weekday, etc.
     const shiftDow = getDayOfWeek(shift.day);
     if (!template.days.includes(shiftDow)) {
       drop(
@@ -263,7 +263,7 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 4. Position matches (normalized: case, whitespace, trailing -s plural)
+    // 5. Position matches (normalized: case, whitespace, trailing -s plural)
     const assignedPosition = ctx.employeePositions.get(shift.employee_id);
     if (
       assignedPosition === undefined ||
@@ -276,7 +276,7 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 5. Availability on that day
+    // 6. Availability on that day
     const dayOfWeek = getDayOfWeek(shift.day);
     const availKey = `${shift.employee_id}:${dayOfWeek}`;
     const slot = ctx.availability.get(availKey);
@@ -289,7 +289,7 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 6. Shift times within availability window (overnight-aware)
+    // 7. Shift times within availability window (overnight-aware)
     if (slot.startTime !== null && slot.endTime !== null) {
       const shiftStart = timeToMinutes(shift.start_time);
       const shiftEnd = timeToMinutes(shift.end_time);
@@ -306,7 +306,7 @@ export function validateGeneratedShifts(
       }
     }
 
-    // 7. Double-booking check against already-valid shifts AND existing shifts.
+    // 8. Double-booking check against already-valid shifts AND existing shifts.
     // shiftsConflict is day-aware: it catches overnight shifts that spill into
     // the next calendar day's morning (e.g. Mon 22:00-02:00 vs Tue 00:00-06:00).
     const hasOverlap =

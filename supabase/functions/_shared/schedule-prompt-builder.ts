@@ -23,10 +23,8 @@ export interface ScheduleTemplate {
   end_time: string;
   position: string;
   area: string | null;
-  /** Manager-stated headcount required per (template, day). DB column
-   *  has `DEFAULT 1 CHECK (capacity >= 1)`, so real rows always carry
-   *  a value >= 1. Test fixtures may rely on the `?? 1` default in the
-   *  staffing-requirements fallback chain. */
+  /** Manager-stated headcount required per (template, day). The DB
+   *  enforces `DEFAULT 1 CHECK (capacity >= 1)`. */
   capacity: number;
 }
 

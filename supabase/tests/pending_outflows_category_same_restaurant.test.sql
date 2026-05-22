@@ -5,7 +5,7 @@
 -- 23503 (foreign_key_violation), both on INSERT and on UPDATE.
 
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
 -- Setup: Disable RLS so fixture INSERTs work without auth context.
 SET LOCAL role TO postgres;
@@ -127,6 +127,17 @@ SELECT lives_ok(
        AND restaurant_id = '00000000-0000-0000-0000-000000000a01';
   $$,
   'same-restaurant update succeeds'
+);
+
+-- 8. Partial index on category_id exists (non-null rows).
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND tablename = 'pending_outflows'
+      AND indexname = 'idx_pending_outflows_category'
+  ),
+  'idx_pending_outflows_category index exists'
 );
 
 SELECT * FROM finish();

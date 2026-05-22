@@ -572,16 +572,14 @@ function PrintChecksContent() {
                               />
                             </TableCell>
                             <TableCell>
-                              <div className="w-48">
-                                <SearchableAccountSelector
-                                  value={row.categoryId ?? undefined}
-                                  onValueChange={(v) => updateRow(row.id, 'categoryId', v || null)}
-                                  filterByTypes={['expense', 'cogs', 'asset']}
-                                  placeholder="Optional"
-                                  triggerAriaLabel={`Category for check row ${rowIndex + 1}`}
-                                  triggerClassName="h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg"
-                                />
-                              </div>
+                              <SearchableAccountSelector
+                                value={row.categoryId ?? undefined}
+                                onValueChange={(v) => updateRow(row.id, 'categoryId', v || null)}
+                                filterByTypes={['expense', 'cogs', 'asset']}
+                                placeholder="Optional"
+                                triggerAriaLabel={`Category for check row ${rowIndex + 1}`}
+                                triggerClassName="h-9 w-48 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                              />
                             </TableCell>
                             <TableCell>
                               <Button

@@ -246,10 +246,11 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
             {/* Category */}
             <div className="space-y-2">
-              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Label htmlFor="print-check-category" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Category (optional)
-              </p>
+              </Label>
               <SearchableAccountSelector
+                triggerId="print-check-category"
                 value={selectedCategoryId ?? undefined}
                 onValueChange={(v) => setSelectedCategoryId(v || null)}
                 filterByTypes={['expense', 'cogs', 'asset']}

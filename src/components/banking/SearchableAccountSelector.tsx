@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
+import { useChartOfAccounts, type ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface SearchableAccountSelectorProps {
@@ -27,6 +27,7 @@ interface SearchableAccountSelectorProps {
   autoOpen?: boolean;
   triggerAriaLabel?: string;
   triggerClassName?: string;
+  triggerId?: string;
 }
 
 export function SearchableAccountSelector({
@@ -38,6 +39,7 @@ export function SearchableAccountSelector({
   autoOpen = false,
   triggerAriaLabel,
   triggerClassName,
+  triggerId,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(autoOpen);
   const { selectedRestaurant } = useRestaurantContext();
@@ -90,7 +92,7 @@ export function SearchableAccountSelector({
         subAccounts: subsMap[account.id] || [] 
       });
       return acc;
-    }, {} as Record<string, Array<{ account: any; subAccounts: any[] }>>);
+    }, {} as Record<string, Array<{ account: ChartAccount; subAccounts: ChartAccount[] }>>);
   }, [filteredAccounts]);
 
   const isEmpty = !loading && filteredAccounts.length === 0;
@@ -107,6 +109,7 @@ export function SearchableAccountSelector({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={triggerId}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -153,7 +156,7 @@ export function SearchableAccountSelector({
                 <CommandEmpty>No account found.</CommandEmpty>
                 {Object.entries(organizedAccounts).map(([type, items]) => (
                   <CommandGroup key={type} heading={type}>
-                    {items.map(({ account, subAccounts }: any) => (
+                    {items.map(({ account, subAccounts }) => (
                       <div key={account.id}>
                         {/* Parent Account */}
                         <CommandItem
@@ -178,7 +181,7 @@ export function SearchableAccountSelector({
                         </CommandItem>
                         
                         {/* Sub-Accounts */}
-                        {subAccounts.map((subAccount: any) => (
+                        {subAccounts.map((subAccount) => (
                           <CommandItem
                             key={subAccount.id}
                             value={`${subAccount.account_code} ${subAccount.account_name} ${account.account_name}`}

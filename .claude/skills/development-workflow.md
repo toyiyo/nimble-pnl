@@ -499,6 +499,13 @@ for i in opens:
 **Step 2 — Direct fetch of bot + human review traffic (queue ingest can
 miss things; this is the authoritative check):**
 
+> **Prerequisite:** all three pipelines below depend on `jq` (for the two
+> `gh api ... | jq -r` calls) and on `gh`'s built-in `--jq` (which embeds
+> jq syntax). Verify with `command -v jq && gh --version` before running.
+> If jq is missing: `brew install jq` on macOS, `apt-get install jq` on
+> Debian/Ubuntu. (`gh` ships with the binary; only standalone `jq` needs
+> a separate install.)
+
 ```bash
 OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 PR=<PR_NUMBER>
@@ -542,15 +549,21 @@ review). Print all three lists. Skim every row.
 
 ### 9e: Done
 
-ALL of these MUST be true *and visible in the transcript* (you must have
-actually run the commands, not just asserted the conclusion):
+ALL of these MUST be true *and visible in the current Phase 9 execution
+window* (you must have actually run the commands during this 9a–9e pass,
+not just asserted the conclusion or recalled output from an earlier
+phase). "Visible in the current window" means: the commands appear above
+in the current transcript, against the latest pushed commit, and no
+context compaction has dropped them. If compaction has happened or the
+commands ran before the most recent push, re-run them.
 
-- `gh pr checks <PR>` printed in this turn shows all checks passing.
+- `gh pr checks <PR>` shows all checks passing, against the latest
+  commit, in the current 9a–9e execution window.
 - SonarCloud quality gate query returned PASS (coverage ≥80% on new
   code, zero critical issues).
 - 9d Step 2's three `gh api`/`gh pr view` commands have been printed
-  in the transcript on the **latest** commit, and every non-empty row
-  is either:
+  in the current execution window on the **latest** commit, and every
+  non-empty row is either:
   - resolved by a commit pushed in this session, **or**
   - replied-to on the PR with a reason, **or**
   - explicitly classified as a nit you chose not to action.
@@ -558,9 +571,11 @@ actually run the commands, not just asserted the conclusion):
   items.
 
 **Self-check before announcing Done:** ask yourself "Could I list every
-review comment the user would see on the PR right now?" If the answer is
-"I'm not sure" or "probably none," go back to 9d Step 2 and re-fetch.
-Announcing "ready for merge" with un-read comments is the explicit
+review comment the user would see on the PR right now, from output I
+fetched against the latest commit during this 9a–9e pass?" If the answer
+is "I'm not sure," "probably none," or "I fetched it earlier but pushed
+a new commit since," go back to 9d Step 2 and re-fetch. Announcing
+"ready for merge" with un-read or stale-fetched comments is the explicit
 failure mode this phase exists to prevent.
 
 Then:

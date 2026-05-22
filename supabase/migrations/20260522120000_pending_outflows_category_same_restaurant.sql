@@ -26,6 +26,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS pending_outflows_category_same_restaurant ON public.pending_outflows;
 CREATE TRIGGER pending_outflows_category_same_restaurant
 BEFORE INSERT OR UPDATE OF category_id, restaurant_id ON public.pending_outflows
 FOR EACH ROW

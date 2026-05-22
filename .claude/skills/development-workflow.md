@@ -368,7 +368,26 @@ workflow- or doc-only (no diff under `src/`, `supabase/`, or
 
 ## Phase 9: Ship & CI Loop
 
-This phase is **fully autonomous**. Do not ask the user what to do — push, open the PR, and iterate until CI is green.
+This phase is **fully autonomous**. Do not ask the user what to do — push, open the PR, and iterate until CI is green **and every review comment is triaged**.
+
+<HARD-GATE>
+**Green CI is not Done.** Phase 9 has five sub-phases (9a–9e). All five
+must complete, in order, before you may claim the PR is ready for review
+or merge. In particular:
+
+- 9b watches CI and fixes any check failure. Reaching all-green CI ends
+  9b but does **not** end Phase 9.
+- 9d fetches **inline review comments** from CodeRabbit, Codex, Copilot,
+  and human reviewers (none of which are visible in `gh pr checks`) and
+  triages every one of them. Skipping this step has shipped real bugs.
+- 9e is only reachable after 9d has produced an explicit, in-terminal
+  list of every bot and human comment, with each one either fixed (with
+  a commit) or replied-to on the PR with a reason for declining.
+
+If you find yourself thinking "CI went green, I'll just notify the
+user," stop — that is the exact failure mode this gate exists to
+prevent. Run 9d first, in full, before announcing anything.
+</HARD-GATE>
 
 ### 9a: Push & Create PR
 
@@ -438,65 +457,134 @@ For each actionable item:
 - **SonarCloud is a required gate** — quality gate MUST pass (coverage ≥80% on new code, zero critical issues).
 - Update `progress.md` at each iteration with what was fixed.
 
-### 9d: Review-Comment Triage Gate (REQUIRED before declaring Done)
+### 9d: Review-Comment Triage Gate (MANDATORY — no early exit)
 
-**CI green ≠ comments addressed.** A passing `gh pr checks` only means the
-status checks reported success. Review bots (CodeRabbit, Codex, Copilot) and
-human reviewers post inline comments that are NOT reflected in check status.
-Skipping this step has shipped real bugs.
+**CI green is not the finish line.** `gh pr checks` only reports status-check
+outcomes. CodeRabbit, Codex, Copilot, SonarCloud, and human reviewers all post
+**inline comments and PR-level reviews** that never appear in `gh pr checks`.
+Several past PRs (#506, #511, others) reached all-green CI with unaddressed
+actionable findings sitting in comments — those findings were the bugs we
+were trying to fix.
 
-**Mandatory steps before claiming Done:**
+<HARD-GATE>
+9d MUST run on every PR, even if 9b reported "no comments in queue."
+The queue refresh and the direct `gh api` fetch can disagree (the
+refresh filters, the API doesn't), and Codex in particular often posts
+inline comments without a status check. You may not call the PR Done
+until you have personally:
 
-1. Run the queue refresh — fetches inline comments, issue comments, SonarCloud
-   issues, and quality-gate status into `dev-tools/review_queue.json`:
-   ```bash
-   dev-tools/refresh-queue.sh --pr <PR_NUMBER> --skip-tests
-   ```
+1. Run **both** the queue refresh AND the direct `gh api` fetches below.
+2. Printed the resulting comment list to the terminal so it is visible
+   in the transcript.
+3. Classified and acted on every entry — fix-with-commit OR reply-on-PR
+   with a reason. Silent skipping is not allowed.
 
-2. Explicitly fetch each review bot's comments by author and confirm none are
-   open. The queue ingest filters out chitchat but you must verify directly:
-   ```bash
-   # OWNER_REPO must be in "owner/repo" form, e.g., toyiyo/nimble-pnl.
-   # Easiest: derive it from the current checkout.
-   OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+If either fetch returns rows you did not read, you are not done.
+</HARD-GATE>
 
-   gh api "repos/$OWNER_REPO/pulls/<PR_NUMBER>/comments" --paginate \
-     | jq -r '.[] | select(.user.login | test("coderabbitai|codex|copilot"; "i"))
-              | "\(.user.login)\t\(.path):\(.line // .original_line)\t\(.body | .[0:140])"'
-   gh api "repos/$OWNER_REPO/issues/<PR_NUMBER>/comments" --paginate \
-     | jq -r '.[] | select(.user.login | test("coderabbitai|codex|copilot"; "i"))
-              | "\(.user.login)\t\(.body | .[0:200])"'
-   ```
+**Step 1 — Refresh the review queue:**
 
-3. For every bot/human comment, classify and act:
-   - **Bug / security / correctness** → Fix it. Commit. Loop back to 9b.
-   - **Refactor / suggestion** → Decide: implement OR reply on the PR with
-     a short reason for declining (don't silently ignore).
-   - **Nit / informational** → Skip, but only after reading.
+```bash
+dev-tools/refresh-queue.sh --pr <PR_NUMBER> --skip-tests
+cat dev-tools/review_queue.json | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+opens = [i for i in d['items'] if i['status'] == 'open']
+print(f'open items: {len(opens)}')
+for i in opens:
+    print(f\"  {i['severity']:8s} {i['source']:16s} {i.get('origin_ref',{}).get('file','')}: {i['title'][:80]}\")
+"
+```
 
-4. **Red-flag thoughts** that mean STOP and re-triage:
-   - "CodeRabbit's check passed, so the comments must be fine" — WRONG. The
-     check just means the review ran, not that comments are addressed.
-   - "Codex doesn't have a check, so there's nothing to review" — WRONG.
-     Codex posts inline comments without a check status.
-   - "These are all minor" — Read each one. Some "minor" comments are real
-     bugs (missing combined `isPending`, false-positive regex, leaking
-     secrets across renders).
+**Step 2 — Direct fetch of bot + human review traffic (queue ingest can
+miss things; this is the authoritative check):**
+
+> **Prerequisite:** all three pipelines below depend on `jq` (for the two
+> `gh api ... | jq -r` calls) and on `gh`'s built-in `--jq` (which embeds
+> jq syntax). Verify with `command -v jq && gh --version` before running.
+> If jq is missing: `brew install jq` on macOS, `apt-get install jq` on
+> Debian/Ubuntu. (`gh` ships with the binary; only standalone `jq` needs
+> a separate install.)
+
+```bash
+OWNER_REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+PR=<PR_NUMBER>
+
+echo "── Inline review comments (file:line) ──"
+gh api "repos/$OWNER_REPO/pulls/$PR/comments" --paginate \
+  | jq -r '.[] | "\(.user.login)\t\(.path):\(.line // .original_line)\t\(.body | gsub("\n"; " ") | .[0:200])"'
+
+echo "── PR conversation comments ──"
+gh api "repos/$OWNER_REPO/issues/$PR/comments" --paginate \
+  | jq -r '.[] | "\(.user.login)\t\(.body | gsub("\n"; " ") | .[0:200])"'
+
+echo "── PR-level reviews (CodeRabbit summaries, human approvals, change requests) ──"
+gh pr view "$PR" --json reviews \
+  --jq '.reviews[] | "\(.author.login)\t\(.state)\t\(.body | gsub("\n"; " ") | .[0:200])"'
+```
+
+Do not narrow the filter to one bot. Codex, Copilot, CodeRabbit, and humans
+all post under different logins and at different layers (inline vs issue vs
+review). Print all three lists. Skim every row.
+
+**Step 3 — Classify and act on each row:**
+
+- **Bug / security / correctness / contract drift** → Fix it. Commit with
+  a message that names the source (`fix(...): coerce X (CodeRabbit #PR)`).
+  After commit, loop back to 9b (push triggers fresh CI).
+- **Refactor / suggestion** → Decide: implement OR reply on the PR with a
+  short reason for declining. Use `gh api -X POST repos/$OWNER_REPO/pulls/$PR/reviews -f event=COMMENT -f body=...` for a top-level reply, or `gh pr comment` for an issue-level reply. **Silent skipping is not allowed.**
+- **Nit / informational** → Read it, decide it's a nit, move on. Reading is
+  mandatory; acting is not.
+
+**Red-flag thoughts that mean STOP and re-run 9d:**
+
+| Thought | Reality |
+|---------|---------|
+| "CodeRabbit's check passed, so the comments are fine" | The check passing means the review ran. Comments are separate. |
+| "Codex doesn't have a status check" | Codex usually posts inline comments without a check. Fetch them. |
+| "Queue refresh said zero open items" | The refresh filters chitchat and may drop new bot postings. Direct `gh api` is the source of truth. |
+| "These are all minor / nits" | Read each one. "Minor" CodeRabbit findings have been real bugs (off-by-one, missing combined `isPending`, contract drift). |
+| "I'll triage after notifying the user" | No. 9d completes before any "ready for review" message. |
 
 ### 9e: Done
 
-ALL of these MUST be true:
-- `gh pr checks` shows all checks passing
-- SonarCloud quality gate passes (coverage ≥80% on new code, zero criticals)
-- 9d triage complete: every CodeRabbit/Codex/Copilot/human comment is either
-  fixed (with a commit referencing the comment) or replied-to with a reason
-- No open critical/major items in `dev-tools/review_queue.json`
+ALL of these MUST be true *and visible in the current Phase 9 execution
+window* (you must have actually run the commands during this 9a–9e pass,
+not just asserted the conclusion or recalled output from an earlier
+phase). "Visible in the current window" means: the commands appear above
+in the current transcript, against the latest pushed commit, and no
+context compaction has dropped them. If compaction has happened or the
+commands ran before the most recent push, re-run them.
+
+- `gh pr checks <PR>` shows all checks passing, against the latest
+  commit, in the current 9a–9e execution window.
+- SonarCloud quality gate query returned PASS (coverage ≥80% on new
+  code, zero critical issues).
+- 9d Step 2's three `gh api`/`gh pr view` commands have been printed
+  in the current execution window on the **latest** commit, and every
+  non-empty row is either:
+  - resolved by a commit pushed in this session, **or**
+  - replied-to on the PR with a reason, **or**
+  - explicitly classified as a nit you chose not to action.
+- `dev-tools/review_queue.json` shows zero open `critical` or `major`
+  items.
+
+**Self-check before announcing Done:** ask yourself "Could I list every
+review comment the user would see on the PR right now, from output I
+fetched against the latest commit during this 9a–9e pass?" If the answer
+is "I'm not sure," "probably none," or "I fetched it earlier but pushed
+a new commit since," go back to 9d Step 2 and re-fetch. Announcing
+"ready for merge" with un-read or stale-fetched comments is the explicit
+failure mode this phase exists to prevent.
 
 Then:
 - Update `progress.md` with `## Status: Ready for merge`
-- Notify the user: "PR #NNN is green AND review comments addressed, ready for
-  review/merge" with a summary that includes the comment-triage outcome
-  (e.g., "12 review comments: 10 fixed in 3 commits, 2 declined with reply")
+- Notify the user: "PR #NNN is green AND all review comments triaged,
+  ready for review/merge" with a one-line summary of the triage outcome
+  (e.g., "8 comments: 1 fix committed, 3 nitpicks declined with reply,
+  4 informational"). Never use the phrase "ready for merge" without
+  that triage summary.
 
 **Skip condition:** None.
 
@@ -550,6 +638,15 @@ or `major` findings, Phase 7 multi-model findings, CodeRabbit findings,
 CI red — diagnose and fix autonomously. Each failure is structured
 feedback, not a reason to stop.
 
+**Things you may NEVER autonomously skip,** even under time pressure:
+
+- Phase 8 (Verify): tests, typecheck, lint, build must actually run and
+  pass before push.
+- Phase 9d (Review-Comment Triage): the `gh api` fetches for inline
+  comments, issue comments, and PR-level reviews are non-skippable on
+  every PR, including PRs where 9b reported zero open queue items. "CI
+  is green" is never sufficient to claim Done.
+
 ### Context Recovery
 
 If a session is interrupted (context compression, timeout, crash):
@@ -576,5 +673,9 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
 | 7c CodeRabbit | `coderabbit review --plain --type committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
-| 9. Ship & CI Loop | Push → PR → CI loop → Review loop | Never |
+| 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
+| 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |
+| 9c Iteration limits | — | Informational only |
+| 9d Comment triage | `dev-tools/refresh-queue.sh` + `gh api .../comments` + `gh pr view --json reviews` | Never — green CI does NOT exempt |
+| 9e Done | All checks ✓, SonarCloud ✓, 9d triage transcript visible | Never |
 | 10. Retrospective | Write to `memory/lessons.md` | No corrections occurred |

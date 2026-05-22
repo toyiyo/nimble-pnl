@@ -584,7 +584,11 @@ serve(async (req) => {
     // Build validation context
     const employeeIds = new Set(employees.map((e) => e.id));
     const employeePositions = new Map(employees.map((e) => [e.id, e.position]));
-    const templateIds = new Set(templates.map((t) => t.id));
+    // Validator needs template days-of-week so it can drop shifts placed on
+    // a day the template isn't active for (Bug C).
+    const validatorTemplates = new Map(
+      templates.map((t) => [t.id, { days: t.days }] as const),
+    );
 
     // Build availability Map for validator
     const availabilityMap = new Map<string, AvailabilitySlot>();
@@ -617,7 +621,7 @@ serve(async (req) => {
     const validationCtx: ValidationContext = {
       employeeIds,
       employeePositions,
-      templateIds,
+      templates: validatorTemplates,
       availability: availabilityMap,
       excludedEmployeeIds: new Set(excluded_employee_ids),
       existingShifts: existingAsGenerated,
@@ -683,6 +687,8 @@ serve(async (req) => {
           return `Unknown employee on ${d.shift.day}`;
         case "UNKNOWN_TEMPLATE":
           return `Unknown template on ${d.shift.day}`;
+        case "DAY_NOT_IN_TEMPLATE":
+          return `Template not active on ${d.shift.day}`;
         default:
           return `Unknown drop reason on ${d.shift.day}`;
       }

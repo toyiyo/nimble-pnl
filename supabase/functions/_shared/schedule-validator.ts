@@ -24,7 +24,10 @@ export interface AvailabilitySlot {
 export interface ValidationContext {
   employeeIds: Set<string>;
   employeePositions: Map<string, string>;
-  templateIds: Set<string>;
+  /** Templates keyed by id, carrying the days-of-week (0=Sun..6=Sat) on which
+   *  they are active. The validator drops shifts whose day-of-week isn't in
+   *  the template's `days`. */
+  templates: Map<string, { days: number[] }>;
   /** Key: "employeeId:dayOfWeek" (0=Sun..6=Sat) */
   availability: Map<string, AvailabilitySlot>;
   excludedEmployeeIds: Set<string>;
@@ -36,6 +39,7 @@ export type DropCode =
   | "EXCLUDED"
   | "UNKNOWN_EMPLOYEE"
   | "UNKNOWN_TEMPLATE"
+  | "DAY_NOT_IN_TEMPLATE"
   | "POSITION_MISMATCH"
   | "UNAVAILABLE_DAY"
   | "OUTSIDE_WINDOW"
@@ -210,6 +214,7 @@ export function normalizePosition(s: string | null | undefined): string {
  * 1. Employee not excluded
  * 2. Employee exists
  * 3. Template exists
+ * 3b. Template is active on the shift's day-of-week
  * 4. Position matches employee's assigned position (case-insensitive)
  * 5. Employee is available on that day of week
  * 6. Shift times fall within availability time window (if specific hours set)
@@ -241,8 +246,20 @@ export function validateGeneratedShifts(
     }
 
     // 3. Template exists
-    if (!ctx.templateIds.has(shift.template_id)) {
+    const template = ctx.templates.get(shift.template_id);
+    if (!template) {
       drop("UNKNOWN_TEMPLATE", `Unknown template ID: ${shift.template_id}`);
+      continue;
+    }
+
+    // 3b. Template is active on this day-of-week (Bug C). Catches the case
+    //     where a weekend-only template gets assigned on a weekday, etc.
+    const shiftDow = getDayOfWeek(shift.day);
+    if (!template.days.includes(shiftDow)) {
+      drop(
+        "DAY_NOT_IN_TEMPLATE",
+        `Template ${shift.template_id} is not active on day ${shiftDow} (${shift.day}); active days: [${template.days.join(",")}]`,
+      );
       continue;
     }
 

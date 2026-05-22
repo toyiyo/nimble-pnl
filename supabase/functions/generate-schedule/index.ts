@@ -262,10 +262,14 @@ serve(async (req) => {
       end_time: t.end_time,
       position: t.position ?? "Staff",
       area: t.area ?? null,
-      // DB constraint guarantees capacity >= 1 in real rows; the ?? 1
-      // covers test fixtures or any migration drift. Defensive guard for
-      // 0/NaN lives in staffing-requirements.ts.
-      capacity: t.capacity ?? 1,
+      // DB constraint guarantees capacity >= 1 in real rows; coerce here so
+      // the prompt and the staffing floor never disagree. `?? 1` alone leaves
+      // 0/NaN intact and the LLM would see a different capacity than
+      // computeRequiredStaff uses downstream.
+      capacity:
+        typeof t.capacity === "number" && Number.isFinite(t.capacity) && t.capacity >= 1
+          ? t.capacity
+          : 1,
     }));
 
     // ── Build availability map (TZ-converted to restaurant local) ────────────

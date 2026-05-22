@@ -34,12 +34,13 @@ function makeContext(overrides?: Partial<ValidationContext>): ValidationContext 
       ['emp-2', 'cook'],
       ['emp-3', 'server'],
     ]),
-    // Default fixtures use templates active on every day of the week so existing
-    // suites that don't care about active-days continue to behave the same. New
-    // DAY_NOT_IN_TEMPLATE tests override this explicitly.
+    // Default fixtures use templates active on every day of the week and the
+    // 'server' position so existing suites that don't care about active-days
+    // or template position continue to behave the same. New
+    // DAY_NOT_IN_TEMPLATE / POSITION_MISMATCH tests override these explicitly.
     templates: new Map([
-      ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6] }],
-      ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6] }],
+      ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
+      ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
     ]),
     availability: makeAvailability(),
     excludedEmployeeIds: new Set(),
@@ -136,7 +137,7 @@ describe('validateGeneratedShifts', () => {
       employeePositions: new Map([['emp-2', 'cook']]),
       templates: new Map([
         // Weekend-only template (Sun, Fri, Sat)
-        ['weekend-close', { days: [0, 5, 6] }],
+        ['weekend-close', { days: [0, 5, 6], position: 'cook' }],
       ]),
       availability: new Map([
         ['emp-2:1', { isAvailable: true, startTime: null, endTime: null }],
@@ -159,7 +160,7 @@ describe('validateGeneratedShifts', () => {
       employeeIds: new Set(['emp-2']),
       employeePositions: new Map([['emp-2', 'cook']]),
       templates: new Map([
-        ['weekday-close', { days: [1, 2, 3, 4, 5] }],
+        ['weekday-close', { days: [1, 2, 3, 4, 5], position: 'cook' }],
       ]),
       availability: new Map([
         ['emp-2:1', { isAvailable: true, startTime: null, endTime: null }],
@@ -176,14 +177,54 @@ describe('validateGeneratedShifts', () => {
     expect(result.dropped).toHaveLength(0);
   });
 
-  it('drops shifts where employee position does not match', () => {
+  it('drops shifts where shift.position does not match template.position', () => {
     const ctx = makeContext();
-    // emp-1 is a server, but shift requests cook
+    // emp-1 is a server on tmpl-1 (server), but shift.position requests cook —
+    // the LLM-emitted label disagrees with the template's required position.
     const shift = makeShift({ position: 'cook' });
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
     expect(result.dropped[0].code).toBe('POSITION_MISMATCH');
+  });
+
+  // ── Bug E regression: validator must enforce template.position, not just
+  //    employee.position vs shift.position. Production restaurant 7c0c76e3:
+  //    Managers (Alejandra Perez, Jose Delgado) were assigned to Server
+  //    templates (Open-week-csc, Close-week-csc). The LLM emitted
+  //    shift.position="Manager" matching employee.position="Manager", and
+  //    the legacy check passed because it only compared those two
+  //    LLM-controlled fields. Result: 3/2 and 4/3 over-fills.
+  it('drops a Manager assigned to a Server template even when shift.position matches the employee', () => {
+    const ctx = makeContext({
+      employeeIds: new Set(['mgr-1']),
+      employeePositions: new Map([['mgr-1', 'Manager']]),
+      availability: new Map([
+        ['mgr-1:1', { isAvailable: true, startTime: null, endTime: null }],
+      ]),
+      // tmpl-1 default = 'server'
+    });
+    // The LLM's bypass: shift.position emitted as the manager's own position
+    // so the legacy `shift.position vs employee.position` check passed.
+    const shift = makeShift({
+      employee_id: 'mgr-1',
+      position: 'Manager',
+    });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('POSITION_MISMATCH');
+    expect(result.dropped[0].message).toContain('Manager');
+    expect(result.dropped[0].message).toContain('server');
+  });
+
+  it('accepts a Server employee on a Server template (Bug E regression — happy path)', () => {
+    const ctx = makeContext();
+    // emp-1 is a server on tmpl-1 (server). All three labels match.
+    const shift = makeShift({ employee_id: 'emp-1', position: 'server' });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+    expect(result.dropped).toHaveLength(0);
   });
 
   it('drops shifts where employee is not available on that day', () => {
@@ -259,6 +300,10 @@ describe('validateGeneratedShifts — position normalization', () => {
   it('matches "Line Cook" employee with "line cook" shift (case-insensitive)', () => {
     const ctx = makeContext({
       employeePositions: new Map([['emp-1', 'Line Cook']]),
+      templates: new Map([
+        ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'line cook' }],
+        ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
+      ]),
     });
     const shift = makeShift({ position: 'line cook' });
     const result = validateGeneratedShifts([shift], ctx);
@@ -268,6 +313,10 @@ describe('validateGeneratedShifts — position normalization', () => {
   it('matches "Cook " (trailing space) employee with "Cook" shift', () => {
     const ctx = makeContext({
       employeePositions: new Map([['emp-1', 'Cook ']]),
+      templates: new Map([
+        ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Cook' }],
+        ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
+      ]),
     });
     const shift = makeShift({ position: 'Cook' });
     const result = validateGeneratedShifts([shift], ctx);
@@ -277,6 +326,7 @@ describe('validateGeneratedShifts — position normalization', () => {
   it('matches "Servers" (plural) employee with "server" shift', () => {
     const ctx = makeContext({
       employeePositions: new Map([['emp-1', 'Servers']]),
+      // Default tmpl-1.position = 'server', which normalizes-matches 'Servers'.
     });
     const shift = makeShift({ position: 'server' });
     const result = validateGeneratedShifts([shift], ctx);
@@ -286,6 +336,10 @@ describe('validateGeneratedShifts — position normalization', () => {
   it('preserves "Hostess" (ends in ss, does not strip)', () => {
     const ctx = makeContext({
       employeePositions: new Map([['emp-1', 'Hostess']]),
+      templates: new Map([
+        ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Hostess' }],
+        ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
+      ]),
     });
     const shift = makeShift({ position: 'Hostess' });
     const result = validateGeneratedShifts([shift], ctx);
@@ -295,6 +349,10 @@ describe('validateGeneratedShifts — position normalization', () => {
   it('preserves short stems like "Bus" (stem length <= 4)', () => {
     const ctx = makeContext({
       employeePositions: new Map([['emp-1', 'Bus']]),
+      templates: new Map([
+        ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Bus' }],
+        ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
+      ]),
     });
     const shift = makeShift({ position: 'Bus' });
     const result = validateGeneratedShifts([shift], ctx);
@@ -375,7 +433,15 @@ describe('validateGeneratedShifts — cross-day double-booking', () => {
       start_time: '22:00:00',
       end_time: '02:00:00',
     });
-    const ctx = makeContext({ existingShifts: [existing] });
+    const ctx = makeContext({
+      existingShifts: [existing],
+      // Override defaults so emp-2 (cook) passes the template-position check
+      // and we get to the overlap check we're actually testing.
+      templates: new Map([
+        ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'cook' }],
+        ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'cook' }],
+      ]),
+    });
     const aiShift = makeShift({
       employee_id: 'emp-2',
       position: 'cook',
@@ -390,7 +456,12 @@ describe('validateGeneratedShifts — cross-day double-booking', () => {
   });
 
   it('drops second AI shift Tue 00:00-06:00 when first AI shift Mon 22:00-02:00 is already valid', () => {
-    const ctx = makeContext();
+    const ctx = makeContext({
+      templates: new Map([
+        ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'cook' }],
+        ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'cook' }],
+      ]),
+    });
     const shift1 = makeShift({
       employee_id: 'emp-2',
       position: 'cook',

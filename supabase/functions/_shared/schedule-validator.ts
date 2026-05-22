@@ -24,10 +24,12 @@ export interface AvailabilitySlot {
 export interface ValidationContext {
   employeeIds: Set<string>;
   employeePositions: Map<string, string>;
-  /** Templates keyed by id, carrying the days-of-week (0=Sun..6=Sat) on which
-   *  they are active. The validator drops shifts whose day-of-week isn't in
-   *  the template's `days`. */
-  templates: Map<string, { days: number[] }>;
+  /** Templates keyed by id. `days` are the days-of-week (0=Sun..6=Sat) on
+   *  which the template is active. `position` is the role the template
+   *  requires — the validator drops shifts whose assigned employee does not
+   *  hold that position, even when the LLM-emitted `shift.position` matches
+   *  the employee (e.g. a Manager assigned onto a Server template). */
+  templates: Map<string, { days: number[]; position: string }>;
   /** Key: "employeeId:dayOfWeek" (0=Sun..6=Sat) */
   availability: Map<string, AvailabilitySlot>;
   excludedEmployeeIds: Set<string>;
@@ -215,7 +217,8 @@ export function normalizePosition(s: string | null | undefined): string {
  * 2. Employee exists
  * 3. Template exists
  * 4. Template is active on the shift's day-of-week
- * 5. Position matches employee's assigned position (case-insensitive)
+ * 5. Employee's assigned position AND the LLM-emitted shift.position both
+ *    match the template's required position (case-insensitive, plural-aware)
  * 6. Employee is available on that day of week
  * 7. Shift times fall within availability time window (if specific hours set)
  * 8. No double-booking (same employee, overlapping times on same day)
@@ -263,15 +266,31 @@ export function validateGeneratedShifts(
       continue;
     }
 
-    // 5. Position matches (normalized: case, whitespace, trailing -s plural)
+    // 5. Position matches the template's required role (normalized: case,
+    //    whitespace, trailing -s plural). The earlier check compared
+    //    employee.position to shift.position only — both are LLM-controlled,
+    //    so the LLM bypassed it by simply emitting shift.position equal to
+    //    the employee's own position (e.g. setting "Manager" for a manager
+    //    placed onto a Server template). Anchoring on template.position
+    //    catches that. We also re-check shift.position so the LLM-emitted
+    //    label can't disagree with what we persist downstream.
+    const requiredPosition = template.position;
     const assignedPosition = ctx.employeePositions.get(shift.employee_id);
+    const normRequired = normalizePosition(requiredPosition);
     if (
       assignedPosition === undefined ||
-      normalizePosition(assignedPosition) !== normalizePosition(shift.position)
+      normalizePosition(assignedPosition) !== normRequired
     ) {
       drop(
         "POSITION_MISMATCH",
-        `Position mismatch for employee ${shift.employee_id}: assigned "${assignedPosition}", shift requests "${shift.position}"`,
+        `Employee ${shift.employee_id} (position "${assignedPosition}") does not match template ${shift.template_id} required position "${requiredPosition}"`,
+      );
+      continue;
+    }
+    if (normalizePosition(shift.position) !== normRequired) {
+      drop(
+        "POSITION_MISMATCH",
+        `Shift position "${shift.position}" does not match template ${shift.template_id} required position "${requiredPosition}"`,
       );
       continue;
     }

@@ -92,7 +92,7 @@ vi.mock('@/components/banking/SearchableAccountSelector', () => ({
 }));
 
 vi.mock('@/utils/checkPrinting', async () => {
-  const actual = await vi.importActual<any>('@/utils/checkPrinting');
+  const actual = await vi.importActual<typeof import('@/utils/checkPrinting')>('@/utils/checkPrinting');
   return {
     ...actual,
     generateCheckPDF: vi.fn().mockReturnValue({ save: vi.fn() }),

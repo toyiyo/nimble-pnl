@@ -677,6 +677,7 @@ export function ShiftPlannerTab({
         open={generateDialogOpen}
         onOpenChange={handleGenerateDialogChange}
         restaurantId={restaurantId}
+        restaurantTimezone={restaurantTimezone}
         employees={employees ?? []}
         templates={templates}
         availability={availability}

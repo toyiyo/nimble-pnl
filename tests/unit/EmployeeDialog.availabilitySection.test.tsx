@@ -48,6 +48,12 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastMock }),
 }));
 
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { id: 'r1', timezone: 'UTC' } },
+  }),
+}));
+
 vi.mock('@/integrations/supabase/client', () => {
   // Build a chainable supabase query mock that resolves at any terminal call.
   function makeChain(): any {

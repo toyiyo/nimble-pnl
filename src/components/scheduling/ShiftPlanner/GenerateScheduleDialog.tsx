@@ -35,6 +35,7 @@ interface GenerateScheduleDialogProps {
   onOpenChange: (open: boolean) => void;
   employees: Employee[];
   restaurantId: string;
+  restaurantTimezone: string;
   existingShifts: Shift[];
   weekStart: Date;
   weekEnd: Date;
@@ -70,6 +71,7 @@ export function GenerateScheduleDialog({
   onOpenChange,
   employees,
   restaurantId,
+  restaurantTimezone,
   existingShifts,
   weekStart,
   weekEnd,
@@ -519,6 +521,7 @@ export function GenerateScheduleDialog({
         open={bulkSheetOpen}
         onOpenChange={setBulkSheetOpen}
         restaurantId={restaurantId}
+        restaurantTimezone={restaurantTimezone}
         employees={normalizedEmployees}
         preCheckedIds={missingAvailabilityEmployees.map((e) => e.id)}
         defaults={defaultAvailability}

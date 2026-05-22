@@ -250,7 +250,7 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
             {/* Category */}
             <div className="space-y-2">
-              <Label htmlFor="print-check-category" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Category (optional)
               </Label>
               <SearchableAccountSelector

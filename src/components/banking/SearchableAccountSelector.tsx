@@ -25,6 +25,7 @@ interface SearchableAccountSelectorProps {
   disabled?: boolean;
   filterByTypes?: string[];
   autoOpen?: boolean;
+  triggerAriaLabel?: string;
 }
 
 export function SearchableAccountSelector({
@@ -34,6 +35,7 @@ export function SearchableAccountSelector({
   disabled = false,
   filterByTypes,
   autoOpen = false,
+  triggerAriaLabel,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(autoOpen);
   const { selectedRestaurant } = useRestaurantContext();
@@ -66,9 +68,6 @@ export function SearchableAccountSelector({
   // Organize accounts with parent-child relationships
   const organizedAccounts = useMemo(() => {
     if (!filteredAccounts) return {};
-    
-    console.log('[SearchableAccountSelector] Filtered accounts:', filteredAccounts);
-    console.log('[SearchableAccountSelector] Filter types:', filterByTypes);
     
     // Separate parents and subs
     const parents = filteredAccounts.filter(acc => !acc.parent_account_id);
@@ -110,6 +109,7 @@ export function SearchableAccountSelector({
           role="combobox"
           aria-expanded={open}
           aria-busy={loading}
+          aria-label={triggerAriaLabel}
           className="w-full justify-between"
           disabled={isDisabled}
         >
@@ -131,9 +131,10 @@ export function SearchableAccountSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[350px] p-0 bg-background z-50" 
+      <PopoverContent
+        className="w-[350px] p-0 bg-background z-50"
         align="start"
+        collisionPadding={8}
         onWheel={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
       >

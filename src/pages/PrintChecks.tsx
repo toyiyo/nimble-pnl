@@ -119,7 +119,11 @@ function PrintChecksContent() {
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? defaultAccount;
 
   // --- Row helpers ---
-  const updateRow = useCallback((id: string, field: keyof CheckRow, value: string | boolean | null) => {
+  const updateRow = useCallback(<K extends keyof CheckRow>(
+    id: string,
+    field: K,
+    value: CheckRow[K],
+  ) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }, []);
 

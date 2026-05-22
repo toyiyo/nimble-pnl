@@ -34,7 +34,13 @@ function makeContext(overrides?: Partial<ValidationContext>): ValidationContext 
       ['emp-2', 'cook'],
       ['emp-3', 'server'],
     ]),
-    templateIds: new Set(['tmpl-1', 'tmpl-2']),
+    // Default fixtures use templates active on every day of the week so existing
+    // suites that don't care about active-days continue to behave the same. New
+    // DAY_NOT_IN_TEMPLATE tests override this explicitly.
+    templates: new Map([
+      ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6] }],
+      ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6] }],
+    ]),
     availability: makeAvailability(),
     excludedEmployeeIds: new Set(),
     existingShifts: [],
@@ -116,6 +122,58 @@ describe('validateGeneratedShifts', () => {
     expect(result.valid).toHaveLength(0);
     expect(result.dropped).toHaveLength(1);
     expect(result.dropped[0].code).toBe('UNKNOWN_TEMPLATE');
+  });
+
+  // ── Bug C regression: validator must enforce template.days ──────────────
+  // Production restaurant 7c0c76e3: weekend-only templates (days [0,5,6])
+  // ended up assigned on Monday because the validator never checked the
+  // shift's day-of-week against the template's active days. Two of four
+  // shifts persisted incorrectly on Jun 1 (Monday).
+
+  it('drops a shift whose day-of-week is not in the template active days', () => {
+    const ctx = makeContext({
+      employeeIds: new Set(['emp-2']),
+      employeePositions: new Map([['emp-2', 'cook']]),
+      templates: new Map([
+        // Weekend-only template (Sun, Fri, Sat)
+        ['weekend-close', { days: [0, 5, 6] }],
+      ]),
+      availability: new Map([
+        ['emp-2:1', { isAvailable: true, startTime: null, endTime: null }],
+      ]),
+    });
+    const shift = makeShift({
+      employee_id: 'emp-2',
+      template_id: 'weekend-close',
+      day: '2026-04-13', // Monday (dow=1) — NOT in [0, 5, 6]
+      position: 'cook',
+    });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('DAY_NOT_IN_TEMPLATE');
+  });
+
+  it('allows a shift whose day-of-week IS in the template active days', () => {
+    const ctx = makeContext({
+      employeeIds: new Set(['emp-2']),
+      employeePositions: new Map([['emp-2', 'cook']]),
+      templates: new Map([
+        ['weekday-close', { days: [1, 2, 3, 4, 5] }],
+      ]),
+      availability: new Map([
+        ['emp-2:1', { isAvailable: true, startTime: null, endTime: null }],
+      ]),
+    });
+    const shift = makeShift({
+      employee_id: 'emp-2',
+      template_id: 'weekday-close',
+      day: '2026-04-13', // Monday (dow=1) — IS in [1, 2, 3, 4, 5]
+      position: 'cook',
+    });
+    const result = validateGeneratedShifts([shift], ctx);
+    expect(result.valid).toHaveLength(1);
+    expect(result.dropped).toHaveLength(0);
   });
 
   it('drops shifts where employee position does not match', () => {

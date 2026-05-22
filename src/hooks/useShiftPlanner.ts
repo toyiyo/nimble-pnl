@@ -150,7 +150,9 @@ export function buildTemplateGridData(
       continue;
     }
 
-    // Fallback: match by time/position/day for legacy shifts (no shift_template_id)
+    // Fallback: match by time/position/day for legacy shifts (no
+    // shift_template_id). Still needed for manually-created shifts and any
+    // rows inserted by older bundles before AI generation persisted the FK.
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();

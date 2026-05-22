@@ -232,4 +232,14 @@ describe('buildSchedulePrompt — fill-slot enhancements', () => {
     const systemContent = result.messages[0].content as string;
     expect(systemContent.toLowerCase()).toContain('restaurant local');
   });
+
+  // ── Bug D regression: Rule 1 must constrain template usage to listed
+  // active days. Without this, the LLM occasionally placed a weekend-only
+  // template on a weekday and the validator (pre-Bug-C fix) accepted it.
+  it('Rule 1 constrains template usage to the listed active days', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    expect(systemContent).toMatch(/only on the days listed/i);
+    expect(systemContent.toLowerCase()).toContain('active days');
+  });
 });

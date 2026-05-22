@@ -15,6 +15,7 @@ function makeInput(overrides: Partial<ComputeInput> = {}): ComputeInput {
         end_time: '16:00:00',
         position: 'server',
         area: null,
+        capacity: 1,
       },
     ],
     minCrew: null,
@@ -98,5 +99,139 @@ describe('computeRequiredStaff', () => {
     );
     expect(result.get('tpl-server')!.get(1)).toBe(2); // peak on Mon
     expect(result.get('tpl-server')!.get(2)).toBe(1); // no data Tue
+  });
+
+  // ── Bug A regression: capacity-based required-staff floor ───────────────
+  // Production restaurant 7c0c76e3 had no staffing_settings and no prior
+  // patterns, so every (template, day) collapsed to base=1 even though
+  // templates declared capacities of 2/3/4. The LLM was asked for 1 each
+  // and the planner grid rendered as 0/N. Fallback chain now becomes
+  // fromMinCrew ?? fromPattern ?? tpl.capacity ?? 1.
+
+  it('falls back to template.capacity when no minCrew and no patterns', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-close',
+            name: 'Close',
+            days: [1, 2, 3],
+            start_time: '16:00:00',
+            end_time: '23:30:00',
+            position: 'server',
+            area: null,
+            capacity: 4,
+          },
+        ],
+      }),
+    );
+    expect(result.get('tpl-close')!.get(1)).toBe(4);
+    expect(result.get('tpl-close')!.get(2)).toBe(4);
+    expect(result.get('tpl-close')!.get(3)).toBe(4);
+  });
+
+  it('honors minCrew override even when capacity is lower', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-close',
+            name: 'Close',
+            days: [1],
+            start_time: '16:00:00',
+            end_time: '23:30:00',
+            position: 'server',
+            area: null,
+            capacity: 2,
+          },
+        ],
+        minCrew: { Server: 5 },
+      }),
+    );
+    expect(result.get('tpl-close')!.get(1)).toBe(5);
+  });
+
+  it('honors prior pattern over capacity (pattern still wins when minCrew absent)', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-close',
+            name: 'Close',
+            days: [1],
+            start_time: '16:00:00',
+            end_time: '23:30:00',
+            position: 'server',
+            area: null,
+            capacity: 4,
+          },
+        ],
+        priorPatterns: [{ day_of_week: 1, position: 'server', avg_count: 3 }],
+      }),
+    );
+    expect(result.get('tpl-close')!.get(1)).toBe(3);
+  });
+
+  it('adds peak boost on top of the capacity fallback', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-close',
+            name: 'Close',
+            days: [1],
+            start_time: '16:00:00',
+            end_time: '23:30:00',
+            position: 'server',
+            area: null,
+            capacity: 4,
+          },
+        ],
+        hourlySales: [{ day_of_week: 1, hour: 16, avg_sales: 1000 }],
+      }),
+    );
+    expect(result.get('tpl-close')!.get(1)).toBe(5);
+  });
+
+  // Guard against migration drift writing capacity=0/NaN — the DB CHECK
+  // catches new rows, but pre-existing rows could be malformed.
+  it('treats capacity of 0 as if it were 1 (no NaN/0 propagation)', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-bad',
+            name: 'Bad',
+            days: [1],
+            start_time: '10:00:00',
+            end_time: '16:00:00',
+            position: 'server',
+            area: null,
+            capacity: 0,
+          },
+        ],
+      }),
+    );
+    expect(result.get('tpl-bad')!.get(1)).toBe(1);
+  });
+
+  it('treats capacity of NaN as if it were 1', () => {
+    const result = computeRequiredStaff(
+      makeInput({
+        templates: [
+          {
+            id: 'tpl-bad',
+            name: 'Bad',
+            days: [1],
+            start_time: '10:00:00',
+            end_time: '16:00:00',
+            position: 'server',
+            area: null,
+            capacity: Number.NaN,
+          },
+        ],
+      }),
+    );
+    expect(result.get('tpl-bad')!.get(1)).toBe(1);
   });
 });

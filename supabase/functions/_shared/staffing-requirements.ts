@@ -94,12 +94,18 @@ export function computeRequiredStaff(
     const perDay = new Map<number, number>();
     const startHour = parseInt(tpl.start_time.split(":")[0], 10);
     const normPos = normalizePosition(tpl.position);
-    // Per-template lookups that don't depend on day are hoisted out of the inner loop.
     const fromMinCrew = lookupMinCrew(input.minCrew, tpl.position);
+    // DB enforces `capacity >= 1`, but guard against migration drift (0/NaN)
+    // before letting it fall through to the literal 1 below.
+    const capacityFloor =
+      typeof tpl.capacity === "number" && tpl.capacity >= 1 ? tpl.capacity : 1;
     for (const day of tpl.days) {
       const fromPattern =
         fromMinCrew === null ? (priorIndex.get(`${day}:${normPos}`) ?? null) : null;
-      const base = fromMinCrew ?? fromPattern ?? 1;
+      // Fallback chain: explicit min_crew → historical pattern → template
+      // capacity → 1. Capacity restores the manager's stated headcount
+      // when neither staffing settings nor prior schedules exist.
+      const base = fromMinCrew ?? fromPattern ?? capacityFloor;
       const peakBoost = peakIndex.get(day)?.has(startHour) ? 1 : 0;
       perDay.set(day, Math.max(base + peakBoost, floor));
     }

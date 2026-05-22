@@ -136,7 +136,7 @@ serve(async (req) => {
       // 2. Active shift templates
       supabase
         .from("shift_templates")
-        .select("id, name, days, start_time, end_time, position, area")
+        .select("id, name, days, start_time, end_time, position, area, capacity")
         .eq("restaurant_id", restaurant_id)
         .eq("is_active", true),
 
@@ -262,6 +262,14 @@ serve(async (req) => {
       end_time: t.end_time,
       position: t.position ?? "Staff",
       area: t.area ?? null,
+      // DB constraint guarantees capacity >= 1 in real rows; coerce here so
+      // the prompt and the staffing floor never disagree. `?? 1` alone leaves
+      // 0/NaN intact and the LLM would see a different capacity than
+      // computeRequiredStaff uses downstream.
+      capacity:
+        typeof t.capacity === "number" && Number.isFinite(t.capacity) && t.capacity >= 1
+          ? t.capacity
+          : 1,
     }));
 
     // ── Build availability map (TZ-converted to restaurant local) ────────────
@@ -581,7 +589,11 @@ serve(async (req) => {
     // Build validation context
     const employeeIds = new Set(employees.map((e) => e.id));
     const employeePositions = new Map(employees.map((e) => [e.id, e.position]));
-    const templateIds = new Set(templates.map((t) => t.id));
+    // Validator needs template days-of-week so it can drop shifts placed on
+    // a day the template isn't active for (Bug C).
+    const templateDays = new Map(
+      templates.map((t) => [t.id, { days: t.days }] as const),
+    );
 
     // Build availability Map for validator
     const availabilityMap = new Map<string, AvailabilitySlot>();
@@ -614,7 +626,7 @@ serve(async (req) => {
     const validationCtx: ValidationContext = {
       employeeIds,
       employeePositions,
-      templateIds,
+      templates: templateDays,
       availability: availabilityMap,
       excludedEmployeeIds: new Set(excluded_employee_ids),
       existingShifts: existingAsGenerated,
@@ -680,6 +692,8 @@ serve(async (req) => {
           return `Unknown employee on ${d.shift.day}`;
         case "UNKNOWN_TEMPLATE":
           return `Unknown template on ${d.shift.day}`;
+        case "DAY_NOT_IN_TEMPLATE":
+          return `Template not active on ${d.shift.day}`;
         default:
           return `Unknown drop reason on ${d.shift.day}`;
       }

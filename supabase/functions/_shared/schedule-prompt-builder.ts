@@ -23,6 +23,9 @@ export interface ScheduleTemplate {
   end_time: string;
   position: string;
   area: string | null;
+  /** Manager-stated headcount required per (template, day). The DB
+   *  enforces `DEFAULT 1 CHECK (capacity >= 1)`. */
+  capacity: number;
 }
 
 export interface AvailabilityDay {
@@ -75,7 +78,7 @@ const SYSTEM_PROMPT = `You are a restaurant schedule optimizer. Your job is to c
 All times in this context are in the restaurant local clock (no timezone conversion needed). Position strings are matched case-insensitively and ignore trailing whitespace or trailing -s plurals — so "Line Cook" matches "line cook" and "Servers" matches "Server".
 
 RULES:
-1. ONLY use the provided shift templates as shift blocks — do not invent custom time ranges.
+1. ONLY use the provided shift templates as shift blocks — do not invent custom time ranges, AND only on the days listed in that template's "active days" field (see the Shift Templates section). A template with active days [Friday, Saturday, Sunday] must not be assigned on a Monday.
 2. ONLY assign employees to templates matching their position (per the normalization rule above).
 3. When a template has an area set, PREFER assigning employees from the same area. Only assign employees from a different area to that template if no same-area employees are available for that time slot. This is a soft preference — cross-area assignments are allowed as a fallback.
 4. ONLY assign employees on days/times they are available. The "Employee Availability" section lists all 7 days for every employee.

@@ -206,3 +206,104 @@ describe('useGenerateSchedule — partial-fill success toast', () => {
     expect(toastMock.mock.calls[0][0].description).not.toContain('Filled 2 of');
   });
 });
+
+// ── Bug B regression: persist shift_template_id on insert ─────────────────
+// Without this, every AI-generated shift in `shifts` had shift_template_id
+// = NULL, and the planner's template-id bucket fell back to time/position
+// matching — which collided across areas (Cold Stone open vs Wetzel's open).
+describe('useGenerateSchedule — persist shift_template_id', () => {
+  function mockSuccessfulInvoke(shift: Record<string, unknown>) {
+    invokeMock.mockResolvedValueOnce({
+      data: {
+        shifts: [shift],
+        metadata: {
+          estimated_cost: 0,
+          budget_variance_pct: 0,
+          notes: '',
+          model_used: 'Gemini 2.5 Flash',
+          total_generated: 1,
+          total_valid: 1,
+          total_dropped: 0,
+          total_required_slots: 1,
+          drop_reason_summary: {},
+          dropped_reasons: [],
+        },
+      },
+      error: null,
+    });
+    insertMock.mockResolvedValueOnce({ error: null });
+  }
+
+  it('persists shift_template_id from the LLM response', async () => {
+    mockSuccessfulInvoke({
+      employee_id: 'emp-1',
+      template_id: 'tmpl-open-csc',
+      day: '2026-06-01',
+      start_time: '10:00:00',
+      end_time: '16:30:00',
+      position: 'server',
+    });
+
+    const { result } = renderHook(() => useGenerateSchedule(), { wrapper });
+    result.current.mutate({
+      restaurantId: 'r-1',
+      restaurantTimezone: 'UTC',
+      weekStart: '2026-06-01',
+      lockedShiftIds: [],
+      excludedEmployeeIds: [],
+    });
+
+    await waitFor(() => expect(insertMock).toHaveBeenCalled());
+    const rows = insertMock.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].shift_template_id).toBe('tmpl-open-csc');
+  });
+
+  it('coerces empty-string template_id to null on insert', async () => {
+    mockSuccessfulInvoke({
+      employee_id: 'emp-1',
+      template_id: '',
+      day: '2026-06-01',
+      start_time: '10:00:00',
+      end_time: '16:30:00',
+      position: 'server',
+    });
+
+    const { result } = renderHook(() => useGenerateSchedule(), { wrapper });
+    result.current.mutate({
+      restaurantId: 'r-1',
+      restaurantTimezone: 'UTC',
+      weekStart: '2026-06-01',
+      lockedShiftIds: [],
+      excludedEmployeeIds: [],
+    });
+
+    await waitFor(() => expect(insertMock).toHaveBeenCalled());
+    const rows = insertMock.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows[0].shift_template_id).toBeNull();
+  });
+
+  it('coerces whitespace-only template_id to null on insert', async () => {
+    mockSuccessfulInvoke({
+      employee_id: 'emp-1',
+      template_id: '   ',
+      day: '2026-06-01',
+      start_time: '10:00:00',
+      end_time: '16:30:00',
+      position: 'server',
+    });
+
+    const { result } = renderHook(() => useGenerateSchedule(), { wrapper });
+    result.current.mutate({
+      restaurantId: 'r-1',
+      restaurantTimezone: 'UTC',
+      weekStart: '2026-06-01',
+      lockedShiftIds: [],
+      excludedEmployeeIds: [],
+    });
+
+    await waitFor(() => expect(insertMock).toHaveBeenCalled());
+    const rows = insertMock.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(rows[0].shift_template_id).toBeNull();
+  });
+});

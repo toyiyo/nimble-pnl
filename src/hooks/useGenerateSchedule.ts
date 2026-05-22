@@ -14,7 +14,8 @@ interface GenerateScheduleParams {
 
 interface GeneratedShift {
   employee_id: string;
-  template_id: string;
+  /** May be empty or missing from older bundles / strict-schema fallbacks. */
+  template_id: string | null | undefined;
   day: string;
   start_time: string;
   end_time: string;
@@ -110,9 +111,16 @@ export function useGenerateSchedule() {
           `${shift.day}T${shift.end_time}`,
           params.restaurantTimezone,
         ).toISOString();
+        // Persist the template the AI bound this shift to. Without this,
+        // the planner's template-bucket lookup falls back to (start, end,
+        // position, day) matching, which collides across areas (e.g. two
+        // brands with identical open windows). Coerce empty/whitespace to
+        // null so the FK constraint stays happy.
+        const templateId = shift.template_id?.trim() || null;
         return {
           restaurant_id: params.restaurantId,
           employee_id: shift.employee_id,
+          shift_template_id: templateId,
           start_time: startUtc,
           end_time: endUtc,
           break_duration: 0,

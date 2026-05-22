@@ -500,7 +500,7 @@ function PrintChecksContent() {
                         <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Memo
                         </TableHead>
-                        <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                        <TableHead scope="col" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Category
                         </TableHead>
                         <TableHead className="w-10" />
@@ -581,6 +581,7 @@ function PrintChecksContent() {
                                   filterByTypes={['expense', 'cogs', 'asset']}
                                   placeholder="Optional"
                                   triggerAriaLabel={`Category for check row ${rowIndex + 1}`}
+                                  triggerClassName="h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg"
                                 />
                               </div>
                             </TableCell>

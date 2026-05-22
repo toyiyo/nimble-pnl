@@ -26,6 +26,7 @@ interface SearchableAccountSelectorProps {
   filterByTypes?: string[];
   autoOpen?: boolean;
   triggerAriaLabel?: string;
+  triggerClassName?: string;
 }
 
 export function SearchableAccountSelector({
@@ -36,6 +37,7 @@ export function SearchableAccountSelector({
   filterByTypes,
   autoOpen = false,
   triggerAriaLabel,
+  triggerClassName,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(autoOpen);
   const { selectedRestaurant } = useRestaurantContext();
@@ -110,7 +112,7 @@ export function SearchableAccountSelector({
           aria-expanded={open}
           aria-busy={loading}
           aria-label={triggerAriaLabel}
-          className="w-full justify-between"
+          className={cn("w-full justify-between", triggerClassName)}
           disabled={isDisabled}
         >
           {loading ? (

@@ -250,9 +250,9 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
 
             {/* Category */}
             <div className="space-y-2">
-              <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Category (optional)
-              </Label>
+              </p>
               <SearchableAccountSelector
                 value={selectedCategoryId ?? undefined}
                 onValueChange={(v) => setSelectedCategoryId(v || null)}

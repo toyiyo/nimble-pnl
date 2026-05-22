@@ -589,10 +589,11 @@ serve(async (req) => {
     // Build validation context
     const employeeIds = new Set(employees.map((e) => e.id));
     const employeePositions = new Map(employees.map((e) => [e.id, e.position]));
-    // Validator needs template days-of-week so it can drop shifts placed on
-    // a day the template isn't active for (Bug C).
+    // Validator needs template days-of-week and required position so it can
+    // drop shifts placed on a wrong day (Bug C) or a wrong position (Bug E
+    // — Manager onto Server template).
     const templateDays = new Map(
-      templates.map((t) => [t.id, { days: t.days }] as const),
+      templates.map((t) => [t.id, { days: t.days, position: t.position }] as const),
     );
 
     // Build availability Map for validator

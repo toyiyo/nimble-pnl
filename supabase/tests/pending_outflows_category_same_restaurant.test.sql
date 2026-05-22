@@ -5,7 +5,7 @@
 -- 23503 (foreign_key_violation), both on INSERT and on UPDATE.
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(9);
 
 -- Setup: Disable RLS so fixture INSERTs work without auth context.
 SET LOCAL role TO postgres;
@@ -140,6 +140,20 @@ SELECT ok(
       AND indexdef LIKE '%category_id IS NOT NULL%'
   ),
   'idx_pending_outflows_category is a composite partial index on (restaurant_id, category_id) WHERE category_id IS NOT NULL'
+);
+
+-- 9. Trigger function has a pinned search_path so a caller's session-level
+-- search_path cannot redirect the chart_of_accounts lookup to another schema.
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND p.proname = 'assert_pending_outflow_category_same_restaurant'
+       AND 'search_path=public, pg_temp' = ANY(p.proconfig)
+  ),
+  'assert_pending_outflow_category_same_restaurant has SET search_path = public, pg_temp'
 );
 
 SELECT * FROM finish();

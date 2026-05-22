@@ -7,7 +7,13 @@
 -- restaurant_id at write time.
 
 CREATE OR REPLACE FUNCTION public.assert_pending_outflow_category_same_restaurant()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+-- Pin search_path so the chart_of_accounts lookup can't be redirected by a
+-- caller-provided search_path. Supabase's linter flags trigger functions
+-- without this even when they're not SECURITY DEFINER.
+SET search_path = public, pg_temp
+AS $$
 BEGIN
   IF NEW.category_id IS NOT NULL THEN
     PERFORM 1
@@ -24,7 +30,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 DROP TRIGGER IF EXISTS pending_outflows_category_same_restaurant ON public.pending_outflows;
 CREATE TRIGGER pending_outflows_category_same_restaurant

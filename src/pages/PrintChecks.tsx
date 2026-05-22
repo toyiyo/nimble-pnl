@@ -44,6 +44,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { FeatureGate } from '@/components/subscription';
 
 import { CheckSettingsDialog } from '@/components/checks/CheckSettingsDialog';
+import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
 import {
   generateCheckPDF,
   generateCheckPDFAsync,
@@ -68,6 +69,7 @@ interface CheckRow {
   amount: string;
   issueDate: string;
   memo: string;
+  categoryId: string | null;
   selected: boolean;
 }
 
@@ -78,6 +80,7 @@ function createEmptyRow(): CheckRow {
     amount: '',
     issueDate: format(new Date(), 'yyyy-MM-dd'),
     memo: '',
+    categoryId: null,
     selected: true,
   };
 }
@@ -116,7 +119,7 @@ function PrintChecksContent() {
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? defaultAccount;
 
   // --- Row helpers ---
-  const updateRow = useCallback((id: string, field: keyof CheckRow, value: string | boolean) => {
+  const updateRow = useCallback((id: string, field: keyof CheckRow, value: string | boolean | null) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }, []);
 
@@ -183,36 +186,40 @@ function PrintChecksContent() {
         count: selectedRows.length,
       });
 
-      const checks: CheckData[] = selectedRows.map((row, i) => ({
+      type CheckJob = CheckData & { categoryId: string | null };
+      const jobs: CheckJob[] = selectedRows.map((row, i) => ({
         checkNumber: startNumber + i,
         payeeName: row.payeeName.trim(),
         amount: parseFloat(row.amount),
         issueDate: row.issueDate,
         memo: row.memo.trim() || undefined,
+        categoryId: row.categoryId,
       }));
 
-      for (const check of checks) {
+      for (const job of jobs) {
         const outflow = await createPendingOutflow.mutateAsync({
-          vendor_name: check.payeeName,
-          amount: check.amount,
+          vendor_name: job.payeeName,
+          amount: job.amount,
           payment_method: 'check',
-          reference_number: String(check.checkNumber),
-          issue_date: check.issueDate,
-          notes: check.memo ?? null,
+          reference_number: String(job.checkNumber),
+          issue_date: job.issueDate,
+          notes: job.memo ?? null,
+          category_id: job.categoryId,
         });
 
         await logCheckAction.mutateAsync({
-          check_number: check.checkNumber,
-          payee_name: check.payeeName,
-          amount: check.amount,
-          issue_date: check.issueDate,
-          memo: check.memo ?? null,
+          check_number: job.checkNumber,
+          payee_name: job.payeeName,
+          amount: job.amount,
+          issue_date: job.issueDate,
+          memo: job.memo ?? null,
           action: 'printed',
           pending_outflow_id: outflow.id,
           check_bank_account_id: selectedAccount.id,
         });
       }
 
+      const checks: CheckData[] = jobs.map(({ categoryId: _ignored, ...rest }) => rest);
       const config = buildPrintConfig(settings, selectedAccount, secrets);
       const pdf = selectedAccount.print_bank_info
         ? await generateCheckPDFAsync(config, checks)
@@ -225,7 +232,6 @@ function PrintChecksContent() {
 
       toast.success(`${checks.length} check${checks.length > 1 ? 's' : ''} printed`);
 
-      // Reset form
       setRows([createEmptyRow()]);
     } catch (err) {
       console.error('Print checks error:', err);
@@ -490,6 +496,9 @@ function PrintChecksContent() {
                         <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Memo
                         </TableHead>
+                        <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Category
+                        </TableHead>
                         <TableHead className="w-10" />
                       </TableRow>
                     </TableHeader>
@@ -559,6 +568,17 @@ function PrintChecksContent() {
                                 placeholder="Optional"
                                 className="h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                               />
+                            </TableCell>
+                            <TableCell>
+                              <div className="w-48">
+                                <SearchableAccountSelector
+                                  value={row.categoryId ?? undefined}
+                                  onValueChange={(v) => updateRow(row.id, 'categoryId', v || null)}
+                                  filterByTypes={['expense', 'cogs', 'asset']}
+                                  placeholder="Optional"
+                                  triggerAriaLabel={`Category for check row ${rowIndex + 1}`}
+                                />
+                              </div>
                             </TableCell>
                             <TableCell>
                               <Button

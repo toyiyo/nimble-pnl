@@ -57,16 +57,12 @@ export function PrintCheckButton({ expense }: PrintCheckButtonProps) {
     expense.category_id ?? null,
   );
 
-  // Reset memo only when opening (or expense changes before opening)
+  // Reset dialog-local fields each time the dialog opens (or expense changes while open)
   useEffect(() => {
     if (!open) return;
     setMemo(expense.notes ?? '');
-  }, [open, expense.notes]);
-
-  useEffect(() => {
-    if (!open) return;
     setSelectedCategoryId(expense.category_id ?? null);
-  }, [open, expense.category_id]);
+  }, [open, expense.notes, expense.category_id]);
 
   // Initialize account selection once per open cycle
   useEffect(() => {

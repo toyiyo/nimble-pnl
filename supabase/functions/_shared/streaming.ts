@@ -2,11 +2,17 @@
 import { ModelConfig } from "./ai-caller.ts";
 import { startStreamingSpan, logAICall, type AICallMetadata } from "./braintrust.ts";
 
+export interface StreamingResult {
+  content: string;
+  /** OpenAI/OpenRouter finish_reason from the last delta seen ("stop", "length", "tool_calls", etc.) */
+  finishReason: string | null;
+}
+
 /**
  * Process SSE (Server-Sent Events) streaming response and return complete content
  * Handles line-by-line parsing, partial JSON chunks, and [DONE] signals
  */
-export async function processStreamedResponse(response: Response): Promise<string> {
+export async function processStreamedResponse(response: Response): Promise<StreamingResult> {
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error('Response body is not readable');
@@ -15,6 +21,7 @@ export async function processStreamedResponse(response: Response): Promise<strin
   const decoder = new TextDecoder();
   let buffer = '';
   let completeContent = '';
+  let finishReason: string | null = null;
   let isComplete = false;
 
   try {
@@ -39,7 +46,7 @@ export async function processStreamedResponse(response: Response): Promise<strin
         // Parse SSE data
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
-          
+
           // Check for stream completion signal
           if (data === '[DONE]') {
             isComplete = true;
@@ -60,9 +67,12 @@ export async function processStreamedResponse(response: Response): Promise<strin
               completeContent += content;
             }
 
-            // Check for error finish reason
-            if (parsed.choices?.[0]?.finish_reason === 'error') {
-              throw new Error('Stream terminated with error');
+            const reason = parsed.choices?.[0]?.finish_reason;
+            if (reason) {
+              finishReason = reason;
+              if (reason === 'error') {
+                throw new Error('Stream terminated with error');
+              }
             }
           } catch (e) {
             // If JSON parsing fails, it might be a partial chunk - continue
@@ -75,7 +85,7 @@ export async function processStreamedResponse(response: Response): Promise<strin
       if (isComplete) break;
     }
 
-    return completeContent;
+    return { content: completeContent, finishReason };
   } finally {
     reader.cancel();
   }
@@ -84,25 +94,30 @@ export async function processStreamedResponse(response: Response): Promise<strin
 /**
  * Call AI model with streaming support
  * Returns complete content string after stream finishes
+ *
+ * @param externalSignal Optional caller-supplied abort signal. Combined with the
+ *   internal 90s per-attempt timeout so an outer chain budget can cancel an
+ *   in-flight call.
  */
 export async function callModelWithStreaming(
   modelConfig: ModelConfig,
   requestBody: any,
   openRouterApiKey: string,
   edgeFunction: string = 'unknown',
-  restaurantId?: string
+  restaurantId?: string,
+  externalSignal?: AbortSignal
 ): Promise<string | null> {
   let retryCount = 0;
-  
+
   while (retryCount < modelConfig.maxRetries) {
     try {
       console.log(`🔄 ${modelConfig.name} (streaming) attempt ${retryCount + 1}/${modelConfig.maxRetries}...`);
-      
+
       // Add streaming flag and override model
-      const streamingBody = { 
-        ...requestBody, 
+      const streamingBody = {
+        ...requestBody,
         model: modelConfig.id,
-        stream: true 
+        stream: true
       };
 
       const metadata: AICallMetadata = {
@@ -119,10 +134,16 @@ export async function callModelWithStreaming(
 
       // Start streaming span
       const endSpan = startStreamingSpan(
-        `${edgeFunction}:streaming`, 
+        `${edgeFunction}:streaming`,
         { messages: requestBody.messages, model: modelConfig.id },
         metadata
       );
+
+      // Per-attempt 90s timeout, combined with any caller-supplied chain budget signal.
+      const timeoutSignal = AbortSignal.timeout(90000);
+      const signal = externalSignal
+        ? AbortSignal.any([timeoutSignal, externalSignal])
+        : timeoutSignal;
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -133,20 +154,43 @@ export async function callModelWithStreaming(
           "Content-Type": "application/json"
         },
         body: JSON.stringify(streamingBody),
-        signal: AbortSignal.timeout(90000) // 90 second timeout for large responses
+        signal,
       });
 
       if (response.ok) {
         console.log(`✅ ${modelConfig.name} stream started successfully`);
-        const content = await processStreamedResponse(response);
-        console.log(`✅ ${modelConfig.name} stream completed. Content length: ${content.length}`);
-        
+        const { content, finishReason } = await processStreamedResponse(response);
+        console.log(
+          `✅ ${modelConfig.name} stream completed. Content length: ${content.length}, finish_reason: ${finishReason ?? 'null'}`
+        );
+
+        // Reject truncated outputs (model hit max_tokens). With strict json_schema
+        // a length-truncated payload is almost never parseable, but the previous
+        // non-streaming path skipped on finish_reason=length explicitly and we
+        // restore that here so the next model in the chain gets a chance.
+        if (finishReason === 'length') {
+          console.warn(
+            `⚠️ ${modelConfig.name} truncated output (finish_reason=length), skipping to next model`
+          );
+          logAICall(
+            `${edgeFunction}:streaming:truncated`,
+            { messages: requestBody.messages, model: modelConfig.id },
+            { content_length: content.length },
+            { ...metadata, success: false, status_code: 200, error: 'finish_reason=length' },
+            null
+          );
+          if (endSpan) {
+            endSpan(content, null);
+          }
+          return null;
+        }
+
         // End streaming span with complete content
         // Note: We don't have token usage for streaming responses from OpenRouter
         if (endSpan) {
           endSpan(content, null);
         }
-        
+
         // Also log the successful streaming call
         logAICall(
           `${edgeFunction}:streaming:success`,
@@ -155,7 +199,7 @@ export async function callModelWithStreaming(
           { ...metadata, success: true, status_code: 200 },
           null
         );
-        
+
         return content;
       }
 

@@ -136,13 +136,41 @@ the prompt changes.
   catches the drift today. No validator changes needed.
 - **Hourly sales / prior schedule patterns.** These already use day
   names without dates; not changed in this PR.
+- **`generate-schedule/index.ts` lines 109–116 calendar-window math.**
+  The caller derives `fourWeeksAgo` and `weekEndStr` via
+  `new Date(week_start)` (parsed as UTC midnight by spec) then
+  `.toISOString().split("T")[0]`. This is UTC-stable on prod and CI but
+  would drift on a non-UTC dev box. Pre-existing footgun, not touched
+  by this PR; flag for a separate follow-up if it bites.
+
+## Helper-composition invariant (do not compose with `getDayOfWeek`)
+
+The new date helper inside `schedule-prompt-builder.ts` operates on a
+caller-supplied `weekStart` (`YYYY-MM-DD`) and is intentionally
+UTC-anchored. The validator's `getDayOfWeek(day)` in
+`schedule-validator.ts` operates on LLM-emitted `YYYY-MM-DD` strings
+and uses the local-time `new Date(year, month-1, day)` constructor.
+
+The two helpers handle distinct inputs and MUST NOT be composed. To
+prevent cargo-culting in a future change, the new helper's JSDoc names
+this explicitly and the validator's `getDayOfWeek` gets a one-line
+comment pointing back. The numerical day-of-week values they produce
+agree for any process TZ today (both treat a bare `YYYY-MM-DD` as the
+calendar day named, and the resulting `.getUTCDay()` /  `.getDay()` on
+a midnight Date always land on the same weekday), so this is a comment
+fix, not a code fix.
 
 ## Testing
 
 A new test block in `tests/unit/schedule-prompt-builder.test.ts`:
 
-- Positive: prompt contains an explicit `Monday    2026-06-08` row (and
-  the other six day/date pairs) for a week starting on a Monday.
+- Positive: prompt contains all seven *exact* day-name/date pairs for a
+  week starting on a Monday — e.g. given `weekStart = "2026-06-08"` the
+  output contains the literal strings `"Monday    2026-06-08"`,
+  `"Tuesday   2026-06-09"`, …, `"Sunday    2026-06-14"`. This locks in
+  the UTC-midnight + ms-offset arithmetic; if the helper accidentally
+  used the local-time constructor and shifted, this test fails on a
+  non-UTC dev box.
 - Positive: when `requiredStaff` is provided, the lines under "Required
   Headcount Per Slot" contain `<DayName> <YYYY-MM-DD>: <count>` (e.g.
   `Sunday 2026-06-14: 2`).

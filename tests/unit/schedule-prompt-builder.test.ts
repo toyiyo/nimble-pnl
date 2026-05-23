@@ -277,9 +277,10 @@ describe('buildSchedulePrompt — Target Week date map (Bug H)', () => {
   it('renders all seven day-name → date pairs for a Monday week start', () => {
     const result = buildSchedulePrompt(makeContext({ weekStart: '2026-06-08' }));
     const userContent = result.messages[1].content as string;
-    // Monday-first ordering with two-space gutter for visual alignment;
-    // exact-string match locks the UTC-midnight + ms-offset arithmetic
-    // (a non-UTC dev box that drifts day numbering would fail this).
+    // Monday-first ordering, labels right-padded to 9 chars so the date
+    // column lines up after a single separator. Exact-string match locks
+    // the UTC-midnight + ms-offset arithmetic (a non-UTC dev box that
+    // drifts day numbering would fail this).
     expect(userContent).toContain('Monday    2026-06-08');
     expect(userContent).toContain('Tuesday   2026-06-09');
     expect(userContent).toContain('Wednesday 2026-06-10');
@@ -353,5 +354,14 @@ describe('buildSchedulePrompt — Target Week date map (Bug H)', () => {
     // dates from the bare anchor.
     expect(userContent).not.toMatch(/\| Monday: 2\b/);
     expect(userContent).not.toMatch(/\| Tuesday: 2\b/);
+  });
+
+  it('throws on an invalid weekStart instead of silently emitting NaN rows', () => {
+    // Without this guard, new Date('garbageT00:00:00Z') is Invalid Date,
+    // the UTC accessors return NaN, and the prompt would carry seven
+    // `NaN-NaN-NaN` rows — the LLM would either hallucinate dates or
+    // fail structured output with no signal to the caller. Test locks
+    // in a fail-fast error at the helper boundary.
+    expect(() => buildSchedulePrompt(makeContext({ weekStart: 'garbage' }))).toThrow(/invalid weekStart/);
   });
 });

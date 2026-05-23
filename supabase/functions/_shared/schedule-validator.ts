@@ -69,9 +69,10 @@ export interface ValidationResult {
  *
  * Do NOT compose with `_shared/schedule-prompt-builder.ts::buildWeekDates`,
  * which is UTC-anchored on a caller-supplied weekStart. Different inputs
- * (LLM-emitted shift.day strings vs caller-supplied weekStart), different
- * anchor conventions. The numerical day-of-week happens to agree across
- * both today, but the two helpers must not be mixed in new code.
+ * (LLM-emitted shift.day strings vs caller-supplied weekStart) and
+ * different anchor conventions (local-time vs UTC). Both helpers produce
+ * the same 0=Sun..6=Sat for the same date string, but that's an output
+ * coincidence — the helpers must not be mixed in new code.
  */
 export function getDayOfWeek(dateStr: string): number {
   const [year, month, day] = dateStr.split('-').map(Number);

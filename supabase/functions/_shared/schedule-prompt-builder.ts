@@ -73,9 +73,10 @@ export interface ScheduleContext {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// Padded day labels for the Target Week date map. Two-space gutter
-// between the longest label ("Wednesday") and the date lines the rows
-// up visually so the LLM reads the block as a table, not prose.
+// Padded day labels for the Target Week date map. Each label is
+// right-padded to 9 chars ("Wednesday" width) so a single space
+// separator after the label still produces an aligned date column —
+// the LLM reads the block as a table, not prose.
 const DATE_MAP_LABELS = [
   'Monday   ',
   'Tuesday  ',
@@ -89,13 +90,16 @@ const DATE_MAP_LABELS = [
 /**
  * Derive the seven calendar dates for the week from `weekStart`.
  *
- * `weekStart` is a `YYYY-MM-DD` string supplied by the caller and is
- * guaranteed to be a Monday in the restaurant's local timezone. We parse
- * it as UTC midnight, add 86_400_000 ms per day, and read back through
- * UTC accessors — so the output is identical in any process timezone
- * (CI UTC, prod UTC, local dev PT). This is critical: a host-TZ-dependent
- * helper would emit different prompt text per environment, masking
- * Bug H–style drift in local testing while still drifting in prod.
+ * @param weekStart YYYY-MM-DD; must be a Monday in restaurant-local
+ *                  terms. Callers (edge function `generate-schedule`) are
+ *                  responsible for that invariant.
+ *
+ * We parse `weekStart` as UTC midnight, add 86_400_000 ms per day, and
+ * read back through UTC accessors — so the output is identical in any
+ * process timezone (CI UTC, prod UTC, local dev PT). This is critical: a
+ * host-TZ-dependent helper would emit different prompt text per
+ * environment, masking Bug H–style drift in local testing while still
+ * drifting in prod.
  *
  * Do NOT compose this helper with `schedule-validator.ts::getDayOfWeek`.
  * That helper uses the local-time `new Date(y, m-1, d)` constructor for
@@ -108,9 +112,17 @@ const DATE_MAP_LABELS = [
  *          matching the JS `Date.getDay()` convention used elsewhere
  *          (template.days, validator, availability) so callers can look
  *          up "the date for Monday" via `byDayOfWeek[1]`.
+ *
+ * @throws if `weekStart` does not parse to a valid Date. Without this
+ *         guard, an `Invalid Date` would silently emit seven `NaN-NaN-NaN`
+ *         rows into the prompt — the LLM would then either hallucinate
+ *         dates or fail structured output, with no signal to the caller.
  */
 function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: string[] } {
   const base = new Date(`${weekStart}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) {
+    throw new Error(`buildWeekDates: invalid weekStart "${weekStart}" — expected YYYY-MM-DD`);
+  }
   const formatted: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(base.getTime() + i * 86_400_000);
@@ -119,15 +131,17 @@ function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: string[
     const day = String(d.getUTCDate()).padStart(2, '0');
     formatted.push(`${y}-${m}-${day}`);
   }
-  // formatted[0..6] is Mon..Sun. byDayOfWeek follows JS getDay() (Sun=0).
+  // formatted[0..6] is Monday..Sunday. byDayOfWeek remaps to the JS
+  // Date.getDay() convention (0=Sun..6=Sat) so callers indexing by
+  // template.days / availability day_of_week get the right date.
   const byDayOfWeek = [
-    formatted[6], // Sunday
-    formatted[0], // Monday
-    formatted[1],
-    formatted[2],
-    formatted[3],
-    formatted[4],
-    formatted[5], // Saturday
+    formatted[6], // Sun
+    formatted[0], // Mon
+    formatted[1], // Tue
+    formatted[2], // Wed
+    formatted[3], // Thu
+    formatted[4], // Fri
+    formatted[5], // Sat
   ];
   const rows = DATE_MAP_LABELS.map((label, i) => `  ${label} ${formatted[i]}`).join('\n');
   return { rows, byDayOfWeek };

@@ -44,6 +44,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { FeatureGate } from '@/components/subscription';
 
 import { CheckSettingsDialog } from '@/components/checks/CheckSettingsDialog';
+import { SearchableAccountSelector } from '@/components/banking/SearchableAccountSelector';
 import {
   generateCheckPDF,
   generateCheckPDFAsync,
@@ -68,6 +69,7 @@ interface CheckRow {
   amount: string;
   issueDate: string;
   memo: string;
+  categoryId: string | null;
   selected: boolean;
 }
 
@@ -78,6 +80,7 @@ function createEmptyRow(): CheckRow {
     amount: '',
     issueDate: format(new Date(), 'yyyy-MM-dd'),
     memo: '',
+    categoryId: null,
     selected: true,
   };
 }
@@ -116,7 +119,11 @@ function PrintChecksContent() {
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? defaultAccount;
 
   // --- Row helpers ---
-  const updateRow = useCallback((id: string, field: keyof CheckRow, value: string | boolean) => {
+  const updateRow = useCallback(<K extends keyof CheckRow>(
+    id: string,
+    field: K,
+    value: CheckRow[K],
+  ) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   }, []);
 
@@ -191,7 +198,9 @@ function PrintChecksContent() {
         memo: row.memo.trim() || undefined,
       }));
 
-      for (const check of checks) {
+      for (let i = 0; i < checks.length; i++) {
+        const check = checks[i];
+        const row = selectedRows[i];
         const outflow = await createPendingOutflow.mutateAsync({
           vendor_name: check.payeeName,
           amount: check.amount,
@@ -199,6 +208,7 @@ function PrintChecksContent() {
           reference_number: String(check.checkNumber),
           issue_date: check.issueDate,
           notes: check.memo ?? null,
+          category_id: row.categoryId,
         });
 
         await logCheckAction.mutateAsync({
@@ -212,7 +222,6 @@ function PrintChecksContent() {
           check_bank_account_id: selectedAccount.id,
         });
       }
-
       const config = buildPrintConfig(settings, selectedAccount, secrets);
       const pdf = selectedAccount.print_bank_info
         ? await generateCheckPDFAsync(config, checks)
@@ -225,7 +234,6 @@ function PrintChecksContent() {
 
       toast.success(`${checks.length} check${checks.length > 1 ? 's' : ''} printed`);
 
-      // Reset form
       setRows([createEmptyRow()]);
     } catch (err) {
       console.error('Print checks error:', err);
@@ -490,6 +498,9 @@ function PrintChecksContent() {
                         <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                           Memo
                         </TableHead>
+                        <TableHead className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Category
+                        </TableHead>
                         <TableHead className="w-10" />
                       </TableRow>
                     </TableHeader>
@@ -558,6 +569,16 @@ function PrintChecksContent() {
                                 onChange={(e) => updateRow(row.id, 'memo', e.target.value)}
                                 placeholder="Optional"
                                 className="h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <SearchableAccountSelector
+                                value={row.categoryId ?? undefined}
+                                onValueChange={(v) => updateRow(row.id, 'categoryId', v || null)}
+                                filterByTypes={['expense', 'cogs', 'asset']}
+                                placeholder="Optional"
+                                triggerAriaLabel={`Category for check row ${rowIndex + 1}`}
+                                triggerClassName="h-9 w-48 text-[14px] bg-muted/30 border-border/40 rounded-lg"
                               />
                             </TableCell>
                             <TableCell>

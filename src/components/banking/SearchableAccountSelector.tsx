@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
+import { useChartOfAccounts, type ChartAccount } from "@/hooks/useChartOfAccounts";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 
 interface SearchableAccountSelectorProps {
@@ -25,6 +25,9 @@ interface SearchableAccountSelectorProps {
   disabled?: boolean;
   filterByTypes?: string[];
   autoOpen?: boolean;
+  triggerAriaLabel?: string;
+  triggerClassName?: string;
+  triggerId?: string;
 }
 
 export function SearchableAccountSelector({
@@ -34,6 +37,9 @@ export function SearchableAccountSelector({
   disabled = false,
   filterByTypes,
   autoOpen = false,
+  triggerAriaLabel,
+  triggerClassName,
+  triggerId,
 }: SearchableAccountSelectorProps) {
   const [open, setOpen] = useState(autoOpen);
   const { selectedRestaurant } = useRestaurantContext();
@@ -67,9 +73,6 @@ export function SearchableAccountSelector({
   const organizedAccounts = useMemo(() => {
     if (!filteredAccounts) return {};
     
-    console.log('[SearchableAccountSelector] Filtered accounts:', filteredAccounts);
-    console.log('[SearchableAccountSelector] Filter types:', filterByTypes);
-    
     // Separate parents and subs
     const parents = filteredAccounts.filter(acc => !acc.parent_account_id);
     const subsMap = filteredAccounts.reduce((map, acc) => {
@@ -89,7 +92,7 @@ export function SearchableAccountSelector({
         subAccounts: subsMap[account.id] || [] 
       });
       return acc;
-    }, {} as Record<string, Array<{ account: any; subAccounts: any[] }>>);
+    }, {} as Record<string, Array<{ account: ChartAccount; subAccounts: ChartAccount[] }>>);
   }, [filteredAccounts]);
 
   const isEmpty = !loading && filteredAccounts.length === 0;
@@ -106,11 +109,13 @@ export function SearchableAccountSelector({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={triggerId}
           variant="outline"
           role="combobox"
           aria-expanded={open}
           aria-busy={loading}
-          className="w-full justify-between"
+          aria-label={triggerAriaLabel}
+          className={cn("w-full justify-between", triggerClassName)}
           disabled={isDisabled}
         >
           {loading ? (
@@ -131,9 +136,10 @@ export function SearchableAccountSelector({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[350px] p-0 bg-background z-50" 
+      <PopoverContent
+        className="w-[350px] p-0 bg-background z-50"
         align="start"
+        collisionPadding={8}
         onWheel={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
       >
@@ -150,7 +156,7 @@ export function SearchableAccountSelector({
                 <CommandEmpty>No account found.</CommandEmpty>
                 {Object.entries(organizedAccounts).map(([type, items]) => (
                   <CommandGroup key={type} heading={type}>
-                    {items.map(({ account, subAccounts }: any) => (
+                    {items.map(({ account, subAccounts }) => (
                       <div key={account.id}>
                         {/* Parent Account */}
                         <CommandItem
@@ -175,7 +181,7 @@ export function SearchableAccountSelector({
                         </CommandItem>
                         
                         {/* Sub-Accounts */}
-                        {subAccounts.map((subAccount: any) => (
+                        {subAccounts.map((subAccount) => (
                           <CommandItem
                             key={subAccount.id}
                             value={`${subAccount.account_code} ${subAccount.account_name} ${account.account_name}`}

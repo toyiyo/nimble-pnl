@@ -135,8 +135,12 @@ describe('runScheduleModelChain', () => {
     });
 
     expect(callStreaming).toHaveBeenCalledTimes(2);
-    expect(callStreaming).toHaveBeenNthCalledWith(1, M1, expect.any(Object), 'sk-test', 'generate-schedule', undefined);
-    expect(callStreaming).toHaveBeenNthCalledWith(2, M2, expect.any(Object), 'sk-test', 'generate-schedule', undefined);
+    expect(callStreaming).toHaveBeenNthCalledWith(
+      1, M1, expect.any(Object), 'sk-test', 'generate-schedule', undefined, expect.any(AbortSignal),
+    );
+    expect(callStreaming).toHaveBeenNthCalledWith(
+      2, M2, expect.any(Object), 'sk-test', 'generate-schedule', undefined, expect.any(AbortSignal),
+    );
   });
 
   it('passes restaurantId through to callStreaming when provided', async () => {
@@ -151,6 +155,83 @@ describe('runScheduleModelChain', () => {
       callStreaming,
     });
 
-    expect(callStreaming).toHaveBeenCalledWith(M1, expect.any(Object), 'sk-test', 'generate-schedule', 'rest-123');
+    expect(callStreaming).toHaveBeenCalledWith(
+      M1, expect.any(Object), 'sk-test', 'generate-schedule', 'rest-123', expect.any(AbortSignal),
+    );
+  });
+
+  it('passes a non-aborted AbortSignal into each attempt', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const callStreaming: ScheduleModelChainCallStreaming = vi.fn(
+      async (_m, _b, _k, _e, _r, signal) => {
+        capturedSignal = signal;
+        return validShifts;
+      },
+    );
+
+    await runScheduleModelChain({
+      models: [M1],
+      requestBody: { messages: [] },
+      openRouterApiKey: 'sk-test',
+      edgeFunction: 'generate-schedule',
+      callStreaming,
+    });
+
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal?.aborted).toBe(false);
+  });
+
+  it('aborts in-flight call when remaining budget elapses, then breaks (does not try next model)', async () => {
+    vi.useFakeTimers();
+    try {
+      const callStreaming: ScheduleModelChainCallStreaming = vi.fn(
+        (_m, _b, _k, _e, _r, signal) =>
+          new Promise<string | null>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              reject(err);
+            });
+          }),
+      );
+
+      const promise = runScheduleModelChain({
+        models: [M1, M2, M3],
+        requestBody: { messages: [] },
+        openRouterApiKey: 'sk-test',
+        edgeFunction: 'generate-schedule',
+        callStreaming,
+        budgetMs: 90_000,
+      });
+
+      await vi.advanceTimersByTimeAsync(91_000);
+      const result = await promise;
+
+      expect(result).toBeNull();
+      expect(callStreaming).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops after second attempt when remaining budget is insufficient for another call', async () => {
+    let nowMs = 1_000_000;
+    const callStreaming: ScheduleModelChainCallStreaming = vi.fn(async () => {
+      nowMs += 50_000;
+      return null;
+    });
+
+    const result = await runScheduleModelChain({
+      models: [M1, M2, M3],
+      requestBody: { messages: [] },
+      openRouterApiKey: 'sk-test',
+      edgeFunction: 'generate-schedule',
+      callStreaming,
+      budgetMs: 90_000,
+      now: () => nowMs,
+    });
+
+    expect(result).toBeNull();
+    expect(callStreaming).toHaveBeenCalledTimes(2);
   });
 });

@@ -9,6 +9,7 @@ export type ScheduleModelChainCallStreaming = (
   openRouterApiKey: string,
   edgeFunction: string,
   restaurantId?: string,
+  signal?: AbortSignal,
 ) => Promise<string | null>;
 
 export interface RunScheduleModelChainArgs {
@@ -56,22 +57,52 @@ export async function runScheduleModelChain<T = unknown>(
 
   for (const model of models) {
     const elapsed = now() - start;
-    if (elapsed > budgetMs) {
+    const remaining = budgetMs - elapsed;
+    if (remaining <= 0) {
       console.warn(
         `[${edgeFunction}] Model chain wall-clock budget exhausted (${elapsed}ms > ${budgetMs}ms). Stopping early.`,
       );
       break;
     }
 
-    console.log(`[${edgeFunction}] Trying model: ${model.name} (streaming)`);
+    console.log(
+      `[${edgeFunction}] Trying model: ${model.name} (streaming, remaining=${remaining}ms)`,
+    );
+
+    // Bound the in-flight streaming call by the remaining chain budget so a
+    // slow model can't overshoot the edge-function hard limit (~150s on
+    // Supabase). If the budget elapses mid-call, the AbortController fires
+    // and callStreaming's fetch is cancelled.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remaining);
+
     let content: string | null;
     try {
-      content = await callStreaming(model, requestBody, openRouterApiKey, edgeFunction, restaurantId);
+      content = await callStreaming(
+        model,
+        requestBody,
+        openRouterApiKey,
+        edgeFunction,
+        restaurantId,
+        controller.signal,
+      );
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        controller.signal.aborted ||
+        (err instanceof Error && err.name === "AbortError")
+      ) {
+        console.warn(
+          `[${edgeFunction}] Model ${model.name} aborted: chain budget elapsed (${message}).`,
+        );
+        break;
+      }
       console.warn(
-        `[${edgeFunction}] Model ${model.name} streaming threw: ${err instanceof Error ? err.message : String(err)}`,
+        `[${edgeFunction}] Model ${model.name} streaming threw: ${message}`,
       );
       continue;
+    } finally {
+      clearTimeout(timer);
     }
 
     if (!content) continue;

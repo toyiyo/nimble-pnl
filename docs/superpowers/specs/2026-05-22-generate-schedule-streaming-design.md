@@ -10,7 +10,7 @@ Frontend shows: "Something Went Wrong / The AI schedule generation failed / Gene
 
 Edge function logs (production, Wetzel's Cold Stone Alamo Ranch, ID `7c0c76e3-e770-401b-a2a9-c1edd407efed`, prompt=20,089 chars):
 
-```
+```text
 [generate-schedule] Trying model: Gemini 2.5 Flash
 ✅ Gemini 2.5 Flash succeeded
 [generate-schedule] Model Gemini 2.5 Flash parse failed: Signal timed out.

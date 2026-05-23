@@ -212,6 +212,44 @@ column count).
   `useEffect[selectedRestaurant?.restaurant_id]`) is unrelated — it doesn't
   touch the badge path.
 
+## Validation update (post-design)
+
+After committing this design, I went back to verify the hypothesis against
+production signal:
+
+- **PostHog survey session replay** for `sig:539980c1fe88`:
+  `https://us.posthog.com/project/233023/replay/019e468a-4a76-7f02-84b7-6748c9dd13fc`
+  (replay covers the survey-submit moment).
+- **Faro browser events** confirmed **49 successful `categorize_pos_sale` RPC
+  calls (HTTP 204, 18:00:08–18:02:27 UTC)** plus **1 AI-suggest call (HTTP 200,
+  ~14s, 18:01:48 UTC)** for the reporter's session. Zero bulk-categorize
+  endpoint calls. The reporter manually applied AI suggestions one-by-one
+  through `useCategorizePosSale` → `categorize_pos_sale` RPC, then submitted
+  the survey while still seeing a non-zero badge.
+- **`restaurant_id` in the local triage log is a `LIMIT 1` artifact.** The
+  reporter is associated with multiple restaurants in `user_restaurants`; the
+  triage skill's `LIMIT 1` lookup captured one deterministically. The
+  reporter's *active* restaurant at survey time is
+  `adbd9392-928a-4a46-80d7-f7e453aa1956` (re-derived from session events), not
+  the one written to the JSONL row.
+- **The pagination hypothesis is confirmed on the active restaurant.** That
+  restaurant has **7,824 sales/day** in the default 30-day window — well past
+  `PAGE_SIZE = 500` from `src/hooks/useUnifiedSales.tsx:11`. The `sales` array
+  on first paint contains only the first page; the client-side
+  `uncategorizedSalesCount` filter (`POSSales.tsx:323-327`) can therefore stay
+  non-zero even when the visible page is fully categorized — which matches the
+  reporter's account: "ya estan categorizadas todas al dia de hoy".
+- **React Query scoping is clean.** Both `useUnifiedSales` and
+  `useUnifiedSalesTotals` include `restaurantId` in the query key, so
+  switching restaurants forces a fresh fetch. No cross-tenant pollution.
+- **Follow-up issue (out of scope here):** the /triage-feedback skill should
+  drop or annotate the `LIMIT 1` `user_restaurants` lookup for owners with
+  multiple restaurants. Tracking separately.
+
+Conclusion: the fix described below is correct as-written. The migration +
+hook + page wiring stays exactly as planned. Phase 3 plan does not need
+restructuring.
+
 ## Acceptance criteria
 
 - [ ] On `/pos-sales` with a paginated 30-day dataset, the "Uncategorized" and

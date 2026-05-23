@@ -106,15 +106,33 @@ with `auth.uid()` access guards — keep the existing guard verbatim.)
      `data ??` shape returned to callers.
 
 2. `src/pages/POSSales.tsx`:
-   - Delete the `uncategorizedSalesCount` and `suggestedSales`-based-count
-     `useMemo`s. (`suggestedSales` as a *list* is still used to render the
-     "pending review" sample bar; only the **count** moves to the server.)
+   - Delete the `uncategorizedSalesCount` `useMemo`. The `suggestedSales` *list*
+     stays — it's used elsewhere to enumerate pending-review sales — but its
+     `.length` is **no longer** the source of truth for the count badge.
    - Read `uncategorizedSalesCount = serverTotals.uncategorizedCount` and
      `pendingReviewCount = serverTotals.pendingReviewCount`.
-   - Update the three reads at lines 885, 903, 908, 1030-1031 accordingly.
-   - The `disabled={isCategorizingPending || uncategorizedSalesCount === 0}`
-     button gate (line 885) is unchanged in spirit — the value now comes from
-     the server.
+   - Update the four reads:
+     - Button disabled gate (line 885): see "Loading state" below.
+     - AI card "uncategorized" badge value (line 903).
+     - AI card "pending review" badge **value AND visibility** — visibility
+       must move to `pendingReviewCount > 0`, not `suggestedSales.length > 0`
+       (line 905). Otherwise a paginated dataset can hide the badge even when
+       the server says there are pending rows.
+     - Segmented control counts (lines 1030-1031).
+   - **Loading state for the button gate.** `useUnifiedSalesTotals` returns
+     `0` for the new fields while `isLoading` is true (it falls through the
+     `data ??` default). Without a fix, the "AI Categorize Sales" button gates
+     to `disabled` on first paint, which the user reads as broken. Use the
+     hook's existing `isLoading` flag:
+     `disabled = isCategorizingPending || (!totalsLoading && uncategorizedCount === 0)`.
+     During the load window the button stays enabled; clicking it before the
+     count is known is harmless (the edge function no-ops on zero).
+   - **Minor visual polish (cheap to add at the same time).** Wrap each badge
+     count number in a span with `tabular-nums` so the pill width does not
+     reflow when the server-async value lands (preventing a 375px-viewport
+     reflow of the filter row). Add `aria-label="N uncategorized sales"` /
+     `aria-label="N pending review"` on the count `<span>`s in the segmented
+     control so screen readers announce a coherent label-value pair.
 
 ### Cache invalidation
 
@@ -132,7 +150,15 @@ holds the stale value.
 
 ### pgTAP — RPC contract
 
-New `supabase/tests/get_unified_sales_totals_categorization_counts.sql`:
+New `supabase/tests/36_get_unified_sales_totals_categorization_counts.sql`.
+**Fixture isolation:** the existing `35_get_unified_sales_totals.sql` hard-codes
+a restaurant UUID ending in `...0099`. The new file must use a distinct
+restaurant UUID (e.g. ending in `...0098`) so the two test files can run in any
+order without interfering. The existing `35_…` file's `SELECT plan(8)` and its
+positional column assertions do NOT need to change — adding columns to the
+`RETURNS TABLE` of an SQL function is a backwards-compatible signature change
+(the existing test asserts the columns it knows about by name, not the total
+column count).
 
 - `SELECT plan(N)` with at least:
   - `uncategorized_count` returns 0 on empty fixture
@@ -158,7 +184,13 @@ New `supabase/tests/get_unified_sales_totals_categorization_counts.sql`:
 
 - Positive: `serverTotals.uncategorizedCount` appears in the file
 - Positive: `serverTotals.pendingReviewCount` appears in the file
+- Positive: the AI-card pending-review badge visibility check uses
+  `pendingReviewCount > 0`, not `suggestedSales.length > 0`
+- Positive: the AI button `disabled` predicate references `totalsLoading` /
+  `isLoading` from `useUnifiedSalesTotals`, so it doesn't gate on a load-state
+  zero
 - Negative: `sales.filter(sale => !sale.is_categorized && !sale.suggested_category_id)` does NOT appear (prevents regression to client-side count)
+- Negative: the AI-card badge visibility line does NOT mention `suggestedSales.length`
 
 ### Manual smoke (dev server)
 

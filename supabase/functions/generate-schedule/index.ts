@@ -2,7 +2,9 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { callModel, type ModelConfig } from "../_shared/ai-caller.ts";
+import { type ModelConfig } from "../_shared/ai-caller.ts";
+import { callModelWithStreaming } from "../_shared/streaming.ts";
+import { runScheduleModelChain } from "../_shared/schedule-ai-runner.ts";
 import {
   buildSchedulePrompt,
   type ScheduleContext,
@@ -520,59 +522,21 @@ serve(async (req) => {
       throw new Error("OPENROUTER_API_KEY environment variable is not set");
     }
 
-    let aiResult: AiResult | null = null;
-
     // Wall-clock budget for the entire model fallback chain. Supabase edge
-    // functions hard-kill at ~150s; each callModel uses AbortSignal.timeout(30s)
-    // per attempt, so 5 models × ≥30s could exceed the limit and prevent any
-    // diagnostic response from reaching the client. Stop early with 60s
-    // headroom for response serialization.
-    const modelLoopStart = Date.now();
-    const MODEL_LOOP_BUDGET_MS = 90_000;
-
-    for (const modelConfig of SCHEDULE_MODELS) {
-      const elapsed = Date.now() - modelLoopStart;
-      if (elapsed > MODEL_LOOP_BUDGET_MS) {
-        console.warn(
-          `[generate-schedule] Model chain wall-clock budget exhausted ` +
-            `(${elapsed}ms > ${MODEL_LOOP_BUDGET_MS}ms). Stopping early.`,
-        );
-        break;
-      }
-      console.log(`[generate-schedule] Trying model: ${modelConfig.name}`);
-      const response = await callModel(
-        modelConfig,
-        requestBody,
-        openRouterApiKey,
-        "generate-schedule",
-        restaurant_id,
-      );
-      if (!response || !response.ok) continue;
-
-      try {
-        const data = await response.json();
-        const choice = data.choices?.[0];
-        if (!choice?.message?.content) continue;
-        if (choice.finish_reason === "length") {
-          console.warn(
-            `[generate-schedule] Model ${modelConfig.name} truncated output ` +
-              `(finish_reason=length), skipping`,
-          );
-          continue;
-        }
-        const cleaned = choice.message.content
-          .replace(/^```(?:json)?\s*\n?/i, "")
-          .replace(/\n?```\s*$/i, "")
-          .trim();
-        aiResult = { data: JSON.parse(cleaned), model: modelConfig.name };
-        break;
-      } catch (err) {
-        console.warn(
-          `[generate-schedule] Model ${modelConfig.name} parse failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        continue;
-      }
-    }
+    // functions hard-kill at ~150s; callModelWithStreaming uses
+    // AbortSignal.timeout(90s) per attempt, so we budget ~130s to allow at
+    // least one fallback if the primary model fails fast on an explicit error.
+    // Successful primary calls typically complete in 15-25s and never touch
+    // this ceiling.
+    const aiResult = await runScheduleModelChain<AiResult["data"]>({
+      models: SCHEDULE_MODELS,
+      requestBody,
+      openRouterApiKey,
+      edgeFunction: "generate-schedule",
+      restaurantId: restaurant_id,
+      callStreaming: callModelWithStreaming,
+      budgetMs: 130_000,
+    });
 
     if (!aiResult) {
       return new Response(

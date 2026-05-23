@@ -1,0 +1,198 @@
+# POS Sales — stale "Uncategorized" badge fix
+
+- **Triage signal:** `sig:539980c1fe88` (single survey response, anonymized in `~/.nimble-pnl/feedback-log.jsonl`)
+- **Route:** `/pos-sales`
+- **Reporter intent (paraphrased):** "the page shows my sales as not categorized, but every sale for today is already categorized"
+- **Branch:** `fix/pos-sales-categorized-badge`
+
+## Problem
+
+On `/pos-sales`, the "Uncategorized" and "Pending review" counts shown in two places
+(the AI-categorization card badges at `src/pages/POSSales.tsx:902-910`, and the
+"Status" pill counts at `src/pages/POSSales.tsx:1030-1031`) are derived from the
+client-side `sales` array — the page set loaded by `useUnifiedSales`:
+
+```tsx
+// src/pages/POSSales.tsx:323-327
+const uncategorizedSalesCount = useMemo(() => {
+  return sales.filter(sale =>
+    !sale.is_categorized && !sale.suggested_category_id
+  ).length;
+}, [sales]);
+
+// src/pages/POSSales.tsx:316-320
+const suggestedSales = useMemo(() => {
+  return sales.filter(sale =>
+    sale.suggested_category_id && !sale.is_categorized
+  );
+}, [sales]);
+```
+
+`sales` comes from `useUnifiedSales`, which paginates `unified_sales` rows at
+`PAGE_SIZE = 500` (`src/hooks/useUnifiedSales.tsx:11`). A restaurant with a busy
+30-day window (the default `startDate`) can easily exceed one page; only what has
+been loaded so far feeds the badge.
+
+Two distinct user-visible failure modes follow:
+
+1. **Server-truth divergence (the reported bug).** Dashboard metrics like
+   `totalSales` already come from the server-side RPC `get_unified_sales_totals`
+   via `useUnifiedSalesTotals` (`src/hooks/useUnifiedSalesTotals.tsx`). The badge
+   counts do not — they're a client-side filter over a *paged* subset. After a
+   bulk categorization mutation invalidates `['unified-sales']`, the first page
+   refetch returns the most recent 500 rows; older paged-out uncategorized rows
+   are no longer present, but newer paged-in rows might still be flagged.
+   The badge can show a non-zero count while the user looks at a fully
+   categorized "today" — exactly the report.
+
+2. **Filter-scope mismatch.** The user's mental model is "this badge counts
+   uncategorized items in what I'm looking at right now". The page already
+   exposes a `categorizationFilter` segmented control with values `all`,
+   `uncategorized`, `pending-review`, `categorized` — and the badge in that
+   control reads from the same global `uncategorizedSalesCount`
+   (`src/pages/POSSales.tsx:1030`). So the count next to "Uncategorized" in the
+   pill stays positive even when the user has filtered to "Categorized" and
+   visibly sees zero uncategorized rows in the list.
+
+Both failure modes share the same root cause: the badge is sourced from
+pagination-truncated client state instead of the same server-side aggregation
+that already backs every other dashboard metric on this page.
+
+## Why a minimal client-side patch isn't enough
+
+A tempting one-line fix is to swap `sales` → `filteredSales` (or
+`dateFilteredSales`) in lines 316-320 and 323-327. That solves failure mode (2)
+for users whose entire active range fits in one page, but it does not solve
+failure mode (1) at all — it would still under-count once the dataset paginates,
+and worse, the count would *drift downward* as users load more pages. Pulling
+the value from the same server-aggregation source that drives `totalSales` is
+both correct and cheap (we already call the RPC on every filter change).
+
+## Fix
+
+### Server side — extend `get_unified_sales_totals`
+
+Add two columns to the RPC return: `uncategorized_count` and
+`pending_review_count`. Both honour the same filters the RPC already applies
+(`p_restaurant_id`, `p_start_date`, `p_end_date`, `p_search_term`,
+`parent_sale_id IS NULL`).
+
+Definitions match the existing client-side filters so the visible counts don't
+change semantics, only their source-of-truth:
+
+- `uncategorized_count`:
+  `COUNT(*) FILTER (WHERE is_categorized IS NOT TRUE AND suggested_category_id IS NULL)`
+- `pending_review_count`:
+  `COUNT(*) FILTER (WHERE is_categorized IS NOT TRUE AND suggested_category_id IS NOT NULL)`
+
+`is_categorized IS NOT TRUE` is intentional — the column is nullable in older
+rows; `!sale.is_categorized` in JS evaluates `null` as falsy, so the SQL
+predicate must match that to keep counts identical.
+
+Implementation: new migration
+`supabase/migrations/<ts>_unified_sales_totals_categorization_counts.sql` that
+issues `CREATE OR REPLACE FUNCTION get_unified_sales_totals(...)` with the
+extended return signature. (RPCs in this family are already `SECURITY DEFINER`
+with `auth.uid()` access guards — keep the existing guard verbatim.)
+
+### Client side — surface and consume the new fields
+
+1. `src/hooks/useUnifiedSalesTotals.tsx`:
+   - Extend `SalesTotals` with `uncategorizedCount: number` and
+     `pendingReviewCount: number`.
+   - Map them from `result.uncategorized_count` / `result.pending_review_count`
+     in the `queryFn`.
+   - Add safe defaults (`0`) in both the early-return shape and the fallback
+     `data ??` shape returned to callers.
+
+2. `src/pages/POSSales.tsx`:
+   - Delete the `uncategorizedSalesCount` and `suggestedSales`-based-count
+     `useMemo`s. (`suggestedSales` as a *list* is still used to render the
+     "pending review" sample bar; only the **count** moves to the server.)
+   - Read `uncategorizedSalesCount = serverTotals.uncategorizedCount` and
+     `pendingReviewCount = serverTotals.pendingReviewCount`.
+   - Update the three reads at lines 885, 903, 908, 1030-1031 accordingly.
+   - The `disabled={isCategorizingPending || uncategorizedSalesCount === 0}`
+     button gate (line 885) is unchanged in spirit — the value now comes from
+     the server.
+
+### Cache invalidation
+
+`useCategorizePosSale` (`src/hooks/useCategorizePosSale.tsx:70-77`) currently
+invalidates `['unified-sales']`, `['unified-sales', restaurantId]`,
+`['income-statement']`, `['chart-of-accounts']`. It does **not** invalidate
+`['unified-sales-totals', ...]`. Same for `useCategorizePosSales` (bulk AI) and
+`useBulkPosSaleActions`. Add `queryClient.invalidateQueries({ queryKey: ['unified-sales-totals'] })`
+to all three on-success branches so the totals (including the new badge counts)
+refresh after any categorization mutation. Without this, the very bug we're
+fixing reappears in a different shape: server returns truth, but React Query
+holds the stale value.
+
+## Test plan
+
+### pgTAP — RPC contract
+
+New `supabase/tests/get_unified_sales_totals_categorization_counts.sql`:
+
+- `SELECT plan(N)` with at least:
+  - `uncategorized_count` returns 0 on empty fixture
+  - `uncategorized_count` counts rows with `is_categorized = false AND suggested_category_id IS NULL`
+  - `uncategorized_count` also counts rows with `is_categorized IS NULL` (legacy)
+  - `pending_review_count` counts rows with `is_categorized = false AND suggested_category_id IS NOT NULL`
+  - Both honour `p_start_date` / `p_end_date`
+  - Both exclude `parent_sale_id IS NOT NULL` (child splits)
+  - Access denied raises for non-member user
+
+### Unit — hook surface
+
+`tests/unit/useUnifiedSalesTotals.test.ts`:
+
+- Mocks `supabase.rpc` to return `{ uncategorized_count: 3, pending_review_count: 1, ... }`
+- Asserts hook exposes `uncategorizedCount: 3`, `pendingReviewCount: 1`
+- Asserts defaults to `0` when restaurant is `null` (no fetch)
+
+### Source-text — POSSales.tsx wiring
+
+(See lessons 2026-05-16 — rendering POSSales requires mocking 30+ hooks. Use
+`fs.readFileSync` + regex.) `tests/unit/posSalesCategorizationBadgeSource.test.ts`:
+
+- Positive: `serverTotals.uncategorizedCount` appears in the file
+- Positive: `serverTotals.pendingReviewCount` appears in the file
+- Negative: `sales.filter(sale => !sale.is_categorized && !sale.suggested_category_id)` does NOT appear (prevents regression to client-side count)
+
+### Manual smoke (dev server)
+
+- Open `/pos-sales` against a restaurant whose default 30-day window crosses
+  pagination (>500 sales). Confirm badge matches a manual `select count(*)` on
+  `unified_sales` with the same filters.
+- Categorize one row via the inline dropdown → badge decreases by 1 (server
+  refetch via the new `unified-sales-totals` invalidation).
+- Run bulk AI categorize → badges drop to 0 once edge function returns.
+
+## Out of scope
+
+- The `unmappedCount` calculation (`src/pages/POSSales.tsx:587-592`) is also
+  client-paginated, but it depends on recipe-mapping state that isn't on the
+  RPC; surveys did not flag it. Leaving it alone.
+- The `groupedSales` aggregation also operates on paginated data; same survey
+  rationale. Leaving alone.
+- The Tabs default-on-mount auto-sync (`syncAllSystems` in
+  `useEffect[selectedRestaurant?.restaurant_id]`) is unrelated — it doesn't
+  touch the badge path.
+
+## Acceptance criteria
+
+- [ ] On `/pos-sales` with a paginated 30-day dataset, the "Uncategorized" and
+      "Pending review" badge counts match `SELECT COUNT(*) ...` on
+      `unified_sales` for the same filters.
+- [ ] After categorizing a single sale, both badges decrement on the next
+      tick without requiring a manual reload.
+- [ ] After AI bulk categorize, both badges read 0 (or the actual remaining
+      count from the server) without manual reload.
+- [ ] pgTAP migration test passes.
+- [ ] Unit + source-text tests pass.
+- [ ] `npm run typecheck && npm run lint && npm run test && npm run build`
+      pass locally.
+
+---
+sig:539980c1fe88

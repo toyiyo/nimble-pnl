@@ -82,7 +82,7 @@ RULES:
 2. ONLY assign employees to templates matching their position (per the normalization rule above).
 3. When a template has an area set, PREFER assigning employees from the same area. Only assign employees from a different area to that template if no same-area employees are available for that time slot. This is a soft preference — cross-area assignments are allowed as a fallback.
 4. ONLY assign employees on days/times they are available. The "Employee Availability" section lists all 7 days for every employee.
-5. Do NOT assign any employee more than once in the same time slot (no double-booking).
+5. Do NOT assign the same employee to multiple shifts whose time windows overlap on the same day. This includes back-to-back Open and Close shifts: if an Open shift ends at 16:30 and a Close shift starts at 16:00, the same employee CANNOT work both. Treat overlap as "any minute of one shift falls inside another," even a one-minute overlap.
 6. Do NOT modify or reassign any locked shifts — they are fixed.
 7. Weight staffing toward peak sales hours — more staff during lunch/dinner rushes.
 8. If staffing settings specify minimum crew per position, meet those minimums when possible.

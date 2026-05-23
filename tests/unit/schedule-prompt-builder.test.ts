@@ -356,6 +356,26 @@ describe('buildSchedulePrompt — Target Week date map (Bug H)', () => {
     expect(userContent).not.toMatch(/\| Tuesday: 2\b/);
   });
 
+  it('skips out-of-range day indexes in Required Headcount instead of emitting "undefined"', () => {
+    // template.days is validated 0..6 upstream, but if a stray entry
+    // ever reached this builder the old form would emit "Day 7
+    // undefined: 3" into the prompt. We skip the entry instead — the
+    // line stays well-formed and the LLM never sees a literal
+    // "undefined" token.
+    const requiredStaff = new Map([['tpl-bad', new Map([[1, 2], [7, 9]])]]);
+    const ctx = makeContext({
+      weekStart: '2026-06-08',
+      templates: [
+        { id: 'tpl-bad', name: 'Bad', days: [1], start_time: '10:00:00', end_time: '16:30:00', position: 'Server', area: null, capacity: 2 },
+      ],
+      requiredStaff,
+    });
+    const userContent = buildSchedulePrompt(ctx).messages[1].content as string;
+    expect(userContent).toContain('Monday 2026-06-08: 2');
+    expect(userContent).not.toContain('undefined');
+    expect(userContent).not.toContain('Day 7');
+  });
+
   it('throws on an invalid weekStart instead of silently emitting NaN rows', () => {
     // Without this guard, new Date('garbageT00:00:00Z') is Invalid Date,
     // the UTC accessors return NaN, and the prompt would carry seven

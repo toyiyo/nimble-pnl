@@ -281,8 +281,13 @@ function buildUserPrompt(ctx: ScheduleContext): string {
       if (!tpl) continue;
       const dayParts: string[] = [];
       for (const [day, count] of [...perDay.entries()].sort((a, b) => a[0] - b[0])) {
-        const dayName = DAY_NAMES[day] ?? `Day ${day}`;
+        const dayName = DAY_NAMES[day];
         const date = weekDates.byDayOfWeek[day];
+        // template.days is validated 0..6 upstream. A stray out-of-range
+        // entry would otherwise emit "Day 7 undefined: 3" into the prompt
+        // — skip rather than poison the LLM context with a literal
+        // "undefined".
+        if (!dayName || !date) continue;
         dayParts.push(`${dayName} ${date}: ${count}`);
       }
       headcountLines.push(

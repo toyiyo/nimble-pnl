@@ -22,10 +22,10 @@ carries a `day: YYYY-MM-DD` field.
 
 Today the prompt opens with:
 
-```
+```text
 ## Target Week
 Week starting: 2026-06-08
-```
+```text
 
 Templates list their active days by *name* (`active days: Monday,
 Tuesday, …`). The LLM has to derive the date for each named day itself,
@@ -68,7 +68,7 @@ the second-layer safety net — defense in depth, per lesson [2026-05-22].
 
 ### Output shape (Target Week)
 
-```
+```text
 ## Target Week
 Each day of the week maps to this exact date. Use these dates verbatim
 in every shift you emit — do not compute dates yourself.
@@ -79,7 +79,7 @@ in every shift you emit — do not compute dates yourself.
   Friday    2026-06-12
   Saturday  2026-06-13
   Sunday    2026-06-14
-```
+```text
 
 Ordering rationale: Monday-first ordering matches the natural reading
 order for restaurant work weeks and discourages the LLM from re-anchoring
@@ -89,13 +89,13 @@ guaranteed by callers to be a Monday) is positioned at the top.
 ### Output shape (Required Headcount Per Slot)
 
 Before:
-```
+```text
 - [ef3b61d3] "Open-weekend-csc" | Server | Sunday: 2 | Friday: 2 | Saturday: 2
-```
+```text
 After:
-```
+```text
 - [ef3b61d3] "Open-weekend-csc" | Server | Sunday 2026-06-14: 2 | Friday 2026-06-12: 2 | Saturday 2026-06-13: 2
-```
+```text
 
 ### Date computation
 

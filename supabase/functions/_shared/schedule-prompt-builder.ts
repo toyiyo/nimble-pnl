@@ -73,6 +73,66 @@ export interface ScheduleContext {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Padded day labels for the Target Week date map. Two-space gutter
+// between the longest label ("Wednesday") and the date lines the rows
+// up visually so the LLM reads the block as a table, not prose.
+const DATE_MAP_LABELS = [
+  'Monday   ',
+  'Tuesday  ',
+  'Wednesday',
+  'Thursday ',
+  'Friday   ',
+  'Saturday ',
+  'Sunday   ',
+];
+
+/**
+ * Derive the seven calendar dates for the week from `weekStart`.
+ *
+ * `weekStart` is a `YYYY-MM-DD` string supplied by the caller and is
+ * guaranteed to be a Monday in the restaurant's local timezone. We parse
+ * it as UTC midnight, add 86_400_000 ms per day, and read back through
+ * UTC accessors — so the output is identical in any process timezone
+ * (CI UTC, prod UTC, local dev PT). This is critical: a host-TZ-dependent
+ * helper would emit different prompt text per environment, masking
+ * Bug H–style drift in local testing while still drifting in prod.
+ *
+ * Do NOT compose this helper with `schedule-validator.ts::getDayOfWeek`.
+ * That helper uses the local-time `new Date(y, m-1, d)` constructor for
+ * LLM-emitted day strings; the two have different anchor conventions
+ * and operate on different inputs.
+ *
+ * @returns `rows` — the seven Monday-first labelled rows for the Target
+ *          Week section, joined by '\n'.
+ *          `byDayOfWeek` — array indexed 0=Sun..6=Sat → 'YYYY-MM-DD',
+ *          matching the JS `Date.getDay()` convention used elsewhere
+ *          (template.days, validator, availability) so callers can look
+ *          up "the date for Monday" via `byDayOfWeek[1]`.
+ */
+function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: string[] } {
+  const base = new Date(`${weekStart}T00:00:00Z`);
+  const formatted: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base.getTime() + i * 86_400_000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    formatted.push(`${y}-${m}-${day}`);
+  }
+  // formatted[0..6] is Mon..Sun. byDayOfWeek follows JS getDay() (Sun=0).
+  const byDayOfWeek = [
+    formatted[6], // Sunday
+    formatted[0], // Monday
+    formatted[1],
+    formatted[2],
+    formatted[3],
+    formatted[4],
+    formatted[5], // Saturday
+  ];
+  const rows = DATE_MAP_LABELS.map((label, i) => `  ${label} ${formatted[i]}`).join('\n');
+  return { rows, byDayOfWeek };
+}
+
 const SYSTEM_PROMPT = `You are a restaurant schedule optimizer. Your job is to create an optimal weekly shift schedule.
 
 All times in this context are in the restaurant local clock (no timezone conversion needed). Position strings are matched case-insensitively and ignore trailing whitespace or trailing -s plurals — so "Line Cook" matches "line cook" and "Servers" matches "Server".
@@ -137,8 +197,15 @@ const RESPONSE_FORMAT = {
 function buildUserPrompt(ctx: ScheduleContext): string {
   const sections: string[] = [];
 
+  // Compute the seven calendar dates once and reuse for the Target Week
+  // map and the per-day inline dates in Required Headcount Per Slot —
+  // single arithmetic path eliminates drift between the two surfaces.
+  const weekDates = buildWeekDates(ctx.weekStart);
+
   // Target week
-  sections.push(`## Target Week\nWeek starting: ${ctx.weekStart}`);
+  sections.push(
+    `## Target Week\nEach day of the week maps to this exact date. Use these dates verbatim in every shift you emit — do not compute dates yourself.\n${weekDates.rows}`,
+  );
 
   // Available employees
   const employeesForPrompt = ctx.employees.map((e) => ({
@@ -200,7 +267,9 @@ function buildUserPrompt(ctx: ScheduleContext): string {
       if (!tpl) continue;
       const dayParts: string[] = [];
       for (const [day, count] of [...perDay.entries()].sort((a, b) => a[0] - b[0])) {
-        dayParts.push(`${DAY_NAMES[day] ?? `Day ${day}`}: ${count}`);
+        const dayName = DAY_NAMES[day] ?? `Day ${day}`;
+        const date = weekDates.byDayOfWeek[day];
+        dayParts.push(`${dayName} ${date}: ${count}`);
       }
       headcountLines.push(
         `- [${tplId}] "${tpl.name}" | ${tpl.position} | ${dayParts.join(" | ")}`,

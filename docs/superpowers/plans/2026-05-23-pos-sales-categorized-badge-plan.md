@@ -43,7 +43,7 @@ review feedback folded into the design.
      CLAUDE.md.
 
 3. `npm run db:reset` locally, then `npm run test:db` to confirm both
-   `35_…` and `36_…` pass.
+   `35_…` and `37_…` pass.
 
 ## Step 2 — TypeScript types
 
@@ -124,7 +124,7 @@ review feedback folded into the design.
     - `npm run typecheck` — must pass
     - `npm run lint` — must pass (allow auto-fix only if `--fix` is needed for trivial whitespace)
     - `npm run test` — full Vitest pass
-    - `npm run test:db` — pgTAP green for both `35_` and `36_`
+    - `npm run test:db` — pgTAP green for both `35_` and `37_`
     - `npm run build` — production build clean
 
 14. If any gate fails, fix the underlying issue (not the test) and re-run.

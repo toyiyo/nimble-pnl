@@ -890,7 +890,11 @@ export default function POSSales() {
             </div>
             <Button
               onClick={handleCategorizeClick}
-              disabled={isCategorizingPending || (!unfilteredTotalsLoading && unfilteredTotals.uncategorizedCount === 0)}
+              disabled={
+                isCategorizingPending ||
+                unfilteredTotalsLoading ||
+                unfilteredTotals.uncategorizedCount === 0
+              }
               className="gap-2 w-full sm:w-auto"
             >
               <Sparkles className="h-4 w-4" />

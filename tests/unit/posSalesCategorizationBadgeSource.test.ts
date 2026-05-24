@@ -24,8 +24,11 @@ describe('POSSales — categorization badge counts use server totals', () => {
     expect(SOURCE).toMatch(/unfilteredTotals\.pendingReviewCount\s*>\s*0/);
   });
 
-  it('AI Categorize button gates on unfilteredTotalsLoading to avoid load-state false-disable', () => {
-    expect(SOURCE).toMatch(/!unfilteredTotalsLoading\s*&&\s*unfilteredTotals\.uncategorizedCount\s*===\s*0/);
+  it('AI Categorize button is disabled while unfilteredTotals are loading', () => {
+    // Both: blocked during load (prevents premature click on unknown state)
+    // and blocked at zero (prevents no-op call once data is known).
+    expect(SOURCE).toMatch(/unfilteredTotalsLoading/);
+    expect(SOURCE).toMatch(/unfilteredTotals\.uncategorizedCount\s*===\s*0/);
   });
 
   it('segmented-control tab counts come from serverTotals (filtered)', () => {

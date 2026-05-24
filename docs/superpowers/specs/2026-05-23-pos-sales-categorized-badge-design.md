@@ -150,7 +150,9 @@ holds the stale value.
 
 ### pgTAP — RPC contract
 
-New `supabase/tests/36_get_unified_sales_totals_categorization_counts.sql`.
+New `supabase/tests/37_get_unified_sales_totals_categorization_counts.sql`
+(prefix `37_` chosen to avoid a collision with the existing
+`36_monthly_sales_metrics_revenue_filter.sql`).
 **Fixture isolation:** the existing `35_get_unified_sales_totals.sql` hard-codes
 a restaurant UUID ending in `...0099`. The new file must use a distinct
 restaurant UUID (e.g. ending in `...0098`) so the two test files can run in any
@@ -217,9 +219,10 @@ column count).
 After committing this design, I went back to verify the hypothesis against
 production signal:
 
-- **PostHog survey session replay** for `sig:539980c1fe88`:
-  `https://us.posthog.com/project/233023/replay/019e468a-4a76-7f02-84b7-6748c9dd13fc`
-  (replay covers the survey-submit moment).
+- **PostHog survey session replay** for `sig:539980c1fe88`: replay URL
+  redacted from this committed doc — internal PostHog session ID is recorded
+  alongside the row in `~/.nimble-pnl/feedback-log.jsonl` (sanitized lookup
+  only). Replay covers the survey-submit moment.
 - **Faro browser events** confirmed **49 successful `categorize_pos_sale` RPC
   calls (HTTP 204, 18:00:08–18:02:27 UTC)** plus **1 AI-suggest call (HTTP 200,
   ~14s, 18:01:48 UTC)** for the reporter's session. Zero bulk-categorize
@@ -229,11 +232,11 @@ production signal:
 - **`restaurant_id` in the local triage log is a `LIMIT 1` artifact.** The
   reporter is associated with multiple restaurants in `user_restaurants`; the
   triage skill's `LIMIT 1` lookup captured one deterministically. The
-  reporter's *active* restaurant at survey time is
-  `adbd9392-928a-4a46-80d7-f7e453aa1956` (re-derived from session events), not
-  the one written to the JSONL row.
+  reporter's *active* restaurant at survey time is a different `restaurant_id`
+  (re-derived from session events; concrete UUID intentionally not committed
+  to this doc), not the one written to the JSONL row.
 - **The pagination hypothesis is confirmed on the active restaurant.** That
-  restaurant has **7,824 sales/day** in the default 30-day window — well past
+  restaurant has **~7,800 sales/day** in the default 30-day window — well past
   `PAGE_SIZE = 500` from `src/hooks/useUnifiedSales.tsx:11`. The `sales` array
   on first paint contains only the first page; the client-side
   `uncategorizedSalesCount` filter (`POSSales.tsx:323-327`) can therefore stay

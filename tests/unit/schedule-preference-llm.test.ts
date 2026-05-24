@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { applyPreferences, applySwapsToSchedule } from '../../supabase/functions/_shared/schedule-preference-llm';
 
 describe('applyPreferences — no preferences', () => {
@@ -119,8 +119,11 @@ describe('applyPreferences — end-to-end with mocked LLM', () => {
   beforeEach(() => {
     process.env.OPENROUTER_API_KEY = 'test-key';
   });
+  afterEach(() => {
+    delete process.env.OPENROUTER_API_KEY;
+  });
 
-  it('legal swap → applied', async () => {
+  it('legal swap → applied, break after round 1 (all proposed applied)', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       return new Response(JSON.stringify({
         choices: [{ message: { content: JSON.stringify({
@@ -151,11 +154,12 @@ describe('applyPreferences — end-to-end with mocked LLM', () => {
     } as any;
 
     const result = await applyPreferences(shifts as any, ctx, 'A and B should swap', [
-      { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000, maxRetries: 0 },
+      { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000 },
     ]);
 
     expect(result.appliedSwaps).toHaveLength(1);
     expect(result.modelUsed).toBe('google/gemini-2.5-flash');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     fetchMock.mockRestore();
   });
 
@@ -167,7 +171,7 @@ describe('applyPreferences — end-to-end with mocked LLM', () => {
     });
 
     const result = await applyPreferences([] as any, { employees: [], templates: [], availability: {}, excludedEmployeeIds: new Set() } as any, 'do something', [
-      { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000, maxRetries: 0 },
+      { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000 },
     ]);
     expect(result.appliedSwaps).toEqual([]);
     expect(result.rejectedSwaps).toEqual([]);

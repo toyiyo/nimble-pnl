@@ -38,12 +38,11 @@ export interface PreferenceResult {
 export interface PreferenceModelConfig {
   id: string;
   perCallTimeoutMs: number;
-  maxRetries: number;
 }
 
 export const PREFERENCE_MODELS: PreferenceModelConfig[] = [
-  { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000, maxRetries: 1 },
-  { id: 'google/gemini-2.5-flash-lite', perCallTimeoutMs: 25_000, maxRetries: 1 },
+  { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000 },
+  { id: 'google/gemini-2.5-flash-lite', perCallTimeoutMs: 25_000 },
 ];
 
 export async function applyPreferences(
@@ -87,8 +86,10 @@ async function proposeSwaps(
   preferencesText: string,
   models: PreferenceModelConfig[],
 ): Promise<{ swaps: ProposedSwap[]; model: string | null }> {
+  // Dual-runtime env access: Deno (prod) and Node/Vitest (tests). The `typeof
+  // process` guard prevents ReferenceError in Deno when the secret is missing.
   const apiKey = (globalThis as any).Deno?.env.get('OPENROUTER_API_KEY')
-    ?? process.env.OPENROUTER_API_KEY;
+    ?? (typeof process !== 'undefined' ? process.env.OPENROUTER_API_KEY : undefined);
   if (!apiKey) return { swaps: [], model: null };
 
   const empById = new Map(ctx.employees.map((e) => [e.id, e]));
@@ -102,9 +103,9 @@ async function proposeSwaps(
   ];
 
   for (const model of models) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), model.perCallTimeoutMs);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), model.perCallTimeoutMs);
       const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -119,7 +120,6 @@ async function proposeSwaps(
         }),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
       if (!res.ok) continue;
       const data = await res.json();
       const content = data?.choices?.[0]?.message?.content;
@@ -133,6 +133,8 @@ async function proposeSwaps(
       }
     } catch {
       continue;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

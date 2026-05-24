@@ -9,8 +9,10 @@ import {
 
 function makeContext(overrides: Partial<ScheduleContext> = {}): ScheduleContext {
   const employees: ScheduleEmployee[] = [
-    { id: 'emp-1', name: 'Maria', position: 'server', hourly_rate: 1500 },
-    { id: 'emp-2', name: 'Carlos', position: 'cook', hourly_rate: 1800 },
+    { id: 'emp-1', name: 'Maria', position: 'server', hourly_rate: 1500,
+      is_minor: false, max_weekly_hours: 40 },
+    { id: 'emp-2', name: 'Carlos', position: 'cook', hourly_rate: 1800,
+      is_minor: false, max_weekly_hours: 40 },
   ];
 
   const templates: ScheduleTemplate[] = [
@@ -383,5 +385,111 @@ describe('buildSchedulePrompt — Target Week date map (Bug H)', () => {
     // fail structured output with no signal to the caller. Test locks
     // in a fail-fast error at the helper boundary.
     expect(() => buildSchedulePrompt(makeContext({ weekStart: 'garbage' }))).toThrow(/invalid weekStart/);
+  });
+});
+
+// ── Bug I regression: AI generator was scheduling fulltimers over 40h
+// while leaving other employees with zero hours, and minors were getting
+// the same 40h cap as adults. Three new HARD rules in the system prompt
+// and a new "Employee Hour Budgets" table in the user prompt give the
+// LLM the per-employee max it must respect, plus the validator backstop
+// that drops over-cap shifts. These tests lock the prompt copy.
+describe('buildSchedulePrompt — hour caps and consecutive days (Bug I)', () => {
+  it('includes HARD Rule 11 capping weekly hours at the employee budget', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    // Rule 11 is the hard cap. Phrasing should call out the per-employee
+    // budget and explicitly forbid overtime so the LLM cannot interpret
+    // "soft preference" the way prior wording allowed.
+    expect(systemContent).toMatch(/HARD Rule 11/i);
+    expect(systemContent.toLowerCase()).toMatch(/max_weekly_hours|weekly hour cap|hour budget/);
+    expect(systemContent.toLowerCase()).toMatch(/never .*overtime|no overtime/);
+  });
+
+  it('includes HARD Rule 12 limiting consecutive scheduled days to 5', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    expect(systemContent).toMatch(/HARD Rule 12/i);
+    expect(systemContent.toLowerCase()).toMatch(/5 (consecutive|days? straight|days? in a row)/);
+  });
+
+  it('includes HARD Rule 14 for the under-16 minor cap (about 18h)', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const systemContent = result.messages[0].content as string;
+    expect(systemContent).toMatch(/HARD Rule 14/i);
+    // Cap value (18) and the under-16 qualifier should both be present so
+    // the LLM does not infer a different threshold from "minor".
+    expect(systemContent).toMatch(/18\s*h/i);
+    expect(systemContent.toLowerCase()).toMatch(/under.?16|under 16/);
+  });
+
+  it('renders an Employee Hour Budgets section listing each employee max', () => {
+    const result = buildSchedulePrompt(makeContext());
+    const userContent = result.messages[1].content as string;
+    expect(userContent).toContain('Employee Hour Budgets');
+    // Each employee id followed by their cap. Exact string match locks
+    // the renderer format so a refactor can't silently drop the cap.
+    expect(userContent).toMatch(/emp-1[^\n]*40h/);
+    expect(userContent).toMatch(/emp-2[^\n]*40h/);
+  });
+
+  it('marks an under-16 minor with both the 18h cap AND a minor label', () => {
+    const ctx = makeContext({
+      employees: [
+        { id: 'emp-1', name: 'Maria', position: 'server', hourly_rate: 1500,
+          is_minor: false, max_weekly_hours: 40 },
+        { id: 'emp-3', name: 'Ana', position: 'server', hourly_rate: 1200,
+          is_minor: true, max_weekly_hours: 18 },
+      ],
+    });
+    const userContent = buildSchedulePrompt(ctx).messages[1].content as string;
+    // The minor row should pair the id with the 18h cap and tag it as
+    // "minor" so the LLM doesn't lump them with the adult 40h pool.
+    expect(userContent).toMatch(/emp-3[^\n]*18h/);
+    expect(userContent).toMatch(/emp-3[^\n]*minor/i);
+  });
+
+  it('marks a 16-17yo minor (40h cap) as minor without the under-16 tag', () => {
+    // Dispatch parity with the validator: is_minor=true + cap=40 means
+    // a 16-17yo. The prompt should flag them as a minor for awareness
+    // (managers may want to be conservative) but the cap stays 40h.
+    const ctx = makeContext({
+      employees: [
+        { id: 'emp-4', name: 'Sam', position: 'server', hourly_rate: 1400,
+          is_minor: true, max_weekly_hours: 40 },
+      ],
+    });
+    const userContent = buildSchedulePrompt(ctx).messages[1].content as string;
+    expect(userContent).toMatch(/emp-4[^\n]*40h/);
+    expect(userContent).toMatch(/emp-4[^\n]*minor/i);
+    // Should NOT carry the "under 16" qualifier — that's only for the 18h cap.
+    expect(userContent).not.toMatch(/emp-4[^\n]*under.?16/i);
+  });
+
+  it('renders the budget section in deterministic order (by employee id)', () => {
+    const ctx = makeContext({
+      employees: [
+        { id: 'emp-z', name: 'Zoe', position: 'server', hourly_rate: 1500,
+          is_minor: false, max_weekly_hours: 40 },
+        { id: 'emp-a', name: 'Aaron', position: 'server', hourly_rate: 1500,
+          is_minor: false, max_weekly_hours: 40 },
+        { id: 'emp-m', name: 'Maya', position: 'server', hourly_rate: 1500,
+          is_minor: true, max_weekly_hours: 18 },
+      ],
+    });
+    const userContent = buildSchedulePrompt(ctx).messages[1].content as string;
+    // Extract budget section by anchoring on the header and the first
+    // double newline that follows. Sort key is employee id so re-runs of
+    // the prompt with the same context produce identical text — needed
+    // for prompt-cache hits.
+    const sectionStart = userContent.indexOf('Employee Hour Budgets');
+    expect(sectionStart).toBeGreaterThan(-1);
+    const section = userContent.slice(sectionStart, sectionStart + 600);
+    const idxA = section.indexOf('emp-a');
+    const idxM = section.indexOf('emp-m');
+    const idxZ = section.indexOf('emp-z');
+    expect(idxA).toBeGreaterThan(-1);
+    expect(idxM).toBeGreaterThan(idxA);
+    expect(idxZ).toBeGreaterThan(idxM);
   });
 });

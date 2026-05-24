@@ -56,7 +56,10 @@ export type DropCode =
   | "POSITION_MISMATCH"
   | "UNAVAILABLE_DAY"
   | "OUTSIDE_WINDOW"
-  | "DOUBLE_BOOKING";
+  | "DOUBLE_BOOKING"
+  | "HOURS_EXCEED_WEEKLY_CAP"
+  | "MINOR_HOURS_EXCEEDED"
+  | "CONSECUTIVE_DAYS_EXCEEDED";
 
 export interface DroppedShift {
   shift: GeneratedShift;
@@ -97,6 +100,58 @@ export function getDayOfWeek(dateStr: string): number {
 export function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
+}
+
+/**
+ * Duration of a shift in hours, with overnight handling.
+ *
+ * 22:00→02:00 = 4h (not 24h). We anchor on the time-of-day diff, not
+ * on (next-day − day), because `shift.day` is the calendar day the
+ * shift nominally STARTS on; an overnight shift's `day` field never
+ * shifts to the next day. Using a day-diff here would inflate every
+ * overnight shift by ~24h and trigger spurious HOURS_EXCEED_WEEKLY_CAP
+ * drops.
+ */
+export function shiftHours(s: GeneratedShift): number {
+  const start = timeToMinutes(s.start_time);
+  let end = timeToMinutes(s.end_time);
+  if (end <= start) end += 1440; // overnight
+  return (end - start) / 60;
+}
+
+/**
+ * Longest run of consecutive calendar days in a set of YYYY-MM-DD strings.
+ * Returns 0 for an empty set; returns 1 for any single day.
+ *
+ * UTC-anchored (matches `shiftsConflict` and `computeHourBudget` in
+ * schedule-prompt-builder). Sorting by ms-since-epoch and stepping by
+ * 86_400_000 is DST-safe — that's the point of using UTC. A local-time
+ * implementation would see a 23h or 25h gap on DST transitions and
+ * misreport the streak.
+ */
+export function longestConsecutiveRun(days: Set<string>): number {
+  if (days.size === 0) return 0;
+  const ms = Array.from(days)
+    .map((d) => Date.parse(`${d}T00:00:00Z`))
+    .filter((n) => !Number.isNaN(n))
+    .sort((a, b) => a - b);
+  if (ms.length === 0) return 0;
+
+  let longest = 1;
+  let current = 1;
+  for (let i = 1; i < ms.length; i++) {
+    const diff = Math.round((ms[i] - ms[i - 1]) / 86_400_000);
+    if (diff === 1) {
+      current++;
+      if (current > longest) longest = current;
+    } else if (diff > 1) {
+      current = 1;
+    }
+    // diff === 0 (duplicate day): keep current; dedup-by-set means this
+    // branch is unreachable from a Set<string> input, but kept for
+    // defensive parity if callers ever pass a list.
+  }
+  return longest;
 }
 
 /**

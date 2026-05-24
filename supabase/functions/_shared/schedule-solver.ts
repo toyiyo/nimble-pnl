@@ -85,11 +85,15 @@ export interface ScheduleContext {
   requiredStaff: Map<string, { template_id: string; day: string; count: number }>;
   lockedShifts: SolverLockedShift[];
   excludedEmployeeIds: Set<string>;
+  /** @reserved for cost-aware ranking (not yet read by solveSchedule). */
   priorPatterns: SolverPriorPattern[];
+  /** @reserved for cost-aware ranking (not yet read by solveSchedule). */
   weeklySalesHistory: SolverWeeklySales[];
+  /** @reserved for cost-aware ranking (not yet read by solveSchedule). */
   hourlySalesHistory: SolverHourlySales[];
-  /** 0.30 = 30% target labor cost */
+  /** @reserved for cost-aware ranking. 0.30 = 30% target labor cost. */
   targetLaborPercentage: number;
+  /** @reserved for cost-aware ranking. */
   minimumWageCents: number;
 }
 

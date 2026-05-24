@@ -4,13 +4,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import {
   computeHourBudget,
-  type ScheduleContext,
   type ScheduleEmployee,
   type ScheduleTemplate,
   type AvailabilityDay,
   type PriorPattern,
   type HourlySales,
-  type LockedShift,
 } from "../_shared/schedule-prompt-builder.ts";
 import {
   validateGeneratedShifts,
@@ -112,7 +110,7 @@ serve(async (req) => {
     const fourWeeksAgoStr = fourWeeksAgo.toISOString().split("T")[0];
     const weekEndStr = weekEndDate.toISOString().split("T")[0];
 
-    // ── Fetch all scheduling data in parallel (10 queries) ──────────────────
+    // ── Fetch all scheduling data in parallel (9 queries) ───────────────────
     const [
       employeesResult,
       templatesResult,
@@ -121,7 +119,6 @@ serve(async (req) => {
       staffingSettingsResult,
       priorShiftsResult,
       salesResult,
-      operatingCostsResult,
       existingShiftsResult,
       restaurantResult,
     ] = await Promise.all([
@@ -153,10 +150,10 @@ serve(async (req) => {
         .gte("date", week_start)
         .lt("date", weekEndStr),
 
-      // 5. Staffing settings
+      // 5. Staffing settings — only the two fields read downstream.
       supabase
         .from("staffing_settings")
-        .select("*")
+        .select("min_crew, min_staff")
         .eq("restaurant_id", restaurant_id)
         .maybeSingle(),
 
@@ -178,24 +175,16 @@ serve(async (req) => {
         .gte("sale_date", fourWeeksAgoStr)
         .lt("sale_date", week_start),
 
-      // 8. Operating costs (labor category)
-      supabase
-        .from("restaurant_operating_costs")
-        .select("entry_type, monthly_value")
-        .eq("restaurant_id", restaurant_id)
-        .eq("category", "labor")
-        .maybeSingle(),
-
-      // 9. Existing shifts this week (for locked shift identification)
+      // 8. Existing shifts this week (for locked shift identification)
       supabase
         .from("shifts")
-        .select("id, employee_id, start_time, end_time, position, locked, employees(name)")
+        .select("id, employee_id, start_time, end_time, position, locked, shift_template_id, employees(name)")
         .eq("restaurant_id", restaurant_id)
         .gte("start_time", `${week_start}T00:00:00`)
         .lt("start_time", `${weekEndStr}T00:00:00`)
         .neq("status", "cancelled"),
 
-      // 10. Restaurant timezone (null-safe — defaults to UTC below)
+      // 9. Restaurant timezone (null-safe — defaults to UTC below)
       supabase
         .from("restaurants")
         .select("timezone")
@@ -409,35 +398,9 @@ serve(async (req) => {
       };
     });
 
-    // ── Calculate weekly budget target ───────────────────────────────────────
-    let weeklyBudgetTarget: number | null = null;
-    const costRow = operatingCostsResult.data;
-    if (costRow && costRow.entry_type === "value" && costRow.monthly_value != null) {
-      // entry_type='value' means monthly dollar value (stored in cents)
-      // weeklyBudgetTarget = (monthlyValue / 100) / 30 * 7
-      const monthlyValueCents = costRow.monthly_value;
-      weeklyBudgetTarget = Math.round((monthlyValueCents / 30) * 7);
-    }
-
     // ── Build locked shifts ───────────────────────────────────────────────────
     const existingShifts = existingShiftsResult.data ?? [];
     const lockedShiftIdSet = new Set(locked_shift_ids);
-
-    const lockedShifts: LockedShift[] = existingShifts
-      .filter((s) => s.locked || lockedShiftIdSet.has(s.id))
-      .map((s) => {
-        const { day, time: startTime } = splitTimestamp(s.start_time);
-        const endTime = s.end_time ? splitTimestamp(s.end_time).time : "00:00:00";
-        const empName = (s.employees as { name: string } | null)?.name ?? "Unknown";
-        return {
-          id: s.id,
-          employee_name: empName,
-          day,
-          start_time: startTime,
-          end_time: endTime,
-          position: s.position ?? "Staff",
-        };
-      });
 
     // ── Build staffing settings map ───────────────────────────────────────────
     // staffing_settings.min_crew is a JSONB column keyed by user-facing
@@ -484,20 +447,6 @@ serve(async (req) => {
     for (const perDay of requiredStaff.values()) {
       for (const count of perDay.values()) totalRequiredSlots += count;
     }
-
-    // ── Build the prompt ──────────────────────────────────────────────────────
-    const scheduleContext: ScheduleContext = {
-      weekStart: week_start,
-      employees,
-      templates,
-      availability,
-      staffingSettings,
-      priorSchedulePatterns,
-      hourlySalesPatterns,
-      weeklyBudgetTarget,
-      lockedShifts,
-      requiredStaff,
-    };
 
     // ── Build solver context (separate from the prompt-builder's ScheduleContext) ──
     // Hoisted once per request — the requiredStaff Map-conversion loop needs this
@@ -564,7 +513,7 @@ serve(async (req) => {
           const endTime = s.end_time ? splitTimestamp(s.end_time).time : '00:00:00';
           return {
             employee_id: s.employee_id,
-            template_id: (s as { template_id?: string }).template_id ?? '',
+            template_id: s.shift_template_id ?? '',
             day,
             start_time: startTime,
             end_time: endTime,

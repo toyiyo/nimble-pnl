@@ -33,23 +33,22 @@ export interface SolverEmployee {
 export interface SolverTemplate {
   id: string;
   name: string;
-  days: number[];
+  days_of_week: number[];
   start_time: string;
   end_time: string;
   position: string;
   area: string | null;
-  capacity: number;
 }
 
 export interface SolverAvailabilityDay {
-  available: boolean;
-  start?: string;
-  end?: string;
+  isAvailable: boolean;
+  startTime: string | null;
+  endTime: string | null;
 }
 
 export interface SolverLockedShift {
-  id: string;
-  employee_name: string;
+  employee_id: string;
+  template_id: string;
   day: string;
   start_time: string;
   end_time: string;
@@ -83,8 +82,8 @@ export interface ScheduleContext {
   templates: SolverTemplate[];
   /** Keyed by employee_id; inner record keyed by day-of-week (0=Sun..6=Sat). */
   availability: Record<string, Record<number, SolverAvailabilityDay>>;
-  /** Per-(template_id, day-of-week) required headcount. */
-  requiredStaff: Map<string, Map<number, number>>;
+  /** Keyed by `${templateId}:${day}`. */
+  requiredStaff: Map<string, { template_id: string; day: string; count: number }>;
   lockedShifts: SolverLockedShift[];
   excludedEmployeeIds: Set<string>;
   priorPatterns: SolverPriorPattern[];

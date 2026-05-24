@@ -676,6 +676,12 @@ serve(async (req) => {
           return `Unknown template on ${d.shift.day}`;
         case "DAY_NOT_IN_TEMPLATE":
           return `Template not active on ${d.shift.day}`;
+        case "HOURS_EXCEED_WEEKLY_CAP":
+          return `Weekly hour cap exceeded on ${d.shift.day}`;
+        case "MINOR_HOURS_EXCEEDED":
+          return `Minor weekly hour cap exceeded on ${d.shift.day}`;
+        case "CONSECUTIVE_DAYS_EXCEEDED":
+          return `More than 5 consecutive days on ${d.shift.day}`;
         default:
           return `Unknown drop reason on ${d.shift.day}`;
       }

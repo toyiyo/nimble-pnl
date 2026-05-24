@@ -11,7 +11,7 @@ describe('applyPreferences — no preferences', () => {
       { employee_id: 'e1', template_id: 't1', day: '2026-06-08',
         start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
     ];
-    const result = await applyPreferences(shifts, { employees: [], templates: [] } as any, '', []);
+    const result = await applyPreferences(shifts as any, { employees: [], templates: [] } as any, '', []);
     expect(result.shifts).toEqual(shifts);
     expect(result.appliedSwaps).toEqual([]);
     expect(result.rejectedSwaps).toEqual([]);
@@ -112,5 +112,65 @@ describe('applySwapsToSchedule — pure re-validation', () => {
     ]);
     expect(result.appliedSwaps).toHaveLength(0);
     expect(result.rejectedSwaps[0].rejection_code).toBe('WOULD_VIOLATE_HOURS_EXCEED_WEEKLY_CAP');
+  });
+});
+
+describe('applyPreferences — end-to-end with mocked LLM', () => {
+  beforeEach(() => {
+    process.env.OPENROUTER_API_KEY = 'test-key';
+  });
+
+  it('legal swap → applied', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          swaps: [{ shift_a_id: 's1', shift_b_id: 's2', reason: 'preference' }],
+        }) } }],
+      }), { status: 200 });
+    });
+
+    const shifts = [
+      { id: 's1', employee_id: 'eA', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+      { id: 's2', employee_id: 'eB', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+    ];
+    const ctx = {
+      employees: [
+        { id: 'eA', name: 'A', position: 'Server', area: null, max_weekly_hours: 40,
+          date_of_birth: '1990-01-01', is_minor: false },
+        { id: 'eB', name: 'B', position: 'Server', area: null, max_weekly_hours: 40,
+          date_of_birth: '1990-01-01', is_minor: false },
+      ],
+      availability: {
+        'eA': { 1: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+        'eB': { 1: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+      },
+      excludedEmployeeIds: new Set(),
+      templates: [],
+    } as any;
+
+    const result = await applyPreferences(shifts as any, ctx, 'A and B should swap', [
+      { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000, maxRetries: 0 },
+    ]);
+
+    expect(result.appliedSwaps).toHaveLength(1);
+    expect(result.modelUsed).toBe('google/gemini-2.5-flash');
+    fetchMock.mockRestore();
+  });
+
+  it('malformed LLM JSON → no swaps applied, no throw', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'this is not json' } }],
+      }), { status: 200 });
+    });
+
+    const result = await applyPreferences([] as any, { employees: [], templates: [], availability: {}, excludedEmployeeIds: new Set() } as any, 'do something', [
+      { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000, maxRetries: 0 },
+    ]);
+    expect(result.appliedSwaps).toEqual([]);
+    expect(result.rejectedSwaps).toEqual([]);
+    fetchMock.mockRestore();
   });
 });

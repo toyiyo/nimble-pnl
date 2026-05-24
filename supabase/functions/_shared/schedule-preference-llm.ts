@@ -47,23 +47,95 @@ export const PREFERENCE_MODELS: PreferenceModelConfig[] = [
 ];
 
 export async function applyPreferences(
-  schedule: GeneratedShift[],
-  _ctx: ScheduleContext,
+  schedule: IdentifiedShift[],
+  ctx: ScheduleContext,
   preferencesText: string,
-  _models: PreferenceModelConfig[],
+  models: PreferenceModelConfig[],
 ): Promise<PreferenceResult> {
   if (!preferencesText.trim()) {
-    return {
-      shifts: schedule,
-      appliedSwaps: [],
-      rejectedSwaps: [],
-      modelUsed: null,
-    };
+    return { shifts: schedule, appliedSwaps: [], rejectedSwaps: [], modelUsed: null };
   }
-  throw new Error(
-    'applyPreferences: LLM swap pass not yet wired (Task 13). ' +
-      'Pass empty preferencesText to bypass.',
-  );
+
+  let working = schedule;
+  let allApplied: SwapRecord[] = [];
+  let allRejected: RejectedSwap[] = [];
+  let modelUsed: string | null = null;
+
+  for (let round = 0; round < 2; round++) {
+    const { swaps, model } = await proposeSwaps(working, ctx, preferencesText, models);
+    if (model && !modelUsed) modelUsed = model;
+    if (swaps.length === 0) break;
+    const applied = applySwapsToSchedule(working, ctx, swaps);
+    working = applied.shifts as IdentifiedShift[];
+    allApplied = allApplied.concat(applied.appliedSwaps);
+    allRejected = allRejected.concat(applied.rejectedSwaps);
+    // Break if nothing was applied, or if everything proposed was applied
+    // (preference likely satisfied — avoid re-proposing the same swaps)
+    if (applied.appliedSwaps.length === 0) break;
+    if (applied.appliedSwaps.length === swaps.length) break;
+  }
+
+  return { shifts: working, appliedSwaps: allApplied, rejectedSwaps: allRejected, modelUsed };
+}
+
+const PREFERENCE_SYSTEM_PROMPT = `You receive a confirmed schedule and a manager preference statement in free text. Propose up to 5 pair-swaps that move toward the preference. Each swap exchanges the employee on shift A with the employee on shift B. Output JSON: {"swaps":[{"shift_a_id":"...","shift_b_id":"...","reason":"..."}]}. Do not invent new shifts. Do not change start/end times. The server re-validates every swap and silently rejects illegal ones. If the preference is satisfied or no safe swap exists, return {"swaps":[]}.`;
+
+async function proposeSwaps(
+  schedule: IdentifiedShift[],
+  ctx: ScheduleContext,
+  preferencesText: string,
+  models: PreferenceModelConfig[],
+): Promise<{ swaps: ProposedSwap[]; model: string | null }> {
+  const apiKey = (globalThis as any).Deno?.env.get('OPENROUTER_API_KEY')
+    ?? process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return { swaps: [], model: null };
+
+  const empById = new Map(ctx.employees.map((e) => [e.id, e]));
+  const scheduleTable = schedule.map((s) =>
+    `${s.id} | ${s.day} | ${s.start_time}-${s.end_time} | ${s.position} | ${empById.get(s.employee_id)?.name ?? s.employee_id}`,
+  ).join('\n');
+
+  const messages = [
+    { role: 'system', content: PREFERENCE_SYSTEM_PROMPT },
+    { role: 'user', content: `SCHEDULE:\n${scheduleTable}\n\nPREFERENCES:\n${preferencesText}` },
+  ];
+
+  for (const model of models) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), model.perCallTimeoutMs);
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model.id,
+          messages,
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content;
+      if (typeof content !== 'string') continue;
+      try {
+        const parsed = JSON.parse(content);
+        const swaps = Array.isArray(parsed?.swaps) ? parsed.swaps : [];
+        return { swaps, model: model.id };
+      } catch {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return { swaps: [], model: null };
 }
 
 export interface ProposedSwap {
@@ -72,7 +144,7 @@ export interface ProposedSwap {
   reason: string;
 }
 
-interface IdentifiedShift extends GeneratedShift {
+export interface IdentifiedShift extends GeneratedShift {
   id: string;
 }
 

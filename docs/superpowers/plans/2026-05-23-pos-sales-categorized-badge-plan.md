@@ -25,7 +25,9 @@ review feedback folded into the design.
      `20260123001310_…` carries forward because the input-parameter signature
      is unchanged.
 
-2. Write `supabase/tests/36_get_unified_sales_totals_categorization_counts.sql`:
+2. Write `supabase/tests/37_get_unified_sales_totals_categorization_counts.sql`
+   (started as `36_…` but renamed to `37_` to avoid a prefix collision with the
+   existing `36_monthly_sales_metrics_revenue_filter.sql`):
    - Distinct restaurant UUID (ending `…0098`) to avoid colliding with the
      `…0099` fixture used in `35_…`.
    - `SELECT plan(N)` covering:

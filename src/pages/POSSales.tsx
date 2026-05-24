@@ -312,18 +312,13 @@ export default function POSSales() {
     return filtered;
   }, [sales, searchTerm, startDate, endDate, recipeFilter, categorizationFilter, recipeByItemName, sortBy, sortDirection]);
 
-  // Get sales with AI suggestions
+  // Get sales with AI suggestions (still used by the apply-pending-review row UI).
+  // Counts come from serverTotals so they don't drift with pagination — see
+  // sig:539980c1fe88.
   const suggestedSales = useMemo(() => {
-    return sales.filter(sale => 
+    return sales.filter(sale =>
       sale.suggested_category_id && !sale.is_categorized
     );
-  }, [sales]);
-
-  // Count uncategorized sales
-  const uncategorizedSalesCount = useMemo(() => {
-    return sales.filter(sale => 
-      !sale.is_categorized && !sale.suggested_category_id
-    ).length;
   }, [sales]);
 
   const dateFilteredSales = filteredSales;
@@ -882,7 +877,7 @@ export default function POSSales() {
             </div>
             <Button
               onClick={handleCategorizeClick}
-              disabled={isCategorizingPending || uncategorizedSalesCount === 0}
+              disabled={isCategorizingPending || (!totalsLoading && serverTotals.uncategorizedCount === 0)}
               className="gap-2 w-full sm:w-auto"
             >
               <Sparkles className="h-4 w-4" />
@@ -900,12 +895,12 @@ export default function POSSales() {
         <CardContent>
           <div className="flex items-center gap-4 text-sm">
             <Badge variant="secondary" className="gap-1">
-              {uncategorizedSalesCount} uncategorized
+              <span className="tabular-nums">{serverTotals.uncategorizedCount}</span> uncategorized
             </Badge>
-            {suggestedSales.length > 0 && (
+            {serverTotals.pendingReviewCount > 0 && (
               <Badge variant="default" className="gap-1 bg-gradient-to-r from-blue-500 to-purple-500">
                 <Sparkles className="h-3 w-3" />
-                {suggestedSales.length} pending review
+                <span className="tabular-nums">{serverTotals.pendingReviewCount}</span> pending review
               </Badge>
             )}
           </div>
@@ -1027,8 +1022,8 @@ export default function POSSales() {
                 <div className="inline-flex rounded-lg bg-muted/50 p-0.5">
                   {[
                     { value: 'all', label: 'All' },
-                    { value: 'uncategorized', label: 'Uncategorized', count: uncategorizedSalesCount },
-                    { value: 'pending-review', label: 'Pending Review', count: suggestedSales.length },
+                    { value: 'uncategorized', label: 'Uncategorized', count: serverTotals.uncategorizedCount },
+                    { value: 'pending-review', label: 'Pending Review', count: serverTotals.pendingReviewCount },
                     { value: 'categorized', label: 'Categorized' },
                   ].map((option) => (
                     <button
@@ -1042,9 +1037,12 @@ export default function POSSales() {
                     >
                       {option.label}
                       {option.count !== undefined && option.count > 0 && (
-                        <span className={`ml-1.5 text-[11px] ${
-                          categorizationFilter === option.value ? 'text-muted-foreground' : 'text-muted-foreground/60'
-                        }`}>
+                        <span
+                          className={`ml-1.5 text-[11px] tabular-nums ${
+                            categorizationFilter === option.value ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                          }`}
+                          aria-label={`${option.count} ${option.label}`}
+                        >
                           {option.count}
                         </span>
                       )}

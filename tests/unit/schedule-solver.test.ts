@@ -293,6 +293,86 @@ describe('solveSchedule — scarcity ordering', () => {
   });
 });
 
+describe('solveSchedule — full-time 40h cap regression', () => {
+  it('40h cap blocks the 6th 8h slot with ALL_AT_HOUR_CAP (no overtime)', () => {
+    // Single full-time server, 7 8-hour slots in one week. Five of them fit
+    // (40h cap), the sixth must drop with ALL_AT_HOUR_CAP — no overtime ever.
+    // Pin point: this is the user-reported "we are giving fulltimers over 40
+    // hours" boundary. If a future change ever lets a 6th slot through, this
+    // breaks here instead of in production payroll.
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'FT', position: 'Server', area: null, max_weekly_hours: 40,
+        date_of_birth: '1990-01-01', is_minor: false },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'D', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '18:00:00', days_of_week: [0, 1, 2, 3, 4, 5, 6] },
+    ];
+    const days = ['2026-06-07', '2026-06-08', '2026-06-09', '2026-06-10',
+      '2026-06-11', '2026-06-12', '2026-06-13'];
+    ctx.requiredStaff = new Map(
+      days.map((d) => [`t1:${d}`, { template_id: 't1', day: d, count: 1 }]),
+    );
+    ctx.availability = {
+      'e1': Object.fromEntries(
+        [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' }]),
+      ),
+    };
+    const result = solveSchedule(ctx);
+    const e1Hours = result.fairness.find((f) => f.employee_id === 'e1')?.hours_assigned ?? 0;
+    expect(e1Hours).toBeLessThanOrEqual(40);
+    // 5 slots × 8h = 40h fits. 6th + 7th drop.
+    expect(result.shifts.filter((s) => s.employee_id === 'e1')).toHaveLength(5);
+    const dropped = result.unfilled.filter((u) => u.reason === 'ALL_AT_HOUR_CAP'
+      || u.reason === 'ALL_AT_CONSEC_DAY_CAP');
+    expect(dropped.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('locked-shift hours feed forward into the 40h cap', () => {
+    // 32h already locked (4 × 8h Mon-Thu). One 10h slot left on Friday.
+    // 32 + 10 = 42 > 40 → must drop. If locked-shift hours are NOT seeded
+    // into hoursByEmp at solver start (regression vector), the Friday slot
+    // assigns and the employee silently lands at 42h.
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'FT', position: 'Server', area: null, max_weekly_hours: 40,
+        date_of_birth: '1990-01-01', is_minor: false },
+      // Second employee available for Friday — if the cap is honored, the
+      // slot should fall through to them instead of dropping.
+      { id: 'e2', name: 'Backup', position: 'Server', area: null, max_weekly_hours: 40,
+        date_of_birth: '1990-01-01', is_minor: false },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'Long', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '20:00:00', days_of_week: [5] },
+    ];
+    ctx.lockedShifts = [
+      { employee_id: 'e1', template_id: 't0', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '18:00:00', position: 'Server' },
+      { employee_id: 'e1', template_id: 't0', day: '2026-06-09',
+        start_time: '10:00:00', end_time: '18:00:00', position: 'Server' },
+      { employee_id: 'e1', template_id: 't0', day: '2026-06-10',
+        start_time: '10:00:00', end_time: '18:00:00', position: 'Server' },
+      { employee_id: 'e1', template_id: 't0', day: '2026-06-11',
+        start_time: '10:00:00', end_time: '18:00:00', position: 'Server' },
+    ];
+    ctx.requiredStaff = new Map([
+      ['t1:2026-06-12', { template_id: 't1', day: '2026-06-12', count: 1 }], // Fri
+    ]);
+    ctx.availability = {
+      'e1': { 5: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+      'e2': { 5: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+    };
+    const result = solveSchedule(ctx);
+    // e1 must NOT get the Friday slot. e2 picks it up.
+    const fridayShift = result.shifts.find((s) => s.day === '2026-06-12');
+    expect(fridayShift?.employee_id).toBe('e2');
+    const e1Hours = result.fairness.find((f) => f.employee_id === 'e1')?.hours_assigned ?? 0;
+    expect(e1Hours).toBe(32); // locked 4×8h, no new assignment
+  });
+});
+
 describe('solveSchedule — fairness distribution', () => {
   it('with 2 equally-eligible employees and 4 slots, distributes 2+2 not 4+0', () => {
     const ctx = emptyCtx();

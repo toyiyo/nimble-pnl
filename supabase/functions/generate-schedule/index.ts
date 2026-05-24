@@ -47,6 +47,13 @@ interface RequestPayload {
   preferences_text?: string;
 }
 
+// Server-side limit on preferences_text. Keeps the LLM prompt bounded and
+// prevents a malicious caller from blowing past the client's PREFS_MAX_LENGTH
+// gate by hitting the edge function directly.
+const PREFS_MAX_BYTES = 2000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -80,6 +87,18 @@ serve(async (req) => {
 
     if (!restaurant_id || !week_start) {
       return new Response(JSON.stringify({ error: "restaurant_id and week_start are required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!UUID_RE.test(restaurant_id)) {
+      return new Response(JSON.stringify({ error: "restaurant_id must be a valid UUID" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!DATE_RE.test(week_start)) {
+      return new Response(JSON.stringify({ error: "week_start must be YYYY-MM-DD" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -546,7 +565,12 @@ serve(async (req) => {
     // Attach synthetic ids so the preference layer can reference each shift
     const shiftsWithIds = solverResult.shifts.map((s, i) => ({ ...s, id: `sft_${i}` }));
 
-    const preferencesText = (payload.preferences_text as string | undefined) ?? '';
+    // Truncate at PREFS_MAX_BYTES; the client warns at ~800 and hard-caps at
+    // 1500, so 2000 server bytes leaves headroom for whitespace.
+    const rawPrefs = (payload.preferences_text as string | undefined) ?? '';
+    const preferencesText = rawPrefs.length > PREFS_MAX_BYTES
+      ? rawPrefs.slice(0, PREFS_MAX_BYTES)
+      : rawPrefs;
     const prefStartedAt = performance.now();
     const prefResult = await applyPreferences(shiftsWithIds, solverCtx, preferencesText, PREFERENCE_MODELS);
     const preferenceDurationMs = performance.now() - prefStartedAt;

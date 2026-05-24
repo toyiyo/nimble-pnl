@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { solveSchedule } from '../../supabase/functions/_shared/schedule-solver';
-import { validateGeneratedShifts } from '../../supabase/functions/_shared/schedule-validator';
+import { solveSchedule, type SolverEmployee, type SolverTemplate, type SolverAvailabilityDay } from '../../supabase/functions/_shared/schedule-solver';
+import { validateGeneratedShifts, type AvailabilitySlot, type ValidationContext } from '../../supabase/functions/_shared/schedule-validator';
 import fixture from '../fixtures/schedule-solver-trace.json';
 
 function toCtx(raw: unknown) {
@@ -17,23 +17,23 @@ describe('Solver → validator (defense-in-depth)', () => {
     const ctx = toCtx(fixture);
     const result = solveSchedule(ctx);
 
-    const validationCtx = {
-      employees: new Map(ctx.employees.map((e: any) => [e.id, {
+    const validationCtx: ValidationContext = {
+      employees: new Map(ctx.employees.map((e: SolverEmployee) => [e.id, {
         position: e.position, is_minor: e.is_minor, max_weekly_hours: e.max_weekly_hours,
       }])),
-      templates: new Map(ctx.templates.map((t: any) => [t.id, {
+      templates: new Map(ctx.templates.map((t: SolverTemplate) => [t.id, {
         days: t.days_of_week, position: t.position,
       }])),
-      availability: new Map<string, any>(),
+      availability: new Map<string, AvailabilitySlot>(),
       excludedEmployeeIds: ctx.excludedEmployeeIds,
       existingShifts: ctx.lockedShifts ?? [],
     };
-    for (const [empId, byDay] of Object.entries(ctx.availability as Record<string, any>)) {
+    for (const [empId, byDay] of Object.entries(ctx.availability as Record<string, Record<number, SolverAvailabilityDay>>)) {
       for (const [dow, slot] of Object.entries(byDay)) {
-        validationCtx.availability.set(`${empId}:${dow}`, slot as any);
+        validationCtx.availability.set(`${empId}:${dow}`, slot as AvailabilitySlot);
       }
     }
-    const vr = validateGeneratedShifts(result.shifts, validationCtx as any);
+    const vr = validateGeneratedShifts(result.shifts, validationCtx);
     expect(vr.dropped).toEqual([]);
   });
 });

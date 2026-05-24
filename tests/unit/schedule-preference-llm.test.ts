@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { applyPreferences, applySwapsToSchedule } from '../../supabase/functions/_shared/schedule-preference-llm';
+import { applyPreferences, applySwapsToSchedule, type IdentifiedShift } from '../../supabase/functions/_shared/schedule-preference-llm';
+import type { ScheduleContext } from '../../supabase/functions/_shared/schedule-solver';
 
 describe('applyPreferences — no preferences', () => {
   it('empty text → no fetch, shifts returned untouched', async () => {
@@ -7,11 +8,12 @@ describe('applyPreferences — no preferences', () => {
       throw new Error('fetch should not be called when prefs are empty');
     });
 
-    const shifts = [
-      { employee_id: 'e1', template_id: 't1', day: '2026-06-08',
+    const shifts: IdentifiedShift[] = [
+      { id: 'x1', employee_id: 'e1', template_id: 't1', day: '2026-06-08',
         start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
     ];
-    const result = await applyPreferences(shifts as any, { employees: [], templates: [] } as any, '', []);
+    const minCtx = { employees: [], templates: [], availability: {}, excludedEmployeeIds: new Set(), lockedShifts: [], priorPatterns: [], weeklySalesHistory: [], hourlySalesHistory: [], requiredStaff: new Map(), restaurantId: '', weekStart: '', targetLaborPercentage: 0.3, minimumWageCents: 1500 } as ScheduleContext;
+    const result = await applyPreferences(shifts, minCtx, '', []);
     expect(result.shifts).toEqual(shifts);
     expect(result.appliedSwaps).toEqual([]);
     expect(result.rejectedSwaps).toEqual([]);
@@ -23,7 +25,11 @@ describe('applyPreferences — no preferences', () => {
 });
 
 describe('applySwapsToSchedule — pure re-validation', () => {
-  const ctx = {
+  const ctx: ScheduleContext = {
+    restaurantId: 'r1', weekStart: '2026-06-08',
+    requiredStaff: new Map(), lockedShifts: [], priorPatterns: [],
+    weeklySalesHistory: [], hourlySalesHistory: [],
+    targetLaborPercentage: 0.3, minimumWageCents: 1500,
     employees: [
       { id: 'eA', name: 'A', position: 'Server', area: null, max_weekly_hours: 40,
         date_of_birth: '1990-01-01', is_minor: false },
@@ -39,7 +45,7 @@ describe('applySwapsToSchedule — pure re-validation', () => {
       { id: 't1', name: 'L', position: 'Server', area: null,
         start_time: '10:00:00', end_time: '16:30:00', days_of_week: [1] },
     ],
-  } as any;
+  };
 
   it('legal swap is applied', () => {
     const shifts = [
@@ -53,8 +59,8 @@ describe('applySwapsToSchedule — pure re-validation', () => {
     ]);
     expect(result.appliedSwaps).toHaveLength(1);
     expect(result.rejectedSwaps).toHaveLength(0);
-    const newS1 = result.shifts.find((s: any) => s.id === 's1');
-    const newS2 = result.shifts.find((s: any) => s.id === 's2');
+    const newS1 = result.shifts.find((s) => s.id === 's1');
+    const newS2 = result.shifts.find((s) => s.id === 's2');
     expect(newS1.employee_id).toBe('eB');
     expect(newS2.employee_id).toBe('eA');
   });
@@ -132,13 +138,17 @@ describe('applyPreferences — end-to-end with mocked LLM', () => {
       }), { status: 200 });
     });
 
-    const shifts = [
+    const shifts: IdentifiedShift[] = [
       { id: 's1', employee_id: 'eA', template_id: 't1', day: '2026-06-08',
         start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
       { id: 's2', employee_id: 'eB', template_id: 't1', day: '2026-06-08',
         start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
     ];
-    const ctx = {
+    const llmCtx: ScheduleContext = {
+      restaurantId: 'r1', weekStart: '2026-06-08',
+      requiredStaff: new Map(), lockedShifts: [], priorPatterns: [],
+      weeklySalesHistory: [], hourlySalesHistory: [],
+      targetLaborPercentage: 0.3, minimumWageCents: 1500,
       employees: [
         { id: 'eA', name: 'A', position: 'Server', area: null, max_weekly_hours: 40,
           date_of_birth: '1990-01-01', is_minor: false },
@@ -151,9 +161,9 @@ describe('applyPreferences — end-to-end with mocked LLM', () => {
       },
       excludedEmployeeIds: new Set(),
       templates: [],
-    } as any;
+    };
 
-    const result = await applyPreferences(shifts as any, ctx, 'A and B should swap', [
+    const result = await applyPreferences(shifts, llmCtx, 'A and B should swap', [
       { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000 },
     ]);
 
@@ -170,7 +180,14 @@ describe('applyPreferences — end-to-end with mocked LLM', () => {
       }), { status: 200 });
     });
 
-    const result = await applyPreferences([] as any, { employees: [], templates: [], availability: {}, excludedEmployeeIds: new Set() } as any, 'do something', [
+    const malCtx: ScheduleContext = {
+      restaurantId: 'r1', weekStart: '2026-06-08',
+      requiredStaff: new Map(), lockedShifts: [], priorPatterns: [],
+      weeklySalesHistory: [], hourlySalesHistory: [],
+      targetLaborPercentage: 0.3, minimumWageCents: 1500,
+      employees: [], templates: [], availability: {}, excludedEmployeeIds: new Set(),
+    };
+    const result = await applyPreferences([], malCtx, 'do something', [
       { id: 'google/gemini-2.5-flash', perCallTimeoutMs: 25_000 },
     ]);
     expect(result.appliedSwaps).toEqual([]);

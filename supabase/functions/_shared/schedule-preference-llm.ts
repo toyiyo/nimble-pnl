@@ -88,7 +88,7 @@ async function proposeSwaps(
 ): Promise<{ swaps: ProposedSwap[]; model: string | null }> {
   // Dual-runtime env access: Deno (prod) and Node/Vitest (tests). The `typeof
   // process` guard prevents ReferenceError in Deno when the secret is missing.
-  const apiKey = (globalThis as any).Deno?.env.get('OPENROUTER_API_KEY')
+  const apiKey = (globalThis as Record<string, unknown> & { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get('OPENROUTER_API_KEY')
     ?? (typeof process !== 'undefined' ? process.env.OPENROUTER_API_KEY : undefined);
   if (!apiKey) return { swaps: [], model: null };
 

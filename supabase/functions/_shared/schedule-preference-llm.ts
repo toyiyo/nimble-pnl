@@ -78,6 +78,12 @@ export async function applyPreferences(
   return { shifts: working, appliedSwaps: allApplied, rejectedSwaps: allRejected, modelUsed };
 }
 
+// Reads an env var from Deno (prod) or Node/Vitest (tests) without throwing.
+function getEnvVar(key: string): string | undefined {
+  return (globalThis as Record<string, unknown> & { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get(key)
+    ?? (typeof process !== 'undefined' ? process.env[key] : undefined);
+}
+
 const PREFERENCE_SYSTEM_PROMPT = `You receive a confirmed schedule and a manager preference statement in free text. Propose up to 5 pair-swaps that move toward the preference. Each swap exchanges the employee on shift A with the employee on shift B. Output JSON: {"swaps":[{"shift_a_id":"...","shift_b_id":"...","reason":"..."}]}. Do not invent new shifts. Do not change start/end times. The server re-validates every swap and silently rejects illegal ones. If the preference is satisfied or no safe swap exists, return {"swaps":[]}.`;
 
 async function proposeSwaps(
@@ -86,10 +92,7 @@ async function proposeSwaps(
   preferencesText: string,
   models: PreferenceModelConfig[],
 ): Promise<{ swaps: ProposedSwap[]; model: string | null }> {
-  // Dual-runtime env access: Deno (prod) and Node/Vitest (tests). The `typeof
-  // process` guard prevents ReferenceError in Deno when the secret is missing.
-  const apiKey = (globalThis as Record<string, unknown> & { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get('OPENROUTER_API_KEY')
-    ?? (typeof process !== 'undefined' ? process.env.OPENROUTER_API_KEY : undefined);
+  const apiKey = getEnvVar('OPENROUTER_API_KEY');
   if (!apiKey) return { swaps: [], model: null };
 
   const empById = new Map(ctx.employees.map((e) => [e.id, e]));
@@ -212,9 +215,7 @@ function validateAffectedEmployees(
       const windowStart = timeToMinutes(avail.startTime);
       const windowEnd = timeToMinutes(avail.endTime);
       if (!withinWindow(shiftStart, shiftEnd, windowStart, windowEnd)) return 'OUTSIDE_WINDOW';
-      for (let j = i + 1; j < empShifts.length; j++) {
-        if (shiftsConflict(s, empShifts[j])) return 'DOUBLE_BOOKING';
-      }
+      if (empShifts.slice(i + 1).some((other) => shiftsConflict(s, other))) return 'DOUBLE_BOOKING';
       totalHours += shiftHours(s);
       days.add(s.day);
     }

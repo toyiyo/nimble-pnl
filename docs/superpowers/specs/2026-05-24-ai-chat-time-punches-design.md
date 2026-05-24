@@ -51,13 +51,18 @@ Both rely on a new shared helper `calculateHoursPerEmployee` extracted from the 
 
 | File | Change |
 |---|---|
+| `supabase/migrations/<ts>_idx_time_punches_restaurant_punch_time.sql` | **New.** `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_time_punches_restaurant_punch_time ON public.time_punches (restaurant_id, punch_time);` The existing schema has separate `idx_time_punches_restaurant` and `idx_time_punches_time` indexes but no composite, and both new code paths (`get_labor_costs` and `get_time_punches`) filter by `restaurant_id` + a `punch_time` range. Ship the index with the query that needs it. |
 | `supabase/functions/_shared/laborCalculations.ts` | Export `calculateHoursPerEmployee(employees, timePunches, startDate, endDate)`. Refactor `calculateActualLaborCost` to call it instead of inlining the per-employee map. |
 | `supabase/functions/_shared/tools-registry.ts` | Update `get_labor_costs` description; add `get_time_punches` tool definition (manager+owner only); add `get_time_punches` to `canUseTool` allow-list. |
-| `supabase/functions/ai-execute-tool/index.ts` | Populate per-employee fields in `executeGetLaborCosts` (role-gated). Add `executeGetTimePunches`. Wire into switch. |
+| `supabase/functions/ai-execute-tool/index.ts` | Populate per-employee fields in `executeGetLaborCosts` (role-gated — closes a pre-existing leak; see below). Add `executeGetTimePunches`. Wire into switch. Narrow the `employees` projection from `select('*')` to the explicit columns the helper needs. |
 | `supabase/functions/ai-chat-stream/index.ts` | Append two bullet lines to the system prompt — point the LLM at the new capability so it stops falling back to inventory tools. |
-| `tests/unit/laborCalculations.calculateHoursPerEmployee.test.ts` | New unit test (UTC fixtures) covering mixed hourly/salary/break punches across 3 employees / 5 days. |
+| `tests/unit/laborCalculations.calculateHoursPerEmployee.test.ts` | New unit test (UTC fixtures) covering mixed hourly/salary/break punches across 3 employees / 5 days, plus a UTC-boundary case (`2026-05-16T00:30:00Z` buckets to `2026-05-16`). |
 | `tests/unit/ai-tools-date-resolution.test.ts` | Extend with `get_time_punches` period values. |
-| `tests/unit/permissions.test.ts` | Gate test for `get_time_punches` (kiosk/staff/chef→false, manager/owner→true). |
+| `tests/unit/permissions.test.ts` | Gate test for `get_time_punches` covering kiosk / staff / chef / collaborator_accountant / collaborator_inventory / collaborator_chef → false, and manager / owner → true. |
+
+### Pre-existing leak being closed in this PR
+
+The current `executeGetLaborCosts` returns `employee_breakdown` (id, name, position, compensation_type — no hours) to **every** role when `include_employee_breakdown:true` is requested. That leaks employee names to staff / kiosk / chef and to all three collaborator roles. The reviewer flagged this as a live bug that must be patched in the same PR as the original gap fix; we are no longer relying on "role< manager → empty hours but config rows still visible." The new behaviour is `employee_breakdown: null` for any role below manager — config rows included.
 
 ### Tool: `get_labor_costs` (existing — minimal change)
 
@@ -78,7 +83,7 @@ Top-level response shape unchanged. When `include_employee_breakdown=true` AND t
 }
 ```
 
-For staff/kiosk/chef, `employee_breakdown` is `null` even when requested (current behavior is to return config rows; we tighten it to null to avoid leaking names). A new evidence row `{ table: 'time_punches', summary: '... per-employee breakdown role-restricted' }` is added when the role gates a fill.
+For staff / kiosk / chef / collaborator_accountant / collaborator_inventory / collaborator_chef, `employee_breakdown` is `null` even when requested (current behaviour leaks config rows; we tighten it to null — see "Pre-existing leak being closed in this PR" above). The evidence array always carries exactly one row for this tool; when the role caused per-employee fields to be stripped, the row's `summary` includes the phrase `per-employee breakdown role-restricted`. We do not conditionally append a second row.
 
 ### Tool: `get_time_punches` (new)
 
@@ -127,7 +132,7 @@ For staff/kiosk/chef, `employee_breakdown` is `null` even when requested (curren
         "start_time":    "2026-05-16T18:30:00.000Z",
         "end_time":      "2026-05-16T19:03:00.000Z",
         "hours":         0.55,
-        "cost_cents":    548
+        "cost_cents":    548     // null for non-hourly compensation_types — see below
       }
       // … up to `limit` rows, sorted by start_time DESC
     ]
@@ -137,6 +142,8 @@ For staff/kiosk/chef, `employee_breakdown` is `null` even when requested (curren
   ]
 }
 ```
+
+**`cost_cents` semantics:** Only meaningful for hourly compensation (`hourly_rate × hours`). For `salary`, `contractor`, and `daily_rate`, the per-period cost is not well-defined (salary is monthly-prorated; daily_rate is a flat day total regardless of hours), so `cost_cents` is `null` in those rows. The LLM is told (in the system prompt) to cite `get_labor_costs` for compensation totals when a row has a null `cost_cents`.
 
 ### Shared helper: `calculateHoursPerEmployee`
 
@@ -176,15 +183,41 @@ LABOR / TIME PUNCH QUERIES (manager+owner):
 
 ### Role gating
 
-| Tool / Field | kiosk | staff | chef | manager | owner |
-|---|---|---|---|---|---|
-| `get_labor_costs` aggregate | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `get_labor_costs.employee_breakdown` (per-employee hours) | ❌ (null) | ❌ (null) | ❌ (null) | ✅ | ✅ |
-| `get_time_punches` | ❌ (not in tool list) | ❌ | ❌ | ✅ | ✅ |
+| Tool / Field | kiosk | staff | chef | collab_accountant | collab_inventory | collab_chef | manager | owner |
+|---|---|---|---|---|---|---|---|---|
+| `get_labor_costs` aggregate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `get_labor_costs.employee_breakdown` (per-employee hours) | ❌ (null) | ❌ (null) | ❌ (null) | ❌ (null) | ❌ (null) | ❌ (null) | ✅ | ✅ |
+| `get_time_punches` | ❌ (not in tool list) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 
 Implementation: `getTools()` in `tools-registry.ts` only includes `get_time_punches` for manager/owner, so the LLM never sees it for lower roles. `canUseTool` mirrors that and is already invoked at the dispatch site (`ai-execute-tool/index.ts:3435`), so any call to `get_time_punches` from a lower role returns "Permission denied" before reaching the handler.
 
 For `get_labor_costs` the tool itself stays open to all roles (aggregate totals are valuable to staff). The per-employee field stripping inside `executeGetLaborCosts` is a defense-in-depth second layer: the handler receives `userRestaurant.role` (a new parameter — already in scope at the dispatcher, just not currently plumbed into handlers) and returns `employee_breakdown: null` for any role below manager, even if `include_employee_breakdown:true` was requested.
+
+**Unified permission-denied shape.** Today the dispatcher's `canUseTool` rejection returns one shape and an in-handler rejection returns another. We standardise both on the dispatcher's existing shape so the LLM can recognise the failure mode consistently:
+
+```jsonc
+{
+  "ok": false,
+  "error": {
+    "code": "TOOL_PERMISSION_DENIED",
+    "message": "<tool_name> requires manager or owner role",
+    "tool": "<tool_name>",
+    "required_role": "manager"
+  }
+}
+```
+
+This applies to both the dispatcher-level rejection of `get_time_punches` for a low-role user and any defense-in-depth rejection inside handlers.
+
+### `employees` query projection
+
+The current `executeGetLaborCosts` runs `supabase.from('employees').select('*')` and then only uses a handful of columns. We narrow to exactly what the helper needs:
+
+```ts
+select('id, name, position, compensation_type, hourly_rate, salary_cents, contractor_rate_cents, daily_rate_cents, is_active')
+```
+
+This stays in scope of this PR because the new helper requires a stable, documented input shape — adding columns implicitly via `*` makes the contract fragile.
 
 ## Data flow
 
@@ -193,12 +226,17 @@ User: "Who worked the 2.09 hours this month?"
   → ai-chat-stream
   → LLM emits tool_call: get_labor_costs(period: 'month', include_employee_breakdown: true)
   → ai-execute-tool
-    → executeGetLaborCosts
-      → fetch time_punches + employees in parallel (existing)
+    → canUseTool('get_labor_costs', role)  // dispatcher gate — allows all roles
+    → executeGetLaborCosts(args, ..., role)
+      → fetch time_punches  (filter: restaurant_id + punch_time range
+                            → hits new composite idx_time_punches_restaurant_punch_time)
+      → fetch employees     (select 'id, name, position, compensation_type,
+                            hourly_rate, salary_cents, contractor_rate_cents,
+                            daily_rate_cents, is_active' — no SELECT *)
       → calculateActualLaborCost (existing aggregate)
       → calculateHoursPerEmployee (new: per-employee rollup)
-      → filter+strip per-employee fields if role < manager
-    → response with named hours
+      → if role < manager: employee_breakdown = null  // closes the pre-existing name leak
+    → response with named hours (or null breakdown for low roles)
   → LLM: "Jose Delgado (Manager): 1.05h on May 16-17; Alejandra Perez (Manager): 1.04h on May 17. Total 2.09h."
 ```
 
@@ -218,7 +256,7 @@ Same patterns as existing handlers:
 - Date-resolution mirrors `calculateDateRange` (already covered by `ai-tools-date-resolution.test.ts`).
 - Empty result: `ok: true, data: { total_periods: 0, work_periods: [] }` — never invent rows.
 - Supabase query error: throw with table name + message (existing handler convention).
-- Role-gating violation (manager-only tool called via ungated path): handler returns `{ ok: false, error: { code: 'TOOL_PERMISSION_DENIED', message: '…' } }`.
+- Role-gating violation: dispatcher and handler both return the unified `TOOL_PERMISSION_DENIED` shape described in **Role gating** above.
 
 ## Timezone discipline
 
@@ -235,6 +273,7 @@ Test fixtures use UTC anchors (`new Date(Date.UTC(...))`) so CI (UTC) and local 
    - Includes break punches (verify breaks are NOT counted in `total_hours`).
    - Includes one employee with no punches (returns 0 hours, not omitted).
    - Verifies `hours_per_day` keys match daily-cost keys.
+   - **UTC boundary case**: a punch with `punch_time = '2026-05-16T00:30:00Z'` and an early clock-out at `'2026-05-16T01:00:00Z'` must bucket to `'2026-05-16'` in `hours_per_day`, matching the existing daily-cost convention.
    - UTC fixtures (lesson 2026-05-03).
 
 2. **`tests/unit/ai-tools-date-resolution.test.ts` (extend)**
@@ -242,6 +281,8 @@ Test fixtures use UTC anchors (`new Date(Date.UTC(...))`) so CI (UTC) and local 
 
 3. **`tests/unit/permissions.test.ts` (extend)**
    - Add `get_time_punches` to the per-role allow/deny table.
+   - Cover the three collaborator roles (`collaborator_accountant`, `collaborator_inventory`, `collaborator_chef`) → all deny.
+   - Cover the dispatcher-level and handler-level rejection paths returning the same `TOOL_PERMISSION_DENIED` shape.
 
 ### Manual smoke test (Phase 8)
 
@@ -279,6 +320,10 @@ Raw punches would let the LLM debug missing/duplicate clock-outs but require it 
 ### Two tools (vs. one big tool with flags)
 
 One tool with both aggregate + raw output would have a more complex response schema and force the LLM to choose between modes via flag. Two tools keeps each schema small, lets the LLM pick by name, and keeps tool descriptions tight (a known driver of correct tool selection across the multi-model fallback list).
+
+### Period enum: no `quarter` / `year` (yet)
+
+The reviewer asked whether `get_time_punches` should accept `quarter` and `year`. Deferred: the same coverage is already reachable via `period: 'custom'` with explicit `start_date` / `end_date`, and the existing `get_labor_costs` enum doesn't carry those values either — adding them here without aligning the rest of the tool surface would create a one-off inconsistency. If a future workflow needs them often enough to justify the LLM hint, extend both tools together.
 
 ## Open questions
 

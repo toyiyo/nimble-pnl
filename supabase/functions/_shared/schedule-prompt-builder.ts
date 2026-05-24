@@ -13,6 +13,14 @@ export interface ScheduleEmployee {
   area: string | null;
   hourly_rate: number; // cents
   employment_type: 'full_time' | 'part_time';
+  /** Set by the edge function from `employees.date_of_birth` relative
+   *  to `weekStart` via `computeHourBudget`. Null/missing DOB → false. */
+  is_minor: boolean;
+  /** Hard ceiling for weekly hours. Adults and 16-17yo minors: 40.
+   *  Under-16 minors: 18 (FLSA school-week limit applied year-round as
+   *  the conservative default). Validator dispatches MINOR_HOURS_EXCEEDED
+   *  vs HOURS_EXCEED_WEEKLY_CAP on this value, NOT on `is_minor`. */
+  max_weekly_hours: number;
 }
 
 export interface ScheduleTemplate {
@@ -145,6 +153,71 @@ function buildWeekDates(weekStart: string): { rows: string; byDayOfWeek: string[
   ];
   const rows = DATE_MAP_LABELS.map((label, i) => `  ${label} ${formatted[i]}`).join('\n');
   return { rows, byDayOfWeek };
+}
+
+/**
+ * Returns the weekly hour cap and minor flag for an employee given
+ * their date of birth and the first day of the schedule week.
+ *
+ * Both `dob` and `weekStart` are parsed as UTC midnight via
+ * `new Date(\`${s}T00:00:00Z\`)` and compared with `.getUTC*()`
+ * accessors so the result is identical across host TZs. Do NOT use
+ * the local-time `new Date(year, monthIdx, day)` constructor —
+ * see the TZ-portability test in
+ * `tests/unit/schedule-hour-budget.test.ts`.
+ *
+ * Age is computed in full UTC years anchored on `weekStart` (the first
+ * day of the schedule week). Birthday inclusive: an employee who turns
+ * N on `weekStart` is age N — not N-1.
+ *
+ * | DOB             | Age on weekStart | Result                       |
+ * | --------------- | ---------------- | ---------------------------- |
+ * | null/bad string | n/a              | { is_minor: false, max: 40 } |
+ * | future          | n/a              | { is_minor: false, max: 40 } |
+ * | ≥ 18            | adult            | { is_minor: false, max: 40 } |
+ * | 16-17           | minor 16+        | { is_minor: true,  max: 40 } |
+ * | < 16            | minor < 16       | { is_minor: true,  max: 18 } |
+ *
+ * @throws if `weekStart` does not parse to a valid Date. Throwing here
+ *   matches `buildWeekDates`'s behavior — an `Invalid Date` weekStart
+ *   would silently propagate as NaN age and bypass every cap.
+ */
+export function computeHourBudget(
+  dob: string | null | undefined,
+  weekStart: string,
+): { is_minor: boolean; max_weekly_hours: number } {
+  const weekDate = new Date(`${weekStart}T00:00:00Z`);
+  if (Number.isNaN(weekDate.getTime())) {
+    throw new Error(
+      `computeHourBudget: invalid weekStart "${weekStart}" — expected YYYY-MM-DD`,
+    );
+  }
+
+  if (!dob) return { is_minor: false, max_weekly_hours: 40 };
+
+  const dobDate = new Date(`${dob}T00:00:00Z`);
+  if (Number.isNaN(dobDate.getTime())) {
+    return { is_minor: false, max_weekly_hours: 40 };
+  }
+
+  // Future DOB → data error, treat as adult rather than blocking.
+  if (dobDate.getTime() > weekDate.getTime()) {
+    return { is_minor: false, max_weekly_hours: 40 };
+  }
+
+  // Age in full years, inclusive birthday. The employee has already had
+  // their birthday this year if (dob.month, dob.day) is on or before
+  // (weekStart.month, weekStart.day).
+  let age = weekDate.getUTCFullYear() - dobDate.getUTCFullYear();
+  const beforeBirthday =
+    weekDate.getUTCMonth() < dobDate.getUTCMonth() ||
+    (weekDate.getUTCMonth() === dobDate.getUTCMonth() &&
+      weekDate.getUTCDate() < dobDate.getUTCDate());
+  if (beforeBirthday) age--;
+
+  if (age < 16) return { is_minor: true, max_weekly_hours: 18 };
+  if (age < 18) return { is_minor: true, max_weekly_hours: 40 };
+  return { is_minor: false, max_weekly_hours: 40 };
 }
 
 const SYSTEM_PROMPT = `You are a restaurant schedule optimizer. Your job is to create an optimal weekly shift schedule.

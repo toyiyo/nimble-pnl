@@ -69,9 +69,10 @@ export async function applyPreferences(
     working = applied.shifts as IdentifiedShift[];
     allApplied = allApplied.concat(applied.appliedSwaps);
     allRejected = allRejected.concat(applied.rejectedSwaps);
-    // Break if nothing was applied, or if everything proposed was applied
-    // (preference likely satisfied — avoid re-proposing the same swaps)
     if (applied.appliedSwaps.length === 0) break;
+    // If every proposed swap was applied, treat the preference as satisfied.
+    // Re-prompting would risk the LLM re-proposing identical swaps that would
+    // either undo round 1's work or double-apply.
     if (applied.appliedSwaps.length === swaps.length) break;
   }
 

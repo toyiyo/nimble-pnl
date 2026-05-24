@@ -219,6 +219,7 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
     shiftsByEmp.get(locked.employee_id)?.push(lockedAsShift);
   }
 
+  const empById = new Map(ctx.employees.map((e) => [e.id, e]));
   const slots = enumerateSlots(ctx);
 
   // Stage C: most-constrained-first. Tie-break: weekend before weekday, earlier
@@ -263,7 +264,7 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
     let droppedReason: UnfilledSlot['reason'] = 'NO_ELIGIBLE_EMPLOYEE';
     const afterHourCap: string[] = [];
     for (const empId of base) {
-      const empMax = ctx.employees.find((e) => e.id === empId)?.max_weekly_hours ?? 40;
+      const empMax = empById.get(empId)?.max_weekly_hours ?? 40;
       if ((hoursByEmp.get(empId) ?? 0) + slotHours <= empMax) afterHourCap.push(empId);
     }
     if (afterHourCap.length === 0) { droppedReason = 'ALL_AT_HOUR_CAP'; }

@@ -25,7 +25,11 @@ import {
 } from "../_shared/availability-tz.ts";
 import { computeRequiredStaff } from "../_shared/staffing-requirements.ts";
 import { solveSchedule, type ScheduleContext as SolverScheduleContext } from "../_shared/schedule-solver.ts";
+import type { UnfilledSlot, FairnessSummary } from "../_shared/schedule-solver.ts";
 import { applyPreferences, PREFERENCE_MODELS } from "../_shared/schedule-preference-llm.ts";
+
+export type ClientSafeUnfilledSlot = Omit<UnfilledSlot, 'template_id'> & { template_name: string };
+export type ClientSafeFairnessSummary = Omit<FairnessSummary, 'employee_id'> & { employee_name: string };
 
 interface RequestPayload {
   restaurant_id: string;
@@ -709,6 +713,20 @@ serve(async (req) => {
       );
     }
 
+    // ── Project UUIDs → human names at the response boundary ────────────────
+    // Per lesson [2026-05-17]: API responses must not leak internal UUIDs.
+    const templateNameById = new Map(templates.map((t: any) => [t.id, t.name as string]));
+    const employeeNameById = new Map(employees.map((e: any) => [e.id, e.name as string]));
+
+    const safeUnfilled: ClientSafeUnfilledSlot[] = solverResult.unfilled.map(({ template_id, ...rest }) => ({
+      ...rest,
+      template_name: templateNameById.get(template_id) ?? 'Unknown template',
+    }));
+    const safeFairness: ClientSafeFairnessSummary[] = solverResult.fairness.map(({ employee_id, ...rest }) => ({
+      ...rest,
+      employee_name: employeeNameById.get(employee_id) ?? 'Unknown',
+    }));
+
     // ── Build success response ───────────────────────────────────────────────
     // dropped_reasons is UUID-free — derived from code + day + position only.
     // d.message MAY contain employee/template UUIDs (per validator JSDoc) so
@@ -756,6 +774,10 @@ serve(async (req) => {
           total_required_slots: totalRequiredSlots,
           drop_reason_summary: dropReasonSummary,
           dropped_reasons: droppedReasons,
+          unfilled: safeUnfilled,
+          fairness_summary: safeFairness,
+          applied_swaps_count: prefResult.appliedSwaps.length,
+          rejected_swaps_count: prefResult.rejectedSwaps.length,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

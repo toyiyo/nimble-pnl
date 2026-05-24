@@ -181,6 +181,15 @@ function eligibleBase(
   return out;
 }
 
+function toUnfilled(slot: Slot): Omit<UnfilledSlot, 'reason'> {
+  return {
+    template_id: slot.template_id,
+    day: slot.day,
+    position: slot.position,
+    area: slot.area,
+  };
+}
+
 // ─── Solver Entry Point ───────────────────────────────────────────────────────
 
 export function solveSchedule(ctx: ScheduleContext): SolverResult {
@@ -216,28 +225,68 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
   const unfilled: UnfilledSlot[] = [];
 
   for (const slot of slots) {
-    const candidates = eligibleBase(slot, ctx);
-    if (candidates.length === 0) {
-      unfilled.push({
-        template_id: slot.template_id,
-        day: slot.day,
-        position: slot.position,
-        area: slot.area,
-        reason: 'NO_ELIGIBLE_EMPLOYEE',
-      });
+    const base = eligibleBase(slot, ctx);
+    if (base.length === 0) {
+      unfilled.push({ ...toUnfilled(slot), reason: 'NO_ELIGIBLE_EMPLOYEE' });
       continue;
     }
-    const picked = candidates[0];
-    const newShift: GeneratedShift = {
-      employee_id: picked,
+
+    const slotShift: GeneratedShift = {
+      employee_id: '__probe__',
       template_id: slot.template_id,
       day: slot.day,
       start_time: slot.start_time,
       end_time: slot.end_time,
       position: slot.position,
     };
+    const slotHours = shiftHours(slotShift);
+
+    // Narrow with reason tracking
+    let droppedReason: UnfilledSlot['reason'] = 'NO_ELIGIBLE_EMPLOYEE';
+    const afterHourCap: string[] = [];
+    for (const empId of base) {
+      const empMax = ctx.employees.find((e) => e.id === empId)?.max_weekly_hours ?? 40;
+      if ((hoursByEmp.get(empId) ?? 0) + slotHours <= empMax) afterHourCap.push(empId);
+    }
+    if (afterHourCap.length === 0) { droppedReason = 'ALL_AT_HOUR_CAP'; }
+
+    const afterConsec: string[] = [];
+    for (const empId of afterHourCap) {
+      const days = new Set(daysByEmp.get(empId) ?? []);
+      days.add(slot.day);
+      if (longestConsecutiveRun(days) <= 5) afterConsec.push(empId);
+    }
+    if (afterConsec.length === 0 && afterHourCap.length > 0) droppedReason = 'ALL_AT_CONSEC_DAY_CAP';
+
+    const afterConflict: string[] = [];
+    for (const empId of afterConsec) {
+      const existing = shiftsByEmp.get(empId) ?? [];
+      const probe = { ...slotShift, employee_id: empId };
+      if (!existing.some((ex) => shiftsConflict(probe, ex))) afterConflict.push(empId);
+    }
+    if (afterConflict.length === 0 && afterConsec.length > 0) droppedReason = 'ALL_CONFLICTING';
+
+    if (afterConflict.length === 0) {
+      unfilled.push({ ...toUnfilled(slot), reason: droppedReason });
+      continue;
+    }
+
+    // Fairness pick: lowest hours_assigned, tie by fewest days, tie by stable id
+    const picked = afterConflict.reduce((best, cur) => {
+      const bestH = hoursByEmp.get(best) ?? 0;
+      const curH = hoursByEmp.get(cur) ?? 0;
+      if (curH < bestH) return cur;
+      if (curH > bestH) return best;
+      const bestD = daysByEmp.get(best)?.size ?? 0;
+      const curD = daysByEmp.get(cur)?.size ?? 0;
+      if (curD < bestD) return cur;
+      if (curD > bestD) return best;
+      return best < cur ? best : cur;
+    });
+
+    const newShift: GeneratedShift = { ...slotShift, employee_id: picked };
     assigned.push(newShift);
-    hoursByEmp.set(picked, (hoursByEmp.get(picked) ?? 0) + shiftHours(newShift));
+    hoursByEmp.set(picked, (hoursByEmp.get(picked) ?? 0) + slotHours);
     daysByEmp.get(picked)?.add(slot.day);
     shiftsByEmp.get(picked)?.push(newShift);
   }

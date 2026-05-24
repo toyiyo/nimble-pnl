@@ -194,3 +194,61 @@ describe('solveSchedule — eligibility (position + area + availability + window
     expect(result.shifts).toHaveLength(1);
   });
 });
+
+describe('solveSchedule — dynamic predicates', () => {
+  it('hour cap respects max_weekly_hours (18h minor case)', () => {
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'Aleah', position: 'Server', area: null, max_weekly_hours: 18,
+        date_of_birth: '2010-06-01', is_minor: true },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'After-school', position: 'Server', area: null,
+        start_time: '16:30:00', end_time: '23:00:00', days_of_week: [1, 2, 3, 4, 5] },
+    ];
+    ctx.requiredStaff = new Map([
+      ['t1:2026-06-08', { template_id: 't1', day: '2026-06-08', count: 1 }],
+      ['t1:2026-06-09', { template_id: 't1', day: '2026-06-09', count: 1 }],
+      ['t1:2026-06-10', { template_id: 't1', day: '2026-06-10', count: 1 }],
+    ]);
+    ctx.availability = {
+      'e1': {
+        1: { isAvailable: true, startTime: '16:30:00', endTime: '23:00:00' },
+        2: { isAvailable: true, startTime: '16:30:00', endTime: '23:00:00' },
+        3: { isAvailable: true, startTime: '16:30:00', endTime: '23:00:00' },
+      },
+    };
+    const result = solveSchedule(ctx);
+    // 6.5h × 2 = 13h fits; 3rd would push to 19.5h → unfilled
+    const e1Hours = result.fairness.find((f) => f.employee_id === 'e1')?.hours_assigned;
+    expect(e1Hours).toBe(13);
+    expect(result.shifts).toHaveLength(2);
+    expect(result.unfilled).toHaveLength(1);
+    expect(result.unfilled[0].reason).toBe('ALL_AT_HOUR_CAP');
+  });
+
+  it('blocks 6+ consecutive days', () => {
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'Bob', position: 'Server', area: null, max_weekly_hours: 80,
+        date_of_birth: '1990-01-01', is_minor: false },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'Lunch', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '12:00:00', days_of_week: [0, 1, 2, 3, 4, 5, 6] },
+    ];
+    ctx.requiredStaff = new Map(
+      ['2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', '2026-06-13']
+        .map((d) => [`t1:${d}`, { template_id: 't1', day: d, count: 1 }]),
+    );
+    ctx.availability = {
+      'e1': Object.fromEntries(
+        [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' }]),
+      ),
+    };
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(5);
+    expect(result.unfilled).toHaveLength(1);
+    expect(result.unfilled[0].reason).toBe('ALL_AT_CONSEC_DAY_CAP');
+  });
+});

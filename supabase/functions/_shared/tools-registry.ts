@@ -236,7 +236,7 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     // Labor cost analysis - available to all users
     {
       name: 'get_labor_costs',
-      description: 'Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations.',
+      description: 'Get labor cost breakdown by compensation type (hourly, salary, contractor, daily_rate). Shows daily costs, total hours worked, and optional employee-level breakdown. Uses time punches + employee configs for accurate calculations. Set include_employee_breakdown:true to get per-employee total_hours, total_cost_cents, days_worked, and hours_per_day (manager+owner only; null for other roles).',
       parameters: {
         type: 'object',
         properties: {
@@ -376,6 +376,49 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
             }
           },
           required: ['analysis_type', 'start_date', 'end_date']
+        }
+      },
+      {
+        name: 'get_time_punches',
+        description: "List individual work periods (clock-in/clock-out pairs with computed hours and breaks deducted) for a date range. Use this to answer 'who worked when' and to drill into specific shifts. Returns parsed work periods (one row per shift), joined to employee name/position. Manager+owner only.",
+        parameters: {
+          type: 'object',
+          properties: {
+            period: {
+              type: 'string',
+              enum: ['today', 'yesterday', 'week', 'last_week', 'month', 'last_month', 'custom'],
+              description: 'The time period for work periods'
+            },
+            start_date: {
+              type: 'string',
+              format: 'date',
+              description: 'Start date for custom period (YYYY-MM-DD)'
+            },
+            end_date: {
+              type: 'string',
+              format: 'date',
+              description: 'End date for custom period (YYYY-MM-DD)'
+            },
+            employee_id: {
+              type: 'string',
+              description: 'Filter to one employee by UUID'
+            },
+            position: {
+              type: 'string',
+              description: "Filter to one position (e.g., 'Server')"
+            },
+            min_hours: {
+              type: 'number',
+              description: 'Drop periods shorter than this (default 0)',
+              default: 0
+            },
+            limit: {
+              type: 'integer',
+              description: 'Max rows returned (default 50, max 200)',
+              default: 50
+            }
+          },
+          required: ['period']
         }
       },
       {
@@ -848,6 +891,7 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_financial_statement',
     'generate_report',
     'get_payroll_summary',              // Payroll details - manager+
+    'get_time_punches',                 // Per-shift work periods - manager+
     'get_tip_summary',                  // Tip pooling details - manager+
     'get_pending_outflows',             // Uncommitted expenses - manager+
     'get_operating_costs',              // Operating cost breakdown - manager+
@@ -870,4 +914,18 @@ export function canUseTool(toolName: string, userRole: string): boolean {
   }
 
   return false;
+}
+
+/**
+ * Returns the lowest role that can use a given tool.
+ * Used to build the TOOL_PERMISSION_DENIED error response.
+ */
+export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner' {
+  if (toolName === 'get_ai_insights') return 'owner';
+
+  // Mirror managerOwnerTools list above; if the tool isn't in basicTools,
+  // it requires manager.
+  if (canUseTool(toolName, 'staff')) return 'staff';
+  if (canUseTool(toolName, 'manager')) return 'manager';
+  return 'owner';
 }

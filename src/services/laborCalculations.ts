@@ -117,6 +117,30 @@ export interface EmployeeLaborCost {
   hoursWorked?: number;
 }
 
+/**
+ * Per-employee hours/cost summary used by the AI chat tools
+ * (get_labor_costs.employee_breakdown and get_time_punches).
+ */
+export interface EmployeeHoursSummary {
+  employee_id: string;
+  employee_name: string;
+  position: string | null;
+  compensation_type: CompensationType;
+  /** Sum of work-period hours across [startDate, endDate]; breaks excluded. */
+  total_hours: number;
+  /** Total cost in cents for the period.
+   *  Hourly: sum of per-day calculateEmployeeDailyCostForDate(emp, day, hours).
+   *  Daily rate: per-day daily-rate × days with hours > 0.
+   *  Salary/contractor: existing per-period helpers (snapshot-aware). */
+  total_cost_cents: number;
+  /** Distinct dates with hours > 0. */
+  days_worked: number;
+  /** 'YYYY-MM-DD' → hours that day. Keys align with DailyLaborCost.date. */
+  hours_per_day: Record<string, number>;
+  /** parseWorkPeriods output for this employee (breaks split out). */
+  work_periods: import('@/utils/payrollCalculations').WorkPeriod[];
+}
+
 // ============================================================================
 // Core Calculation Functions
 // ============================================================================
@@ -644,6 +668,96 @@ export function calculateActualLaborCost(
   );
 
   return { breakdown, dailyCosts };
+}
+
+// ============================================================================
+// Per-employee Rollup (AI Chat: get_labor_costs.employee_breakdown,
+// get_time_punches)
+// ============================================================================
+
+/**
+ * Roll punches up per employee: total hours, per-day hours, cost, and the
+ * parsed work periods. Output is additive — one row per input employee, even
+ * if they have zero punches in the window (caller can filter).
+ *
+ * Cost rules mirror calculateActualLaborCost:
+ *   hourly      → sum of per-day calculateEmployeeDailyCostForDate
+ *   daily_rate  → per-day daily-rate × days with hours > 0
+ *   salary      → calculateSalaryForPeriod(employee, startDate, endDate)
+ *   contractor  → calculateContractorPayForPeriod(employee, startDate, endDate)
+ *
+ * Per-employee totals across the same comp type sum back to
+ * calculateActualLaborCost(...).breakdown.<type>.cost (× 100 cents).
+ */
+export function calculateHoursPerEmployee(
+  employees: Employee[],
+  timePunches: TimePunch[],
+  startDate: Date,
+  endDate: Date,
+): EmployeeHoursSummary[] {
+  const punchesByEmployee = new Map<string, TimePunch[]>();
+  timePunches.forEach((punch) => {
+    if (!punchesByEmployee.has(punch.employee_id)) {
+      punchesByEmployee.set(punch.employee_id, []);
+    }
+    punchesByEmployee.get(punch.employee_id)!.push(punch);
+  });
+
+  return employees.map((employee) => {
+    const punches = punchesByEmployee.get(employee.id) ?? [];
+    const { periods } = parseWorkPeriods(punches);
+
+    const hoursPerDay: Record<string, number> = {};
+    let totalHours = 0;
+
+    periods.forEach((period) => {
+      if (period.isBreak) return;
+      const day = formatDateUTC(new Date(period.startTime));
+      hoursPerDay[day] = (hoursPerDay[day] ?? 0) + period.hours;
+      totalHours += period.hours;
+    });
+
+    const daysWorked = Object.values(hoursPerDay).filter((h) => h > 0).length;
+
+    let totalCostCents = 0;
+    switch (employee.compensation_type) {
+      case 'hourly': {
+        for (const [day, hours] of Object.entries(hoursPerDay)) {
+          if (hours <= 0) continue;
+          totalCostCents += calculateEmployeeDailyCostForDate(employee, day, hours);
+        }
+        break;
+      }
+      case 'daily_rate': {
+        for (const [day, hours] of Object.entries(hoursPerDay)) {
+          if (hours <= 0) continue;
+          const snapshot = getEmployeeSnapshotForDate(employee, day);
+          totalCostCents += calculateEmployeeDailyCost(snapshot);
+        }
+        break;
+      }
+      case 'salary': {
+        totalCostCents = calculateSalaryForPeriod(employee, startDate, endDate);
+        break;
+      }
+      case 'contractor': {
+        totalCostCents = calculateContractorPayForPeriod(employee, startDate, endDate);
+        break;
+      }
+    }
+
+    return {
+      employee_id: employee.id,
+      employee_name: employee.name,
+      position: employee.position ?? null,
+      compensation_type: employee.compensation_type,
+      total_hours: totalHours,
+      total_cost_cents: totalCostCents,
+      days_worked: daysWorked,
+      hours_per_day: hoursPerDay,
+      work_periods: periods,
+    };
+  });
 }
 
 // ============================================================================

@@ -241,6 +241,7 @@ serve(async (req) => {
         // hourly_rate stored in cents; salary employees get 0
         hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
         employment_type: e.employment_type ?? "full_time",
+        date_of_birth: e.date_of_birth ?? '',
         is_minor: budget.is_minor,
         max_weekly_hours: budget.max_weekly_hours,
       };
@@ -492,21 +493,22 @@ serve(async (req) => {
     };
 
     // ── Build solver context (separate from the prompt-builder's ScheduleContext) ──
+    // Hoisted once per request — the requiredStaff Map-conversion loop needs this
+    // to compute YYYY-MM-DD dates; constructing it inside the loop (one per
+    // template-DOW pair) was wasteful.
+    const solverWeekStart = new Date(`${week_start}T00:00:00Z`);
     const solverCtx: SolverScheduleContext = {
       restaurantId: restaurant_id,
       weekStart: week_start,
-      employees: activeEmployees.map((e) => {
-        const budget = computeHourBudget(e.date_of_birth, week_start);
-        return {
-          id: e.id,
-          name: e.name,
-          position: e.position ?? 'Staff',
-          area: e.area ?? null,
-          max_weekly_hours: budget.max_weekly_hours,
-          date_of_birth: e.date_of_birth ?? '',
-          is_minor: budget.is_minor,
-        };
-      }),
+      employees: employees.map((e) => ({
+        id: e.id,
+        name: e.name,
+        position: e.position,
+        area: e.area,
+        max_weekly_hours: e.max_weekly_hours,
+        date_of_birth: e.date_of_birth,
+        is_minor: e.is_minor,
+      })),
       templates: rawTemplates.map((t) => ({
         id: t.id,
         name: t.name,
@@ -535,10 +537,9 @@ serve(async (req) => {
             if (count <= 0) continue;
             // Compute the YYYY-MM-DD date for this day-of-week within the target week.
             // week_start is Monday-anchored; iterate offsets 0..6 picking matching UTCDay.
-            const ws = new Date(`${week_start}T00:00:00Z`);
             for (let i = 0; i < 7; i++) {
-              const d = new Date(ws);
-              d.setUTCDate(ws.getUTCDate() + i);
+              const d = new Date(solverWeekStart);
+              d.setUTCDate(solverWeekStart.getUTCDate() + i);
               if (d.getUTCDay() === dow) {
                 const day = d.toISOString().slice(0, 10);
                 out.push([`${templateId}:${day}`, { template_id: templateId, day, count }]);
@@ -612,9 +613,6 @@ serve(async (req) => {
       rejected_swaps: prefResult.rejectedSwaps.length,
     }));
 
-    // ── Placeholder to satisfy downstream code that used generatedShifts ─────
-    const generatedShifts: GeneratedShift[] = finalShifts;
-
     // Build validation context
     // Bug I: validator now carries is_minor + max_weekly_hours per
     // employee (one Map instead of Set + parallel position Map) so the
@@ -671,7 +669,7 @@ serve(async (req) => {
     };
 
     const { valid: validShifts, dropped: droppedShifts } = validateGeneratedShifts(
-      generatedShifts,
+      finalShifts,
       validationCtx
     );
 
@@ -683,7 +681,7 @@ serve(async (req) => {
     // Server-side log: full counts AND the human messages (UUIDs allowed in logs).
     // Defense-in-depth: solver should produce zero drops; any drop = solver bug.
     console.log(
-      `[generate-schedule] Generated=${generatedShifts.length}, ` +
+      `[generate-schedule] Generated=${finalShifts.length}, ` +
         `valid=${validShifts.length}, dropped=${droppedShifts.length}, ` +
         `requiredSlots=${totalRequiredSlots}`,
     );

@@ -13,6 +13,9 @@ export interface ScheduleEmployee {
   area: string | null;
   hourly_rate: number; // cents
   employment_type: 'full_time' | 'part_time';
+  /** Raw DOB string from the DB (YYYY-MM-DD or empty string). Carried through
+   *  so the solver context can reference it without a second DB pass. */
+  date_of_birth: string;
   /** Set by the edge function from `employees.date_of_birth` relative
    *  to `weekStart` via `computeHourBudget`. Null/missing DOB → false. */
   is_minor: boolean;

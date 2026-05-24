@@ -10,7 +10,6 @@
 import {
   type GeneratedShift,
   getDayOfWeekUTC,
-  longestConsecutiveRun,
   normalizePosition,
   shiftHours,
   shiftsConflict,
@@ -181,6 +180,48 @@ function eligibleBase(
   return out;
 }
 
+/**
+ * Hot-path replacement for `new Set(days); days.add(candidate); longestConsecutiveRun(days) <= 5`.
+ * Without copying the Set, asks: would adding `candidate` to `days` keep the
+ * longest consecutive run ≤ 5?
+ *
+ * - Empty / null days → adding the candidate produces a 1-day run. Always ≤ 5.
+ * - Candidate already present → no new run is created; existing run length holds.
+ *   We don't recompute; if the caller has been adding shifts incrementally and
+ *   their existing run was ≤ 5, it still is.
+ * - Otherwise: scan the existing Set's day-strings, find the longest run that
+ *   includes the candidate (immediate-prev + immediate-next neighbors), and
+ *   compare against the cap. The full Set's longest-run elsewhere is unchanged.
+ */
+function wouldStayWithinConsecutiveDayCap(
+  days: Set<string> | undefined,
+  candidate: string,
+  candidateMs: number,
+): boolean {
+  if (!days || days.size === 0) return true;
+  if (days.has(candidate)) return true;
+  let runFromCandidate = 1;
+  // Walk forward: candidate+1, candidate+2, ...
+  let cursor = candidateMs + 86_400_000;
+  while (days.has(msToIsoDay(cursor))) {
+    runFromCandidate++;
+    if (runFromCandidate > 5) return false;
+    cursor += 86_400_000;
+  }
+  // Walk backward: candidate-1, candidate-2, ...
+  cursor = candidateMs - 86_400_000;
+  while (days.has(msToIsoDay(cursor))) {
+    runFromCandidate++;
+    if (runFromCandidate > 5) return false;
+    cursor -= 86_400_000;
+  }
+  return runFromCandidate <= 5;
+}
+
+function msToIsoDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 function toUnfilled(slot: Slot): Omit<UnfilledSlot, 'reason'> {
   return {
     template_id: slot.template_id,
@@ -269,19 +310,26 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
     }
     if (afterHourCap.length === 0) { droppedReason = 'ALL_AT_HOUR_CAP'; }
 
+    // Consecutive-day check: longestConsecutiveRun copies the Set into a
+    // sorted ms array on every call. At 60 emps × 168 slots × 20 candidates,
+    // that's ~3,360 Set copies per solve. Inline the consecutive-run test
+    // against the existing Set + the candidate slot.day so we skip the copy.
+    const slotDayMs = Date.parse(`${slot.day}T00:00:00Z`);
     const afterConsec: string[] = [];
     for (const empId of afterHourCap) {
-      const days = new Set(daysByEmp.get(empId) ?? []);
-      days.add(slot.day);
-      if (longestConsecutiveRun(days) <= 5) afterConsec.push(empId);
+      if (wouldStayWithinConsecutiveDayCap(daysByEmp.get(empId), slot.day, slotDayMs)) {
+        afterConsec.push(empId);
+      }
     }
     if (afterConsec.length === 0 && afterHourCap.length > 0) droppedReason = 'ALL_AT_CONSEC_DAY_CAP';
 
     const afterConflict: string[] = [];
     for (const empId of afterConsec) {
       const existing = shiftsByEmp.get(empId) ?? [];
-      const probe = { ...slotShift, employee_id: empId };
-      if (!existing.some((ex) => shiftsConflict(probe, ex))) afterConflict.push(empId);
+      // shiftsConflict only reads start_time, end_time, day — employee_id is
+      // not part of the predicate, so the spread probe used to allocate per
+      // candidate was wasted.
+      if (!existing.some((ex) => shiftsConflict(slotShift, ex))) afterConflict.push(empId);
     }
     if (afterConflict.length === 0 && afterConsec.length > 0) droppedReason = 'ALL_CONFLICTING';
 

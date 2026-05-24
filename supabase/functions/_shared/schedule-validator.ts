@@ -295,8 +295,16 @@ export function normalizePosition(s: string | null | undefined): string {
  * 6. Employee is available on that day of week
  * 7. Shift times fall within availability time window (if specific hours set)
  * 8. No double-booking (same employee, overlapping times on same day)
+ * 9. Weekly hour cap (HOURS_EXCEED_WEEKLY_CAP or MINOR_HOURS_EXCEEDED) —
+ *    stateful; seeded from existingShifts. MUST run AFTER step 8 so a
+ *    double-booked shift doesn't also consume the employee's hour budget.
+ *10. Consecutive-day cap (>5 days in a row → CONSECUTIVE_DAYS_EXCEEDED) —
+ *    stateful; uses the same per-employee state as step 9.
  *
- * For double-booking: first valid shift wins.
+ * For double-booking: first valid shift wins. Iteration order is
+ * deterministic — input shifts are sorted by (day, start_time,
+ * employee_id, template_id) at the top of the function so the valid
+ * set is identical regardless of LLM emission order.
  */
 export function validateGeneratedShifts(
   shifts: GeneratedShift[],
@@ -305,7 +313,48 @@ export function validateGeneratedShifts(
   const valid: GeneratedShift[] = [];
   const dropped: DroppedShift[] = [];
 
-  for (const shift of shifts) {
+  // Order-independence guard: sort once at the boundary so the {valid,
+  // dropped} set is deterministic regardless of LLM emission order.
+  // Earlier-day / earlier-start shifts win contested resources (hour
+  // budget remainder, double-booking tiebreak).
+  const sortedShifts = [...shifts].sort((a, b) => {
+    if (a.day !== b.day) return a.day < b.day ? -1 : 1;
+    if (a.start_time !== b.start_time) {
+      return a.start_time < b.start_time ? -1 : 1;
+    }
+    if (a.employee_id !== b.employee_id) {
+      return a.employee_id < b.employee_id ? -1 : 1;
+    }
+    if (a.template_id !== b.template_id) {
+      return a.template_id < b.template_id ? -1 : 1;
+    }
+    return 0;
+  });
+
+  // Per-employee accumulator for steps 9-10. Seeded from existingShifts
+  // (locked shifts) so the LLM's new candidates "see" the running totals
+  // already in place. Locked shifts that are themselves over cap are
+  // NEVER retroactively dropped — we record the over-cap reality and let
+  // new candidates drop if accepting them would push further.
+  const employeeState = new Map<
+    string,
+    { totalMinutes: number; days: Set<string> }
+  >();
+  const stateFor = (empId: string) => {
+    let st = employeeState.get(empId);
+    if (!st) {
+      st = { totalMinutes: 0, days: new Set<string>() };
+      employeeState.set(empId, st);
+    }
+    return st;
+  };
+  for (const e of ctx.existingShifts) {
+    const st = stateFor(e.employee_id);
+    st.totalMinutes += shiftHours(e) * 60;
+    st.days.add(e.day);
+  }
+
+  for (const shift of sortedShifts) {
     const drop = (code: DropCode, message: string) =>
       dropped.push({ shift, code, message });
 
@@ -421,6 +470,46 @@ export function validateGeneratedShifts(
       continue;
     }
 
+    // 9. Weekly hour cap. Dispatch on max_weekly_hours === 18 (the
+    //    under-16 floor) so the label is factually accurate: 16-17yo
+    //    minors at 40h fall through to HOURS_EXCEED_WEEKLY_CAP, not
+    //    MINOR_HOURS_EXCEEDED. Step 2 already proved the employee
+    //    exists; the lookup is defensive against future refactors.
+    const meta = ctx.employees.get(shift.employee_id);
+    if (!meta) continue;
+    const st = stateFor(shift.employee_id);
+    const candidateMinutes = shiftHours(shift) * 60;
+    const tentativeMinutes = st.totalMinutes + candidateMinutes;
+    const capMinutes = meta.max_weekly_hours * 60;
+
+    if (tentativeMinutes > capMinutes) {
+      const code: DropCode = meta.max_weekly_hours === 18
+        ? "MINOR_HOURS_EXCEEDED"
+        : "HOURS_EXCEED_WEEKLY_CAP";
+      drop(
+        code,
+        `Employee ${shift.employee_id} would reach ${(tentativeMinutes / 60).toFixed(1)}h on ${shift.day} (cap ${meta.max_weekly_hours}h)`,
+      );
+      continue;
+    }
+
+    // 10. Consecutive-day cap (>5 in a row drops). Tentative-set
+    //     evaluation: build a candidate-included view and ask the helper.
+    //     Set-based dedup means two shifts on the same calendar day
+    //     (open+close) count once, not twice.
+    const tentativeDays = new Set(st.days);
+    tentativeDays.add(shift.day);
+    if (longestConsecutiveRun(tentativeDays) > 5) {
+      drop(
+        "CONSECUTIVE_DAYS_EXCEEDED",
+        `Employee ${shift.employee_id} would exceed 5 consecutive days with ${shift.day}`,
+      );
+      continue;
+    }
+
+    // Commit the candidate to state and the valid list.
+    st.totalMinutes = tentativeMinutes;
+    st.days.add(shift.day);
     valid.push(shift);
   }
 

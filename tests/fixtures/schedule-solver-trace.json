@@ -1,0 +1,16 @@
+{
+  "_comment": "PLACEHOLDER. Sanitise from production trace ae991acdcf47542827da5ddee9ed5a40 (https://easyshift.grafana.net/explore?...trace/ae991acdcf47542827da5ddee9ed5a40) before un-skipping the replay test. Sanitisation rules: replace UUIDs with emp_NNN/tpl_NNN/restaurant_001; preserve positions, areas, start_time/end_time, day, date_of_birth, max_weekly_hours, availability windows, required-staff counts verbatim.",
+  "restaurantId": "restaurant_001",
+  "weekStart": "2026-06-08",
+  "employees": [],
+  "templates": [],
+  "availability": {},
+  "requiredStaff": {},
+  "lockedShifts": [],
+  "excludedEmployeeIds": [],
+  "priorPatterns": [],
+  "weeklySalesHistory": [],
+  "hourlySalesHistory": [],
+  "targetLaborPercentage": 0.30,
+  "minimumWageCents": 0
+}

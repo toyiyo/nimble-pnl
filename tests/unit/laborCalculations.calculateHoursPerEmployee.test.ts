@@ -363,4 +363,54 @@ describe('calculateHoursPerEmployee', () => {
       expect(row.total_cost_cents).toBe(8 * 2000);
     });
   });
+
+  describe('overnight daily_rate shift', () => {
+    it('charges daily_rate for every calendar day a period touches, matching the breakdown', () => {
+      // Regression for CodeRabbit's finding: a daily_rate employee with one
+      // overnight period (Mon 10pm → Tue 6am) must be charged 2 × daily_rate,
+      // because calculateActualLaborCost marks both days active. Keying off
+      // hours_per_day (start-day only) would credit just 1 day and break
+      // parity with the breakdown.
+      const dailyRateEmployee: Employee = {
+        id: 'emp-daily',
+        restaurant_id: 'r1',
+        name: 'Daily Dave',
+        position: 'Line Cook',
+        status: 'active',
+        is_active: true,
+        compensation_type: 'daily_rate',
+        hourly_rate: 0,
+        daily_rate_amount: 15000, // $150/day
+        is_exempt: true,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      } as Employee;
+
+      const punches: TimePunch[] = [
+        punch('emp-daily', '2026-05-19T22:00:00', 'clock_in'),
+        punch('emp-daily', '2026-05-20T06:00:00', 'clock_out'),
+      ];
+
+      const start = new Date('2026-05-19T00:00:00');
+      const end = new Date('2026-05-20T23:59:59');
+
+      const [row] = calculateHoursPerEmployee([dailyRateEmployee], punches, start, end);
+
+      // 2 calendar days touched → 2 × $150 = $300
+      expect(row.total_cost_cents).toBe(2 * 15000);
+      expect(row.days_worked).toBe(2);
+      // hours stay attributed to the start day (matches breakdown)
+      expect(Object.keys(row.hours_per_day)).toEqual(['2026-05-19']);
+      expect(row.total_hours).toBeCloseTo(8, 4);
+
+      // Parity check: per-employee daily_rate cost sums back to breakdown total.
+      const { breakdown } = calculateActualLaborCost(
+        [dailyRateEmployee],
+        punches,
+        start,
+        end,
+      );
+      expect(row.total_cost_cents).toBe(Math.round(breakdown.daily_rate.cost * 100));
+    });
+  });
 });

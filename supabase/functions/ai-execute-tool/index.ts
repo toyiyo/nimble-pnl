@@ -1917,6 +1917,10 @@ async function fetchLaborData(
     .select(EMPLOYEE_LABOR_COLUMNS)
     .eq('restaurant_id', restaurantId);
 
+  if (employeeId) {
+    employeeQuery = employeeQuery.eq('id', employeeId);
+  }
+
   if (position) {
     employeeQuery = employeeQuery.ilike('position', position);
   }

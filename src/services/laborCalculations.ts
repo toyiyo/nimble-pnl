@@ -718,17 +718,32 @@ export function calculateHoursPerEmployee(
       (p) => p.startTime >= startDate && p.startTime <= endDate,
     );
 
+    // hoursPerDay is keyed by the period's start day (matches
+    // calculateActualLaborCost's hoursPerEmployeePerDay). activeDays tracks
+    // every calendar day a period touches — used for daily_rate cost so an
+    // overnight period (start day → next day) is charged for both days, in
+    // parity with calculateActualLaborCost's employeesActivePerDay loop.
     const hoursPerDay: Record<string, number> = {};
+    const activeDays = new Set<string>();
     let totalHours = 0;
 
     periods.forEach((period) => {
       if (period.isBreak) return;
-      const day = formatDateUTC(new Date(period.startTime));
-      hoursPerDay[day] = (hoursPerDay[day] ?? 0) + period.hours;
+      const start = new Date(period.startTime);
+      const end = new Date(period.endTime);
+      const startDay = formatDateUTC(start);
+      hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
       totalHours += period.hours;
+
+      const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      while (dayCursor <= lastDay) {
+        activeDays.add(formatDateUTC(dayCursor));
+        dayCursor.setDate(dayCursor.getDate() + 1);
+      }
     });
 
-    const daysWorked = Object.values(hoursPerDay).filter((h) => h > 0).length;
+    const daysWorked = activeDays.size;
 
     let totalCostCents = 0;
     totalCostCents += calculateSalaryForPeriod(employee, startDate, endDate);
@@ -737,11 +752,15 @@ export function calculateHoursPerEmployee(
     for (const [day, hours] of Object.entries(hoursPerDay)) {
       if (hours <= 0) continue;
       const snapshot = getEmployeeSnapshotForDate(employee, day);
-      if (
-        snapshot.compensation_type === 'hourly' ||
-        snapshot.compensation_type === 'daily_rate'
-      ) {
+      if (snapshot.compensation_type === 'hourly') {
         totalCostCents += calculateEmployeeDailyCost(snapshot, hours);
+      }
+    }
+
+    for (const day of activeDays) {
+      const snapshot = getEmployeeSnapshotForDate(employee, day);
+      if (snapshot.compensation_type === 'daily_rate') {
+        totalCostCents += calculateEmployeeDailyCost(snapshot);
       }
     }
 

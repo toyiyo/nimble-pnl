@@ -233,6 +233,50 @@ describe('get_sales_summary previous period calculation', () => {
   });
 });
 
+describe('get_time_punches period resolution', () => {
+  // The get_time_punches tool accepts these period values per tools-registry.ts.
+  // calculateDateRange must produce a non-empty range for each of them.
+  const SUPPORTED_PERIODS = [
+    'today',
+    'yesterday',
+    'week',
+    'last_week',
+    'month',
+    'last_month',
+  ] as const;
+
+  it.each(SUPPORTED_PERIODS)('resolves period "%s" to a non-empty range', (period) => {
+    const range = calculateDateRange(period);
+    expect(range.startDate.getTime()).toBeLessThanOrEqual(range.endDate.getTime());
+    expect(range.startDateStr).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(range.endDateStr).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('resolves period "custom" with explicit dates', () => {
+    const range = calculateDateRange('custom', '2026-05-10', '2026-05-17');
+    expect(range.startDateStr).toBe('2026-05-10');
+    expect(range.endDateStr).toBe('2026-05-17');
+  });
+
+  it('today and yesterday do not overlap', () => {
+    const today = calculateDateRange('today');
+    const yesterday = calculateDateRange('yesterday');
+    expect(yesterday.endDate.getTime()).toBeLessThan(today.startDate.getTime());
+  });
+
+  it('last_week ends before week starts (no overlap)', () => {
+    const week = calculateDateRange('week');
+    const lastWeek = calculateDateRange('last_week');
+    // 'week' is "last 7 days from now"; 'last_week' is the prior Sun-Sat.
+    // last_week's end must be strictly before today.
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    expect(lastWeek.endDate.getTime()).toBeLessThan(todayStart.getTime());
+    // And week's window must include today.
+    expect(week.endDate.getTime()).toBeGreaterThanOrEqual(todayStart.getTime());
+  });
+});
+
 describe('get_break_even_progress month param parsing', () => {
   it('parses YYYY-MM month format correctly', () => {
     const month = '2026-02';

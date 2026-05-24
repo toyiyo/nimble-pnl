@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -1851,15 +1851,28 @@ async function executeGenerateReport(
  * Execute get_labor_costs tool
  * Uses same calculation logic as Dashboard (time_punches + employees)
  */
+// Columns required by the labor calculators. Narrowed projection — name and
+// position are PII; we still need them so `calculateHoursPerEmployee` can build
+// the per-employee breakdown for manager/owner callers, but we strip them
+// before returning if the caller isn't allowed to see employee identities.
+const EMPLOYEE_LABOR_COLUMNS =
+  'id, name, position, status, restaurant_id, compensation_type, ' +
+  'hourly_rate, salary_amount, pay_period_type, ' +
+  'contractor_payment_amount, contractor_payment_interval, ' +
+  'daily_rate_amount, hire_date, termination_date, compensation_history';
+
 async function executeGetLaborCosts(
   args: any,
   restaurantId: string,
-  supabase: any
+  supabase: any,
+  userRole: string
 ): Promise<any> {
   const { period, start_date, end_date, include_daily_breakdown = true, include_employee_breakdown = false } = args;
 
-  const { calculateActualLaborCost } = await import('../_shared/laborCalculations.ts');
+  const { calculateActualLaborCost, calculateHoursPerEmployee } = await import('../_shared/laborCalculations.ts');
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  const canSeeEmployees = userRole === 'manager' || userRole === 'owner';
 
   // Fetch time punches and employees in parallel
   const [punchesResult, employeesResult] = await Promise.all([
@@ -1872,7 +1885,7 @@ async function executeGetLaborCosts(
       .order('punch_time', { ascending: true }),
     supabase
       .from('employees')
-      .select('*')
+      .select(EMPLOYEE_LABOR_COLUMNS)
       .eq('restaurant_id', restaurantId),
   ]);
 
@@ -1885,13 +1898,19 @@ async function executeGetLaborCosts(
   // Calculate labor costs
   const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
 
-  // Build employee breakdown if requested
-  const employeeBreakdown = include_employee_breakdown
-    ? employees.filter((e: any) => e.status === 'active').map((e: any) => ({
-        employee_id: e.id,
-        employee_name: e.name,
-        position: e.position,
-        compensation_type: e.compensation_type,
+  // Per-employee breakdown is manager/owner-only. Lower roles always get null
+  // so the field shape stays stable and the model knows not to ask the user
+  // for employee-level data it can't see.
+  const employeeBreakdown = include_employee_breakdown && canSeeEmployees
+    ? calculateHoursPerEmployee(employees, timePunches, startDate, endDate).map((s) => ({
+        employee_id: s.employee_id,
+        employee_name: s.employee_name,
+        position: s.position,
+        compensation_type: s.compensation_type,
+        total_hours: Number(s.total_hours.toFixed(4)),
+        total_cost_cents: s.total_cost_cents,
+        days_worked: s.days_worked,
+        hours_per_day: s.hours_per_day,
       }))
     : null;
 
@@ -1912,8 +1931,152 @@ async function executeGetLaborCosts(
       employee_breakdown: employeeBreakdown,
     },
     evidence: [
-      { table: 'time_punches', summary: `${timePunches.length} time punches from ${startDateStr} to ${endDateStr}` },
-      { table: 'employees', summary: `${employees.length} employees for labor cost calculation` },
+      { table: 'time_punches', summary: `${timePunches.length} time punches across ${employees.length} employees from ${startDateStr} to ${endDateStr}` },
+    ],
+  };
+}
+
+/**
+ * Execute get_time_punches tool
+ * Returns parsed work periods (one row per shift) joined to employee
+ * name/position, with computed hours and breaks deducted. Manager+owner only —
+ * the dispatcher's canUseTool already enforces this; we re-assert here as
+ * defense-in-depth since this function returns employee PII.
+ */
+async function executeGetTimePunches(
+  args: any,
+  restaurantId: string,
+  supabase: any,
+  userRole: string
+): Promise<any> {
+  if (userRole !== 'manager' && userRole !== 'owner') {
+    // Should never reach here — dispatcher blocks first. If it does, return the
+    // same shape the dispatcher uses so the model handles it identically.
+    return {
+      ok: false,
+      error: {
+        code: 'TOOL_PERMISSION_DENIED',
+        message: "You don't have permission to use get_time_punches.",
+        tool: 'get_time_punches',
+        required_role: 'manager',
+      },
+    };
+  }
+
+  const { period, start_date, end_date, employee_id, position, min_hours = 0, limit = 50 } = args;
+
+  const { calculateHoursPerEmployee } = await import('../_shared/laborCalculations.ts');
+  const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
+  const minHours = Math.max(0, Number(min_hours) || 0);
+
+  // Fetch time punches and employees in parallel (narrowed projections)
+  const punchQuery = supabase
+    .from('time_punches')
+    .select('id, employee_id, restaurant_id, punch_time, punch_type')
+    .eq('restaurant_id', restaurantId)
+    .gte('punch_time', startDate.toISOString())
+    .lte('punch_time', endDate.toISOString())
+    .order('punch_time', { ascending: true });
+
+  if (employee_id) {
+    punchQuery.eq('employee_id', employee_id);
+  }
+
+  const [punchesResult, employeesResult] = await Promise.all([
+    punchQuery,
+    supabase
+      .from('employees')
+      .select(EMPLOYEE_LABOR_COLUMNS)
+      .eq('restaurant_id', restaurantId),
+  ]);
+
+  if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
+  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
+
+  const timePunches = punchesResult.data || [];
+  let employees = employeesResult.data || [];
+
+  if (position) {
+    const positionLower = String(position).toLowerCase();
+    employees = employees.filter((e: any) => (e.position || '').toLowerCase() === positionLower);
+  }
+
+  const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
+
+  // Flatten to one row per work period (clock-in/out pair). Skip pure breaks
+  // and anything below min_hours. For hourly employees, attribute a
+  // proportional share of total_cost_cents to each period; for salary /
+  // contractor / daily_rate, leave cost_cents null since the cost is
+  // period-allocated, not hours-allocated.
+  type Shift = {
+    employee_id: string;
+    employee_name: string;
+    position: string | null;
+    compensation_type: string;
+    start_time: string;
+    end_time: string;
+    hours: number;
+    cost_cents: number | null;
+    date: string;
+  };
+
+  const shifts: Shift[] = [];
+  for (const s of summaries) {
+    const workPeriods = s.work_periods.filter((p) => !p.isBreak && p.hours >= minHours);
+    const totalHours = workPeriods.reduce((sum, p) => sum + p.hours, 0);
+
+    for (const p of workPeriods) {
+      const proportional =
+        s.compensation_type === 'hourly' && totalHours > 0
+          ? Math.round((p.hours / totalHours) * s.total_cost_cents)
+          : null;
+
+      // Bucket date by local-TZ start to align with hours_per_day keys.
+      const start = p.startTime;
+      const yyyy = start.getFullYear();
+      const mm = String(start.getMonth() + 1).padStart(2, '0');
+      const dd = String(start.getDate()).padStart(2, '0');
+
+      shifts.push({
+        employee_id: s.employee_id,
+        employee_name: s.employee_name,
+        position: s.position,
+        compensation_type: s.compensation_type,
+        start_time: p.startTime.toISOString(),
+        end_time: p.endTime.toISOString(),
+        hours: Number(p.hours.toFixed(4)),
+        cost_cents: proportional,
+        date: `${yyyy}-${mm}-${dd}`,
+      });
+    }
+  }
+
+  // Newest first, then cap.
+  shifts.sort((a, b) => (a.start_time < b.start_time ? 1 : -1));
+  const limited = shifts.slice(0, cappedLimit);
+
+  return {
+    ok: true,
+    data: {
+      period,
+      start_date: startDateStr,
+      end_date: endDateStr,
+      filters: {
+        employee_id: employee_id || null,
+        position: position || null,
+        min_hours: minHours,
+      },
+      total_shifts: shifts.length,
+      returned_shifts: limited.length,
+      shifts: limited,
+    },
+    evidence: [
+      {
+        table: 'time_punches',
+        summary: `${timePunches.length} punches → ${shifts.length} shifts (returning ${limited.length}) from ${startDateStr} to ${endDateStr}`,
+      },
     ],
   };
 }
@@ -3433,7 +3596,25 @@ serve(async (req) => {
 
     // Check if user can use this tool
     if (!canUseTool(tool_name, userRestaurant.role)) {
-      throw new Error(`Permission denied for tool: ${tool_name}`);
+      const requiredRole = requiredRoleFor(tool_name);
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: {
+            code: 'TOOL_PERMISSION_DENIED',
+            message: `You don't have permission to use ${tool_name}.`,
+            tool: tool_name,
+            required_role: requiredRole,
+          },
+        }),
+        {
+          status: 403,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
 
     const startTime = Date.now();
@@ -3475,7 +3656,10 @@ serve(async (req) => {
         result = await executeGenerateReport(args, restaurant_id, supabase);
         break;
       case 'get_labor_costs':
-        result = await executeGetLaborCosts(args, restaurant_id, supabase);
+        result = await executeGetLaborCosts(args, restaurant_id, supabase, userRestaurant.role);
+        break;
+      case 'get_time_punches':
+        result = await executeGetTimePunches(args, restaurant_id, supabase, userRestaurant.role);
         break;
       case 'get_schedule_overview':
         result = await executeGetScheduleOverview(args, restaurant_id, supabase);

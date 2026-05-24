@@ -1847,10 +1847,6 @@ async function executeGenerateReport(
 // NEW TOOL EXECUTION HANDLERS
 // ============================================================================
 
-/**
- * Execute get_labor_costs tool
- * Uses same calculation logic as Dashboard (time_punches + employees)
- */
 // Columns required by the labor calculators. Narrowed projection — name and
 // position are PII; we still need them so `calculateHoursPerEmployee` can build
 // the per-employee breakdown for manager/owner callers, but we strip them
@@ -1861,6 +1857,59 @@ const EMPLOYEE_LABOR_COLUMNS =
   'contractor_payment_amount, contractor_payment_interval, ' +
   'daily_rate_amount, hire_date, termination_date, compensation_history';
 
+/**
+ * Fetch time punches and employees in parallel — shared by get_labor_costs
+ * and get_time_punches. Optionally filters punches to a single employee.
+ */
+async function fetchLaborData(
+  supabase: any,
+  restaurantId: string,
+  startDate: Date,
+  endDate: Date,
+  employeeId?: string,
+): Promise<{ timePunches: any[]; employees: any[] }> {
+  let punchQuery = supabase
+    .from('time_punches')
+    .select('id, employee_id, restaurant_id, punch_time, punch_type')
+    .eq('restaurant_id', restaurantId)
+    .gte('punch_time', startDate.toISOString())
+    .lte('punch_time', endDate.toISOString())
+    .order('punch_time', { ascending: true });
+
+  if (employeeId) {
+    punchQuery = punchQuery.eq('employee_id', employeeId);
+  }
+
+  const [punchesResult, employeesResult] = await Promise.all([
+    punchQuery,
+    supabase
+      .from('employees')
+      .select(EMPLOYEE_LABOR_COLUMNS)
+      .eq('restaurant_id', restaurantId),
+  ]);
+
+  if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
+  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
+
+  return {
+    timePunches: punchesResult.data ?? [],
+    employees: employeesResult.data ?? [],
+  };
+}
+
+/** Format a Date as YYYY-MM-DD in the host's local timezone. Aligns with
+ * the hours_per_day keys produced by calculateHoursPerEmployee. */
+function formatShiftDate(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Execute get_labor_costs tool
+ * Uses same calculation logic as Dashboard (time_punches + employees)
+ */
 async function executeGetLaborCosts(
   args: any,
   restaurantId: string,
@@ -1874,28 +1923,8 @@ async function executeGetLaborCosts(
 
   const canSeeEmployees = userRole === 'manager' || userRole === 'owner';
 
-  // Fetch time punches and employees in parallel
-  const [punchesResult, employeesResult] = await Promise.all([
-    supabase
-      .from('time_punches')
-      .select('id, employee_id, restaurant_id, punch_time, punch_type')
-      .eq('restaurant_id', restaurantId)
-      .gte('punch_time', startDate.toISOString())
-      .lte('punch_time', endDate.toISOString())
-      .order('punch_time', { ascending: true }),
-    supabase
-      .from('employees')
-      .select(EMPLOYEE_LABOR_COLUMNS)
-      .eq('restaurant_id', restaurantId),
-  ]);
+  const { timePunches, employees } = await fetchLaborData(supabase, restaurantId, startDate, endDate);
 
-  if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
-
-  const timePunches = punchesResult.data || [];
-  const employees = employeesResult.data || [];
-
-  // Calculate labor costs
   const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
 
   // Per-employee breakdown is manager/owner-only. Lower roles always get null
@@ -1971,37 +2000,15 @@ async function executeGetTimePunches(
   const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
   const minHours = Math.max(0, Number(min_hours) || 0);
 
-  // Fetch time punches and employees in parallel (narrowed projections)
-  const punchQuery = supabase
-    .from('time_punches')
-    .select('id, employee_id, restaurant_id, punch_time, punch_type')
-    .eq('restaurant_id', restaurantId)
-    .gte('punch_time', startDate.toISOString())
-    .lte('punch_time', endDate.toISOString())
-    .order('punch_time', { ascending: true });
+  const { timePunches, employees: allEmployees } = await fetchLaborData(
+    supabase, restaurantId, startDate, endDate, employee_id,
+  );
 
-  if (employee_id) {
-    punchQuery.eq('employee_id', employee_id);
-  }
-
-  const [punchesResult, employeesResult] = await Promise.all([
-    punchQuery,
-    supabase
-      .from('employees')
-      .select(EMPLOYEE_LABOR_COLUMNS)
-      .eq('restaurant_id', restaurantId),
-  ]);
-
-  if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
-  if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
-
-  const timePunches = punchesResult.data || [];
-  let employees = employeesResult.data || [];
-
-  if (position) {
-    const positionLower = String(position).toLowerCase();
-    employees = employees.filter((e: any) => (e.position || '').toLowerCase() === positionLower);
-  }
+  // Filter by position client-side (the employees table has no indexed position
+  // column suitable for a server-side filter here).
+  const employees = position
+    ? allEmployees.filter((e: any) => (e.position || '').toLowerCase() === String(position).toLowerCase())
+    : allEmployees;
 
   const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
 
@@ -2028,16 +2035,12 @@ async function executeGetTimePunches(
     const totalHours = workPeriods.reduce((sum, p) => sum + p.hours, 0);
 
     for (const p of workPeriods) {
-      const proportional =
+      // Hourly employees get a proportional share of total_cost_cents per period.
+      // Salary / contractor / daily_rate costs are period-allocated, not per-shift.
+      const cost_cents =
         s.compensation_type === 'hourly' && totalHours > 0
           ? Math.round((p.hours / totalHours) * s.total_cost_cents)
           : null;
-
-      // Bucket date by local-TZ start to align with hours_per_day keys.
-      const start = p.startTime;
-      const yyyy = start.getFullYear();
-      const mm = String(start.getMonth() + 1).padStart(2, '0');
-      const dd = String(start.getDate()).padStart(2, '0');
 
       shifts.push({
         employee_id: s.employee_id,
@@ -2047,8 +2050,8 @@ async function executeGetTimePunches(
         start_time: p.startTime.toISOString(),
         end_time: p.endTime.toISOString(),
         hours: Number(p.hours.toFixed(4)),
-        cost_cents: proportional,
-        date: `${yyyy}-${mm}-${dd}`,
+        cost_cents,
+        date: formatShiftDate(p.startTime),
       });
     }
   }

@@ -919,12 +919,9 @@ export function canUseTool(toolName: string, userRole: string): boolean {
 /**
  * Returns the lowest role that can use a given tool.
  * Used to build the TOOL_PERMISSION_DENIED error response.
+ * Delegates to canUseTool so the two stay in sync automatically.
  */
 export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner' {
-  if (toolName === 'get_ai_insights') return 'owner';
-
-  // Mirror managerOwnerTools list above; if the tool isn't in basicTools,
-  // it requires manager.
   if (canUseTool(toolName, 'staff')) return 'staff';
   if (canUseTool(toolName, 'manager')) return 'manager';
   return 'owner';

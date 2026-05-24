@@ -292,3 +292,32 @@ describe('solveSchedule — scarcity ordering', () => {
     expect(monShift?.employee_id).toBe('eB');
   });
 });
+
+describe('solveSchedule — fairness distribution', () => {
+  it('with 2 equally-eligible employees and 4 slots, distributes 2+2 not 4+0', () => {
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'eA', name: 'A', position: 'Server', area: null, max_weekly_hours: 80,
+        date_of_birth: '1990-01-01', is_minor: false },
+      { id: 'eB', name: 'B', position: 'Server', area: null, max_weekly_hours: 80,
+        date_of_birth: '1990-01-01', is_minor: false },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'L', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '12:00:00', days_of_week: [1, 2, 3, 4] },
+    ];
+    ctx.requiredStaff = new Map(
+      ['2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11']
+        .map((d) => [`t1:${d}`, { template_id: 't1', day: d, count: 1 }]),
+    );
+    ctx.availability = {
+      'eA': Object.fromEntries([1, 2, 3, 4].map((d) => [d, { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' }])),
+      'eB': Object.fromEntries([1, 2, 3, 4].map((d) => [d, { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' }])),
+    };
+    const result = solveSchedule(ctx);
+    const aHours = result.fairness.find((f) => f.employee_id === 'eA')?.hours_assigned;
+    const bHours = result.fairness.find((f) => f.employee_id === 'eB')?.hours_assigned;
+    expect(aHours).toBe(4);
+    expect(bHours).toBe(4);
+  });
+});

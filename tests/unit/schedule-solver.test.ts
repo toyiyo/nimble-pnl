@@ -170,4 +170,27 @@ describe('solveSchedule — eligibility (position + area + availability + window
     });
     expect(result.unfilled).toHaveLength(0);
   });
+
+  it('overnight availability window admits a shift in its evening half', () => {
+    // Regression: withinWindow needs minute integers, not HH:MM:SS strings.
+    // String comparison happens to work for non-overnight windows but fails
+    // for overnight windows like 18:00 → 02:00.
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'A', position: 'Server', area: null,
+        max_weekly_hours: 40, date_of_birth: '2000-01-01', is_minor: false },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'Late', position: 'Server', area: null,
+        start_time: '22:00:00', end_time: '23:00:00', days_of_week: [1] },
+    ];
+    ctx.requiredStaff = new Map([
+      ['t1:2026-06-08', { template_id: 't1', day: '2026-06-08', count: 1 }],
+    ]);
+    ctx.availability = {
+      'e1': { 1: { isAvailable: true, startTime: '18:00:00', endTime: '02:00:00' } },
+    };
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(1);
+  });
 });

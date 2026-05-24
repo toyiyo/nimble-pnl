@@ -164,6 +164,8 @@ function eligibleBase(
   ctx: ScheduleContext,
 ): string[] {
   const out: string[] = [];
+  const shiftStart = timeToMinutes(slot.start_time);
+  const shiftEnd = timeToMinutes(slot.end_time);
   for (const emp of ctx.employees) {
     if (ctx.excludedEmployeeIds.has(emp.id)) continue;
     if (normalizePosition(emp.position) !== normalizePosition(slot.position)) continue;
@@ -171,7 +173,9 @@ function eligibleBase(
     const avail = ctx.availability[emp.id]?.[slot.day_of_week];
     if (!avail || !avail.isAvailable) continue;
     if (!avail.startTime || !avail.endTime) continue;
-    if (!withinWindow(slot.start_time, slot.end_time, avail.startTime, avail.endTime)) continue;
+    const windowStart = timeToMinutes(avail.startTime);
+    const windowEnd = timeToMinutes(avail.endTime);
+    if (!withinWindow(shiftStart, shiftEnd, windowStart, windowEnd)) continue;
     out.push(emp.id);
   }
   return out;

@@ -715,8 +715,8 @@ serve(async (req) => {
 
     // ── Project UUIDs → human names at the response boundary ────────────────
     // Per lesson [2026-05-17]: API responses must not leak internal UUIDs.
-    const templateNameById = new Map(templates.map((t: any) => [t.id, t.name as string]));
-    const employeeNameById = new Map(employees.map((e: any) => [e.id, e.name as string]));
+    const templateNameById = new Map(templates.map((t) => [t.id, t.name]));
+    const employeeNameById = new Map(employees.map((e) => [e.id, e.name]));
 
     const safeUnfilled: ClientSafeUnfilledSlot[] = solverResult.unfilled.map(({ template_id, ...rest }) => ({
       ...rest,

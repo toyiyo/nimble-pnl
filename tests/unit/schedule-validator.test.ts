@@ -26,13 +26,24 @@ function makeAvailability(): Map<string, AvailabilitySlot> {
   return map;
 }
 
+// Bug I: ValidationContext.employees promoted from Set + parallel Map.
+// `emp()` factory builds one entry; default cap is adult 40h so existing
+// suites that don't care about hour caps behave the same.
+function emp(
+  id: string,
+  position = 'server',
+  is_minor = false,
+  max_weekly_hours = 40,
+): readonly [string, { position: string; is_minor: boolean; max_weekly_hours: number }] {
+  return [id, { position, is_minor, max_weekly_hours }] as const;
+}
+
 function makeContext(overrides?: Partial<ValidationContext>): ValidationContext {
   return {
-    employeeIds: new Set(['emp-1', 'emp-2', 'emp-3']),
-    employeePositions: new Map([
-      ['emp-1', 'server'],
-      ['emp-2', 'cook'],
-      ['emp-3', 'server'],
+    employees: new Map([
+      emp('emp-1', 'server'),
+      emp('emp-2', 'cook'),
+      emp('emp-3', 'server'),
     ]),
     // Default fixtures use templates active on every day of the week and the
     // 'server' position so existing suites that don't care about active-days
@@ -133,8 +144,7 @@ describe('validateGeneratedShifts', () => {
 
   it('drops a shift whose day-of-week is not in the template active days', () => {
     const ctx = makeContext({
-      employeeIds: new Set(['emp-2']),
-      employeePositions: new Map([['emp-2', 'cook']]),
+      employees: new Map([emp('emp-2', 'cook')]),
       templates: new Map([
         // Weekend-only template (Sun, Fri, Sat)
         ['weekend-close', { days: [0, 5, 6], position: 'cook' }],
@@ -157,8 +167,7 @@ describe('validateGeneratedShifts', () => {
 
   it('allows a shift whose day-of-week IS in the template active days', () => {
     const ctx = makeContext({
-      employeeIds: new Set(['emp-2']),
-      employeePositions: new Map([['emp-2', 'cook']]),
+      employees: new Map([emp('emp-2', 'cook')]),
       templates: new Map([
         ['weekday-close', { days: [1, 2, 3, 4, 5], position: 'cook' }],
       ]),
@@ -197,8 +206,7 @@ describe('validateGeneratedShifts', () => {
   //    LLM-controlled fields. Result: 3/2 and 4/3 over-fills.
   it('drops a Manager assigned to a Server template even when shift.position matches the employee', () => {
     const ctx = makeContext({
-      employeeIds: new Set(['mgr-1']),
-      employeePositions: new Map([['mgr-1', 'Manager']]),
+      employees: new Map([emp('mgr-1', 'Manager')]),
       availability: new Map([
         ['mgr-1:1', { isAvailable: true, startTime: null, endTime: null }],
       ]),
@@ -299,7 +307,11 @@ describe('validateGeneratedShifts', () => {
 describe('validateGeneratedShifts — position normalization', () => {
   it('matches "Line Cook" employee with "line cook" shift (case-insensitive)', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Line Cook']]),
+      employees: new Map([
+        emp('emp-1', 'Line Cook'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'line cook' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -312,7 +324,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('matches "Cook " (trailing space) employee with "Cook" shift', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Cook ']]),
+      employees: new Map([
+        emp('emp-1', 'Cook '),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Cook' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -325,7 +341,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('matches "Servers" (plural) employee with "server" shift', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Servers']]),
+      employees: new Map([
+        emp('emp-1', 'Servers'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       // Default tmpl-1.position = 'server', which normalizes-matches 'Servers'.
     });
     const shift = makeShift({ position: 'server' });
@@ -335,7 +355,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('preserves "Hostess" (ends in ss, does not strip)', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Hostess']]),
+      employees: new Map([
+        emp('emp-1', 'Hostess'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Hostess' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -348,7 +372,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('preserves short stems like "Bus" (stem length <= 4)', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Bus']]),
+      employees: new Map([
+        emp('emp-1', 'Bus'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Bus' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -540,5 +568,347 @@ describe('validateGeneratedShifts — overnight availability window', () => {
     const shift = makeShift({ start_time: '02:00:00', end_time: '05:00:00' });
     const result = validateGeneratedShifts([shift], ctx);
     expect(result.valid).toHaveLength(1);
+  });
+});
+
+// ─── Bug I: hour caps + consecutive days ────────────────────────────────────
+//
+// The 2026-05-23 production symptom: 9 employees got 45.5-48.5h each
+// across 7 consecutive days while 14 PT employees got zero shifts. The
+// LLM prompt's soft Rule 11 ("target 35-40h") was honored as advisory
+// while the HARD fill-every-slot rule won.
+//
+// These tests lock the validator backstop: even if the prompt-side rules
+// fail (different LLM, longer prompt, etc.), the validator drops any
+// shift that would push an employee over their weekly cap or onto a 6th
+// consecutive day.
+//
+// Helpers below build a Server-only context with one employee available
+// every day, then enumerate 7 daily 6.5h shifts (39h total in the first
+// 6 days). Each test tweaks one variable to verify the new step's
+// dispatch and bookkeeping.
+
+describe('validateGeneratedShifts — hour caps and consecutive days', () => {
+  // Mon 2026-06-08 through Sun 2026-06-14 (Bug I production week)
+  const WEEK_DAYS = [
+    '2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11',
+    '2026-06-12', '2026-06-13', '2026-06-14',
+  ];
+
+  function makeAllWeekAvailability(empId: string): Map<string, AvailabilitySlot> {
+    const map = new Map<string, AvailabilitySlot>();
+    // 0=Sun..6=Sat
+    for (let dow = 0; dow < 7; dow++) {
+      map.set(`${empId}:${dow}`, { isAvailable: true, startTime: null, endTime: null });
+    }
+    return map;
+  }
+
+  function dailyShifts(opts: {
+    employee_id: string;
+    template_id?: string;
+    position?: string;
+    start_time?: string;
+    end_time?: string;
+    days?: string[];
+  }): GeneratedShift[] {
+    const days = opts.days ?? WEEK_DAYS;
+    return days.map((day) => ({
+      employee_id: opts.employee_id,
+      template_id: opts.template_id ?? 'tmpl-1',
+      day,
+      start_time: opts.start_time ?? '10:00:00',
+      end_time: opts.end_time ?? '16:30:00', // 6.5h
+      position: opts.position ?? 'server',
+    }));
+  }
+
+  it('drops 7th 6.5h shift when employee would exceed adult 40h cap', () => {
+    // Setup avoids the consec rule colliding with the hour cap: 5 weekday
+    // shifts (Mon-Fri = 5 consec, OK) + 2 Sunday shifts (open + close,
+    // dedup to 1 day, isolated from Mon-Fri streak by the Sat gap).
+    //   Mon-Fri  5 × 6.5h = 32.5h  (5 consec → OK)
+    //   Sun open 10-16:30 = +6.5h → 39h (longest run still 5 → OK)
+    //   Sun close 17-23:30 = +6.5h → 45.5h > 40h → DROP HOURS_EXCEED
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', /* is_minor */ false, /* cap */ 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    const shifts: GeneratedShift[] = [
+      ...dailyShifts({ employee_id: 'emp-1', days: WEEK_DAYS.slice(0, 5) }),
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-14',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'server' },
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-14',
+        start_time: '17:00:00', end_time: '23:30:00', position: 'server' },
+    ];
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(6); // 6 × 6.5h = 39h
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('HOURS_EXCEED_WEEKLY_CAP');
+  });
+
+  it('drops 4th shift for under-16 minor (18h cap)', () => {
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', /* is_minor */ true, /* cap */ 18)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    // 3 × 6h shifts = 18h; 4th would push to 24h.
+    const shifts = dailyShifts({
+      employee_id: 'emp-1',
+      end_time: '16:00:00', // 6h
+      days: WEEK_DAYS.slice(0, 4),
+    });
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(3);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('MINOR_HOURS_EXCEEDED');
+  });
+
+  it('16-17yo minor (40h cap) dispatches HOURS_EXCEED_WEEKLY_CAP, NOT MINOR_HOURS_EXCEEDED', () => {
+    // Dispatch rule: MINOR_HOURS_EXCEEDED fires ONLY when cap === 18.
+    // A 17yo with the 40h cap that exceeds it gets the adult code.
+    // Setup mirrors the adult cap test (5 weekdays + 2 Sunday shifts)
+    // so the consec rule does not collide with the hour cap.
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', /* is_minor */ true, /* cap */ 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    const shifts: GeneratedShift[] = [
+      ...dailyShifts({ employee_id: 'emp-1', days: WEEK_DAYS.slice(0, 5) }),
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-14',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'server' },
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-14',
+        start_time: '17:00:00', end_time: '23:30:00', position: 'server' },
+    ];
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(6);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('HOURS_EXCEED_WEEKLY_CAP');
+  });
+
+  it('drops 6th consecutive day even when employee is well under hour cap', () => {
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    // 6 × 4h shifts = 24h (under 40h cap), but 6 consecutive days
+    // violates Rule 12.
+    const shifts = dailyShifts({
+      employee_id: 'emp-1',
+      end_time: '14:00:00', // 4h
+      days: WEEK_DAYS.slice(0, 6), // Mon-Sat
+    });
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(5); // Mon-Fri
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('CONSECUTIVE_DAYS_EXCEEDED');
+    expect(result.dropped[0].shift.day).toBe('2026-06-13'); // Saturday
+  });
+
+  it('accepts Mon-Fri + Sun (gap on Saturday breaks the run)', () => {
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    // Mon, Tue, Wed, Thu, Fri, (skip Sat), Sun — longest run is 5.
+    const shifts = dailyShifts({
+      employee_id: 'emp-1',
+      end_time: '14:00:00', // 4h
+      days: ['2026-06-08','2026-06-09','2026-06-10','2026-06-11','2026-06-12','2026-06-14'],
+    });
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(6);
+    expect(result.dropped).toHaveLength(0);
+  });
+
+  it('locked shifts seed the hour counter — candidate drops when sum would exceed cap', () => {
+    // Locked shifts put the employee at 35h already. A new 7h candidate
+    // (total 42h) must drop.
+    const lockedShifts: GeneratedShift[] = [
+      // 5 × 7h locked = 35h on Mon-Fri
+      ...WEEK_DAYS.slice(0, 5).map((day) => ({
+        employee_id: 'emp-1',
+        template_id: 'tmpl-1',
+        day,
+        start_time: '10:00:00',
+        end_time: '17:00:00', // 7h
+        position: 'server',
+      })),
+    ];
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+      existingShifts: lockedShifts,
+    });
+    const candidate = makeShift({
+      employee_id: 'emp-1',
+      day: '2026-06-13', // Saturday — not in locked
+      start_time: '10:00:00',
+      end_time: '17:00:00',
+      position: 'server',
+    });
+    const result = validateGeneratedShifts([candidate], ctx);
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('HOURS_EXCEED_WEEKLY_CAP');
+  });
+
+  it('locked shift already over cap is never retroactively dropped; only new candidates drop', () => {
+    // Locked = 41h (over 40h cap). Validator keeps the lock untouched
+    // — it never modifies existingShifts — but any new candidate for
+    // the same employee drops because the counter is already past cap.
+    const lockedShifts: GeneratedShift[] = [
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-08',
+        start_time: '08:00:00', end_time: '20:00:00', position: 'server' }, // 12h
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-09',
+        start_time: '08:00:00', end_time: '20:00:00', position: 'server' }, // 12h
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-10',
+        start_time: '08:00:00', end_time: '17:00:00', position: 'server' }, // 9h
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-11',
+        start_time: '08:00:00', end_time: '16:00:00', position: 'server' }, // 8h
+    ]; // 41h total
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+      existingShifts: lockedShifts,
+    });
+    const candidate = makeShift({
+      employee_id: 'emp-1',
+      day: '2026-06-12',
+      start_time: '10:00:00',
+      end_time: '14:00:00', // 4h
+      position: 'server',
+    });
+    const result = validateGeneratedShifts([candidate], ctx);
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('HOURS_EXCEED_WEEKLY_CAP');
+  });
+
+  it('duplicate day in existingShifts (open + close on same Monday) does not collapse streak math', () => {
+    // Two locked shifts on the same Monday → dedup means Monday counts
+    // once, not twice as a zero-diff "gap." Subsequent Tue/Wed/Thu/Fri
+    // candidates all accept (run = 5, not 6).
+    const lockedShifts: GeneratedShift[] = [
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-08',
+        start_time: '08:00:00', end_time: '12:00:00', position: 'server' }, // 4h open
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-08',
+        start_time: '13:00:00', end_time: '17:00:00', position: 'server' }, // 4h close
+    ];
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+      existingShifts: lockedShifts,
+    });
+    // 4 new candidates on Tue-Fri (Mon already locked).
+    const shifts = dailyShifts({
+      employee_id: 'emp-1',
+      end_time: '14:00:00', // 4h each
+      days: ['2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12'],
+    });
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(4);
+    expect(result.dropped).toHaveLength(0);
+  });
+
+  it('overnight shift counts as one day, not two (4h hours, not 24h)', () => {
+    // 22:00-02:00 on Monday = 4h, NOT 24h. The shift's `day` field is the
+    // calendar day it nominally starts on; the validator must use the
+    // time-diff formula (with overnight handling), not (next-day - day).
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    // 6 overnight 4h shifts on Mon-Sat. With proper 4h counting, total
+    // is 24h ≤ 40 — hour cap stays silent. The consec rule drops the
+    // 6th (Sat). If overnight were wrongly counted as 24h each, we'd
+    // hit 48h after just 2 shifts and HOURS_EXCEED_WEEKLY_CAP would
+    // fire instead — the assertion on the drop CODE catches that bug.
+    const shifts = WEEK_DAYS.slice(0, 6).map((day) => ({
+      employee_id: 'emp-1',
+      template_id: 'tmpl-1',
+      day,
+      start_time: '22:00:00',
+      end_time: '02:00:00',
+      position: 'server',
+    }));
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(5); // Mon-Fri
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('CONSECUTIVE_DAYS_EXCEEDED');
+    expect(result.dropped[0].shift.day).toBe('2026-06-13'); // Saturday
+  });
+
+  it('produces same valid set regardless of input order (sorted by day/start/employee/template)', () => {
+    // Bug I requires deterministic "first 6 wins" — sort key (day,
+    // start_time, employee_id, template_id) so re-runs on identical
+    // inputs produce identical output. Uses the same isolated-Sunday
+    // setup as the adult-cap test to keep the hour rule isolated from
+    // the consec rule.
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    const shifts: GeneratedShift[] = [
+      ...dailyShifts({ employee_id: 'emp-1', days: WEEK_DAYS.slice(0, 5) }),
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-14',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'server' },
+      { employee_id: 'emp-1', template_id: 'tmpl-1', day: '2026-06-14',
+        start_time: '17:00:00', end_time: '23:30:00', position: 'server' },
+    ];
+    // Shuffle by reversing — should yield identical valid set after sort.
+    const reversed = [...shifts].reverse();
+
+    const r1 = validateGeneratedShifts(shifts, ctx);
+    const r2 = validateGeneratedShifts(reversed, ctx);
+
+    const key = (s: GeneratedShift) => `${s.day}|${s.start_time}`;
+    const set1 = r1.valid.map(key).sort();
+    const set2 = r2.valid.map(key).sort();
+    expect(set2).toEqual(set1);
+    expect(r1.valid).toHaveLength(6);
+    expect(r2.valid).toHaveLength(6);
+    expect(r1.dropped[0].code).toBe('HOURS_EXCEED_WEEKLY_CAP');
+    expect(r2.dropped[0].code).toBe('HOURS_EXCEED_WEEKLY_CAP');
+    // Determinism also covers which exact shift drops: the late Sun close.
+    expect(r1.dropped[0].shift.start_time).toBe('17:00:00');
+    expect(r2.dropped[0].shift.start_time).toBe('17:00:00');
+  });
+
+  it('counts consecutive days correctly across DST spring-forward (March 8 2026)', () => {
+    // Mar 3-8 2026 (Tue-Sun); Mar 8 is the US DST spring-forward day.
+    // The Sat→Sun day-diff is the DST-sensitive boundary. With UTC math
+    // it is exactly 24h; with local-time math the gap is 23h (spring)
+    // or 25h (fall), which Math.floor would round to 0 and treat as a
+    // false gap. We assert Mar 8 (Sun, day 6 of streak) drops with
+    // CONSECUTIVE_DAYS_EXCEEDED — a false gap would let Mar 8 through.
+    const dstWeek = [
+      '2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06',
+      '2026-03-07', '2026-03-08',
+    ];
+    const ctx = makeContext({
+      employees: new Map([emp('emp-1', 'server', false, 40)]),
+      availability: makeAllWeekAvailability('emp-1'),
+    });
+    const shifts = dailyShifts({
+      employee_id: 'emp-1',
+      end_time: '14:00:00', // 4h each
+      days: dstWeek,
+    });
+    const result = validateGeneratedShifts(shifts, ctx);
+
+    expect(result.valid).toHaveLength(5); // Tue-Sat
+    expect(result.dropped).toHaveLength(1);
+    expect(result.dropped[0].code).toBe('CONSECUTIVE_DAYS_EXCEEDED');
+    expect(result.dropped[0].shift.day).toBe('2026-03-08'); // DST Sun
   });
 });

@@ -7,6 +7,7 @@ import { callModelWithStreaming } from "../_shared/streaming.ts";
 import { runScheduleModelChain } from "../_shared/schedule-ai-runner.ts";
 import {
   buildSchedulePrompt,
+  computeHourBudget,
   type ScheduleContext,
   type ScheduleEmployee,
   type ScheduleTemplate,
@@ -131,7 +132,7 @@ serve(async (req) => {
       // 1. Active employees
       supabase
         .from("employees")
-        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type")
+        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type, date_of_birth")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "active"),
 
@@ -245,15 +246,23 @@ serve(async (req) => {
     }
 
     // ── Build ScheduleEmployee[] ─────────────────────────────────────────────
-    const employees: ScheduleEmployee[] = activeEmployees.map((e) => ({
-      id: e.id,
-      name: e.name,
-      position: e.position ?? "Staff",
-      area: e.area ?? null,
-      // hourly_rate stored in cents; salary employees get 0
-      hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
-      employment_type: e.employment_type ?? "full_time",
-    }));
+    const employees: ScheduleEmployee[] = activeEmployees.map((e) => {
+      // Bug I: derive the per-employee weekly hour cap from DOB so the
+      // prompt's Employee Hour Budgets table and the validator backstop
+      // share one anchor. Defaults to adult 40h when DOB is null/bad.
+      const budget = computeHourBudget(e.date_of_birth, week_start);
+      return {
+        id: e.id,
+        name: e.name,
+        position: e.position ?? "Staff",
+        area: e.area ?? null,
+        // hourly_rate stored in cents; salary employees get 0
+        hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
+        employment_type: e.employment_type ?? "full_time",
+        is_minor: budget.is_minor,
+        max_weekly_hours: budget.max_weekly_hours,
+      };
+    });
 
     // ── Build ScheduleTemplate[] ─────────────────────────────────────────────
     const templates: ScheduleTemplate[] = rawTemplates.map((t) => ({
@@ -551,8 +560,17 @@ serve(async (req) => {
       : [];
 
     // Build validation context
-    const employeeIds = new Set(employees.map((e) => e.id));
-    const employeePositions = new Map(employees.map((e) => [e.id, e.position]));
+    // Bug I: validator now carries is_minor + max_weekly_hours per
+    // employee (one Map instead of Set + parallel position Map) so the
+    // new hour-cap step can dispatch on max_weekly_hours and the
+    // POSITION_MISMATCH check still reads `.position` via one lookup.
+    const employeeMeta = new Map(
+      employees.map((e) => [e.id, {
+        position: e.position,
+        is_minor: e.is_minor,
+        max_weekly_hours: e.max_weekly_hours,
+      }] as const),
+    );
     // Validator needs template days-of-week and required position so it can
     // drop shifts placed on a wrong day (Bug C) or a wrong position (Bug E
     // — Manager onto Server template).
@@ -589,8 +607,7 @@ serve(async (req) => {
     });
 
     const validationCtx: ValidationContext = {
-      employeeIds,
-      employeePositions,
+      employees: employeeMeta,
       templates: templateDays,
       availability: availabilityMap,
       excludedEmployeeIds: new Set(excluded_employee_ids),
@@ -659,6 +676,12 @@ serve(async (req) => {
           return `Unknown template on ${d.shift.day}`;
         case "DAY_NOT_IN_TEMPLATE":
           return `Template not active on ${d.shift.day}`;
+        case "HOURS_EXCEED_WEEKLY_CAP":
+          return `Weekly hour cap exceeded on ${d.shift.day}`;
+        case "MINOR_HOURS_EXCEEDED":
+          return `Minor weekly hour cap exceeded on ${d.shift.day}`;
+        case "CONSECUTIVE_DAYS_EXCEEDED":
+          return `More than 5 consecutive days on ${d.shift.day}`;
         default:
           return `Unknown drop reason on ${d.shift.day}`;
       }

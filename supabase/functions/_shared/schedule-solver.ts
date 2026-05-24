@@ -221,10 +221,28 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
 
   const slots = enumerateSlots(ctx);
 
+  // Stage C: most-constrained-first. Tie-break: weekend before weekday, earlier
+  // start_time, stable original order.
+  const baseCountBySlotIdx = slots.map((s) => eligibleBase(s, ctx).length);
+  const order = slots.map((_, i) => i);
+  order.sort((aIdx, bIdx) => {
+    const a = baseCountBySlotIdx[aIdx];
+    const b = baseCountBySlotIdx[bIdx];
+    if (a !== b) return a - b;
+    const aWk = slots[aIdx].day_of_week === 0 || slots[aIdx].day_of_week === 6 ? 0 : 1;
+    const bWk = slots[bIdx].day_of_week === 0 || slots[bIdx].day_of_week === 6 ? 0 : 1;
+    if (aWk !== bWk) return aWk - bWk;
+    const aMin = timeToMinutes(slots[aIdx].start_time);
+    const bMin = timeToMinutes(slots[bIdx].start_time);
+    if (aMin !== bMin) return aMin - bMin;
+    return aIdx - bIdx;
+  });
+
   const assigned: GeneratedShift[] = [];
   const unfilled: UnfilledSlot[] = [];
 
-  for (const slot of slots) {
+  for (const slotIdx of order) {
+    const slot = slots[slotIdx];
     const base = eligibleBase(slot, ctx);
     if (base.length === 0) {
       unfilled.push({ ...toUnfilled(slot), reason: 'NO_ELIGIBLE_EMPLOYEE' });

@@ -252,3 +252,43 @@ describe('solveSchedule — dynamic predicates', () => {
     expect(result.unfilled[0].reason).toBe('ALL_AT_CONSEC_DAY_CAP');
   });
 });
+
+describe('solveSchedule — scarcity ordering', () => {
+  it('a slot with only 1 eligible employee gets that employee before a roomier slot consumes them', () => {
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'eA', name: 'A', position: 'Server', area: null, max_weekly_hours: 8,
+        date_of_birth: '1990-01-01', is_minor: false },
+      { id: 'eB', name: 'B', position: 'Server', area: null, max_weekly_hours: 8,
+        date_of_birth: '1990-01-01', is_minor: false },
+    ];
+    // tWide: open to both. tNarrow: only eA available (eB unavailable that day).
+    ctx.templates = [
+      { id: 'tWide', name: 'Wide', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '18:00:00', days_of_week: [1] },
+      { id: 'tNarrow', name: 'Narrow', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '18:00:00', days_of_week: [2] },
+    ];
+    ctx.requiredStaff = new Map([
+      ['tWide:2026-06-08', { template_id: 'tWide', day: '2026-06-08', count: 1 }], // Mon
+      ['tNarrow:2026-06-09', { template_id: 'tNarrow', day: '2026-06-09', count: 1 }], // Tue
+    ]);
+    ctx.availability = {
+      'eA': {
+        1: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' },
+        2: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' },
+      },
+      'eB': {
+        1: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' },
+        2: { isAvailable: false, startTime: null, endTime: null },
+      },
+    };
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(2);
+    // Narrow must go to eA; Wide must go to eB
+    const tueShift = result.shifts.find((s) => s.day === '2026-06-09');
+    const monShift = result.shifts.find((s) => s.day === '2026-06-08');
+    expect(tueShift?.employee_id).toBe('eA');
+    expect(monShift?.employee_id).toBe('eB');
+  });
+});

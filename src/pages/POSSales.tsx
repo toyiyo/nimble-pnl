@@ -134,13 +134,26 @@ export default function POSSales() {
     endDate: endDate || undefined,
   });
 
-  // Server-side aggregated totals for dashboard metrics (independent of pagination)
+  // Server-side aggregated totals for dashboard metrics (independent of pagination).
+  // Filtered by searchTerm so dashboard metrics + segmented-control tab counts
+  // reflect the visible/searched subset.
   const { totals: serverTotals, isLoading: totalsLoading } = useUnifiedSalesTotals(
     selectedRestaurant?.restaurant_id || null,
     {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       searchTerm: searchTerm || undefined,
+    }
+  );
+
+  // Unfiltered totals (date range only, no searchTerm) for the AI "Categorize all"
+  // banner + button gate. The AI categorize action ignores the current search,
+  // so its badges + enabled state must not be scoped to the searched subset.
+  const { totals: unfilteredTotals, isLoading: unfilteredTotalsLoading } = useUnifiedSalesTotals(
+    selectedRestaurant?.restaurant_id || null,
+    {
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
     }
   );
 
@@ -313,8 +326,8 @@ export default function POSSales() {
   }, [sales, searchTerm, startDate, endDate, recipeFilter, categorizationFilter, recipeByItemName, sortBy, sortDirection]);
 
   // Get sales with AI suggestions (still used by the apply-pending-review row UI).
-  // Counts come from serverTotals so they don't drift with pagination — see
-  // sig:539980c1fe88.
+  // Aggregate counts come from server totals, not this list, so they don't
+  // drift with pagination.
   const suggestedSales = useMemo(() => {
     return sales.filter(sale =>
       sale.suggested_category_id && !sale.is_categorized
@@ -877,7 +890,7 @@ export default function POSSales() {
             </div>
             <Button
               onClick={handleCategorizeClick}
-              disabled={isCategorizingPending || (!totalsLoading && serverTotals.uncategorizedCount === 0)}
+              disabled={isCategorizingPending || (!unfilteredTotalsLoading && unfilteredTotals.uncategorizedCount === 0)}
               className="gap-2 w-full sm:w-auto"
             >
               <Sparkles className="h-4 w-4" />
@@ -895,12 +908,12 @@ export default function POSSales() {
         <CardContent>
           <div className="flex items-center gap-4 text-sm">
             <Badge variant="secondary" className="gap-1">
-              <span className="tabular-nums">{serverTotals.uncategorizedCount}</span> uncategorized
+              <span className="tabular-nums">{unfilteredTotals.uncategorizedCount}</span> uncategorized
             </Badge>
-            {serverTotals.pendingReviewCount > 0 && (
+            {unfilteredTotals.pendingReviewCount > 0 && (
               <Badge variant="default" className="gap-1 bg-gradient-to-r from-blue-500 to-purple-500">
                 <Sparkles className="h-3 w-3" />
-                <span className="tabular-nums">{serverTotals.pendingReviewCount}</span> pending review
+                <span className="tabular-nums">{unfilteredTotals.pendingReviewCount}</span> pending review
               </Badge>
             )}
           </div>

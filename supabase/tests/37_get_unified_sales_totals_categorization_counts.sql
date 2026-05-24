@@ -2,7 +2,7 @@
 -- See sig:539980c1fe88. Distinct restaurant UUID (…0098) to avoid colliding
 -- with 35_…sql (which uses …0099) so the two test files are order-independent.
 BEGIN;
-SELECT plan(9);
+SELECT plan(7);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
@@ -116,17 +116,9 @@ SELECT is(
   'pending_review_count counts is_categorized IS NOT TRUE AND suggested_category_id IS NOT NULL'
 );
 
--- Test 4: categorized row D not counted in uncategorized
-SELECT is(
-  (SELECT uncategorized_count FROM get_unified_sales_totals(
-    '00000000-0000-0000-0000-000000000098'::uuid, '2024-07-02'::DATE, '2024-07-02'::DATE
-  )),
-  2::BIGINT,
-  'is_categorized=true rows are excluded from uncategorized_count'
-);
-
--- Test 5: child split (row E) excluded from both counts
--- Total rows for the date with the parent_sale_id IS NULL filter = A,B,C,D = 4; total_count must equal 4 (not 5)
+-- Test 4: child split (row E) excluded from both counts via parent_sale_id IS NULL
+-- Total rows for the date for A,B,C,D = 4; total_count must equal 4 (not 5) — proves
+-- the parent_sale_id filter applies to the categorization counts' base set too.
 SELECT is(
   (SELECT total_count FROM get_unified_sales_totals(
     '00000000-0000-0000-0000-000000000098'::uuid, '2024-07-02'::DATE, '2024-07-02'::DATE
@@ -135,17 +127,7 @@ SELECT is(
   'parent_sale_id IS NOT NULL rows (child splits) are excluded'
 );
 
--- Test 6: date filter honoured — row F outside window does not count
--- Restrict to a single day; row F (2024-07-03) is not included
-SELECT is(
-  (SELECT uncategorized_count FROM get_unified_sales_totals(
-    '00000000-0000-0000-0000-000000000098'::uuid, '2024-07-02'::DATE, '2024-07-02'::DATE
-  )),
-  2::BIGINT,
-  'date filter honoured for uncategorized_count'
-);
-
--- Test 7: include both days — row F adds 1 more uncategorized
+-- Test 5: widening date range to include 2024-07-03 picks up row F → uncategorized = 3
 SELECT is(
   (SELECT uncategorized_count FROM get_unified_sales_totals(
     '00000000-0000-0000-0000-000000000098'::uuid, '2024-07-02'::DATE, '2024-07-03'::DATE
@@ -154,7 +136,7 @@ SELECT is(
   'widening date range picks up row F (uncategorized) for 2024-07-03'
 );
 
--- Test 8: pending_review_count unaffected by the wider window (no new pending row)
+-- Test 6: pending_review_count unaffected by the wider window (no new pending row)
 SELECT is(
   (SELECT pending_review_count FROM get_unified_sales_totals(
     '00000000-0000-0000-0000-000000000098'::uuid, '2024-07-02'::DATE, '2024-07-03'::DATE
@@ -163,7 +145,7 @@ SELECT is(
   'pending_review_count unchanged by widening window when no new pending row'
 );
 
--- Test 9: non-member call raises Access denied
+-- Test 7: non-member call raises Access denied
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000002"}';
 SELECT throws_ok(
   $$ SELECT * FROM get_unified_sales_totals('00000000-0000-0000-0000-000000000098'::uuid, '2024-07-02'::DATE, '2024-07-02'::DATE) $$,

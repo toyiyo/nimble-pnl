@@ -7,24 +7,30 @@ const SOURCE = readFileSync(
   'utf8',
 );
 
-// Regression guards for sig:539980c1fe88 — the badge counts must come from
-// serverTotals (the RPC aggregate), not from .filter()/.length on the paginated
-// client `sales` array.
-describe('POSSales — categorization badge counts use serverTotals', () => {
-  it('reads uncategorized count from serverTotals.uncategorizedCount', () => {
-    expect(SOURCE).toMatch(/serverTotals\.uncategorizedCount/);
+// Regression guards: badge counts must come from server-side RPC aggregates,
+// not from .filter()/.length on the paginated client `sales` array. The AI
+// banner additionally uses an unfiltered (no searchTerm) totals call so its
+// counts + button-gate are not scoped to the active search.
+describe('POSSales — categorization badge counts use server totals', () => {
+  it('AI banner uncategorized count comes from unfilteredTotals (search-independent)', () => {
+    expect(SOURCE).toMatch(/unfilteredTotals\.uncategorizedCount/);
   });
 
-  it('reads pending review count from serverTotals.pendingReviewCount', () => {
-    expect(SOURCE).toMatch(/serverTotals\.pendingReviewCount/);
+  it('AI banner pending-review count comes from unfilteredTotals (search-independent)', () => {
+    expect(SOURCE).toMatch(/unfilteredTotals\.pendingReviewCount/);
   });
 
-  it('AI card pending-review badge visibility is server-driven', () => {
-    expect(SOURCE).toMatch(/serverTotals\.pendingReviewCount\s*>\s*0/);
+  it('AI banner pending-review badge visibility is server-driven', () => {
+    expect(SOURCE).toMatch(/unfilteredTotals\.pendingReviewCount\s*>\s*0/);
   });
 
-  it('AI Categorize button gates on totalsLoading to avoid load-state false-disable', () => {
-    expect(SOURCE).toMatch(/!totalsLoading\s*&&\s*serverTotals\.uncategorizedCount\s*===\s*0/);
+  it('AI Categorize button gates on unfilteredTotalsLoading to avoid load-state false-disable', () => {
+    expect(SOURCE).toMatch(/!unfilteredTotalsLoading\s*&&\s*unfilteredTotals\.uncategorizedCount\s*===\s*0/);
+  });
+
+  it('segmented-control tab counts come from serverTotals (filtered)', () => {
+    expect(SOURCE).toMatch(/count:\s*serverTotals\.uncategorizedCount/);
+    expect(SOURCE).toMatch(/count:\s*serverTotals\.pendingReviewCount/);
   });
 
   it('does NOT compute uncategorized count by client-side filter over sales', () => {

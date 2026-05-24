@@ -57,7 +57,7 @@ export function useBulkCategorizePosSales() {
     onSuccess: (data, variables) => {
       // Invalidate unified sales queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
-      queryClient.invalidateQueries({ queryKey: ['unified-sales-totals'] });
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-totals', variables.restaurantId] });
 
       const actualCount = data?.length || 0;
       const skippedCount = variables.saleIds.length - actualCount;

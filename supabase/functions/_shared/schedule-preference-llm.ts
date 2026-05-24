@@ -16,7 +16,7 @@ import {
   timeToMinutes,
   withinWindow,
 } from './schedule-validator.ts';
-import type { ScheduleContext } from './schedule-prompt-builder.ts';
+import type { ScheduleContext } from './schedule-solver.ts';
 
 export interface SwapRecord {
   shift_a_id: string;
@@ -119,11 +119,8 @@ function validateAffectedEmployees(
   ctx: ScheduleContext,
   empIds: string[],
 ): string | null {
-  // ctx.employees may be an array (ScheduleEmployee[]) keyed by .id.
-  // ctx.availability is Record<empId, Record<dow, {isAvailable, startTime, endTime}>>.
-  const ctxAny = ctx as any;
   for (const empId of empIds) {
-    const emp = ctxAny.employees.find((e: any) => e.id === empId);
+    const emp = ctx.employees.find((e) => e.id === empId);
     if (!emp) return 'UNKNOWN_EMPLOYEE';
     const empShifts = Array.from(byId.values()).filter((s) => s.employee_id === empId);
 
@@ -133,7 +130,7 @@ function validateAffectedEmployees(
       const s = empShifts[i];
       if (normalizePosition(s.position) !== normalizePosition(emp.position)) return 'POSITION_MISMATCH';
       const dow = getDayOfWeekUTC(s.day);
-      const avail = ctxAny.availability[empId]?.[dow];
+      const avail = ctx.availability[empId]?.[dow];
       if (!avail?.isAvailable || !avail.startTime || !avail.endTime) return 'UNAVAILABLE_DAY';
       const shiftStart = timeToMinutes(s.start_time);
       const shiftEnd = timeToMinutes(s.end_time);

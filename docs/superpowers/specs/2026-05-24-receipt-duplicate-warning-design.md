@@ -166,6 +166,13 @@ interface DuplicateReceiptDialogProps {
 }
 ```
 
+The "View previous receipt" link uses `react-router-dom`'s `<Link>` to
+`/receipts?receipt=<existing.id>`. `ReceiptImport.tsx` is updated to read
+`?receipt=` from `useSearchParams` on mount and set `activeReceiptId`
+accordingly — a small change that also keeps deep-linking to a specific
+receipt working in general. Clicking the link closes the dialog (treated
+as cancel).
+
 Rendered content (mock):
 
 ```
@@ -237,6 +244,8 @@ arguments.
 - `src/components/ReceiptUpload.tsx` — wire the dialog and force-retry flow.
 - `src/components/ReceiptMappingReview.tsx` — fetch semantic dup on mount;
   render banner.
+- `src/pages/ReceiptImport.tsx` — read `?receipt=<id>` from `useSearchParams`
+  on mount to support deep-linking from the dialog.
 
 ## Open questions
 

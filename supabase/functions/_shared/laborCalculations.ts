@@ -135,7 +135,7 @@ const MAX_SHIFT_GAP_HOURS = 18;
 // Helper Functions
 // ============================================================================
 
-function formatDateLocal(date: Date): string {
+export function formatDateLocal(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -641,11 +641,19 @@ export function calculateActualLaborCost(
  * parsed work periods. Output is additive — one row per input employee, even
  * if they have zero punches in the window (caller can filter).
  *
- * Cost rules mirror calculateActualLaborCost:
- *   hourly      → sum of per-day calculateEmployeeDailyCostForDate
- *   daily_rate  → per-day daily-rate × days with hours > 0
- *   salary      → calculateSalaryForPeriod(employee, startDate, endDate)
- *   contractor  → calculateContractorPayForPeriod(employee, startDate, endDate)
+ * Cost is computed via per-day snapshots so an employee whose
+ * compensation_type changed mid-window is billed correctly for each segment.
+ * The four buckets run unconditionally — each helper internally skips days
+ * where the snapshot doesn't match its type, so they never double-count:
+ *   - calculateSalaryForPeriod / calculateContractorPayForPeriod walk every
+ *     day in the window and only add on days resolving to that comp type
+ *   - per-day hourly + daily_rate via getEmployeeSnapshotForDate on each
+ *     worked day, gated by the snapshot's compensation_type
+ *
+ * Periods whose startTime falls outside [startDate, endDate] are dropped.
+ * Callers that fetch with an end-of-window lookahead (to catch shifts whose
+ * clock_out punch lands just after `endDate`) rely on this filter to drop
+ * any orphan periods whose clock_in lands in the lookahead zone.
  *
  * Per-employee totals across the same comp type sum back to
  * calculateActualLaborCost(...).breakdown.<type>.cost (× 100 cents).
@@ -666,7 +674,10 @@ export function calculateHoursPerEmployee(
 
   return employees.map((employee) => {
     const punches = punchesByEmployee.get(employee.id) ?? [];
-    const { periods } = parseWorkPeriods(punches);
+    const { periods: rawPeriods } = parseWorkPeriods(punches);
+    const periods = rawPeriods.filter(
+      (p) => p.startTime >= startDate && p.startTime <= endDate,
+    );
 
     const hoursPerDay: Record<string, number> = {};
     let totalHours = 0;
@@ -681,29 +692,17 @@ export function calculateHoursPerEmployee(
     const daysWorked = Object.values(hoursPerDay).filter((h) => h > 0).length;
 
     let totalCostCents = 0;
-    switch (employee.compensation_type) {
-      case 'hourly': {
-        for (const [day, hours] of Object.entries(hoursPerDay)) {
-          if (hours <= 0) continue;
-          totalCostCents += calculateEmployeeDailyCostForDate(employee, day, hours);
-        }
-        break;
-      }
-      case 'daily_rate': {
-        for (const [day, hours] of Object.entries(hoursPerDay)) {
-          if (hours <= 0) continue;
-          const snapshot = getEmployeeSnapshotForDate(employee, day);
-          totalCostCents += calculateEmployeeDailyCost(snapshot);
-        }
-        break;
-      }
-      case 'salary': {
-        totalCostCents = calculateSalaryForPeriod(employee, startDate, endDate);
-        break;
-      }
-      case 'contractor': {
-        totalCostCents = calculateContractorPayForPeriod(employee, startDate, endDate);
-        break;
+    totalCostCents += calculateSalaryForPeriod(employee, startDate, endDate);
+    totalCostCents += calculateContractorPayForPeriod(employee, startDate, endDate);
+
+    for (const [day, hours] of Object.entries(hoursPerDay)) {
+      if (hours <= 0) continue;
+      const snapshot = getEmployeeSnapshotForDate(employee, day);
+      if (
+        snapshot.compensation_type === 'hourly' ||
+        snapshot.compensation_type === 'daily_rate'
+      ) {
+        totalCostCents += calculateEmployeeDailyCost(snapshot, hours);
       }
     }
 

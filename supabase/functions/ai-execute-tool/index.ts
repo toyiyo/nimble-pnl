@@ -99,18 +99,29 @@ function calculateDateRange(
       const [sy, sm, sd] = customStartDate.split('-').map(Number);
       startDate = new Date(sy, sm - 1, sd);
       const [ey, em, ed] = customEndDate.split('-').map(Number);
-      endDate = new Date(ey, em - 1, ed);
+      // End-of-day so the inclusive range matches every other branch above.
+      endDate = new Date(ey, em - 1, ed, 23, 59, 59);
       break;
     default:
       // Default to current week
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
   }
 
+  // Format strings in the host's local timezone so they reflect the calendar
+  // date the caller asked for. toISOString drifts to the next day when local
+  // 23:59:59 lands past midnight UTC (e.g., PT users querying "today").
+  const toLocalYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   return {
     startDate,
     endDate,
-    startDateStr: startDate.toISOString().split('T')[0],
-    endDateStr: endDate.toISOString().split('T')[0],
+    startDateStr: toLocalYMD(startDate),
+    endDateStr: toLocalYMD(endDate),
   };
 }
 
@@ -1857,36 +1868,60 @@ const EMPLOYEE_LABOR_COLUMNS =
   'contractor_payment_amount, contractor_payment_interval, ' +
   'daily_rate_amount, hire_date, termination_date, compensation_history';
 
+interface FetchLaborDataOptions {
+  /** Optional single-employee filter. */
+  employeeId?: string;
+  /** Optional case-insensitive position filter (matches employees server-side). */
+  position?: string;
+  /**
+   * Hours past `endDate` to extend the punch fetch so we still capture the
+   * clock_out of a shift that started in-window and crossed midnight.
+   * `calculateHoursPerEmployee` filters periods by startTime <= endDate so
+   * any orphan clock_in in the lookahead zone is dropped. Default 0.
+   */
+  endLookaheadHours?: number;
+}
+
 /**
  * Fetch time punches and employees in parallel — shared by get_labor_costs
- * and get_time_punches. Optionally filters punches to a single employee.
+ * and get_time_punches.
  */
 async function fetchLaborData(
   supabase: any,
   restaurantId: string,
   startDate: Date,
   endDate: Date,
-  employeeId?: string,
+  options: FetchLaborDataOptions = {},
 ): Promise<{ timePunches: any[]; employees: any[] }> {
+  const { employeeId, position, endLookaheadHours = 0 } = options;
+
+  const upperBound =
+    endLookaheadHours > 0
+      ? new Date(endDate.getTime() + endLookaheadHours * 60 * 60 * 1000)
+      : endDate;
+
   let punchQuery = supabase
     .from('time_punches')
     .select('id, employee_id, restaurant_id, punch_time, punch_type')
     .eq('restaurant_id', restaurantId)
     .gte('punch_time', startDate.toISOString())
-    .lte('punch_time', endDate.toISOString())
+    .lte('punch_time', upperBound.toISOString())
     .order('punch_time', { ascending: true });
 
   if (employeeId) {
     punchQuery = punchQuery.eq('employee_id', employeeId);
   }
 
-  const [punchesResult, employeesResult] = await Promise.all([
-    punchQuery,
-    supabase
-      .from('employees')
-      .select(EMPLOYEE_LABOR_COLUMNS)
-      .eq('restaurant_id', restaurantId),
-  ]);
+  let employeeQuery = supabase
+    .from('employees')
+    .select(EMPLOYEE_LABOR_COLUMNS)
+    .eq('restaurant_id', restaurantId);
+
+  if (position) {
+    employeeQuery = employeeQuery.ilike('position', position);
+  }
+
+  const [punchesResult, employeesResult] = await Promise.all([punchQuery, employeeQuery]);
 
   if (punchesResult.error) throw new Error(`Failed to fetch time punches: ${punchesResult.error.message}`);
   if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
@@ -1895,15 +1930,6 @@ async function fetchLaborData(
     timePunches: punchesResult.data ?? [],
     employees: employeesResult.data ?? [],
   };
-}
-
-/** Format a Date as YYYY-MM-DD in the host's local timezone. Aligns with
- * the hours_per_day keys produced by calculateHoursPerEmployee. */
-function formatShiftDate(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
@@ -1923,7 +1949,11 @@ async function executeGetLaborCosts(
 
   const canSeeEmployees = userRole === 'manager' || userRole === 'owner';
 
-  const { timePunches, employees } = await fetchLaborData(supabase, restaurantId, startDate, endDate);
+  // 18h lookahead so shifts whose clock_out lands just after midnight at the
+  // end of the window still get paired into a complete period.
+  const { timePunches, employees } = await fetchLaborData(supabase, restaurantId, startDate, endDate, {
+    endLookaheadHours: 18,
+  });
 
   const { breakdown, dailyCosts } = calculateActualLaborCost(employees, timePunches, startDate, endDate);
 
@@ -1994,29 +2024,39 @@ async function executeGetTimePunches(
 
   const { period, start_date, end_date, employee_id, position, min_hours = 0, limit = 50 } = args;
 
-  const { calculateHoursPerEmployee } = await import('../_shared/laborCalculations.ts');
+  const { calculateHoursPerEmployee, getEmployeeSnapshotForDate, formatDateLocal } = await import(
+    '../_shared/laborCalculations.ts'
+  );
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
 
   const cappedLimit = Math.min(Math.max(1, Number(limit) || 50), 200);
   const minHours = Math.max(0, Number(min_hours) || 0);
 
-  const { timePunches, employees: allEmployees } = await fetchLaborData(
-    supabase, restaurantId, startDate, endDate, employee_id,
+  // 18h lookahead so shifts whose clock_out lands just after midnight at the
+  // end of the window still get paired. `calculateHoursPerEmployee` filters
+  // periods by startTime <= endDate so any orphan clock_in in the lookahead
+  // zone is dropped.
+  const { timePunches, employees } = await fetchLaborData(
+    supabase,
+    restaurantId,
+    startDate,
+    endDate,
+    { employeeId: employee_id, position, endLookaheadHours: 18 },
   );
 
-  // Filter by position client-side (the employees table has no indexed position
-  // column suitable for a server-side filter here).
-  const employees = position
-    ? allEmployees.filter((e: any) => (e.position || '').toLowerCase() === String(position).toLowerCase())
-    : allEmployees;
-
   const summaries = calculateHoursPerEmployee(employees, timePunches, startDate, endDate);
+  // Index by id so we can resolve the per-day compensation snapshot below
+  // without a linear scan per shift.
+  const employeesById: Record<string, typeof employees[number]> = {};
+  for (const e of employees) {
+    employeesById[(e as { id: string }).id] = e;
+  }
 
   // Flatten to one row per work period (clock-in/out pair). Skip pure breaks
-  // and anything below min_hours. For hourly employees, attribute a
-  // proportional share of total_cost_cents to each period; for salary /
-  // contractor / daily_rate, leave cost_cents null since the cost is
-  // period-allocated, not hours-allocated.
+  // and anything below min_hours. Per-shift cost uses the snapshot for that
+  // shift's date so mid-period comp changes are billed correctly:
+  //   - hourly snapshot   → hourly_rate × hours
+  //   - daily_rate / salary / contractor → null (period-allocated, not per-shift)
   type Shift = {
     employee_id: string;
     employee_name: string;
@@ -2032,26 +2072,26 @@ async function executeGetTimePunches(
   const shifts: Shift[] = [];
   for (const s of summaries) {
     const workPeriods = s.work_periods.filter((p) => !p.isBreak && p.hours >= minHours);
-    const totalHours = workPeriods.reduce((sum, p) => sum + p.hours, 0);
+    const employee = employeesById[s.employee_id];
 
     for (const p of workPeriods) {
-      // Hourly employees get a proportional share of total_cost_cents per period.
-      // Salary / contractor / daily_rate costs are period-allocated, not per-shift.
+      const day = formatDateLocal(new Date(p.startTime));
+      const snapshot = employee ? getEmployeeSnapshotForDate(employee, day) : null;
       const cost_cents =
-        s.compensation_type === 'hourly' && totalHours > 0
-          ? Math.round((p.hours / totalHours) * s.total_cost_cents)
+        snapshot && snapshot.compensation_type === 'hourly' && snapshot.hourly_rate
+          ? Math.round((snapshot.hourly_rate / 100) * p.hours * 100)
           : null;
 
       shifts.push({
         employee_id: s.employee_id,
         employee_name: s.employee_name,
         position: s.position,
-        compensation_type: s.compensation_type,
+        compensation_type: snapshot?.compensation_type ?? s.compensation_type,
         start_time: p.startTime.toISOString(),
         end_time: p.endTime.toISOString(),
         hours: Number(p.hours.toFixed(4)),
         cost_cents,
-        date: formatShiftDate(p.startTime),
+        date: day,
       });
     }
   }
@@ -2059,6 +2099,7 @@ async function executeGetTimePunches(
   // Newest first, then cap.
   shifts.sort((a, b) => (a.start_time < b.start_time ? 1 : -1));
   const limited = shifts.slice(0, cappedLimit);
+  const hasMore = shifts.length > cappedLimit;
 
   return {
     ok: true,
@@ -2073,12 +2114,13 @@ async function executeGetTimePunches(
       },
       total_shifts: shifts.length,
       returned_shifts: limited.length,
+      has_more: hasMore,
       shifts: limited,
     },
     evidence: [
       {
         table: 'time_punches',
-        summary: `${timePunches.length} punches → ${shifts.length} shifts (returning ${limited.length}) from ${startDateStr} to ${endDateStr}`,
+        summary: `${timePunches.length} punches → ${shifts.length} shifts (returning ${limited.length}${hasMore ? `, ${shifts.length - cappedLimit} truncated` : ''}) from ${startDateStr} to ${endDateStr}`,
       },
     ],
   };

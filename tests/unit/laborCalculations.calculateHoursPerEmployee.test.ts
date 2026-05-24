@@ -270,4 +270,97 @@ describe('calculateHoursPerEmployee', () => {
       expect(totalWorkHours).toBeCloseTo(summary.total_hours, 4);
     });
   });
+
+  describe('mid-period compensation_history changes', () => {
+    it('bills hourly days at the historical rate and salary days at the historical allocation', () => {
+      // Employee starts hourly @ $20/hr through May 17, then converts to a
+      // weekly $1,000 salary effective May 18. Window covers both segments.
+      const employee: Employee = {
+        ...hourlyEmployee,
+        id: 'emp-converted',
+        name: 'Converted Cara',
+        compensation_type: 'salary', // current = salary
+        salary_amount: 100000, // $1,000/week
+        pay_period_type: 'weekly',
+        hourly_rate: 0,
+        compensation_history: [
+          {
+            id: 'h1',
+            employee_id: 'emp-converted',
+            restaurant_id: 'r1',
+            compensation_type: 'hourly',
+            amount_cents: 2000, // $20/hr
+            effective_date: '2026-01-01',
+            created_at: '2026-01-01T00:00:00Z',
+          },
+          {
+            id: 'h2',
+            employee_id: 'emp-converted',
+            restaurant_id: 'r1',
+            compensation_type: 'salary',
+            amount_cents: 100000,
+            pay_period_type: 'weekly',
+            effective_date: '2026-05-18',
+            created_at: '2026-05-18T00:00:00Z',
+          },
+        ],
+      } as Employee;
+
+      const punches: TimePunch[] = [
+        // May 16 (hourly): 8h
+        punch('emp-converted', '2026-05-16T09:00:00', 'clock_in'),
+        punch('emp-converted', '2026-05-16T17:00:00', 'clock_out'),
+        // May 17 (hourly): 6h
+        punch('emp-converted', '2026-05-17T10:00:00', 'clock_in'),
+        punch('emp-converted', '2026-05-17T16:00:00', 'clock_out'),
+        // May 18 (salary): clock-ins recorded but cost is period-allocated
+        punch('emp-converted', '2026-05-18T08:00:00', 'clock_in'),
+        punch('emp-converted', '2026-05-18T16:00:00', 'clock_out'),
+      ];
+
+      const start = new Date('2026-05-16T00:00:00');
+      const end = new Date('2026-05-22T23:59:59'); // 7-day window
+
+      const [row] = calculateHoursPerEmployee([employee], punches, start, end);
+
+      // Hourly portion: (8 + 6) h × $20/h = $280 = 28,000 cents
+      const expectedHourlyCents = (8 + 6) * 2000;
+
+      // Salary portion: 5 days in window (May 18-22) × ($1000 / 7) per day
+      const dailySalary = 100000 / 7;
+      const expectedSalaryCents = Math.round(5 * dailySalary);
+
+      // Total must include both — the bug had only the current comp_type bucket
+      // running, so 28,000 cents of hourly work would have been silently dropped.
+      expect(row.total_cost_cents).toBe(expectedHourlyCents + expectedSalaryCents);
+      expect(row.total_hours).toBeCloseTo(8 + 6 + 8, 4);
+      expect(row.days_worked).toBe(3);
+    });
+  });
+
+  describe('shift crossing midnight at window end', () => {
+    it('drops periods whose clock_in starts after endDate (lookahead-window orphans)', () => {
+      // Punches in a lookahead window (after endDate) should NOT contribute
+      // hours or cost. This protects executeGetTimePunches which fetches
+      // with an end-of-window lookahead and relies on this filter.
+      const punches: TimePunch[] = [
+        // In window: 8h
+        punch('emp-hourly', '2026-05-16T09:00:00', 'clock_in'),
+        punch('emp-hourly', '2026-05-16T17:00:00', 'clock_out'),
+        // After endDate (in lookahead zone): should be dropped
+        punch('emp-hourly', '2026-05-17T08:00:00', 'clock_in'),
+        punch('emp-hourly', '2026-05-17T14:00:00', 'clock_out'),
+      ];
+
+      const start = new Date('2026-05-16T00:00:00');
+      const end = new Date('2026-05-16T23:59:59');
+
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+
+      expect(row.total_hours).toBeCloseTo(8, 4);
+      expect(row.days_worked).toBe(1);
+      expect(Object.keys(row.hours_per_day)).toEqual(['2026-05-16']);
+      expect(row.total_cost_cents).toBe(8 * 2000);
+    });
+  });
 });

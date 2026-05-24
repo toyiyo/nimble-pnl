@@ -24,8 +24,36 @@ export interface SwapRecord {
   reason: string;
 }
 
+export type SwapRejectionReason =
+  | 'UNKNOWN_EMPLOYEE'
+  | 'POSITION_MISMATCH'
+  | 'AREA_MISMATCH'
+  | 'UNAVAILABLE_DAY'
+  | 'OUTSIDE_WINDOW'
+  | 'DOUBLE_BOOKING'
+  | 'HOURS_EXCEED_WEEKLY_CAP'
+  | 'CONSECUTIVE_DAYS_EXCEEDED';
+
+export type SwapRejectionCode = 'UNKNOWN_SHIFT' | `WOULD_VIOLATE_${SwapRejectionReason}`;
+
 export interface RejectedSwap extends SwapRecord {
-  rejection_code: string;
+  rejection_code: SwapRejectionCode;
+}
+
+export interface ProposedSwap {
+  shift_a_id: string;
+  shift_b_id: string;
+  reason: string;
+}
+
+export interface IdentifiedShift extends GeneratedShift {
+  id: string;
+}
+
+export interface ApplySwapsResult {
+  shifts: IdentifiedShift[];
+  appliedSwaps: SwapRecord[];
+  rejectedSwaps: RejectedSwap[];
 }
 
 export interface PreferenceResult {
@@ -65,7 +93,7 @@ export async function applyPreferences(
     if (model && !modelUsed) modelUsed = model;
     if (swaps.length === 0) break;
     const applied = applySwapsToSchedule(working, ctx, swaps);
-    working = applied.shifts as IdentifiedShift[];
+    working = applied.shifts;
     allApplied = allApplied.concat(applied.appliedSwaps);
     allRejected = allRejected.concat(applied.rejectedSwaps);
     if (applied.appliedSwaps.length === 0) break;
@@ -144,24 +172,37 @@ async function proposeSwaps(
   return { swaps: [], model: null };
 }
 
-export interface ProposedSwap {
-  shift_a_id: string;
-  shift_b_id: string;
-  reason: string;
-}
-
-export interface IdentifiedShift extends GeneratedShift {
-  id: string;
-}
-
 export function applySwapsToSchedule(
   shifts: IdentifiedShift[],
   ctx: ScheduleContext,
   swaps: ProposedSwap[],
-): Omit<PreferenceResult, 'modelUsed'> {
+): ApplySwapsResult {
   const byId = new Map(shifts.map((s) => [s.id, { ...s }]));
   const applied: SwapRecord[] = [];
   const rejected: RejectedSwap[] = [];
+
+  // Indexes for O(1) lookup in the swap re-validation loop. Without these,
+  // validateAffectedEmployees scans ctx.employees and Array.from(byId.values())
+  // for every affected employee on every swap — quadratic in (swaps × shifts).
+  const empById = new Map(ctx.employees.map((e) => [e.id, e]));
+  const templatesById = new Map(ctx.templates.map((t) => [t.id, t]));
+  const shiftsByEmp = new Map<string, IdentifiedShift[]>();
+  for (const s of byId.values()) {
+    const list = shiftsByEmp.get(s.employee_id);
+    if (list) list.push(s);
+    else shiftsByEmp.set(s.employee_id, [s]);
+  }
+  const reassignShift = (shift: IdentifiedShift, fromEmp: string, toEmp: string) => {
+    shift.employee_id = toEmp;
+    const fromList = shiftsByEmp.get(fromEmp);
+    if (fromList) {
+      const idx = fromList.indexOf(shift);
+      if (idx >= 0) fromList.splice(idx, 1);
+    }
+    const toList = shiftsByEmp.get(toEmp);
+    if (toList) toList.push(shift);
+    else shiftsByEmp.set(toEmp, [shift]);
+  };
 
   for (const swap of swaps) {
     const a = byId.get(swap.shift_a_id);
@@ -172,13 +213,13 @@ export function applySwapsToSchedule(
     }
     const aEmp = a.employee_id;
     const bEmp = b.employee_id;
-    a.employee_id = bEmp;
-    b.employee_id = aEmp;
+    reassignShift(a, aEmp, bEmp);
+    reassignShift(b, bEmp, aEmp);
 
-    const reason = validateAffectedEmployees(byId, ctx, [aEmp, bEmp]);
+    const reason = validateAffectedEmployees(byId, ctx, [aEmp, bEmp], empById, shiftsByEmp, templatesById);
     if (reason) {
-      a.employee_id = aEmp;
-      b.employee_id = bEmp;
+      reassignShift(a, bEmp, aEmp);
+      reassignShift(b, aEmp, bEmp);
       rejected.push({ ...swap, rejection_code: `WOULD_VIOLATE_${reason}` });
       continue;
     }
@@ -196,17 +237,27 @@ function validateAffectedEmployees(
   byId: Map<string, IdentifiedShift>,
   ctx: ScheduleContext,
   empIds: string[],
-): string | null {
+  empById: Map<string, ScheduleContext['employees'][number]>,
+  shiftsByEmp: Map<string, IdentifiedShift[]>,
+  templatesById: Map<string, ScheduleContext['templates'][number]>,
+): SwapRejectionReason | null {
   for (const empId of empIds) {
-    const emp = ctx.employees.find((e) => e.id === empId);
+    const emp = empById.get(empId);
     if (!emp) return 'UNKNOWN_EMPLOYEE';
-    const empShifts = Array.from(byId.values()).filter((s) => s.employee_id === empId);
+    const empShifts = shiftsByEmp.get(empId) ?? [];
 
     let totalHours = 0;
     const days = new Set<string>();
     for (let i = 0; i < empShifts.length; i++) {
       const s = empShifts[i];
       if (normalizePosition(s.position) !== normalizePosition(emp.position)) return 'POSITION_MISMATCH';
+      // Mirror solver's null-permissive area rule (schedule-solver.ts:172).
+      // Without this gate, the LLM can swap an employee from their assigned
+      // area into a template bound to a different area and the swap passes.
+      const template = templatesById.get(s.template_id);
+      if (template && template.area !== null && emp.area !== null && template.area !== emp.area) {
+        return 'AREA_MISMATCH';
+      }
       const dow = getDayOfWeekUTC(s.day);
       const avail = ctx.availability[empId]?.[dow];
       if (!avail?.isAvailable || !avail.startTime || !avail.endTime) return 'UNAVAILABLE_DAY';

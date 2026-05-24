@@ -78,6 +78,42 @@ describe('applySwapsToSchedule — pure re-validation', () => {
     expect(result.rejectedSwaps[0].rejection_code).toBe('UNKNOWN_SHIFT');
   });
 
+  it('swap that would move employee onto a template in a different area → rejected', () => {
+    // Solver enforces area-isolation in eligibleBase. Without an equivalent
+    // check in validateAffectedEmployees, the LLM can propose a swap that
+    // crosses area boundaries and the validator approves it.
+    const areaCtx: ScheduleContext = {
+      ...ctx,
+      employees: [
+        { id: 'eK', name: 'K', position: 'Server', area: 'kitchen', max_weekly_hours: 40,
+          date_of_birth: '1990-01-01', is_minor: false },
+        { id: 'eB', name: 'B', position: 'Server', area: 'bar', max_weekly_hours: 40,
+          date_of_birth: '1990-01-01', is_minor: false },
+      ],
+      availability: {
+        'eK': { 1: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+        'eB': { 1: { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+      },
+      templates: [
+        { id: 'tK', name: 'Kitchen Lunch', position: 'Server', area: 'kitchen',
+          start_time: '10:00:00', end_time: '16:30:00', days_of_week: [1] },
+        { id: 'tB', name: 'Bar Lunch', position: 'Server', area: 'bar',
+          start_time: '10:00:00', end_time: '16:30:00', days_of_week: [1] },
+      ],
+    };
+    const shifts = [
+      { id: 'sK', employee_id: 'eK', template_id: 'tK', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+      { id: 'sB', employee_id: 'eB', template_id: 'tB', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+    ];
+    const result = applySwapsToSchedule(shifts, areaCtx, [
+      { shift_a_id: 'sK', shift_b_id: 'sB', reason: 'swap K and B' },
+    ]);
+    expect(result.appliedSwaps).toHaveLength(0);
+    expect(result.rejectedSwaps[0].rejection_code).toBe('WOULD_VIOLATE_AREA_MISMATCH');
+  });
+
   it('swap that would push minor over 18h → rejected', () => {
     // Corrected fixture: minor has Mon-Wed availability, and we use a longer
     // second template (t2) so swap math actually exceeds the 18h cap.

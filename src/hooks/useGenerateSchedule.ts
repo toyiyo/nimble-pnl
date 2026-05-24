@@ -10,6 +10,7 @@ interface GenerateScheduleParams {
   weekStart: string; // YYYY-MM-DD
   lockedShiftIds: string[];
   excludedEmployeeIds: string[];
+  preferences?: string;
 }
 
 interface GeneratedShift {
@@ -34,6 +35,21 @@ export interface ScheduleDiagnostic {
   model_used: string;
 }
 
+export interface ClientSafeUnfilledSlot {
+  day: string;
+  position: string;
+  area: string | null;
+  reason: string;
+  template_name: string;
+}
+
+export interface ClientSafeFairnessSummary {
+  hours_assigned: number;
+  days_worked: number;
+  hours_budget: number;
+  employee_name: string;
+}
+
 export interface GenerateScheduleMetadata {
   estimated_cost: number;
   budget_variance_pct: number;
@@ -49,6 +65,11 @@ export interface GenerateScheduleMetadata {
   total_required_slots: number;
   drop_reason_summary: Record<string, number>;
   dropped_reasons: string[];
+  // New:
+  unfilled?: ClientSafeUnfilledSlot[];
+  fairness_summary?: ClientSafeFairnessSummary[];
+  applied_swaps_count?: number;
+  rejected_swaps_count?: number;
 }
 
 export interface GenerateScheduleResponse {
@@ -77,6 +98,7 @@ export function useGenerateSchedule() {
           week_start: params.weekStart,
           locked_shift_ids: params.lockedShiftIds,
           excluded_employee_ids: params.excludedEmployeeIds,
+          preferences_text: params.preferences ?? '',
         },
       });
 
@@ -144,20 +166,19 @@ export function useGenerateSchedule() {
 
       if (data.shifts.length === 0) return;
 
-      const { total_required_slots: required, total_dropped: dropped } = data.metadata;
+      const { total_required_slots: required, applied_swaps_count = 0, rejected_swaps_count = 0 } = data.metadata;
       const filled = data.shifts.length;
-      // Surface underfill prominently — covers the user-reported "slots left open"
-      // case where the AI returns a partial schedule.
-      let description =
-        required > 0 && filled < required
-          ? `Filled ${filled} of ${required} required slots — review and publish when ready.`
-          : `${filled} shifts created — review and publish when ready.`;
+
+      const parts: string[] = [];
+      parts.push(`${filled} of ${required} slots filled`);
+      if (applied_swaps_count > 0) parts.push(`${applied_swaps_count} preference swap${applied_swaps_count === 1 ? '' : 's'} applied`);
+      if (rejected_swaps_count > 0) parts.push(`${rejected_swaps_count} couldn't be applied`);
+      let description = parts.join(' · ') + '.';
+
       if (data.metadata.budget_variance_pct > 0) {
         description += ` Estimated cost is ${data.metadata.budget_variance_pct.toFixed(0)}% over budget.`;
       }
-      if (dropped > 0) {
-        description += ` ${dropped} suggestions were filtered out.`;
-      }
+
       toast({ title: 'Schedule Generated', description });
     },
     onError: (error: Error) => {

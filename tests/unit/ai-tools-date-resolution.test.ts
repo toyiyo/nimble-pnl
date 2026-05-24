@@ -77,17 +77,24 @@ function calculateDateRange(
       const [sy, sm, sd] = customStartDate.split('-').map(Number);
       startDate = new Date(sy, sm - 1, sd);
       const [ey, em, ed] = customEndDate.split('-').map(Number);
-      endDate = new Date(ey, em - 1, ed);
+      endDate = new Date(ey, em - 1, ed, 23, 59, 59);
       break;
     default:
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
   }
 
+  const toLocalYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   return {
     startDate,
     endDate,
-    startDateStr: startDate.toISOString().split('T')[0],
-    endDateStr: endDate.toISOString().split('T')[0],
+    startDateStr: toLocalYMD(startDate),
+    endDateStr: toLocalYMD(endDate),
   };
 }
 
@@ -230,6 +237,60 @@ describe('get_sales_summary previous period calculation', () => {
     expect(prevStartDate.getDate()).toBe(1);
     expect(prevStartDate.getFullYear()).toBe(range.startDate.getFullYear() - 1);
     expect(prevEndDate.getFullYear()).toBe(range.startDate.getFullYear() - 1);
+  });
+});
+
+describe('get_time_punches period resolution', () => {
+  // The get_time_punches tool accepts these period values per tools-registry.ts.
+  // calculateDateRange must produce a non-empty range for each of them.
+  const SUPPORTED_PERIODS = [
+    'today',
+    'yesterday',
+    'week',
+    'last_week',
+    'month',
+    'last_month',
+  ] as const;
+
+  it.each(SUPPORTED_PERIODS)('resolves period "%s" to a non-empty range', (period) => {
+    const range = calculateDateRange(period);
+    expect(range.startDate.getTime()).toBeLessThanOrEqual(range.endDate.getTime());
+    expect(range.startDateStr).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(range.endDateStr).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('resolves period "custom" with explicit dates', () => {
+    const range = calculateDateRange('custom', '2026-05-10', '2026-05-17');
+    expect(range.startDateStr).toBe('2026-05-10');
+    expect(range.endDateStr).toBe('2026-05-17');
+  });
+
+  it('custom period endDate is inclusive end-of-day, not midnight', () => {
+    // Prevents the off-by-one where a query for 2026-05-10..2026-05-17 would
+    // exclude all of May 17 because endDate landed at 00:00:00 instead of
+    // 23:59:59. Match the other branches' behavior.
+    const range = calculateDateRange('custom', '2026-05-10', '2026-05-17');
+    expect(range.endDate.getHours()).toBe(23);
+    expect(range.endDate.getMinutes()).toBe(59);
+    expect(range.endDate.getSeconds()).toBe(59);
+  });
+
+  it('today and yesterday do not overlap', () => {
+    const today = calculateDateRange('today');
+    const yesterday = calculateDateRange('yesterday');
+    expect(yesterday.endDate.getTime()).toBeLessThan(today.startDate.getTime());
+  });
+
+  it('last_week ends before week starts (no overlap)', () => {
+    const week = calculateDateRange('week');
+    const lastWeek = calculateDateRange('last_week');
+    // 'week' is "last 7 days from now"; 'last_week' is the prior Sun-Sat.
+    // last_week's end must be strictly before today.
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    expect(lastWeek.endDate.getTime()).toBeLessThan(todayStart.getTime());
+    // And week's window must include today.
+    expect(week.endDate.getTime()).toBeGreaterThanOrEqual(todayStart.getTime());
   });
 });
 

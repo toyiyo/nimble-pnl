@@ -117,6 +117,30 @@ export interface EmployeeLaborCost {
   hoursWorked?: number;
 }
 
+/**
+ * Per-employee hours/cost summary used by the AI chat tools
+ * (get_labor_costs.employee_breakdown and get_time_punches).
+ */
+export interface EmployeeHoursSummary {
+  employee_id: string;
+  employee_name: string;
+  position: string | null;
+  compensation_type: CompensationType;
+  /** Sum of work-period hours across [startDate, endDate]; breaks excluded. */
+  total_hours: number;
+  /** Total cost in cents for the period.
+   *  Hourly: sum of per-day calculateEmployeeDailyCostForDate(emp, day, hours).
+   *  Daily rate: per-day daily-rate × days with hours > 0.
+   *  Salary/contractor: existing per-period helpers (snapshot-aware). */
+  total_cost_cents: number;
+  /** Distinct dates with hours > 0. */
+  days_worked: number;
+  /** 'YYYY-MM-DD' → hours that day. Keys align with DailyLaborCost.date. */
+  hours_per_day: Record<string, number>;
+  /** parseWorkPeriods output for this employee (breaks split out). */
+  work_periods: import('@/utils/payrollCalculations').WorkPeriod[];
+}
+
 // ============================================================================
 // Core Calculation Functions
 // ============================================================================
@@ -644,6 +668,114 @@ export function calculateActualLaborCost(
   );
 
   return { breakdown, dailyCosts };
+}
+
+// ============================================================================
+// Per-employee Rollup (AI Chat: get_labor_costs.employee_breakdown,
+// get_time_punches)
+// ============================================================================
+
+/**
+ * Roll punches up per employee: total hours, per-day hours, cost, and the
+ * parsed work periods. Output is additive — one row per input employee, even
+ * if they have zero punches in the window (caller can filter).
+ *
+ * Cost is computed via per-day snapshots so an employee whose
+ * compensation_type changed mid-window is billed correctly for each segment.
+ * The four buckets run unconditionally — each helper internally skips days
+ * where the snapshot doesn't match its type, so they never double-count:
+ *   - calculateSalaryForPeriod / calculateContractorPayForPeriod walk every
+ *     day in the window and only add on days resolving to that comp type
+ *   - per-day hourly + daily_rate via getEmployeeSnapshotForDate on each
+ *     worked day, gated by the snapshot's compensation_type
+ *
+ * Periods whose startTime falls outside [startDate, endDate] are dropped.
+ * Callers that fetch with an end-of-window lookahead (to catch shifts whose
+ * clock_out punch lands just after `endDate`) rely on this filter to drop
+ * any orphan periods whose clock_in lands in the lookahead zone.
+ *
+ * Per-employee totals across the same comp type sum back to
+ * calculateActualLaborCost(...).breakdown.<type>.cost (× 100 cents).
+ */
+export function calculateHoursPerEmployee(
+  employees: Employee[],
+  timePunches: TimePunch[],
+  startDate: Date,
+  endDate: Date,
+): EmployeeHoursSummary[] {
+  const punchesByEmployee = new Map<string, TimePunch[]>();
+  timePunches.forEach((punch) => {
+    if (!punchesByEmployee.has(punch.employee_id)) {
+      punchesByEmployee.set(punch.employee_id, []);
+    }
+    punchesByEmployee.get(punch.employee_id)!.push(punch);
+  });
+
+  return employees.map((employee) => {
+    const punches = punchesByEmployee.get(employee.id) ?? [];
+    const { periods: rawPeriods } = parseWorkPeriods(punches);
+    const periods = rawPeriods.filter(
+      (p) => p.startTime >= startDate && p.startTime <= endDate,
+    );
+
+    // hoursPerDay is keyed by the period's start day (matches
+    // calculateActualLaborCost's hoursPerEmployeePerDay). activeDays tracks
+    // every calendar day a period touches — used for daily_rate cost so an
+    // overnight period (start day → next day) is charged for both days, in
+    // parity with calculateActualLaborCost's employeesActivePerDay loop.
+    const hoursPerDay: Record<string, number> = {};
+    const activeDays = new Set<string>();
+    let totalHours = 0;
+
+    periods.forEach((period) => {
+      if (period.isBreak) return;
+      const start = new Date(period.startTime);
+      const end = new Date(period.endTime);
+      const startDay = formatDateUTC(start);
+      hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
+      totalHours += period.hours;
+
+      const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      while (dayCursor <= lastDay) {
+        activeDays.add(formatDateUTC(dayCursor));
+        dayCursor.setDate(dayCursor.getDate() + 1);
+      }
+    });
+
+    const daysWorked = activeDays.size;
+
+    let totalCostCents = 0;
+    totalCostCents += calculateSalaryForPeriod(employee, startDate, endDate);
+    totalCostCents += calculateContractorPayForPeriod(employee, startDate, endDate);
+
+    for (const [day, hours] of Object.entries(hoursPerDay)) {
+      if (hours <= 0) continue;
+      const snapshot = getEmployeeSnapshotForDate(employee, day);
+      if (snapshot.compensation_type === 'hourly') {
+        totalCostCents += calculateEmployeeDailyCost(snapshot, hours);
+      }
+    }
+
+    for (const day of activeDays) {
+      const snapshot = getEmployeeSnapshotForDate(employee, day);
+      if (snapshot.compensation_type === 'daily_rate') {
+        totalCostCents += calculateEmployeeDailyCost(snapshot);
+      }
+    }
+
+    return {
+      employee_id: employee.id,
+      employee_name: employee.name,
+      position: employee.position ?? null,
+      compensation_type: employee.compensation_type,
+      total_hours: totalHours,
+      total_cost_cents: totalCostCents,
+      days_worked: daysWorked,
+      hours_per_day: hoursPerDay,
+      work_periods: periods,
+    };
+  });
 }
 
 // ============================================================================

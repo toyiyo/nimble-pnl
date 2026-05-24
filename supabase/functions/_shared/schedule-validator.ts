@@ -22,8 +22,19 @@ export interface AvailabilitySlot {
 }
 
 export interface ValidationContext {
-  employeeIds: Set<string>;
-  employeePositions: Map<string, string>;
+  /** Employees keyed by id. Carries position (for POSITION_MISMATCH),
+   *  is_minor (informational for the prompt; NOT the validator's
+   *  dispatch predicate), and max_weekly_hours (used by the
+   *  HOURS_EXCEED_WEEKLY_CAP / MINOR_HOURS_EXCEEDED step).
+   *
+   *  Promoted from `employeeIds: Set<string>` + `employeePositions:
+   *  Map<string, string>`: one structure, one lookup, no drift risk.
+   *  Existence check `employeeIds.has(id)` becomes `employees.has(id)`. */
+  employees: Map<string, {
+    position: string;
+    is_minor: boolean;
+    max_weekly_hours: number;
+  }>;
   /** Templates keyed by id. `days` are the days-of-week (0=Sun..6=Sat) on
    *  which the template is active. `position` is the role the template
    *  requires — the validator drops shifts whose assigned employee does not
@@ -250,7 +261,7 @@ export function validateGeneratedShifts(
     }
 
     // 2. Employee exists
-    if (!ctx.employeeIds.has(shift.employee_id)) {
+    if (!ctx.employees.has(shift.employee_id)) {
       drop("UNKNOWN_EMPLOYEE", `Unknown employee ID: ${shift.employee_id}`);
       continue;
     }
@@ -282,7 +293,7 @@ export function validateGeneratedShifts(
     //    catches that. We also re-check shift.position so the LLM-emitted
     //    label can't disagree with what we persist downstream.
     const requiredPosition = template.position;
-    const assignedPosition = ctx.employeePositions.get(shift.employee_id);
+    const assignedPosition = ctx.employees.get(shift.employee_id)?.position;
     const normRequired = normalizePosition(requiredPosition);
     if (
       assignedPosition === undefined ||

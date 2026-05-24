@@ -26,13 +26,24 @@ function makeAvailability(): Map<string, AvailabilitySlot> {
   return map;
 }
 
+// Bug I: ValidationContext.employees promoted from Set + parallel Map.
+// `emp()` factory builds one entry; default cap is adult 40h so existing
+// suites that don't care about hour caps behave the same.
+function emp(
+  id: string,
+  position = 'server',
+  is_minor = false,
+  max_weekly_hours = 40,
+): readonly [string, { position: string; is_minor: boolean; max_weekly_hours: number }] {
+  return [id, { position, is_minor, max_weekly_hours }] as const;
+}
+
 function makeContext(overrides?: Partial<ValidationContext>): ValidationContext {
   return {
-    employeeIds: new Set(['emp-1', 'emp-2', 'emp-3']),
-    employeePositions: new Map([
-      ['emp-1', 'server'],
-      ['emp-2', 'cook'],
-      ['emp-3', 'server'],
+    employees: new Map([
+      emp('emp-1', 'server'),
+      emp('emp-2', 'cook'),
+      emp('emp-3', 'server'),
     ]),
     // Default fixtures use templates active on every day of the week and the
     // 'server' position so existing suites that don't care about active-days
@@ -133,8 +144,7 @@ describe('validateGeneratedShifts', () => {
 
   it('drops a shift whose day-of-week is not in the template active days', () => {
     const ctx = makeContext({
-      employeeIds: new Set(['emp-2']),
-      employeePositions: new Map([['emp-2', 'cook']]),
+      employees: new Map([emp('emp-2', 'cook')]),
       templates: new Map([
         // Weekend-only template (Sun, Fri, Sat)
         ['weekend-close', { days: [0, 5, 6], position: 'cook' }],
@@ -157,8 +167,7 @@ describe('validateGeneratedShifts', () => {
 
   it('allows a shift whose day-of-week IS in the template active days', () => {
     const ctx = makeContext({
-      employeeIds: new Set(['emp-2']),
-      employeePositions: new Map([['emp-2', 'cook']]),
+      employees: new Map([emp('emp-2', 'cook')]),
       templates: new Map([
         ['weekday-close', { days: [1, 2, 3, 4, 5], position: 'cook' }],
       ]),
@@ -197,8 +206,7 @@ describe('validateGeneratedShifts', () => {
   //    LLM-controlled fields. Result: 3/2 and 4/3 over-fills.
   it('drops a Manager assigned to a Server template even when shift.position matches the employee', () => {
     const ctx = makeContext({
-      employeeIds: new Set(['mgr-1']),
-      employeePositions: new Map([['mgr-1', 'Manager']]),
+      employees: new Map([emp('mgr-1', 'Manager')]),
       availability: new Map([
         ['mgr-1:1', { isAvailable: true, startTime: null, endTime: null }],
       ]),
@@ -299,7 +307,11 @@ describe('validateGeneratedShifts', () => {
 describe('validateGeneratedShifts — position normalization', () => {
   it('matches "Line Cook" employee with "line cook" shift (case-insensitive)', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Line Cook']]),
+      employees: new Map([
+        emp('emp-1', 'Line Cook'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'line cook' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -312,7 +324,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('matches "Cook " (trailing space) employee with "Cook" shift', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Cook ']]),
+      employees: new Map([
+        emp('emp-1', 'Cook '),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Cook' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -325,7 +341,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('matches "Servers" (plural) employee with "server" shift', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Servers']]),
+      employees: new Map([
+        emp('emp-1', 'Servers'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       // Default tmpl-1.position = 'server', which normalizes-matches 'Servers'.
     });
     const shift = makeShift({ position: 'server' });
@@ -335,7 +355,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('preserves "Hostess" (ends in ss, does not strip)', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Hostess']]),
+      employees: new Map([
+        emp('emp-1', 'Hostess'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Hostess' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],
@@ -348,7 +372,11 @@ describe('validateGeneratedShifts — position normalization', () => {
 
   it('preserves short stems like "Bus" (stem length <= 4)', () => {
     const ctx = makeContext({
-      employeePositions: new Map([['emp-1', 'Bus']]),
+      employees: new Map([
+        emp('emp-1', 'Bus'),
+        emp('emp-2', 'cook'),
+        emp('emp-3', 'server'),
+      ]),
       templates: new Map([
         ['tmpl-1', { days: [0, 1, 2, 3, 4, 5, 6], position: 'Bus' }],
         ['tmpl-2', { days: [0, 1, 2, 3, 4, 5, 6], position: 'server' }],

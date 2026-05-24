@@ -560,8 +560,17 @@ serve(async (req) => {
       : [];
 
     // Build validation context
-    const employeeIds = new Set(employees.map((e) => e.id));
-    const employeePositions = new Map(employees.map((e) => [e.id, e.position]));
+    // Bug I: validator now carries is_minor + max_weekly_hours per
+    // employee (one Map instead of Set + parallel position Map) so the
+    // new hour-cap step can dispatch on max_weekly_hours and the
+    // POSITION_MISMATCH check still reads `.position` via one lookup.
+    const employeeMeta = new Map(
+      employees.map((e) => [e.id, {
+        position: e.position,
+        is_minor: e.is_minor,
+        max_weekly_hours: e.max_weekly_hours,
+      }] as const),
+    );
     // Validator needs template days-of-week and required position so it can
     // drop shifts placed on a wrong day (Bug C) or a wrong position (Bug E
     // — Manager onto Server template).
@@ -598,8 +607,7 @@ serve(async (req) => {
     });
 
     const validationCtx: ValidationContext = {
-      employeeIds,
-      employeePositions,
+      employees: employeeMeta,
       templates: templateDays,
       availability: availabilityMap,
       excludedEmployeeIds: new Set(excluded_employee_ids),

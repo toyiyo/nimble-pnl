@@ -368,7 +368,7 @@ export function ShiftPlannerTab({
     setExportDialogOpen(true);
   }, []);
 
-  const handleGenerate = useCallback((excludedEmployeeIds: string[], lockedShiftIds: string[]) => {
+  const handleGenerate = useCallback((excludedEmployeeIds: string[], lockedShiftIds: string[], preferences: string) => {
     if (!restaurantId) return;
     const weekStartStr = weekDays[0];
     setGenerationResult(null);
@@ -380,6 +380,7 @@ export function ShiftPlannerTab({
         weekStart: weekStartStr,
         lockedShiftIds,
         excludedEmployeeIds,
+        preferences,
       },
       {
         onSuccess: (data) => {

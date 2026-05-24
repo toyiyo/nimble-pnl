@@ -182,7 +182,9 @@ LABOR / TIME PUNCH QUERIES (manager+owner):
 | `get_labor_costs.employee_breakdown` (per-employee hours) | ❌ (null) | ❌ (null) | ❌ (null) | ✅ | ✅ |
 | `get_time_punches` | ❌ (not in tool list) | ❌ | ❌ | ✅ | ✅ |
 
-Implementation: `getTools()` in `tools-registry.ts` only includes `get_time_punches` for manager/owner. `canUseTool` mirrors that. `executeGetLaborCosts` checks the user role (already loaded in the calling edge function) and nulls the per-employee fields when ungated. Role is passed into the executor as a new parameter.
+Implementation: `getTools()` in `tools-registry.ts` only includes `get_time_punches` for manager/owner, so the LLM never sees it for lower roles. `canUseTool` mirrors that and is already invoked at the dispatch site (`ai-execute-tool/index.ts:3435`), so any call to `get_time_punches` from a lower role returns "Permission denied" before reaching the handler.
+
+For `get_labor_costs` the tool itself stays open to all roles (aggregate totals are valuable to staff). The per-employee field stripping inside `executeGetLaborCosts` is a defense-in-depth second layer: the handler receives `userRestaurant.role` (a new parameter — already in scope at the dispatcher, just not currently plumbed into handlers) and returns `employee_breakdown: null` for any role below manager, even if `include_employee_breakdown:true` was requested.
 
 ## Data flow
 

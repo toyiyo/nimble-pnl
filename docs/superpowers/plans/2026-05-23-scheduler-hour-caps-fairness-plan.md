@@ -43,10 +43,10 @@ Cases (one `it` block each, per spec "Unit tests
 11. **TZ-portability case.** Sets `process.env.TZ = 'America/Chicago'`,
     asserts result. Resets `process.env.TZ = 'Pacific/Auckland'`,
     asserts identical result. Uses DOB `"2010-06-08"` and weekStart
-    `"2026-06-08"` → both calls must return `{ is_minor: false,
-    max_weekly_hours: 40 }` (turns 16 on Monday → adult). A
-    local-time `new Date(year, monthIdx, day)` implementation will
-    fail on at least one of the two TZs.
+    `"2026-06-08"` → both calls must return `{ is_minor: true,
+    max_weekly_hours: 40 }` (turns 16 on Monday → 16yo minor, no 18h
+    cap but still tagged minor). A local-time `new Date(year, monthIdx,
+    day)` implementation will fail on at least one of the two TZs.
 
 Run: `npm run test -- tests/unit/schedule-hour-budget.test.ts` —
 expect import error / all-fail.
@@ -673,7 +673,7 @@ than claiming success." Document the smoke result in `progress.md`.
 
 ## Dependencies
 
-```
+```text
 T1 → T2 → T3
               ↘
 T4 → T5 → T6 → T7 → T8 ──→ T9 → T10 → T11 → T12

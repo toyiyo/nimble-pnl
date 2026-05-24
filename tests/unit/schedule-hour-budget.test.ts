@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { computeHourBudget } from
   '../../supabase/functions/_shared/schedule-prompt-builder';
 
@@ -67,6 +67,24 @@ describe('computeHourBudget', () => {
 
   it('throws on invalid weekStart', () => {
     expect(() => computeHourBudget('1996-06-08', 'not-a-date')).toThrow();
+  });
+
+  it('treats empty-string DOB as missing (adult fallback)', () => {
+    // dob === '' is falsy, so it routes through the same branch as
+    // null/undefined. Adult + 40h cap, no throw. Edge function
+    // currently never emits '' for date_of_birth, but this locks
+    // the fail-safe path in case the upstream contract slips.
+    expect(computeHourBudget('', weekStart)).toEqual({
+      is_minor: false,
+      max_weekly_hours: 40,
+    });
+  });
+
+  it('throws on empty-string weekStart', () => {
+    // Mirrors invalid weekStart: empty string parses to Invalid Date,
+    // and silently treating a missing week anchor as adult/40 would
+    // bypass every cap. Fail fast at the helper boundary.
+    expect(() => computeHourBudget('1996-06-08', '')).toThrow();
   });
 
   it('treats employee as 15 when their 16th birthday is later in the same week', () => {

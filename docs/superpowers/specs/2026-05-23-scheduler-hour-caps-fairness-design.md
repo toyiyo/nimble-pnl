@@ -472,8 +472,9 @@ Every layer either reads the field or is documented as "not applicable."
   is seeded from locked, no retroactive drop, new shifts get
   `CONSECUTIVE_DAYS_EXCEEDED`.
 - **Overnight shifts** (start 22:00, end 02:00). Counted as ONE day
-  (the `day` field's value), not two. Hours computed via
-  `projectMinutes` to handle midnight crossing correctly.
+  (the `day` field's value), not two. Hours computed via `shiftHours`
+  helper, which detects `end <= start` and adds 1440 minutes (24h) so
+  a 22:00–02:00 shift returns 4h, not -20h or 22h.
 - **Employee with no DOB and no `employment_type`.** Defaults: adult
   + 40h cap + `employment_type === 'full_time'` (existing fallback at
   `index.ts:255`). Both fall back independently.

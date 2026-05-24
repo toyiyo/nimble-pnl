@@ -157,6 +157,26 @@ function enumerateSlots(ctx: ScheduleContext): Slot[] {
   return slots;
 }
 
+// ─── Stage C/D: Eligibility Predicate ────────────────────────────────────────
+
+function eligibleBase(
+  slot: Slot,
+  ctx: ScheduleContext,
+): string[] {
+  const out: string[] = [];
+  for (const emp of ctx.employees) {
+    if (ctx.excludedEmployeeIds.has(emp.id)) continue;
+    if (normalizePosition(emp.position) !== normalizePosition(slot.position)) continue;
+    if (slot.area !== null && emp.area !== null && emp.area !== slot.area) continue;
+    const avail = ctx.availability[emp.id]?.[slot.day_of_week];
+    if (!avail || !avail.isAvailable) continue;
+    if (!avail.startTime || !avail.endTime) continue;
+    if (!withinWindow(slot.start_time, slot.end_time, avail.startTime, avail.endTime)) continue;
+    out.push(emp.id);
+  }
+  return out;
+}
+
 // ─── Solver Entry Point ───────────────────────────────────────────────────────
 
 export function solveSchedule(ctx: ScheduleContext): SolverResult {
@@ -188,13 +208,35 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
 
   const slots = enumerateSlots(ctx);
 
-  const unfilled: UnfilledSlot[] = slots.map((s) => ({
-    template_id: s.template_id,
-    day: s.day,
-    position: s.position,
-    area: s.area,
-    reason: 'NO_ELIGIBLE_EMPLOYEE' as const,
-  }));
+  const assigned: GeneratedShift[] = [];
+  const unfilled: UnfilledSlot[] = [];
+
+  for (const slot of slots) {
+    const candidates = eligibleBase(slot, ctx);
+    if (candidates.length === 0) {
+      unfilled.push({
+        template_id: slot.template_id,
+        day: slot.day,
+        position: slot.position,
+        area: slot.area,
+        reason: 'NO_ELIGIBLE_EMPLOYEE',
+      });
+      continue;
+    }
+    const picked = candidates[0];
+    const newShift: GeneratedShift = {
+      employee_id: picked,
+      template_id: slot.template_id,
+      day: slot.day,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      position: slot.position,
+    };
+    assigned.push(newShift);
+    hoursByEmp.set(picked, (hoursByEmp.get(picked) ?? 0) + shiftHours(newShift));
+    daysByEmp.get(picked)?.add(slot.day);
+    shiftsByEmp.get(picked)?.push(newShift);
+  }
 
   const fairness: FairnessSummary[] = ctx.employees.map((emp) => ({
     employee_id: emp.id,
@@ -203,5 +245,5 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
     hours_budget: emp.max_weekly_hours,
   }));
 
-  return { shifts: [], unfilled, fairness };
+  return { shifts: assigned, unfilled, fairness };
 }

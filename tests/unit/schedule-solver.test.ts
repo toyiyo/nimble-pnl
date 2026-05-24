@@ -91,3 +91,83 @@ describe('solveSchedule — Stage B (locked shifts seed)', () => {
     expect(e1Row).toMatchObject({ hours_assigned: 6.5, days_worked: 1 });
   });
 });
+
+describe('solveSchedule — eligibility (position + area + availability + window)', () => {
+  function ctxWithOneSlot(opts: {
+    employeePosition: string;
+    employeeArea: string | null;
+    slotPosition: string;
+    slotArea: string | null;
+    availability?: { isAvailable: boolean; startTime: string | null; endTime: string | null };
+  }) {
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'A', position: opts.employeePosition, area: opts.employeeArea,
+        max_weekly_hours: 40, date_of_birth: '2000-01-01', is_minor: false },
+    ];
+    ctx.templates = [
+      { id: 't1', name: 'Lunch', position: opts.slotPosition, area: opts.slotArea,
+        start_time: '10:00:00', end_time: '16:30:00', days_of_week: [1] },
+    ];
+    ctx.requiredStaff = new Map([
+      ['t1:2026-06-08', { template_id: 't1', day: '2026-06-08', count: 1 }],
+    ]);
+    ctx.availability = {
+      'e1': { 1: opts.availability ?? { isAvailable: true, startTime: '00:00:00', endTime: '23:59:59' } },
+    };
+    return ctx;
+  }
+
+  it('position mismatch → unfilled', () => {
+    const ctx = ctxWithOneSlot({
+      employeePosition: 'Cook', employeeArea: null,
+      slotPosition: 'Server', slotArea: null,
+    });
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(0);
+    expect(result.unfilled).toHaveLength(1);
+  });
+
+  it('area match required when slot has an area', () => {
+    const ctx = ctxWithOneSlot({
+      employeePosition: 'Server', employeeArea: 'Brand A',
+      slotPosition: 'Server', slotArea: 'Brand B',
+    });
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(0);
+  });
+
+  it('availability outside window → unfilled', () => {
+    const ctx = ctxWithOneSlot({
+      employeePosition: 'Server', employeeArea: null,
+      slotPosition: 'Server', slotArea: null,
+      availability: { isAvailable: true, startTime: '16:30:00', endTime: '19:00:00' },
+    });
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(0);
+  });
+
+  it('unavailable day → unfilled', () => {
+    const ctx = ctxWithOneSlot({
+      employeePosition: 'Server', employeeArea: null,
+      slotPosition: 'Server', slotArea: null,
+      availability: { isAvailable: false, startTime: null, endTime: null },
+    });
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(0);
+  });
+
+  it('all predicates satisfied → assigned', () => {
+    const ctx = ctxWithOneSlot({
+      employeePosition: 'Server', employeeArea: null,
+      slotPosition: 'Server', slotArea: null,
+    });
+    const result = solveSchedule(ctx);
+    expect(result.shifts).toHaveLength(1);
+    expect(result.shifts[0]).toMatchObject({
+      employee_id: 'e1', template_id: 't1', day: '2026-06-08',
+      start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+    });
+    expect(result.unfilled).toHaveLength(0);
+  });
+});

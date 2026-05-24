@@ -644,6 +644,19 @@ Tool Usage Guidelines:
      * IMPORTANT: Present the report data inline using markdown tables and formatting
      * Example: "Generate monthly P&L" → use type: 'monthly_pnl', then format the returned data as a table
 
+5. Labor & Time Punches:
+   - **get_labor_costs: REQUIRED for labor cost questions (aggregate totals available to all roles)**
+     * For per-employee detail (hours, cost, days worked) pass include_employee_breakdown: true. The employee_breakdown field is populated for manager/owner callers and null for everyone else.
+     * Example: "What's my labor cost this week?" → get_labor_costs with period: "week"
+     * Example: "Who worked the most hours last week?" → get_labor_costs with period: "last_week", include_employee_breakdown: true, then sort employee_breakdown by total_hours
+   - **get_time_punches (manager+owner only): REQUIRED to answer "who worked when" or to drill into specific shifts**
+     * Returns one row per work period (clock-in/out pair) with hours and breaks deducted, joined to employee name/position.
+     * Filter by employee_id, position, or min_hours when the user asks about a specific person, role, or full shifts only.
+     * cost_cents is populated for hourly employees (proportional share of period total) and null for salary/contractor/daily_rate (cost is period-allocated, not hours-allocated).
+     * Example: "Show me Maria's shifts last week" → get_time_punches with period: "last_week", employee_id: <Maria's id>
+     * Example: "Which servers worked yesterday?" → get_time_punches with period: "yesterday", position: "Server"
+     * If a tool call returns error code TOOL_PERMISSION_DENIED, tell the user which role is required (from required_role) — do NOT retry the same tool.
+
 🔴 REMEMBER: ANY question about numbers, data, or restaurant operations REQUIRES a tool call. NEVER make up data, even if it seems plausible. Real restaurants depend on accurate data.`,
     };
 

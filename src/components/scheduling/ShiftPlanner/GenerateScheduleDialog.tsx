@@ -51,6 +51,9 @@ interface GenerateScheduleDialogProps {
   onRetry: () => void;
 }
 
+const PREFS_MAX_LENGTH = 2000;
+const PREFS_WARN_THRESHOLD = 1800;
+
 type NormalizedEmployee = Employee & { status: 'active' | 'inactive' | 'terminated' };
 
 function formatDateRange(start: Date, end: Date): string {
@@ -285,7 +288,7 @@ export function GenerateScheduleDialog({
                 placeholder="e.g. Termora prefers weekends. Keep Helena off Mondays. Aleah only after 16:30 on school days."
                 value={preferences}
                 onChange={(e) => setPreferences(e.target.value)}
-                maxLength={2000}
+                maxLength={PREFS_MAX_LENGTH}
                 aria-describedby="schedule-preferences-counter"
               />
               <div
@@ -295,8 +298,8 @@ export function GenerateScheduleDialog({
                 className="text-[12px] text-muted-foreground min-h-[1em]"
               >
                 {preferences.length > 0 && (
-                  <span className={preferences.length >= 1800 ? 'text-amber-600' : undefined}>
-                    {preferences.length} / 2000
+                  <span className={preferences.length >= PREFS_WARN_THRESHOLD ? 'text-amber-600' : undefined}>
+                    {preferences.length} / {PREFS_MAX_LENGTH}
                   </span>
                 )}
               </div>

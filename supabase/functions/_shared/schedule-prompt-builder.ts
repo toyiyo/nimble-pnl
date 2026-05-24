@@ -1,9 +1,6 @@
 /**
- * schedule-prompt-builder.ts
- *
- * Pure function that builds a structured OpenRouter API request body
- * for AI-powered schedule generation. Takes a ScheduleContext and returns
- * an object with `messages` and `response_format` ready to send to the API.
+ * Shared types and pure helpers (computeHourBudget, buildWeekDates) for the
+ * code-first scheduler.
  */
 
 export interface ScheduleEmployee {
@@ -81,8 +78,6 @@ export interface ScheduleContext {
    *  compatibility with any callers that haven't been updated. */
   requiredStaff?: Map<string, Map<number, number>> | null;
 }
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 // Padded day labels for the Target Week date map. Each label is
 // right-padded to 9 chars ("Wednesday" width) so a single space

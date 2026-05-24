@@ -122,6 +122,41 @@ export interface SolverResult {
   fairness: FairnessSummary[];
 }
 
+// ─── Stage A: Slot Enumeration ────────────────────────────────────────────────
+
+interface Slot {
+  template_id: string;
+  day: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  position: string;
+  area: string | null;
+}
+
+function enumerateSlots(ctx: ScheduleContext): Slot[] {
+  const slots: Slot[] = [];
+  const templatesById = new Map(ctx.templates.map((t) => [t.id, t]));
+  for (const req of ctx.requiredStaff.values()) {
+    const template = templatesById.get(req.template_id);
+    if (!template) continue;
+    const dayOfWeek = getDayOfWeekUTC(req.day);
+    if (!template.days_of_week.includes(dayOfWeek)) continue;
+    for (let i = 0; i < req.count; i++) {
+      slots.push({
+        template_id: template.id,
+        day: req.day,
+        day_of_week: dayOfWeek,
+        start_time: template.start_time,
+        end_time: template.end_time,
+        position: template.position,
+        area: template.area ?? null,
+      });
+    }
+  }
+  return slots;
+}
+
 // ─── Solver Entry Point ───────────────────────────────────────────────────────
 
 export function solveSchedule(ctx: ScheduleContext): SolverResult {
@@ -135,12 +170,22 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
     shiftsByEmp.set(emp.id, []);
   }
 
+  const slots = enumerateSlots(ctx);
+
+  const unfilled: UnfilledSlot[] = slots.map((s) => ({
+    template_id: s.template_id,
+    day: s.day,
+    position: s.position,
+    area: s.area,
+    reason: 'NO_ELIGIBLE_EMPLOYEE' as const,
+  }));
+
   const fairness: FairnessSummary[] = ctx.employees.map((emp) => ({
     employee_id: emp.id,
-    hours_assigned: 0,
-    days_worked: 0,
+    hours_assigned: hoursByEmp.get(emp.id) ?? 0,
+    days_worked: daysByEmp.get(emp.id)?.size ?? 0,
     hours_budget: emp.max_weekly_hours,
   }));
 
-  return { shifts: [], unfilled: [], fairness };
+  return { shifts: [], unfilled, fairness };
 }

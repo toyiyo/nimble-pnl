@@ -40,3 +40,37 @@ describe('solveSchedule — smoke', () => {
     ]);
   });
 });
+
+describe('solveSchedule — Stage A (slot enumeration)', () => {
+  it('produces one slot per required headcount per (template, day)', () => {
+    const ctx = emptyCtx();
+    ctx.templates = [
+      { id: 't1', name: 'Lunch', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '16:30:00', days_of_week: [1, 2, 3] },
+    ];
+    ctx.requiredStaff = new Map([
+      ['t1:2026-06-08', { template_id: 't1', day: '2026-06-08', count: 2 }],
+    ]);
+    // No employees, so all slots fall through to unfilled
+    const result = solveSchedule(ctx);
+    expect(result.unfilled).toHaveLength(2);
+    expect(result.unfilled[0]).toMatchObject({
+      template_id: 't1', day: '2026-06-08', position: 'Server',
+    });
+  });
+
+  it('skips slots whose day-of-week is not in template.days_of_week', () => {
+    const ctx = emptyCtx();
+    ctx.templates = [
+      // Mon=1, Tue=2 only — exclude Wed
+      { id: 't1', name: 'Lunch', position: 'Server', area: null,
+        start_time: '10:00:00', end_time: '16:30:00', days_of_week: [1, 2] },
+    ];
+    ctx.requiredStaff = new Map([
+      ['t1:2026-06-10', { template_id: 't1', day: '2026-06-10', count: 1 }], // Wed
+    ]);
+    const result = solveSchedule(ctx);
+    expect(result.unfilled).toHaveLength(0);
+    expect(result.shifts).toHaveLength(0);
+  });
+});

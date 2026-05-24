@@ -31,6 +31,16 @@ import { applyPreferences, PREFERENCE_MODELS } from "../_shared/schedule-prefere
 export type ClientSafeUnfilledSlot = Omit<UnfilledSlot, 'template_id'> & { template_name: string };
 export type ClientSafeFairnessSummary = Omit<FairnessSummary, 'employee_id'> & { employee_name: string };
 
+/** Splits a full ISO timestamp (or bare HH:MM:SS) into a YYYY-MM-DD date and
+ *  HH:MM:SS time components. Used wherever a DB timestamp must be projected
+ *  into the solver's day/start_time/end_time shape. */
+function splitTimestamp(iso: string): { day: string; time: string } {
+  if (iso.includes('T')) {
+    return { day: iso.split('T')[0], time: iso.split('T')[1].substring(0, 8) };
+  }
+  return { day: '', time: iso };
+}
+
 interface RequestPayload {
   restaurant_id: string;
   week_start: string;         // YYYY-MM-DD
@@ -416,15 +426,8 @@ serve(async (req) => {
     const lockedShifts: LockedShift[] = existingShifts
       .filter((s) => s.locked || lockedShiftIdSet.has(s.id))
       .map((s) => {
-        const startDt = new Date(s.start_time);
-        const day = startDt.toISOString().split("T")[0];
-        // start_time and end_time in DB are full timestamps; extract time portion
-        const startTime = s.start_time.includes("T")
-          ? s.start_time.split("T")[1].substring(0, 8)
-          : s.start_time;
-        const endTime = s.end_time?.includes("T")
-          ? s.end_time.split("T")[1].substring(0, 8)
-          : (s.end_time ?? "00:00:00");
+        const { day, time: startTime } = splitTimestamp(s.start_time);
+        const endTime = s.end_time ? splitTimestamp(s.end_time).time : "00:00:00";
         const empName = (s.employees as { name: string } | null)?.name ?? "Unknown";
         return {
           id: s.id,
@@ -557,14 +560,8 @@ serve(async (req) => {
       lockedShifts: existingShifts
         .filter((s) => s.locked || lockedShiftIdSet.has(s.id))
         .map((s) => {
-          const startDt = new Date(s.start_time);
-          const day = startDt.toISOString().split('T')[0];
-          const startTime = s.start_time.includes('T')
-            ? s.start_time.split('T')[1].substring(0, 8)
-            : s.start_time;
-          const endTime = s.end_time?.includes('T')
-            ? s.end_time.split('T')[1].substring(0, 8)
-            : (s.end_time ?? '00:00:00');
+          const { day, time: startTime } = splitTimestamp(s.start_time);
+          const endTime = s.end_time ? splitTimestamp(s.end_time).time : '00:00:00';
           return {
             employee_id: s.employee_id,
             template_id: (s as { template_id?: string }).template_id ?? '',
@@ -651,9 +648,8 @@ serve(async (req) => {
 
     // Build existing shifts as GeneratedShift format for overlap checking
     const existingAsGenerated: GeneratedShift[] = existingShifts.map((s) => {
-      const day = s.start_time.split('T')[0];
-      const startTime = s.start_time.includes('T') ? s.start_time.split('T')[1].substring(0, 8) : s.start_time;
-      const endTime = s.end_time?.includes('T') ? s.end_time.split('T')[1].substring(0, 8) : (s.end_time ?? '00:00:00');
+      const { day, time: startTime } = splitTimestamp(s.start_time);
+      const endTime = s.end_time ? splitTimestamp(s.end_time).time : '00:00:00';
       return {
         employee_id: s.employee_id,
         template_id: '',

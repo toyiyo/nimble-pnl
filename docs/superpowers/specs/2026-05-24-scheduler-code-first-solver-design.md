@@ -1,7 +1,7 @@
 # Code-first scheduler solver with LLM preference layer
 
 **Date:** 2026-05-24
-**Status:** Design review (Phase 2.5)
+**Status:** Design review complete — pending user sign-off before Phase 3 plan
 **Worktree:** `.claude/worktrees/scheduler-code-first-solver`
 **Branch:** `feature/scheduler-code-first-solver`
 **Base commit:** `6727d416` (post-Bug-I)
@@ -80,7 +80,21 @@ interface SolverResult {
 
 `UnfilledSlot = { template_id, day, position, area, reason }` where `reason ∈ {NO_ELIGIBLE_EMPLOYEE, ALL_AT_HOUR_CAP, ALL_AT_CONSEC_DAY_CAP, ALL_UNAVAILABLE}`. The slot was wanted; nobody legal was free.
 
-`FairnessSummary = { employee_id, hours_assigned, days_worked, hours_budget }` (no name — surfaces only on server logs unless we add a `ClientSafe*` projection).
+`FairnessSummary = { employee_id, hours_assigned, days_worked, hours_budget }`.
+
+### ClientSafe projections (UUID leak prevention)
+
+`UnfilledSlot` and `FairnessSummary` both carry raw UUIDs (`template_id`, `employee_id`). Per lesson [2026-05-17] (DropCode UUIDs in HTTP responses), the edge function projects to client-safe shapes at the serialisation boundary:
+
+```ts
+type ClientSafeUnfilledSlot =
+  Omit<UnfilledSlot, 'template_id'> & { template_name: string };
+
+type ClientSafeFairnessSummary =
+  Omit<FairnessSummary, 'employee_id'> & { employee_name: string };
+```
+
+The projection happens inside `generate-schedule/index.ts` after `solveSchedule` returns, using the already-loaded `templates` and `employees` arrays for the id→name lookup. Solver internals keep the raw shape (logs / tests need stable identifiers); only the HTTP body sees the projected shape. `GenerateScheduleMetadata` adds two new optional fields: `unfilled: ClientSafeUnfilledSlot[]` and `fairness_summary: ClientSafeFairnessSummary[]`. Fairness is included in the response (not log-only) because the toast can summarise distribution ("filled 70 of 70 · evenly across 12 employees"); the UI surfaces it only when explicitly opened.
 
 ### Algorithm
 
@@ -117,7 +131,17 @@ Sort slots **ascending** by `|eligibleBase|`. Ties broken by: weekend (Sat/Sun) 
 ### Determinism + TZ safety
 
 - Slot enumeration walks `ctx.requiredStaff` in `Map` iteration order (insertion order, stable across runs given the same data).
-- Day-of-week derivation uses `getDayOfWeek(slot.day)` — UTC-anchored, matches `buildWeekDates` from Bug H fix. Same fairness call on the same input must produce byte-identical output, host-TZ-independent. Test will assert America/Chicago vs Pacific/Auckland produce identical results.
+- Day-of-week derivation: the existing `getDayOfWeek(dateStr)` helper in `schedule-validator.ts` uses `new Date(dateStr).getDay()`, which parses an ISO date as local-midnight and is therefore **host-TZ dependent** (a Deno worker in UTC and a Vitest run in `America/Chicago` will agree on `'2026-06-08'` → Mon, but `Pacific/Auckland` rolls forward a day at certain boundaries). To make the solver portable, the solver imports a new `getDayOfWeekUTC(dateStr)` from `schedule-validator.ts`:
+
+  ```ts
+  export function getDayOfWeekUTC(dateStr: string): number {
+    const ts = Date.parse(`${dateStr}T00:00:00Z`);
+    return new Date(ts).getUTCDay();
+  }
+  ```
+
+  This is an additive export — existing `getDayOfWeek` consumers (validator's own row-level checks) keep their behaviour. Solver + new tests use the UTC variant exclusively.
+- Test #13 (TZ portability) sets `TZ` as an **env var on the Vitest process** (`TZ=America/Chicago vitest run …` vs `TZ=Pacific/Auckland vitest run …`), not via `process.env.TZ = …` inside a test — Node only reads `TZ` once at startup. The test fixture is run twice in CI under both timezones; identical solver output is asserted via snapshot match.
 
 ## The LLM preference layer (`supabase/functions/_shared/schedule-preference-llm.ts`)
 
@@ -156,38 +180,92 @@ For each proposed swap `(A, B)`:
 
 **Iteration cap:** the LLM is called at most twice. Round 1: propose ≤ 5 swaps. Apply legal ones. Round 2 (only if round 1 applied ≥ 1 swap): present the updated schedule + the original preferences and ask "anything else?". This prevents infinite "shuffle a little more" loops and bounds the total LLM cost at ~$0.06/run.
 
-**Budget guard:** wall-clock budget for the preference call shares the edge function's 130s ceiling. If the solver took 4s and the first preference call took 20s, the second is allowed up to ~60s. Bounded by the same `runScheduleModelChain` helper currently used for the LLM-first path, which already handles per-call AbortSignal + total-budget (PR #506 lesson [2026-05-17]).
+**Budget guard + worst-case arithmetic.** Per-call wall-clock timeout: **25s** (passed as the `perCallTimeoutMs` to `runScheduleModelChain`). Chain depth: 2 models × `maxRetries: 1` (lite retry only; no exponential backoff inside the chain). Two preference rounds.
+
+Worst-case arithmetic against the edge function's 130s ceiling:
+
+```
+context fetch (10 parallel queries, p95)          ~4.0s
+solver (pure-TS, 30 emps × 70 slots)              ~0.5s
+preference round 1: 2 models × 1 retry × 25s      50.0s  (model A fails twice + model B fails once)
+preference round 2 (only if round 1 applied ≥ 1): 50.0s
+validation + persist                              ~0.5s
+                                                  -----
+                                                  105.0s
+```
+
+≥ 25s headroom against 130s. The `runScheduleModelChain` helper (kept from PR #506) enforces the total-budget AbortSignal — if round 1 burns 80s on retries, round 2 only gets ~45s, and if even one model in round 2 fits in that, we still ship a partial preference result rather than killing the request.
 
 ### Why the LLM here is *safe*
 
 The current LLM has the entire schedule synthesis to do — 70 slots × 27 employees × 14 rules — and it gets things wrong because the search space is huge. The swap LLM has a trivial job: read a 70-row table and a sentence, propose a list of (shift_a, shift_b) pairs. Any pair it proposes that breaks a hard rule is **silently rejected by the server**. The worst case for a bad swap proposal is the preference doesn't get applied — never an illegal schedule.
 
+### Persistence + double-submit idempotency
+
+The shift insert happens **client-side** today in `useGenerateSchedule.ts` (the edge function returns shifts; the hook inserts them via `supabase.from('shifts').insert(shiftsToInsert)`). With the dialog state we're adding, a network blip + a second Generate click could double-insert. Decision: **gate at the client via the mutation's `isPending` flag** (already exposed by `useMutation`); the Generate button is `disabled={generateSchedule.isPending}`. No DB constraint added in this PR — adding `UNIQUE (restaurant_id, employee_id, start_time)` on the `shifts` table would break the legitimate "two shifts that start at the same time" case (e.g. a kitchen and a server starting 10:00 on the same day for the same employee under different positions is invalid by other rules but the column shape allows it), and a partial-unique index would need migration + rollback testing we don't want to bundle. The client gate is sufficient because the dialog is the only entry point and React Query collapses duplicate in-flight mutations by key.
+
 ## UI changes
 
 ### `src/components/scheduling/ShiftPlanner/GenerateScheduleDialog.tsx`
 
-This is the dialog that fronts `useGenerateSchedule` (mounted from `ShiftPlannerTab.tsx:108`). Add one `Textarea` inside the dialog body, above the Generate button:
+This is the dialog that fronts `useGenerateSchedule` (mounted from `ShiftPlannerTab.tsx:108`). The existing dialog has three phases — `config` → `loading` → (auto-close on success). The preferences input is part of `phase === 'config'` and is unmounted while loading (so users can't edit mid-run). It sits **inside** the dialog's `flex-1 overflow-y-auto` scroll body, above the existing employee-exclusion list; the footer with Generate/Cancel stays sticky outside the scroll region. No breakpoint-specific behaviour — the Textarea is responsive by default and the scroll region absorbs viewport changes.
 
-```
-<Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+```tsx
+<Label
+  htmlFor="schedule-preferences"
+  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+>
   Preferences (optional)
 </Label>
 <Textarea
+  id="schedule-preferences"
   className="text-[14px] bg-muted/30 border-border/40 rounded-lg
-             focus-visible:ring-1 focus-visible:ring-border min-h-[80px]"
+             focus-visible:ring-1 focus-visible:ring-border transition-colors
+             resize-y min-h-[80px]"
   placeholder="e.g. Termora prefers weekends. Keep Helena off Mondays. Aleah only after 16:30 on school days."
   value={preferences}
   onChange={(e) => setPreferences(e.target.value)}
-  aria-label="Schedule preferences"
   maxLength={2000}
+  aria-describedby="schedule-preferences-counter"
 />
+<div
+  id="schedule-preferences-counter"
+  aria-live="polite"
+  aria-atomic="true"
+  className="text-[12px] text-muted-foreground mt-1 min-h-[1em]"
+>
+  {preferences.length > 0 && (
+    <span className={preferences.length >= 1800 ? 'text-amber-600' : undefined}>
+      {preferences.length} / 2000
+    </span>
+  )}
+</div>
 ```
 
-Counter visible at `≥ 1800` chars. Empty input → no LLM call. Following the project's Apple/Notion typography scale and semantic tokens (CLAUDE.md). Three-state rendering for the mutation: loading button → success toast → error toast.
+Rules baked into this snippet:
+
+- `<Label htmlFor>` + `<Textarea id>` for screen-reader association — replaces the redundant `aria-label` that would have shadowed the visible label text.
+- `aria-describedby` ties the counter to the textarea so SR users hear the count.
+- The counter `div` is **always mounted** (so `aria-live` listeners are stable); the inner `<span>` is conditionally rendered when `preferences.length > 0`. Without this, screen readers stop announcing once the user types because the live region itself was just inserted.
+- Counter visible whenever there's any input (not only at ≥1800). Amber colour kicks in at the 1800 threshold to signal "you're near the limit".
+- `resize-y` lets users drag-grow the box; `transition-colors` keeps focus animation in line with other inputs.
+
+Three-state rendering for the mutation: loading button → success toast → error toast (existing behaviour). Empty input → no LLM call (server skips `applyPreferences`).
+
+### Prop signature change in the dialog → planner contract
+
+The existing `onGenerate` prop on `GenerateScheduleDialog` is currently `(excludedIds: string[], lockedIds: string[]) => void`. It becomes `(excludedIds: string[], lockedIds: string[], preferences: string) => void`. The dialog owns the `preferences` state locally and forwards it on submit. The parent (`ShiftPlannerTab`) threads it into the `useGenerateSchedule` mutation params. `handleOpenChange(false)` on the dialog resets `preferences` to `''` alongside the existing reset of selections, so a reopen starts clean.
 
 ### `src/hooks/useGenerateSchedule.ts`
 
-Add `preferences?: string` to `GenerateScheduleParams`. Pass through to the edge function payload as `preferences_text`. Add `applied_swaps_count` and `rejected_swaps_count` to `GenerateScheduleMetadata`. Surface in the success toast: *"3 shifts adjusted for preferences (2 changes couldn't be applied)"* when non-zero.
+Add `preferences?: string` to `GenerateScheduleParams`. Pass through to the edge function payload as `preferences_text`. Add `applied_swaps_count` and `rejected_swaps_count` to `GenerateScheduleMetadata`.
+
+Success toast copy uses a single sentence with `·` separators so screen readers get one announcement:
+
+- Fully filled, no preferences: *"70 of 70 slots filled."*
+- Underfilled, no preferences: *"34 of 70 slots filled."*
+- With swaps applied: *"70 of 70 slots filled · 3 preference swaps applied."*
+- With rejected swaps: append *"· 2 couldn't be applied."*
 
 ## Retirement of the LLM-only path
 
@@ -218,8 +296,9 @@ Phase 4 will add these in roughly this order:
 9. **Fairness:** with 2 equally-eligible employees and 4 slots that fit both, the 2nd slot picks the one with the lower current `hoursByEmp`; result distributes 2 + 2 not 4 + 0.
 10. **Locked shifts seed state:** locked 6.5h shift on Mon → that employee's hours_assigned starts at 6.5, fills toward cap accordingly.
 11. **Most-constrained-first ordering:** slot with `|eligibleBase| = 2` gets its pick before a slot with `|eligibleBase| = 20` runs the scarce employees down.
-12. **Trace replay:** feed the exact `ScheduleContext` from trace `ae991acdcf47542827da5ddee9ed5a40` (Aleah 18h, 27 employees, 8 templates, restored from a fixture) and assert: Aleah hours ≤ 18; no employee > 40h (or > 18h if under-16); no employee has 6+ consecutive days; total assigned hours within 95% of `total_required_slots × avg_slot_hours`. This is the truth-test.
-13. **TZ portability:** America/Chicago and Pacific/Auckland produce identical `{ shifts, unfilled, fairness }` (same pattern as `computeHourBudget` test added in Bug I).
+12. **Trace replay:** feed the exact `ScheduleContext` from trace `ae991acdcf47542827da5ddee9ed5a40` (Aleah 18h, 27 employees, 8 templates, restored from a fixture) and assert: Aleah hours ≤ 18; no employee > 40h (or > 18h if under-16); no employee has 6+ consecutive days; total assigned hours within 95% of `total_required_slots × avg_slot_hours`. This is the truth-test. The fixture header (top-of-file comment) declares the sanitisation scope explicitly: **only `employee_id`, `template_id`, `restaurant_id`, and any human names are replaced with deterministic short strings (`emp_001`, `tpl_a`, …); positions, areas, `start_time`/`end_time`, `day`, `date_of_birth`, `max_weekly_hours`, availability windows, and required-staff counts are preserved verbatim** because the rules-violation patterns are sensitive to those exact values.
+13. **TZ portability:** America/Chicago and Pacific/Auckland produce identical `{ shifts, unfilled, fairness }` (same pattern as `computeHourBudget` test added in Bug I). Implementation note: the test is run twice in CI under the two timezones by passing `TZ=America/Chicago` and `TZ=Pacific/Auckland` as env vars on the Vitest process (Node reads `TZ` once at startup; setting `process.env.TZ` inside the test is a no-op).
+14. **`buildWeekDates` consumer audit (source-text):** assert via a grep-style test that `buildWeekDates` is only imported by files we expect (`schedule-preference-llm.ts` and any test files). Prevents accidental re-introduction of the old call site after the LLM-only retirement.
 
 ### `tests/unit/schedule-preference-llm.test.ts`
 
@@ -265,8 +344,8 @@ Phase 4 will add these in roughly this order:
 - `src/components/scheduling/ShiftPlanner/GenerateScheduleDialog.tsx` — add Textarea for preferences.
 - `supabase/functions/_shared/schedule-prompt-builder.ts` — keep `computeHourBudget` (consumed by `generate-schedule/index.ts:253` for `max_weekly_hours` dispatch); move `buildWeekDates` into the preference module if it's the only consumer left, otherwise keep. Remove `SYSTEM_PROMPT`, `buildUserPrompt`, `buildSchedulePrompt`, `SchedulePromptResult`.
 
-**Mostly untouched (defense-in-depth only):**
-- `supabase/functions/_shared/schedule-validator.ts` — no API change; still runs on every solver output.
+**Defense-in-depth + minor additive changes:**
+- `supabase/functions/_shared/schedule-validator.ts` — still runs on every solver output. One additive export: `getDayOfWeekUTC(dateStr)` (UTC-anchored variant of the existing `getDayOfWeek`). Solver imports the UTC variant exclusively; validator's existing call sites keep their behaviour to avoid changing drop semantics on already-shipped flows.
 - `supabase/functions/_shared/staffing-requirements.ts` — solver still consumes `requiredStaff`.
 - `supabase/functions/_shared/availability-tz.ts` — solver still consumes converted availability.
 
@@ -283,13 +362,28 @@ Phase 4 will add these in roughly this order:
    - LLM preference call rate. Tells us how often managers use the textarea.
 3. **Retire** the validator's `dropped_reasons` text catalog if it's no longer customer-facing (solver `unfilled` reasons subsume it). Deferred to a follow-up PR.
 
-## Open questions for Phase 2.5 reviewers
+## Decisions adopted from Phase 2.5 design review
 
-- **Supabase reviewer:** any concern with the solver running inside the edge function vs. moving to a Postgres function? (Edge keeps the 10-query data fetch and the assembly in one place; SQL would mean serialising the context twice.)
-- **Frontend reviewer:** is a single 2000-char `Textarea` the right primitive, or should the preferences UI be a slide-over panel? (Designing the simplest thing now; can iterate if managers ask.)
+Both reviewers' actionable findings are folded in above. Quick index of what changed since the v1 spec:
+
+| Reviewer | Severity | Finding | Resolution in this spec |
+|----------|----------|---------|-------------------------|
+| Supabase | Critical | UUID leak via `unfilled` / `fairness` arrays in HTTP response | Added `ClientSafeUnfilledSlot` + `ClientSafeFairnessSummary` projections at the serialisation boundary (see *ClientSafe projections* section) |
+| Supabase | Major | `getDayOfWeek` is local-TZ anchored; portability test was insufficient | New `getDayOfWeekUTC` additive export; Test #13 now sets `TZ` as a CI env var on the Vitest process |
+| Supabase | Major | Worst-case preference-budget arithmetic not stated | Explicit table: 4 × 25s + 4s fetch + 0.5s solver = 105s, ≥ 25s headroom against 130s |
+| Supabase | Major | Double-submit insert idempotency | Decision documented: gate at client via `mutation.isPending`; no DB constraint this PR |
+| Frontend | Critical | `<Label htmlFor>`+`<Textarea id>` association missing | Updated snippet; dropped redundant `aria-label` |
+| Frontend | Critical | `preferences` not threaded through `onGenerate` prop | Prop signature change documented: `(excludedIds, lockedIds, preferences)` + reset on dialog close |
+| Frontend | Major | `aria-live` counter region needed | Always-mounted live region; conditional inner span when length > 0; amber at ≥ 1800 |
+| Frontend | Major | Toast copy + accessibility | Single sentence with `·` separators (see toast section) |
+| Frontend | Major | Dialog viewport behaviour | Textarea inside `flex-1 overflow-y-auto` body; footer sticky outside |
+| Both | Minor | Trace fixture sanitisation scope | Test #12 now states exactly which fields are sanitised vs. preserved verbatim |
+| Both | Minor | Fairness in response vs log-only | In response as `ClientSafeFairnessSummary[]`; UI surfaces only when opened |
+| Both | Minor | `buildWeekDates` consumer audit | New test #14 (source-text grep) |
+| Both | Minor | Textarea ergonomics | Added `resize-y`, `transition-colors`, kept always-visible (no collapsible), no `useDeferredValue`, example chips deferred to follow-up |
 
 ## Risks
 
 - **The trace fixture in test 12 is large.** Mitigation: sanitise UUIDs to deterministic short strings, keep it ~50KB in the repo. If the fixture drifts from production reality, the test becomes a false negative — re-snapshot quarterly.
-- **Two-pass LLM preference layer + slow models** could exceed the 130s edge budget on a particularly long prompt. Mitigation: the preference prompt is *much* smaller than the current SYSTEM_PROMPT (no rules, no employee budgets, just a shift table). Each call should land in 10-20s.
+- **Two-pass LLM preference layer + slow models** could exceed the 130s edge budget on a particularly long prompt. Mitigation: explicit per-call timeout (25s) + chain depth 2 × 1 retry; worst-case 105s with 25s headroom (see *Budget guard* section). The preference prompt is *much* smaller than the current SYSTEM_PROMPT (no rules, no employee budgets, just a shift table); each call should land in 10-20s in practice.
 - **The solver's fairness rule favours hours-balance over manager intent.** Managers who want "Bob always opens" will need to express it via preference text; if the LLM can't translate to a swap they're stuck. Mitigation: surface `unfilled` and `applied_swaps_count` in the toast so managers see *why* their preference didn't stick.

@@ -25,11 +25,14 @@ The validator catches and drops ~130h of these violations correctly. Net result:
 
 ## Goals
 
+**Priority order: accuracy first, performance second.** Accuracy is non-negotiable — a fast solver that emits a Rule-11 violation is a regression. Performance is *very important* and gated by measurement at the /dev verify phase (see *Performance budget + measurement* section below).
+
 1. **Schedule completeness:** every required slot is filled OR the response surfaces it as `unfilled` with a reason.
 2. **Every emitted shift satisfies every hard rule by construction** — validator becomes a smoke test, not a primary gate.
 3. **Fairness:** lowest-loaded eligible employee picks each slot first; no one gets 50h while a peer gets 0.
 4. **Manager preferences honoured opportunistically** via an LLM-driven swap pass on the solver's output.
 5. **One code path.** The LLM-only flow is retired. No feature flag wars between two scheduler implementations.
+6. **Performance measured, not assumed.** The solver path must hit defined targets (below); a measured regression blocks the PR.
 
 ## Non-goals
 
@@ -279,6 +282,66 @@ After the solver lands and tests pass against the trace's restaurant data:
 
 Removed files / removed exports get **negative source-text tests** to prevent regression: a small test reads `index.ts` and asserts `runScheduleModelChain` no longer appears outside the preference module, etc. (Same pattern as PR #504's mobile breakpoint guards — lesson [2026-05-17].)
 
+## Performance budget + measurement
+
+Accuracy is the primary gate. Performance is the secondary gate — measured, not assumed, and a regression against the targets below blocks the PR at the /dev verify phase.
+
+### Targets
+
+| Path | Input shape | Target (p95) | Hard ceiling |
+|------|-------------|--------------|--------------|
+| `solveSchedule` pure-TS | 30 employees × 70 slots × 8 templates (trace fixture) | < 250ms | 500ms |
+| `solveSchedule` larger | 60 employees × 140 slots × 16 templates (synthetic) | < 800ms | 1500ms |
+| Edge function end-to-end (no prefs) | 30/70/8 | < 5s | 10s |
+| Edge function end-to-end (with prefs, 1 round, 1 model) | 30/70/8 + 200-char prefs | < 25s | 45s |
+| Edge function end-to-end (with prefs, worst case) | 30/70/8 + 1800-char prefs, both LLM rounds | < 60s | 120s (need ≥ 10s margin vs 130s edge budget) |
+| `applyPreferences` re-validation overhead (excluding LLM call) | 5 swaps | < 50ms | 200ms |
+
+p95 = measured across 20 consecutive runs against the trace fixture. Hard ceiling = single-run cap; any sample above this fails CI.
+
+### Measurement protocol (Phase 6 — /dev Verify gate)
+
+The verify phase runs three things:
+
+**1. Solver microbenchmark (CI, every PR).** A new `tests/perf/schedule-solver.bench.test.ts` uses Vitest's built-in `bench` API to run `solveSchedule` against the trace fixture and the synthetic 60-emp fixture, 20 iterations each. Asserts:
+
+```ts
+import { bench, describe } from 'vitest';
+
+describe('schedule-solver perf', () => {
+  bench('30 emp × 70 slot trace fixture', () => {
+    solveSchedule(traceCtx);
+  }, { iterations: 20, time: 10_000 });
+});
+```
+
+A simple thin wrapper around `bench` reads the `result.hz` / `result.mean` and `expect`s `mean < target`. p95 is read off the `result.samples` array sorted ascending at index `Math.floor(samples.length * 0.95)`.
+
+**2. Edge function end-to-end measurement (manual, local Supabase, /dev Phase 6).** During verify, the workflow runs:
+
+```bash
+npm run db:start
+npm run functions:serve
+# call generate-schedule with the trace restaurant payload, 5 times
+# capture x-request-duration-ms header + log line "[generate-schedule] duration=…"
+```
+
+The verify script captures p95 + max from the 5 runs and compares against the table above. **If p95 exceeds target, the workflow does not stop — it triggers a perf investigation step** that profiles via `console.time` instrumentation already in the edge function, identifies the hot path, and the PR description includes a "Perf result" section with measurements and any improvements applied.
+
+**3. Production canary (Phase 9 rollout).** After deploy, the existing `[generate-schedule]` structured log line emits `solver_duration_ms`, `preference_duration_ms` (if any), and `total_duration_ms`. A follow-up watch (not in this PR) graphs p95 across all restaurants for 7 days.
+
+### Where to look for improvements when a target misses
+
+Documented up front so the verify-phase investigation has somewhere to start:
+
+- **`longestConsecutiveRun` is recomputed from scratch on every (slot, candidate)** in Stage D. With 70 slots and ~30 candidates per slot that's ~2100 calls per solve. Optimization: maintain a sorted set of day indices per employee and update the "longest run" incrementally when a day is added; O(1) per update vs O(d log d).
+- **`eligibleBase` is recomputed per slot** in Stage C. The static predicates depend only on (employee, slot.day_of_week, slot.start_time, slot.end_time, slot.position, slot.area). Cache a `Map<slotKey, Set<empId>>` keyed on the static facets — many slots share these (e.g., the same template repeated Mon-Fri).
+- **`shiftsConflict` is O(n×m)** in Stage D step 1.3 (every candidate × every already-assigned shift of that candidate). Bound is small in practice (~5 shifts/employee), but if a hot fixture trips it we can index already-assigned shifts by day to skip non-overlapping days early.
+- **JSON serialization of ClientSafe projections** is O(unfilled + fairness). Already small; only revisit if profiler points there.
+- **LLM round 2 is the longest tail.** If the budget arithmetic is tight in real traffic, fall back to 1 round instead of 2 at the cost of un-applied preference chains. Configurable via a constant in `schedule-preference-llm.ts`.
+
+The verify investigation **does not** add speculative optimizations — only the smallest change that closes the gap to target. Premature optimization without a measured miss is rejected.
+
 ## Tests (TDD targets)
 
 Phase 4 will add these in roughly this order:
@@ -315,6 +378,12 @@ Phase 4 will add these in roughly this order:
 21. **Solver + preference path:** with a non-empty preferences text and a mocked OpenRouter, response includes swap metadata.
 22. **Retired-path guard (source-text):** assert that `index.ts` no longer imports `buildSchedulePrompt`.
 
+### `tests/perf/schedule-solver.bench.test.ts` (perf gate)
+
+23. **Trace fixture perf:** `solveSchedule` against `tests/fixtures/schedule-solver-trace.json` runs 20 iterations; p95 < 250ms, max < 500ms. Fails CI if exceeded.
+24. **Synthetic large fixture perf:** 60 emp × 140 slot synthesised fixture; p95 < 800ms, max < 1500ms.
+25. **`applyPreferences` re-validation perf (LLM mocked):** 5-swap proposal applied; total time < 50ms p95 excluding the (mocked) LLM call.
+
 ## Decided trade-offs
 
 - **Greedy not MILP.** Greedy with most-constrained-first is well-known to produce strong (within ~5% of optimal) results on small bipartite-like problems and is auditable line-by-line. If fairness complaints arise after launch we can swap in a stronger solver behind the same interface (`solveSchedule(ctx) → SolverResult`) without UI or persistence churn.
@@ -329,6 +398,8 @@ Phase 4 will add these in roughly this order:
 
 - **Locked shifts as seeds.** Solver does NOT try to relocate locked shifts — locked = "managers said so." Solver only fills the un-locked headroom. This matches today's behaviour and is what the planner UI expects.
 
+- **Accuracy first, performance measured-and-gated second.** Per user direction (2026-05-24). The solver writes the most readable correct version of each predicate first; perf optimization is only applied when a measured target misses. The improvements list in *Performance budget + measurement* exists so the verify-phase investigation has a starting point — not as work to do up front.
+
 ## File touch list
 
 **New:**
@@ -336,7 +407,10 @@ Phase 4 will add these in roughly this order:
 - `supabase/functions/_shared/schedule-preference-llm.ts` (~200 lines, half of which is the prompt template)
 - `tests/unit/schedule-solver.test.ts`
 - `tests/unit/schedule-preference-llm.test.ts`
+- `tests/perf/schedule-solver.bench.test.ts` (perf gate — see *Performance budget + measurement*)
 - `tests/fixtures/schedule-solver-trace.json` (sanitised replay of `ae991acdcf47542827da5ddee9ed5a40`)
+- `tests/fixtures/schedule-solver-large.json` (synthesised 60 emp × 140 slot fixture for perf scaling test)
+- `scripts/verify-schedule-perf.sh` (local-Supabase end-to-end measurement, invoked by /dev verify phase)
 
 **Modified:**
 - `supabase/functions/generate-schedule/index.ts` — replace the LLM call with `solveSchedule()` + optional `applyPreferences()`. Drop the SCHEDULE_MODELS array (moves to preference module). ~120 lines deleted, ~40 added net.
@@ -354,13 +428,15 @@ Phase 4 will add these in roughly this order:
 
 ## Rollout
 
-1. **Deploy** the solver + preference module + UI to production. No flag. (User-stated direction.)
-2. **Monitor** the next 7 days of `[generate-schedule]` logs for:
-   - Solver duration p95 (target: < 500ms — solver is pure-TS on ~30 emps × ~70 slots).
+1. **Verify-phase gate (pre-merge).** Run the perf measurement protocol against local Supabase (Tests #23–#25 + edge-function end-to-end on the trace fixture). Capture p95 + max in the PR description's "Perf result" section. If any target misses, investigate and close the gap before merging.
+2. **Deploy** the solver + preference module + UI to production. No flag. (User-stated direction.)
+3. **Monitor** the next 7 days of `[generate-schedule]` logs for:
+   - `solver_duration_ms` p95 (target: < 250ms for typical restaurant size; alert at > 500ms).
+   - `total_duration_ms` p95 (target: < 5s no-prefs; < 25s single-LLM-round).
    - `unfilled.length > 0` rate. If high, restaurants have impossible headcount targets — UI should show it; that's information, not a regression.
    - Validator drops on solver output. Should be **zero**. Any non-zero is a solver bug — alert.
    - LLM preference call rate. Tells us how often managers use the textarea.
-3. **Retire** the validator's `dropped_reasons` text catalog if it's no longer customer-facing (solver `unfilled` reasons subsume it). Deferred to a follow-up PR.
+4. **Retire** the validator's `dropped_reasons` text catalog if it's no longer customer-facing (solver `unfilled` reasons subsume it). Deferred to a follow-up PR.
 
 ## Decisions adopted from Phase 2.5 design review
 

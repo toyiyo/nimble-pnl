@@ -51,6 +51,8 @@ export async function applyPreferences(
       modelUsed: null,
     };
   }
-  // Real implementation lands in Task 12+.
-  throw new Error('applyPreferences with non-empty preferences not implemented yet');
+  throw new Error(
+    'applyPreferences: LLM swap pass not yet wired (Task 13). ' +
+      'Pass empty preferencesText to bypass.',
+  );
 }

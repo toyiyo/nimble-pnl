@@ -74,3 +74,20 @@ describe('solveSchedule — Stage A (slot enumeration)', () => {
     expect(result.shifts).toHaveLength(0);
   });
 });
+
+describe('solveSchedule — Stage B (locked shifts seed)', () => {
+  it("a locked 6.5h shift counts against the employee's fairness/hours", () => {
+    const ctx = emptyCtx();
+    ctx.employees = [
+      { id: 'e1', name: 'Alice', position: 'Server', area: null, max_weekly_hours: 40,
+        date_of_birth: '2000-01-01', is_minor: false },
+    ];
+    ctx.lockedShifts = [
+      { employee_id: 'e1', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+    ];
+    const result = solveSchedule(ctx);
+    const e1Row = result.fairness.find((f) => f.employee_id === 'e1');
+    expect(e1Row).toMatchObject({ hours_assigned: 6.5, days_worked: 1 });
+  });
+});

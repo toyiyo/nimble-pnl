@@ -170,6 +170,28 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
     shiftsByEmp.set(emp.id, []);
   }
 
+  for (const locked of ctx.lockedShifts) {
+    if (!hoursByEmp.has(locked.employee_id)) continue;
+    const hours = shiftHours({
+      employee_id: locked.employee_id,
+      template_id: locked.template_id ?? '',
+      day: locked.day,
+      start_time: locked.start_time,
+      end_time: locked.end_time,
+      position: locked.position,
+    });
+    hoursByEmp.set(locked.employee_id, (hoursByEmp.get(locked.employee_id) ?? 0) + hours);
+    daysByEmp.get(locked.employee_id)?.add(locked.day);
+    shiftsByEmp.get(locked.employee_id)?.push({
+      employee_id: locked.employee_id,
+      template_id: locked.template_id ?? '',
+      day: locked.day,
+      start_time: locked.start_time,
+      end_time: locked.end_time,
+      position: locked.position,
+    });
+  }
+
   const slots = enumerateSlots(ctx);
 
   const unfilled: UnfilledSlot[] = slots.map((s) => ({

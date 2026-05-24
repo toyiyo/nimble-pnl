@@ -7,6 +7,7 @@ import { callModelWithStreaming } from "../_shared/streaming.ts";
 import { runScheduleModelChain } from "../_shared/schedule-ai-runner.ts";
 import {
   buildSchedulePrompt,
+  computeHourBudget,
   type ScheduleContext,
   type ScheduleEmployee,
   type ScheduleTemplate,
@@ -131,7 +132,7 @@ serve(async (req) => {
       // 1. Active employees
       supabase
         .from("employees")
-        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type")
+        .select("id, name, position, area, hourly_rate, salary_amount, compensation_type, employment_type, date_of_birth")
         .eq("restaurant_id", restaurant_id)
         .eq("status", "active"),
 
@@ -245,15 +246,23 @@ serve(async (req) => {
     }
 
     // ── Build ScheduleEmployee[] ─────────────────────────────────────────────
-    const employees: ScheduleEmployee[] = activeEmployees.map((e) => ({
-      id: e.id,
-      name: e.name,
-      position: e.position ?? "Staff",
-      area: e.area ?? null,
-      // hourly_rate stored in cents; salary employees get 0
-      hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
-      employment_type: e.employment_type ?? "full_time",
-    }));
+    const employees: ScheduleEmployee[] = activeEmployees.map((e) => {
+      // Bug I: derive the per-employee weekly hour cap from DOB so the
+      // prompt's Employee Hour Budgets table and the validator backstop
+      // share one anchor. Defaults to adult 40h when DOB is null/bad.
+      const budget = computeHourBudget(e.date_of_birth, week_start);
+      return {
+        id: e.id,
+        name: e.name,
+        position: e.position ?? "Staff",
+        area: e.area ?? null,
+        // hourly_rate stored in cents; salary employees get 0
+        hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
+        employment_type: e.employment_type ?? "full_time",
+        is_minor: budget.is_minor,
+        max_weekly_hours: budget.max_weekly_hours,
+      };
+    });
 
     // ── Build ScheduleTemplate[] ─────────────────────────────────────────────
     const templates: ScheduleTemplate[] = rawTemplates.map((t) => ({

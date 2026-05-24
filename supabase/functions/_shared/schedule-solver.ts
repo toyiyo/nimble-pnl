@@ -223,11 +223,11 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
 
   // Stage C: most-constrained-first. Tie-break: weekend before weekday, earlier
   // start_time, stable original order.
-  const baseCountBySlotIdx = slots.map((s) => eligibleBase(s, ctx).length);
+  const baseBySlotIdx: string[][] = slots.map((s) => eligibleBase(s, ctx));
   const order = slots.map((_, i) => i);
   order.sort((aIdx, bIdx) => {
-    const a = baseCountBySlotIdx[aIdx];
-    const b = baseCountBySlotIdx[bIdx];
+    const a = baseBySlotIdx[aIdx].length;
+    const b = baseBySlotIdx[bIdx].length;
     if (a !== b) return a - b;
     const aWk = slots[aIdx].day_of_week === 0 || slots[aIdx].day_of_week === 6 ? 0 : 1;
     const bWk = slots[bIdx].day_of_week === 0 || slots[bIdx].day_of_week === 6 ? 0 : 1;
@@ -243,7 +243,7 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
 
   for (const slotIdx of order) {
     const slot = slots[slotIdx];
-    const base = eligibleBase(slot, ctx);
+    const base = baseBySlotIdx[slotIdx];
     if (base.length === 0) {
       unfilled.push({ ...toUnfilled(slot), reason: 'NO_ELIGIBLE_EMPLOYEE' });
       continue;

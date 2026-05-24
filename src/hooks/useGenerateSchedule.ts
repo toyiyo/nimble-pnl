@@ -170,7 +170,9 @@ export function useGenerateSchedule() {
       const filled = data.shifts.length;
 
       const parts: string[] = [];
-      parts.push(`${filled} of ${required} slots filled`);
+      parts.push(required > 0
+        ? `${filled} of ${required} slots filled`
+        : `${filled} shift${filled === 1 ? '' : 's'} created`);
       if (applied_swaps_count > 0) parts.push(`${applied_swaps_count} preference swap${applied_swaps_count === 1 ? '' : 's'} applied`);
       if (rejected_swaps_count > 0) parts.push(`${rejected_swaps_count} couldn't be applied`);
       let description = parts.join(' · ') + '.';

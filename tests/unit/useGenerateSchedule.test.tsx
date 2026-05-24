@@ -160,7 +160,7 @@ describe('useGenerateSchedule — partial-fill success toast', () => {
 
     await waitFor(() => expect(toastMock).toHaveBeenCalled());
     expect(toastMock.mock.calls[0][0].title).toBe('Schedule Generated');
-    expect(toastMock.mock.calls[0][0].description).toContain('Filled 3 of 10 required slots');
+    expect(toastMock.mock.calls[0][0].description).toContain('3 of 10 slots filled');
   });
 
   it('falls back to plain count when required slots is 0', async () => {

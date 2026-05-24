@@ -1,6 +1,6 @@
 # Scheduler Hour Caps & Fairness (Bug I)
 
-**Status:** Draft (pending design review)
+**Status:** Reviewed (supabase + sound-logic findings folded)
 **Date:** 2026-05-23
 **Branch:** `fix/scheduler-hour-caps-fairness`
 
@@ -123,6 +123,12 @@ a *guarantee* rather than a *request*.
   Per-state overrides would need a `restaurant.state_code` lookup.
 - **Cross-week hour tracking.** "Hours so far this week" is computed
   from the generation window only. Prior weeks' shifts are not counted.
+- **Cross-week consecutive-day counting.** The 5-day streak is
+  measured only within the 7 calendar days starting at `weekStart`.
+  An employee who worked Saturday last week and Mon-Fri this week
+  appears as a 5-day streak to the validator, not 6. Cross-week
+  enforcement would require a wider `existingShifts` window and is
+  deferred.
 - **Per-employee custom `max_weekly_hours` override column.** Today's
   cap is derived from `date_of_birth` + `employment_type`. A manual
   override (e.g. a senior staffer who explicitly wants 36h) is a
@@ -169,8 +175,11 @@ new tie-breaker as Rule 14:
     violate Rules 11 or 12 by accepting the shift.
 14. When multiple eligible-and-available employees can fill the same
     slot, prefer the employee with the most remaining hours in their
-    weekly budget. This spreads hours across the full roster and
-    keeps employees off the brink of their cap.
+    weekly budget. Break ties alphabetically by employee name (then
+    by employee id if names also tie) so re-running generation for
+    the same inputs yields the same assignment, not a random one.
+    This spreads hours across the full roster and keeps employees
+    off the brink of their cap.
 ```
 
 #### New "Employee Hour Budgets" section
@@ -218,8 +227,22 @@ In `generate-schedule/index.ts` (lines 134, 248-255):
 - Add `date_of_birth` to the existing SELECT.
 - Compute `is_minor` and `max_weekly_hours` in a pure helper
   `computeHourBudget(dob: string | null, weekStart: string)` placed
-  alongside `ScheduleEmployee` in the shared module (testable from
-  Vitest without importing Deno-only edge entry points).
+  in `supabase/functions/_shared/schedule-prompt-builder.ts` next to
+  `buildWeekDates` and the `ScheduleEmployee` interface — one file,
+  no new module. The helper has no Deno-specific imports and is
+  testable from Vitest without any shim.
+
+**Auth posture (review correction).** The edge function authenticates
+the caller with `SUPABASE_ANON_KEY` + the user's `Authorization`
+header (`index.ts:68-72`), NOT the service role. The new
+`date_of_birth` field is therefore read through the existing
+`employees` SELECT policy `"Users can view employees for their
+restaurants"` (`20260120100100_update_rls_for_collaborators.sql:426`)
+which gates on `user_has_capability(restaurant_id, 'view:employees')`.
+Owner and manager callers — the only roles that can invoke
+`generate-schedule` — pass that capability check today, so no RLS,
+policy, or migration change is required. Adding `date_of_birth` to
+the projection is a zero-RLS, zero-migration, zero-lock change.
 
 #### `computeHourBudget` rules
 
@@ -231,11 +254,30 @@ In `generate-schedule/index.ts` (lines 134, 248-255):
 | valid, age < 16 | minor under 16 | `true` | `18` |
 | valid, age in future (DOB > weekStart) | n/a (data error) | `false` | `40` |
 
+**UTC-anchored age math.** Both `weekStart` and `date_of_birth` MUST
+be parsed as UTC midnight using the same form as `buildWeekDates`:
+`new Date(\`${s}T00:00:00Z\`)`. Computation MUST use UTC accessors
+(`getUTCFullYear`, `getUTCMonth`, `getUTCDate`). Using the
+local-time `new Date(year, monthIdx, day)` constructor for either
+side introduces a host-TZ offset (e.g. UTC-6 in `America/Chicago`)
+that can flip the age computation by one year when a DOB lands on
+the same day as `weekStart`. The unit tests pin this — see "DST and
+TZ" cases in the test plan.
+
 Age computed in calendar years, anchored on `weekStart` (the first day
 of the schedule week). A minor who turns 16 mid-week is treated by
 their age on Monday — this is the most predictable rule and matches
 how managers think about the week as a unit. Documented in JSDoc on
 `computeHourBudget`.
+
+**Birthday equals `weekStart` boundary (inclusive).** If an
+employee's 16th birthday IS the `weekStart` Monday, they are
+evaluated as 16 (≥ 16 → adult 40h cap). The birthday is inclusive:
+on the day of N's birthday the employee has *already turned N*. The
+boundary rule: `age = (weekStart - DOB)` in full UTC years; if
+`(DOB.month, DOB.day) <= (weekStart.month, weekStart.day)` the
+employee has had their birthday this year. Documented in JSDoc with
+a worked example for the boundary day.
 
 Defensive guards (lesson [2026-05-22]: a new schema field is only
 useful if every consumer reads it correctly, and pre-existing rows
@@ -268,10 +310,15 @@ export type DropCode =
   | "MINOR_HOURS_EXCEEDED";
 ```
 
-`MINOR_HOURS_EXCEEDED` is separate from `HOURS_EXCEED_WEEKLY_CAP`
-intentionally — the diagnostic summary shows them as distinct reasons
-("Adult over 40h" vs "Minor over 18h") so a manager fixing the latter
-knows to look at DOB data quality rather than at staffing.
+**Dispatch rule (review correction).** `MINOR_HOURS_EXCEEDED` fires
+**only when `max_weekly_hours === 18`** — i.e. minors under 16. A
+17-year-old minor with the same 40h cap as an adult who exceeds it
+gets `HOURS_EXCEED_WEEKLY_CAP`, not `MINOR_HOURS_EXCEEDED`. This
+keeps the diagnostic label "Minor over 18h cap" factually accurate
+in every case it fires, and gives managers a distinct signal to
+audit DOB data quality only when an under-16 cap is in play. The
+`is_minor` flag is informational (for the prompt budget table); it
+is NOT the dispatch predicate for the drop code.
 
 #### Validator context extension
 
@@ -306,29 +353,59 @@ daysScheduled: Set<dayString> }>` seeded from `existingShifts` and
 updated for each shift that passes the prior checks. For each
 candidate shift:
 
-1. Compute `proposedMinutes = current.minutesScheduled + shiftMinutes`.
+1. Compute `shiftMinutes = timeToMinutes(end_time) -
+   timeToMinutes(start_time) + (overnight ? 1440 : 0)` where
+   `overnight = timeToMinutes(end_time) <= timeToMinutes(start_time)`.
+   Same formula already used inside `shiftsOverlap` /
+   `shiftsConflict` in `schedule-validator.ts:86-89` — do NOT
+   introduce a new helper. (Earlier draft referenced a phantom
+   `projectMinutes`; corrected per supabase reviewer.)
+2. Compute `proposedMinutes = current.minutesScheduled + shiftMinutes`.
    If `proposedMinutes > employees.get(id).max_weekly_hours * 60`,
-   drop with `HOURS_EXCEED_WEEKLY_CAP` (or `MINOR_HOURS_EXCEEDED` if
-   `is_minor === true`).
-2. Compute `proposedDays = new Set([...current.daysScheduled,
-   shift.day])`. If the longest consecutive run of days in
-   `proposedDays` (sorted) exceeds 5, drop with
-   `CONSECUTIVE_DAYS_EXCEEDED`.
-3. Otherwise commit: update the running state and accept.
+   dispatch the drop code on the **cap value**:
+   - `max_weekly_hours === 18` → `MINOR_HOURS_EXCEEDED`
+   - `max_weekly_hours === 40` → `HOURS_EXCEED_WEEKLY_CAP` (regardless
+     of `is_minor`)
+3. Compute `proposedDays = new Set([...current.daysScheduled,
+   shift.day])`. If `longestConsecutiveRun(proposedDays) > 5`, drop
+   with `CONSECUTIVE_DAYS_EXCEEDED`.
+4. Otherwise commit: update the running state and accept.
 
-Process candidates sorted by `day ASC, start_time ASC` so the
-"first 5 wins" outcome is deterministic regardless of LLM emission
-order. Shift duration computed with the same `shiftsConflict` /
-`projectMinutes` math from `schedule-validator.ts` (lesson
-[2026-05-18]: don't reinvent day-aware time math).
+**Processing order.** Sort candidates by `day ASC, start_time ASC,
+employee_id ASC, template_id ASC` so the "first 5 wins" outcome is
+deterministic regardless of LLM emission order. The
+`employee_id, template_id` secondary keys protect against the case
+where two candidates share `(day, start_time)` — without them the
+tie-break would be implementation-defined and the validator output
+would change run-to-run on identical inputs.
+
+**Step ordering constraint.** This new step MUST run after step 8
+(`DOUBLE_BOOKING`). The running counter is seeded from
+`existingShifts` once, so if the LLM emits a duplicate of a locked
+shift, `DOUBLE_BOOKING` drops it before the counter would
+double-count those hours. Document this invariant on the validator
+function so a future refactor cannot silently reorder steps and
+re-introduce the cap leak.
 
 #### Consecutive-day calculation
 
-For a set of YYYY-MM-DD strings within a single week:
+For a set of YYYY-MM-DD strings within a single schedule week:
 
 ```typescript
-function longestConsecutiveRun(days: Set<string>): number {
-  const sorted = [...days].sort();
+/**
+ * Longest consecutive-day run within the input set.
+ * @param days Iterable of YYYY-MM-DD strings. Defensive dedup is
+ *   applied even if a Set is passed, so a future caller that
+ *   accidentally hands in an array does not silently undercount
+ *   the run (sound-logic review #1).
+ * @remarks Lexicographic sort agrees with chronological order only
+ *   within a single ISO month (e.g. "09" sorts after "10"). This
+ *   helper is correct for a single 7-day schedule week. Callers
+ *   reusing it for multi-month inputs MUST sort by parsed Date
+ *   instead.
+ */
+function longestConsecutiveRun(days: Iterable<string>): number {
+  const sorted = [...new Set(days)].sort();
   if (sorted.length === 0) return 0;
   let max = 1, run = 1;
   for (let i = 1; i < sorted.length; i++) {
@@ -342,32 +419,45 @@ function longestConsecutiveRun(days: Set<string>): number {
 ```
 
 UTC-anchored math (lesson [2026-05-18]) so DST and local-TZ midnight
-shifts cannot create a false gap on the spring-forward day.
+shifts cannot create a false gap on the spring-forward day. Defensive
+dedup at the top means a duplicate day (e.g. an open + a close on the
+same Monday seeded from `existingShifts`) cannot collapse the streak
+math by treating the duplicate as a zero-diff "gap."
 
 #### Diagnostic summary mapping
 
-Extend `droppedReasons` (in the diagnostic summary path inside
-`generate-schedule/index.ts`) to map the three new codes to
-human-readable strings:
+The `droppedReasons` switch at `generate-schedule/index.ts:644-664`
+has a `default` branch that emits `"Unknown drop reason on
+<date>"` for any unrecognized code. Adding the three new validator
+codes WITHOUT updating this switch in the same commit creates a
+silent UI regression: `drop_reason_summary` (which maps the code
+string correctly via the validator) and `dropped_reasons` (which
+falls into `default`) would disagree. The switch MUST be updated
+in the same PR:
 
-- `HOURS_EXCEED_WEEKLY_CAP` → `"Adult over 40h cap"`
-- `CONSECUTIVE_DAYS_EXCEEDED` → `"More than 5 consecutive days"`
-- `MINOR_HOURS_EXCEEDED` → `"Minor over 18h cap"`
+- `HOURS_EXCEED_WEEKLY_CAP` → `"Weekly hour cap exceeded on ${day}"`
+- `CONSECUTIVE_DAYS_EXCEEDED` → `"More than 5 consecutive days on ${day}"`
+- `MINOR_HOURS_EXCEEDED` → `"Minor over 18h cap on ${day}"`
+
+The implementation plan calls out the switch + validator union as a
+coupled change. The `default` branch is retained as a safety net for
+any future code added to the union without a switch update.
 
 ## Data flow walkthrough (end-to-end audit per lesson [2026-05-22])
 
 | Layer | Reads `date_of_birth` / `is_minor` / `max_weekly_hours` | File |
 |---|---|---|
-| DB | `employees.date_of_birth DATE NULL` | `supabase/migrations/20260413100000_*.sql` |
-| Edge SELECT | adds `date_of_birth` to active-employee projection | `generate-schedule/index.ts:134` |
+| DB | `employees.date_of_birth DATE NULL` (added by migration `20260413100000_add_employee_employment_type_dob.sql`) | `supabase/migrations/` |
+| RLS | gated by existing `"Users can view employees for their restaurants"` policy via `user_has_capability(restaurant_id, 'view:employees')` — owner/manager pass; no policy change needed | `supabase/migrations/20260120100100_update_rls_for_collaborators.sql:426` |
+| Edge SELECT | adds `date_of_birth` to active-employee projection. **Auth: anon key + user `Authorization` header**, NOT service role (`index.ts:68-72`). RLS evaluates as the calling user. | `generate-schedule/index.ts:134` |
 | Mapper | calls `computeHourBudget(e.date_of_birth, weekStart)` → populates `is_minor` and `max_weekly_hours` on the `ScheduleEmployee` | `generate-schedule/index.ts:247-255` |
 | Prompt | renders "Employee Hour Budgets" table from `ctx.employees` | `_shared/schedule-prompt-builder.ts` (new section after `## Employees`) |
 | LLM input | sees the table directly; never asked to compute it | — |
 | LLM output | `shift.employee_id` only — minor status not in response schema | — |
 | Validator context build | `buildValidationContext` populates new `employees` Map from same `ScheduleEmployee[]` | `generate-schedule/index.ts` |
 | Validator | new step enforces caps as backstop | `_shared/schedule-validator.ts` |
-| Diagnostic UI | new drop reasons surface in the partial-fill toast | `generate-schedule/index.ts` + `useGenerateSchedule.ts` |
-| Persistence | `shift_template_id`, `employee_id`, etc. — DOB itself is NOT persisted into `shifts` (the employee→shift FK + DOB lookup at read time is sufficient) | unchanged |
+| Diagnostic UI | three new drop reasons added to the `droppedReasons` switch at `generate-schedule/index.ts:644-664`. Coupled change — validator union + switch updated together. | `generate-schedule/index.ts` + `useGenerateSchedule.ts` |
+| Persistence | `shift_template_id`, `employee_id`, etc. — DOB itself is NOT persisted into `shifts` (the employee→shift FK + DOB lookup at read time is sufficient). PR #511's `shift_template_id` wiring is untouched. | unchanged |
 
 Every layer either reads the field or is documented as "not applicable."
 
@@ -426,27 +516,54 @@ Cover `computeHourBudget`:
 - Null DOB → adult 40.
 - Malformed DOB string → adult 40.
 - DOB in the future → adult 40.
-- Invalid `weekStart` → throws.
+- Invalid `weekStart` → throws (note: `buildWeekDates` is the
+  primary error boundary in the real call path, but
+  `computeHourBudget` validates independently as defense-in-depth).
 - Birthday on the Friday of weekStart's week, employee turns 16 →
   still treated as 15 (minor under 16, 18h cap).
+- **Birthday on the Monday that IS weekStart, employee turns 16 →
+  treated as 16 (adult 40h cap).** Locks the inclusive boundary.
+- **TZ-portability case.** Run with `process.env.TZ = 'America/Chicago'`
+  (UTC-6) and `'Pacific/Auckland'` (UTC+12). For DOB = `"2010-06-08"`
+  and weekStart = `"2026-06-08"`, the helper must return age 16
+  regardless of host TZ. A local-time `new Date(year, monthIdx, day)`
+  implementation will fail this on at least one of the two TZs.
 
 ### Unit tests (`tests/unit/schedule-validator.test.ts`)
 
-Extend the existing file:
+Extend the existing file. Note that the `ValidationContext` shape
+change (`employeeIds: Set` + `employeePositions: Map` → unified
+`employees: Map`) requires updating the `makeContext()` factory at
+`tests/unit/schedule-validator.test.ts:29-49` AND ~11 inline
+overrides at lines 32-35, 136-137, 160-161, 200-201, 302, 315, 328,
+338, 351 (per supabase reviewer's audit). Implementation plan calls
+this out as a single mechanical pass with a grep-confirmation step.
+
+New behavior tests:
 
 - `HOURS_EXCEED_WEEKLY_CAP`: 6 × 6.5h shifts (39h) accept; 7th shift
   (+6.5h → 45.5h) drops with code.
-- `MINOR_HOURS_EXCEEDED`: minor with 18h cap, 3 × 6h shifts (18h)
-  accept; 4th shift drops with `MINOR_HOURS_EXCEEDED` (not
-  `HOURS_EXCEED_WEEKLY_CAP` — verify the dispatch).
+- **`MINOR_HOURS_EXCEEDED` dispatch on cap value, not `is_minor`:**
+  - Minor with `max_weekly_hours: 18` (under-16): 3 × 6h shifts (18h)
+    accept; 4th shift drops with `MINOR_HOURS_EXCEEDED`.
+  - Minor with `max_weekly_hours: 40` (16-17yo): 6 × 6.5h shifts
+    accept; 7th shift drops with `HOURS_EXCEED_WEEKLY_CAP` (NOT
+    `MINOR_HOURS_EXCEEDED` — locks the dispatch rule).
 - `CONSECUTIVE_DAYS_EXCEEDED`: 5 shifts Mon–Fri accept; 6th shift Sat
   drops with code. Shift on Sun without Sat accepts (gap breaks the run).
 - Locked shifts seed the counter: existingShifts puts employee at 35h
   already, candidate 7h shift drops.
+- Locked shift already over cap (locked = 41h): locked shift stays
+  in `valid`; new candidates for same employee drop. Documents that
+  the validator never retroactively drops locked shifts.
+- Two locked shifts on the same calendar day (open + close): the
+  `longestConsecutiveRun` dedup means that Monday counts once, not
+  twice as zero-diff "gap." Locks the dedup behavior.
 - Overnight shift: 22:00-02:00 counts as one day's worth of minutes
   (4h), not two days.
 - Order independence: shifts emitted in random order produce the same
-  valid set as the same shifts emitted in chronological order.
+  valid set as the same shifts emitted in chronological order. Locks
+  the `(day, start_time, employee_id, template_id)` tiebreak.
 - DST spring-forward day (March 8 2026 in US/Central): consecutive-day
   math does not lose a day.
 

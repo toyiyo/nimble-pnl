@@ -234,9 +234,11 @@ RULES:
 7. Weight staffing toward peak sales hours — more staff during lunch/dinner rushes.
 8. If staffing settings specify minimum crew per position, meet those minimums when possible.
 9. If no staffing settings exist, use prior schedule patterns to infer typical staffing levels.
-10. Among schedules that meet required headcount (see Rule 12), prefer ones that stay within the weekly labor budget target.
-11. Full-time employees should be scheduled for more shifts, targeting 35-40 hours per week. Part-time employees should be scheduled for fewer shifts, targeting 15-25 hours per week. When both full-time and part-time employees are available for a slot, prefer the full-time employee unless they are already near 40 hours for the week.
-12. (HARD) Fill every required slot: for every (template, day) listed in "Required Headcount Per Slot", you MUST assign the required number of eligible-and-available employees. A slot may only be left below required headcount if there is NO eligible-and-available employee for it. Coverage is more important than budget — never under-fill to save cost.
+10. Among schedules that meet required headcount (see Rule 13), prefer ones that stay within the weekly labor budget target.
+11. (HARD Rule 11) Per-employee weekly hour cap. Each employee in the "Employee Hour Budgets" section has a max_weekly_hours value (their hour budget / weekly hour cap). The sum of scheduled hours for any single employee across the target week MUST NOT exceed that cap. This rule is absolute — never schedule overtime (more than 40 hours in the same week for any employee), even to fill an otherwise required slot. If no eligible employee has remaining hours, leave the slot short rather than push anyone over their cap. Spread hours across the available pool rather than concentrating them on the fewest people.
+12. (HARD Rule 12) No more than 5 consecutive days. No employee may be scheduled for more than 5 consecutive days in a row within the target week. After 5 days straight, the next day must be off for that employee. Prefer schedules that give every employee at least one day off after each 5-day block.
+13. (HARD Rule 13) Fill every required slot: for every (template, day) listed in "Required Headcount Per Slot", you MUST assign the required number of eligible-and-available employees. A slot may only be left below required headcount if there is NO eligible-and-available employee for it (or every eligible employee would breach Rule 11 or Rule 12). Coverage is more important than budget — never under-fill to save cost.
+14. (HARD Rule 14) Under-16 minors are capped at about 18h per week. Any employee tagged "minor" with a max_weekly_hours of 18 in the "Employee Hour Budgets" section is under 16 and subject to FLSA school-week limits. Their scheduled hours must not exceed 18h for the week. 16-17 year-old minors are tagged "minor" but keep the standard 40h cap — only the 18h budget signals under 16.
 
 Return valid JSON only, matching the provided schema exactly.`;
 
@@ -304,6 +306,25 @@ function buildUserPrompt(ctx: ScheduleContext): string {
     employment_type: e.employment_type,
   }));
   sections.push(`## Available Employees\n${JSON.stringify(employeesForPrompt, null, 2)}`);
+
+  // Employee Hour Budgets — per-employee weekly cap surfaced as a flat
+  // table so the LLM cannot miss it inside the larger Available Employees
+  // JSON blob. Sort by id so re-runs of the same context produce
+  // identical text (prompt-cache hits). Minor tagging is dispatched on
+  // max_weekly_hours: cap=18 → "minor, under 16" (FLSA school-week);
+  // cap=40 + is_minor → "minor" (16-17yo, full cap). See Rules 11/14.
+  const budgetLines = [...ctx.employees]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((e) => {
+      const tags: string[] = [];
+      if (e.is_minor) {
+        tags.push('minor');
+        if (e.max_weekly_hours === 18) tags.push('under 16');
+      }
+      const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : '';
+      return `- ${e.id} (${e.name}): ${e.max_weekly_hours}h/week max${tagStr}`;
+    });
+  sections.push(`## Employee Hour Budgets\n${budgetLines.join('\n')}`);
 
   // Shift templates
   const templatesSection = ctx.templates.map((t) => {

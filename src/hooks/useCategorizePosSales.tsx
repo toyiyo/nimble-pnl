@@ -21,17 +21,18 @@ export const useCategorizePosSales = () => {
       
       return data;
     },
-    onSuccess: (data) => {
-      const result = data as { 
-        message: string; 
-        count: number; 
+    onSuccess: (data, restaurantId) => {
+      const result = data as {
+        message: string;
+        count: number;
         categorized: number;
         remaining?: number;
       };
-      
+
       toast.success(result?.message || 'AI has suggested categories for your POS sales.');
-      
+
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-totals', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
     },

@@ -9814,8 +9814,10 @@ export type Database = {
           collected_at_pos: number
           discounts: number
           pass_through_amount: number
+          pending_review_count: number
           revenue: number
           total_count: number
+          uncategorized_count: number
           unique_items: number
           voids: number
         }[]

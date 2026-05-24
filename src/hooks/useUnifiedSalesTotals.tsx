@@ -9,7 +9,21 @@ interface SalesTotals {
   passThroughAmount: number;
   uniqueItems: number;
   collectedAtPOS: number;
+  uncategorizedCount: number;
+  pendingReviewCount: number;
 }
+
+const EMPTY_TOTALS: SalesTotals = {
+  totalCount: 0,
+  revenue: 0,
+  discounts: 0,
+  voids: 0,
+  passThroughAmount: 0,
+  uniqueItems: 0,
+  collectedAtPOS: 0,
+  uncategorizedCount: 0,
+  pendingReviewCount: 0,
+};
 
 interface UseUnifiedSalesTotalsOptions {
   startDate?: string;
@@ -27,15 +41,7 @@ export const useUnifiedSalesTotals = (
     queryKey: ["unified-sales-totals", restaurantId, startDate, endDate, searchTerm],
     queryFn: async (): Promise<SalesTotals> => {
       if (!restaurantId) {
-        return {
-          totalCount: 0,
-          revenue: 0,
-          discounts: 0,
-          voids: 0,
-          passThroughAmount: 0,
-          uniqueItems: 0,
-          collectedAtPOS: 0,
-        };
+        return EMPTY_TOTALS;
       }
 
       const { data, error } = await supabase.rpc("get_unified_sales_totals", {
@@ -61,6 +67,8 @@ export const useUnifiedSalesTotals = (
         passThroughAmount: Number(result?.pass_through_amount ?? 0),
         uniqueItems: Number(result?.unique_items ?? 0),
         collectedAtPOS: Number(result?.collected_at_pos ?? 0),
+        uncategorizedCount: Number(result?.uncategorized_count ?? 0),
+        pendingReviewCount: Number(result?.pending_review_count ?? 0),
       };
     },
     enabled: !!restaurantId,
@@ -69,15 +77,7 @@ export const useUnifiedSalesTotals = (
   });
 
   return {
-    totals: data ?? {
-      totalCount: 0,
-      revenue: 0,
-      discounts: 0,
-      voids: 0,
-      passThroughAmount: 0,
-      uniqueItems: 0,
-      collectedAtPOS: 0,
-    },
+    totals: data ?? EMPTY_TOTALS,
     isLoading,
     error,
     refetch,

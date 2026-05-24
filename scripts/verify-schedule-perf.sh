@@ -41,7 +41,9 @@ durations=()
 for i in $(seq 1 "$RUNS"); do
   echo "[perf] run $i/$RUNS"
   START_MS=$(python3 -c 'import time; print(int(time.time()*1000))')
-  curl -sS -X POST "$LOCAL_URL" \
+  # --fail-with-body: exit non-zero on 4xx/5xx and surface the body so we
+  # don't measure error responses as if they were successful runs.
+  curl -sS --fail-with-body -X POST "$LOCAL_URL" \
     -H "Authorization: Bearer $SUPABASE_USER_JWT" \
     -H "Content-Type: application/json" \
     -d "{\"restaurant_id\":\"$REST_ID\",\"week_start\":\"$WEEK\",\"locked_shift_ids\":[],\"excluded_employee_ids\":[]}" \
@@ -59,7 +61,9 @@ p95_idx=$(( (${#sorted[@]} * 95 + 99) / 100 - 1 ))
 if (( p95_idx < 0 )); then p95_idx=0; fi
 if (( p95_idx >= ${#sorted[@]} )); then p95_idx=$(( ${#sorted[@]} - 1 )); fi
 p95="${sorted[$p95_idx]}"
-max="${sorted[-1]}"
+# Use explicit last-index expression for Bash 3.x portability (macOS default);
+# ${arr[-1]} negative-index syntax requires Bash 4.3+.
+max="${sorted[${#sorted[@]}-1]}"
 
 cat > .perf-result.md <<EOF
 ## Perf result (local Supabase, $RUNS runs)

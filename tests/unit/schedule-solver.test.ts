@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { solveSchedule } from '../../supabase/functions/_shared/schedule-solver';
+import { solveSchedule, computeFairness } from '../../supabase/functions/_shared/schedule-solver';
 import type { ScheduleContext } from '../../supabase/functions/_shared/schedule-solver';
 
 function emptyCtx(): ScheduleContext {
@@ -399,5 +399,68 @@ describe('solveSchedule — fairness distribution', () => {
     const bHours = result.fairness.find((f) => f.employee_id === 'eB')?.hours_assigned;
     expect(aHours).toBe(4);
     expect(bHours).toBe(4);
+  });
+});
+
+describe('computeFairness — pure recompute helper', () => {
+  it('sums hours per employee and counts distinct days', () => {
+    const employees = [
+      { id: 'eA', max_weekly_hours: 40 },
+      { id: 'eB', max_weekly_hours: 20 },
+    ];
+    const shifts = [
+      { employee_id: 'eA', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+      { employee_id: 'eA', template_id: 't1', day: '2026-06-09',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+      { employee_id: 'eB', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '14:00:00', position: 'Server' },
+    ];
+    const result = computeFairness(shifts, employees);
+    const a = result.find((f) => f.employee_id === 'eA');
+    const b = result.find((f) => f.employee_id === 'eB');
+    expect(a).toMatchObject({ hours_assigned: 13, days_worked: 2, hours_budget: 40 });
+    expect(b).toMatchObject({ hours_assigned: 4, days_worked: 1, hours_budget: 20 });
+  });
+
+  it('returns zero hours/days for employees with no shifts', () => {
+    const employees = [
+      { id: 'eA', max_weekly_hours: 40 },
+      { id: 'eB', max_weekly_hours: 40 },
+    ];
+    const shifts = [
+      { employee_id: 'eA', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+    ];
+    const result = computeFairness(shifts, employees);
+    expect(result.find((f) => f.employee_id === 'eB')).toMatchObject({
+      hours_assigned: 0, days_worked: 0, hours_budget: 40,
+    });
+  });
+
+  it('reflects swapped assignments — same shifts, different employee_id mapping', () => {
+    // Bug H Codex P2 regression: solver builds fairness pre-swap; the edge
+    // function must recompute post-swap so cross-day/length swaps don't
+    // leave hours_assigned attributed to the wrong employee.
+    const employees = [
+      { id: 'eA', max_weekly_hours: 40 },
+      { id: 'eB', max_weekly_hours: 40 },
+    ];
+    const beforeSwap = [
+      { employee_id: 'eA', template_id: 't1', day: '2026-06-08',
+        start_time: '10:00:00', end_time: '16:30:00', position: 'Server' },
+      { employee_id: 'eB', template_id: 't2', day: '2026-06-09',
+        start_time: '10:00:00', end_time: '22:30:00', position: 'Server' },
+    ];
+    const afterSwap = [
+      { ...beforeSwap[0], employee_id: 'eB' },
+      { ...beforeSwap[1], employee_id: 'eA' },
+    ];
+    const before = computeFairness(beforeSwap, employees);
+    const after = computeFairness(afterSwap, employees);
+    expect(before.find((f) => f.employee_id === 'eA')?.hours_assigned).toBe(6.5);
+    expect(before.find((f) => f.employee_id === 'eB')?.hours_assigned).toBe(12.5);
+    expect(after.find((f) => f.employee_id === 'eA')?.hours_assigned).toBe(12.5);
+    expect(after.find((f) => f.employee_id === 'eB')?.hours_assigned).toBe(6.5);
   });
 });

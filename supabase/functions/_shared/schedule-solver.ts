@@ -371,3 +371,25 @@ export function solveSchedule(ctx: ScheduleContext): SolverResult {
 
   return { shifts: assigned, unfilled, fairness };
 }
+
+// Pure recompute from a finalized shift list. Used by the edge function to
+// rebuild fairness after preference-LLM swaps mutate shift assignments.
+export function computeFairness(
+  shifts: GeneratedShift[],
+  employees: ReadonlyArray<Pick<SolverEmployee, 'id' | 'max_weekly_hours'>>,
+): FairnessSummary[] {
+  const hoursByEmp = new Map<string, number>();
+  const daysByEmp = new Map<string, Set<string>>();
+  for (const s of shifts) {
+    hoursByEmp.set(s.employee_id, (hoursByEmp.get(s.employee_id) ?? 0) + shiftHours(s));
+    let days = daysByEmp.get(s.employee_id);
+    if (!days) { days = new Set<string>(); daysByEmp.set(s.employee_id, days); }
+    days.add(s.day);
+  }
+  return employees.map((emp) => ({
+    employee_id: emp.id,
+    hours_assigned: hoursByEmp.get(emp.id) ?? 0,
+    days_worked: daysByEmp.get(emp.id)?.size ?? 0,
+    hours_budget: emp.max_weekly_hours,
+  }));
+}

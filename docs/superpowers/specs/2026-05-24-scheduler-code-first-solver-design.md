@@ -43,7 +43,7 @@ The validator catches and drops ~130h of these violations correctly. Net result:
 
 ## Architecture
 
-```
+```text
                            generate-schedule edge function
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                                                         │
@@ -187,7 +187,7 @@ For each proposed swap `(A, B)`:
 
 Worst-case arithmetic against the edge function's 130s ceiling:
 
-```
+```text
 context fetch (10 parallel queries, p95)          ~4.0s
 solver (pure-TS, 30 emps × 70 slots)              ~0.5s
 preference round 1: 2 models × 1 retry × 25s      50.0s  (model A fails twice + model B fails once)

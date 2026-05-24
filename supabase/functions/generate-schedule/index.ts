@@ -22,7 +22,7 @@ import {
   type LocalAvail,
 } from "../_shared/availability-tz.ts";
 import { computeRequiredStaff } from "../_shared/staffing-requirements.ts";
-import { solveSchedule, type ScheduleContext as SolverScheduleContext } from "../_shared/schedule-solver.ts";
+import { solveSchedule, computeFairness, type ScheduleContext as SolverScheduleContext } from "../_shared/schedule-solver.ts";
 import type { UnfilledSlot, FairnessSummary } from "../_shared/schedule-solver.ts";
 import { applyPreferences, PREFERENCE_MODELS } from "../_shared/schedule-preference-llm.ts";
 
@@ -663,7 +663,10 @@ serve(async (req) => {
     );
 
     // ── Zero-shift guardrail ──────────────────────────────────────────────────
-    if (finalShifts.length === 0) {
+    // Check validShifts (post-validation), not finalShifts. If the solver
+    // emits N shifts but the validator drops every one, we'd otherwise
+    // return HTTP 200 with shifts: [] — bypassing the 422 diagnostic contract.
+    if (validShifts.length === 0) {
       return new Response(
         JSON.stringify({
           error:
@@ -691,7 +694,12 @@ serve(async (req) => {
       ...rest,
       template_name: templateNameById.get(template_id) ?? 'Unknown template',
     }));
-    const safeFairness: ClientSafeFairnessSummary[] = solverResult.fairness.map(({ employee_id, ...rest }) => ({
+
+    // Recompute fairness from validShifts so preference-swap effects are
+    // reflected. solverResult.fairness is built pre-swap; cross-day or
+    // cross-length swaps would otherwise leave it stale.
+    const finalFairness = computeFairness(validShifts, employees);
+    const safeFairness: ClientSafeFairnessSummary[] = finalFairness.map(({ employee_id, ...rest }) => ({
       ...rest,
       employee_name: employeeNameById.get(employee_id) ?? 'Unknown',
     }));

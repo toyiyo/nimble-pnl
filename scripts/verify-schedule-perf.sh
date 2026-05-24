@@ -52,9 +52,12 @@ for i in $(seq 1 "$RUNS"); do
   echo "  ${ELAPSED_MS}ms"
 done
 
-# Compute p95 + max
+# Compute p95 + max. Nearest-rank: ceil(n * 0.95) - 1, clamped to valid range.
+# Plain `n * 95 / 100` returned the max for small n (e.g. n=5 → idx 4 = max).
 sorted=($(printf '%s\n' "${durations[@]}" | sort -n))
-p95_idx=$(( ${#sorted[@]} * 95 / 100 ))
+p95_idx=$(( (${#sorted[@]} * 95 + 99) / 100 - 1 ))
+if (( p95_idx < 0 )); then p95_idx=0; fi
+if (( p95_idx >= ${#sorted[@]} )); then p95_idx=$(( ${#sorted[@]} - 1 )); fi
 p95="${sorted[$p95_idx]}"
 max="${sorted[-1]}"
 

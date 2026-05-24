@@ -14,7 +14,10 @@ function toCtx(raw: unknown) {
 
 function p95(samples: number[]): number {
   const sorted = [...samples].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length * 0.95)];
+  // Nearest-rank: ceil(n * 0.95) - 1. For n=20 → index 18 (95th percentile),
+  // not 19 (the max). Math.floor(n * 0.95) returned the max for n=20.
+  const index = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
+  return sorted[index];
 }
 
 describe('schedule-solver perf gate', () => {

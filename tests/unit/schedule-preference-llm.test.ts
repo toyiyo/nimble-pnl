@@ -61,8 +61,8 @@ describe('applySwapsToSchedule — pure re-validation', () => {
     expect(result.rejectedSwaps).toHaveLength(0);
     const newS1 = result.shifts.find((s) => s.id === 's1');
     const newS2 = result.shifts.find((s) => s.id === 's2');
-    expect(newS1.employee_id).toBe('eB');
-    expect(newS2.employee_id).toBe('eA');
+    expect(newS1?.employee_id).toBe('eB');
+    expect(newS2?.employee_id).toBe('eA');
   });
 
   it('unknown shift id → rejected', () => {

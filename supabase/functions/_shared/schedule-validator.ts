@@ -95,6 +95,20 @@ export function getDayOfWeek(dateStr: string): number {
 }
 
 /**
+ * UTC-anchored variant of getDayOfWeek. Parses YYYY-MM-DD as midnight UTC,
+ * returns the UTC day-of-week. Use this in the solver and any new code that
+ * derives a day-of-week from a date string. Existing call sites in this file
+ * keep using getDayOfWeek to avoid changing drop semantics on shipped flows.
+ */
+export function getDayOfWeekUTC(dateStr: string): number {
+  const ts = Date.parse(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(ts)) {
+    throw new Error(`getDayOfWeekUTC: invalid dateStr "${dateStr}" — expected YYYY-MM-DD`);
+  }
+  return new Date(ts).getUTCDay();
+}
+
+/**
  * Convert HH:MM:SS to total minutes from midnight.
  */
 export function timeToMinutes(time: string): number {

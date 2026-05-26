@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(11);
+SELECT plan(15);
 
 -- Column exists, correct type, nullable
 SELECT has_column('public', 'receipt_imports', 'file_hash', 'file_hash column should exist');
@@ -108,17 +108,22 @@ BEGIN
 END
 $$;
 
--- owner: sees own restaurant only
+-- owner: SELECT permitted on own restaurant only
 SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000001'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 1, 'owner SELECTs own restaurant');
 SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000001'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'owner cannot SELECT other restaurant');
 
--- manager: sees own restaurant only
+-- manager: SELECT permitted on own restaurant only
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000002'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 1, 'manager SELECTs own restaurant');
 SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000002'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'manager cannot SELECT other restaurant');
 
--- chef and collaborator_inventory: cannot SELECT *any* restaurant's receipts
--- (current policy restricts to owner/manager); confirm they see 0 in their own
--- restaurant as well, and 0 in the other.
+-- chef: SELECT denied entirely (policy restricts to owner/manager)
+-- The chef-own=0 assertion also proves role switching works: without RLS it would return 1.
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000003'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 0, 'chef cannot SELECT own restaurant');
 SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000003'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'chef cannot SELECT other restaurant');
+
+-- collaborator_inventory: SELECT denied entirely
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000004'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 0, 'collaborator_inventory cannot SELECT own restaurant');
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000004'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'collaborator_inventory cannot SELECT other restaurant');
 
 SELECT * FROM finish();
 ROLLBACK;

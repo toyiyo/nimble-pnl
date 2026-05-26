@@ -97,9 +97,9 @@ export function MonthlyBreakEvenProgressCard({
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-3 w-full" />
           <div className="grid grid-cols-3 gap-4">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-[72px] w-full" />
+            <Skeleton className="h-[72px] w-full" />
+            <Skeleton className="h-[72px] w-full" />
           </div>
           <Skeleton className="h-3 w-3/4" />
         </CardContent>
@@ -140,6 +140,15 @@ export function MonthlyBreakEvenProgressCard({
     ? `Trending toward ${formatCurrency(progress.projectedMonthly)} by month-end — ${formatCurrency(Math.abs(progress.projectedDelta))} above target.`
     : `Trending toward ${formatCurrency(progress.projectedMonthly)} by month-end — ${formatCurrency(Math.abs(progress.projectedDelta))} below target.`;
 
+  let projectionClass: string;
+  if (progress.status === 'on_pace') {
+    projectionClass = 'text-muted-foreground';
+  } else if (projectionPositive) {
+    projectionClass = 'text-green-700 dark:text-green-400';
+  } else {
+    projectionClass = 'text-red-700 dark:text-red-400';
+  }
+
   return (
     <Card className={cn('bg-gradient-to-br', bgClass, borderClass)}>
       <CardHeader className="pb-2">
@@ -157,6 +166,7 @@ export function MonthlyBreakEvenProgressCard({
           </div>
           <div
             role="status"
+            aria-live="polite"
             className={cn(
               'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium',
               badgeClass,
@@ -212,42 +222,51 @@ export function MonthlyBreakEvenProgressCard({
         {/* Three-stat row */}
         <div className="grid grid-cols-3 gap-px bg-border/40 rounded-lg overflow-hidden border border-border/40">
           <div className="bg-background p-3 text-center">
-            <p className="text-2xl font-bold tracking-tight text-foreground">
+            <p
+              aria-describedby="stat-still-needed-label"
+              className="text-2xl font-bold tracking-tight text-foreground"
+            >
               {formatCurrency(progress.amountRemaining)}
             </p>
-            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1">
+            <p
+              id="stat-still-needed-label"
+              className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1"
+            >
               Still needed
             </p>
           </div>
           <div className="bg-background p-3 text-center">
-            <p className="text-2xl font-bold tracking-tight text-foreground">
+            <p
+              aria-describedby="stat-days-left-label"
+              className="text-2xl font-bold tracking-tight text-foreground"
+            >
               {progress.daysRemaining}
             </p>
-            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1">
+            <p
+              id="stat-days-left-label"
+              className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1"
+            >
               {progress.daysRemaining === 1 ? 'Day left' : 'Days left'}
             </p>
           </div>
           <div className="bg-background p-3 text-center">
-            <p className="text-2xl font-bold tracking-tight text-foreground">
+            <p
+              aria-describedby="stat-per-day-label"
+              className="text-2xl font-bold tracking-tight text-foreground"
+            >
               {formatCurrency(progress.dailyNeeded)}
             </p>
-            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1">
+            <p
+              id="stat-per-day-label"
+              className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1"
+            >
               Per day to hit
             </p>
           </div>
         </div>
 
         {/* Projection sentence */}
-        <p
-          className={cn(
-            'text-[13px]',
-            projectionPositive
-              ? 'text-green-700 dark:text-green-400'
-              : 'text-red-700 dark:text-red-400',
-          )}
-        >
-          {projectionText}
-        </p>
+        <p className={cn('text-[13px]', projectionClass)}>{projectionText}</p>
       </CardContent>
     </Card>
   );

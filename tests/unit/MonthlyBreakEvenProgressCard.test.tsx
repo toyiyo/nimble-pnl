@@ -117,6 +117,28 @@ describe('MonthlyBreakEvenProgressCard', () => {
     expect(screen.getByRole('status').textContent).toMatch(/Behind pace/);
   });
 
+  it('renders on_pace state with muted projection text (not green/red)', () => {
+    const { container } = render(
+      <MonthlyBreakEvenProgressCard
+        progress={makeProgress({
+          status: 'on_pace',
+          progressPercent: 50,
+          expectedPercent: 51.6,
+          paceDelta: -1.6,
+        })}
+        isLoading={false}
+      />,
+    );
+    expect(screen.getByText('On pace')).toBeDefined();
+    expect(screen.getByRole('meter').getAttribute('aria-label')).toMatch(/On pace/);
+    // Projection text uses muted-foreground, not green/red, when status is on_pace
+    const projection = screen.getByText(/Trending toward/);
+    expect(projection.className).toMatch(/text-muted-foreground/);
+    expect(projection.className).not.toMatch(/text-green-700/);
+    expect(projection.className).not.toMatch(/text-red-700/);
+    expect(container).toBeDefined();
+  });
+
   it('renders singular "Day left" when daysRemaining is 1', () => {
     render(
       <MonthlyBreakEvenProgressCard

@@ -96,7 +96,7 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
           </div>
           <Link
             to="/budget"
-            className="inline-flex items-center gap-1 min-h-[24px] px-2 py-1 rounded-md text-[13px] font-medium text-foreground hover:bg-muted transition-colors focus-visible:ring-1 focus-visible:ring-border focus-visible:outline-none"
+            className="inline-flex items-center gap-1 min-h-[24px] min-w-[24px] px-2 py-1 rounded-md text-[13px] font-medium text-foreground hover:bg-muted transition-colors focus-visible:ring-1 focus-visible:ring-border focus-visible:outline-none"
           >
             Set up costs
             <ArrowRight className="h-3.5 w-3.5" />
@@ -123,6 +123,7 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
         <div className="flex items-center gap-3 shrink-0">
           <span
             role="status"
+            aria-live="polite"
             className={cn(
               'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium',
               badgeClass,
@@ -133,7 +134,7 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
           <Link
             to="/budget"
             aria-label="Open Budget page for full break-even view"
-            className="inline-flex items-center gap-1 min-h-[24px] px-2 py-1 rounded-md text-[13px] font-medium text-foreground hover:bg-muted transition-colors focus-visible:ring-1 focus-visible:ring-border focus-visible:outline-none"
+            className="inline-flex items-center gap-1 min-h-[24px] min-w-[24px] px-2 py-1 rounded-md text-[13px] font-medium text-foreground hover:bg-muted transition-colors focus-visible:ring-1 focus-visible:ring-border focus-visible:outline-none"
           >
             Budget
             <ArrowRight className="h-3.5 w-3.5" />

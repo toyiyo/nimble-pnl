@@ -11,6 +11,7 @@ import {
   type InventoryTransactionQuery 
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
+import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
@@ -1857,16 +1858,6 @@ async function executeGenerateReport(
 // ============================================================================
 // NEW TOOL EXECUTION HANDLERS
 // ============================================================================
-
-// Columns required by the labor calculators. Narrowed projection — name and
-// position are PII; we still need them so `calculateHoursPerEmployee` can build
-// the per-employee breakdown for manager/owner callers, but we strip them
-// before returning if the caller isn't allowed to see employee identities.
-const EMPLOYEE_LABOR_COLUMNS =
-  'id, name, position, status, restaurant_id, compensation_type, ' +
-  'hourly_rate, salary_amount, pay_period_type, ' +
-  'contractor_payment_amount, contractor_payment_interval, ' +
-  'daily_rate_amount, hire_date, termination_date, compensation_history';
 
 interface FetchLaborDataOptions {
   /** Optional single-employee filter. */

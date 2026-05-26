@@ -8,13 +8,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useReceiptImport, ReceiptImport as ReceiptImportType } from '@/hooks/useReceiptImport';
 import { ArrowLeft, FileText, Clock, CheckCircle, AlertCircle, Receipt } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { MetricIcon } from '@/components/MetricIcon';
 import { FeatureGate } from '@/components/subscription';
 
 export const ReceiptImport = () => {
-  const [activeReceiptId, setActiveReceiptId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [activeReceiptId, setActiveReceiptId] = useState<string | null>(
+    () => searchParams.get('receipt'),
+  );
   const [receipts, setReceipts] = useState<ReceiptImportType[]>([]);
   const [loading, setLoading] = useState(true);
   const { getReceiptImports } = useReceiptImport();

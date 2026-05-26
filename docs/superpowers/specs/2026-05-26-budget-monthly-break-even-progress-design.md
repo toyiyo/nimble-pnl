@@ -201,6 +201,30 @@ Component smoke tests for both cards: load + happy/empty/loading variants. No E2
 - `src/pages/BudgetRunRate.tsx` — render `MonthlyBreakEvenProgressCard` between hero and cost structure.
 - `src/pages/Index.tsx` — render `MonthlyBreakEvenStrip` above `SalesVsBreakEvenChart`.
 
+### 7. Accessibility & semantics (folded from design review)
+
+- **Progress bar:** rendered as `role="meter"` with `aria-valuenow={progressPercent}`, `aria-valuemin={0}`, `aria-valuemax={100}`, and `aria-label` that includes the status in words, e.g. `"Monthly break-even progress: 64% — Ahead of pace"`. Status is therefore conveyed to screen-readers in text, not by colour alone.
+- **Status badge:** `role="status"` so AT announces transitions. Badge text is the status word (`Ahead` / `On pace` / `Behind`), never just an icon.
+- **Pace marker:** a `<span className="sr-only">` inside the bar track reads `"Expected today: 84%"` so the marker's meaning is announced. The marker overlay sits outside the clipped fill — the bar track wrapper uses `overflow-visible` so a marker near 100% is not clipped.
+- **Stat row labels:** each stat number's surrounding `<div>` uses an `aria-describedby` reference to its sub-label, so AT reads e.g. "$23,700, still needed".
+- **"→ Budget" link** in the strip is a real `<Link to="/budget">` rendering as `<a>`, sized `min-h-[24px]` plus inline padding so the tap target is never below WCAG 2.5.8's 24×24 px minimum. Visible focus ring via the standard `focus-visible:ring-1 focus-visible:ring-border` pattern.
+- **Empty-state CTA:** on the Budget page, the empty state shows no CTA (the user is already on the configuration page). On the Dashboard strip, the CTA is `<Link to="/budget">Set up costs</Link>` with visible text — never a bare `onClick` on a `<div>`.
+
+### 8. Visual scale & loading state (folded from design review)
+
+- **Numbers** use `text-2xl font-bold tracking-tight text-foreground` (matches `BreakEvenHeroCard` period grid). **Stat sub-labels** use `text-[12px] font-medium text-muted-foreground uppercase tracking-wider` (CLAUDE.md form-label scale) — *not* `text-[11px]`. **Card subtitle** ("May 2026 · Day 26 of 31") uses `text-[13px] text-muted-foreground`.
+- **Status colours** follow the existing `BreakEvenHeroCard` palette: gradient via `bg-gradient-to-br from-{green|yellow|red}-50/50 ...`, badge via `bg-{green|yellow|red}-100 text-{green|yellow|red}-800`, icon class via `text-{green|yellow|red}-600`. We do **not** introduce raw HSL hex literals like the legacy `SalesVsBreakEvenChart` does. The projection sentence carries status in **words** ("$13,900 below target") *in addition* to colour.
+- **Skeleton** mirrors the four zones: a `h-4 w-40` title block + `h-6 w-20` badge block in the header row, a `h-3 w-full` bar, a `grid grid-cols-3 gap-4` with three `h-8` stat blocks, and a `h-3 w-3/4` projection line. No single oversized block — CLS-safe.
+- **`staleTime`** for the extended `useBreakEvenAnalysis` query stays at the existing **60 000 ms** with `refetchOnWindowFocus: true`. The 60s value matches the hook's current setting; this enhancement does not change the cache policy.
+
+### 9. Type sourcing (folded from design review)
+
+`MonthlyProgress` is declared **once** in `src/lib/monthlyBreakEvenProgress.ts` and imported by both `src/types/operatingCosts.ts` (where `BreakEvenData['monthlyProgress']` references it) and the components. No duplicate type declarations.
+
+### 10. Loading-prop wiring (folded from design review)
+
+`MonthlyBreakEvenStrip` on the Dashboard receives its own `isLoading={breakEvenLoading}` so its internal skeleton renders whenever break-even data lags other dashboard data — independent of `DashboardSkeleton`'s outer guard. `MonthlyBreakEvenProgressCard` on the Budget page uses the same `isLoading = costsLoading || analysisLoading` derived on `BudgetRunRate.tsx:133`, so the card flickers in lockstep with the existing hero card.
+
 ## Decided trade-offs
 
 - **Linear pace, not weighted.** Most restaurants vary day-to-day, but Friday/Saturday weighting adds opacity for marginal accuracy gains. Owner can already see the daily bars right below for that nuance.

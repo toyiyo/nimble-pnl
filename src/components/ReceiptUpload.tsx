@@ -33,9 +33,15 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-    await processReceiptFile(file);
+    try {
+      await processReceiptFile(file);
+    } finally {
+      // Allow re-selecting the same file after a duplicate-dialog cancel.
+      input.value = '';
+    }
   };
 
   const handleImageCapture = async (imageBlob: Blob) => {

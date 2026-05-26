@@ -351,7 +351,7 @@ dialog.
 
 Mock (decorative — the real layout follows the structure above):
 
-```
+```text
 ┌─ [⚠] Possible duplicate receipt ─────────┐
 │       This file matches a receipt you    │
 │       already uploaded on May 12, 2026.  │

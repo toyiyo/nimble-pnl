@@ -165,6 +165,8 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       findSemanticDuplicate(restaurantId!, semanticVendor!, semanticDate!, Number(semanticTotal), receiptId),
     enabled: Boolean(restaurantId && receiptId && semanticVendor && semanticDate && semanticTotal != null),
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   const isPDF = receiptDetails?.file_name?.toLowerCase().endsWith('.pdf') || false;

@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { AlertTriangle } from 'lucide-react';
 import type { ReceiptImport } from '@/hooks/useReceiptImport';
 
 interface DuplicateReceiptDialogProps {

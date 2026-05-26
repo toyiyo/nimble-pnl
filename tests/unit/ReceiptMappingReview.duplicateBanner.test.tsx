@@ -95,6 +95,13 @@ describe('ReceiptMappingReview — semantic duplicate banner', () => {
     expect(banner).toHaveAttribute('aria-live', 'polite');
     expect(within(banner).getByText(/similar receipt/i)).toBeInTheDocument();
     expect(within(banner).getByText(/Sysco/)).toBeInTheDocument();
+    expect(findSemanticDuplicate).toHaveBeenCalledWith(
+      'rest-123',
+      'Sysco',
+      '2026-05-10',
+      1284.5,
+      'r-1',
+    );
   });
 
   it('renders nothing when no semantic match', async () => {

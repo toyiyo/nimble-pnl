@@ -1,5 +1,7 @@
 // Types for restaurant operating costs and break-even analysis
 
+import type { MonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
+
 export type CostType = 'fixed' | 'semi_variable' | 'variable' | 'custom';
 export type EntryType = 'value' | 'percentage';
 
@@ -87,6 +89,12 @@ export interface BreakEvenData {
   daysBelow: number;
   avgSurplus: number;
   avgShortfall: number;
+
+  // Month-to-date progress against the monthly break-even target.
+  // `null` when the hook has not yet derived it (loading) — the field is
+  // always present once `BreakEvenData` is materialised, but its `status`
+  // is `'no_target'` if `monthlyBreakEven` is 0 or non-finite.
+  monthlyProgress: MonthlyProgress;
 }
 
 // Default cost items to seed for new restaurants

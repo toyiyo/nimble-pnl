@@ -65,14 +65,16 @@ Export `EMPLOYEE_LABOR_COLUMNS` from `ai-execute-tool/index.ts` and add `tests/u
 
 This catches the specific bug (bare column reference) and drift in the base columns list, in unit-test time.
 
-### Layer 2 — pgTAP live-FK/RLS contract
+### Layer 2 — pgTAP live-FK contract
 
 Add `supabase/tests/employee_compensation_history_embed.test.sql` that:
 
 1. `has_table('employee_compensation_history')`.
-2. `has_fk('employee_compensation_history', 'employee_id')` referencing `employees(id)` — proves PostgREST can resolve the relationship.
-3. With a manager-role test JWT (via `set_config('request.jwt.claims', ...)`), SELECT employees with the embedded `employee_compensation_history` rows and assert the rows come back. This proves the embed works under live RLS.
-4. With a staff-role test JWT, assert the embedded rows do NOT come back (after the RLS tightening in the next section).
+2. `fk_ok('employee_compensation_history.employee_id' → 'employees.id')` — proves PostgREST can resolve the embed.
+
+RLS-role assertions were initially planned for layers 3-4 but removed when
+the RLS-tighten migration was deferred (see the "Defense-in-depth" section
+below).
 
 The pgTAP path catches wrong-table embeds (e.g., a typo'd `employee_payroll_history(*)`) that string-shape can't, and it runs against `npm run test:db` against a real local Supabase instance.
 
@@ -88,43 +90,43 @@ A full preview-deploy + signed-JWT integration test was considered and deferred 
 
 The string-shape regression test plus the lesson entry close the loop for this specific bug. Future schema/contract drift will need a broader integration-test story (out of scope for this hotfix).
 
-## Defense-in-depth — tighten compensation_history SELECT RLS
+## Defense-in-depth — tighten compensation_history SELECT RLS (DEFERRED)
 
-Phase 2.5 review surfaced a pre-existing asymmetry in `supabase/migrations/20251216093000_add_employee_compensation_history.sql`:
+Phase 2.5 review surfaced a pre-existing asymmetry on `employee_compensation_history`:
+INSERT/UPDATE are restricted to `owner/manager`, SELECT is open to any
+`user_restaurants` member. We initially folded an RLS-tighten migration into
+this PR.
 
-- `INSERT`/`UPDATE` policies correctly restrict to `role IN ('owner', 'manager')`.
-- `SELECT` policy restricts only by `restaurant_id` and `user_id = auth.uid()`, **without a role filter** — any `staff` or `kiosk` account can SELECT every employee's compensation history for their restaurant via a direct PostgREST call.
+Phase 7a security review (followed by a sweep of the read paths) showed that
+the tightening would silently break two existing UI flows that legitimately
+read compensation rates via `useEmployees`' embed:
 
-This hotfix does NOT introduce the exposure (the edge-function tool is already manager+owner gated at the dispatcher layer in `ai-execute-tool`), but it does start exercising the embed via a code path that ships, so the gap should be closed defense-in-depth.
+- `collaborator_accountant` on `/payroll` (via `usePayroll` → `useEmployees`
+  → `calculateCompensation`).
+- `chef` on `/scheduling` (via `useScheduledLaborCosts` →
+  `calculateScheduledLaborCost`).
 
-**Fix:** add a migration that drops the existing `Users can view employee_compensation_history for their restaurant` policy and re-creates it with the role filter:
+Tightening to `owner/manager` only would return empty `compensation_history`
+arrays for those callers — no error surfaced to the UI, just wrong numbers.
 
-```sql
-CREATE POLICY "Owners and managers can view employee_compensation_history"
-  ON public.employee_compensation_history FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_restaurants
-      WHERE user_restaurants.restaurant_id = employee_compensation_history.restaurant_id
-        AND user_restaurants.user_id = auth.uid()
-        AND user_restaurants.role IN ('owner', 'manager')
-    )
-  );
-```
-
-This matches the role posture on `employees.hourly_rate`/`salary_amount` reads elsewhere in the codebase. pgTAP test layer 2 above also asserts staff CANNOT read the embedded rows, pinning the policy.
+**Decision:** drop the RLS-tighten migration from this PR. The right posture
+needs its own design: enumerate which roles legitimately need rate access,
+decide whether to gate at RLS or at the route/page level, and write per-role
+pgTAP assertions. The bug we're fixing (phantom column → TOOL_ERROR) is
+independent — the AI dispatcher already gates the labor tools to
+`owner/manager` at the edge function.
 
 ## Decided trade-offs
 
-- **No live preview-deploy + signed-JWT integration test.** Deferred for cost/complexity; pgTAP closes the gap.
+- **No live preview-deploy + signed-JWT integration test.** Deferred for cost/complexity; pgTAP closes the FK/table contract.
 - **No type-level enforcement.** TypeScript can't verify a string against a DB schema without code generation; we already have `generate_typescript_types` available, but wiring that into the edge function would be a separate refactor.
 - **Export of `EMPLOYEE_LABOR_COLUMNS`.** Small API surface widening — the only consumer is the test file. Acceptable.
-- **Keep `(*)` in the embed.** Mirrors `useEmployees.tsx`. A narrower projection is a follow-up if payload size becomes an issue.
+- **Narrow the embed to consumed columns.** Phase 7a performance review showed the `(*)` form pulls every column on `employee_compensation_history` for every employee, even though `resolveCompensationForDate` reads only `effective_date`, `compensation_type`, `amount_cents`, `pay_period_type`. Narrowing capped the payload and is verified by the Vitest contract test.
 
 ## Files touched
 
-- `supabase/functions/ai-execute-tool/index.ts` — one-line fix + add `export` to the constant.
-- `supabase/migrations/<ts>_tighten_compensation_history_select_rls.sql` — new migration tightening SELECT policy to owner/manager.
-- `tests/unit/aiExecuteTool.employeeLaborColumns.test.ts` — new Vitest regression.
-- `supabase/tests/employee_compensation_history_embed.test.sql` — new pgTAP regression (FK + RLS both roles).
+- `supabase/functions/ai-execute-tool/index.ts` — switch the projection to the embed-alias form (via import from `_shared/`).
+- `supabase/functions/_shared/employeeLaborColumns.ts` — new pure module exporting the projection (no Deno imports, importable by Vitest).
+- `tests/unit/employeeLaborColumns.test.ts` — new Vitest contract test.
+- `supabase/tests/employee_compensation_history_embed.test.sql` — new pgTAP FK+table regression.
 - `memory/lessons.md` — append lesson about schema verification on edge-function SELECTs (Phase 10).

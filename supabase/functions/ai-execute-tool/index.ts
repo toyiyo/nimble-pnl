@@ -11,7 +11,7 @@ import {
   type InventoryTransactionQuery 
 } from "../_shared/inventoryTransactions.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
-import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/aiExecuteToolColumns.ts";
+import { EMPLOYEE_LABOR_COLUMNS } from "../_shared/employeeLaborColumns.ts";
 
 // AI tool execution with OpenRouter multi-model fallback
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';

@@ -1,4 +1,6 @@
+import { parseISO, startOfMonth, format } from 'date-fns';
 import type { OperatingCost, BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
+import { calculateMonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
 
 type BreakEvenStatus = 'above' | 'at' | 'below';
 
@@ -131,6 +133,23 @@ export function calculateBreakEven(
   const aboveDays = history.filter((h) => h.status === 'above');
   const belowDays = history.filter((h) => h.status === 'below');
 
+  // Month-to-date sales: slice of salesData where the date falls within the
+  // current calendar month (relative to `todayStr`). We intentionally use
+  // string-prefix comparison instead of full Date parsing so a row dated
+  // "2026-05-01" is included whether or not its local-TZ midnight rounds back
+  // a day.
+  const today = parseISO(todayStr);
+  const mtdPrefix = format(startOfMonth(today), 'yyyy-MM');
+  const mtdSales = salesData
+    .filter((d) => d.date.startsWith(mtdPrefix))
+    .reduce((sum, d) => sum + d.netRevenue, 0);
+
+  const monthlyProgress = calculateMonthlyProgress({
+    monthlyBreakEven,
+    mtdSales,
+    today,
+  });
+
   return {
     dailyBreakEven,
     monthlyBreakEven,
@@ -162,5 +181,6 @@ export function calculateBreakEven(
       belowDays.length > 0
         ? belowDays.reduce((sum, h) => sum + h.delta, 0) / belowDays.length
         : 0,
+    monthlyProgress,
   };
 }

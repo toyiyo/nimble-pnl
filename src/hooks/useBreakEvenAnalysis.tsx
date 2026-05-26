@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { addDays, format, subDays, startOfDay, differenceInDays, subMonths } from 'date-fns';
+import { addDays, format, subDays, startOfDay, differenceInDays, subMonths, startOfMonth, min as dateMin } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useOperatingCosts } from './useOperatingCosts';
 import { BreakEvenData } from '@/types/operatingCosts';
@@ -101,7 +101,13 @@ export function useBreakEvenAnalysis(
   const { costs, isLoading: costsLoading } = useOperatingCosts(restaurantId);
   
   const today = useMemo(() => startOfDay(new Date()), []);
-  const historyStart = useMemo(() => subDays(today, historyDays - 1), [today, historyDays]);
+  // Widen the query window to always cover the current month-to-date in
+  // addition to the rolling `historyDays` window, so we never need a second
+  // RPC call to derive monthly progress.
+  const historyStart = useMemo(
+    () => dateMin([subDays(today, historyDays - 1), startOfMonth(today)]),
+    [today, historyDays],
+  );
   
   // Fetch daily sales data
   const {

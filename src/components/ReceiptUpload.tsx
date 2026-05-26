@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,13 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
   } | null>(null);
   const { uploadReceipt, processReceipt, isUploading, isProcessing } = useReceiptImport();
   const { toast } = useToast();
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -45,7 +52,11 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
     if (result.kind === 'duplicate') {
       // Defer dialog mount one tick so the keypress that confirmed the file
       // picker (often Enter) settles before Radix's focus trap mounts.
-      setTimeout(() => setPendingDuplicate({ file, existing: result.existing }), 0);
+      setTimeout(() => {
+        if (mountedRef.current) {
+          setPendingDuplicate({ file, existing: result.existing });
+        }
+      }, 0);
       return;
     }
 

@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CircleCheck, CircleMinus, CircleX, Target, TrendingUp, TrendingDown } from 'lucide-react';
@@ -69,6 +70,11 @@ export function MonthlyBreakEvenProgressCard({
   progress,
   isLoading,
 }: MonthlyBreakEvenProgressCardProps) {
+  const idBase = useId();
+  const stillNeededId = `${idBase}-still-needed`;
+  const daysLeftId = `${idBase}-days-left`;
+  const perDayId = `${idBase}-per-day`;
+
   if (isLoading) {
     return (
       <Card className="bg-gradient-to-br from-muted/30 via-background to-muted/20">
@@ -124,6 +130,10 @@ export function MonthlyBreakEvenProgressCard({
   const projectionText = projectionPositive
     ? `Trending toward ${formatMonthlyCurrency(progress.projectedMonthly)} by month-end — ${formatMonthlyCurrency(Math.abs(progress.projectedDelta))} above target.`
     : `Trending toward ${formatMonthlyCurrency(progress.projectedMonthly)} by month-end — ${formatMonthlyCurrency(Math.abs(progress.projectedDelta))} below target.`;
+
+  // On the actual last day of the month, "projected month-end" tautologically
+  // equals MTD — the sentence reads weird and adds no information. Hide it.
+  const isLastDay = progress.dayOfMonth === progress.daysInMonth;
 
   let projectionClass: string;
   if (progress.status === 'on_pace') {
@@ -208,13 +218,13 @@ export function MonthlyBreakEvenProgressCard({
         <div className="grid grid-cols-3 gap-px bg-border/40 rounded-lg overflow-hidden border border-border/40">
           <div className="bg-background p-3 text-center">
             <p
-              aria-describedby="stat-still-needed-label"
+              aria-describedby={stillNeededId}
               className="text-2xl font-bold tracking-tight text-foreground"
             >
               {formatMonthlyCurrency(progress.amountRemaining)}
             </p>
             <p
-              id="stat-still-needed-label"
+              id={stillNeededId}
               className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1"
             >
               Still needed
@@ -222,13 +232,13 @@ export function MonthlyBreakEvenProgressCard({
           </div>
           <div className="bg-background p-3 text-center">
             <p
-              aria-describedby="stat-days-left-label"
+              aria-describedby={daysLeftId}
               className="text-2xl font-bold tracking-tight text-foreground"
             >
               {progress.daysRemaining}
             </p>
             <p
-              id="stat-days-left-label"
+              id={daysLeftId}
               className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1"
             >
               {progress.daysRemaining === 1 ? 'Day left' : 'Days left'}
@@ -236,13 +246,13 @@ export function MonthlyBreakEvenProgressCard({
           </div>
           <div className="bg-background p-3 text-center">
             <p
-              aria-describedby="stat-per-day-label"
+              aria-describedby={perDayId}
               className="text-2xl font-bold tracking-tight text-foreground"
             >
               {formatMonthlyCurrency(progress.dailyNeeded)}
             </p>
             <p
-              id="stat-per-day-label"
+              id={perDayId}
               className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mt-1"
             >
               Per day to hit
@@ -250,8 +260,10 @@ export function MonthlyBreakEvenProgressCard({
           </div>
         </div>
 
-        {/* Projection sentence */}
-        <p className={cn('text-[13px]', projectionClass)}>{projectionText}</p>
+        {/* Projection sentence — hidden on the last day (tautological) */}
+        {!isLastDay && (
+          <p className={cn('text-[13px]', projectionClass)}>{projectionText}</p>
+        )}
       </CardContent>
     </Card>
   );

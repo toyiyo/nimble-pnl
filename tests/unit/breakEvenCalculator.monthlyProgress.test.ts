@@ -87,6 +87,24 @@ describe('calculateBreakEven — monthlyProgress field', () => {
     expect(result.monthlyProgress.status).toBe('no_target');
   });
 
+  it('parses todayStr as local-zone day (no TZ off-by-one for negative UTC offsets)', () => {
+    // `2026-05-31` must report dayOfMonth=31 and monthLabel=May regardless of
+    // the host machine's TZ. parseISO would shift this back to May 30 / Apr 30
+    // for any UTC-negative offset.
+    const costs: OperatingCost[] = [
+      makeCost({ costType: 'fixed', entryType: 'value', monthlyValue: 1_000_000 }),
+      makeCost({ costType: 'variable', entryType: 'percentage', percentageValue: 0.5 }),
+    ];
+    const salesData = [
+      { date: '2026-05-31', netRevenue: 5000, transactionCount: 5 },
+    ];
+    const result = calculateBreakEven(costs, salesData, 0, '2026-05-31');
+    expect(result.monthlyProgress.dayOfMonth).toBe(31);
+    expect(result.monthlyProgress.daysInMonth).toBe(31);
+    expect(result.monthlyProgress.monthLabel).toMatch(/May 2026/);
+    expect(result.monthlyProgress.mtdSales).toBe(5000);
+  });
+
   it('still produces monthlyProgress when no fixed costs are configured', () => {
     const costs: OperatingCost[] = [
       makeCost({ costType: 'variable', entryType: 'percentage', percentageValue: 0.3 }),

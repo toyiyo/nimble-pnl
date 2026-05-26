@@ -149,4 +149,42 @@ describe('MonthlyBreakEvenProgressCard', () => {
     expect(screen.getByText('Day left')).toBeDefined();
     expect(screen.queryByText('Days left')).toBeNull();
   });
+
+  it('hides the projection sentence on the actual last day of the month', () => {
+    render(
+      <MonthlyBreakEvenProgressCard
+        progress={makeProgress({
+          status: 'ahead',
+          dayOfMonth: 31,
+          daysInMonth: 31,
+          daysRemaining: 1,
+        })}
+        isLoading={false}
+      />,
+    );
+    // On day 31 of a 31-day month, "trending toward X by month-end" is a
+    // tautology — suppress it.
+    expect(screen.queryByText(/Trending toward/)).toBeNull();
+  });
+
+  it('uses unique aria-describedby IDs when rendered twice on the same page', () => {
+    const { container } = render(
+      <>
+        <MonthlyBreakEvenProgressCard
+          progress={makeProgress({ status: 'ahead' })}
+          isLoading={false}
+        />
+        <MonthlyBreakEvenProgressCard
+          progress={makeProgress({ status: 'behind' })}
+          isLoading={false}
+        />
+      </>,
+    );
+    const ids = Array.from(container.querySelectorAll('[id]'))
+      .map((el) => el.id)
+      .filter((id) => id.endsWith('-still-needed') || id.endsWith('-days-left') || id.endsWith('-per-day'));
+    // 3 IDs per card × 2 cards = 6 elements, all with unique IDs
+    expect(ids.length).toBe(6);
+    expect(new Set(ids).size).toBe(6);
+  });
 });

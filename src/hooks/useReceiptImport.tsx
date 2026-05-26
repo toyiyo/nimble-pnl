@@ -42,6 +42,7 @@ export interface ReceiptImport {
   updated_at: string;
   processed_by: string | null;
   purchase_date: string | null;
+  file_hash: string | null;
 }
 
 export interface Supplier {
@@ -111,6 +112,26 @@ export const useReceiptImport = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
+
+  const findDuplicateByHash = async (
+    restaurantId: string,
+    hash: string,
+  ): Promise<ReceiptImport | null> => {
+    const { data, error } = await (supabase
+      .from('receipt_imports') as any)
+      .select('id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash')
+      .eq('restaurant_id', restaurantId)
+      .eq('file_hash', hash)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('findDuplicateByHash error:', error);
+      return null;
+    }
+    return (data as unknown as ReceiptImport | null) ?? null;
+  };
 
   const uploadReceipt = async (file: File) => {
     if (!selectedRestaurant?.restaurant_id) {
@@ -835,6 +856,7 @@ export const useReceiptImport = () => {
   return {
     uploadReceipt,
     processReceipt,
+    findDuplicateByHash,
     getReceiptImports,
     getReceiptDetails,
     getReceiptLineItems,

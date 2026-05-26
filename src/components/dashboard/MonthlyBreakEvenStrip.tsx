@@ -1,23 +1,13 @@
-import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, CircleCheck, CircleMinus, CircleX, Target } from 'lucide-react';
 import type { MonthlyProgress, MonthlyProgressStatus } from '@/lib/monthlyBreakEvenProgress';
+import { formatMonthlyCurrency } from '@/lib/monthlyBreakEvenProgress';
 import { cn } from '@/lib/utils';
 
 interface MonthlyBreakEvenStripProps {
   readonly progress: MonthlyProgress | null;
   readonly isLoading: boolean;
-}
-
-function formatCurrency(amount: number): string {
-  if (!Number.isFinite(amount)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 interface StripStatusConfig {
@@ -66,11 +56,6 @@ function getStripStatusConfig(
 }
 
 export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenStripProps) {
-  const statusConfig = useMemo(
-    () => (progress && progress.status !== 'no_target' ? getStripStatusConfig(progress.status) : null),
-    [progress],
-  );
-
   if (isLoading) {
     return (
       <div className="rounded-xl border border-border/40 bg-background p-4 space-y-3">
@@ -106,7 +91,7 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
     );
   }
 
-  const { Icon, iconClass, bgClass, badgeClass, fillClass, label } = statusConfig!;
+  const { Icon, iconClass, bgClass, badgeClass, fillClass, label } = getStripStatusConfig(progress.status);
   const progressDisplay = Math.max(0, Math.min(100, progress.progressPercent));
   const paceDisplay = Math.max(0, Math.min(100, progress.expectedPercent));
   const ariaLabel = `Monthly break-even progress: ${Math.round(progress.progressPercent)}% — ${label}. Expected by today: ${Math.round(progress.expectedPercent)}%.`;
@@ -163,12 +148,12 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
       </div>
 
       <p className="text-[12px] text-muted-foreground">
-        {formatCurrency(progress.mtdSales)} of {formatCurrency(progress.monthlyBreakEven)}{' '}
+        {formatMonthlyCurrency(progress.mtdSales)} of {formatMonthlyCurrency(progress.monthlyBreakEven)}{' '}
         ({Math.round(progress.progressPercent)}%)
         {progress.dailyNeeded > 0 && (
           <>
             {' · '}
-            {formatCurrency(progress.dailyNeeded)}/day to hit target
+            {formatMonthlyCurrency(progress.dailyNeeded)}/day to hit target
           </>
         )}
       </p>

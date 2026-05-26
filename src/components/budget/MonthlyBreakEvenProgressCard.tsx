@@ -1,23 +1,13 @@
-import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CircleCheck, CircleMinus, CircleX, Target, TrendingUp, TrendingDown } from 'lucide-react';
 import type { MonthlyProgress, MonthlyProgressStatus } from '@/lib/monthlyBreakEvenProgress';
+import { formatMonthlyCurrency } from '@/lib/monthlyBreakEvenProgress';
 import { cn } from '@/lib/utils';
 
 interface MonthlyBreakEvenProgressCardProps {
   readonly progress: MonthlyProgress | null;
   readonly isLoading: boolean;
-}
-
-function formatCurrency(amount: number): string {
-  if (!Number.isFinite(amount)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 interface StatusConfig {
@@ -79,11 +69,6 @@ export function MonthlyBreakEvenProgressCard({
   progress,
   isLoading,
 }: MonthlyBreakEvenProgressCardProps) {
-  const statusConfig = useMemo(
-    () => (progress && progress.status !== 'no_target' ? getStatusConfig(progress.status) : null),
-    [progress],
-  );
-
   if (isLoading) {
     return (
       <Card className="bg-gradient-to-br from-muted/30 via-background to-muted/20">
@@ -129,7 +114,7 @@ export function MonthlyBreakEvenProgressCard({
   }
 
   const { Icon, iconClass, bgClass, borderClass, badgeClass, fillClass, label, DeltaIcon } =
-    statusConfig!;
+    getStatusConfig(progress.status);
 
   const progressDisplay = Math.max(0, Math.min(100, progress.progressPercent));
   const paceDisplay = Math.max(0, Math.min(100, progress.expectedPercent));
@@ -137,8 +122,8 @@ export function MonthlyBreakEvenProgressCard({
 
   const projectionPositive = progress.projectedDelta >= 0;
   const projectionText = projectionPositive
-    ? `Trending toward ${formatCurrency(progress.projectedMonthly)} by month-end — ${formatCurrency(Math.abs(progress.projectedDelta))} above target.`
-    : `Trending toward ${formatCurrency(progress.projectedMonthly)} by month-end — ${formatCurrency(Math.abs(progress.projectedDelta))} below target.`;
+    ? `Trending toward ${formatMonthlyCurrency(progress.projectedMonthly)} by month-end — ${formatMonthlyCurrency(Math.abs(progress.projectedDelta))} above target.`
+    : `Trending toward ${formatMonthlyCurrency(progress.projectedMonthly)} by month-end — ${formatMonthlyCurrency(Math.abs(progress.projectedDelta))} below target.`;
 
   let projectionClass: string;
   if (progress.status === 'on_pace') {
@@ -181,9 +166,9 @@ export function MonthlyBreakEvenProgressCard({
         {/* Headline numbers */}
         <div>
           <p className="text-2xl font-bold tracking-tight text-foreground">
-            {formatCurrency(progress.mtdSales)}
+            {formatMonthlyCurrency(progress.mtdSales)}
             <span className="text-[13px] font-medium text-muted-foreground ml-2">
-              of {formatCurrency(progress.monthlyBreakEven)} needed
+              of {formatMonthlyCurrency(progress.monthlyBreakEven)} needed
             </span>
           </p>
         </div>
@@ -226,7 +211,7 @@ export function MonthlyBreakEvenProgressCard({
               aria-describedby="stat-still-needed-label"
               className="text-2xl font-bold tracking-tight text-foreground"
             >
-              {formatCurrency(progress.amountRemaining)}
+              {formatMonthlyCurrency(progress.amountRemaining)}
             </p>
             <p
               id="stat-still-needed-label"
@@ -254,7 +239,7 @@ export function MonthlyBreakEvenProgressCard({
               aria-describedby="stat-per-day-label"
               className="text-2xl font-bold tracking-tight text-foreground"
             >
-              {formatCurrency(progress.dailyNeeded)}
+              {formatMonthlyCurrency(progress.dailyNeeded)}
             </p>
             <p
               id="stat-per-day-label"

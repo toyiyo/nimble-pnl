@@ -1,5 +1,15 @@
 import { format, getDaysInMonth } from 'date-fns';
 
+export function formatMonthlyCurrency(amount: number): string {
+  if (!Number.isFinite(amount)) return '—';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export type MonthlyProgressStatus = 'ahead' | 'on_pace' | 'behind' | 'no_target';
 
 export interface MonthlyProgress {

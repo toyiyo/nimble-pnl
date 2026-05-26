@@ -669,9 +669,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 <X className="h-4 w-4" />
               </button>
             </div>
-          ) : (
-            <div className="h-14" aria-hidden="true" />
-          )}
+          ) : null}
 
           {/* Needs Attention Section */}
           {tieredItems['needs-attention'].length > 0 && (

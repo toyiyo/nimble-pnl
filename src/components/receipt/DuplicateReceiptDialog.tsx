@@ -64,7 +64,7 @@ export function DuplicateReceiptDialog({
           </div>
         </DialogHeader>
 
-        <div className="px-6 py-5 space-y-3">
+        <div className="px-6 py-5 space-y-5">
           <div className="text-[14px] font-medium text-foreground">
             {vendor} — {totalDisplay}
           </div>

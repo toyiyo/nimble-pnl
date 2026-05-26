@@ -160,7 +160,7 @@ describe('useGenerateSchedule — partial-fill success toast', () => {
 
     await waitFor(() => expect(toastMock).toHaveBeenCalled());
     expect(toastMock.mock.calls[0][0].title).toBe('Schedule Generated');
-    expect(toastMock.mock.calls[0][0].description).toContain('Filled 3 of 10 required slots');
+    expect(toastMock.mock.calls[0][0].description).toContain('3 of 10 slots filled');
   });
 
   it('falls back to plain count when required slots is 0', async () => {
@@ -204,6 +204,56 @@ describe('useGenerateSchedule — partial-fill success toast', () => {
     await waitFor(() => expect(toastMock).toHaveBeenCalled());
     expect(toastMock.mock.calls[0][0].description).toContain('2 shifts created');
     expect(toastMock.mock.calls[0][0].description).not.toContain('Filled 2 of');
+  });
+});
+
+describe('useGenerateSchedule — preference swaps + budget variance branches', () => {
+  it('includes singular swap counts and over-budget suffix in toast', async () => {
+    const generatedShift = {
+      employee_id: 'emp-1',
+      template_id: 'tmpl-1',
+      day: '2026-05-18',
+      start_time: '09:00:00',
+      end_time: '17:00:00',
+      position: 'server',
+    };
+    invokeMock.mockResolvedValueOnce({
+      data: {
+        shifts: [generatedShift],
+        metadata: {
+          estimated_cost: 0,
+          budget_variance_pct: 12.4,
+          notes: '',
+          model_used: 'Gemini 2.5 Flash',
+          total_generated: 1,
+          total_valid: 1,
+          total_dropped: 0,
+          total_required_slots: 0,
+          drop_reason_summary: {},
+          dropped_reasons: [],
+          applied_swaps_count: 1,
+          rejected_swaps_count: 2,
+        },
+      },
+      error: null,
+    });
+    insertMock.mockResolvedValueOnce({ error: null });
+
+    const { result } = renderHook(() => useGenerateSchedule(), { wrapper });
+    result.current.mutate({
+      restaurantId: 'r-1',
+      restaurantTimezone: 'UTC',
+      weekStart: '2026-05-18',
+      lockedShiftIds: [],
+      excludedEmployeeIds: [],
+    });
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    const description = toastMock.mock.calls[0][0].description;
+    expect(description).toContain('1 shift created');
+    expect(description).toContain('1 preference swap applied');
+    expect(description).toContain("2 couldn't be applied");
+    expect(description).toContain('12% over budget');
   });
 });
 

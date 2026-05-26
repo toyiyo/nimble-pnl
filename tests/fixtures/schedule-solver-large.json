@@ -1,0 +1,3195 @@
+{
+  "restaurantId": "restaurant_synth",
+  "weekStart": "2026-06-08",
+  "employees": [
+    {
+      "id": "emp_000",
+      "name": "Emp 0",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_001",
+      "name": "Emp 1",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_002",
+      "name": "Emp 2",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_003",
+      "name": "Emp 3",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_004",
+      "name": "Emp 4",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_005",
+      "name": "Emp 5",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_006",
+      "name": "Emp 6",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_007",
+      "name": "Emp 7",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_008",
+      "name": "Emp 8",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_009",
+      "name": "Emp 9",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_010",
+      "name": "Emp 10",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_011",
+      "name": "Emp 11",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_012",
+      "name": "Emp 12",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_013",
+      "name": "Emp 13",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_014",
+      "name": "Emp 14",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_015",
+      "name": "Emp 15",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_016",
+      "name": "Emp 16",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_017",
+      "name": "Emp 17",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_018",
+      "name": "Emp 18",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_019",
+      "name": "Emp 19",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_020",
+      "name": "Emp 20",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_021",
+      "name": "Emp 21",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_022",
+      "name": "Emp 22",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_023",
+      "name": "Emp 23",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_024",
+      "name": "Emp 24",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_025",
+      "name": "Emp 25",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_026",
+      "name": "Emp 26",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_027",
+      "name": "Emp 27",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_028",
+      "name": "Emp 28",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_029",
+      "name": "Emp 29",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_030",
+      "name": "Emp 30",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_031",
+      "name": "Emp 31",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_032",
+      "name": "Emp 32",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_033",
+      "name": "Emp 33",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_034",
+      "name": "Emp 34",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_035",
+      "name": "Emp 35",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_036",
+      "name": "Emp 36",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_037",
+      "name": "Emp 37",
+      "position": "Server",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_038",
+      "name": "Emp 38",
+      "position": "Server",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_039",
+      "name": "Emp 39",
+      "position": "Server",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_040",
+      "name": "Emp 40",
+      "position": "Cook",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_041",
+      "name": "Emp 41",
+      "position": "Cook",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_042",
+      "name": "Emp 42",
+      "position": "Cook",
+      "area": null,
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_043",
+      "name": "Emp 43",
+      "position": "Cook",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_044",
+      "name": "Emp 44",
+      "position": "Cook",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_045",
+      "name": "Emp 45",
+      "position": "Cook",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_046",
+      "name": "Emp 46",
+      "position": "Cook",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_047",
+      "name": "Emp 47",
+      "position": "Cook",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_048",
+      "name": "Emp 48",
+      "position": "Cook",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_049",
+      "name": "Emp 49",
+      "position": "Cook",
+      "area": "Brand B",
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_050",
+      "name": "Emp 50",
+      "position": "Host",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_051",
+      "name": "Emp 51",
+      "position": "Host",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_052",
+      "name": "Emp 52",
+      "position": "Host",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_053",
+      "name": "Emp 53",
+      "position": "Host",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_054",
+      "name": "Emp 54",
+      "position": "Host",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_055",
+      "name": "Emp 55",
+      "position": "Host",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_056",
+      "name": "Emp 56",
+      "position": "Host",
+      "area": "Brand A",
+      "max_weekly_hours": 18,
+      "date_of_birth": "2010-01-01",
+      "is_minor": true
+    },
+    {
+      "id": "emp_057",
+      "name": "Emp 57",
+      "position": "Host",
+      "area": null,
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_058",
+      "name": "Emp 58",
+      "position": "Host",
+      "area": "Brand A",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    },
+    {
+      "id": "emp_059",
+      "name": "Emp 59",
+      "position": "Host",
+      "area": "Brand B",
+      "max_weekly_hours": 40,
+      "date_of_birth": "1990-01-01",
+      "is_minor": false
+    }
+  ],
+  "templates": [
+    {
+      "id": "tpl_001",
+      "name": "Lunch A",
+      "position": "Server",
+      "area": "Brand A",
+      "start_time": "10:00:00",
+      "end_time": "16:30:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_002",
+      "name": "Lunch B",
+      "position": "Server",
+      "area": "Brand B",
+      "start_time": "10:00:00",
+      "end_time": "16:30:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_003",
+      "name": "Dinner A",
+      "position": "Server",
+      "area": "Brand A",
+      "start_time": "16:00:00",
+      "end_time": "22:30:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_004",
+      "name": "Dinner B",
+      "position": "Server",
+      "area": "Brand B",
+      "start_time": "16:00:00",
+      "end_time": "22:30:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_005",
+      "name": "Cook Open",
+      "position": "Cook",
+      "area": null,
+      "start_time": "08:00:00",
+      "end_time": "16:00:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_006",
+      "name": "Cook Close",
+      "position": "Cook",
+      "area": null,
+      "start_time": "14:00:00",
+      "end_time": "22:00:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_007",
+      "name": "Host AM",
+      "position": "Host",
+      "area": null,
+      "start_time": "10:00:00",
+      "end_time": "14:00:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    },
+    {
+      "id": "tpl_008",
+      "name": "Host PM",
+      "position": "Host",
+      "area": null,
+      "start_time": "17:00:00",
+      "end_time": "21:00:00",
+      "days_of_week": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        0
+      ]
+    }
+  ],
+  "availability": {
+    "emp_000": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_001": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_002": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_003": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_004": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_005": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_006": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_007": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_008": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_009": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_010": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_011": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_012": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_013": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_014": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_015": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_016": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_017": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_018": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_019": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_020": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_021": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_022": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_023": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_024": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_025": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_026": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_027": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_028": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_029": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_030": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_031": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_032": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_033": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_034": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_035": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_036": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_037": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_038": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_039": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_040": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_041": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_042": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_043": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_044": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_045": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_046": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_047": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_048": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_049": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_050": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_051": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_052": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_053": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_054": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_055": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_056": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "16:30:00",
+        "endTime": "20:00:00"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "10:00:00",
+        "endTime": "20:00:00"
+      }
+    },
+    "emp_057": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_058": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    },
+    "emp_059": {
+      "0": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "1": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "2": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "3": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "4": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "5": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      },
+      "6": {
+        "isAvailable": true,
+        "startTime": "00:00:00",
+        "endTime": "23:59:59"
+      }
+    }
+  },
+  "requiredStaff": {
+    "tpl_001:2026-06-08": {
+      "template_id": "tpl_001",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_001:2026-06-09": {
+      "template_id": "tpl_001",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_001:2026-06-10": {
+      "template_id": "tpl_001",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_001:2026-06-11": {
+      "template_id": "tpl_001",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_001:2026-06-12": {
+      "template_id": "tpl_001",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_001:2026-06-13": {
+      "template_id": "tpl_001",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_001:2026-06-14": {
+      "template_id": "tpl_001",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_002:2026-06-08": {
+      "template_id": "tpl_002",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_002:2026-06-09": {
+      "template_id": "tpl_002",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_002:2026-06-10": {
+      "template_id": "tpl_002",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_002:2026-06-11": {
+      "template_id": "tpl_002",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_002:2026-06-12": {
+      "template_id": "tpl_002",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_002:2026-06-13": {
+      "template_id": "tpl_002",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_002:2026-06-14": {
+      "template_id": "tpl_002",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_003:2026-06-08": {
+      "template_id": "tpl_003",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_003:2026-06-09": {
+      "template_id": "tpl_003",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_003:2026-06-10": {
+      "template_id": "tpl_003",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_003:2026-06-11": {
+      "template_id": "tpl_003",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_003:2026-06-12": {
+      "template_id": "tpl_003",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_003:2026-06-13": {
+      "template_id": "tpl_003",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_003:2026-06-14": {
+      "template_id": "tpl_003",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_004:2026-06-08": {
+      "template_id": "tpl_004",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_004:2026-06-09": {
+      "template_id": "tpl_004",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_004:2026-06-10": {
+      "template_id": "tpl_004",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_004:2026-06-11": {
+      "template_id": "tpl_004",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_004:2026-06-12": {
+      "template_id": "tpl_004",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_004:2026-06-13": {
+      "template_id": "tpl_004",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_004:2026-06-14": {
+      "template_id": "tpl_004",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_005:2026-06-08": {
+      "template_id": "tpl_005",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_005:2026-06-09": {
+      "template_id": "tpl_005",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_005:2026-06-10": {
+      "template_id": "tpl_005",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_005:2026-06-11": {
+      "template_id": "tpl_005",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_005:2026-06-12": {
+      "template_id": "tpl_005",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_005:2026-06-13": {
+      "template_id": "tpl_005",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_005:2026-06-14": {
+      "template_id": "tpl_005",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_006:2026-06-08": {
+      "template_id": "tpl_006",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_006:2026-06-09": {
+      "template_id": "tpl_006",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_006:2026-06-10": {
+      "template_id": "tpl_006",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_006:2026-06-11": {
+      "template_id": "tpl_006",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_006:2026-06-12": {
+      "template_id": "tpl_006",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_006:2026-06-13": {
+      "template_id": "tpl_006",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_006:2026-06-14": {
+      "template_id": "tpl_006",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_007:2026-06-08": {
+      "template_id": "tpl_007",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_007:2026-06-09": {
+      "template_id": "tpl_007",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_007:2026-06-10": {
+      "template_id": "tpl_007",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_007:2026-06-11": {
+      "template_id": "tpl_007",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_007:2026-06-12": {
+      "template_id": "tpl_007",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_007:2026-06-13": {
+      "template_id": "tpl_007",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_007:2026-06-14": {
+      "template_id": "tpl_007",
+      "day": "2026-06-14",
+      "count": 3
+    },
+    "tpl_008:2026-06-08": {
+      "template_id": "tpl_008",
+      "day": "2026-06-08",
+      "count": 3
+    },
+    "tpl_008:2026-06-09": {
+      "template_id": "tpl_008",
+      "day": "2026-06-09",
+      "count": 3
+    },
+    "tpl_008:2026-06-10": {
+      "template_id": "tpl_008",
+      "day": "2026-06-10",
+      "count": 3
+    },
+    "tpl_008:2026-06-11": {
+      "template_id": "tpl_008",
+      "day": "2026-06-11",
+      "count": 3
+    },
+    "tpl_008:2026-06-12": {
+      "template_id": "tpl_008",
+      "day": "2026-06-12",
+      "count": 3
+    },
+    "tpl_008:2026-06-13": {
+      "template_id": "tpl_008",
+      "day": "2026-06-13",
+      "count": 3
+    },
+    "tpl_008:2026-06-14": {
+      "template_id": "tpl_008",
+      "day": "2026-06-14",
+      "count": 3
+    }
+  },
+  "lockedShifts": [],
+  "excludedEmployeeIds": [],
+  "priorPatterns": [],
+  "weeklySalesHistory": [],
+  "hourlySalesHistory": [],
+  "targetLaborPercentage": 0.3,
+  "minimumWageCents": 0
+}

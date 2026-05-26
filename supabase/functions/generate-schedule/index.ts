@@ -2,19 +2,13 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { type ModelConfig } from "../_shared/ai-caller.ts";
-import { callModelWithStreaming } from "../_shared/streaming.ts";
-import { runScheduleModelChain } from "../_shared/schedule-ai-runner.ts";
 import {
-  buildSchedulePrompt,
   computeHourBudget,
-  type ScheduleContext,
   type ScheduleEmployee,
   type ScheduleTemplate,
   type AvailabilityDay,
   type PriorPattern,
   type HourlySales,
-  type LockedShift,
 } from "../_shared/schedule-prompt-builder.ts";
 import {
   validateGeneratedShifts,
@@ -28,30 +22,37 @@ import {
   type LocalAvail,
 } from "../_shared/availability-tz.ts";
 import { computeRequiredStaff } from "../_shared/staffing-requirements.ts";
+import { solveSchedule, computeFairness, type ScheduleContext as SolverScheduleContext } from "../_shared/schedule-solver.ts";
+import type { UnfilledSlot, FairnessSummary } from "../_shared/schedule-solver.ts";
+import { applyPreferences, PREFERENCE_MODELS } from "../_shared/schedule-preference-llm.ts";
 
-// Custom model chain for schedule generation (higher-capability models first)
-const SCHEDULE_MODELS: ModelConfig[] = [
-  { name: "Gemini 2.5 Flash", id: "google/gemini-2.5-flash", maxRetries: 2 },
-  { name: "Gemini 2.5 Flash Lite", id: "google/gemini-2.5-flash-lite", maxRetries: 2 },
-  { name: "Llama 4 Maverick", id: "meta-llama/llama-4-maverick", maxRetries: 2 },
-  { name: "Gemma 3 27B", id: "google/gemma-3-27b-it", maxRetries: 2 },
-  { name: "Claude Sonnet 4.5", id: "anthropic/claude-sonnet-4-5", maxRetries: 1 },
-];
+export type ClientSafeUnfilledSlot = Omit<UnfilledSlot, 'template_id'> & { template_name: string };
+export type ClientSafeFairnessSummary = Omit<FairnessSummary, 'employee_id'> & { employee_name: string };
+
+/** Splits a full ISO timestamp (or bare HH:MM:SS) into a YYYY-MM-DD date and
+ *  HH:MM:SS time components. Used wherever a DB timestamp must be projected
+ *  into the solver's day/start_time/end_time shape. */
+function splitTimestamp(iso: string): { day: string; time: string } {
+  if (iso.includes('T')) {
+    return { day: iso.split('T')[0], time: iso.split('T')[1].substring(0, 8) };
+  }
+  return { day: '', time: iso };
+}
 
 interface RequestPayload {
   restaurant_id: string;
   week_start: string;         // YYYY-MM-DD
   locked_shift_ids: string[];
   excluded_employee_ids: string[];
+  preferences_text?: string;
 }
 
-interface AiResult {
-  data: {
-    shifts: GeneratedShift[];
-    metadata: { estimated_cost: number; budget_variance_pct: number; notes: string };
-  };
-  model: string;
-}
+// Server-side limit on preferences_text. Keeps the LLM prompt bounded and
+// prevents a malicious caller from blowing past the client's PREFS_MAX_LENGTH
+// gate by hitting the edge function directly.
+const PREFS_MAX_BYTES = 2000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -90,6 +91,18 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (!UUID_RE.test(restaurant_id)) {
+      return new Response(JSON.stringify({ error: "restaurant_id must be a valid UUID" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!DATE_RE.test(week_start)) {
+      return new Response(JSON.stringify({ error: "week_start must be YYYY-MM-DD" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── Permission check: owner or manager ───────────────────────────────────
     const { data: userRestaurant, error: permError } = await supabase
@@ -116,7 +129,7 @@ serve(async (req) => {
     const fourWeeksAgoStr = fourWeeksAgo.toISOString().split("T")[0];
     const weekEndStr = weekEndDate.toISOString().split("T")[0];
 
-    // ── Fetch all scheduling data in parallel (10 queries) ──────────────────
+    // ── Fetch all scheduling data in parallel (9 queries) ───────────────────
     const [
       employeesResult,
       templatesResult,
@@ -125,7 +138,6 @@ serve(async (req) => {
       staffingSettingsResult,
       priorShiftsResult,
       salesResult,
-      operatingCostsResult,
       existingShiftsResult,
       restaurantResult,
     ] = await Promise.all([
@@ -157,10 +169,10 @@ serve(async (req) => {
         .gte("date", week_start)
         .lt("date", weekEndStr),
 
-      // 5. Staffing settings
+      // 5. Staffing settings — only the two fields read downstream.
       supabase
         .from("staffing_settings")
-        .select("*")
+        .select("min_crew, min_staff")
         .eq("restaurant_id", restaurant_id)
         .maybeSingle(),
 
@@ -182,24 +194,16 @@ serve(async (req) => {
         .gte("sale_date", fourWeeksAgoStr)
         .lt("sale_date", week_start),
 
-      // 8. Operating costs (labor category)
-      supabase
-        .from("restaurant_operating_costs")
-        .select("entry_type, monthly_value")
-        .eq("restaurant_id", restaurant_id)
-        .eq("category", "labor")
-        .maybeSingle(),
-
-      // 9. Existing shifts this week (for locked shift identification)
+      // 8. Existing shifts this week (for locked shift identification)
       supabase
         .from("shifts")
-        .select("id, employee_id, start_time, end_time, position, locked, employees(name)")
+        .select("id, employee_id, start_time, end_time, position, locked, shift_template_id, employees(name)")
         .eq("restaurant_id", restaurant_id)
         .gte("start_time", `${week_start}T00:00:00`)
         .lt("start_time", `${weekEndStr}T00:00:00`)
         .neq("status", "cancelled"),
 
-      // 10. Restaurant timezone (null-safe — defaults to UTC below)
+      // 9. Restaurant timezone (null-safe — defaults to UTC below)
       supabase
         .from("restaurants")
         .select("timezone")
@@ -259,6 +263,7 @@ serve(async (req) => {
         // hourly_rate stored in cents; salary employees get 0
         hourly_rate: e.compensation_type === "salary" ? 0 : (e.hourly_rate ?? 0),
         employment_type: e.employment_type ?? "full_time",
+        date_of_birth: e.date_of_birth ?? '',
         is_minor: budget.is_minor,
         max_weekly_hours: budget.max_weekly_hours,
       };
@@ -412,42 +417,9 @@ serve(async (req) => {
       };
     });
 
-    // ── Calculate weekly budget target ───────────────────────────────────────
-    let weeklyBudgetTarget: number | null = null;
-    const costRow = operatingCostsResult.data;
-    if (costRow && costRow.entry_type === "value" && costRow.monthly_value != null) {
-      // entry_type='value' means monthly dollar value (stored in cents)
-      // weeklyBudgetTarget = (monthlyValue / 100) / 30 * 7
-      const monthlyValueCents = costRow.monthly_value;
-      weeklyBudgetTarget = Math.round((monthlyValueCents / 30) * 7);
-    }
-
     // ── Build locked shifts ───────────────────────────────────────────────────
     const existingShifts = existingShiftsResult.data ?? [];
     const lockedShiftIdSet = new Set(locked_shift_ids);
-
-    const lockedShifts: LockedShift[] = existingShifts
-      .filter((s) => s.locked || lockedShiftIdSet.has(s.id))
-      .map((s) => {
-        const startDt = new Date(s.start_time);
-        const day = startDt.toISOString().split("T")[0];
-        // start_time and end_time in DB are full timestamps; extract time portion
-        const startTime = s.start_time.includes("T")
-          ? s.start_time.split("T")[1].substring(0, 8)
-          : s.start_time;
-        const endTime = s.end_time?.includes("T")
-          ? s.end_time.split("T")[1].substring(0, 8)
-          : (s.end_time ?? "00:00:00");
-        const empName = (s.employees as { name: string } | null)?.name ?? "Unknown";
-        return {
-          id: s.id,
-          employee_name: empName,
-          day,
-          start_time: startTime,
-          end_time: endTime,
-          position: s.position ?? "Staff",
-        };
-      });
 
     // ── Build staffing settings map ───────────────────────────────────────────
     // staffing_settings.min_crew is a JSONB column keyed by user-facing
@@ -495,69 +467,125 @@ serve(async (req) => {
       for (const count of perDay.values()) totalRequiredSlots += count;
     }
 
-    // ── Build the prompt ──────────────────────────────────────────────────────
-    const scheduleContext: ScheduleContext = {
-      weekStart: week_start,
-      employees,
-      templates,
-      availability,
-      staffingSettings,
-      priorSchedulePatterns,
-      hourlySalesPatterns,
-      weeklyBudgetTarget,
-      lockedShifts,
-      requiredStaff,
-    };
-
-    const promptResult = buildSchedulePrompt(scheduleContext);
-
-    const requestBody = {
-      ...promptResult,
-      temperature: 0.3,
-      max_tokens: 16384,
-    };
-
-    // Observability: log size + counts before the AI call.
-    const promptStr = promptResult.messages.map((m) => m.content).join("\n");
-    console.log(
-      `[generate-schedule] Prompt: ${promptStr.length} chars (~${Math.round(promptStr.length / 4)} tokens), ` +
-        `employees=${employees.length}, templates=${templates.length}, ` +
-        `requiredSlots=${totalRequiredSlots}, tz=${restaurantTimezone}`,
-    );
-
-    // ── Call AI with custom model chain ───────────────────────────────────────
-    const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
-    if (!openRouterApiKey) {
-      throw new Error("OPENROUTER_API_KEY environment variable is not set");
-    }
-
-    // Wall-clock budget for the entire model fallback chain. Supabase edge
-    // functions hard-kill at ~150s; callModelWithStreaming uses
-    // AbortSignal.timeout(90s) per attempt, so we budget ~130s to allow at
-    // least one fallback if the primary model fails fast on an explicit error.
-    // Successful primary calls typically complete in 15-25s and never touch
-    // this ceiling.
-    const aiResult = await runScheduleModelChain<AiResult["data"]>({
-      models: SCHEDULE_MODELS,
-      requestBody,
-      openRouterApiKey,
-      edgeFunction: "generate-schedule",
+    // ── Build solver context (separate from the prompt-builder's ScheduleContext) ──
+    // Hoisted once per request — the requiredStaff Map-conversion loop needs this
+    // to compute YYYY-MM-DD dates; constructing it inside the loop (one per
+    // template-DOW pair) was wasteful.
+    const solverWeekStart = new Date(`${week_start}T00:00:00Z`);
+    const solverCtx: SolverScheduleContext = {
       restaurantId: restaurant_id,
-      callStreaming: callModelWithStreaming,
-      budgetMs: 130_000,
-    });
+      weekStart: week_start,
+      employees: employees.map((e) => ({
+        id: e.id,
+        name: e.name,
+        position: e.position,
+        area: e.area,
+        max_weekly_hours: e.max_weekly_hours,
+        date_of_birth: e.date_of_birth,
+        is_minor: e.is_minor,
+      })),
+      templates: rawTemplates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        days_of_week: t.days ?? [],
+        start_time: t.start_time,
+        end_time: t.end_time,
+        position: t.position ?? 'Staff',
+        area: t.area ?? null,
+      })),
+      availability: Object.fromEntries(
+        Object.entries(availability).map(([empId, days]) => [
+          empId,
+          Object.fromEntries(
+            Object.entries(days).map(([dow, a]) => [
+              dow,
+              { isAvailable: a.available, startTime: a.start ?? null, endTime: a.end ?? null },
+            ]),
+          ),
+        ]),
+      ),
+      requiredStaff: new Map(
+        Array.from(requiredStaff.entries()).flatMap(([templateId, perDay]) => {
+          const out: [string, { template_id: string; day: string; count: number }][] = [];
+          for (const [dowStr, count] of perDay.entries()) {
+            const dow = typeof dowStr === 'number' ? dowStr : parseInt(String(dowStr), 10);
+            if (count <= 0) continue;
+            // Compute the YYYY-MM-DD date for this day-of-week within the target week.
+            // week_start is Monday-anchored; iterate offsets 0..6 picking matching UTCDay.
+            for (let i = 0; i < 7; i++) {
+              const d = new Date(solverWeekStart);
+              d.setUTCDate(solverWeekStart.getUTCDate() + i);
+              if (d.getUTCDay() === dow) {
+                const day = d.toISOString().slice(0, 10);
+                out.push([`${templateId}:${day}`, { template_id: templateId, day, count }]);
+                break;
+              }
+            }
+          }
+          return out;
+        }),
+      ),
+      lockedShifts: existingShifts
+        .filter((s) => s.locked || lockedShiftIdSet.has(s.id))
+        .map((s) => {
+          const { day, time: startTime } = splitTimestamp(s.start_time);
+          const endTime = s.end_time ? splitTimestamp(s.end_time).time : '00:00:00';
+          return {
+            employee_id: s.employee_id,
+            template_id: s.shift_template_id ?? '',
+            day,
+            start_time: startTime,
+            end_time: endTime,
+            position: s.position ?? 'Staff',
+          };
+        }),
+      excludedEmployeeIds: new Set(excluded_employee_ids),
+      priorPatterns: priorSchedulePatterns.map((p) => ({
+        day_of_week: p.day_of_week,
+        position: p.position,
+        avg_count: p.avg_count,
+      })),
+      weeklySalesHistory: [],
+      hourlySalesHistory: hourlySalesPatterns.map((h) => ({
+        day_of_week: h.day_of_week,
+        hour: h.hour,
+        avg_sales: h.avg_sales,
+      })),
+      targetLaborPercentage: 0.30,
+      minimumWageCents: 725,
+    };
 
-    if (!aiResult) {
-      return new Response(
-        JSON.stringify({ error: "All AI models failed to generate a schedule. Please try again." }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // ── Run deterministic solver + optional preference LLM second pass ────────
+    console.log(`[generate-schedule] solver starting: employees=${activeEmployees.length}, templates=${rawTemplates.length}, requiredSlots=${totalRequiredSlots}, tz=${restaurantTimezone}`);
 
-    // ── Validate AI response ──────────────────────────────────────────────────
-    const generatedShifts: GeneratedShift[] = Array.isArray(aiResult.data.shifts)
-      ? aiResult.data.shifts
-      : [];
+    const solveStartedAt = performance.now();
+    const solverResult = solveSchedule(solverCtx);
+    const solverDurationMs = performance.now() - solveStartedAt;
+
+    // Attach synthetic ids so the preference layer can reference each shift
+    const shiftsWithIds = solverResult.shifts.map((s, i) => ({ ...s, id: `sft_${i}` }));
+
+    // Truncate at PREFS_MAX_BYTES; the client warns at ~800 and hard-caps at
+    // 1500, so 2000 server bytes leaves headroom for whitespace.
+    const rawPrefs = (payload.preferences_text as string | undefined) ?? '';
+    const preferencesText = rawPrefs.length > PREFS_MAX_BYTES
+      ? rawPrefs.slice(0, PREFS_MAX_BYTES)
+      : rawPrefs;
+    const prefStartedAt = performance.now();
+    const prefResult = await applyPreferences(shiftsWithIds, solverCtx, preferencesText, PREFERENCE_MODELS);
+    const preferenceDurationMs = performance.now() - prefStartedAt;
+
+    // Strip the synthetic id before persistence/response
+    const finalShifts: GeneratedShift[] = prefResult.shifts.map(({ id: _id, ...s }) => s);
+
+    console.log('[generate-schedule] duration', JSON.stringify({
+      solver_duration_ms: Math.round(solverDurationMs),
+      preference_duration_ms: Math.round(preferenceDurationMs),
+      total_required_slots: totalRequiredSlots,
+      total_generated: finalShifts.length,
+      applied_swaps: prefResult.appliedSwaps.length,
+      rejected_swaps: prefResult.rejectedSwaps.length,
+    }));
 
     // Build validation context
     // Bug I: validator now carries is_minor + max_weekly_hours per
@@ -593,9 +621,8 @@ serve(async (req) => {
 
     // Build existing shifts as GeneratedShift format for overlap checking
     const existingAsGenerated: GeneratedShift[] = existingShifts.map((s) => {
-      const day = s.start_time.split('T')[0];
-      const startTime = s.start_time.includes('T') ? s.start_time.split('T')[1].substring(0, 8) : s.start_time;
-      const endTime = s.end_time?.includes('T') ? s.end_time.split('T')[1].substring(0, 8) : (s.end_time ?? '00:00:00');
+      const { day, time: startTime } = splitTimestamp(s.start_time);
+      const endTime = s.end_time ? splitTimestamp(s.end_time).time : '00:00:00';
       return {
         employee_id: s.employee_id,
         template_id: '',
@@ -615,7 +642,7 @@ serve(async (req) => {
     };
 
     const { valid: validShifts, dropped: droppedShifts } = validateGeneratedShifts(
-      generatedShifts,
+      finalShifts,
       validationCtx
     );
 
@@ -625,34 +652,57 @@ serve(async (req) => {
       dropReasonSummary[d.code] = (dropReasonSummary[d.code] ?? 0) + 1;
     }
     // Server-side log: full counts AND the human messages (UUIDs allowed in logs).
+    // Defense-in-depth: solver should produce zero drops; any drop = solver bug.
     console.log(
-      `[generate-schedule] Generated=${generatedShifts.length}, ` +
+      `[generate-schedule] Generated=${finalShifts.length}, ` +
         `valid=${validShifts.length}, dropped=${droppedShifts.length}, ` +
-        `model=${aiResult.model}, requiredSlots=${totalRequiredSlots}`,
+        `requiredSlots=${totalRequiredSlots}`,
     );
     console.log(
       `[generate-schedule] Drop reason summary: ${JSON.stringify(dropReasonSummary)}`,
     );
 
-    // ── Zero-shift guardrail (Bug 8) ─────────────────────────────────────────
+    // ── Zero-shift guardrail ──────────────────────────────────────────────────
+    // Check validShifts (post-validation), not finalShifts. If the solver
+    // emits N shifts but the validator drops every one, we'd otherwise
+    // return HTTP 200 with shifts: [] — bypassing the 422 diagnostic contract.
     if (validShifts.length === 0) {
       return new Response(
         JSON.stringify({
           error:
-            "AI generated no valid shifts. Check employee positions, availability, and templates.",
+            "Solver generated no valid shifts. Check employee positions, availability, and templates.",
           diagnostic: {
             total_employees: employees.length,
             total_templates: templates.length,
             total_required_slots: totalRequiredSlots,
-            total_generated: generatedShifts.length,
+            total_generated: finalShifts.length,
             total_dropped: droppedShifts.length,
             drop_reason_summary: dropReasonSummary,
-            model_used: aiResult.model,
+            model_used: prefResult.modelUsed ?? null,
           },
         }),
         { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    // ── Project UUIDs → human names at the response boundary ────────────────
+    // Per lesson [2026-05-17]: API responses must not leak internal UUIDs.
+    const templateNameById = new Map(templates.map((t) => [t.id, t.name]));
+    const employeeNameById = new Map(employees.map((e) => [e.id, e.name]));
+
+    const safeUnfilled: ClientSafeUnfilledSlot[] = solverResult.unfilled.map(({ template_id, ...rest }) => ({
+      ...rest,
+      template_name: templateNameById.get(template_id) ?? 'Unknown template',
+    }));
+
+    // Recompute fairness from validShifts so preference-swap effects are
+    // reflected. solverResult.fairness is built pre-swap; cross-day or
+    // cross-length swaps would otherwise leave it stale.
+    const finalFairness = computeFairness(validShifts, employees);
+    const safeFairness: ClientSafeFairnessSummary[] = finalFairness.map(({ employee_id, ...rest }) => ({
+      ...rest,
+      employee_name: employeeNameById.get(employee_id) ?? 'Unknown',
+    }));
 
     // ── Build success response ───────────────────────────────────────────────
     // dropped_reasons is UUID-free — derived from code + day + position only.
@@ -686,22 +736,25 @@ serve(async (req) => {
           return `Unknown drop reason on ${d.shift.day}`;
       }
     });
-    const aiMetadata = aiResult.data.metadata ?? {};
 
     return new Response(
       JSON.stringify({
         shifts: validShifts,
         metadata: {
-          estimated_cost: aiMetadata.estimated_cost ?? 0,
-          budget_variance_pct: aiMetadata.budget_variance_pct ?? 0,
-          notes: aiMetadata.notes ?? "",
-          model_used: aiResult.model,
-          total_generated: generatedShifts.length,
+          estimated_cost: 0,
+          budget_variance_pct: 0,
+          notes: "",
+          model_used: prefResult.modelUsed ?? '',
+          total_generated: finalShifts.length,
           total_valid: validShifts.length,
           total_dropped: droppedShifts.length,
           total_required_slots: totalRequiredSlots,
           drop_reason_summary: dropReasonSummary,
           dropped_reasons: droppedReasons,
+          unfilled: safeUnfilled,
+          fairness_summary: safeFairness,
+          applied_swaps_count: prefResult.appliedSwaps.length,
+          rejected_swaps_count: prefResult.rejectedSwaps.length,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

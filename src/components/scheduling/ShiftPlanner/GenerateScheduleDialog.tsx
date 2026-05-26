@@ -9,6 +9,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 import { Sparkles, Lock, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 
@@ -40,7 +42,7 @@ interface GenerateScheduleDialogProps {
   weekStart: Date;
   weekEnd: Date;
   isGenerating: boolean;
-  onGenerate: (excludedEmployeeIds: string[], lockedShiftIds: string[]) => void;
+  onGenerate: (excludedIds: string[], lockedIds: string[], preferences: string) => void;
   templates: ShiftTemplate[];
   availability: EmployeeAvailability[];
   availabilityLoading?: boolean;
@@ -48,6 +50,9 @@ interface GenerateScheduleDialogProps {
   generationError: Error | null;
   onRetry: () => void;
 }
+
+const PREFS_MAX_LENGTH = 2000;
+const PREFS_WARN_THRESHOLD = 1800;
 
 type NormalizedEmployee = Employee & { status: 'active' | 'inactive' | 'terminated' };
 
@@ -88,6 +93,7 @@ export function GenerateScheduleDialog({
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   // shifts to lock — empty means none locked
   const [lockedIds, setLockedIds] = useState<Set<string>>(new Set());
+  const [preferences, setPreferences] = useState('');
   const [bulkSheetOpen, setBulkSheetOpen] = useState(false);
   const reminder = useSendAvailabilityReminder();
 
@@ -184,13 +190,14 @@ export function GenerateScheduleDialog({
   }
 
   function handleGenerate() {
-    onGenerate(Array.from(excludedIds), Array.from(lockedIds));
+    onGenerate(Array.from(excludedIds), Array.from(lockedIds), preferences);
   }
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       setExcludedIds(new Set());
       setLockedIds(new Set());
+      setPreferences('');
     }
     onOpenChange(nextOpen);
   }
@@ -267,6 +274,36 @@ export function GenerateScheduleDialog({
         {/* Config phase content */}
         {phase === 'config' && (
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+            {/* Preferences textarea */}
+            <div className="space-y-2">
+              <Label
+                htmlFor="schedule-preferences"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Preferences (optional)
+              </Label>
+              <Textarea
+                id="schedule-preferences"
+                className="text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border transition-colors resize-y min-h-[80px]"
+                placeholder="e.g. Termora prefers weekends. Keep Helena off Mondays. Aleah only after 16:30 on school days."
+                value={preferences}
+                onChange={(e) => setPreferences(e.target.value)}
+                maxLength={PREFS_MAX_LENGTH}
+                aria-describedby="schedule-preferences-counter"
+              />
+              <div
+                id="schedule-preferences-counter"
+                aria-live="polite"
+                aria-atomic="true"
+                className="text-[12px] text-muted-foreground min-h-[1em]"
+              >
+                {preferences.length > 0 && (
+                  <span className={preferences.length >= PREFS_WARN_THRESHOLD ? 'text-amber-600' : undefined}>
+                    {preferences.length} / {PREFS_MAX_LENGTH}
+                  </span>
+                )}
+              </div>
+            </div>
             {/* Section 1 — Employees */}
             <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-border/40 bg-muted/50 flex items-center justify-between">

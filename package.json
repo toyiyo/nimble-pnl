@@ -28,7 +28,8 @@
     "db:reset": "npm run env:setup && npx supabase db reset",
     "functions:serve": "npx supabase functions serve --env-file .env.local",
     "env:setup": "ln -sf ../../.env.local supabase/functions/.env",
-    "test:all": "npm run test && npm run test:db && npm run test:e2e"
+    "test:all": "npm run test && npm run test:db && npm run test:e2e",
+    "test:tz": "TZ=America/Chicago vitest run tests/unit/schedule-solver-tz.test.ts && TZ=Pacific/Auckland vitest run tests/unit/schedule-solver-tz.test.ts"
   },
   "dependencies": {
     "@aparajita/capacitor-biometric-auth": "^7.2.0",

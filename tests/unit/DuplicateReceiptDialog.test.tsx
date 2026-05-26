@@ -94,4 +94,14 @@ describe('DuplicateReceiptDialog', () => {
     renderDialog(true, { ...baseExisting, vendor_name: null });
     expect(screen.getByText(/unknown vendor/i)).toBeInTheDocument();
   });
+
+  it('renders an em-dash for the total when total_amount is null', () => {
+    renderDialog(true, { ...baseExisting, total_amount: null });
+    expect(screen.getByText(/—/)).toBeInTheDocument();
+  });
+
+  it('falls back to "an earlier date" when created_at cannot be parsed', () => {
+    renderDialog(true, { ...baseExisting, created_at: 'invalid-date' });
+    expect(screen.getByText(/an earlier date/i)).toBeInTheDocument();
+  });
 });

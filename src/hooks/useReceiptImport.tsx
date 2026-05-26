@@ -117,8 +117,8 @@ export const useReceiptImport = () => {
     restaurantId: string,
     hash: string,
   ): Promise<ReceiptImport | null> => {
-    const { data, error } = await (supabase
-      .from('receipt_imports') as any)
+    const { data, error } = await supabase
+      .from('receipt_imports' as any)
       .select('id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash')
       .eq('restaurant_id', restaurantId)
       .eq('file_hash', hash)

@@ -46,7 +46,7 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
   const processReceiptFile = async (file: File, force = false) => {
     setProcessingStep('upload');
 
-    const result = await uploadReceipt(file, force ? { force: true } : undefined);
+    const result = await uploadReceipt(file, { force });
     if (!result) return;
 
     if (result.kind === 'duplicate') {
@@ -207,7 +207,7 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
 
       {pendingDuplicate && (
         <DuplicateReceiptDialog
-          open={Boolean(pendingDuplicate)}
+          open={true}
           existing={pendingDuplicate.existing}
           onCancel={handleDuplicateCancel}
           onProceed={handleDuplicateProceed}

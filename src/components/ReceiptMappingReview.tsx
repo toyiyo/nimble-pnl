@@ -526,6 +526,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     );
   }
 
+  let semanticDupCreatedDisplay = 'an earlier date';
+  try {
+    if (semanticDup) semanticDupCreatedDisplay = format(new Date(semanticDup.created_at), 'MMM d, yyyy');
+  } catch { /* malformed date — keep fallback */ }
+
   return (
     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Receipt Image/PDF Column - Sticky with zoom/pan */}
@@ -646,10 +651,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                       ? `$${semanticDup.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                       : '—'}
                     {' on '}
-                    {(() => {
-                      try { return format(new Date(semanticDup.created_at), 'MMM d, yyyy'); }
-                      catch { return 'an earlier date'; }
-                    })()}
+                    {semanticDupCreatedDisplay}
                     {' · '}
                     <Link
                       to={`/receipt-import?receipt=${semanticDup.id}`}

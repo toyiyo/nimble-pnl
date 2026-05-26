@@ -121,6 +121,10 @@ export const useReceiptImport = () => {
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
 
+  // Note on `as any`: RECEIPT_IMPORT_COLUMNS includes `file_hash`, a column
+  // added by this feature's migration. Until the generated Supabase types
+  // are regenerated, the cast is required to suppress a column-not-in-schema
+  // type error. Remove once types are regenerated.
   const findDuplicateByHash = async (
     restaurantId: string,
     hash: string,
@@ -148,7 +152,7 @@ export const useReceiptImport = () => {
     total: number,
     excludeId: string,
   ): Promise<ReceiptImport | null> => {
-    const lower = (total - 0.01).toFixed(2);
+    const lower = Math.max(0, total - 0.01).toFixed(2);
     const upper = (total + 0.01).toFixed(2);
 
     const { data, error } = await supabase
@@ -204,9 +208,10 @@ export const useReceiptImport = () => {
         }
       }
 
-      const fileExt = file.name.split('.').pop();
+      const rawExt = file.name.split('.').pop();
+      const fileExt = (rawExt ?? '').replace(/[^a-zA-Z0-9]/g, '') || 'bin';
       const sanitizedBaseName = file.name
-        .replace(`.${fileExt}`, '')
+        .replace(`.${rawExt}`, '')
         .replace(/[^a-zA-Z0-9_-]/g, '_');
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/${finalFileName}`;
@@ -366,22 +371,19 @@ export const useReceiptImport = () => {
 
     try {
       const { data, error } = await supabase
-        .from('receipt_imports')
-        .select('*')
+        .from('receipt_imports' as any)
+        .select(RECEIPT_IMPORT_COLUMNS)
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
+      const rows = (data as unknown as ReceiptImport[] | null) ?? [];
       // Use proxy endpoint for all receipts to avoid Chrome blocking direct Supabase storage URLs
-      const receiptsWithProxyUrls = (data || []).map((receipt) => {
-        return {
-          ...receipt,
-          raw_file_url: buildProxyUrl(receipt.id),
-        };
-      });
-
-      return receiptsWithProxyUrls as ReceiptImport[];
+      return rows.map((receipt) => ({
+        ...receipt,
+        raw_file_url: buildProxyUrl(receipt.id),
+      }));
     } catch (error) {
       console.error('Error fetching receipt imports:', error);
       return [];
@@ -389,21 +391,22 @@ export const useReceiptImport = () => {
   };
 
   const getReceiptDetails = async (receiptId: string) => {
+    if (!selectedRestaurant?.restaurant_id) return null;
+
     try {
       const { data, error } = await supabase
-        .from('receipt_imports')
-        .select('*')
+        .from('receipt_imports' as any)
+        .select(RECEIPT_IMPORT_COLUMNS)
         .eq('id', receiptId)
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .single();
 
       if (error) throw error;
 
+      const receipt = data as unknown as ReceiptImport | null;
+      if (!receipt) return null;
       // Use proxy endpoint instead of direct signed URLs to avoid Chrome blocking
-      if (data) {
-        data.raw_file_url = buildProxyUrl(receiptId);
-      }
-
-      return data as ReceiptImport;
+      return { ...receipt, raw_file_url: buildProxyUrl(receiptId) };
     } catch (error) {
       console.error('Error fetching receipt details:', error);
       return null;

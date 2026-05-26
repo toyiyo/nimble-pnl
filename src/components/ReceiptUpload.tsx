@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { ImageCapture } from '@/components/ImageCapture';
-import { useReceiptImport } from '@/hooks/useReceiptImport';
 import { Upload, FileText, Camera } from 'lucide-react';
+import { ImageCapture } from '@/components/ImageCapture';
+import { DuplicateReceiptDialog } from '@/components/receipt/DuplicateReceiptDialog';
+import { useReceiptImport } from '@/hooks/useReceiptImport';
+import type { ReceiptImport } from '@/hooks/useReceiptImport';
 import { useToast } from '@/components/ui/use-toast';
 
 interface ReceiptUploadProps {
@@ -16,13 +18,16 @@ interface ReceiptUploadProps {
 export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed }) => {
   const [uploadMethod, setUploadMethod] = useState<'file' | 'camera'>('file');
   const [processingStep, setProcessingStep] = useState<'upload' | 'process' | 'complete'>('upload');
+  const [pendingDuplicate, setPendingDuplicate] = useState<{
+    file: File;
+    existing: ReceiptImport;
+  } | null>(null);
   const { uploadReceipt, processReceipt, isUploading, isProcessing } = useReceiptImport();
   const { toast } = useToast();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     await processReceiptFile(file);
   };
 
@@ -31,32 +36,41 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
     await processReceiptFile(file);
   };
 
-  const processReceiptFile = async (file: File) => {
+  const processReceiptFile = async (file: File, force = false) => {
     setProcessingStep('upload');
-    
-    // Upload the receipt
-    const result = await uploadReceipt(file);
+
+    const result = await uploadReceipt(file, force ? { force: true } : undefined);
     if (!result) return;
+
     if (result.kind === 'duplicate') {
+      // Defer dialog mount one tick so the keypress that confirmed the file
+      // picker (often Enter) settles before Radix's focus trap mounts.
+      setTimeout(() => setPendingDuplicate({ file, existing: result.existing }), 0);
       return;
     }
-    const receiptData = result.receipt;
 
     setProcessingStep('process');
-
-    // Process the receipt with AI
-    const processResult = await processReceipt(receiptData.id, file);
+    const processResult = await processReceipt(result.receipt.id, file);
     if (!processResult) return;
 
     setProcessingStep('complete');
-    
-    // Notify parent component
-    onReceiptProcessed(receiptData.id);
-    
+    onReceiptProcessed(result.receipt.id);
     toast({
       title: "Receipt Ready",
       description: "Your receipt has been processed and is ready for review",
     });
+  };
+
+  const handleDuplicateCancel = () => {
+    setPendingDuplicate(null);
+    setProcessingStep('upload');
+  };
+
+  const handleDuplicateProceed = async () => {
+    const pending = pendingDuplicate;
+    setPendingDuplicate(null);
+    if (!pending) return;
+    await processReceiptFile(pending.file, true);
   };
 
   const getProgressValue = () => {
@@ -80,108 +94,114 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
   const isProcessingActive = isUploading || isProcessing;
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Upload Receipt
-        </CardTitle>
-        <CardDescription>
-          Upload a receipt to automatically extract items and add them to your inventory
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Progress indicator */}
-        {isProcessingActive && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>{getProgressText()}</span>
-              <span>{getProgressValue()}%</span>
+    <>
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Upload Receipt
+          </CardTitle>
+          <CardDescription>
+            Upload a receipt to automatically extract items and add them to your inventory
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {isProcessingActive && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>{getProgressText()}</span>
+                <span>{getProgressValue()}%</span>
+              </div>
+              <Progress value={getProgressValue()} className="w-full" />
             </div>
-            <Progress value={getProgressValue()} className="w-full" />
-          </div>
-        )}
+          )}
 
-        {/* Upload method selection */}
-        <div className="flex gap-2">
-          <Button
-            variant={uploadMethod === 'file' ? 'default' : 'outline'}
-            onClick={() => setUploadMethod('file')}
-            className="flex-1"
-            disabled={isProcessingActive}
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Upload File
-          </Button>
-          <Button
-            variant={uploadMethod === 'camera' ? 'default' : 'outline'}
-            onClick={() => setUploadMethod('camera')}
-            className="flex-1"
-            disabled={isProcessingActive}
-          >
-            <Camera className="w-4 h-4 mr-2" />
-            Take Photo
-          </Button>
-        </div>
-
-        {/* File upload */}
-        {uploadMethod === 'file' && (
-          <div className="space-y-2">
-            <Label htmlFor="receipt-file">Select Receipt Image</Label>
-            <Input
-              id="receipt-file"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
-              onChange={handleFileUpload}
+          <div className="flex gap-2">
+            <Button
+              variant={uploadMethod === 'file' ? 'default' : 'outline'}
+              onClick={() => setUploadMethod('file')}
+              className="flex-1"
               disabled={isProcessingActive}
-              className="cursor-pointer"
-            />
-            <p className="text-sm text-muted-foreground">
-              Supports JPG, PNG, WEBP images, and PDF files up to 10MB
-            </p>
-          </div>
-        )}
-
-        {/* Camera capture */}
-        {uploadMethod === 'camera' && (
-          <div className="space-y-2">
-            <Label>Capture Receipt Photo</Label>
-            <ImageCapture
-              onImageCaptured={handleImageCapture}
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload File
+            </Button>
+            <Button
+              variant={uploadMethod === 'camera' ? 'default' : 'outline'}
+              onClick={() => setUploadMethod('camera')}
+              className="flex-1"
               disabled={isProcessingActive}
-              className="w-full"
-            />
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              Take Photo
+            </Button>
           </div>
-        )}
 
-        {/* Processing status */}
-        {isProcessingActive && (
-          <div className="bg-muted p-4 rounded-lg">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium">
-                {isUploading && 'Uploading your receipt...'}
-                {isProcessing && 'AI is reading your receipt...'}
-              </span>
+          {uploadMethod === 'file' && (
+            <div className="space-y-2">
+              <Label htmlFor="receipt-file">Select Receipt Image</Label>
+              <Input
+                id="receipt-file"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
+                onChange={handleFileUpload}
+                disabled={isProcessingActive}
+                className="cursor-pointer"
+              />
+              <p className="text-sm text-muted-foreground">
+                Supports JPG, PNG, WEBP images, and PDF files up to 10MB
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              This may take up to 30 seconds
-            </p>
-          </div>
-        )}
+          )}
 
-        {processingStep === 'complete' && (
-          <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium">Receipt processed successfully!</span>
+          {uploadMethod === 'camera' && (
+            <div className="space-y-2">
+              <Label>Capture Receipt Photo</Label>
+              <ImageCapture
+                onImageCaptured={handleImageCapture}
+                disabled={isProcessingActive}
+                className="w-full"
+              />
             </div>
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-              Review the extracted items and map them to your inventory
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+
+          {isProcessingActive && (
+            <div className="bg-muted p-4 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium">
+                  {isUploading && 'Uploading your receipt...'}
+                  {isProcessing && 'AI is reading your receipt...'}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                This may take up to 30 seconds
+              </p>
+            </div>
+          )}
+
+          {processingStep === 'complete' && (
+            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span className="text-sm font-medium">Receipt processed successfully!</span>
+              </div>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                Review the extracted items and map them to your inventory
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {pendingDuplicate && (
+        <DuplicateReceiptDialog
+          open={Boolean(pendingDuplicate)}
+          existing={pendingDuplicate.existing}
+          onCancel={handleDuplicateCancel}
+          onProceed={handleDuplicateProceed}
+        />
+      )}
+    </>
   );
 };

@@ -133,8 +133,11 @@ test.describe('Copy Week Shifts', () => {
       await page.waitForTimeout(300);
     }
 
-    // Click the target day in the calendar
-    const dayButton = dialog.getByRole('gridcell', { name: String(targetDay) }).first();
+    // Click the target day in the calendar.
+    // IMPORTANT: use exact:true — Playwright's `name` matcher is a substring match,
+    // so without it, single-digit days (e.g. "1") would also match outside-day cells
+    // like "31" or "11", which is the first DOM match and silently selects the wrong week.
+    const dayButton = dialog.getByRole('gridcell', { name: String(targetDay), exact: true }).first();
     await dayButton.click();
 
     // Target week info should appear (no existing shifts = fresh copy message)

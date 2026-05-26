@@ -2109,6 +2109,30 @@ export type Database = {
           },
         ]
       }
+      email_unsubscribes: {
+        Row: {
+          id: string
+          list: string
+          source: string | null
+          unsubscribed_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          list: string
+          source?: string | null
+          unsubscribed_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          list?: string
+          source?: string | null
+          unsubscribed_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       employee_availability: {
         Row: {
           created_at: string | null
@@ -4815,6 +4839,7 @@ export type Database = {
       receipt_imports: {
         Row: {
           created_at: string
+          file_hash: string | null
           file_name: string | null
           file_size: number | null
           id: string
@@ -4833,6 +4858,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          file_hash?: string | null
           file_name?: string | null
           file_size?: number | null
           id?: string
@@ -4851,6 +4877,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          file_hash?: string | null
           file_name?: string | null
           file_size?: number | null
           id?: string
@@ -8638,6 +8665,47 @@ export type Database = {
           },
         ]
       }
+      trial_emails_sent: {
+        Row: {
+          email_type: string
+          id: string
+          resend_message_id: string | null
+          restaurant_id: string
+          sent_at: string
+          trial_day_at_send: number
+          user_id: string
+          variant: string
+        }
+        Insert: {
+          email_type: string
+          id?: string
+          resend_message_id?: string | null
+          restaurant_id: string
+          sent_at?: string
+          trial_day_at_send: number
+          user_id: string
+          variant: string
+        }
+        Update: {
+          email_type?: string
+          id?: string
+          resend_message_id?: string | null
+          restaurant_id?: string
+          sent_at?: string
+          trial_day_at_send?: number
+          user_id?: string
+          variant?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trial_emails_sent_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       unified_sales: {
         Row: {
           adjustment_type: string | null
@@ -10171,6 +10239,10 @@ export type Database = {
         Args: { p_capability: string; p_restaurant_id: string }
         Returns: boolean
       }
+      user_has_restaurant_access: {
+        Args: { p_require_manager_role?: boolean; p_restaurant_id: string }
+        Returns: boolean
+      }
       user_has_role: {
         Args: { p_restaurant_id: string; p_roles: string[] }
         Returns: boolean
@@ -10182,6 +10254,18 @@ export type Database = {
       user_is_internal_team: {
         Args: { p_restaurant_id: string }
         Returns: boolean
+      }
+      users_in_trial_email_window: {
+        Args: never
+        Returns: {
+          activated: boolean
+          email: string
+          email_type: string
+          full_name: string
+          restaurant_id: string
+          trial_day: number
+          user_id: string
+        }[]
       }
       validate_split_config: {
         Args: { p_split_config: Json }

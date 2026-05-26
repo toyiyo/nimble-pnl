@@ -8,7 +8,7 @@ import { Upload, FileText, Camera } from 'lucide-react';
 import { ImageCapture } from '@/components/ImageCapture';
 import { DuplicateReceiptDialog } from '@/components/receipt/DuplicateReceiptDialog';
 import { useReceiptImport } from '@/hooks/useReceiptImport';
-import type { ReceiptImport } from '@/hooks/useReceiptImport';
+import type { ReceiptImport, UploadResult } from '@/hooks/useReceiptImport';
 import { useToast } from '@/components/ui/use-toast';
 
 interface ReceiptUploadProps {
@@ -46,7 +46,7 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
   const processReceiptFile = async (file: File, force = false) => {
     setProcessingStep('upload');
 
-    const result = await uploadReceipt(file, { force });
+    const result: UploadResult | null = await uploadReceipt(file, { force });
     if (!result) return;
 
     if (result.kind === 'duplicate') {

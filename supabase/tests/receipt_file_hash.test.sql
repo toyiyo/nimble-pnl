@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(15);
+SELECT plan(19);
 
 -- Column exists, correct type, nullable
 SELECT has_column('public', 'receipt_imports', 'file_hash', 'file_hash column should exist');
@@ -73,7 +73,9 @@ VALUES
   ('aaaaaaaa-0000-0000-0000-000000000001', 'owner-a@test.local',           '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated'),
   ('aaaaaaaa-0000-0000-0000-000000000002', 'manager-a@test.local',         '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated'),
   ('aaaaaaaa-0000-0000-0000-000000000003', 'chef-a@test.local',            '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated'),
-  ('aaaaaaaa-0000-0000-0000-000000000004', 'collab-inv-a@test.local',      '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated')
+  ('aaaaaaaa-0000-0000-0000-000000000004', 'collab-inv-a@test.local',      '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated'),
+  ('aaaaaaaa-0000-0000-0000-000000000005', 'staff-a@test.local',           '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated'),
+  ('aaaaaaaa-0000-0000-0000-000000000006', 'kiosk-a@test.local',           '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
@@ -81,7 +83,9 @@ VALUES
   ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'owner'),
   ('aaaaaaaa-0000-0000-0000-000000000002', '11111111-1111-1111-1111-111111111111', 'manager'),
   ('aaaaaaaa-0000-0000-0000-000000000003', '11111111-1111-1111-1111-111111111111', 'chef'),
-  ('aaaaaaaa-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'collaborator_inventory')
+  ('aaaaaaaa-0000-0000-0000-000000000004', '11111111-1111-1111-1111-111111111111', 'collaborator_inventory'),
+  ('aaaaaaaa-0000-0000-0000-000000000005', '11111111-1111-1111-1111-111111111111', 'staff'),
+  ('aaaaaaaa-0000-0000-0000-000000000006', '11111111-1111-1111-1111-111111111111', 'kiosk')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.receipt_imports (id, restaurant_id, status, file_hash, file_name)
@@ -124,6 +128,14 @@ SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000003'::uuid, '2
 -- collaborator_inventory: SELECT denied entirely
 SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000004'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 0, 'collaborator_inventory cannot SELECT own restaurant');
 SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000004'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'collaborator_inventory cannot SELECT other restaurant');
+
+-- staff: SELECT denied entirely
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000005'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 0, 'staff cannot SELECT own restaurant');
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000005'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'staff cannot SELECT other restaurant');
+
+-- kiosk: SELECT denied entirely
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000006'::uuid, '11111111-1111-1111-1111-111111111111'::uuid), 0, 'kiosk cannot SELECT own restaurant');
+SELECT is(pg_temp.visible_count('aaaaaaaa-0000-0000-0000-000000000006'::uuid, '22222222-2222-2222-2222-222222222222'::uuid), 0, 'kiosk cannot SELECT other restaurant');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -24,6 +24,9 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { buildReceiptReferencePattern } from '@/utils/receiptImportUtils';
 
+const normalizeDate = (d: string | null): string | null =>
+  d ? String(d).split('T')[0] : null;
+
 interface ReceiptMappingReviewProps {
   receiptId: string;
   onImportComplete: () => void;
@@ -144,9 +147,6 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
-  const normalizeDate = (d: string | null): string | null =>
-    d ? String(d).split('T')[0] : null;
-
   const restaurantId = selectedRestaurant?.restaurant_id;
   const semanticVendor = receiptDetails?.vendor_name ?? null;
   const semanticDate = normalizeDate(receiptDetails?.purchase_date ?? null);
@@ -172,9 +172,14 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   // Load data
   useEffect(() => {
-    setBannerDismissed(false);
     loadData();
   }, [receiptId]);
+
+  // Reset banner dismissal whenever the receipt or matched duplicate changes
+  // so a new warning surfaces instead of staying hidden from an earlier dismiss.
+  useEffect(() => {
+    setBannerDismissed(false);
+  }, [receiptId, semanticDup?.id]);
 
   const loadData = async () => {
     setLoading(true);

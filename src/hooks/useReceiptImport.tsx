@@ -133,6 +133,36 @@ export const useReceiptImport = () => {
     return (data as unknown as ReceiptImport | null) ?? null;
   };
 
+  const findSemanticDuplicate = async (
+    restaurantId: string,
+    vendor: string,
+    purchaseDate: string,
+    total: number,
+    excludeId: string,
+  ): Promise<ReceiptImport | null> => {
+    const lower = (total - 0.01).toFixed(2);
+    const upper = (total + 0.01).toFixed(2);
+
+    const { data, error } = await supabase
+      .from('receipt_imports' as any)
+      .select('id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash')
+      .eq('restaurant_id', restaurantId)
+      .ilike('vendor_name', vendor)
+      .eq('purchase_date', purchaseDate)
+      .gte('total_amount', lower)
+      .lte('total_amount', upper)
+      .neq('id', excludeId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('findSemanticDuplicate error:', error);
+      return null;
+    }
+    return (data as unknown as ReceiptImport | null) ?? null;
+  };
+
   const uploadReceipt = async (file: File) => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
@@ -857,6 +887,7 @@ export const useReceiptImport = () => {
     uploadReceipt,
     processReceipt,
     findDuplicateByHash,
+    findSemanticDuplicate,
     getReceiptImports,
     getReceiptDetails,
     getReceiptLineItems,

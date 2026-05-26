@@ -73,3 +73,81 @@ describe('useReceiptImport — findDuplicateByHash', () => {
     expect(dup).toEqual(existing);
   });
 });
+
+describe('useReceiptImport — findSemanticDuplicate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('filters by restaurant_id (eq), vendor (ilike), purchase_date (eq), total ±0.01 (gte/lte), excludeId (neq)', async () => {
+    const builder = makeSelectBuilder(null);
+    mockSupabase.from.mockReturnValue(builder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    await result.current.findSemanticDuplicate(
+      'rest-123',
+      'Sysco',
+      '2026-05-10',
+      1284.5,
+      'self-id',
+    );
+
+    expect(mockSupabase.from).toHaveBeenCalledWith('receipt_imports');
+    expect(builder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
+    expect(builder.ilike).toHaveBeenCalledWith('vendor_name', 'Sysco');
+    expect(builder.eq).toHaveBeenCalledWith('purchase_date', '2026-05-10');
+    expect(builder.gte).toHaveBeenCalledWith('total_amount', '1284.49');
+    expect(builder.lte).toHaveBeenCalledWith('total_amount', '1284.51');
+    expect(builder.neq).toHaveBeenCalledWith('id', 'self-id');
+    expect(builder.order).toHaveBeenCalledWith('created_at', { ascending: false });
+    expect(builder.limit).toHaveBeenCalledWith(1);
+  });
+
+  it('serializes the total to 2 decimal places (avoids float drift)', async () => {
+    const builder = makeSelectBuilder(null);
+    mockSupabase.from.mockReturnValue(builder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    await result.current.findSemanticDuplicate(
+      'rest-123',
+      'Sysco',
+      '2026-05-10',
+      0.1 + 0.2,
+      'self-id',
+    );
+
+    expect(builder.gte).toHaveBeenCalledWith('total_amount', '0.29');
+    expect(builder.lte).toHaveBeenCalledWith('total_amount', '0.31');
+  });
+
+  it('returns null when no semantic match exists', async () => {
+    const builder = makeSelectBuilder(null);
+    mockSupabase.from.mockReturnValue(builder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    const dup = await result.current.findSemanticDuplicate('rest-123', 'Sysco', '2026-05-10', 1284.5, 'self-id');
+
+    expect(dup).toBeNull();
+  });
+
+  it('returns the existing receipt when a match exists', async () => {
+    const existing = {
+      id: 'r-2',
+      restaurant_id: 'rest-123',
+      vendor_name: 'Sysco',
+      purchase_date: '2026-05-10',
+      total_amount: 1284.5,
+      created_at: '2026-05-09T00:00:00Z',
+      file_hash: null,
+    };
+    const builder = makeSelectBuilder(existing);
+    mockSupabase.from.mockReturnValue(builder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    const dup = await result.current.findSemanticDuplicate(
+      'rest-123', 'Sysco', '2026-05-10', 1284.5, 'self-id',
+    );
+
+    expect(dup).toEqual(existing);
+  });
+});

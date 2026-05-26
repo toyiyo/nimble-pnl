@@ -5,58 +5,41 @@ Design: `docs/superpowers/specs/2026-05-26-ai-chat-compensation-history-embed-de
 ## Tasks
 
 ### Task 1 — Vitest regression test (RED)
-**File:** `tests/unit/aiExecuteTool.employeeLaborColumns.test.ts`
+**File:** `tests/unit/employeeLaborColumns.test.ts`
 
 Write a failing test that:
-- Imports `EMPLOYEE_LABOR_COLUMNS` (will fail to compile — not yet exported).
-- Asserts the string contains the substring `compensation_history:employee_compensation_history(*)`.
-- Asserts no bare `compensation_history` token (regex `/(?:^|,\s*)compensation_history\s*(?:,|$)/`) appears.
-- Asserts the base-column tokens (split on `,`, strip whitespace, take everything before any `:`) exactly equal the snapshot of columns that exist on `employees`: `id, name, position, status, restaurant_id, compensation_type, hourly_rate, salary_amount, pay_period_type, contractor_payment_amount, contractor_payment_interval, daily_rate_amount, hire_date, termination_date, compensation_history`.
+- Imports `EMPLOYEE_LABOR_COLUMNS` (will fail to compile — not yet exported from a Vitest-importable module).
+- Asserts the projection uses the embed-alias form `compensation_history:employee_compensation_history(...)`.
+- Asserts no bare `compensation_history` token appears.
+- Asserts the consumed embed columns equal `effective_date, compensation_type, amount_cents, pay_period_type`.
+- Asserts the base-column tokens exactly equal the snapshot of columns that exist on `employees`.
 
-Run: `npm test -- tests/unit/aiExecuteTool.employeeLaborColumns.test.ts` — should fail to compile.
+Run: `npm test -- tests/unit/employeeLaborColumns.test.ts` — should fail to compile.
 
-### Task 2 — Export + fix the SELECT (GREEN)
-**File:** `supabase/functions/ai-execute-tool/index.ts`
+### Task 2 — Extract projection to `_shared/` + fix the SELECT (GREEN)
+**Files:**
+- `supabase/functions/_shared/employeeLaborColumns.ts` (new — pure module, no Deno imports, importable by Vitest)
+- `supabase/functions/ai-execute-tool/index.ts` (import from `_shared/`, remove local const)
 
-- Add `export` keyword to `EMPLOYEE_LABOR_COLUMNS`.
-- Replace the trailing bare `compensation_history` token with `compensation_history:employee_compensation_history(*)`.
+- Create the new shared module that exports `EMPLOYEE_LABOR_COLUMNS`.
+- Use the embed-alias form `compensation_history:employee_compensation_history(effective_date,compensation_type,amount_cents,pay_period_type)` so PostgREST resolves the FK and the payload stays narrow.
+- Update `ai-execute-tool/index.ts` to import from `_shared/` and delete the local constant.
 
-Re-run the test — should pass.
+Re-run the Vitest test — should pass.
 
 ### Task 3 — pgTAP regression test
 **File:** `supabase/tests/employee_compensation_history_embed.test.sql`
 
-pgTAP `BEGIN; SELECT plan(...); ... ROLLBACK;` block asserting:
+pgTAP `BEGIN; SELECT plan(2); ... ROLLBACK;` block asserting:
 
 1. `has_table('public', 'employee_compensation_history', 'table exists')`.
-2. `has_fk('public', 'employee_compensation_history', 'fk_employee_id', ...)` referencing `employees(id)`.
-3. Set up fixture: one restaurant, one owner user, one manager user, one staff user, one employee, two compensation history rows.
-4. With `request.jwt.claims` set to owner — query `employees` with `employee_compensation_history` as a side select (or via the PostgREST embed name) and assert both history rows return.
-5. With `request.jwt.claims` set to manager — same, assert both rows return.
-6. With `request.jwt.claims` set to staff — assert 0 history rows return (post-RLS-tighten).
+2. `fk_ok('public', 'employee_compensation_history', ARRAY['employee_id'], 'public', 'employees', ARRAY['id'], ...)` — pins the FK PostgREST follows for the embed.
 
-Fixture cleanup at end of `ROLLBACK`. RLS off inside the txn for setup, on for the assertion queries (use `SET LOCAL ROLE authenticated`).
+### Task 4 — RLS tighten migration (DEFERRED)
 
-### Task 4 — RLS tighten migration
-**File:** `supabase/migrations/20260526120000_tighten_compensation_history_select_rls.sql`
+The Phase 2.5 reviewer surfaced an RLS asymmetry on `employee_compensation_history` (INSERT/UPDATE gated to owner/manager, SELECT open to any restaurant member). We initially folded a tighten into this PR.
 
-```sql
-DROP POLICY IF EXISTS "Users can view employee_compensation_history for their restaurant"
-  ON public.employee_compensation_history;
-
-CREATE POLICY "Owners and managers can view employee_compensation_history"
-  ON public.employee_compensation_history FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_restaurants
-      WHERE user_restaurants.restaurant_id = employee_compensation_history.restaurant_id
-        AND user_restaurants.user_id = auth.uid()
-        AND user_restaurants.role IN ('owner', 'manager')
-    )
-  );
-```
-
-Re-run pgTAP: all 6 plan items should pass.
+Phase 7a security review showed the tighten would silently break `collaborator_accountant` on `/payroll` and `chef` on `/scheduling`, both of which legitimately read rates via `useEmployees`' embed. The right RLS posture needs its own design + per-role tests, so the migration was dropped from this PR. See the spec's "Defense-in-depth — DEFERRED" section.
 
 ### Task 5 — Local verify (Phase 8)
 ```
@@ -71,13 +54,13 @@ All must be green before push.
 
 ## Dependencies
 
-- Task 1 → Task 2 (test must exist before fix to follow TDD)
-- Task 3 + Task 4 are independent of Task 1/2 but Task 3's role-based assertion depends on Task 4's tighter policy
-- Build order: 1 → 2 → 4 → 3 → 5
+- Task 1 → Task 2 (test must exist before fix to follow TDD).
+- Task 3 is independent of Tasks 1/2 and runs against the existing schema.
+- Build order: 1 → 2 → 3 → 5.
 
 ## Out of scope
 
-- Live preview-deploy integration test
-- Narrowing the `(*)` embed projection
-- Code-generation type sync from DB schema
+- Live preview-deploy integration test.
+- Code-generation type sync from DB schema.
+- RLS posture redesign for `employee_compensation_history` (its own PR — see Task 4).
 - Other phantom-column references (if any) elsewhere in the edge-function corpus — grep confirms there are none on `employees`, but a sweep is a separate hardening PR.

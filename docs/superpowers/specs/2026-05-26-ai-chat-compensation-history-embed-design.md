@@ -57,13 +57,14 @@ The bug shipped because every existing unit test for `laborCalculations` builds 
 
 ### Layer 1 — Vitest string-shape contract
 
-Export `EMPLOYEE_LABOR_COLUMNS` from `ai-execute-tool/index.ts` and add `tests/unit/aiExecuteTool.employeeLaborColumns.test.ts`:
+Move the projection into a new shared module `supabase/functions/_shared/employeeLaborColumns.ts` (pure module, no Deno imports — importable by Vitest), and add `tests/unit/employeeLaborColumns.test.ts`:
 
-1. Asserts the projection includes `compensation_history:employee_compensation_history(*)` (positive contract — would fail if someone "simplifies" back to a bare column).
+1. Asserts the projection uses the embed-alias form `compensation_history:employee_compensation_history(...)` (positive contract — would fail if someone "simplifies" back to a bare column).
 2. Asserts no bare `compensation_history` token appears outside the embed.
-3. Snapshots the list of base-column tokens (everything before any `:`) against a hard-coded set of columns that actually exist on `employees` per the migrations.
+3. Asserts the embed columns exactly equal the four fields consumed by `resolveCompensationForDate` (`effective_date, compensation_type, amount_cents, pay_period_type`).
+4. Snapshots the list of base-column tokens (everything before any `:`) against a hard-coded set of columns that actually exist on `employees` per the migrations.
 
-This catches the specific bug (bare column reference) and drift in the base columns list, in unit-test time.
+This catches the specific bug (bare column reference) and drift in the base or embed column lists, in unit-test time.
 
 ### Layer 2 — pgTAP live-FK contract
 

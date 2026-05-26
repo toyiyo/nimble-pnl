@@ -172,6 +172,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   // Load data
   useEffect(() => {
+    setBannerDismissed(false);
     loadData();
   }, [receiptId]);
 

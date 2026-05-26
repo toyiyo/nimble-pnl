@@ -123,4 +123,41 @@ describe('ReceiptMappingReview — semantic duplicate banner', () => {
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
   });
+
+  it('re-shows the banner when receiptId changes (dismissal does not survive navigation)', async () => {
+    findSemanticDuplicate.mockResolvedValue({
+      id: 'r-prev',
+      vendor_name: 'Sysco',
+      total_amount: 1284.5,
+      purchase_date: '2026-05-10',
+      created_at: '2026-05-09T00:00:00Z',
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <ReceiptMappingReview receiptId="r-1" onImportComplete={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const banner = await screen.findByRole('status');
+    fireEvent.click(within(banner).getByRole('button', { name: /dismiss/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    rerender(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <ReceiptMappingReview receiptId="r-2" onImportComplete={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // After navigation, the banner should reappear (dismissal was per-receipt).
+    expect(await screen.findByRole('status')).toBeInTheDocument();
+  });
 });

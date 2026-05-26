@@ -46,13 +46,24 @@ export function calculateBreakEven(
   salesData: DailySalesEntry[],
   autoUtilityCosts: number,
   todayStr: string,
+  historyDays: number = 14,
 ): BreakEvenData {
+  // `salesData` covers the wider RPC window (rolling history ∪ MTD). For all
+  // legacy fields we restrict to the rolling-N-day slice so the chart, COGS%,
+  // daysAbove/Below counters stay anchored to the historyDays window.
+  const today = parseLocalDate(todayStr);
+  const rollingStart = format(
+    new Date(today.getFullYear(), today.getMonth(), today.getDate() - (historyDays - 1)),
+    'yyyy-MM-dd',
+  );
+  const rollingSales = salesData.filter((d) => d.date >= rollingStart && d.date <= todayStr);
+
   const avgDailySales =
-    salesData.length > 0
-      ? salesData.reduce((sum, d) => sum + d.netRevenue, 0) / salesData.length
+    rollingSales.length > 0
+      ? rollingSales.reduce((sum, d) => sum + d.netRevenue, 0) / rollingSales.length
       : 0;
 
-  const todaySalesEntry = salesData.find((d) => d.date === todayStr);
+  const todaySalesEntry = rollingSales.find((d) => d.date === todayStr);
   const todaySales = todaySalesEntry?.netRevenue ?? 0;
 
   const fixedItems: CostBreakdownItem[] = [];
@@ -127,7 +138,7 @@ export function calculateBreakEven(
   const todayDelta = todaySales - dailyBreakEven;
   const todayStatus = classifyDelta(todayDelta, dailyBreakEven);
 
-  const history = salesData.map((d) => {
+  const history = rollingSales.map((d) => {
     const delta = d.netRevenue - dailyBreakEven;
     return {
       date: d.date,
@@ -141,12 +152,11 @@ export function calculateBreakEven(
   const aboveDays = history.filter((h) => h.status === 'above');
   const belowDays = history.filter((h) => h.status === 'below');
 
-  // Month-to-date sales: slice of salesData where the date falls within the
-  // current calendar month (relative to `todayStr`). We intentionally use
-  // string-prefix comparison instead of full Date parsing so a row dated
+  // Month-to-date sales: slice of the (wider) salesData where the date falls
+  // within the current calendar month (relative to `todayStr`). We use a
+  // string-prefix comparison rather than full Date parsing so a row dated
   // "2026-05-01" is included whether or not its local-TZ midnight rounds back
   // a day.
-  const today = parseLocalDate(todayStr);
   const mtdPrefix = format(startOfMonth(today), 'yyyy-MM');
   const mtdSales = salesData
     .filter((d) => d.date.startsWith(mtdPrefix))

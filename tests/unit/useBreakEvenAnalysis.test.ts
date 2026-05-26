@@ -111,9 +111,11 @@ describe('useBreakEvenAnalysis', () => {
     });
 
     await waitFor(() => {
+      // RPC window is widened to cover MTD ∪ rolling. On Jan 20 2024 with
+      // historyDays=3, min(Jan 18, Jan 1) = Jan 1 (start-of-month wins).
       expect(mockSupabase.rpc).toHaveBeenCalledWith('get_daily_sales_totals', {
         p_restaurant_id: 'rest-123',
-        p_date_from: '2024-01-18', // today (Jan 20) minus (3-1) = Jan 18
+        p_date_from: '2024-01-01',
         p_date_to: '2024-01-20',
       });
     });

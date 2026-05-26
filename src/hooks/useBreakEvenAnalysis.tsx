@@ -139,8 +139,8 @@ export function useBreakEvenAnalysis(
       return null;
     }
     const todayStr = format(today, 'yyyy-MM-dd');
-    return calculateBreakEven(costs, salesData, autoUtilityCosts ?? 0, todayStr);
-  }, [restaurantId, costs, salesData, autoUtilityCosts, today]);
+    return calculateBreakEven(costs, salesData, autoUtilityCosts ?? 0, todayStr, historyDays);
+  }, [restaurantId, costs, salesData, autoUtilityCosts, today, historyDays]);
   
   return {
     data: breakEvenData,

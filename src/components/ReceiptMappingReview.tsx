@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,14 +15,17 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
 import { ReceiptStatusBar, ReceiptItemRow, ReceiptBatchActions } from '@/components/receipt';
 import { ReceiptImagePanel } from '@/components/receipt-import/ReceiptImagePanel';
-import { 
-  Package, CalendarIcon, 
-  AlertCircle, CheckCircle, ChevronDown, ChevronUp
+import {
+  Package, CalendarIcon,
+  AlertCircle, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, X
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { buildReceiptReferencePattern } from '@/utils/receiptImportUtils';
+
+const normalizeDate = (d: string | null): string | null =>
+  d ? String(d).split('T')[0] : null;
 
 interface ReceiptMappingReviewProps {
   receiptId: string;
@@ -135,10 +140,34 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const needsAttentionRef = React.useRef<HTMLDivElement>(null);
   
   const { selectedRestaurant } = useRestaurantContext();
-  const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems } = useReceiptImport();
+  const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems, findSemanticDuplicate } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { suppliers, createSupplier } = useSuppliers();
   const { toast } = useToast();
+
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const restaurantId = selectedRestaurant?.restaurant_id;
+  const semanticVendor = receiptDetails?.vendor_name ?? null;
+  const semanticDate = normalizeDate(receiptDetails?.purchase_date ?? null);
+  const semanticTotal = receiptDetails?.total_amount ?? null;
+
+  const { data: semanticDup, isLoading: semanticDupLoading } = useQuery({
+    queryKey: [
+      'receipt-semantic-duplicate',
+      restaurantId,
+      receiptId,
+      semanticVendor,
+      semanticDate,
+      semanticTotal,
+    ],
+    queryFn: () =>
+      findSemanticDuplicate(restaurantId!, semanticVendor!, semanticDate!, Number(semanticTotal), receiptId),
+    enabled: Boolean(restaurantId && receiptId && semanticVendor && semanticDate && semanticTotal != null),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
   const isPDF = receiptDetails?.file_name?.toLowerCase().endsWith('.pdf') || false;
   const isImported = receiptDetails?.status === 'imported';
@@ -147,6 +176,12 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   useEffect(() => {
     loadData();
   }, [receiptId]);
+
+  // Reset banner dismissal whenever the receipt or matched duplicate changes
+  // so a new warning surfaces instead of staying hidden from an earlier dismiss.
+  useEffect(() => {
+    setBannerDismissed(false);
+  }, [receiptId, semanticDup?.id]);
 
   const loadData = async () => {
     setLoading(true);
@@ -498,6 +533,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     );
   }
 
+  let semanticDupCreatedDisplay = 'an earlier date';
+  try {
+    if (semanticDup) semanticDupCreatedDisplay = format(new Date(semanticDup.created_at), 'MMM d, yyyy');
+  } catch { /* malformed date — keep fallback */ }
+
   return (
     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Receipt Image/PDF Column - Sticky with zoom/pan */}
@@ -593,6 +633,52 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
           />
 
           <Separator />
+
+          {/* Semantic Duplicate Banner */}
+          {semanticDupLoading ? (
+            <Skeleton
+              data-testid="semantic-dup-skeleton"
+              className="h-14 w-full rounded-xl"
+            />
+          ) : semanticDup && !bannerDismissed ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-between gap-3 p-3 rounded-xl bg-warning/10 border border-warning/20"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <AlertTriangle className="h-4 w-4 text-warning shrink-0" aria-hidden="true" />
+                <div className="text-[13px] text-foreground min-w-0">
+                  <div className="font-medium truncate">
+                    Similar receipt already uploaded
+                  </div>
+                  <div className="text-muted-foreground truncate">
+                    {semanticDup.vendor_name ?? 'Unknown vendor'} —{' '}
+                    {semanticDup.total_amount != null
+                      ? `$${semanticDup.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : '—'}
+                    {' on '}
+                    {semanticDupCreatedDisplay}
+                    {' · '}
+                    <Link
+                      to={`/receipt-import?receipt=${semanticDup.id}`}
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      View
+                    </Link>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Dismiss duplicate warning"
+                onClick={() => setBannerDismissed(true)}
+                className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
 
           {/* Needs Attention Section */}
           {tieredItems['needs-attention'].length > 0 && (

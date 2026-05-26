@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { calculateImportedTotal, calculateUnitPrice } from '@/utils/receiptImportUtils';
+import { sha256Hex } from '@/lib/fileHash';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -42,7 +43,12 @@ export interface ReceiptImport {
   updated_at: string;
   processed_by: string | null;
   purchase_date: string | null;
+  file_hash: string | null;
 }
+
+export type UploadResult =
+  | { kind: 'duplicate'; existing: ReceiptImport }
+  | { kind: 'uploaded'; receipt: ReceiptImport };
 
 export interface Supplier {
   id: string;
@@ -106,13 +112,73 @@ const normalizeUnit = (unit: string | null | undefined): string => {
   return unit;
 };
 
+const RECEIPT_IMPORT_COLUMNS =
+  'id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash';
+
 export const useReceiptImport = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
 
-  const uploadReceipt = async (file: File) => {
+  // Note on `as any`: RECEIPT_IMPORT_COLUMNS includes `file_hash`, a column
+  // added by this feature's migration. Until the generated Supabase types
+  // are regenerated, the cast is required to suppress a column-not-in-schema
+  // type error. Remove once types are regenerated.
+  const findDuplicateByHash = async (
+    restaurantId: string,
+    hash: string,
+  ): Promise<ReceiptImport | null> => {
+    const { data, error } = await supabase
+      .from('receipt_imports' as any)
+      .select(RECEIPT_IMPORT_COLUMNS)
+      .eq('restaurant_id', restaurantId)
+      .eq('file_hash', hash)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('findDuplicateByHash error:', error);
+      return null;
+    }
+    return (data as unknown as ReceiptImport | null) ?? null;
+  };
+
+  const findSemanticDuplicate = async (
+    restaurantId: string,
+    vendor: string,
+    purchaseDate: string,
+    total: number,
+    excludeId: string,
+  ): Promise<ReceiptImport | null> => {
+    const lower = Math.max(0, total - 0.01).toFixed(2);
+    const upper = (total + 0.01).toFixed(2);
+
+    const { data, error } = await supabase
+      .from('receipt_imports' as any)
+      .select(RECEIPT_IMPORT_COLUMNS)
+      .eq('restaurant_id', restaurantId)
+      .ilike('vendor_name', vendor.trim())
+      .eq('purchase_date', purchaseDate)
+      .gte('total_amount', lower)
+      .lte('total_amount', upper)
+      .neq('id', excludeId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('findSemanticDuplicate error:', error);
+      return null;
+    }
+    return (data as unknown as ReceiptImport | null) ?? null;
+  };
+
+  const uploadReceipt = async (
+    file: File,
+    options?: { force?: boolean },
+  ): Promise<UploadResult | null> => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
         title: "Error",
@@ -124,15 +190,33 @@ export const useReceiptImport = () => {
 
     setIsUploading(true);
     try {
-      // Sanitize filename to remove special characters
-      const fileExt = file.name.split('.').pop();
+      let fileHash: string | null = null;
+      try {
+        fileHash = await sha256Hex(file);
+      } catch (hashErr) {
+        console.error('sha256Hex failed; continuing without hash:', hashErr);
+        fileHash = null;
+      }
+
+      if (!options?.force && fileHash) {
+        const existing = await findDuplicateByHash(
+          selectedRestaurant.restaurant_id,
+          fileHash,
+        );
+        if (existing) {
+          return { kind: 'duplicate', existing };
+        }
+      }
+
+      const rawExt = file.name.split('.').pop();
+      const fileExt = (rawExt ?? '').replace(/[^a-zA-Z0-9]/g, '') || 'bin';
       const sanitizedBaseName = file.name
-        .replace(`.${fileExt}`, '')
-        .replace(/[^a-zA-Z0-9_-]/g, '_'); // Replace special chars with underscore
+        .replace(`.${rawExt}`, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/${finalFileName}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
+
+      const { error: uploadError } = await supabase.storage
         .from('receipt-images')
         .upload(filePath, file);
 
@@ -140,14 +224,14 @@ export const useReceiptImport = () => {
         throw uploadError;
       }
 
-      // Create receipt import record with just the file path (we'll generate signed URLs when displaying)
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipt_imports')
         .insert({
           restaurant_id: selectedRestaurant.restaurant_id,
-          raw_file_url: filePath, // Store path instead of public URL
+          raw_file_url: filePath,
           file_name: file.name,
           file_size: file.size,
+          file_hash: fileHash,
           status: 'uploaded'
         })
         .select()
@@ -157,13 +241,12 @@ export const useReceiptImport = () => {
         throw receiptError;
       }
 
-      // PDFs will be converted client-side when processing
       toast({
         title: "Success",
         description: "Receipt uploaded successfully",
       });
 
-      return receiptData;
+      return { kind: 'uploaded', receipt: receiptData as ReceiptImport };
     } catch (error) {
       console.error('Error uploading receipt:', error);
       toast({
@@ -288,22 +371,19 @@ export const useReceiptImport = () => {
 
     try {
       const { data, error } = await supabase
-        .from('receipt_imports')
-        .select('*')
+        .from('receipt_imports' as any)
+        .select(RECEIPT_IMPORT_COLUMNS)
         .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
+      const rows = (data as unknown as ReceiptImport[] | null) ?? [];
       // Use proxy endpoint for all receipts to avoid Chrome blocking direct Supabase storage URLs
-      const receiptsWithProxyUrls = (data || []).map((receipt) => {
-        return {
-          ...receipt,
-          raw_file_url: buildProxyUrl(receipt.id),
-        };
-      });
-
-      return receiptsWithProxyUrls as ReceiptImport[];
+      return rows.map((receipt) => ({
+        ...receipt,
+        raw_file_url: buildProxyUrl(receipt.id),
+      }));
     } catch (error) {
       console.error('Error fetching receipt imports:', error);
       return [];
@@ -311,21 +391,22 @@ export const useReceiptImport = () => {
   };
 
   const getReceiptDetails = async (receiptId: string) => {
+    if (!selectedRestaurant?.restaurant_id) return null;
+
     try {
       const { data, error } = await supabase
-        .from('receipt_imports')
-        .select('*')
+        .from('receipt_imports' as any)
+        .select(RECEIPT_IMPORT_COLUMNS)
         .eq('id', receiptId)
+        .eq('restaurant_id', selectedRestaurant.restaurant_id)
         .single();
 
       if (error) throw error;
 
+      const receipt = data as unknown as ReceiptImport | null;
+      if (!receipt) return null;
       // Use proxy endpoint instead of direct signed URLs to avoid Chrome blocking
-      if (data) {
-        data.raw_file_url = buildProxyUrl(receiptId);
-      }
-
-      return data as ReceiptImport;
+      return { ...receipt, raw_file_url: buildProxyUrl(receiptId) };
     } catch (error) {
       console.error('Error fetching receipt details:', error);
       return null;
@@ -835,6 +916,8 @@ export const useReceiptImport = () => {
   return {
     uploadReceipt,
     processReceipt,
+    findDuplicateByHash,
+    findSemanticDuplicate,
     getReceiptImports,
     getReceiptDetails,
     getReceiptLineItems,

@@ -642,10 +642,10 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
             <div
               role="status"
               aria-live="polite"
-              className="flex items-center justify-between gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20"
+              className="flex items-center justify-between gap-3 p-3 rounded-xl bg-warning/10 border border-warning/20"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" aria-hidden="true" />
+                <AlertTriangle className="h-4 w-4 text-warning shrink-0" aria-hidden="true" />
                 <div className="text-[13px] text-foreground min-w-0">
                   <div className="font-medium truncate">
                     Similar receipt already uploaded

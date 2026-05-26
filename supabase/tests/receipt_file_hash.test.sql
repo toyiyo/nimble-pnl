@@ -59,7 +59,8 @@ SELECT is(
 );
 
 -- ---------- RLS coverage ----------
--- Setup: two restaurants, four users (one per role) in restaurant A only.
+-- Setup: two restaurants, six users (one per role: owner, manager, chef,
+-- collaborator_inventory, staff, kiosk) in restaurant A only.
 -- Each role should SELECT only restaurant A's row, never restaurant B's.
 
 INSERT INTO public.restaurants (id, name)

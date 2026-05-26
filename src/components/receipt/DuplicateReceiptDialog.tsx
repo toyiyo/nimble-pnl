@@ -50,8 +50,8 @@ export function DuplicateReceiptDialog({
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
-              <AlertTriangle className="h-5 w-5 text-amber-600" />
+            <div className="h-10 w-10 rounded-xl bg-warning/10 flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-warning" />
             </div>
             <div>
               <DialogTitle className="text-[17px] font-semibold text-foreground">

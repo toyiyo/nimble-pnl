@@ -82,5 +82,26 @@ describe('ReceiptImport — deep-link initialization', () => {
     // The receipt review view should mount on first render — the upload card
     // (titled "Upload Receipt") should NOT appear first.
     expect(screen.queryByRole('tab', { name: /Upload Receipt/i })).not.toBeInTheDocument();
+
+    const review = screen.getByTestId('receipt-mapping-review');
+    expect(review).toBeInTheDocument();
+    expect(review).toHaveAttribute('data-receipt-id', 'r-deep');
+  });
+
+  it('renders the upload tab when no ?receipt= param is present', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/receipt-import']}>
+          <Routes>
+            <Route path="/receipt-import" element={<ReceiptImport />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole('tab', { name: /Upload Receipt/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('receipt-mapping-review')).not.toBeInTheDocument();
   });
 });

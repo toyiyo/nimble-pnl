@@ -90,10 +90,9 @@ export interface BreakEvenData {
   avgSurplus: number;
   avgShortfall: number;
 
-  // Month-to-date progress against the monthly break-even target.
-  // `null` when the hook has not yet derived it (loading) — the field is
-  // always present once `BreakEvenData` is materialised, but its `status`
-  // is `'no_target'` if `monthlyBreakEven` is 0 or non-finite.
+  // Month-to-date progress against the monthly break-even target. Always
+  // present once `BreakEvenData` is materialised; `status === 'no_target'`
+  // when `monthlyBreakEven` is 0 or non-finite.
   monthlyProgress: MonthlyProgress;
 }
 

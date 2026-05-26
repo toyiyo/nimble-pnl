@@ -131,7 +131,7 @@ export function MonthlyBreakEvenStrip({ progress, isLoading }: MonthlyBreakEvenS
         role="meter"
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={Math.round(progress.progressPercent)}
+        aria-valuenow={Math.round(progressDisplay)}
         aria-label={ariaLabel}
         className="relative h-2 rounded-full bg-muted overflow-visible"
       >

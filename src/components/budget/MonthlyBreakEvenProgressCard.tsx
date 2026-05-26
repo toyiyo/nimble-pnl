@@ -189,7 +189,7 @@ export function MonthlyBreakEvenProgressCard({
             role="meter"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={Math.round(progress.progressPercent)}
+            aria-valuenow={Math.round(progressDisplay)}
             aria-label={ariaLabel}
             className="relative h-3 rounded-full bg-muted overflow-visible"
           >

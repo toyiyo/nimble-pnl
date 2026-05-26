@@ -106,7 +106,7 @@ Move all the date / pace / projection math into this pure function so it's testa
 
 Layout (Apple/Notion vocabulary per CLAUDE.md):
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │  Monthly Break-Even Progress                                   │
 │  May 2026 · Day 26 of 31                                       │
@@ -155,7 +155,7 @@ States the component must handle (per CLAUDE.md):
 
 `src/components/dashboard/MonthlyBreakEvenStrip.tsx` — horizontal strip, fits one row alongside other dashboard widgets. Smaller, denser:
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────────────┐
 │ Monthly Break-Even · May 2026                              Ahead       │
 │  ████████████████████████████│ pace                                    │

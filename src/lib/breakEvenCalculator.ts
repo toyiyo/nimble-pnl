@@ -1,4 +1,14 @@
+import { startOfMonth, format } from 'date-fns';
 import type { OperatingCost, BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
+import { calculateMonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
+
+// Parse a `yyyy-MM-dd` string as local-zone midnight. `parseISO` reads bare
+// date strings as UTC, which shifts `.getDate()` back a day for restaurants
+// in negative UTC offsets — we want the calendar day the user typed.
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
 
 type BreakEvenStatus = 'above' | 'at' | 'below';
 
@@ -36,13 +46,24 @@ export function calculateBreakEven(
   salesData: DailySalesEntry[],
   autoUtilityCosts: number,
   todayStr: string,
+  historyDays: number = 14,
 ): BreakEvenData {
+  // `salesData` covers the wider RPC window (rolling history ∪ MTD). For all
+  // legacy fields we restrict to the rolling-N-day slice so the chart, COGS%,
+  // daysAbove/Below counters stay anchored to the historyDays window.
+  const today = parseLocalDate(todayStr);
+  const rollingStart = format(
+    new Date(today.getFullYear(), today.getMonth(), today.getDate() - (historyDays - 1)),
+    'yyyy-MM-dd',
+  );
+  const rollingSales = salesData.filter((d) => d.date >= rollingStart && d.date <= todayStr);
+
   const avgDailySales =
-    salesData.length > 0
-      ? salesData.reduce((sum, d) => sum + d.netRevenue, 0) / salesData.length
+    rollingSales.length > 0
+      ? rollingSales.reduce((sum, d) => sum + d.netRevenue, 0) / rollingSales.length
       : 0;
 
-  const todaySalesEntry = salesData.find((d) => d.date === todayStr);
+  const todaySalesEntry = rollingSales.find((d) => d.date === todayStr);
   const todaySales = todaySalesEntry?.netRevenue ?? 0;
 
   const fixedItems: CostBreakdownItem[] = [];
@@ -117,7 +138,7 @@ export function calculateBreakEven(
   const todayDelta = todaySales - dailyBreakEven;
   const todayStatus = classifyDelta(todayDelta, dailyBreakEven);
 
-  const history = salesData.map((d) => {
+  const history = rollingSales.map((d) => {
     const delta = d.netRevenue - dailyBreakEven;
     return {
       date: d.date,
@@ -130,6 +151,22 @@ export function calculateBreakEven(
 
   const aboveDays = history.filter((h) => h.status === 'above');
   const belowDays = history.filter((h) => h.status === 'below');
+
+  // Month-to-date sales: slice of the (wider) salesData where the date falls
+  // within the current calendar month (relative to `todayStr`). We use a
+  // string-prefix comparison rather than full Date parsing so a row dated
+  // "2026-05-01" is included whether or not its local-TZ midnight rounds back
+  // a day.
+  const mtdPrefix = format(startOfMonth(today), 'yyyy-MM');
+  const mtdSales = salesData
+    .filter((d) => d.date.startsWith(mtdPrefix))
+    .reduce((sum, d) => sum + d.netRevenue, 0);
+
+  const monthlyProgress = calculateMonthlyProgress({
+    monthlyBreakEven,
+    mtdSales,
+    today,
+  });
 
   return {
     dailyBreakEven,
@@ -162,5 +199,6 @@ export function calculateBreakEven(
       belowDays.length > 0
         ? belowDays.reduce((sum, h) => sum + h.delta, 0) / belowDays.length
         : 0,
+    monthlyProgress,
   };
 }

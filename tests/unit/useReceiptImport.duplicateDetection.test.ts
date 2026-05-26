@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useReceiptImport } from '@/hooks/useReceiptImport';
+import { sha256Hex } from '@/lib/fileHash';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
@@ -165,5 +166,93 @@ describe('useReceiptImport — findSemanticDuplicate', () => {
     );
 
     expect(dup).toEqual(existing);
+  });
+});
+
+describe('useReceiptImport — uploadReceipt duplicate handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockStorageOk() {
+    const upload = vi.fn().mockResolvedValue({ data: { path: 'rest-123/123-x.png' }, error: null });
+    mockSupabase.storage.from.mockReturnValue({ upload });
+    return upload;
+  }
+
+  function mockInsertOk(row: object) {
+    const builder = {
+      insert: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: row, error: null }),
+    };
+    return builder;
+  }
+
+  it('returns { kind: "duplicate", existing } when hash matches and force=false', async () => {
+    const file = new File(['hello'], 'r.png', { type: 'image/png' });
+    const expectedHash = await sha256Hex(file);
+
+    const existing = {
+      id: 'prev-id',
+      restaurant_id: 'rest-123',
+      file_hash: expectedHash,
+      vendor_name: 'Sysco',
+      total_amount: 1284.5,
+      purchase_date: '2026-05-10',
+      created_at: '2026-05-10T00:00:00Z',
+    };
+
+    const findBuilder = makeSelectBuilder(existing);
+    mockSupabase.from.mockReturnValue(findBuilder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    const res = await result.current.uploadReceipt(file);
+
+    expect(res).toEqual({ kind: 'duplicate', existing });
+    expect(mockSupabase.storage.from).not.toHaveBeenCalled();
+  });
+
+  it('returns { kind: "uploaded", receipt } when no hash match', async () => {
+    const file = new File(['hello'], 'r.png', { type: 'image/png' });
+    const expectedHash = await sha256Hex(file);
+    const newRow = { id: 'new-id', restaurant_id: 'rest-123', file_hash: expectedHash };
+
+    const findBuilder = makeSelectBuilder(null);
+    const insertBuilder = mockInsertOk(newRow);
+
+    mockSupabase.from
+      .mockReturnValueOnce(findBuilder)
+      .mockReturnValueOnce(insertBuilder);
+
+    const uploadFn = mockStorageOk();
+
+    const { result } = renderHook(() => useReceiptImport());
+    const res = await result.current.uploadReceipt(file);
+
+    expect(uploadFn).toHaveBeenCalled();
+    expect(insertBuilder.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        restaurant_id: 'rest-123',
+        file_hash: expectedHash,
+        status: 'uploaded',
+      }),
+    );
+    expect(res).toEqual({ kind: 'uploaded', receipt: newRow });
+  });
+
+  it('bypasses the hash check when force=true', async () => {
+    const file = new File(['hello'], 'r.png', { type: 'image/png' });
+    const expectedHash = await sha256Hex(file);
+    const newRow = { id: 'new-id', restaurant_id: 'rest-123', file_hash: expectedHash };
+
+    const insertBuilder = mockInsertOk(newRow);
+    mockSupabase.from.mockReturnValue(insertBuilder);
+    mockStorageOk();
+
+    const { result } = renderHook(() => useReceiptImport());
+    const res = await result.current.uploadReceipt(file, { force: true });
+
+    expect(res).toEqual({ kind: 'uploaded', receipt: newRow });
   });
 });

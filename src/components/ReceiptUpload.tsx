@@ -35,8 +35,13 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
     setProcessingStep('upload');
     
     // Upload the receipt
-    const receiptData = await uploadReceipt(file);
-    if (!receiptData) return;
+    const result = await uploadReceipt(file);
+    if (!result) return;
+    if (result.kind === 'duplicate') {
+      // Wired in Task 9 — duplicate dialog opens here. For now, no-op.
+      return;
+    }
+    const receiptData = result.receipt;
 
     setProcessingStep('process');
 

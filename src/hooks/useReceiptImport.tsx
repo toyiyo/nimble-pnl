@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { calculateImportedTotal, calculateUnitPrice } from '@/utils/receiptImportUtils';
+import { sha256Hex } from '@/lib/fileHash';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -166,7 +167,14 @@ export const useReceiptImport = () => {
     return (data as unknown as ReceiptImport | null) ?? null;
   };
 
-  const uploadReceipt = async (file: File) => {
+  type UploadResult =
+    | { kind: 'duplicate'; existing: ReceiptImport }
+    | { kind: 'uploaded'; receipt: ReceiptImport };
+
+  const uploadReceipt = async (
+    file: File,
+    options?: { force?: boolean },
+  ): Promise<UploadResult | null> => {
     if (!selectedRestaurant?.restaurant_id) {
       toast({
         title: "Error",
@@ -178,15 +186,32 @@ export const useReceiptImport = () => {
 
     setIsUploading(true);
     try {
-      // Sanitize filename to remove special characters
+      let fileHash: string | null = null;
+      try {
+        fileHash = await sha256Hex(file);
+      } catch (hashErr) {
+        console.error('sha256Hex failed; continuing without hash:', hashErr);
+        fileHash = null;
+      }
+
+      if (!options?.force && fileHash) {
+        const existing = await findDuplicateByHash(
+          selectedRestaurant.restaurant_id,
+          fileHash,
+        );
+        if (existing) {
+          return { kind: 'duplicate', existing };
+        }
+      }
+
       const fileExt = file.name.split('.').pop();
       const sanitizedBaseName = file.name
         .replace(`.${fileExt}`, '')
-        .replace(/[^a-zA-Z0-9_-]/g, '_'); // Replace special chars with underscore
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
       const finalFileName = `${Date.now()}-${sanitizedBaseName}.${fileExt}`;
       const filePath = `${selectedRestaurant.restaurant_id}/${finalFileName}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
+
+      const { error: uploadError } = await supabase.storage
         .from('receipt-images')
         .upload(filePath, file);
 
@@ -194,14 +219,14 @@ export const useReceiptImport = () => {
         throw uploadError;
       }
 
-      // Create receipt import record with just the file path (we'll generate signed URLs when displaying)
       const { data: receiptData, error: receiptError } = await supabase
         .from('receipt_imports')
         .insert({
           restaurant_id: selectedRestaurant.restaurant_id,
-          raw_file_url: filePath, // Store path instead of public URL
+          raw_file_url: filePath,
           file_name: file.name,
           file_size: file.size,
+          file_hash: fileHash,
           status: 'uploaded'
         })
         .select()
@@ -211,13 +236,12 @@ export const useReceiptImport = () => {
         throw receiptError;
       }
 
-      // PDFs will be converted client-side when processing
       toast({
         title: "Success",
         description: "Receipt uploaded successfully",
       });
 
-      return receiptData;
+      return { kind: 'uploaded', receipt: receiptData as ReceiptImport };
     } catch (error) {
       console.error('Error uploading receipt:', error);
       toast({

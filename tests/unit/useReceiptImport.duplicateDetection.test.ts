@@ -247,12 +247,14 @@ describe('useReceiptImport — uploadReceipt duplicate handling', () => {
     const newRow = { id: 'new-id', restaurant_id: 'rest-123', file_hash: expectedHash };
 
     const insertBuilder = mockInsertOk(newRow);
-    mockSupabase.from.mockReturnValue(insertBuilder);
+    mockSupabase.from.mockReturnValueOnce(insertBuilder);
     mockStorageOk();
 
     const { result } = renderHook(() => useReceiptImport());
     const res = await result.current.uploadReceipt(file, { force: true });
 
     expect(res).toEqual({ kind: 'uploaded', receipt: newRow });
+    expect(mockSupabase.from).toHaveBeenCalledTimes(1);
+    expect(mockSupabase.from).toHaveBeenCalledWith('receipt_imports');
   });
 });

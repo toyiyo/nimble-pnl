@@ -46,6 +46,10 @@ export interface ReceiptImport {
   file_hash: string | null;
 }
 
+export type UploadResult =
+  | { kind: 'duplicate'; existing: ReceiptImport }
+  | { kind: 'uploaded'; receipt: ReceiptImport };
+
 export interface Supplier {
   id: string;
   restaurant_id: string;
@@ -166,10 +170,6 @@ export const useReceiptImport = () => {
     }
     return (data as unknown as ReceiptImport | null) ?? null;
   };
-
-  type UploadResult =
-    | { kind: 'duplicate'; existing: ReceiptImport }
-    | { kind: 'uploaded'; receipt: ReceiptImport };
 
   const uploadReceipt = async (
     file: File,

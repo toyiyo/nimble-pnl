@@ -5,6 +5,7 @@ import { useOperatingCosts } from '@/hooks/useOperatingCosts';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { BreakEvenHeroCard } from '@/components/budget/BreakEvenHeroCard';
+import { MonthlyBreakEvenProgressCard } from '@/components/budget/MonthlyBreakEvenProgressCard';
 import { CostBlock } from '@/components/budget/CostBlock';
 import { CostItemDialog } from '@/components/budget/CostItemDialog';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
@@ -173,7 +174,13 @@ export default function BudgetRunRate() {
       
       {/* Hero: Daily Break-Even */}
       <BreakEvenHeroCard data={breakEvenData} isLoading={isLoading} />
-      
+
+      {/* Monthly progress vs break-even target */}
+      <MonthlyBreakEvenProgressCard
+        progress={breakEvenData?.monthlyProgress ?? null}
+        isLoading={isLoading}
+      />
+
       {/* Cost Structure Section */}
       <Card>
         <CardHeader>

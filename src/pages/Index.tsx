@@ -40,6 +40,7 @@ import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryC
 import { TopVendorsCard } from '@/components/dashboard/TopVendorsCard';
 import { CashFlowSankeyChart } from '@/components/dashboard/CashFlowSankeyChart';
 import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
+import { MonthlyBreakEvenStrip } from '@/components/dashboard/MonthlyBreakEvenStrip';
 import { useOpsInboxCount } from '@/hooks/useOpsInbox';
 import { useSubscription } from '@/hooks/useSubscription';
 import { isTransferCategoryType } from '@/lib/chartOfAccountsUtils';
@@ -683,6 +684,12 @@ const Index = () => {
                   historyDays: 14,
                 } : null}
                 breakEvenLoading={breakEvenLoading}
+              />
+
+              {/* Monthly break-even progress strip */}
+              <MonthlyBreakEvenStrip
+                progress={breakEvenData?.monthlyProgress ?? null}
+                isLoading={breakEvenLoading}
               />
 
               {/* Sales vs Break-Even Chart */}

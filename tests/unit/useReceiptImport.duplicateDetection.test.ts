@@ -103,6 +103,22 @@ describe('useReceiptImport — findSemanticDuplicate', () => {
     expect(builder.limit).toHaveBeenCalledWith(1);
   });
 
+  it('trims surrounding whitespace from the vendor before ilike', async () => {
+    const builder = makeSelectBuilder(null);
+    mockSupabase.from.mockReturnValue(builder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    await result.current.findSemanticDuplicate(
+      'rest-123',
+      '  Sysco  ',
+      '2026-05-10',
+      1284.5,
+      'self-id',
+    );
+
+    expect(builder.ilike).toHaveBeenCalledWith('vendor_name', 'Sysco');
+  });
+
   it('serializes the total to 2 decimal places (avoids float drift)', async () => {
     const builder = makeSelectBuilder(null);
     mockSupabase.from.mockReturnValue(builder);

@@ -107,6 +107,9 @@ const normalizeUnit = (unit: string | null | undefined): string => {
   return unit;
 };
 
+const RECEIPT_IMPORT_COLUMNS =
+  'id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash';
+
 export const useReceiptImport = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -119,7 +122,7 @@ export const useReceiptImport = () => {
   ): Promise<ReceiptImport | null> => {
     const { data, error } = await supabase
       .from('receipt_imports' as any)
-      .select('id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash')
+      .select(RECEIPT_IMPORT_COLUMNS)
       .eq('restaurant_id', restaurantId)
       .eq('file_hash', hash)
       .order('created_at', { ascending: false })
@@ -145,9 +148,9 @@ export const useReceiptImport = () => {
 
     const { data, error } = await supabase
       .from('receipt_imports' as any)
-      .select('id, restaurant_id, vendor_name, supplier_id, raw_file_url, file_name, file_size, processed_at, status, total_amount, imported_total, raw_ocr_data, created_at, updated_at, processed_by, purchase_date, file_hash')
+      .select(RECEIPT_IMPORT_COLUMNS)
       .eq('restaurant_id', restaurantId)
-      .ilike('vendor_name', vendor)
+      .ilike('vendor_name', vendor.trim())
       .eq('purchase_date', purchaseDate)
       .gte('total_amount', lower)
       .lte('total_amount', upper)

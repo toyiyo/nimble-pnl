@@ -1,6 +1,6 @@
 -- supabase: no-transaction
 --
--- Split from 20260524120000_add_file_hash_to_receipt_imports.sql because
+-- Split from 20260524120050_add_file_hash_to_receipt_imports.sql because
 -- CREATE INDEX CONCURRENTLY cannot run inside a transaction.
 -- Precedent: supabase/migrations/20260521133931_bulk_set_employee_availability_index.sql
 --

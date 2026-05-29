@@ -21,6 +21,7 @@ import type { MinCrew } from '@/types/scheduling';
 
 import { StaffingDayColumn } from './StaffingDayColumn';
 import { StaffingConfigPanel } from './StaffingConfigPanel';
+import { SuggestedShifts } from './SuggestedShifts';
 
 interface StaffingOverlayProps {
   restaurantId: string;
@@ -183,7 +184,7 @@ export function StaffingOverlay({
   restaurantId,
   weekDays,
 }: Readonly<StaffingOverlayProps>) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const { toast } = useToast();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mixed types for settings overrides
   const [localSettings, setLocalSettings] = useState<Record<string, any> | null>(null);
@@ -240,6 +241,12 @@ export function StaffingOverlay({
     const laborPct = totalSales > 0 ? (totalLabor / totalSales) * 100 : 0;
     return { totalSales, totalLabor, peakStaff, laborPct };
   }, [daySuggestions]);
+
+  // Aggregate shift blocks from all days for SuggestedShifts
+  const allShiftBlocks = useMemo(
+    () => [...daySuggestions.values()].flatMap((s) => s.shiftBlocks),
+    [daySuggestions],
+  );
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -373,6 +380,16 @@ export function StaffingOverlay({
                     </span>
                   </div>
                 </div>
+              )}
+
+              {/* Suggested shift blocks — rendered whenever there is sales data */}
+              {hasSalesData && (
+                <SuggestedShifts
+                  blocks={allShiftBlocks}
+                  minCrew={activeSettings.min_crew}
+                  restaurantId={restaurantId}
+                  openShiftsEnabled={activeSettings.open_shifts_enabled}
+                />
               )}
             </>
           )}

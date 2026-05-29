@@ -31,14 +31,15 @@ export const ReactivateEmployeeDialog = ({
 
   const reactivateMutation = useReactivateEmployee();
 
-  // Initialize form when employee changes
+  const resetForm = () => {
+    setHourlyRate('');
+    setUpdateRate(false);
+  };
+
+  // Pre-fill the rate field whenever the dialog opens for a different employee
   useEffect(() => {
     if (employee && open) {
-      // Pre-fill with current rate
-      const currentRate = employee.hourly_rate
-        ? (employee.hourly_rate / 100).toFixed(2)
-        : '';
-      setHourlyRate(currentRate);
+      setHourlyRate(employee.hourly_rate ? (employee.hourly_rate / 100).toFixed(2) : '');
       setUpdateRate(false);
     }
   }, [employee, open]);
@@ -51,16 +52,11 @@ export const ReactivateEmployeeDialog = ({
       : undefined;
 
     reactivateMutation.mutate(
-      {
-        employeeId: employee.id,
-        hourlyRate: newRate,
-      },
+      { employeeId: employee.id, hourlyRate: newRate },
       {
         onSuccess: () => {
           onOpenChange(false);
-          // Reset form
-          setHourlyRate('');
-          setUpdateRate(false);
+          resetForm();
         },
       }
     );
@@ -68,8 +64,7 @@ export const ReactivateEmployeeDialog = ({
 
   const handleCancel = () => {
     onOpenChange(false);
-    setHourlyRate('');
-    setUpdateRate(false);
+    resetForm();
   };
 
   if (!employee) return null;

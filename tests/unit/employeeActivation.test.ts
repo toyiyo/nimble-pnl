@@ -373,7 +373,6 @@ describe('Employee Activation Status', () => {
       result.current.mutate({
         employeeId: 'emp-3',
         hourlyRate: 1500, // $15.00 in cents
-        confirmPin: true,
       });
 
       await waitFor(() => {
@@ -422,7 +421,6 @@ describe('Employee Activation Status', () => {
       result.current.mutate({
         employeeId: 'emp-4',
         hourlyRate: 1800,
-        confirmPin: true,
       });
 
       await waitFor(() => {
@@ -435,6 +433,7 @@ describe('Employee Activation Status', () => {
         );
       });
     });
+
   });
 
   describe('Employee filtering utilities', () => {

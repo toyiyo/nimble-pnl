@@ -29,20 +29,19 @@ export const ReactivateEmployeeDialog = ({
 }: ReactivateEmployeeDialogProps) => {
   const [hourlyRate, setHourlyRate] = useState('');
   const [updateRate, setUpdateRate] = useState(false);
-  const [confirmPin, setConfirmPin] = useState(true);
-  
+
   const reactivateMutation = useReactivateEmployee();
 
-  // Initialize form when employee changes
+  const resetForm = () => {
+    setHourlyRate('');
+    setUpdateRate(false);
+  };
+
+  // Pre-fill the rate field whenever the dialog opens for a different employee
   useEffect(() => {
     if (employee && open) {
-      // Pre-fill with current rate
-      const currentRate = employee.hourly_rate
-        ? (employee.hourly_rate / 100).toFixed(2)
-        : '';
-      setHourlyRate(currentRate);
+      setHourlyRate(employee.hourly_rate ? (employee.hourly_rate / 100).toFixed(2) : '');
       setUpdateRate(false);
-      setConfirmPin(true);
     }
   }, [employee, open]);
 
@@ -54,18 +53,11 @@ export const ReactivateEmployeeDialog = ({
       : undefined;
 
     reactivateMutation.mutate(
-      {
-        employeeId: employee.id,
-        hourlyRate: newRate,
-        confirmPin,
-      },
+      { employeeId: employee.id, hourlyRate: newRate },
       {
         onSuccess: () => {
           onOpenChange(false);
-          // Reset form
-          setHourlyRate('');
-          setUpdateRate(false);
-          setConfirmPin(true);
+          resetForm();
         },
       }
     );
@@ -73,9 +65,7 @@ export const ReactivateEmployeeDialog = ({
 
   const handleCancel = () => {
     onOpenChange(false);
-    setHourlyRate('');
-    setUpdateRate(false);
-    setConfirmPin(true);
+    resetForm();
   };
 
   if (!employee) return null;
@@ -86,76 +76,88 @@ export const ReactivateEmployeeDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+      <DialogContent className="max-w-[500px] max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
-              <RotateCcw className="h-5 w-5 text-green-600" />
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <RotateCcw className="h-5 w-5 text-foreground" />
             </div>
             <div>
-              <DialogTitle>Reactivate Employee</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">
+                Reactivate Employee
+              </DialogTitle>
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 Reactivate {employee.name}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="px-6 py-5 space-y-5">
           {/* Info Alert */}
           <Alert>
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              The employee will be able to log in, punch in/out, and be scheduled for shifts.
+            <CheckCircle className="h-4 w-4" aria-hidden="true" />
+            <AlertDescription className="text-[13px]">
+              The employee will be able to log in, punch in/out (including with their existing kiosk PIN), and be scheduled for shifts.
             </AlertDescription>
           </Alert>
 
           {/* Employee Info */}
-          <div className="rounded-lg bg-muted p-4 space-y-2">
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-muted-foreground">Position:</span>
-                <p className="font-medium">{employee.position}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Current Rate:</span>
-                <p className="font-medium">{currentRateDisplay}</p>
-              </div>
-              {employee.deactivation_reason && (
-                <div className="col-span-2">
-                  <span className="text-muted-foreground">Deactivation Reason:</span>
-                  <p className="font-medium capitalize">{employee.deactivation_reason.replace('_', ' ')}</p>
+          <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+            <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+              <h3 className="text-[13px] font-semibold text-foreground">Employee Details</h3>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Position</span>
+                  <p className="text-[14px] font-medium text-foreground mt-0.5">{employee.position}</p>
                 </div>
-              )}
+                <div>
+                  <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Current Rate</span>
+                  <p className="text-[14px] font-medium text-foreground mt-0.5">{currentRateDisplay}</p>
+                </div>
+                {employee.deactivation_reason && (
+                  <div className="col-span-2">
+                    <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Deactivation Reason</span>
+                    <p className="text-[14px] font-medium text-foreground mt-0.5 capitalize">{employee.deactivation_reason.replace(/_/g, ' ')}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Update Rate Option */}
-          <div className="space-y-3 pt-2 border-t">
-            <div className="flex items-start space-x-3">
+          <div className="space-y-4 pt-1 border-t border-border/40">
+            <div className="flex items-start space-x-3 pt-4">
               <Checkbox
                 id="update-rate"
                 checked={updateRate}
                 onCheckedChange={(checked) => setUpdateRate(checked as boolean)}
               />
-              <div className="grid gap-1.5 leading-none flex-1">
+              <div className="grid gap-1 leading-none flex-1">
                 <Label
                   htmlFor="update-rate"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  className="text-[14px] font-medium text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                 >
                   Update hourly rate
                 </Label>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-[13px] text-muted-foreground">
                   Set a new rate for this employee (optional)
                 </p>
               </div>
             </div>
 
             {updateRate && (
-              <div className="ml-8 space-y-2">
-                <Label htmlFor="new-rate">New Hourly Rate</Label>
+              <div className="ml-7 space-y-2">
+                <Label
+                  htmlFor="new-rate"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  New Hourly Rate
+                </Label>
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">$</span>
+                  <span className="text-[14px] text-muted-foreground">$</span>
                   <Input
                     id="new-rate"
                     type="number"
@@ -164,56 +166,36 @@ export const ReactivateEmployeeDialog = ({
                     placeholder="15.00"
                     value={hourlyRate}
                     onChange={(e) => setHourlyRate(e.target.value)}
-                    className="max-w-[150px]"
+                    className="max-w-[150px] h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
-                  <span className="text-sm text-muted-foreground">/hour</span>
+                  <span className="text-[13px] text-muted-foreground">/hour</span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* PIN Confirmation */}
-          <div className="space-y-3 pt-2 border-t">
-            <div className="flex items-start space-x-3">
-              <Checkbox
-                id="confirm-pin"
-                checked={confirmPin}
-                onCheckedChange={(checked) => setConfirmPin(checked as boolean)}
-              />
-              <div className="grid gap-1.5 leading-none">
-                <Label
-                  htmlFor="confirm-pin"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  Enable kiosk PIN
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Allow employee to punch in/out using their existing PIN
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* Info Section */}
           <Alert variant="default">
-            <Info className="h-4 w-4" />
-            <AlertDescription className="text-sm">
+            <Info className="h-4 w-4" aria-hidden="true" />
+            <AlertDescription className="text-[13px]">
               <strong>Note:</strong> You can adjust roles, permissions, and other settings after reactivation in the employee profile.
             </AlertDescription>
           </Alert>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="px-6 pb-6 pt-0">
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={handleCancel}
             disabled={reactivateMutation.isPending}
+            className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
           >
             Cancel
           </Button>
           <Button
             onClick={handleReactivate}
             disabled={reactivateMutation.isPending || (updateRate && !hourlyRate)}
+            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
             {reactivateMutation.isPending ? 'Reactivating...' : 'Reactivate Employee'}
           </Button>

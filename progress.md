@@ -103,3 +103,19 @@ All hard dependencies met. codex and Sonar absent (non-blocking warnings).
   - `tests/unit/StaffingOverlay.wiring.test.tsx` (modified) — added `MemoryRouter` to wrapper (required after `<Link>` added to component).
 - **TDD cycle:** RED (5 new tests fail — missing empty state, missing explainer, missing Retry) → GREEN (all 7 pass after implementation) → REFACTOR (typecheck clean, added MemoryRouter to both test wrappers) → COMMIT
 - **Full suite:** 323 test files pass (4315 tests)
+
+---
+
+## Phase: 5 (UI Review) — COMPLETED
+
+**Date:** 2026-05-28
+
+### Files reviewed
+- `src/components/scheduling/ShiftPlanner/ApplyShiftsDialog.tsx` — PASS (dialog structure, tokens, a11y all correct)
+- `src/components/scheduling/ShiftPlanner/SuggestedShifts.tsx` — FIXED: primary button changed from `h-8 px-3 text-[12px]` to `h-9 px-4 text-[13px]` per CLAUDE.md primary button spec
+- `src/components/scheduling/ShiftPlanner/StaffingConfigPanel.tsx` — FIXED: Minimum Crew outer container changed from `rounded-lg` to `rounded-xl` per CLAUDE.md card/container convention
+- `src/components/scheduling/ShiftPlanner/StaffingOverlay.tsx` — PASS (three-state rendering correct, semantic tokens, a11y)
+
+### Commit
+- `e09c316f` — style(staffing): fix UI guideline violations from Phase 5 review
+

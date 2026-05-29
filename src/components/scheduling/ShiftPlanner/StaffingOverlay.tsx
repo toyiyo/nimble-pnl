@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 
+import { Link } from 'react-router-dom';
+
 import { useQuery } from '@tanstack/react-query';
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -67,7 +69,7 @@ function useWeekStaffingSuggestions(
     };
   }, [activeSettings.lookback_weeks]);
 
-  const { data: allSales, isLoading: salesLoading, error: salesError } = useQuery({
+  const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery({
     queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -169,6 +171,7 @@ function useWeekStaffingSuggestions(
     daySuggestions,
     isLoading: settingsLoading || salesLoading,
     error: salesError,
+    refetch: refetchSales,
     hasSalesData: (allSales?.length ?? 0) > 0,
     hasHourlyBreakdown,
     effectiveSettings,
@@ -193,6 +196,7 @@ export function StaffingOverlay({
     daySuggestions,
     isLoading,
     error,
+    refetch,
     hasSalesData,
     hasHourlyBreakdown,
     activeSettings,
@@ -282,6 +286,13 @@ export function StaffingOverlay({
             <div className="px-4 py-6 flex items-center gap-2 text-[13px] text-muted-foreground">
               <AlertCircle className="h-4 w-4 text-destructive" />
               <span>Failed to load sales data. Try again later.</span>
+              <button
+                onClick={() => refetch()}
+                className="ml-2 text-[13px] font-medium text-foreground underline"
+                aria-label="Retry"
+              >
+                Retry
+              </button>
             </div>
           ) : (
             <>
@@ -296,67 +307,82 @@ export function StaffingOverlay({
                 lookbackWeeks={activeSettings.lookback_weeks}
               />
 
-              {/* How it works explainer */}
-              {hasSalesData && (
-                <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/40 bg-blue-500/5">
-                  <Info className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                  <div className="text-[12px] text-muted-foreground leading-relaxed">
-                    <span className="font-medium text-foreground">How this works:</span>{' '}
-                    We look at your last {activeSettings.lookback_weeks} weeks of sales for each day of the week.{' '}
-                    {hasHourlyBreakdown
-                      ? 'Each bar shows the recommended number of staff for that hour based on your sales history.'
-                      : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am–10pm). The actual busy and slow hours may vary.'
-                    }{' '}
-                    Staff per hour = projected sales ÷ ${activeSettings.target_splh} target.{' '}
-                    {(() => {
-                      const crewFloor = computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff);
-                      if (activeSettings.min_crew && Object.keys(activeSettings.min_crew).length > 0) {
-                        return `Your minimum crew (${Object.entries(activeSettings.min_crew).map(([pos, n]) => `${n} ${pos}`).join(', ')}) sets a floor of ${crewFloor} staff per hour. `;
-                      }
-                      if (crewFloor > 1) {
-                        return `A minimum of ${crewFloor} staff is always shown. `;
-                      }
-                      return null;
-                    })()}
-                    Amber bars mean labor cost exceeds your {activeSettings.target_labor_pct}% target.
-                  </div>
+              {/* How it works explainer — always visible so it educates even with no data */}
+              <div className="flex items-start gap-2 px-4 py-2.5 border-b border-border/40 bg-blue-500/5">
+                <Info className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                <div className="text-[12px] text-muted-foreground leading-relaxed">
+                  <span className="font-medium text-foreground">How this works:</span>{' '}
+                  We look at your last {activeSettings.lookback_weeks} weeks of sales for each day of the week.{' '}
+                  {hasHourlyBreakdown
+                    ? 'Each bar shows the recommended number of staff for that hour based on your sales history.'
+                    : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am–10pm). The actual busy and slow hours may vary.'
+                  }{' '}
+                  Staff per hour = projected sales ÷ ${activeSettings.target_splh} target.{' '}
+                  {(() => {
+                    const crewFloor = computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff);
+                    if (activeSettings.min_crew && Object.keys(activeSettings.min_crew).length > 0) {
+                      return `Your minimum crew (${Object.entries(activeSettings.min_crew).map(([pos, n]) => `${n} ${pos}`).join(', ')}) sets a floor of ${crewFloor} staff per hour. `;
+                    }
+                    if (crewFloor > 1) {
+                      return `A minimum of ${crewFloor} staff is always shown. `;
+                    }
+                    return null;
+                  })()}
+                  Amber bars mean labor cost exceeds your {activeSettings.target_labor_pct}% target.
+                </div>
+              </div>
+
+              {/* No-data empty state — shown when there is no sales history yet */}
+              {!hasSalesData && (
+                <div className="px-4 py-6 text-center space-y-2">
+                  <p className="text-[13px] text-muted-foreground">
+                    Staffing suggestions need sales history. Connect your POS or enter sales to see recommendations.
+                  </p>
+                  <Link
+                    to="/integrations"
+                    className="text-[13px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Connect your POS
+                  </Link>
                 </div>
               )}
 
-              {/* Day columns grid — matches TemplateGrid layout */}
-              <div className="grid grid-cols-[56px_repeat(7,1fr)] md:grid-cols-[200px_repeat(7,1fr)] min-w-[560px] md:min-w-[1000px]">
-                <div className="px-1 md:px-3 py-2 flex flex-col justify-center gap-1">
-                  <span className="text-[10px] md:text-[12px] font-medium text-muted-foreground uppercase tracking-wider hidden md:block">
-                    Staff per Hour
-                  </span>
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block md:hidden">
-                    Staff
-                  </span>
-                  <div className="hidden md:flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <div className="h-[8px] w-[14px] rounded-sm bg-blue-500/20 border border-blue-500/30" />
-                      <span className="text-[10px] text-muted-foreground">On target</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="h-[8px] w-[14px] rounded-sm bg-amber-500/30 border border-amber-500/40" />
-                      <span className="text-[10px] text-muted-foreground">Over budget</span>
+              {/* Day columns grid — matches TemplateGrid layout (gated on hasSalesData) */}
+              {hasSalesData && (
+                <div className="grid grid-cols-[56px_repeat(7,1fr)] md:grid-cols-[200px_repeat(7,1fr)] min-w-[560px] md:min-w-[1000px]">
+                  <div className="px-1 md:px-3 py-2 flex flex-col justify-center gap-1">
+                    <span className="text-[10px] md:text-[12px] font-medium text-muted-foreground uppercase tracking-wider hidden md:block">
+                      Staff per Hour
+                    </span>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block md:hidden">
+                      Staff
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <div className="h-[8px] w-[14px] rounded-sm bg-blue-500/20 border border-blue-500/30" />
+                        <span className="text-[10px] text-muted-foreground">On target</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="h-[8px] w-[14px] rounded-sm bg-amber-500/30 border border-amber-500/40" />
+                        <span className="text-[10px] text-muted-foreground">Over budget</span>
+                      </div>
                     </div>
                   </div>
+                  {weekDays.map((day) => {
+                    const daySugg = daySuggestions.get(day);
+                    return (
+                      <StaffingDayColumn
+                        key={day}
+                        day={day}
+                        recommendations={daySugg?.recommendations ?? []}
+                        peakStaff={summary.peakStaff}
+                        hasSalesData={hasSalesData && (daySugg?.recommendations.length ?? 0) > 0}
+                        hasHourlyBreakdown={hasHourlyBreakdown}
+                      />
+                    );
+                  })}
                 </div>
-                {weekDays.map((day) => {
-                  const daySugg = daySuggestions.get(day);
-                  return (
-                    <StaffingDayColumn
-                      key={day}
-                      day={day}
-                      recommendations={daySugg?.recommendations ?? []}
-                      peakStaff={summary.peakStaff}
-                      hasSalesData={hasSalesData && (daySugg?.recommendations.length ?? 0) > 0}
-                      hasHourlyBreakdown={hasHourlyBreakdown}
-                    />
-                  );
-                })}
-              </div>
+              )}
 
               {/* Summary row */}
               {hasSalesData && summary.totalSales > 0 && (

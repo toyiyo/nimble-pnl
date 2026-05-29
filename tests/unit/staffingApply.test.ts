@@ -26,6 +26,10 @@ describe('distributePositions', () => {
   it('returns empty for zero headcount', () => {
     expect(distributePositions(0, { Server: 1 })).toEqual([]);
   });
+
+  it('returns empty for negative headcount', () => {
+    expect(distributePositions(-5, { Server: 1 })).toEqual([]);
+  });
 });
 
 describe('shiftBlocksToTemplates', () => {

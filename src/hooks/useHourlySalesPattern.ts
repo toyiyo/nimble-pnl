@@ -7,6 +7,9 @@ import type { HourlySalesData } from '@/types/scheduling';
 interface RawSale {
   sale_date: string;
   sale_time: string | null;
+  /** Absolute instant the sale was served (UTC ISO string). When present, takes
+   *  priority over sale_time for hour-of-day derivation (converted via timeZone). */
+  sold_at?: string | null;
   total_price: number;
 }
 
@@ -21,22 +24,52 @@ export interface AggregatedSalesResult {
 }
 
 /**
+ * Convert a UTC ISO string to the local hour (0–23) in the given IANA timezone.
+ * Uses Intl.DateTimeFormat with hourCycle:'h23' so midnight = 0 (not 24).
+ */
+function hourInTz(iso: string, tz: string): number {
+  const s = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(iso));
+  return parseInt(s, 10);
+}
+
+/**
  * Pure function: aggregate raw sales into hourly averages.
  * Groups by hour, sums per day (sale_date), then averages across days.
  *
- * When no rows have sale_time, falls back to spreading daily totals
+ * Hour derivation (in priority order):
+ *  1. `sold_at` (UTC ISO) converted to the given `timeZone` — e.g. Toast openedDate.
+ *  2. `sale_time` parsed as already-local HH:MM:SS — legacy / non-Toast path.
+ *
+ * When no rows yield a usable hour, falls back to spreading daily totals
  * evenly across assumed business hours (9am–10pm).
+ *
+ * `timeZone` defaults to 'America/Chicago' so existing call-sites without
+ * the argument are backward-compatible.
+ *
  * Exported for testing.
  */
-export function aggregateHourlySales(rawSales: RawSale[]): AggregatedSalesResult {
+export function aggregateHourlySales(
+  rawSales: RawSale[],
+  timeZone: string = 'America/Chicago',
+): AggregatedSalesResult {
   if (rawSales.length === 0) return { data: [], hasHourlyBreakdown: false };
 
   // Group by hour → by date → sum
   const hourDateMap = new Map<number, Map<string, number>>();
 
   for (const sale of rawSales) {
-    if (!sale.sale_time) continue;
-    const hour = parseInt(sale.sale_time.split(':')[0], 10);
+    let hour: number;
+    if (sale.sold_at) {
+      hour = hourInTz(sale.sold_at, timeZone);
+    } else if (sale.sale_time) {
+      hour = parseInt(sale.sale_time.split(':')[0], 10);
+    } else {
+      continue;
+    }
     if (isNaN(hour)) continue;
 
     if (!hourDateMap.has(hour)) hourDateMap.set(hour, new Map());

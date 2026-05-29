@@ -16,4 +16,4 @@ import type { ReactivateEmployeeParams } from '@/hooks/useEmployees';
 const _typeGuard: ReactivateEmployeeParams = { employeeId: 'emp-x', confirmPin: true };
 
 // Suppress unused-variable lint — this file exists for the type check only.
-void _typeGuard;
+export type { };

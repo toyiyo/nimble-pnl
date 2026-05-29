@@ -44,7 +44,7 @@ VALUES ('aaaaaaaa-ca01-0000-0000-000000000001', 'Cap1 Test Restaurant', 'America
 ON CONFLICT (id) DO UPDATE SET timezone = 'America/Chicago';
 
 -- Template: capacity = 1 (the regression case). Closing 3:30p-10p Sundays.
-INSERT INTO shift_templates (id, restaurant_id, name, start_time, end_time, position, days, capacity)
+INSERT INTO shift_templates (id, restaurant_id, name, start_time, end_time, position, days, capacity, is_active)
 VALUES (
   'bbbbbbbb-ca01-0000-0000-000000000001',
   'aaaaaaaa-ca01-0000-0000-000000000001',
@@ -52,9 +52,10 @@ VALUES (
   '15:30:00', '22:00:00',
   'Server',
   '{0}',  -- Sunday only
-  1       -- single-person crew
+  1,      -- single-person crew
+  true
 )
-ON CONFLICT (id) DO UPDATE SET capacity = 1;
+ON CONFLICT (id) DO UPDATE SET capacity = 1, is_active = true;
 
 -- Two employees (second one drives the "no open spots" 2nd-claim test).
 INSERT INTO employees (id, restaurant_id, name, position, status, is_active)
@@ -77,7 +78,8 @@ SELECT
   target_sunday,
   'dddddddd-ca01-0000-0000-000000000001',
   0
-FROM test_config;
+FROM test_config
+ON CONFLICT DO NOTHING;
 
 -- ============================================
 -- Test 1: capacity-1 template appears as a claimable open shift.

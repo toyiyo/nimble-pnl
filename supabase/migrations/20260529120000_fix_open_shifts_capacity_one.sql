@@ -90,7 +90,7 @@ BEGIN
         CROSS JOIN published_dates pd
         WHERE st.restaurant_id = p_restaurant_id
           AND st.is_active = true
-          AND st.capacity > 0  -- include single-person crews (was `> 1`, which dropped capacity-1 templates)
+          AND st.capacity > 0  -- include single-person crews (capacity 1)
           AND EXTRACT(DOW FROM pd.pub_date)::int = ANY(st.days)
     ),
     assigned AS (
@@ -139,3 +139,8 @@ BEGIN
     ORDER BY td.pub_date, td.tmpl_start;
 END;
 $$;
+
+-- Re-issue EXECUTE so the privilege is self-contained in this migration.
+-- (CREATE OR REPLACE preserves the existing GRANT from 20260412145842, but
+--  re-declaring keeps the migration valid under selective replay / drop+create.)
+GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;

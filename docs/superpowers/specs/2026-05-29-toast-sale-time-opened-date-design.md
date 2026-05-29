@@ -1,148 +1,124 @@
-# Design: Derive Toast `sale_time` from `openedDate` (service time), not `closedDate`
+# Design: Additive `sold_at timestamptz` for Toast service-time (fix staffing hours, non-breaking)
 
 **Date:** 2026-05-29
-**Status:** Approved (design phase)
+**Status:** Approved (design phase) — revised to additive approach after consumer audit
 **Branch:** `fix/toast-sale-time-opened-date`
-**Area:** Toast → `unified_sales` sync (`sync_toast_to_unified_sales`); consumed by Staffing Suggestions / hourly analysis
+**Area:** Toast → `unified_sales` sync; consumed by Staffing Suggestions + `generate-schedule`
 
 ## Problem
 
-The Planner → Staffing Suggestions hourly chart recommends staff at **4 AM** (and
-overstates 9–11 PM) for a restaurant that operates ~11 AM–11 PM. Reported as a
-suspected timezone bug.
+Staffing Suggestions recommends staff at **4 AM** (and overstates 9–11 PM) for a
+restaurant open ~11 AM–11 PM. Confirmed on prod data: it is **not** a timezone bug
+(6050/6060 rows match local hour, 0 match UTC). The cause is that
+`unified_sales.sale_time` is derived from Toast **`closedDate`** (check
+*settle/close* time — piles up at end-of-night close and Toast's ~4 AM overnight
+auto-settle), not when the order was **served** (`openedDate`). `openedDate` yields
+a clean lunch+dinner curve.
 
-## Root cause (confirmed with production data)
+## Why additive (not an in-place `sale_time` change)
 
-It is **not** a timezone bug. For the busiest Toast restaurant (`America/Chicago`,
-last 35 days), **6050/6060** sale rows' `sale_time` hour matches the *local* hour
-and **0** match UTC — the `AT TIME ZONE` conversion is correct.
+A consumer audit found `sale_time` is read by **two** hourly consumers
+(`useHourlySalesPattern`/StaffingOverlay and the `generate-schedule` edge function)
+and *displayed* in sales lists (`useUnifiedSales`, POS adapters). Inventory
+deduction uses `sale_date` (not `sale_time`); P&L/daily aggregates use `sale_date`.
+No index/constraint/JOIN keys on `sale_time`. To guarantee **zero breakage** to
+display/reconciliation and other POS, we do **not** mutate `sale_time`.
 
-The real cause: `unified_sales.sale_time` is derived from Toast **`closedDate`**
-(when the check is *settled/closed*), not when the order was served. `closedDate`
-clusters at end-of-night close and at Toast's **overnight auto-settle (~4 AM)**:
+## Decision
 
-| Hour | `closedDate` (current `sale_time`) | `openedDate` (service time) |
-|---|---|---|
-| 4 AM | **155 orders / $3,454** | — |
-| 12–2 PM | 63 / 95 / 155 | 508 / 489 / 475 |
-| 6–7 PM | 242 / 266 | **854 / 833** (true dinner peak) |
-| 10 PM | 1,250 | 47 |
-| 11 PM | **1,402** | — |
+Add a nullable **`sold_at timestamptz`** — the absolute sale **instant** — populated
+from Toast `openedDate`. Hourly consumers read `sold_at` and convert to the
+restaurant timezone **at read time** (`AT TIME ZONE`), falling back to today's
+`sale_time` when `sold_at` is null (non-Toast / un-backfilled rows). `sale_time`
+and `sale_date` are untouched.
 
-`openedDate` yields a clean lunch+dinner curve peaking at 6–7 PM, tapering by 10 PM,
-with **no 4 AM blob**. That is the real demand signal staffing needs.
-
-## Goal
-
-Derive `sale_time` from Toast **`openedDate`** (in the restaurant timezone), with a
-safe fallback chain, and backfill existing rows. `sale_date` is unchanged.
-
-## Scope / blast radius
-
-- The **primary** consumer of `sale_time` is hourly staffing analysis. Secondary
-  consumers (`useAutomaticInventoryDeduction` / `useInventoryDeduction`) pass/read
-  it only as an optional/informational RPC parameter and are unaffected by changing
-  its *derivation source*. P&L uses `sale_date` (= Toast `businessDate`), so this
-  change does **not** affect P&L or daily aggregates. (A plan task re-greps to
-  confirm no consumer depends on closedDate semantics specifically.)
-- **Toast only.** Clover already converts to local at sync; Square/Shift4 use their
-  own service timestamps. Out of scope here (a plan task notes whether they share
-  the same closed-vs-served pitfall as a follow-up).
+This is intentionally the **first brick** of the larger architecture (store the
+absolute instant; keep an explicit business day) — the full `sold_at` +
+`business_date` migration across all consumers/POS is a **separate tracked design**.
 
 ## Architecture
 
-New migration **`supabase/migrations/20260529130000_toast_sale_time_from_opened_date.sql`**
-(timestamp strictly greater than the latest on `main`, `20260529120000`; append-only —
-must NOT edit `20260307130000`).
+### 1. Schema (new migration `20260529130000_unified_sales_sold_at.sql`)
 
-1. **Redefine both overloads** of `sync_toast_to_unified_sales` —
-   `(UUID)` and `(UUID, DATE, DATE)` — changing every `sale_time` expression from
-   `closedDate` to an `openedDate`-first chain. Only two arms; the old `order_time`
-   fallback is **dropped** — the processor stores `order_time` as UTC (and NULL
-   whenever `businessDate` exists), so it is not a valid local-time source. A regex
-   guard prevents a malformed timestamp from aborting the whole sync:
+```sql
+ALTER TABLE public.unified_sales ADD COLUMN IF NOT EXISTS sold_at timestamptz;
+COMMENT ON COLUMN public.unified_sales.sold_at IS
+  'Absolute instant the sale was served (UTC). Source of truth for time-of-day/hour; convert with AT TIME ZONE <restaurant_tz>. Nullable; consumers fall back to sale_time. Populated from Toast openedDate.';
+```
 
-   ```sql
-   sale_time =
-     COALESCE(
-       CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
-            THEN ((too.raw_json->>'openedDate')::timestamptz AT TIME ZONE v_tz)::time END,
-       CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
-            THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time END
-     )
-   ```
+No index needed: the staffing/scheduler queries filter by `restaurant_id` +
+`sale_date` range and merely *select* `sold_at`.
 
-   Applied identically to the REVENUE, DISCOUNT, VOID, and TAX inserts (the four
-   places that currently use `closedDate`). TIP/REFUND rows keep `sale_time = NULL`
-   (unchanged). Both `ON CONFLICT … DO UPDATE SET sale_time = EXCLUDED.sale_time`
-   clauses stay, so re-sync re-derives.
+### 2. Populate in `sync_toast_to_unified_sales` (both overloads)
 
-2. **Backfill existing rows — BOUNDED to recent data.** The staffing view only
-   reads `lookback_weeks` (≤ a few weeks), so we correct only the last **90 days**
-   rather than locking the full multi-tenant table. Wrap in a `DO` block with a
-   raised local timeout; older rows self-correct on their next sync (the upsert
-   re-derives). Same regex guard; exclude tip/refund:
+At the 4 insert sites (REVENUE/DISCOUNT/VOID/TAX), add `sold_at` = the **instant**
+(stored as-is, UTC — no `AT TIME ZONE` at write), `openedDate`-first with a regex
+guard so malformed values don't abort the sync:
 
-   ```sql
-   DO $$
-   BEGIN
-     SET LOCAL statement_timeout = '300s';
-     UPDATE public.unified_sales us
-     SET sale_time = ((too.raw_json->>'openedDate')::timestamptz AT TIME ZONE
-                      COALESCE(r.timezone, 'America/Chicago'))::time
-     FROM public.toast_orders too
-     JOIN public.restaurants r ON r.id = too.restaurant_id
-     WHERE us.pos_system = 'toast'
-       AND us.external_order_id = too.toast_order_guid
-       AND us.restaurant_id = too.restaurant_id
-       AND us.item_type NOT IN ('tip','refund')
-       AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
-       AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}';
-   END $$;
-   ```
+```sql
+sold_at = COALESCE(
+  CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+       THEN (too.raw_json->>'openedDate')::timestamptz END,
+  CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+       THEN (too.raw_json->>'closedDate')::timestamptz END
+)
+```
 
-   (No `sale_time IS NULL` guard — we intentionally *correct* existing non-null
-   closedDate-based values. If a full-history backfill is later needed, do it as a
-   batched one-shot job, not in this migration.)
+Add `sold_at` to each `INSERT ... (cols)`, each `SELECT`, and each
+`ON CONFLICT ... DO UPDATE SET sold_at = EXCLUDED.sold_at`. `sale_time`/`sale_date`
+lines stay exactly as they are. TIP/REFUND rows leave `sold_at` NULL (not demand).
 
-3. **Update both `COMMENT ON FUNCTION` strings** to say "Derives sale_time from
-   raw_json openedDate (service time) in restaurant timezone, falling back to
-   closedDate." Everything else in the RPC (auth check, GUC trigger-skip, dedup
-   deletes, `sale_date = too.order_date`, categorization, daily aggregation,
-   `SECURITY DEFINER`, `SET search_path`, `statement_timeout`) is unchanged.
+### 3. Bounded backfill (recent rows only)
 
-> A partial index `unified_sales(restaurant_id, external_order_id) WHERE
-> pos_system='toast'` would speed the upsert/backfill, but `CREATE INDEX
-> CONCURRENTLY` can't run inside a migration transaction and the bounded backfill
-> doesn't need it — deferred as a perf follow-up.
+```sql
+DO $$
+BEGIN
+  SET LOCAL statement_timeout = '300s';
+  UPDATE public.unified_sales us
+  SET sold_at = (too.raw_json->>'openedDate')::timestamptz
+  FROM public.toast_orders too
+  WHERE us.pos_system = 'toast'
+    AND us.external_order_id = too.toast_order_guid
+    AND us.restaurant_id = too.restaurant_id
+    AND us.item_type NOT IN ('tip','refund')
+    AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
+    AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}';
+END $$;
+```
 
-## Edge cases
+Older rows populate on their next sync (upsert sets `sold_at`).
 
-- **`openedDate` null** → COALESCE falls back to `closedDate` (local), then
-  `order_time`. (Coverage is high — openedDate present for ~all recent sale rows.)
-- **Post-midnight opens** (e.g. order opened 12:30 AM) → rare for this venue;
-  `sale_date` still uses `businessDate` so day-of-week grouping stays correct;
-  `sale_time` hour reflects the true open hour.
-- **Idempotency** — both overloads upsert via `ON CONFLICT … DO UPDATE SET
-  sale_time = EXCLUDED.sale_time`, so re-sync re-derives cleanly.
+### 4. Consumers — convert at read (fallback to `sale_time`)
+
+- **`aggregateHourlySales(rawSales, timeZone)`** (`useHourlySalesPattern.ts`): new
+  `timeZone` param. Per row, the hour =
+  - if `sold_at` present → hour of `sold_at` in `timeZone` (via
+    `Intl.DateTimeFormat(timeZone, {hour:'2-digit', hour12:false})`), else
+  - if `sale_time` present → `parseInt(sale_time.split(':')[0])` (legacy path —
+    other POS `sale_time` is already local). No-data fallback unchanged.
+- **`StaffingOverlay` / `useHourlySalesPattern` query**: select `sold_at` too; pass
+  the restaurant timezone (from `useRestaurantContext().selectedRestaurant.timezone`,
+  default `America/Chicago`) into `aggregateHourlySales`.
+- **`generate-schedule` edge function**: select `sold_at`; compute the hour from
+  `sold_at` in the restaurant timezone (already loads the restaurant; read its
+  `timezone`), fallback to `sale_time`.
+
+Non-Toast rows (`sold_at` NULL) and all display/reconciliation paths are **unchanged**.
 
 ## Testing (per CLAUDE.md)
 
-- **pgTAP** (`supabase/tests/<n>_toast_sale_time_opened_date.sql`):
-  1. Seed a `toast_orders` row whose `raw_json.openedDate` and `closedDate` are in
-     different hours; run `sync_toast_to_unified_sales(restaurant, range)`; assert
-     the resulting `unified_sales.sale_time` hour equals the **openedDate** local
-     hour, not the closedDate hour.
-  2. `openedDate` absent → falls back to `closedDate` (local).
-  3. `openedDate` malformed/garbage → does not throw; falls back to `closedDate`.
-  4. **DST boundary:** an order opened 01:30 local on the `America/Chicago`
-     fall-back date converts to the correct local time (regression guard for the
-     `AT TIME ZONE` conversion).
-- **Manual verification** (Phase 8 evidence): re-run the hour-distribution query
-  after a re-sync on a test/seed restaurant and confirm the 4 AM blob is gone.
+- **Unit** (`aggregateHourlySales`): buckets by `sold_at`'s local hour given a tz;
+  DST-boundary instant maps to correct local hour; falls back to `sale_time` when
+  `sold_at` null; existing no-data spread unchanged.
+- **pgTAP**: `sync_toast_to_unified_sales` sets `sold_at` from `openedDate`
+  (fallback `closedDate`); malformed `openedDate` does not throw; backfill populates
+  recent rows. `sale_time`/`sale_date` outputs unchanged.
+- **Non-regression**: P&L/daily-aggregate and inventory tests unaffected (they read
+  `sale_date`).
 
-## Out of scope (follow-ups)
+## Out of scope (tracked separately)
 
-- Square/Clover/Shift4 closed-vs-served parity review.
-- Any UI change — the display layer (`aggregateHourlySales`) is correct once
-  `sale_time` reflects service time.
+- Full migration to `sold_at` + explicit `business_date` across P&L, inventory,
+  reports, and all four POS writers (separate design doc / initiative).
+- Square/Clover/Shift4 also populating `sold_at` (they can later; until then their
+  rows use the `sale_time` fallback, which is already local for those POS).

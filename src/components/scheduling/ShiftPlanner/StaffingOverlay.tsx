@@ -175,7 +175,6 @@ function useWeekStaffingSuggestions(
     refetch: refetchSales,
     hasSalesData: (allSales?.length ?? 0) > 0,
     hasHourlyBreakdown,
-    effectiveSettings,
     activeSettings,
     updateSettings,
     isSaving,
@@ -190,8 +189,7 @@ export function StaffingOverlay({
 }: Readonly<StaffingOverlayProps>) {
   const [isExpanded, setIsExpanded] = useState(true);
   const { toast } = useToast();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mixed types for settings overrides
-  const [localSettings, setLocalSettings] = useState<Record<string, any> | null>(null);
+  const [localSettings, setLocalSettings] = useState<Record<string, unknown> | null>(null);
 
   const {
     daySuggestions,

@@ -57,9 +57,11 @@ export function useApplySuggestedShifts(restaurantId: string | null) {
     },
 
     onError: (error: Error) => {
+      // Log full error (may contain schema details from PostgREST) and show generic message
+      console.error('[useApplySuggestedShifts] failed to apply suggestions:', error);
       toast({
         title: 'Could not apply suggestions',
-        description: error.message,
+        description: 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
     },

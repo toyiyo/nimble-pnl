@@ -96,6 +96,23 @@ describe('<ApplyShiftsDialog>', () => {
     expect(screen.queryByText(/no minimum crew set/i)).toBeNull();
   });
 
+  it('shows no-crew nudge when minCrew has only zero-weight positions', () => {
+    // Bug guard: {Server: 0} has keys but no effective crew — must show the warning
+    // because distributePositions falls through to the generic "Staff" fallback.
+    render(
+      <ApplyShiftsDialog
+        open={true}
+        onOpenChange={onOpenChange}
+        blocks={blocks}
+        minCrew={{ Server: 0 }}
+        restaurantId="r1"
+        openShiftsEnabled={true}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByText(/no minimum crew set/i)).toBeTruthy();
+  });
+
   it('shows open-shifts-disabled note when openShiftsEnabled is false', () => {
     render(
       <ApplyShiftsDialog

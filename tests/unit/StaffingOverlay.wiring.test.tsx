@@ -71,7 +71,6 @@ vi.mock('@tanstack/react-query', async () => {
 });
 
 import { StaffingOverlay } from '@/components/scheduling/ShiftPlanner/StaffingOverlay';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const wrapper = ({ children }: { children: React.ReactNode }) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

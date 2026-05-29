@@ -35,7 +35,8 @@ export function ApplyShiftsDialog({
   const { applyShifts, isApplying } = useApplySuggestedShifts(restaurantId);
 
   const selected = useMemo(() => blocks.filter((_, i) => !excluded.has(i)), [blocks, excluded]);
-  const hasCrew = !!minCrew && Object.keys(minCrew).length > 0;
+  // Align with distributePositions: only positions with weight > 0 count as "crew configured"
+  const hasCrew = !!minCrew && Object.values(minCrew).some((w) => w > 0);
 
   const toggle = (i: number) =>
     setExcluded((prev) => {

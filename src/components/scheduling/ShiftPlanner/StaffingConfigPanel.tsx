@@ -12,7 +12,7 @@ import {
 
 import { HelpCircle, Plus, X } from 'lucide-react';
 
-import type { MinCrew } from '@/types/scheduling';
+import type { MinCrew, StaffingSettings } from '@/types/scheduling';
 
 interface StaffingConfigPanelProps {
   settings: {
@@ -23,8 +23,8 @@ interface StaffingConfigPanelProps {
     open_shifts_enabled?: boolean;
     require_shift_claim_approval?: boolean;
   };
-  onSettingsChange: (updates: Record<string, unknown>) => void;
-  onImmediateSettingsChange?: (updates: Record<string, unknown>) => void;
+  onSettingsChange: (updates: Partial<StaffingSettings>) => void;
+  onImmediateSettingsChange?: (updates: Partial<StaffingSettings>) => void;
   onSaveDefaults: () => void;
   isSaving: boolean;
   hasPendingChanges: boolean;

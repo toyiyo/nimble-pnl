@@ -20,7 +20,7 @@ import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
-import type { MinCrew } from '@/types/scheduling';
+import type { MinCrew, StaffingSettings } from '@/types/scheduling';
 
 import { StaffingDayColumn } from './StaffingDayColumn';
 import { StaffingConfigPanel } from './StaffingConfigPanel';
@@ -34,7 +34,7 @@ interface StaffingOverlayProps {
 function useWeekStaffingSuggestions(
   restaurantId: string | null,
   weekDays: string[],
-  settingsOverrides: Partial<StaffingSuggestionsResult> | null,
+  settingsOverrides: Partial<StaffingSettings> | null,
 ) {
   const { effectiveSettings, isLoading: settingsLoading, updateSettings, isSaving } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);
@@ -189,7 +189,7 @@ export function StaffingOverlay({
 }: Readonly<StaffingOverlayProps>) {
   const [isExpanded, setIsExpanded] = useState(true);
   const { toast } = useToast();
-  const [localSettings, setLocalSettings] = useState<Record<string, unknown> | null>(null);
+  const [localSettings, setLocalSettings] = useState<Partial<StaffingSettings> | null>(null);
 
   const {
     daySuggestions,
@@ -205,11 +205,11 @@ export function StaffingOverlay({
     actualSplh,
   } = useWeekStaffingSuggestions(restaurantId, weekDays, localSettings);
 
-  const handleSettingsChange = useCallback((updates: Record<string, unknown>) => {
+  const handleSettingsChange = useCallback((updates: Partial<StaffingSettings>) => {
     setLocalSettings((prev) => ({ ...(prev ?? {}), ...updates }));
   }, []);
 
-  const handleImmediateSettingsChange = useCallback(async (updates: Record<string, unknown>) => {
+  const handleImmediateSettingsChange = useCallback(async (updates: Partial<StaffingSettings>) => {
     try {
       await updateSettings(updates);
       toast({ title: 'Setting saved' });

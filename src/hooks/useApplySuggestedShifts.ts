@@ -1,0 +1,69 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import type { TemplateInsert } from '@/lib/staffingApply';
+
+const CHUNK = 200;
+
+/**
+ * Upserts an array of shift_templates rows (from shiftBlocksToTemplates) using
+ * ON CONFLICT DO NOTHING so re-applying the same week is a safe no-op.
+ *
+ * Returns `{ created, skipped }` counts used to populate the success toast.
+ * Invalidates the three query keys that surface open/template shifts in the UI.
+ */
+export function useApplySuggestedShifts(restaurantId: string | null) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (rows: TemplateInsert[]) => {
+      let created = 0;
+
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK);
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.from('shift_templates') as any)
+          .upsert(chunk, {
+            onConflict: 'restaurant_id,position,start_time,end_time',
+            ignoreDuplicates: true,
+          })
+          .select('id');
+
+        if (error) throw error;
+        created += data?.length ?? 0;
+      }
+
+      return { created, skipped: rows.length - created };
+    },
+
+    onSuccess: ({ created, skipped }) => {
+      queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['open_shifts', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+
+      toast({
+        title: `${created} open shift${created === 1 ? '' : 's'} created`,
+        description:
+          skipped > 0
+            ? `${skipped} already existed and were skipped.`
+            : undefined,
+      });
+    },
+
+    onError: (error: Error) => {
+      toast({
+        title: 'Could not apply suggestions',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  return {
+    applyShifts: mutation.mutateAsync,
+    isApplying: mutation.isPending,
+  };
+}

@@ -21,6 +21,14 @@
 
 ## Phase: Build (TDD) — IN PROGRESS
 
+### Task 6 (orchestration task 6/10): Migration verification — db:reset + test:db — COMPLETED (GREEN)
+- Commit: `3d110616` (already committed in Task 5 as "fix(toast): populate unified_sales.sold_at from openedDate")
+- Ran `npm run db:reset` — migration `20260529130000_unified_sales_sold_at.sql` applied cleanly, no errors
+- Ran `npm run test:db` — all 1372/1372 pgTAP tests PASS
+  - `39_unified_sales_sold_at.sql`: all 12 tests GREEN (column exists, openedDate hour, closedDate fallback, regex guard, COALESCE preserve, backfill)
+  - No regressions in any existing test file
+- `sale_time`/`sale_date` unchanged; all prior toast accuracy tests pass
+
 ### Task 5 (orchestration task 5/10): Migration — ADD COLUMN + extend sync overloads + backfill — COMPLETED (GREEN)
 - Commit: `3d110616`
 - Created `supabase/migrations/20260529130000_unified_sales_sold_at.sql`

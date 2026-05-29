@@ -1,131 +1,107 @@
-# Toast `sale_time` from `openedDate` — Implementation Plan
+# Additive `sold_at` for Toast Service-Time — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development or superpowers:executing-plans. Checkbox (`- [ ]`) steps.
 
-**Goal:** Derive Toast `unified_sales.sale_time` from `openedDate` (service time) instead of `closedDate` (settle time), fixing the bogus 4 AM / late-night staffing bars. Backfill recent rows. `sale_date` unchanged.
+**Goal:** Fix the bogus 4 AM / late-night staffing hours **non-breakingly** by adding a nullable `sold_at timestamptz` (absolute instant from Toast `openedDate`) and having the two hourly consumers convert at read; `sale_time`/`sale_date` untouched.
 
-**Architecture:** One new migration redefines both `sync_toast_to_unified_sales` overloads (replace the `closedDate` `sale_time` expression at all 4 insert sites in each) + a bounded backfill `DO` block. pgTAP proves the derivation.
+**Architecture:** New migration adds the column + extends both `sync_toast_to_unified_sales` overloads to populate `sold_at` + bounded backfill. `aggregateHourlySales` gains an optional `timeZone` and prefers `sold_at` (falls back to `sale_time`). `generate-schedule` does the same.
 
-**Tech Stack:** Supabase Postgres (plpgsql RPC), pgTAP.
+**Tech Stack:** Supabase Postgres (plpgsql), pgTAP, React/TS, Vitest, Deno edge fn.
 
 **Spec:** `docs/superpowers/specs/2026-05-29-toast-sale-time-opened-date-design.md`
 
-**Reference (current function):** `supabase/migrations/20260307130000_toast_derive_sale_time_from_closed_date.sql` — copy both function bodies verbatim, then apply the single find/replace below. Do NOT edit that file.
+---
+
+### Task 1: `aggregateHourlySales` prefers `sold_at` (TZ-aware)
+
+**Files:** Modify `src/hooks/useHourlySalesPattern.ts`; Test `tests/unit/useHourlySalesPattern.test.ts` (create if absent)
+
+- [ ] **Step 1: Failing test** — add `sold_at` to `RawSale`; assert hour comes from `sold_at` in the given tz, falls back to `sale_time` when `sold_at` null, and a DST-instant maps correctly.
+
+```ts
+import { aggregateHourlySales } from '@/hooks/useHourlySalesPattern';
+// 2026-05-30T01:30:00Z == 2026-05-29 20:30 America/Chicago (CDT) -> hour 20
+const rows = [{ sale_date: '2026-05-29', sale_time: '23:15:00', sold_at: '2026-05-30T01:30:00.000Z', total_price: 100 }];
+const out = aggregateHourlySales(rows, 'America/Chicago');
+expect(out.data[0].hour).toBe(20);            // from sold_at, not 23 from sale_time
+const legacy = aggregateHourlySales([{ sale_date:'2026-05-29', sale_time:'14:00:00', sold_at:null, total_price:50 }], 'America/Chicago');
+expect(legacy.data[0].hour).toBe(14);          // fallback to sale_time
+```
+
+- [ ] **Step 2: Run → FAIL** (`npx vitest run tests/unit/useHourlySalesPattern.test.ts`).
+
+- [ ] **Step 3: Implement.** Add `sold_at?: string | null` to `RawSale`. Signature: `aggregateHourlySales(rawSales, timeZone = 'America/Chicago')`. Replace the hour derivation (line ~38-39) with:
+
+```ts
+function hourInTz(iso: string, tz: string): number {
+  const s = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
+  return parseInt(s, 10);
+}
+// inside the loop:
+let hour: number;
+if (sale.sold_at) hour = hourInTz(sale.sold_at, timeZone);
+else if (sale.sale_time) hour = parseInt(sale.sale_time.split(':')[0], 10);
+else continue;
+if (isNaN(hour)) continue;
+```
+
+- [ ] **Step 4: Run → PASS.** Then `git commit -m "feat(staffing): aggregateHourlySales prefers sold_at (tz-aware)"`.
 
 ---
 
-### Task 1: Failing pgTAP test
+### Task 2: Migration — add `sold_at`, populate from openedDate, backfill
 
-**Files:**
-- Create: `supabase/tests/<next-free-number>_toast_sale_time_opened_date.sql`
+**Files:** Create `supabase/migrations/<ts>_unified_sales_sold_at.sql`; Test `supabase/tests/<n>_unified_sales_sold_at.sql`
 
-- [ ] **Step 1: Write the test** (BEGIN/plan/ROLLBACK; disable RLS like test 38). Seed a restaurant (`America/Chicago`) and a `toast_orders` row with `raw_json` containing `openedDate` = `2026-05-29T23:30:00.000+0000` (→ 18:30 local) and `closedDate` = `2026-05-30T04:15:00.000+0000` (→ 23:15 local, *and* a 4 AM-UTC trap), plus one `toast_order_items` row (unit_price > 0, not voided). Then:
+- [ ] **Step 0: Pick a non-colliding timestamp.** `git fetch origin main && ls supabase/migrations/202605*`. Use a timestamp strictly greater than the max present (start from `20260529130000`, bump if taken).
 
-```sql
-SELECT plan(4);
--- ... seed restaurants, toast_orders (openedDate/closedDate in raw_json), toast_order_items ...
+- [ ] **Step 1: Failing pgTAP** — seed a `toast_orders` row with `raw_json.openedDate`=`2026-05-30T01:30:00.000+0000` (→20:30 local) and `closedDate`=`2026-05-30T04:15:00.000+0000`; run `sync_toast_to_unified_sales(rid, range)`; assert `date_part('hour', sold_at AT TIME ZONE 'America/Chicago') = 20`. Cases: openedDate absent → falls back to closedDate; malformed openedDate → no throw, sold_at from closedDate; backfill populates a pre-existing NULL-`sold_at` row. Run → FAIL (column/derivation absent).
 
--- Case 1: sale_time derives from openedDate (18:30 local), NOT closedDate
-SELECT sync_toast_to_unified_sales('<rid>'::uuid, '2026-05-29'::date, '2026-05-31'::date);
-SELECT is(
-  (SELECT date_part('hour', sale_time)::int FROM unified_sales
-   WHERE restaurant_id='<rid>' AND pos_system='toast' AND item_type='sale' LIMIT 1),
-  18, 'sale_time hour comes from openedDate (local), not closedDate');
+- [ ] **Step 2: Migration.**
+  - `ALTER TABLE public.unified_sales ADD COLUMN IF NOT EXISTS sold_at timestamptz;` + `COMMENT ON COLUMN` (note: metadata-only, no rewrite; nullable; convert at read; no index intentional).
+  - Copy BOTH `sync_toast_to_unified_sales` bodies from `20260307130000` verbatim. In each of the 4 item inserts (REVENUE/DISCOUNT/VOID/TAX): add `sold_at` to the column list and this SELECT expression:
 
--- Case 2: openedDate absent -> falls back to closedDate (23 local)
--- (update raw_json to remove openedDate, re-sync, assert hour = 23)
+    ```sql
+    COALESCE(
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+           THEN (too.raw_json->>'openedDate')::timestamptz END,
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+           THEN (too.raw_json->>'closedDate')::timestamptz END
+    )
+    ```
+    and to each `ON CONFLICT … DO UPDATE SET`: `sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)`. Leave `sale_time`/`sale_date` and everything else (auth, GUC, dedup deletes, SECURITY DEFINER, search_path, statement_timeout) byte-for-byte. TIP/REFUND inserts: do NOT add sold_at (stays NULL).
+  - Backfill DO block (bounded 90 days, `sold_at IS NULL` guard, regex guard, exclude tip/refund) per the design §3.
+  - Update both `COMMENT ON FUNCTION` to mention `sold_at` is populated from openedDate.
 
--- Case 3: openedDate malformed ('not-a-date') -> no throw, falls back to closedDate
-SELECT lives_ok($$ SELECT sync_toast_to_unified_sales('<rid>'::uuid, '2026-05-29'::date, '2026-05-31'::date) $$,
-  'malformed openedDate does not abort sync');
+- [ ] **Step 3: `npm run db:reset && npm run test:db`** → new test passes; no regression (esp. existing toast accuracy tests, since sale_time/sale_date unchanged).
 
--- Case 4: DST fall-back date — openedDate 2025-11-02T06:30:00Z -> 01:30 America/Chicago
-SELECT is(
-  (SELECT date_part('hour', ((raw->>'o')::timestamptz AT TIME ZONE 'America/Chicago'))::int
-   FROM (SELECT '{"o":"2025-11-02T06:30:00.000+0000"}'::jsonb raw) t),
-  1, 'DST fall-back converts to correct local hour');
-
-SELECT * FROM finish();
-```
-
-- [ ] **Step 2: Run — verify it FAILS** (function still derives from closedDate)
-
-Run: `npm run db:reset && npm run test:db 2>&1 | grep -A3 toast_sale_time`
-Expected: Case 1 fails (hour is 23 from closedDate, not 18).
+- [ ] **Step 4: Commit** `fix(toast): populate unified_sales.sold_at from openedDate`.
 
 ---
 
-### Task 2: Migration — derive from openedDate
+### Task 3: Wire the staffing query to `sold_at` + restaurant timezone
 
-**Files:**
-- Create: `supabase/migrations/20260529130000_toast_sale_time_from_opened_date.sql`
+**Files:** Modify `src/components/scheduling/ShiftPlanner/StaffingOverlay.tsx` (and `useHourlySalesPattern.ts` query)
 
-- [ ] **Step 1: Author the migration.** Copy BOTH `CREATE OR REPLACE FUNCTION sync_toast_to_unified_sales(...)` bodies from `20260307130000` verbatim, then in each body replace **every** occurrence (4 per overload, 8 total) of:
-
-  **OLD:**
-  ```sql
-  CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
-       THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
-       ELSE too.order_time
-  END
-  ```
-  **NEW:**
-  ```sql
-  COALESCE(
-    CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
-         THEN ((too.raw_json->>'openedDate')::timestamptz AT TIME ZONE v_tz)::time END,
-    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
-         THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time END
-  )
-  ```
-
-  Keep everything else identical (auth check, `v_tz` lookup, GUC flag, dedup deletes, `sale_date = too.order_date`, `ON CONFLICT … DO UPDATE SET sale_time = EXCLUDED.sale_time`, `SECURITY DEFINER`, `SET search_path = public`, `SET statement_timeout = '120s'`).
-
-- [ ] **Step 2: Update both COMMENT ON FUNCTION** strings to:
-  `'Syncs Toast orders to unified_sales. Derives sale_time from raw_json openedDate (service time) in restaurant timezone, falling back to closedDate. sale_date stays on businessDate.'`
-
-- [ ] **Step 3: Append the bounded backfill** (after the function definitions):
-
-```sql
-DO $$
-BEGIN
-  SET LOCAL statement_timeout = '300s';
-  UPDATE public.unified_sales us
-  SET sale_time = ((too.raw_json->>'openedDate')::timestamptz AT TIME ZONE
-                   COALESCE(r.timezone, 'America/Chicago'))::time
-  FROM public.toast_orders too
-  JOIN public.restaurants r ON r.id = too.restaurant_id
-  WHERE us.pos_system = 'toast'
-    AND us.external_order_id = too.toast_order_guid
-    AND us.restaurant_id = too.restaurant_id
-    AND us.item_type NOT IN ('tip','refund')
-    AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
-    AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}';
-END $$;
-```
-
-- [ ] **Step 4: Run — verify pgTAP PASSES**
-
-Run: `npm run db:reset && npm run test:db 2>&1 | tail -20`
-Expected: the new test file passes 4/4; no other db test regresses.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add supabase/migrations/20260529130000_toast_sale_time_from_opened_date.sql supabase/tests/*_toast_sale_time_opened_date.sql
-git commit -m "fix(toast): derive sale_time from openedDate, not closedDate"
-```
+- [ ] **Step 1:** In both unified_sales selects (StaffingOverlay line ~79 and the `useHourlySalesPattern` query line ~103), add `sold_at` to the column list.
+- [ ] **Step 2:** Resolve the restaurant timezone: `const tz = selectedRestaurant?.timezone ?? 'America/Chicago'` (from `useRestaurantContext`; verify the field exists on the restaurant row — it does in the `restaurants` table). Pass `tz` into `aggregateHourlySales(filtered, tz)` / `computeStaffingSuggestions` path.
+- [ ] **Step 3:** `npm run typecheck` → PASS. Commit `feat(staffing): read sold_at with restaurant tz in overlay`.
 
 ---
 
-### Task 3: Confirm no consumer depends on closedDate semantics
+### Task 4: `generate-schedule` — `sold_at` hour + day-of-week fix
 
-- [ ] **Step 1:** `grep -rn "sale_time" src supabase/functions | grep -v test` — confirm consumers (`useAutomaticInventoryDeduction`, `useInventoryDeduction`, hourly aggregation) treat `sale_time` as service time / optional. Note findings in the PR body. No code change expected.
+**Files:** Modify `supabase/functions/generate-schedule/index.ts`
+
+- [ ] **Step 1:** Add `sold_at` to the select (line ~191). Resolve restaurant `timezone` (the fn already loads the restaurant; read `.timezone`, default `America/Chicago`).
+- [ ] **Step 2:** Replace the hour derivation (line ~390-395): if `sale.sold_at`, `hour = Number(new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'2-digit',hourCycle:'h23'}).format(new Date(sale.sold_at)))`; else fall back to the existing `sale_time` parse.
+- [ ] **Step 3:** Fix the adjacent day-of-week bug (line ~388): `new Date(sale.sale_date + 'T12:00:00').getDay()` (was `new Date(sale.sale_date).getDay()`, UTC-wrong).
+- [ ] **Step 4:** `deno check supabase/functions/generate-schedule/index.ts` (or project lint). Commit `fix(scheduler): use sold_at hour + local day-of-week`.
 
 ---
 
 ## Self-Review
 
-- **Spec coverage:** openedDate derivation + regex guard + dropped order_time → Task 2 Step 1; COMMENT update → Step 2; bounded backfill → Step 3; pgTAP (4 cases incl. DST + malformed) → Task 1; consumer audit → Task 3. ✅
-- **Placeholders:** the `<rid>`/`<next-free-number>` are concrete-at-build (seeded UUID, next test number) — not vague TODOs. The find/replace strings are exact.
-- **Migration hygiene:** new file `20260529130000…` (> latest `20260529120000`); `20260307130000` untouched.
+- **Spec coverage:** column+populate+backfill → Task 2; aggregateHourlySales tz/sold_at → Task 1; overlay wiring → Task 3; generate-schedule + day fix → Task 4. ✅
+- **Non-breaking:** `sale_time`/`sale_date` never written/changed; non-Toast rows have `sold_at` NULL → `sale_time` fallback → identical behavior. P&L/inventory untouched. ✅
+- **Folded review concerns:** `sold_at IS NULL` backfill guard; `COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)` upsert; optional `timeZone` default; `hourCycle:'h23'` (midnight = 0 not 24); migration-timestamp collision check (Task 2 Step 0); generate-schedule day-of-week fix.

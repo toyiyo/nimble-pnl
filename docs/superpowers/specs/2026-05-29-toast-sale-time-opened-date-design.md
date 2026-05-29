@@ -64,9 +64,11 @@ sold_at = COALESCE(
 )
 ```
 
-Add `sold_at` to each `INSERT ... (cols)`, each `SELECT`, and each
-`ON CONFLICT ... DO UPDATE SET sold_at = EXCLUDED.sold_at`. `sale_time`/`sale_date`
-lines stay exactly as they are. TIP/REFUND rows leave `sold_at` NULL (not demand).
+Add `sold_at` to each `INSERT ... (cols)`, each `SELECT`, and each `ON CONFLICT`
+update as **`sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)`** — keep a
+previously-populated value if a re-sync's `openedDate` is missing/malformed (never
+null-out a good `sold_at`). `sale_time`/`sale_date` lines stay exactly as they are.
+TIP/REFUND rows leave `sold_at` NULL (not demand).
 
 ### 3. Bounded backfill (recent rows only)
 
@@ -82,16 +84,20 @@ BEGIN
     AND us.restaurant_id = too.restaurant_id
     AND us.item_type NOT IN ('tip','refund')
     AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
+    AND us.sold_at IS NULL
     AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}';
 END $$;
 ```
 
-Older rows populate on their next sync (upsert sets `sold_at`).
+`AND us.sold_at IS NULL` makes re-runs no-ops. Older rows populate on their next
+sync (upsert sets `sold_at`). (`SET LOCAL` inside the `DO` block scopes the timeout
+to the backfill only — correct.)
 
 ### 4. Consumers — convert at read (fallback to `sale_time`)
 
-- **`aggregateHourlySales(rawSales, timeZone)`** (`useHourlySalesPattern.ts`): new
-  `timeZone` param. Per row, the hour =
+- **`aggregateHourlySales(rawSales, timeZone = 'America/Chicago')`**
+  (`useHourlySalesPattern.ts`): new **optional** `timeZone` param (default keeps
+  call-site back-compat). Per row, the hour =
   - if `sold_at` present → hour of `sold_at` in `timeZone` (via
     `Intl.DateTimeFormat(timeZone, {hour:'2-digit', hour12:false})`), else
   - if `sale_time` present → `parseInt(sale_time.split(':')[0])` (legacy path —
@@ -101,7 +107,10 @@ Older rows populate on their next sync (upsert sets `sold_at`).
   default `America/Chicago`) into `aggregateHourlySales`.
 - **`generate-schedule` edge function**: select `sold_at`; compute the hour from
   `sold_at` in the restaurant timezone (already loads the restaurant; read its
-  `timezone`), fallback to `sale_time`.
+  `timezone`), fallback to `sale_time`. **Also fix the adjacent day-of-week bug**
+  at line ~388: it currently does `new Date(sale.sale_date).getDay()` (UTC weekday
+  → wrong day west of UTC); change to `new Date(sale.sale_date + 'T12:00:00').getDay()`
+  (the noon-anchored local parse `useHourlySalesPattern` already uses).
 
 Non-Toast rows (`sold_at` NULL) and all display/reconciliation paths are **unchanged**.
 

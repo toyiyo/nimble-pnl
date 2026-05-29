@@ -1,4 +1,4 @@
-import type { MinCrew } from '@/types/scheduling';
+import type { MinCrew, ShiftBlock, ShiftTemplate } from '@/types/scheduling';
 
 export interface PositionCount {
   position: string;
@@ -33,4 +33,45 @@ export function distributePositions(headcount: number, minCrew: MinCrew | null):
     i += 1;
   }
   return floored.filter((r) => r.count > 0).map((r) => ({ position: r.position, count: r.count }));
+}
+
+export type TemplateInsert = Omit<ShiftTemplate, 'id' | 'created_at' | 'updated_at' | 'area'>;
+
+const pad = (h: number) => `${String(h % 24).padStart(2, '0')}:00:00`;
+
+/** Day-of-week (0=Sun..6=Sat) from a YYYY-MM-DD string, noon-anchored to dodge DST. */
+export function dayStringToDow(day: string): number {
+  return new Date(day + 'T12:00:00').getDay();
+}
+
+/**
+ * Convert consolidated shift blocks into shift_templates insert rows.
+ * Headcount is split across Minimum Crew positions; each position becomes one
+ * template with capacity = its share. start/end are restaurant-local TIME values.
+ */
+export function shiftBlocksToTemplates(
+  blocks: ShiftBlock[],
+  minCrew: MinCrew | null,
+  restaurantId: string,
+): TemplateInsert[] {
+  const rows: TemplateInsert[] = [];
+  for (const block of blocks) {
+    const dow = dayStringToDow(block.day);
+    const start = pad(block.startHour);
+    const end = pad(block.endHour);
+    for (const { position, count } of distributePositions(block.headcount, minCrew)) {
+      rows.push({
+        restaurant_id: restaurantId,
+        name: `Suggested · ${position} ${start.slice(0, 5)}-${end.slice(0, 5)}`,
+        days: [dow],
+        start_time: start,
+        end_time: end,
+        break_duration: 0,
+        position,
+        capacity: count,
+        is_active: true,
+      });
+    }
+  }
+  return rows;
 }

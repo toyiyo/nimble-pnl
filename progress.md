@@ -21,6 +21,34 @@
 
 ## Phase: Build (TDD) — IN PROGRESS
 
+### Task 8 (orchestration task 8/10): StaffingOverlay — resolve restaurant timezone from useRestaurantContext, pass tz into aggregateHourlySales — COMPLETED (GREEN)
+- Commit: `2b743c9f`
+- Implementation was already done in Task 7 commit (a65f6c52): useRestaurantContext used, tz resolved and passed to aggregateHourlySales
+- Added `tests/unit/StaffingOverlay.tz.test.tsx` (3 tests) — spy on aggregateHourlySales, verify tz arg:
+  - Passes `America/New_York` from context when restaurant.timezone = 'America/New_York'
+  - Falls back to `America/Chicago` when restaurant has no timezone field
+  - Falls back to `America/Chicago` when selectedRestaurant is null
+- 4408 unit tests pass; typecheck clean (tsc --noEmit)
+
+### Task 7 (orchestration task 7/10): StaffingOverlay + useHourlySalesPattern query — add sold_at to both unified_sales SELECT column lists — COMPLETED (GREEN)
+- Commit: `a65f6c52`
+- Added `sold_at timestamptz | null` to both TypeScript type files:
+  - `src/integrations/supabase/types.ts` (Row, Insert, Update sections)
+  - `src/types/supabase.ts` (Row, Insert, Update sections)
+- Updated both SELECT column lists to include `sold_at`:
+  - `StaffingOverlay.tsx` line 83: `select('sale_date, sale_time, sold_at, total_price')`
+  - `useHourlySalesPattern.ts` line 139: `select('sale_date, sale_time, sold_at, total_price')`
+- Wired restaurant timezone into `StaffingOverlay`:
+  - Added `import { useRestaurantContext }` from RestaurantContext
+  - Reads `const tz = selectedRestaurant?.restaurant?.timezone ?? 'America/Chicago'`
+  - Passes `tz` to `aggregateHourlySales(filtered, tz)`
+  - Added `tz` to the `daySuggestions` useMemo dependency array
+- Fixed existing tests that broke due to new `useRestaurantContext` dependency:
+  - `StaffingOverlay.wiring.test.tsx`: added `vi.mock('@/contexts/RestaurantContext', ...)`
+  - `StaffingOverlay.deadends.test.tsx`: added `vi.mock('@/contexts/RestaurantContext', ...)`
+- Added timezone-sensitivity test to `useHourlySalesPattern.test.ts` (11 tests total)
+- All 4405 unit tests pass; typecheck clean
+
 ### Task 6 (orchestration task 6/10): Migration verification — db:reset + test:db — COMPLETED (GREEN)
 - Commit: `3d110616` (already committed in Task 5 as "fix(toast): populate unified_sales.sold_at from openedDate")
 - Ran `npm run db:reset` — migration `20260529130000_unified_sales_sold_at.sql` applied cleanly, no errors

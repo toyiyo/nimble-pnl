@@ -48,30 +48,51 @@ export function dayStringToDow(day: string): number {
  * Convert consolidated shift blocks into shift_templates insert rows.
  * Headcount is split across Minimum Crew positions; each position becomes one
  * template with capacity = its share. start/end are restaurant-local TIME values.
+ *
+ * Blocks for the same (position, start_time, end_time) on different days are
+ * merged into a single template row with a multi-day `days` array. This matches
+ * the partial unique index on shift_templates (restaurant_id, position, start_time,
+ * end_time) WHERE is_active = true — preventing 23505 conflicts when the same
+ * time slot recurs across multiple days of the week.
+ * Capacity is taken as the maximum across merged days.
  */
 export function shiftBlocksToTemplates(
   blocks: ShiftBlock[],
   minCrew: MinCrew | null,
   restaurantId: string,
 ): TemplateInsert[] {
-  const rows: TemplateInsert[] = [];
+  // Group rows by (position, start_time, end_time) key
+  const grouped = new Map<string, TemplateInsert>();
+
   for (const block of blocks) {
     const dow = dayStringToDow(block.day);
     const start = pad(block.startHour);
     const end = pad(block.endHour);
     for (const { position, count } of distributePositions(block.headcount, minCrew)) {
-      rows.push({
-        restaurant_id: restaurantId,
-        name: `Suggested · ${position} ${start.slice(0, 5)}-${end.slice(0, 5)}`,
-        days: [dow],
-        start_time: start,
-        end_time: end,
-        break_duration: 0,
-        position,
-        capacity: count,
-        is_active: true,
-      });
+      const key = `${position}|${start}|${end}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        // Merge: add the day (dedup in case of duplicate blocks) and take max capacity
+        if (!existing.days.includes(dow)) {
+          existing.days = [...existing.days, dow].sort((a, b) => a - b);
+        }
+        if (count > existing.capacity) {
+          existing.capacity = count;
+        }
+      } else {
+        grouped.set(key, {
+          restaurant_id: restaurantId,
+          name: `Suggested · ${position} ${start.slice(0, 5)}-${end.slice(0, 5)}`,
+          days: [dow],
+          start_time: start,
+          end_time: end,
+          break_duration: 0,
+          position,
+          capacity: count,
+          is_active: true,
+        });
+      }
     }
   }
-  return rows;
+  return Array.from(grouped.values());
 }

@@ -24,12 +24,15 @@ export function useApplySuggestedShifts(restaurantId: string | null) {
       for (let i = 0; i < rows.length; i += CHUNK) {
         const chunk = rows.slice(i, i + CHUNK);
 
+        // ignoreDuplicates: true generates `ON CONFLICT DO NOTHING` (no column target),
+        // which works with the partial unique index (uq_shift_templates_active_slot).
+        // We omit onConflict here because PostgREST requires the partial predicate
+        // (WHERE is_active = true) to be part of the target, which supabase-js v2
+        // does not support in the onConflict option. A bare DO NOTHING is equivalent
+        // and safe: it ignores violations of ANY unique constraint, including ours.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (supabase.from('shift_templates') as any)
-          .upsert(chunk, {
-            onConflict: 'restaurant_id,position,start_time,end_time',
-            ignoreDuplicates: true,
-          })
+          .upsert(chunk, { ignoreDuplicates: true })
           .select('id');
 
         if (error) throw error;

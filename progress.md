@@ -245,4 +245,15 @@ No actionable findings could be produced. Returning clean=false (tool blocked, n
 ### allPass determination
 All checks introduced by this branch pass. The 1 pgTAP failure and 3 E2E flaky failures are pre-existing issues in unchanged test files.
 
+---
+
+## Phase: 9a (Ship) — COMPLETED
+
+**Date:** 2026-05-29
+
+### Results
+- Branch pushed: `feature/staffing-suggestions-actionable` → `origin/feature/staffing-suggestions-actionable`
+- PR opened: https://github.com/toyiyo/nimble-pnl/pull/525
+- PR number: 525
+
 

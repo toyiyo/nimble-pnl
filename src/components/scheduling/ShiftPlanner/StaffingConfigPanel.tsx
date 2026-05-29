@@ -227,7 +227,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
 
           {/* Add position */}
           <div className="flex items-center gap-1.5 pt-1">
-            {availablePositions.length > 0 ? (
+            {availablePositions.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {availablePositions.map((pos) => (
                   <button
@@ -241,7 +241,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
                   </button>
                 ))}
               </div>
-            ) : null}
+            )}
             <div className="flex items-center gap-1">
               <Input
                 type="text"

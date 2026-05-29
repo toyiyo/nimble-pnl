@@ -6,22 +6,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 import { CalendarClock } from 'lucide-react';
 
-import { shiftBlocksToTemplates } from '@/lib/staffingApply';
+import { DOW, fmtHour, dayStringToDow, shiftBlocksToTemplates } from '@/lib/staffingApply';
 import { useApplySuggestedShifts } from '@/hooks/useApplySuggestedShifts';
 
 import type { MinCrew, ShiftBlock } from '@/types/scheduling';
 
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const fmtHour = (h: number) => {
-  const m = h % 24;
-  const ampm = m < 12 ? 'AM' : 'PM';
-  const display = m % 12 === 0 ? 12 : m % 12;
-  return `${display}${ampm}`;
-};
-
 const blockLabel = (b: ShiftBlock) =>
-  `${DOW[new Date(b.day + 'T12:00:00').getDay()]} ${fmtHour(b.startHour)}–${fmtHour(b.endHour)}, ${b.headcount} staff`;
+  `${DOW[dayStringToDow(b.day)]} ${fmtHour(b.startHour)}–${fmtHour(b.endHour)}, ${b.headcount} staff`;
 
 interface Props {
   open: boolean;

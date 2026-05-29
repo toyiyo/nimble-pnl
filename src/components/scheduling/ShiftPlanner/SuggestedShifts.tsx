@@ -4,17 +4,11 @@ import { Button } from '@/components/ui/button';
 
 import { CalendarPlus } from 'lucide-react';
 
+import { DOW, fmtHour, dayStringToDow } from '@/lib/staffingApply';
+
 import { ApplyShiftsDialog } from './ApplyShiftsDialog';
 
 import type { MinCrew, ShiftBlock } from '@/types/scheduling';
-
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const fmtHour = (h: number) => {
-  const m = h % 24;
-  const ampm = m < 12 ? 'AM' : 'PM';
-  return `${m % 12 === 0 ? 12 : m % 12}${ampm}`;
-};
 
 interface Props {
   blocks: ShiftBlock[];
@@ -29,12 +23,8 @@ export function SuggestedShifts({ blocks, minCrew, restaurantId, openShiftsEnabl
   const byDay = useMemo(() => {
     const m = new Map<string, ShiftBlock[]>();
     for (const b of blocks) {
-      const existing = m.get(b.day);
-      if (existing) {
-        existing.push(b);
-      } else {
-        m.set(b.day, [b]);
-      }
+      if (!m.has(b.day)) m.set(b.day, []);
+      m.get(b.day)!.push(b);
     }
     return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [blocks]);
@@ -63,7 +53,7 @@ export function SuggestedShifts({ blocks, minCrew, restaurantId, openShiftsEnabl
         {byDay.map(([day, dayBlocks]) => (
           <div key={day} className="flex items-center gap-3 text-[13px]">
             <span className="w-10 font-medium text-muted-foreground">
-              {DOW[new Date(day + 'T12:00:00').getDay()]}
+              {DOW[dayStringToDow(day)]}
             </span>
             <span className="text-foreground">
               {dayBlocks.map((b) => `${fmtHour(b.startHour)}–${fmtHour(b.endHour)} (${b.headcount})`).join(', ')}

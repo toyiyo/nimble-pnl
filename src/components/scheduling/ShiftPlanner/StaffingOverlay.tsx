@@ -16,6 +16,7 @@ import { useEmployees } from '@/hooks/useEmployees';
 import { aggregateHourlySales } from '@/hooks/useHourlySalesPattern';
 import { computeStaffingSuggestions } from '@/hooks/useStaffingSuggestions';
 import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
+import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
@@ -139,7 +140,7 @@ function useWeekStaffingSuggestions(
     if (!allSales?.length) return new Map<number, typeof allSales>();
     const grouped = new Map<number, typeof allSales>();
     for (const sale of allSales) {
-      const dow = new Date(sale.sale_date + 'T12:00:00').getDay();
+      const dow = dayStringToDow(sale.sale_date);
       if (!grouped.has(dow)) grouped.set(dow, []);
       grouped.get(dow)!.push(sale);
     }
@@ -152,7 +153,7 @@ function useWeekStaffingSuggestions(
     const result = new Map<string, StaffingSuggestionsResult>();
     let anyHourly = false;
     for (const day of weekDays) {
-      const dayOfWeek = new Date(day + 'T12:00:00').getDay();
+      const dayOfWeek = dayStringToDow(day);
       const filtered = salesByDow.get(dayOfWeek) ?? [];
       const aggregated = aggregateHourlySales(filtered);
       if (aggregated.hasHourlyBreakdown) anyHourly = true;
@@ -252,6 +253,21 @@ export function StaffingOverlay({
     [daySuggestions],
   );
 
+  // Explainer note about the crew/staff floor (extracted from JSX for readability)
+  const crewFloorNote = (() => {
+    const crewFloor = computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff);
+    if (activeSettings.min_crew && Object.keys(activeSettings.min_crew).length > 0) {
+      const crewDesc = Object.entries(activeSettings.min_crew)
+        .map(([pos, n]) => `${n} ${pos}`)
+        .join(', ');
+      return `Your minimum crew (${crewDesc}) sets a floor of ${crewFloor} staff per hour. `;
+    }
+    if (crewFloor > 1) {
+      return `A minimum of ${crewFloor} staff is always shown. `;
+    }
+    return null;
+  })();
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
@@ -319,16 +335,7 @@ export function StaffingOverlay({
                     : 'Since your POS does not include timestamps, daily sales are spread evenly across business hours (9am–10pm). The actual busy and slow hours may vary.'
                   }{' '}
                   Staff per hour = projected sales ÷ ${activeSettings.target_splh} target.{' '}
-                  {(() => {
-                    const crewFloor = computeMinStaffFromCrew(activeSettings.min_crew, activeSettings.min_staff);
-                    if (activeSettings.min_crew && Object.keys(activeSettings.min_crew).length > 0) {
-                      return `Your minimum crew (${Object.entries(activeSettings.min_crew).map(([pos, n]) => `${n} ${pos}`).join(', ')}) sets a floor of ${crewFloor} staff per hour. `;
-                    }
-                    if (crewFloor > 1) {
-                      return `A minimum of ${crewFloor} staff is always shown. `;
-                    }
-                    return null;
-                  })()}
+                  {crewFloorNote}
                   Amber bars mean labor cost exceeds your {activeSettings.target_labor_pct}% target.
                 </div>
               </div>

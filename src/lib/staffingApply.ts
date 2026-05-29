@@ -5,6 +5,15 @@ export interface PositionCount {
   count: number;
 }
 
+/** Abbreviated day names, Sunday-first (matches Date.getDay()). */
+export const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+/** Format an integer hour (0-23) as "12PM"-style 12-hour string. */
+export const fmtHour = (h: number): string => {
+  const m = h % 24;
+  return `${m % 12 === 0 ? 12 : m % 12}${m < 12 ? 'AM' : 'PM'}`;
+};
+
 /**
  * Split a headcount across Minimum Crew positions proportionally to their weights,
  * preserving the total. Largest-remainder rounding (no lost or invented heads).
@@ -27,7 +36,7 @@ export function distributePositions(headcount: number, minCrew: MinCrew | null):
   // Distribute the remaining heads to the largest remainders.
   const byRemainder = [...floored].sort((a, b) => b.rem - a.rem);
   let i = 0;
-  while (assigned < headcount && byRemainder.length > 0) {
+  while (assigned < headcount) {
     byRemainder[i % byRemainder.length].count += 1;
     assigned += 1;
     i += 1;

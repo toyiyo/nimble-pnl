@@ -325,7 +325,8 @@ className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted"    // Badges, counts
       </div>
       <div>
         <DialogTitle className="text-[17px] font-semibold text-foreground">Title</DialogTitle>
-        <p className="text-[13px] text-muted-foreground mt-0.5">Description</p>
+        {/* Use DialogDescription (not a plain <p>) so Radix wires aria-describedby */}
+        <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">Description</DialogDescription>
       </div>
     </div>
   </DialogHeader>

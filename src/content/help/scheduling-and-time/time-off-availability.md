@@ -5,7 +5,7 @@ summary: "Create and approve time-off requests, set each employee's regular week
 audience: ["owner", "manager"]
 order: 40
 keywords: ["time off", "availability", "request", "approve", "reject", "shift trade", "claim", "exception", "availability grid"]
-related: ["build-publish-weekly-schedule", "employee-portal-time-off-availability", "available-shifts-staff"]
+related: ["build-publish-weekly-schedule", "employee-availability-and-time-off", "employee-shift-marketplace"]
 ---
 
 # Manage Time-Off Requests and Employee Availability

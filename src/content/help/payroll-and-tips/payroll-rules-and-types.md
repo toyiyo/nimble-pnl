@@ -5,7 +5,7 @@ summary: "Learn the exact rules EasyShiftHQ uses to calculate pay for hourly, sa
 audience: ["owner", "manager", "accountant"]
 order: 20
 keywords: ["payroll calculation", "hourly", "salaried", "contractor", "per-job", "per day worked", "daily rate", "overtime", "double-time", "proration", "compensation"]
-related: ["run-payroll", "adjust-overtime-add-manual-payment", "payroll-labor-financial-settings"]
+related: ["run-payroll", "adjust-overtime-add-manual-payment"]
 ---
 
 # How Payroll Is Calculated by Compensation Type

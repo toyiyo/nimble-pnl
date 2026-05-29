@@ -85,6 +85,6 @@ Posting your own shifts for trade is handled separately — see your schedule pa
 
 ## Related articles
 
-- [View Your Schedule](/help/employee-self-service/employee-view-timecard)
-- [Request Time Off or Set Availability](/help/employee-self-service/employee-availability-and-time-off)
-- [Build and Publish a Weekly Schedule](/help/manager/build-publish-weekly-schedule)
+- [View Your Schedule](/help/employee-view-timecard)
+- [Request Time Off or Set Availability](/help/employee-availability-and-time-off)
+- [Build and Publish a Weekly Schedule](/help/build-publish-weekly-schedule)

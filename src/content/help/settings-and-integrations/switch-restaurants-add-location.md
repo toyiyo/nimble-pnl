@@ -80,5 +80,5 @@ If your account is on a free trial, a badge showing how many days remain (for ex
 
 ## Related articles
 
-- [Restaurant Profile & General Settings](/help/settings-and-integrations/restaurant-profile-general-settings)
-- [Business Information Settings](/help/settings-and-integrations/business-information-settings)
+- [Restaurant Profile & General Settings](/help/restaurant-profile-general-settings)
+- [Business Information Settings](/help/business-information-settings)

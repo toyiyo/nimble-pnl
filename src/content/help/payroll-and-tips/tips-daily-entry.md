@@ -5,7 +5,7 @@ summary: "Enter total tips collected for a day, review the calculated split acro
 audience: ["owner", "manager"]
 order: 40
 keywords: ["tips", "tip split", "daily entry", "approve", "draft", "pool", "POS tips", "server tips"]
-related: ["configure-tip-pool-settings", "lock-tips-for-payroll", "run-payroll", "employee-tips-view"]
+related: ["configure-tip-pool-settings", "lock-tips-for-payroll", "run-payroll", "employee-view-tips-and-dispute"]
 ---
 
 # Enter and Approve Daily Tip Splits

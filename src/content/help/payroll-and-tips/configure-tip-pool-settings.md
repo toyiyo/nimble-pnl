@@ -5,7 +5,7 @@ summary: "Choose the pooling model, share method, split cadence, role weights, a
 audience: ["owner", "manager"]
 order: 50
 keywords: ["tip pool", "settings", "pooling model", "share method", "cadence", "role weights", "contribution", "participating employees"]
-related: ["tips-daily-entry", "lock-tips-for-payroll", "payroll-labor-financial-settings"]
+related: ["tips-daily-entry", "lock-tips-for-payroll", "payroll-rules-and-types"]
 ---
 
 # Configure Tip Pool Settings

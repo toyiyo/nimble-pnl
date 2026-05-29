@@ -5,7 +5,7 @@ summary: "Recover account access via a forgot-password email link, or update you
 audience: ["owner", "manager", "chef", "staff"]
 order: 20
 keywords: ["password", "reset", "forgot", "security", "change password", "OAuth"]
-related: ["sign-in-create-account", "restaurant-settings", "subscription-plans"]
+related: ["sign-in-create-account", "restaurant-profile-general-settings", "subscription-plans"]
 ---
 
 # Reset or Change Your Password

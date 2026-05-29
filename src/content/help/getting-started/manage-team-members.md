@@ -5,7 +5,7 @@ summary: "Invite staff, view pending invitations, change member roles, remove so
 audience: ["owner", "manager"]
 order: 50
 keywords: ["team", "invite", "collaborator", "role", "remove member", "invitation", "accountant", "inventory helper"]
-related: ["roles-and-permissions", "accept-team-invitation", "restaurant-settings"]
+related: ["roles-and-permissions", "accept-team-invitation", "restaurant-profile-general-settings"]
 ---
 
 # Manage Your Team: Invite, Change Roles, Remove, and Add Collaborators

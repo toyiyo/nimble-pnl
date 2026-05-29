@@ -5,7 +5,7 @@ summary: "Create shifts on the weekly grid, use filters and grouping, copy or im
 audience: ["owner", "manager"]
 order: 10
 keywords: ["schedule", "shift", "publish", "weekly", "copy week", "import", "bulk edit", "print", "drag"]
-related: ["recurring-shifts", "shift-planner-templates-auto-generate", "time-off-availability", "copy-week-import-broadcast"]
+related: ["recurring-shifts", "shift-planner-templates-auto-generate", "time-off-availability"]
 ---
 
 # Build, Edit, and Publish the Weekly Schedule

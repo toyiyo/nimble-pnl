@@ -5,7 +5,7 @@ summary: "A plain-language guide to all eight roles in EasyShiftHQ — what each
 audience: ["owner", "manager"]
 order: 40
 keywords: ["roles", "permissions", "owner", "manager", "chef", "staff", "kiosk", "collaborator", "access"]
-related: ["manage-team-members", "accept-team-invitation", "restaurant-settings"]
+related: ["manage-team-members", "accept-team-invitation", "restaurant-profile-general-settings"]
 ---
 
 # Roles and What Each One Can Access

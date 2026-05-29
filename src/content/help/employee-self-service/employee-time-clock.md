@@ -5,7 +5,7 @@ summary: "Use the Time Clock screen to record when you start and stop working, i
 audience: ["staff", "chef"]
 order: 10
 keywords: ["clock in", "clock out", "break", "selfie", "verification", "geofence", "location", "time clock"]
-related: ["kiosk-mode-clock-in-out", "employee-timecard", "employee-pay-estimate", "employee-kiosk-pin"]
+related: ["kiosk-mode-clock-in-out", "employee-view-timecard", "employee-view-pay", "employee-kiosk-pin"]
 ---
 
 # Clock In, Start a Break, and Clock Out

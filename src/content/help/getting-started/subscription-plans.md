@@ -5,7 +5,7 @@ summary: "View your current trial or plan status, compare the three plan tiers, 
 audience: ["owner"]
 order: 60
 keywords: ["subscription", "plan", "billing", "upgrade", "trial", "pricing", "Pro", "Starter", "Growth"]
-related: ["sign-in-create-account", "restaurant-settings", "chef-assistant-ai-chat"]
+related: ["sign-in-create-account", "restaurant-profile-general-settings", "ai-chef-assistant"]
 ---
 
 # Choose or Change Your Subscription Plan

@@ -157,6 +157,6 @@ Revenue Mix only includes sales that have been categorized in your chart of acco
 
 ## Related articles
 
-- [Financial Statements](/help/financials-and-accounting/financial-statements)
-- [Inventory Reconciliation](/help/financials-and-accounting/inventory-reconciliation)
-- [Weekly Brief & Performance Digest](/help/financials-and-accounting/weekly-brief-performance-digest)
+- [Financial Statements](/help/financial-statements)
+- [Inventory Reconciliation](/help/inventory-reconciliation)
+- [Weekly Brief & Performance Digest](/help/weekly-brief-performance-digest)

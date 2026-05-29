@@ -118,7 +118,7 @@ Yes. Go back to Settings, click the Notifications tab, and flip the **Weekly Bri
 
 ## Related articles
 
-- [Weekly Brief Performance Digest](/help/settings-and-integrations/weekly-brief-performance-digest)
-- [Time-Off and Availability](/help/settings-and-integrations/time-off-availability)
-- [Restaurant Profile and General Settings](/help/settings-and-integrations/restaurant-profile-general-settings)
-- [Manage Team Members](/help/settings-and-integrations/manage-team-members)
+- [Weekly Brief Performance Digest](/help/weekly-brief-performance-digest)
+- [Time-Off and Availability](/help/time-off-availability)
+- [Restaurant Profile and General Settings](/help/restaurant-profile-general-settings)
+- [Manage Team Members](/help/manage-team-members)

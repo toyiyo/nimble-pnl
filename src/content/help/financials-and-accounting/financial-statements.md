@@ -5,7 +5,7 @@ summary: "Read your Income Statement, Balance Sheet, Cash Flow Statement, and Tr
 audience: ["owner", "accountant"]
 order: 20
 keywords: ["income statement", "balance sheet", "cash flow", "trial balance", "financial statements", "export", "P&L", "COGS"]
-related: ["banking-connect-and-transactions", "chart-of-accounts-and-intelligence", "budget-break-even", "financial-intelligence"]
+related: ["banking-connect-and-transactions", "chart-of-accounts-and-intelligence", "budget-break-even"]
 ---
 
 # View and Export Financial Statements

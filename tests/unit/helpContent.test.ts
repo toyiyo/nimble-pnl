@@ -12,6 +12,7 @@ import {
   parseHelpFrontmatter,
   HELP_CATEGORIES,
   getCategory,
+  helpArticles,
   type HelpFrontmatter,
   type HelpArticle,
 } from '@/lib/helpContent';
@@ -630,5 +631,58 @@ describe('getArticleBySlug (pure logic via injected data)', () => {
 
   it('is case-sensitive', () => {
     expect(articleBySlug(SAMPLE_ARTICLES, 'Manage-Tip-Pools')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Help content link integrity — validates the REAL articles loaded via glob.
+// Guards against broken cross-links (related[] slugs and in-body /help links).
+// ---------------------------------------------------------------------------
+
+describe('help content link integrity', () => {
+  const slugs = new Set(helpArticles.map((a) => a.slug));
+  const categorySlugs = new Set(HELP_CATEGORIES.map((c) => c.slug));
+  // /help/payroll-calculations is a standalone in-app route, not a Markdown article.
+  const validLinkTargets = new Set([...slugs, 'payroll-calculations']);
+
+  it('loads articles from src/content/help', () => {
+    expect(helpArticles.length).toBeGreaterThan(0);
+  });
+
+  it('every article slug is unique', () => {
+    expect(slugs.size).toBe(helpArticles.length);
+  });
+
+  it('every article belongs to a known category', () => {
+    const bad = helpArticles
+      .filter((a) => !categorySlugs.has(a.category))
+      .map((a) => `${a.slug} -> ${a.category}`);
+    expect(bad).toEqual([]);
+  });
+
+  it('every related[] slug resolves to a real article (no self-references)', () => {
+    const broken: string[] = [];
+    for (const a of helpArticles) {
+      for (const r of a.related) {
+        if (r === a.slug) broken.push(`${a.slug}: self-reference`);
+        else if (!slugs.has(r)) broken.push(`${a.slug} -> ${r}`);
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+
+  it('every in-body /help link is slug-based and resolves', () => {
+    const broken: string[] = [];
+    const re = /\]\(\/help\/([^)\s#]+)/g;
+    for (const a of helpArticles) {
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(a.body)) !== null) {
+        const target = m[1].replace(/\/$/, '');
+        if (!target) continue;
+        if (target.includes('/')) broken.push(`${a.slug}: category-prefixed /help/${target}`);
+        else if (!validLinkTargets.has(target)) broken.push(`${a.slug}: unknown /help/${target}`);
+      }
+    }
+    expect(broken).toEqual([]);
   });
 });

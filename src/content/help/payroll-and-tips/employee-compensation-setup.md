@@ -155,6 +155,6 @@ No. Pay rate changes are internal records only. The employee does not receive an
 ## Related articles
 
 - [Add and Edit Employees](/help/add-edit-employees)
-- [Payroll Rules and Types](/help/payroll-and-tips/payroll-rules-and-types)
-- [Run Payroll](/help/payroll-and-tips/run-payroll)
-- [Adjust Overtime or Add a Manual Payment](/help/payroll-and-tips/adjust-overtime-add-manual-payment)
+- [Payroll Rules and Types](/help/payroll-rules-and-types)
+- [Run Payroll](/help/run-payroll)
+- [Adjust Overtime or Add a Manual Payment](/help/adjust-overtime-add-manual-payment)

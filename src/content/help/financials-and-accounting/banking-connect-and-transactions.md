@@ -5,7 +5,7 @@ summary: "Connect a bank account or upload a statement, then review, categorize,
 audience: ["owner", "manager", "accountant"]
 order: 10
 keywords: ["banking", "transactions", "bank connect", "reconcile", "categorize", "AI", "rules", "export", "Stripe"]
-related: ["financial-statements", "chart-of-accounts-and-intelligence", "expenses-and-print-checks", "financial-intelligence"]
+related: ["financial-statements", "chart-of-accounts-and-intelligence", "expenses-and-print-checks"]
 ---
 
 # Connect Your Bank and Manage Transactions

@@ -5,7 +5,7 @@ summary: "Lock an approved tip period so amounts appear in payroll, record which
 audience: ["owner", "manager"]
 order: 60
 keywords: ["lock tips", "payroll", "cash payout", "tip history", "dispute", "archived", "weekly overview"]
-related: ["tips-daily-entry", "configure-tip-pool-settings", "run-payroll", "employee-tips-view"]
+related: ["tips-daily-entry", "configure-tip-pool-settings", "run-payroll", "employee-view-tips-and-dispute"]
 ---
 
 # Lock Tips for Payroll, Record Cash Payouts, and Review Tip History

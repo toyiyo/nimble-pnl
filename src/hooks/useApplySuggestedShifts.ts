@@ -42,11 +42,16 @@ export function useApplySuggestedShifts(restaurantId: string | null) {
       return { created, skipped: rows.length - created };
     },
 
-    onSuccess: ({ created, skipped }) => {
+    onSettled: () => {
+      // Invalidate on settle (success OR error): the upsert persists chunks
+      // incrementally, so a later chunk failing still leaves earlier chunks
+      // written — caches must refresh regardless of overall outcome.
       queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['open_shifts', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+    },
 
+    onSuccess: ({ created, skipped }) => {
       toast({
         title: `${created} open shift${created === 1 ? '' : 's'} created`,
         description:

@@ -49,15 +49,21 @@ export function ApplyShiftsDialog({
       return next;
     });
 
+  // Reset the per-block selection whenever the dialog closes (cancel, confirm,
+  // Esc, or backdrop click) so a reopened dialog never inherits stale exclusions.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setExcluded(new Set());
+    onOpenChange(next);
+  };
+
   const handleConfirm = async () => {
     const rows = shiftBlocksToTemplates(selected, minCrew, restaurantId);
     await applyShifts(rows);
-    onOpenChange(false);
-    setExcluded(new Set());
+    handleOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg max-h-[80vh] p-0 gap-0 border-border/40 flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
           <div className="flex items-center gap-3">
@@ -105,7 +111,7 @@ export function ApplyShiftsDialog({
           <Button
             variant="ghost"
             className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
           >
             Cancel
           </Button>

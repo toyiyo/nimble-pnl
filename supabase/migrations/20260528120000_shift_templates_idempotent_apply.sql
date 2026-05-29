@@ -6,12 +6,16 @@
 -- prefix is the restaurant, then position narrows further, then the time window).
 --
 -- Note: ON CONFLICT can target this partial index by repeating its WHERE predicate:
---   ON CONFLICT (restaurant_id, position, start_time, end_time)
+--   ON CONFLICT (restaurant_id, position, start_time, end_time, days)
 --   WHERE is_active = true DO NOTHING
 --
--- The `days` array is intentionally excluded from the key: a single slot may
--- serve multiple days, and per-day differences are rare for AI suggestions.
+-- `days` IS part of the key: each suggested block targets one day (days = {dow}),
+-- so the same role + time window on different days (e.g. Server 17:00-22:00 on
+-- Fri {5} and Sat {6}) must be distinct rows. Excluding `days` would silently
+-- drop every day after the first via ON CONFLICT DO NOTHING.
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_shift_templates_active_slot
-  ON public.shift_templates (restaurant_id, position, start_time, end_time)
+DROP INDEX IF EXISTS public.uq_shift_templates_active_slot;
+
+CREATE UNIQUE INDEX uq_shift_templates_active_slot
+  ON public.shift_templates (restaurant_id, position, start_time, end_time, days)
   WHERE is_active = true;

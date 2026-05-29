@@ -6,12 +6,12 @@
 -- Depends on migration: 20260528120000_shift_templates_idempotent_apply.sql
 -- which creates:
 --   CREATE UNIQUE INDEX uq_shift_templates_active_slot
---     ON public.shift_templates (restaurant_id, position, start_time, end_time)
+--     ON public.shift_templates (restaurant_id, position, start_time, end_time, days)
 --     WHERE is_active = true;
 
 BEGIN;
 
-SELECT plan(3);
+SELECT plan(4);
 
 -- ============================================================
 -- Setup: disable RLS so the test can insert without auth context
@@ -81,7 +81,7 @@ SELECT lives_ok(
       2,
       true
     )
-    ON CONFLICT (restaurant_id, position, start_time, end_time) WHERE is_active = true DO NOTHING
+    ON CONFLICT (restaurant_id, position, start_time, end_time, days) WHERE is_active = true DO NOTHING
   $$,
   'ON CONFLICT DO NOTHING re-apply is a no-op'
 );
@@ -106,6 +106,29 @@ SELECT lives_ok(
     )
   $$,
   'distinct position inserts without conflict'
+);
+
+-- ============================================================
+-- Test 4: Same role + time window on a DIFFERENT day does NOT collide
+-- (regression guard: `days` must be part of the unique key)
+-- ============================================================
+
+SELECT lives_ok(
+  $$
+    INSERT INTO shift_templates (restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active)
+    VALUES (
+      '00000000-0000-0000-0000-0000000000aa',
+      'Suggested · Server 17:00-22:00 (Sat)',
+      '{6}',
+      '17:00:00',
+      '22:00:00',
+      0,
+      'Server',
+      2,
+      true
+    )
+  $$,
+  'same slot on a different day inserts (days is part of the key)'
 );
 
 SELECT * FROM finish();

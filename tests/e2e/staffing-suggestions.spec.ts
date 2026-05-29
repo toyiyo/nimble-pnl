@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 /**
  * E2E: Staffing suggestions — empty state + seeded-sales → apply flow.
  *

@@ -114,7 +114,11 @@ export function ApplyShiftsDialog({
             disabled={selected.length === 0 || isApplying}
             onClick={handleConfirm}
           >
-            {isApplying ? 'Creating…' : `Create ${selected.length} shift${selected.length === 1 ? '' : 's'}`}
+            {(() => {
+              if (isApplying) return 'Creating…';
+              const suffix = selected.length === 1 ? '' : 's';
+              return `Create ${selected.length} shift${suffix}`;
+            })()}
           </Button>
         </DialogFooter>
       </DialogContent>

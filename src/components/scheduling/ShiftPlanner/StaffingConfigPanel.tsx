@@ -183,7 +183,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
       </div>
 
       {/* Minimum crew section */}
-      <div className="rounded-lg border border-border/40 bg-background overflow-hidden">
+      <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/20 bg-muted/20">
           <div className="flex items-center gap-1.5">
             <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

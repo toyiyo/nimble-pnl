@@ -52,7 +52,7 @@ export function SuggestedShifts({ blocks, minCrew, restaurantId, openShiftsEnabl
       <div className="flex items-center justify-between px-4 py-2.5">
         <span className="text-[13px] font-semibold text-foreground">Suggested shifts</span>
         <Button
-          className="h-8 px-3 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[12px] font-medium"
+          className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           onClick={() => setDialogOpen(true)}
         >
           <CalendarPlus className="h-3.5 w-3.5 mr-1.5" />

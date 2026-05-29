@@ -433,6 +433,16 @@ describe('Employee Activation Status', () => {
         );
       });
     });
+
+    it('ReactivateEmployeeParams must not accept confirmPin (dead field removed)', () => {
+      // @ts-expect-error confirmPin must not exist on ReactivateEmployeeParams
+      const _params: import('@/hooks/useEmployees').ReactivateEmployeeParams = {
+        employeeId: 'emp-x',
+        confirmPin: true,
+      };
+      // Suppress unused-variable lint — the point is the type check above
+      expect(_params.employeeId).toBe('emp-x');
+    });
   });
 
   describe('Employee filtering utilities', () => {

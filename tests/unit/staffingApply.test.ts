@@ -61,4 +61,20 @@ describe('shiftBlocksToTemplates', () => {
   it('skips blocks with zero headcount', () => {
     expect(shiftBlocksToTemplates([{ ...block, headcount: 0 }], null, restaurantId)).toEqual([]);
   });
+
+  it('keeps per-day capacity — does NOT merge same-slot different-day blocks', () => {
+    // Same role + time window on Fri (2026-05-29, dow 5, headcount 2) and
+    // Sat (2026-05-30, dow 6, headcount 4) must stay two rows with their own
+    // capacities — merging would overstate Friday.
+    const fri: ShiftBlock = { startHour: 17, endHour: 22, headcount: 2, day: '2026-05-29' };
+    const sat: ShiftBlock = { startHour: 17, endHour: 22, headcount: 4, day: '2026-05-30' };
+    const rows = shiftBlocksToTemplates([fri, sat], null, restaurantId);
+    expect(rows).toHaveLength(2);
+    const friRow = rows.find((r) => r.days[0] === 5)!;
+    const satRow = rows.find((r) => r.days[0] === 6)!;
+    expect(friRow.days).toEqual([5]);
+    expect(friRow.capacity).toBe(2);
+    expect(satRow.days).toEqual([6]);
+    expect(satRow.capacity).toBe(4);
+  });
 });

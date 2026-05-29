@@ -58,19 +58,18 @@ export function dayStringToDow(day: string): number {
  * Headcount is split across Minimum Crew positions; each position becomes one
  * template with capacity = its share. start/end are restaurant-local TIME values.
  *
- * Blocks for the same (position, start_time, end_time) on different days are
- * merged into a single template row with a multi-day `days` array. This matches
- * the partial unique index on shift_templates (restaurant_id, position, start_time,
- * end_time) WHERE is_active = true — preventing 23505 conflicts when the same
- * time slot recurs across multiple days of the week.
- * Capacity is taken as the maximum across merged days.
+ * Each block targets one day, so it produces one row per (position, day) with
+ * `days: [dow]` and its own capacity. Rows are NOT merged across days — the
+ * unique index includes `days`, and merging would overstate capacity on the
+ * quieter days (Fri=2 + Sat=4 must not become 4 openings on both).
  */
 export function shiftBlocksToTemplates(
   blocks: ShiftBlock[],
   minCrew: MinCrew | null,
   restaurantId: string,
 ): TemplateInsert[] {
-  // Group rows by (position, start_time, end_time) key
+  // Group rows by (position, start_time, end_time, day) — day IS part of the key
+  // so each day keeps its own capacity (no cross-day merge / overstating).
   const grouped = new Map<string, TemplateInsert>();
 
   for (const block of blocks) {
@@ -78,13 +77,10 @@ export function shiftBlocksToTemplates(
     const start = pad(block.startHour);
     const end = pad(block.endHour);
     for (const { position, count } of distributePositions(block.headcount, minCrew)) {
-      const key = `${position}|${start}|${end}`;
+      const key = `${position}|${start}|${end}|${dow}`;
       const existing = grouped.get(key);
       if (existing) {
-        // Merge: add the day (dedup in case of duplicate blocks) and take max capacity
-        if (!existing.days.includes(dow)) {
-          existing.days = [...existing.days, dow].sort((a, b) => a - b);
-        }
+        // Same day-slot from overlapping blocks: keep the busiest.
         if (count > existing.capacity) {
           existing.capacity = count;
         }

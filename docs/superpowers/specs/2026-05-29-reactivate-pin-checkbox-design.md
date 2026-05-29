@@ -75,15 +75,24 @@ already ignores it, so the public contract becomes honest:
 `{ employeeId, hourlyRate? }`.
 
 ### 2. `src/components/ReactivateEmployeeDialog.tsx`
-- Remove the `confirmPin` state and its three resets (`useEffect`,
-  `onSuccess`, `handleCancel`).
-- Remove the `confirmPin` key from the `.mutate(...)` call.
-- Remove the entire "PIN Confirmation" checkbox block.
+Remove **every** `confirmPin` site (all six):
+- `useState(true)` initialization (line ~32).
+- `setConfirmPin(true)` reset inside the `useEffect` (line ~45).
+- `setConfirmPin(true)` reset inside `onSuccess` (line ~68).
+- `setConfirmPin(true)` reset inside `handleCancel` (line ~78).
+- The `confirmPin` key in the `.mutate(...)` call (line ~60).
+- The entire "PIN Confirmation" checkbox block (lines ~176–195).
+
+Then:
 - Keep the `Checkbox` import (still used by the "Update hourly rate" option).
-- Preserve the *useful* signal the checkbox carried by lightly clarifying the
-  existing top info alert, e.g. the employee will be able to "log in, punch
-  in/out (including with their existing kiosk PIN), and be scheduled for
-  shifts." This is an accurate static statement, not a toggle.
+- Preserve the *useful* signal the checkbox carried by clarifying the existing
+  top info alert (line ~109) to read exactly: "The employee will be able to log
+  in, punch in/out (including with their existing kiosk PIN), and be scheduled
+  for shifts." This is an accurate static statement, not a toggle.
+- **Accessibility (folded from Phase 2.5 review):** add `aria-hidden="true"` to
+  the two decorative Alert icons that are in this file — the top
+  `<CheckCircle>` (being edited anyway) and the bottom `<Info>` — so screen
+  readers don't announce the SVG before the alert text (WCAG 1.1.1).
 
 ### 3. `tests/unit/employeeActivation.test.ts`
 Remove `confirmPin: true` from the two `useReactivateEmployee` tests (they
@@ -108,9 +117,13 @@ and fallback failures.
   drop `confirmPin`.
 - **New** `tests/unit/ReactivateEmployeeDialog.test.tsx`:
   1. The dialog renders **no** "Enable kiosk PIN" control (regression guard
-     against the misleading checkbox returning).
+     against the misleading checkbox returning) — assert
+     `queryByRole('checkbox', { name: /kiosk PIN/i })` is null.
   2. Clicking "Reactivate Employee" calls the mutation with **exactly**
      `{ employeeId, hourlyRate }` and **no** `confirmPin` key.
+  3. The top info alert mentions the kiosk PIN (e.g. text matching
+     `/kiosk PIN/i`) — guards the re-enablement signal against being reverted
+     without the checkbox being restored (folded from Phase 2.5 review).
 
 TDD: the dialog test is written first (RED — the checkbox currently renders and
 `confirmPin` is currently passed), then the code is removed (GREEN).
@@ -122,3 +135,11 @@ TDD: the dialog test is written first (RED — the checkbox currently renders an
   already lives in Kiosk Mode.
 - No change to `reactivate_employee`, `employee_pins`, or any SQL — so the
   Supabase design reviewer is not applicable to this change.
+- **Deferred pre-existing style nits (Phase 2.5 review).** The reviewer noted
+  several shadcn/CLAUDE.md token drifts that already exist in the dialog and
+  are *not* caused or worsened by this change: the `space-y-4` container
+  (line ~104) and `space-x-3` rows should be `gap-*`; the `border-t` dividers
+  should use `border-border/40`; the header icon box uses direct colors
+  (`bg-green-100` / `text-green-600`). We intentionally leave these untouched
+  to keep the diff scoped to the bug fix — broadening it would add unrelated
+  review churn. They are logged here for a future styling pass.

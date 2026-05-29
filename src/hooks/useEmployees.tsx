@@ -220,7 +220,6 @@ export const useDeactivateEmployee = () => {
 export interface ReactivateEmployeeParams {
   employeeId: string;
   hourlyRate?: number; // Optional: update rate during reactivation
-  confirmPin?: boolean; // Whether PIN should remain active (for UI flow)
 }
 
 export const useReactivateEmployee = () => {

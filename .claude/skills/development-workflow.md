@@ -11,6 +11,10 @@ This skill defines the mandatory development pipeline for every task. Follow eac
 
 The workflow is designed for **autonomous execution**: after the user approves the plan (Phase 3), Claude executes Phases 4–9 without requiring human prompts. The user is only notified when the PR is green and ready for review, or when Claude is genuinely stuck.
 
+**Phases 4–9 run as a dynamic workflow.** After plan approval, Phases 4–9 are orchestrated by the `dev-build-and-ship` workflow script (`.claude/workflows/dev-build-and-ship.js`), launched via the `Workflow` tool. The runtime enforces phase ordering deterministically — this is the mechanism that stops phases (Verify, review-comment triage) from being silently skipped. Phases 0–3 stay interactive in the main session (they require human Q&A and plan approval, which a background workflow cannot do). See **Phase 4–9: Autonomous Workflow Execution** below. The prose for Phases 4–10 that follows is the **reference contract** each workflow agent implements — keep it accurate; the agents read this file.
+
+A **Stop-hook backstop** (`.claude/hooks/dev-phase-guard.sh`, wired in `settings.json`) independently warns if a `progress.md` is left not marked `Ready for merge`/`Complete` — a non-blocking safety net for skipped Verify/triage even when the workflow isn't used.
+
 **Two defense-in-depth phases** complement the linear flow:
 
 - **Phase 2.5 — Design Review:** Always-on Supabase + Frontend reviewers
@@ -197,6 +201,46 @@ detection above). Otherwise never.
 - Save plan to `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` and commit it on the feature branch
 
 **Skip condition:** None.
+
+## Phase 4–9: Autonomous Workflow Execution
+
+**Once the user approves the plan (end of Phase 3), do NOT execute Phases 4–9 inline.** Launch the `dev-build-and-ship` workflow, which orchestrates them with runtime-enforced ordering.
+
+**Invoke** (use `scriptPath` — the saved-workflow `name` registry is not reliable yet):
+
+```
+Workflow({
+  scriptPath: "<repo-root>/.claude/workflows/dev-build-and-ship.js",
+  args: {
+    worktreePath:  "<absolute path to the Phase 1 worktree>",
+    branch:        "<feature branch name>",
+    designDocPath: "<absolute path to the Phase 2 design doc>",
+    planPath:      "<absolute path to the Phase 3 plan>"
+  }
+})
+```
+
+(Resolve `<repo-root>` to the absolute project path. The four `args` values come from Phases 1–3. `args` may be delivered to the script as a JSON string — the script parse-tolerates both.)
+
+**Why a workflow:** the script runs Phases 4→9 in strict order via the runtime, not via prose the model can rationalize past. This is the enforcement mechanism for the phases most often skipped — **Phase 8 (Verify)** and **Phase 9d (review-comment triage)**.
+
+**What the workflow does NOT do (by design):**
+
+- **No mid-run human gates.** A background workflow cannot pause to ask. Every phase agent returns `status: completed | needs_human | failed`. On anything other than `completed`, the workflow **halts and returns** `{stopped: true, phase, reason}`. Surface the `reason`, resolve it, then resume.
+- **External reviewers degrade gracefully.** Codex and CodeRabbit are best-effort: if a CLI is missing or out of credits, that phase is skipped (not a human gate) — the PR-level bots still review and are caught in Phase 9d.
+- **Phase 4 TDD runs sequentially** (one agent per plan task). Parallel TDD is deferred.
+
+**On completion**, read the workflow's return value:
+
+- `{stopped: true, ...}` → a `needs_human`/`failed` gate fired. Report phase + reason, get the decision, fix, and **resume**: re-invoke with `{scriptPath, resumeFromRunId: "<runId>", args: {…same…}}`. Cached phases return instantly; **to force a halted phase to re-run, change its prompt** (an unchanged phase re-caches its prior result).
+- `{stopped: false, done: true, prNumber, triage}` → relay the Phase 9e summary (PR # green + triage outcome).
+- `{stopped: false, done: false, ...}` → done gate did not fully pass; report `reason`.
+
+> If the run halts at 9e only because CI is still running (timing, not a failure), don't re-run the whole orchestrator — finish that one verification in the main session.
+
+**Skip condition:** Workflow/doc-only changes (no code under `src/`, `supabase/`, `dev-tools/`) — run the relevant phases inline instead.
+
+> The sections below (Phases 4–10) are the **reference contract** the workflow's agents implement. They remain the source of truth for *what* each phase must do; the workflow controls *that and in what order* they run.
 
 ## Phase 4: Build (TDD)
 

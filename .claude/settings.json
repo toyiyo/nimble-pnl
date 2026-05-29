@@ -30,6 +30,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/dev-phase-guard.sh",
+            "statusMessage": "Checking /dev workflow completion"
+          }
+        ]
+      }
     ]
   }
 }

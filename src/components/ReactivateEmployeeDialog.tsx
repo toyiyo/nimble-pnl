@@ -29,8 +29,7 @@ export const ReactivateEmployeeDialog = ({
 }: ReactivateEmployeeDialogProps) => {
   const [hourlyRate, setHourlyRate] = useState('');
   const [updateRate, setUpdateRate] = useState(false);
-  const [confirmPin, setConfirmPin] = useState(true);
-  
+
   const reactivateMutation = useReactivateEmployee();
 
   // Initialize form when employee changes
@@ -42,7 +41,6 @@ export const ReactivateEmployeeDialog = ({
         : '';
       setHourlyRate(currentRate);
       setUpdateRate(false);
-      setConfirmPin(true);
     }
   }, [employee, open]);
 
@@ -57,7 +55,6 @@ export const ReactivateEmployeeDialog = ({
       {
         employeeId: employee.id,
         hourlyRate: newRate,
-        confirmPin,
       },
       {
         onSuccess: () => {
@@ -65,7 +62,6 @@ export const ReactivateEmployeeDialog = ({
           // Reset form
           setHourlyRate('');
           setUpdateRate(false);
-          setConfirmPin(true);
         },
       }
     );
@@ -75,7 +71,6 @@ export const ReactivateEmployeeDialog = ({
     onOpenChange(false);
     setHourlyRate('');
     setUpdateRate(false);
-    setConfirmPin(true);
   };
 
   if (!employee) return null;
@@ -104,9 +99,9 @@ export const ReactivateEmployeeDialog = ({
         <div className="space-y-4 py-4">
           {/* Info Alert */}
           <Alert>
-            <CheckCircle className="h-4 w-4" />
+            <CheckCircle className="h-4 w-4" aria-hidden="true" />
             <AlertDescription className="text-sm">
-              The employee will be able to log in, punch in/out, and be scheduled for shifts.
+              The employee will be able to log in, punch in/out (including with their existing kiosk PIN), and be scheduled for shifts.
             </AlertDescription>
           </Alert>
 
@@ -172,31 +167,9 @@ export const ReactivateEmployeeDialog = ({
             )}
           </div>
 
-          {/* PIN Confirmation */}
-          <div className="space-y-3 pt-2 border-t">
-            <div className="flex items-start space-x-3">
-              <Checkbox
-                id="confirm-pin"
-                checked={confirmPin}
-                onCheckedChange={(checked) => setConfirmPin(checked as boolean)}
-              />
-              <div className="grid gap-1.5 leading-none">
-                <Label
-                  htmlFor="confirm-pin"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                >
-                  Enable kiosk PIN
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Allow employee to punch in/out using their existing PIN
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* Info Section */}
           <Alert variant="default">
-            <Info className="h-4 w-4" />
+            <Info className="h-4 w-4" aria-hidden="true" />
             <AlertDescription className="text-sm">
               <strong>Note:</strong> You can adjust roles, permissions, and other settings after reactivation in the employee profile.
             </AlertDescription>

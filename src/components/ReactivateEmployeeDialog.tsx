@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -85,9 +86,9 @@ export const ReactivateEmployeeDialog = ({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 Reactivate Employee
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 Reactivate {employee.name}
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>

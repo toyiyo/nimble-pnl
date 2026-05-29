@@ -119,3 +119,31 @@ All hard dependencies met. codex and Sonar absent (non-blocking warnings).
 ### Commit
 - `e09c316f` — style(staffing): fix UI guideline violations from Phase 5 review
 
+---
+
+## Phase: 6 (Simplify) — COMPLETED
+
+**Date:** 2026-05-28
+
+### Findings and fixes applied
+
+Four angles reviewed (Reuse, Simplification, Efficiency, Altitude):
+
+| Finding | File | Fix Applied |
+|---------|------|-------------|
+| `DOW` array and `fmtHour` duplicated between `ApplyShiftsDialog` and `SuggestedShifts` | Both component files | Extracted to `staffingApply.ts` as shared exports; components import from there |
+| `new Date(day+'T12:00:00').getDay()` repeated in 4 places instead of calling `dayStringToDow` | `ApplyShiftsDialog`, `SuggestedShifts`, `StaffingOverlay` | All call-sites replaced with `dayStringToDow` import |
+| IIFE inside JSX for crew-floor explainer text | `StaffingOverlay.tsx` line 323 | Extracted to named `crewFloorNote` variable before `return` |
+| `{availablePositions.length > 0 ? (...) : null}` ternary-with-null | `StaffingConfigPanel.tsx` | Changed to `&&` short-circuit |
+| Redundant `&& byRemainder.length > 0` guard in `distributePositions` while loop (entries non-empty is already checked) | `staffingApply.ts` | Removed the dead guard |
+| `byDay` map-building uses `existing` branch variable when push-or-init suffices | `SuggestedShifts.tsx` | Replaced with standard `if (!m.has) m.set; m.get!.push` idiom |
+
+### Skipped findings
+
+- **`useApplySuggestedShifts` `as any` cast**: The `supabase.from('shift_templates')` type correctly exists in generated types, but `upsert(..., { ignoreDuplicates })` + `.select()` chained together loses type inference in supabase-js v2. The cast is a known limitation of the client library, not a fixable altitude issue. The comment explaining why is kept.
+- **Parallel chunk upserts**: Sequential chunks are intentional — Supabase PostgREST has no way to enforce ordering on parallel batches; keeping them sequential is correct.
+
+### Commit
+- `c5f0876d` — refactor(staffing): simplify shared formatting utils and reduce JSX complexity
+- **Full suite:** 324 test files / 4322 tests all pass
+

@@ -27,16 +27,17 @@ interface StaffingConfigPanelProps {
   onImmediateSettingsChange?: (updates: Record<string, unknown>) => void;
   onSaveDefaults: () => void;
   isSaving: boolean;
+  hasPendingChanges: boolean;
   employeePositions: string[];
   actualSplh: number | null;
   lookbackWeeks: number;
 }
 
-function HelpTip({ text }: Readonly<{ text: string }>) {
+function HelpTip({ text, fieldName }: Readonly<{ text: string; fieldName: string }>) {
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger asChild>
+        <TooltipTrigger asChild aria-label={`Help for ${fieldName}`}>
           <HelpCircle className="h-3 w-3 text-muted-foreground/60 cursor-help" />
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-[220px] text-[12px]">
@@ -53,6 +54,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
   onImmediateSettingsChange,
   onSaveDefaults,
   isSaving,
+  hasPendingChanges,
   employeePositions,
   actualSplh,
   lookbackWeeks,
@@ -101,7 +103,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
             <Label htmlFor="splh-input" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Sales per Labor Hour
             </Label>
-            <HelpTip text="Target revenue generated per staff hour. Higher values mean fewer staff scheduled per hour." />
+            <HelpTip fieldName="Sales per Labor Hour" text="Target revenue generated per staff hour. Higher values mean fewer staff scheduled per hour." />
           </div>
           <div className="flex items-center gap-1">
             <span className="text-[13px] text-muted-foreground">$</span>
@@ -127,7 +129,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
             <Label htmlFor="labor-pct-input" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Labor Cost Target
             </Label>
-            <HelpTip text="Maximum labor cost as a percentage of sales. Hours that exceed this are flagged in amber." />
+            <HelpTip fieldName="Labor Cost Target" text="Maximum labor cost as a percentage of sales. Hours that exceed this are flagged in amber." />
           </div>
           <div className="flex items-center gap-1">
             <Input
@@ -151,7 +153,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
               <Label htmlFor="min-staff-input" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Min Staff
               </Label>
-              <HelpTip text="Minimum number of staff scheduled per hour. Set up minimum crew below to use position-based staffing." />
+              <HelpTip fieldName="Min Staff" text="Minimum number of staff scheduled per hour. Set up minimum crew below to use position-based staffing." />
             </div>
             <Input
               id="min-staff-input"
@@ -165,14 +167,19 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
           </div>
         )}
 
-        <button
-          onClick={onSaveDefaults}
-          disabled={isSaving}
-          className="h-8 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-          aria-label="Save staffing settings as default"
-        >
-          {isSaving ? 'Saving...' : 'Save as Default'}
-        </button>
+        <div className="flex flex-col gap-0.5">
+          <button
+            onClick={onSaveDefaults}
+            disabled={!hasPendingChanges || isSaving}
+            className="h-8 px-3 rounded-lg text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            aria-label="Save staffing settings as default"
+          >
+            {isSaving ? 'Saving...' : 'Save as Default'}
+          </button>
+          <span className="text-[12px] text-muted-foreground">
+            Toggles save automatically; numeric settings save here.
+          </span>
+        </div>
       </div>
 
       {/* Minimum crew section */}
@@ -182,7 +189,7 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
             <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Minimum Crew
             </span>
-            <HelpTip text="Set the minimum number of each position needed to operate. The total becomes your staffing floor — the system won't recommend fewer staff than your minimum crew." />
+            <HelpTip fieldName="Minimum Crew" text="Set the minimum number of each position needed to operate. The total becomes your staffing floor — the system won't recommend fewer staff than your minimum crew." />
           </div>
           {hasMinCrew && (
             <span className="text-[11px] text-muted-foreground">

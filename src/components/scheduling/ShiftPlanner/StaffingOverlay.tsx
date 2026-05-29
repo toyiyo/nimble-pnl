@@ -302,6 +302,7 @@ export function StaffingOverlay({
                 onImmediateSettingsChange={handleImmediateSettingsChange}
                 onSaveDefaults={handleSaveDefaults}
                 isSaving={isSaving}
+                hasPendingChanges={localSettings !== null}
                 employeePositions={employeePositions}
                 actualSplh={actualSplh}
                 lookbackWeeks={activeSettings.lookback_weeks}

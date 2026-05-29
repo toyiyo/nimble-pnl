@@ -119,7 +119,7 @@ export const ReactivateEmployeeDialog = ({
                 {employee.deactivation_reason && (
                   <div className="col-span-2">
                     <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Deactivation Reason</span>
-                    <p className="text-[14px] font-medium text-foreground mt-0.5 capitalize">{employee.deactivation_reason.replace('_', ' ')}</p>
+                    <p className="text-[14px] font-medium text-foreground mt-0.5 capitalize">{employee.deactivation_reason.replace(/_/g, ' ')}</p>
                   </div>
                 )}
               </div>

@@ -43,6 +43,7 @@ import {
   Inbox,
   Newspaper,
   ChevronDown,
+  LifeBuoy,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
@@ -130,6 +131,7 @@ const navigationGroups = [
       { path: '/employees', label: 'Employees', icon: Users },
       { path: '/team', label: 'Team', icon: Users },
       { path: '/settings', label: 'Settings', icon: Settings },
+      { path: '/help', label: 'Help Center', icon: LifeBuoy },
     ],
   },
 ];
@@ -174,6 +176,7 @@ const collaboratorAccountantNav: NavGroup[] = [
     label: 'Settings',
     items: [
       { path: '/settings', label: 'Settings', icon: Settings },
+      { path: '/help', label: 'Help Center', icon: LifeBuoy },
     ],
   },
 ];
@@ -192,6 +195,7 @@ const collaboratorInventoryNav: NavGroup[] = [
     label: 'Settings',
     items: [
       { path: '/settings', label: 'Settings', icon: Settings },
+      { path: '/help', label: 'Help Center', icon: LifeBuoy },
     ],
   },
 ];
@@ -214,6 +218,7 @@ const collaboratorChefNav: NavGroup[] = [
     label: 'Settings',
     items: [
       { path: '/settings', label: 'Settings', icon: Settings },
+      { path: '/help', label: 'Help Center', icon: LifeBuoy },
     ],
   },
 ];
@@ -233,6 +238,7 @@ const staffNav: NavGroup[] = [
     label: 'Settings',
     items: [
       { path: '/settings', label: 'Settings', icon: Settings },
+      { path: '/help', label: 'Help Center', icon: LifeBuoy },
     ],
   },
 ];

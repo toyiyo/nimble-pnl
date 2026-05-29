@@ -67,6 +67,8 @@ import InvoiceForm from "./pages/InvoiceForm";
 import InvoiceDetail from "./pages/InvoiceDetail";
 import StripeAccountManagement from "./pages/StripeAccountManagement";
 import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
+import HelpCenter from "./pages/Help/HelpCenter";
+import HelpArticle from "./pages/Help/HelpArticle";
 import Assets from "./pages/Assets";
 import BudgetRunRate from "./pages/BudgetRunRate";
 import OpsInbox from "./pages/OpsInbox";
@@ -161,6 +163,7 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
       '/payroll', // Read-only for bookkeeping
       '/employees', // View for payroll context
       '/settings',
+      '/help',
     ],
   },
   collaborator_inventory: {
@@ -171,6 +174,7 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
       '/purchase-orders',
       '/receipt-import',
       '/settings',
+      '/help',
     ],
   },
   collaborator_chef: {
@@ -180,6 +184,7 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
       '/prep-recipes',
       '/inventory', // View-only for ingredient context
       '/settings',
+      '/help',
     ],
   },
 };
@@ -294,7 +299,9 @@ const App = () => (
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
             <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
             <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
+            <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
+            <Route path="/help/:slug" element={<ProtectedRoute allowStaff={true}><HelpArticle /></ProtectedRoute>} />
             <Route path="/square/callback" element={<SquareCallback />} />
             <Route path="/clover/callback" element={<CloverCallback />} />
             <Route path="/toast/callback" element={<ToastCallback />} />

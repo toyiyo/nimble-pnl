@@ -133,7 +133,7 @@ export function useHourlySalesPattern(
 
       const { data, error } = await supabase
         .from('unified_sales')
-        .select('sale_date, sale_time, total_price')
+        .select('sale_date, sale_time, sold_at, total_price')
         .eq('restaurant_id', restaurantId)
         .eq('item_type', 'sale')
         .gte('sale_date', startStr)

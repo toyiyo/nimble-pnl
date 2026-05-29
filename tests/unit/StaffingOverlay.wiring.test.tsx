@@ -57,6 +57,15 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// useRestaurantContext — return a restaurant with Chicago timezone
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: {
+      restaurant: { timezone: 'America/Chicago' },
+    },
+  }),
+}));
+
 // Mock React Query's useQuery directly to avoid Supabase chain complexity.
 // This gives us full control over what hasSalesData and daySuggestions look like.
 const mockUseQuery = vi.fn();

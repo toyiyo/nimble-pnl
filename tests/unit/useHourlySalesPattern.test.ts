@@ -93,6 +93,27 @@ describe('aggregateHourlySales — sold_at (tz-aware)', () => {
     expect(hasHourlyBreakdown).toBe(true);
     expect(data.map((d) => d.hour).sort((a, b) => a - b)).toEqual([11, 12]);
   });
+
+  it('produces different hour buckets for different restaurant timezones (wiring matters)', () => {
+    // 2026-05-30T01:00:00Z = 20:00 CDT (America/Chicago, UTC-5)
+    //                      = 18:00 PDT (America/Los_Angeles, UTC-7)
+    // This proves the StaffingOverlay/useHourlySalesPattern must pass the
+    // restaurant timezone — using the wrong tz would misplace the hour by 2.
+    const rows = [
+      {
+        sale_date: '2026-05-29',
+        sale_time: '20:00:00',
+        sold_at: '2026-05-30T01:00:00.000Z',
+        total_price: 100,
+      },
+    ];
+    const chicago = aggregateHourlySales(rows, 'America/Chicago');
+    const la = aggregateHourlySales(rows, 'America/Los_Angeles');
+    expect(chicago.data[0].hour).toBe(20); // CDT: 01:00Z → 20:00
+    expect(la.data[0].hour).toBe(18);      // PDT: 01:00Z → 18:00
+    // The two timezones produce different staffing suggestions — wiring must be correct.
+    expect(chicago.data[0].hour).not.toBe(la.data[0].hour);
+  });
 });
 
 describe('aggregateHourlySales', () => {

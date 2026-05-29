@@ -173,4 +173,76 @@ Four angles reviewed (Reuse, Simplification, Efficiency, Altitude):
 - Added regression test for all-zero crew case in ApplyShiftsDialog
 - **Full suite:** 324 test files / 4323 tests all pass
 
+---
+
+## Phase: 7c (CodeRabbit) — iteration 1 — COMPLETED
+
+**Date:** 2026-05-28
+
+### Findings from `coderabbit review --plain --type committed`
+
+| Severity | File | Finding | Action |
+|----------|------|---------|--------|
+| major | types.ts:2112 | `email_unsubscribes` lacks `restaurant_id` | NOT FIXED — user-level email opt-out table, `user_id` scoping is correct by design; no restaurant FK warranted |
+| major | types.ts:10258 | `users_in_trial_email_window` RPC uses `Args: never` | NOT FIXED — internal admin RPC that runs as SECURITY DEFINER; adding p_restaurant_id would require out-of-scope migration changes |
+| major | staffingApply.test.ts:5 | Missing negative headcount edge case test | FIXED — added `it('returns empty for negative headcount', ...)` test |
+
+### Commit
+- `c4c639ee` — test(staffing): add negative headcount edge case for distributePositions
+- **All 9 staffingApply tests pass**
+
+---
+
+## Phase: 7c (CodeRabbit) — iteration 2 — COMPLETED
+
+**Date:** 2026-05-28
+
+### Findings from `coderabbit review --plain --type committed`
+
+| Severity | File | Finding | Action |
+|----------|------|---------|--------|
+| minor | StaffingOverlay.tsx:192 | `localSettings` typed `Record<string, unknown>` but `useWeekStaffingSuggestions` param typed as `Partial<StaffingSuggestionsResult>` — both wrong, should be `Partial<StaffingSettings>` | FIXED — updated `settingsOverrides` param, `localSettings` state, `handleSettingsChange`, `handleImmediateSettingsChange`, and `StaffingConfigPanel` props to use `Partial<StaffingSettings>` |
+
+### Commit
+- `4018c326` — fix(types): tighten settingsOverrides and onSettingsChange to Partial<StaffingSettings>
+- **All 4324 unit tests pass, typecheck clean**
+
+---
+
+## Phase: 7c (CodeRabbit) — iteration 3 — COMPLETED
+
+**Date:** 2026-05-28
+
+### Outcome
+CodeRabbit review could not run: organization billing credits exhausted.
+Error: "Your organization has run out of Usage credits. Purchase more in the billing tab."
+
+No actionable findings could be produced. Returning clean=false (tool blocked, not clean pass).
+
+---
+
+## Phase: 8 (Verify) — COMPLETED
+
+**Date:** 2026-05-29
+
+### Results
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| .env.local symlink | PASS | Linked to /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local |
+| `npm run test` (unit) | PASS | 324 test files, 4324 tests passed (2 skipped) |
+| `npm run typecheck` | PASS | No type errors |
+| `npm run lint` (new files only) | FIXED + PASS | 1 error in ApplyShiftsDialog.tsx (ternary-as-statement) → fixed with if/else, committed `798e312a` |
+| `npm run test:db` (pgTAP) | PASS* | 1355/1356 pass; 1 pre-existing failure in `32_weekly_brief_queue.sql` test 9 (unrelated to our changes) |
+| `npm run test:e2e` (staffing tests) | PASS | 3/3 staffing tests pass |
+| `npm run test:e2e` (full suite) | PASS* | 3 flaky failures on first run (scheduling-conflicts, employee-payroll), all pass on re-run; pre-existing and unrelated to our changes |
+| `npm run build` | PASS | Build completes with chunk size warning (pre-existing) |
+
+### Fix applied
+- `src/components/scheduling/ShiftPlanner/ApplyShiftsDialog.tsx` — replaced `next.has(i) ? next.delete(i) : next.add(i)` ternary expression used as statement with `if/else` block to satisfy `@typescript-eslint/no-unused-expressions` rule
+- Commit: `798e312a`
+
+### allPass determination
+All checks introduced by this branch pass. The 1 pgTAP failure and 3 E2E flaky failures are pre-existing issues in unchanged test files.
+
 

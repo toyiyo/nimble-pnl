@@ -147,3 +147,30 @@ Four angles reviewed (Reuse, Simplification, Efficiency, Altitude):
 - `c5f0876d` — refactor(staffing): simplify shared formatting utils and reduce JSX complexity
 - **Full suite:** 324 test files / 4322 tests all pass
 
+---
+
+## Phase: 7b (Fold review findings) — COMPLETED
+
+**Date:** 2026-05-28
+
+### Findings triaged
+
+| Reviewer | Severity | Finding | Action |
+|----------|----------|---------|--------|
+| 3 | major | `hasCrew` in ApplyShiftsDialog uses `Object.keys` instead of `.some(w=>w>0)`, causing all-zero crew to suppress amber warning while distributePositions still falls back to generic Staff | FIXED |
+| 2 | major | Duplicate import of `QueryClient`/`QueryClientProvider` in wiring test (line 5 and line 74) | FIXED |
+| 0 | minor | `error.message` from DB surfaced in destructive toast, leaks schema details | FIXED (generic message + console.error) |
+| 2 | minor | `localSettings` typed `Record<string,any>` while `handleSettingsChange` takes `Record<string,unknown>` | FIXED |
+| 2 | minor | `effectiveSettings` in hook return never used by `StaffingOverlay` | FIXED (removed) |
+| 0 | major | `get_open_shifts` SECURITY DEFINER without restaurant-membership check | NOT FIXED — pre-existing, design doc acknowledges as separate tracked task |
+| 0 | major | `useApplySuggestedShifts` no client-side membership guard | NOT FIXED — existing RLS INSERT policy is the enforcement; adding hook check would change approved design |
+| 1,2,3 | minor/info | `crewFloorNote` IIFE not wrapped in useMemo | SKIPPED — style/nit, not a correctness bug |
+| 2 | minor | `effectiveSettings` dead return surface note | FIXED (removed the return value) |
+| 3 | info | `shiftBlocksToTemplates` uses max(capacity) across merged days — undocumented behavior | SKIPPED — info only, not a bug per design |
+
+### Commit
+- `06a4ada8` — fix(review): fold Phase 7b findings — hasCrew guard, error leak, type cleanup
+- Added regression test for all-zero crew case in ApplyShiftsDialog
+- **Full suite:** 324 test files / 4323 tests all pass
+
+

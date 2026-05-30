@@ -19,7 +19,16 @@
 - Sonar not configured — sonarConfigured=false
 - Ready to proceed with build phase
 
-## Phase: Build (TDD) — IN PROGRESS
+## Phase: Build (TDD) — COMPLETED (all 10/10 tasks done)
+
+### Task 10 (orchestration task 10/10): generate-schedule edge fn — fix adjacent day-of-week bug (noon-anchored T12:00:00 parse); deno check / lint — COMPLETED (GREEN)
+- Commit: `23b81f90` (same commit as Task 9 — both sub-tasks were implemented together)
+- Verified: `deno check supabase/functions/_shared/sales-hour-utils.ts` → PASS (clean)
+- Verified: `deno check supabase/functions/generate-schedule/index.ts` → pre-existing TS2339 on line 575 (introduced in commit `992482cd`, unrelated to our changes) — NOT introduced by this task
+- Verified: `npx tsc --noEmit` → PASS (clean)
+- Verified: all 4418 unit tests pass (including 10 generate-schedule-sales-hour tests)
+- `dayOfWeekFromSaleDate(saleDate)` in `_shared/sales-hour-utils.ts` uses `new Date(saleDate + 'T12:00:00').getDay()` — the noon-anchored parse preventing UTC midnight day-shift
+- `generate-schedule/index.ts` uses `dayOfWeekFromSaleDate()` instead of `new Date(sale.sale_date).getDay()`
 
 ### Task 9 (orchestration task 9/10): generate-schedule edge fn — add sold_at to SELECT, resolve restaurant timezone, replace hour derivation with hourFromSale via Intl.DateTimeFormat h23, fix day-of-week bug — COMPLETED (GREEN)
 - Commit: `23b81f90`

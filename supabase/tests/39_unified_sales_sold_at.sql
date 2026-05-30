@@ -379,7 +379,7 @@ WHERE us.pos_system = 'toast'
   AND us.external_order_id = too.toast_order_guid
   AND us.restaurant_id = too.restaurant_id
   AND us.item_type NOT IN ('tip', 'refund')
-  AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
+  AND us.sale_date >= (CURRENT_DATE - INTERVAL '90 days')
   AND us.sold_at IS NULL
   AND (too.raw_json->>'openedDate' IS NOT NULL OR too.raw_json->>'closedDate' IS NOT NULL)
   AND us.restaurant_id = '00000000-0000-0000-0000-390000000011';

@@ -41,6 +41,8 @@ dev-tools/.last_task_id
 
 # Dev workflow progress tracking (ephemeral, per-session)
 progress.md
+# Dev workflow Phase 9d review-triage artifacts (ephemeral, per-run)
+dev-tools/9d-triage-*
 
 # Marketing assets (videos, screenshots, audio) — stored in Google Drive
 marketing/

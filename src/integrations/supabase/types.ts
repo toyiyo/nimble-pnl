@@ -8728,6 +8728,7 @@ export type Database = {
           restaurant_id: string
           sale_date: string
           sale_time: string | null
+          sold_at: string | null
           suggested_category_id: string | null
           synced_at: string
           total_price: number | null
@@ -8755,6 +8756,7 @@ export type Database = {
           restaurant_id: string
           sale_date: string
           sale_time?: string | null
+          sold_at?: string | null
           suggested_category_id?: string | null
           synced_at?: string
           total_price?: number | null
@@ -8782,6 +8784,7 @@ export type Database = {
           restaurant_id?: string
           sale_date?: string
           sale_time?: string | null
+          sold_at?: string | null
           suggested_category_id?: string | null
           synced_at?: string
           total_price?: number | null

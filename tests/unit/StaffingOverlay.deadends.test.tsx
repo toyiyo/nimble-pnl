@@ -46,6 +46,14 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: {
+      restaurant: { timezone: 'America/Chicago' },
+    },
+  }),
+}));
+
 const mockUseQuery = vi.fn();
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual('@tanstack/react-query');

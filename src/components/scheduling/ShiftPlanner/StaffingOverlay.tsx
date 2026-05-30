@@ -18,6 +18,7 @@ import { computeStaffingSuggestions } from '@/hooks/useStaffingSuggestions';
 import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
 import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
 import type { MinCrew, StaffingSettings } from '@/types/scheduling';
@@ -36,6 +37,9 @@ function useWeekStaffingSuggestions(
   weekDays: string[],
   settingsOverrides: Partial<StaffingSettings> | null,
 ) {
+  const { selectedRestaurant } = useRestaurantContext();
+  const tz = selectedRestaurant?.restaurant?.timezone ?? 'America/Chicago';
+
   const { effectiveSettings, isLoading: settingsLoading, updateSettings, isSaving } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);
 
@@ -76,7 +80,7 @@ function useWeekStaffingSuggestions(
       if (!restaurantId) return [];
       const { data, error } = await supabase
         .from('unified_sales')
-        .select('sale_date, sale_time, total_price')
+        .select('sale_date, sale_time, sold_at, total_price')
         .eq('restaurant_id', restaurantId)
         .eq('item_type', 'sale')
         .gte('sale_date', dateRange.startStr)
@@ -87,6 +91,8 @@ function useWeekStaffingSuggestions(
     },
     enabled: !!restaurantId,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   // Fetch time punches to compute actual labor hours for SPLH hint
@@ -155,7 +161,7 @@ function useWeekStaffingSuggestions(
     for (const day of weekDays) {
       const dayOfWeek = dayStringToDow(day);
       const filtered = salesByDow.get(dayOfWeek) ?? [];
-      const aggregated = aggregateHourlySales(filtered);
+      const aggregated = aggregateHourlySales(filtered, tz);
       if (aggregated.hasHourlyBreakdown) anyHourly = true;
       result.set(day, computeStaffingSuggestions(aggregated.data, {
         targetSplh: activeSettings.target_splh,
@@ -166,7 +172,7 @@ function useWeekStaffingSuggestions(
       }));
     }
     return { daySuggestions: result, hasHourlyBreakdown: anyHourly };
-  }, [allSales, salesByDow, weekDays, activeSettings, avgHourlyRateCents]);
+  }, [allSales, salesByDow, weekDays, activeSettings, avgHourlyRateCents, tz]);
 
   return {
     daySuggestions,

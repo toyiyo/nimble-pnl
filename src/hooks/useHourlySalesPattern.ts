@@ -7,6 +7,9 @@ import type { HourlySalesData } from '@/types/scheduling';
 interface RawSale {
   sale_date: string;
   sale_time: string | null;
+  /** Absolute instant the sale was served (UTC ISO string). When present, takes
+   *  priority over sale_time for hour-of-day derivation (converted via timeZone). */
+  sold_at?: string | null;
   total_price: number;
 }
 
@@ -21,22 +24,67 @@ export interface AggregatedSalesResult {
 }
 
 /**
+ * Module-level cache: reuse Intl.DateTimeFormat instances across rows.
+ * Keyed by IANA timezone string. Constructing an ICU formatter is expensive;
+ * caching eliminates per-row allocation when processing large result sets.
+ */
+const _fmtCache = new Map<string, Intl.DateTimeFormat>();
+
+function getFormatter(tz: string): Intl.DateTimeFormat {
+  let fmt = _fmtCache.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    });
+    _fmtCache.set(tz, fmt);
+  }
+  return fmt;
+}
+
+/**
+ * Convert a UTC ISO string to the local hour (0–23) in the given IANA timezone.
+ * Uses Intl.DateTimeFormat with hourCycle:'h23' so midnight = 0 (not 24).
+ */
+function hourInTz(iso: string, tz: string): number {
+  return parseInt(getFormatter(tz).format(new Date(iso)), 10);
+}
+
+/**
  * Pure function: aggregate raw sales into hourly averages.
  * Groups by hour, sums per day (sale_date), then averages across days.
  *
- * When no rows have sale_time, falls back to spreading daily totals
+ * Hour derivation (in priority order):
+ *  1. `sold_at` (UTC ISO) converted to the given `timeZone` — e.g. Toast openedDate.
+ *  2. `sale_time` parsed as already-local HH:MM:SS — legacy / non-Toast path.
+ *
+ * When no rows yield a usable hour, falls back to spreading daily totals
  * evenly across assumed business hours (9am–10pm).
+ *
+ * `timeZone` defaults to 'America/Chicago' so existing call-sites without
+ * the argument are backward-compatible.
+ *
  * Exported for testing.
  */
-export function aggregateHourlySales(rawSales: RawSale[]): AggregatedSalesResult {
+export function aggregateHourlySales(
+  rawSales: RawSale[],
+  timeZone: string = 'America/Chicago',
+): AggregatedSalesResult {
   if (rawSales.length === 0) return { data: [], hasHourlyBreakdown: false };
 
   // Group by hour → by date → sum
   const hourDateMap = new Map<number, Map<string, number>>();
 
   for (const sale of rawSales) {
-    if (!sale.sale_time) continue;
-    const hour = parseInt(sale.sale_time.split(':')[0], 10);
+    let hour: number;
+    if (sale.sold_at) {
+      hour = hourInTz(sale.sold_at, timeZone);
+    } else if (sale.sale_time) {
+      hour = parseInt(sale.sale_time.split(':')[0], 10);
+    } else {
+      continue;
+    }
     if (isNaN(hour)) continue;
 
     if (!hourDateMap.has(hour)) hourDateMap.set(hour, new Map());
@@ -80,14 +128,20 @@ export function aggregateHourlySales(rawSales: RawSale[]): AggregatedSalesResult
 /**
  * Fetches unified_sales for a specific day-of-week over the last N weeks,
  * then aggregates into hourly averages.
+ *
+ * @param restaurantId  Restaurant UUID or null (query disabled when null)
+ * @param dayOfWeek     0 = Sunday … 6 = Saturday
+ * @param lookbackWeeks Number of past weeks to include (default 4)
+ * @param timeZone      IANA timezone for hour bucketing (default 'America/Chicago')
  */
 export function useHourlySalesPattern(
   restaurantId: string | null,
   dayOfWeek: number,
   lookbackWeeks: number = 4,
+  timeZone: string = 'America/Chicago',
 ) {
   return useQuery({
-    queryKey: ['hourly-sales-pattern', restaurantId, dayOfWeek, lookbackWeeks],
+    queryKey: ['hourly-sales-pattern', restaurantId, dayOfWeek, lookbackWeeks, timeZone],
     queryFn: async (): Promise<HourlySalesData[]> => {
       if (!restaurantId) return [];
 
@@ -100,7 +154,7 @@ export function useHourlySalesPattern(
 
       const { data, error } = await supabase
         .from('unified_sales')
-        .select('sale_date, sale_time, total_price')
+        .select('sale_date, sale_time, sold_at, total_price')
         .eq('restaurant_id', restaurantId)
         .eq('item_type', 'sale')
         .gte('sale_date', startStr)
@@ -116,9 +170,11 @@ export function useHourlySalesPattern(
         return d.getDay() === dayOfWeek;
       });
 
-      return aggregateHourlySales(filtered).data;
+      return aggregateHourlySales(filtered, timeZone).data;
     },
     enabled: !!restaurantId,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 }

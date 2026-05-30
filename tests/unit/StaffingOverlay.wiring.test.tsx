@@ -57,6 +57,15 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// useRestaurantContext — return a restaurant with Chicago timezone
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: {
+      restaurant: { timezone: 'America/Chicago' },
+    },
+  }),
+}));
+
 // Mock React Query's useQuery directly to avoid Supabase chain complexity.
 // This gives us full control over what hasSalesData and daySuggestions look like.
 const mockUseQuery = vi.fn();
@@ -93,7 +102,7 @@ const WEEK_DAYS = [
 
 // Fake sales data: 10 sales with hourly timestamps so daySuggestions produces shiftBlocks
 const FAKE_SALES = Array.from({ length: 10 }, (_, i) => ({
-  sale_date: '2026-05-23', // a Friday
+  sale_date: '2026-05-23', // a Saturday
   sale_time: `${9 + i}:00:00`,
   total_price: '500',
 }));

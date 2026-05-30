@@ -294,7 +294,7 @@ SELECT is(
      AND us.external_item_id = 'sold-at-item-A'
      AND us.item_type = 'sale'),
   '2026-05-30T01:30:00+00'::timestamptz,
-  'Re-sync: sold_at preserved (COALESCE(EXCLUDED.sold_at, unified_sales.sold_at) keeps prior value)'
+  'Re-sync: sold_at preserved (COALESCE(unified_sales.sold_at, EXCLUDED.sold_at) keeps prior value)'
 );
 
 -- ============================================================

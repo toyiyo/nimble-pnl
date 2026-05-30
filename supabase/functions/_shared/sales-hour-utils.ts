@@ -19,20 +19,16 @@ export interface SaleRow {
  */
 export function hourFromSale(sale: SaleRow, timeZone: string): number {
   if (sale.sold_at) {
-    const s = new Intl.DateTimeFormat("en-US", {
+    const formatted = new Intl.DateTimeFormat("en-US", {
       timeZone,
       hour: "2-digit",
       hourCycle: "h23",
     }).format(new Date(sale.sold_at));
-    const h = parseInt(s, 10);
+    const h = parseInt(formatted, 10);
     if (!isNaN(h) && h >= 0 && h <= 23) return h;
   }
   if (sale.sale_time) {
-    const timePart =
-      typeof sale.sale_time === "string"
-        ? sale.sale_time
-        : String(sale.sale_time);
-    const h = parseInt(timePart.split(":")[0], 10);
+    const h = parseInt(sale.sale_time.split(":")[0], 10);
     if (!isNaN(h) && h >= 0 && h <= 23) return h;
   }
   return -1;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -74,9 +74,9 @@ export function ApplyShiftsDialog({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 Apply suggested shifts
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 Creates open shifts you can assign or let staff claim.
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>

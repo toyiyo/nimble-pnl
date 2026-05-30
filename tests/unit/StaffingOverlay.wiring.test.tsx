@@ -102,7 +102,7 @@ const WEEK_DAYS = [
 
 // Fake sales data: 10 sales with hourly timestamps so daySuggestions produces shiftBlocks
 const FAKE_SALES = Array.from({ length: 10 }, (_, i) => ({
-  sale_date: '2026-05-23', // a Friday
+  sale_date: '2026-05-23', // a Saturday
   sale_time: `${9 + i}:00:00`,
   total_price: '500',
 }));

@@ -78,9 +78,9 @@ import { StaffingOverlay } from '@/components/scheduling/ShiftPlanner/StaffingOv
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 const WEEK_DAYS = ['2026-05-25', '2026-05-26', '2026-05-27', '2026-05-28', '2026-05-29', '2026-05-30', '2026-05-31'];
 
-// A Friday with sales data so the memoised computation actually calls aggregateHourlySales
+// A Saturday with sales data so the memoised computation actually calls aggregateHourlySales
 const FAKE_SALES = Array.from({ length: 5 }, (_, i) => ({
-  sale_date: '2026-05-23', // Friday
+  sale_date: '2026-05-23', // Saturday
   sale_time: `${10 + i}:00:00`,
   sold_at: null as string | null,
   total_price: '200',

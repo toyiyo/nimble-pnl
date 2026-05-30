@@ -49,7 +49,7 @@ if (isNaN(hour)) continue;
 
 ---
 
-### Task 2: Migration — add `sold_at`, populate from openedDate, backfill
+## Task 2: Migration — add `sold_at`, populate from openedDate, backfill
 
 **Files:** Create `supabase/migrations/<ts>_unified_sales_sold_at.sql`; Test `supabase/tests/<n>_unified_sales_sold_at.sql`
 
@@ -79,7 +79,7 @@ if (isNaN(hour)) continue;
 
 ---
 
-### Task 3: Wire the staffing query to `sold_at` + restaurant timezone
+## Task 3: Wire the staffing query to `sold_at` + restaurant timezone
 
 **Files:** Modify `src/components/scheduling/ShiftPlanner/StaffingOverlay.tsx` (and `useHourlySalesPattern.ts` query)
 
@@ -89,7 +89,7 @@ if (isNaN(hour)) continue;
 
 ---
 
-### Task 4: `generate-schedule` — `sold_at` hour + day-of-week fix
+## Task 4: `generate-schedule` — `sold_at` hour + day-of-week fix
 
 **Files:** Modify `supabase/functions/generate-schedule/index.ts`
 

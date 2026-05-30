@@ -29,6 +29,28 @@ COMMENT ON COLUMN public.unified_sales.sold_at IS
   'sale_time. Populated from Toast openedDate.';
 
 -- =============================================================================
+-- Part 1b: safe timestamptz cast — returns NULL instead of aborting on an
+-- invalid value. A single malformed Toast timestamp must not fail the whole
+-- sync batch (regex prefix-matching alone can still pass a value that throws on
+-- ::timestamptz, e.g. month 13). STABLE (not IMMUTABLE): casting an offset-less
+-- string depends on the session TimeZone. STRICT: NULL in -> NULL out.
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION public.safe_cast_timestamptz(p_text text)
+RETURNS timestamptz
+LANGUAGE plpgsql
+STABLE
+STRICT
+SET search_path = public
+AS $$
+BEGIN
+  RETURN p_text::timestamptz;
+EXCEPTION WHEN others THEN
+  RETURN NULL;
+END;
+$$;
+
+-- =============================================================================
 -- Part 2: Redefine sync_toast_to_unified_sales(UUID) — single-arg overload
 -- =============================================================================
 
@@ -109,10 +131,8 @@ BEGIN
     END,
     toi.menu_category, 'sale', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -156,10 +176,8 @@ BEGIN
     END,
     toi.menu_category, 'discount', 'discount', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -202,10 +220,8 @@ BEGIN
     END,
     toi.menu_category, 'discount', 'void', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -249,10 +265,8 @@ BEGIN
     END,
     'tax', 'tax', too.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_orders too
   WHERE too.restaurant_id = p_restaurant_id
@@ -468,10 +482,8 @@ BEGIN
     END,
     toi.menu_category, 'sale', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -517,10 +529,8 @@ BEGIN
     END,
     toi.menu_category, 'discount', 'discount', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -565,10 +575,8 @@ BEGIN
     END,
     toi.menu_category, 'discount', 'void', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_order_items toi
   INNER JOIN public.toast_orders too
@@ -614,10 +622,8 @@ BEGIN
     END,
     'tax', 'tax', too.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           THEN (too.raw_json->>'closedDate')::timestamptz END
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
     )
   FROM public.toast_orders too
   WHERE too.restaurant_id = p_restaurant_id
@@ -753,7 +759,10 @@ DO $$
 BEGIN
   SET LOCAL statement_timeout = '300s';
   UPDATE public.unified_sales us
-  SET sold_at = (too.raw_json->>'openedDate')::timestamptz
+  SET sold_at = COALESCE(
+        public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+        public.safe_cast_timestamptz(too.raw_json->>'closedDate')
+      )
   FROM public.toast_orders too
   WHERE us.pos_system = 'toast'
     AND us.external_order_id = too.toast_order_guid
@@ -761,5 +770,5 @@ BEGIN
     AND us.item_type NOT IN ('tip', 'refund')
     AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
     AND us.sold_at IS NULL
-    AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$';
+    AND (too.raw_json->>'openedDate' IS NOT NULL OR too.raw_json->>'closedDate' IS NOT NULL);
 END $$;

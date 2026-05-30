@@ -9,7 +9,7 @@
 --   5. Backfill (DO block) populates pre-existing NULL sold_at rows from toast_orders
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 
 -- ============================================================
 -- Setup
@@ -173,6 +173,43 @@ VALUES (
 ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE
   SET unit_price = EXCLUDED.unit_price;
 
+-- ----------------------------------------------------------------
+-- Order D: openedDate is digit/offset-shaped but an INVALID datetime
+--   ("2026-13-45T25:99:99+0000" passes a prefix/offset regex yet throws on
+--   ::timestamptz). Proves safe_cast_timestamptz returns NULL instead of
+--   aborting the batch; sold_at falls back to closedDate (hour 23).
+-- ----------------------------------------------------------------
+INSERT INTO toast_orders (
+  id, toast_order_guid, restaurant_id, toast_restaurant_guid,
+  order_date, order_time, total_amount, tax_amount, raw_json
+)
+VALUES (
+  '00000000-0000-0000-0000-390000000024',
+  'sold-at-order-D',
+  '00000000-0000-0000-0000-390000000011',
+  'toast-rest-sold-at',
+  (CURRENT_DATE - INTERVAL '1 day')::date, NULL, 30.00, 2.50,
+  '{"openedDate":"2026-13-45T25:99:99+0000","closedDate":"2026-05-30T04:15:00+0000"}'::jsonb
+)
+ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE
+  SET raw_json = EXCLUDED.raw_json,
+      order_date = EXCLUDED.order_date;
+
+INSERT INTO toast_order_items (
+  toast_item_guid, toast_order_guid, restaurant_id,
+  item_name, quantity, unit_price, total_price,
+  is_voided, discount_amount, menu_category, raw_json
+)
+VALUES (
+  'sold-at-item-D',
+  'sold-at-order-D',
+  '00000000-0000-0000-0000-390000000011',
+  'Steak Frites', 1, 30.00, 30.00,
+  false, 0, 'Entrees', '{}'::jsonb
+)
+ON CONFLICT (restaurant_id, toast_order_guid, toast_item_guid) DO UPDATE
+  SET unit_price = EXCLUDED.unit_price;
+
 -- ============================================================
 -- TEST 1: sold_at column exists on unified_sales
 -- ============================================================
@@ -265,14 +302,14 @@ SELECT isnt(
   'Order C: sold_at is NOT NULL despite malformed openedDate (closedDate fallback)'
 );
 
--- TEST 9: Order C — sold_at = closedDate (malformed openedDate skipped by regex guard)
+-- TEST 9: Order C — sold_at = closedDate (malformed openedDate → safe_cast NULL → fallback)
 SELECT is(
   (SELECT us.sold_at FROM unified_sales us
    WHERE us.restaurant_id = '00000000-0000-0000-0000-390000000011'
      AND us.external_item_id = 'sold-at-item-C'
      AND us.item_type = 'sale'),
   '2026-05-30T04:15:00+00'::timestamptz,
-  'Order C: sold_at = closedDate after malformed openedDate is skipped by regex guard'
+  'Order C: sold_at = closedDate after malformed openedDate returns NULL from safe_cast'
 );
 
 -- ============================================================
@@ -333,7 +370,10 @@ WHERE restaurant_id = '00000000-0000-0000-0000-390000000011'
 -- Run the bounded backfill logic (mirrors the DO block from the migration)
 -- sale_date = CURRENT_DATE-1 is always inside the 90-day window, so this always fires.
 UPDATE public.unified_sales us
-SET sold_at = (too.raw_json->>'openedDate')::timestamptz
+SET sold_at = COALESCE(
+      public.safe_cast_timestamptz(too.raw_json->>'openedDate'),
+      public.safe_cast_timestamptz(too.raw_json->>'closedDate')
+    )
 FROM public.toast_orders too
 WHERE us.pos_system = 'toast'
   AND us.external_order_id = too.toast_order_guid
@@ -341,7 +381,7 @@ WHERE us.pos_system = 'toast'
   AND us.item_type NOT IN ('tip', 'refund')
   AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
   AND us.sold_at IS NULL
-  AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
+  AND (too.raw_json->>'openedDate' IS NOT NULL OR too.raw_json->>'closedDate' IS NOT NULL)
   AND us.restaurant_id = '00000000-0000-0000-0000-390000000011';
 
 SELECT is(
@@ -351,6 +391,20 @@ SELECT is(
      AND us.item_type = 'sale'),
   '2026-05-30T01:30:00+00'::timestamptz,
   'Backfill: sold_at populated from openedDate for pre-existing NULL row'
+);
+
+-- ============================================================
+-- TEST 13: Order D — digit/offset-shaped but INVALID openedDate did not abort
+-- the sync (Test 3 lived) and sold_at fell back to closedDate via safe_cast.
+-- This is the case a prefix/offset regex alone would have let throw.
+-- ============================================================
+SELECT is(
+  (SELECT us.sold_at FROM unified_sales us
+   WHERE us.restaurant_id = '00000000-0000-0000-0000-390000000011'
+     AND us.external_item_id = 'sold-at-item-D'
+     AND us.item_type = 'sale'),
+  '2026-05-30T04:15:00+00'::timestamptz,
+  'Order D: invalid-but-shaped openedDate → safe_cast NULL → sold_at = closedDate (no abort)'
 );
 
 -- ============================================================

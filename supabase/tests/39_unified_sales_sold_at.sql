@@ -22,6 +22,13 @@ ALTER TABLE toast_order_items DISABLE ROW LEVEL SECURITY;
 ALTER TABLE toast_payments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE unified_sales DISABLE ROW LEVEL SECURITY;
 
+-- Compute a stable test order_date within the 90-day backfill window.
+-- Using CURRENT_DATE - 1 keeps it well inside the window indefinitely.
+DO $$
+BEGIN
+  PERFORM set_config('app.test_order_date', (CURRENT_DATE - INTERVAL '1 day')::text, true);
+END $$;
+
 -- Test user
 INSERT INTO auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -63,6 +70,7 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 -- Order A: valid openedDate + closedDate (should use openedDate)
 --   openedDate = 2026-05-30T01:30:00+0000 => 2026-05-29 20:30 CDT (hour 20)
 --   closedDate = 2026-05-30T04:15:00+0000 => 2026-05-29 23:15 CDT (hour 23)
+-- order_date uses CURRENT_DATE-1 so backfill window always covers it.
 -- ----------------------------------------------------------------
 INSERT INTO toast_orders (
   id, toast_order_guid, restaurant_id, toast_restaurant_guid,
@@ -73,11 +81,12 @@ VALUES (
   'sold-at-order-A',
   '00000000-0000-0000-0000-390000000011',
   'toast-rest-sold-at',
-  '2026-05-29', NULL, 25.00, 2.00,
+  (CURRENT_DATE - INTERVAL '1 day')::date, NULL, 25.00, 2.00,
   '{"openedDate":"2026-05-30T01:30:00+0000","closedDate":"2026-05-30T04:15:00+0000"}'::jsonb
 )
 ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE
-  SET raw_json = EXCLUDED.raw_json;
+  SET raw_json = EXCLUDED.raw_json,
+      order_date = EXCLUDED.order_date;
 
 INSERT INTO toast_order_items (
   toast_item_guid, toast_order_guid, restaurant_id,
@@ -107,11 +116,12 @@ VALUES (
   'sold-at-order-B',
   '00000000-0000-0000-0000-390000000011',
   'toast-rest-sold-at',
-  '2026-05-29', NULL, 18.00, 1.50,
+  (CURRENT_DATE - INTERVAL '1 day')::date, NULL, 18.00, 1.50,
   '{"closedDate":"2026-05-30T04:15:00+0000"}'::jsonb
 )
 ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE
-  SET raw_json = EXCLUDED.raw_json;
+  SET raw_json = EXCLUDED.raw_json,
+      order_date = EXCLUDED.order_date;
 
 INSERT INTO toast_order_items (
   toast_item_guid, toast_order_guid, restaurant_id,
@@ -141,11 +151,12 @@ VALUES (
   'sold-at-order-C',
   '00000000-0000-0000-0000-390000000011',
   'toast-rest-sold-at',
-  '2026-05-29', NULL, 12.00, 1.00,
+  (CURRENT_DATE - INTERVAL '1 day')::date, NULL, 12.00, 1.00,
   '{"openedDate":"NOT-A-DATE","closedDate":"2026-05-30T04:15:00+0000"}'::jsonb
 )
 ON CONFLICT (toast_order_guid, restaurant_id) DO UPDATE
-  SET raw_json = EXCLUDED.raw_json;
+  SET raw_json = EXCLUDED.raw_json,
+      order_date = EXCLUDED.order_date;
 
 INSERT INTO toast_order_items (
   toast_item_guid, toast_order_guid, restaurant_id,
@@ -181,13 +192,17 @@ SELECT col_type_is(
 -- Run the sync to populate sold_at (TEST 3: no error)
 -- ============================================================
 SELECT lives_ok(
-  $$
-    SELECT sync_toast_to_unified_sales(
-      '00000000-0000-0000-0000-390000000011'::UUID,
-      '2026-05-29'::DATE,
-      '2026-05-29'::DATE
-    )
-  $$,
+  format(
+    $q$
+      SELECT sync_toast_to_unified_sales(
+        '00000000-0000-0000-0000-390000000011'::UUID,
+        %L::DATE,
+        %L::DATE
+      )
+    $q$,
+    (CURRENT_DATE - INTERVAL '1 day')::date,
+    (CURRENT_DATE - INTERVAL '1 day')::date
+  ),
   'sync_toast_to_unified_sales(UUID, DATE, DATE) completes without error'
 );
 
@@ -268,7 +283,7 @@ SELECT is(
    WHERE us.restaurant_id = '00000000-0000-0000-0000-390000000011'
      AND us.external_item_id = 'sold-at-item-A'
      AND us.item_type = 'sale'),
-  '2026-05-29'::date,
+  (CURRENT_DATE - INTERVAL '1 day')::date,
   'Order A: sale_date unchanged (still uses order_date, not openedDate date)'
 );
 
@@ -284,8 +299,8 @@ WHERE toast_order_guid = 'sold-at-order-A'
 
 SELECT sync_toast_to_unified_sales(
   '00000000-0000-0000-0000-390000000011'::UUID,
-  '2026-05-29'::DATE,
-  '2026-05-29'::DATE
+  (CURRENT_DATE - INTERVAL '1 day')::date,
+  (CURRENT_DATE - INTERVAL '1 day')::date
 );
 
 -- EXCLUDED.sold_at = closedDate (non-NULL) → COALESCE picks it; sold_at = closedDate
@@ -316,6 +331,7 @@ WHERE restaurant_id = '00000000-0000-0000-0000-390000000011'
   AND item_type = 'sale';
 
 -- Run the bounded backfill logic (mirrors the DO block from the migration)
+-- sale_date = CURRENT_DATE-1 is always inside the 90-day window, so this always fires.
 UPDATE public.unified_sales us
 SET sold_at = (too.raw_json->>'openedDate')::timestamptz
 FROM public.toast_orders too
@@ -325,7 +341,7 @@ WHERE us.pos_system = 'toast'
   AND us.item_type NOT IN ('tip', 'refund')
   AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
   AND us.sold_at IS NULL
-  AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+  AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
   AND us.restaurant_id = '00000000-0000-0000-0000-390000000011';
 
 SELECT is(

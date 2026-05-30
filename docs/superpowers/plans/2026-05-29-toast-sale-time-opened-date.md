@@ -12,7 +12,7 @@
 
 ---
 
-### Task 1: `aggregateHourlySales` prefers `sold_at` (TZ-aware)
+## Task 1: `aggregateHourlySales` prefers `sold_at` (TZ-aware)
 
 **Files:** Modify `src/hooks/useHourlySalesPattern.ts`; Test `tests/unit/useHourlySalesPattern.test.ts` (create if absent)
 

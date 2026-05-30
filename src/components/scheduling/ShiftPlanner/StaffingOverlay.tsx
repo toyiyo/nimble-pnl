@@ -91,6 +91,8 @@ function useWeekStaffingSuggestions(
     },
     enabled: !!restaurantId,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   // Fetch time punches to compute actual labor hours for SPLH hint

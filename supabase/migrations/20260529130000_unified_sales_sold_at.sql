@@ -42,7 +42,7 @@ AS $$
 DECLARE
   v_synced_count INTEGER := 0;
   v_row_count INTEGER;
-  v_sync_start TIMESTAMPTZ := clock_timestamp();
+  v_sync_start TIMESTAMPTZ := NOW();
   v_tz TEXT;
 BEGIN
   -- Authorization check: skip when called from service role (auth.uid() is NULL)
@@ -103,15 +103,15 @@ BEGIN
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid,
     toi.item_name, toi.quantity, toi.unit_price / NULLIF(toi.quantity, 0), toi.unit_price,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     toi.menu_category, 'sale', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_order_items toi
@@ -150,15 +150,15 @@ BEGIN
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_discount',
     'Discount - ' || toi.item_name, toi.quantity, -toi.discount_amount / NULLIF(toi.quantity, 0), -toi.discount_amount,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     toi.menu_category, 'discount', 'discount', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_order_items toi
@@ -196,15 +196,15 @@ BEGIN
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_void',
     'Void - ' || toi.item_name, toi.quantity, -toi.unit_price / NULLIF(toi.quantity, 0), -toi.unit_price,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     toi.menu_category, 'discount', 'void', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_order_items toi
@@ -243,15 +243,15 @@ BEGIN
     too.restaurant_id, 'toast', too.toast_order_guid, too.toast_order_guid || '_tax',
     'Sales Tax', 1, too.tax_amount, too.tax_amount,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     'tax', 'tax', too.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_orders too
@@ -462,15 +462,15 @@ BEGIN
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid,
     toi.item_name, toi.quantity, toi.unit_price / NULLIF(toi.quantity, 0), toi.unit_price,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     toi.menu_category, 'sale', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_order_items toi
@@ -511,15 +511,15 @@ BEGIN
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_discount',
     'Discount - ' || toi.item_name, toi.quantity, -toi.discount_amount / NULLIF(toi.quantity, 0), -toi.discount_amount,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     toi.menu_category, 'discount', 'discount', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_order_items toi
@@ -559,15 +559,15 @@ BEGIN
     toi.restaurant_id, 'toast', toi.toast_order_guid, toi.toast_item_guid || '_void',
     'Void - ' || toi.item_name, toi.quantity, -toi.unit_price / NULLIF(toi.quantity, 0), -toi.unit_price,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     toi.menu_category, 'discount', 'void', toi.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_order_items toi
@@ -608,15 +608,15 @@ BEGIN
     too.restaurant_id, 'toast', too.toast_order_guid, too.toast_order_guid || '_tax',
     'Sales Tax', 1, too.tax_amount, too.tax_amount,
     too.order_date,
-    CASE WHEN too.raw_json->>'closedDate' IS NOT NULL
+    CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
          THEN ((too.raw_json->>'closedDate')::timestamptz AT TIME ZONE v_tz)::time
          ELSE too.order_time
     END,
     'tax', 'tax', too.raw_json, NOW(),
     COALESCE(
-      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'openedDate')::timestamptz END,
-      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}'
+      CASE WHEN too.raw_json->>'closedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
            THEN (too.raw_json->>'closedDate')::timestamptz END
     )
   FROM public.toast_orders too
@@ -761,5 +761,5 @@ BEGIN
     AND us.item_type NOT IN ('tip', 'refund')
     AND us.sale_date > (CURRENT_DATE - INTERVAL '90 days')
     AND us.sold_at IS NULL
-    AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}';
+    AND too.raw_json->>'openedDate' ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$';
 END $$;

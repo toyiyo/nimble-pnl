@@ -1,5 +1,42 @@
 # Progress: fix/toast-sale-time-opened-date
 
+## Phase: CI (Phase 9b) — COMPLETED
+
+### Result
+- All CI checks PASS (exit 0)
+- SonarCloud: PASS (configured, gate green)
+- PR: https://github.com/toyiyo/nimble-pnl/pull/529
+
+### Check Summary
+
+| Check | Status | Duration |
+|-------|--------|----------|
+| Analyze (actions) | pass | 44s |
+| Analyze (javascript-typescript) | pass | 2m2s |
+| CodeQL | pass | 2s |
+| CodeRabbit | pass (skipped) | - |
+| Database Tests (pgTAP) | pass | 4m18s |
+| E2E Tests (Shard 1/4) | pass | 9m51s |
+| E2E Tests (Shard 2/4) | pass | 11m43s |
+| E2E Tests (Shard 3/4) | pass | 9m53s |
+| E2E Tests (Shard 4/4) | pass | 7m51s |
+| Merge E2E Reports | pass | 29s |
+| SonarCloud Code Analysis | pass | 53s |
+| Supabase Preview | pass | 1m16s |
+| Unit Tests | pass | 4m34s |
+| Vercel | pass | - |
+| netlify/easyshifthq/deploy-preview | pass | - |
+
+---
+
+## Phase: Ship (Phase 9a) — COMPLETED
+
+### Result
+- Branch pushed: `origin/fix/toast-sale-time-opened-date`
+- PR opened: https://github.com/toyiyo/nimble-pnl/pull/529 (PR #529)
+
+---
+
 ## Phase: Verify (Phase 8) — COMPLETED
 
 ### Result
@@ -90,7 +127,7 @@
 
 ### Environment Check Results
 - Branch: fix/toast-sale-time-opened-date (correct)
-- gh: authenticated as jdelgado2002 (github.com)
+- gh: authenticated as jdelgado2002 (GitHub.com)
 - jq: 1.7.1-apple (available)
 - node: v24.11.1 (available)
 - coderabbit: 0.5.2 (available)

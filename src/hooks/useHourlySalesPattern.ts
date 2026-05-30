@@ -174,5 +174,7 @@ export function useHourlySalesPattern(
     },
     enabled: !!restaurantId,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 }

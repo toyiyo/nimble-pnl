@@ -212,6 +212,12 @@ serve(async (req) => {
         .maybeSingle(),
     ]);
 
+    // ── Validate fetched data ────────────────────────────────────────────────
+    if (restaurantResult.error) throw new Error(`Failed to fetch restaurant timezone: ${restaurantResult.error.message}`);
+    if (salesResult.error) throw new Error(`Failed to fetch sales history: ${salesResult.error.message}`);
+    if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
+    if (templatesResult.error) throw new Error(`Failed to fetch templates: ${templatesResult.error.message}`);
+
     // ── Resolve restaurant timezone ──────────────────────────────────────────
     const restaurantTimezone: string =
       restaurantResult.data?.timezone && typeof restaurantResult.data.timezone === "string"
@@ -223,10 +229,6 @@ serve(async (req) => {
           `Hour bucketing will use America/Chicago for sales aggregation.`,
       );
     }
-
-    // ── Validate fetched data ────────────────────────────────────────────────
-    if (employeesResult.error) throw new Error(`Failed to fetch employees: ${employeesResult.error.message}`);
-    if (templatesResult.error) throw new Error(`Failed to fetch templates: ${templatesResult.error.message}`);
 
     const rawEmployees = employeesResult.data ?? [];
     const rawTemplates = templatesResult.data ?? [];

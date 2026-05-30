@@ -1,5 +1,22 @@
 # Progress: fix/toast-sale-time-opened-date
 
+## Phase: CodeRabbit Review (Phase 7c) — COMPLETED
+
+### Result
+- Commit: `b81a19b4`
+- 3 files changed; all 4418 unit tests pass; tsc --noEmit clean
+
+### Findings addressed
+1. **minor** `StaffingOverlay.wiring.test.tsx:104`: Comment `// a Friday` → `// a Saturday` (2026-05-23 is actually a Saturday)
+2. **minor** `StaffingOverlay.tz.test.tsx:81-87`: Comments `// A Friday` / `// Friday` → `// A Saturday` / `// Saturday`
+3. **major** `ApplyShiftsDialog.tsx:3,77-79`: Use `DialogDescription` instead of `<p>` for aria-describedby wiring per coding guidelines
+
+### Skipped (out-of-scope or style)
+- Legend selector fragility in `deadends.test.tsx`: pre-existing test structure, not introduced by this PR, minor improvement only
+- Partial success UX in `useApplySuggestedShifts.ts`: refactor suggestion for pre-existing error handling pattern, out of scope for this timezone/sold_at fix PR
+
+---
+
 ## Phase: Fold Findings (Phase 7b) — COMPLETED
 
 ### Result

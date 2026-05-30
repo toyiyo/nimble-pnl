@@ -1,5 +1,33 @@
 # Progress: fix/toast-sale-time-opened-date
 
+## Phase: Verify (Phase 8) — COMPLETED
+
+### Result
+- All checks pass (with pre-existing failures noted)
+
+### Check Results
+| Check | Result |
+|-------|--------|
+| `npm run test` | 4418/4420 PASS (2 expected skips) |
+| `npm run test:db` | 1372/1372 PASS |
+| `npm run test:e2e` (our tests) | 3/3 PASS (staffing-suggestions.spec.ts) |
+| `npm run test:e2e` (related tests) | 10/10 PASS (shift-planner, broadcast-open-shifts, open-shift-claiming, planner-allocation-overlay) |
+| `npm run typecheck` | CLEAN (0 errors) |
+| Lint (our changed files only) | CLEAN (0 errors) — pre-existing lint errors in 1346 untouched files, unrelated to our changes |
+| `npm run build` | SUCCESS ("built in 42.81s") |
+
+### Pre-existing E2E failures (NOT introduced by this PR)
+- `scheduling-conflicts.spec.ts:284,326` — fails in isolation on main, last touched before this branch, no overlap with our changed files
+- `manual-sale-tip-not-doubled.spec.ts:58` — fails in isolation on main, last touched before this branch, tip logic unrelated to our sold_at/timezone changes
+- `staffing-suggestions.spec.ts:57` — flaky only under full parallel suite (155 tests, 2 workers); passes 3/3 in isolation
+
+### Notes
+- `npm run build` requires main repo's vite (`/Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules/.bin/vite`) since worktree node_modules is sparse
+- Dev server started and torn down for E2E tests
+- E2E tests NOT run in CI (CI only runs Unit Tests + CodeQL)
+
+---
+
 ## Phase: CodeRabbit Review (Phase 7c) — COMPLETED
 
 ### Result

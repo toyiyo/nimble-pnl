@@ -1,5 +1,37 @@
 # Progress: fix/toast-sale-time-opened-date
 
+## Phase: Review-Comment Triage (Phase 9d) — COMPLETED
+
+### Result
+- Fix commit: `655d93a40d0e9ea39c2a9743c3b83d4f00f8a29a`
+- Pushed: `origin/fix/toast-sale-time-opened-date`
+- Triage artifact: `dev-tools/9d-triage-fix/toast-sale-time-opened-date.md`
+
+### Comment Counts (14 total)
+| Category | Count | Action |
+|----------|-------|--------|
+| bug/correctness | 3 | Fixed + committed |
+| refactor/suggestion | 3 | Implemented |
+| nit | 3 | Implemented |
+| info (bots) | 5 | Read only |
+
+### Bugs Fixed
+1. `clock_timestamp()` → `NOW()` in migration (v_sync_start/synced_at mismatch)
+2. Regex guard upgraded to require timezone designator (Z or ±HH:MM) at 10 sites in migration
+3. Hard-coded `'2026-05-29'` fixture date in pgTAP tests → `CURRENT_DATE - INTERVAL '1 day'` (prevents TEST 12 expiry on 2026-08-27)
+
+### Suggestions Implemented
+1. `StaffingOverlay.tsx`: `refetchOnWindowFocus: true`, `refetchOnMount: true`
+2. `useHourlySalesPattern.ts`: same
+3. `generate-schedule/index.ts`: fail fast on `restaurantResult.error` and `salesResult.error`
+
+### Verification
+- Unit tests: 4348/4350 PASS (2 expected skips)
+- TypeScript: 0 errors
+- pgTAP: 1355/1356 PASS (1 pre-existing unrelated failure)
+
+---
+
 ## Phase: CI (Phase 9b) — COMPLETED
 
 ### Result

@@ -1,5 +1,22 @@
 # Progress: fix/toast-sale-time-opened-date
 
+## Phase: Fold Findings (Phase 7b) — COMPLETED
+
+### Result
+- Commit: `b3344add`
+- 5 files changed; all 4418 unit + 1372 pgTAP tests pass; tsc --noEmit clean; deno check clean
+
+### Findings addressed
+1. **COALESCE order flip** (migration, 8 sites): `COALESCE(unified_sales.sold_at, EXCLUDED.sold_at)` → `COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)`. Aligns with design doc; allows upgrades from closedDate-fallback to openedDate on subsequent syncs. pgTAP Test 11 updated to assert new semantics.
+2. **Intl.DateTimeFormat caching**: `sales-hour-utils.ts` and `useHourlySalesPattern.ts` both now use a module-level `Map<string, Intl.DateTimeFormat>` cache — no per-row formatter construction.
+3. **`useHourlySalesPattern` timeZone param**: Added optional `timeZone: string = 'America/Chicago'` param, threaded into `aggregateHourlySales(filtered, timeZone)`. Also added `timeZone` to the React Query key.
+4. **generate-schedule timezone fallback**: Changed from `"UTC"` to `"America/Chicago"` — aligns with `aggregateHourlySales` default, eliminating up to 6-hour divergence in peak-hour stats for unconfigured restaurants.
+
+### Skipped (nits/style/minors)
+- Duplicate tz-conversion logic between frontend and Deno edge (architectural note, not in scope)
+- `DEFAULT_CLOSE_HOUR` naming (pre-existing, not introduced by this PR)
+- Backfill missing closedDate fallback (bounded 90-day scope, minor)
+
 ## Phase: Simplify (Phase 6) — COMPLETED
 
 ### Result

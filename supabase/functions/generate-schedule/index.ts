@@ -25,6 +25,7 @@ import { computeRequiredStaff } from "../_shared/staffing-requirements.ts";
 import { solveSchedule, computeFairness, type ScheduleContext as SolverScheduleContext } from "../_shared/schedule-solver.ts";
 import type { UnfilledSlot, FairnessSummary } from "../_shared/schedule-solver.ts";
 import { applyPreferences, PREFERENCE_MODELS } from "../_shared/schedule-preference-llm.ts";
+import { hourFromSale, dayOfWeekFromSaleDate } from "../_shared/sales-hour-utils.ts";
 
 export type ClientSafeUnfilledSlot = Omit<UnfilledSlot, 'template_id'> & { template_name: string };
 export type ClientSafeFairnessSummary = Omit<FairnessSummary, 'employee_id'> & { employee_name: string };
@@ -188,7 +189,7 @@ serve(async (req) => {
       // 7. Sales data: 4-week lookback
       supabase
         .from("unified_sales")
-        .select("sale_date, sale_time, total_price")
+        .select("sale_date, sale_time, sold_at, total_price")
         .eq("restaurant_id", restaurant_id)
         .eq("item_type", "sale")
         .gte("sale_date", fourWeeksAgoStr)
@@ -385,18 +386,13 @@ serve(async (req) => {
 
     for (const sale of salesRows) {
       if (!sale.sale_date) continue;
-      const saleDate = new Date(sale.sale_date);
-      const dayOfWeek = saleDate.getDay();
-      // Use sale_time for hour if available, otherwise skip hourly breakdown
-      let hour = -1;
-      if (sale.sale_time) {
-        const timePart = typeof sale.sale_time === "string" ? sale.sale_time : String(sale.sale_time);
-        hour = parseInt(timePart.split(":")[0], 10);
-      }
+      const dayOfWeek = dayOfWeekFromSaleDate(sale.sale_date);
+      // Prefer sold_at (tz-aware absolute instant) over sale_time (legacy local parse)
+      const hour = hourFromSale(sale, restaurantTimezone);
       if (hour < 0 || hour > 23) continue;
 
       const key = `${dayOfWeek}:${hour}`;
-      const weekStart_ = new Date(saleDate);
+      const weekStart_ = new Date(sale.sale_date + "T12:00:00");
       weekStart_.setDate(weekStart_.getDate() - weekStart_.getDay());
       const weekStr = weekStart_.toISOString().split("T")[0];
 

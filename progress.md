@@ -1,5 +1,29 @@
 # Progress: fix/toast-sale-time-opened-date
 
+## Phase: Simplify (Phase 6) — COMPLETED
+
+### Result
+- Commit: `d55961e2`
+- `supabase/functions/_shared/sales-hour-utils.ts`:
+  - Removed redundant `typeof sale.sale_time === "string" ? ... : String(...)` coercion — SaleRow interface already types `sale_time` as `string | null`; no runtime coercion needed when truthy
+  - Renamed opaque variable `s` → `formatted` in `hourFromSale` to clarify it holds the Intl-formatted hour string before `parseInt`
+- `supabase/tests/39_unified_sales_sold_at.sql`:
+  - Fixed Test 11 comment: COALESCE arg order was written backwards (`EXCLUDED, unified_sales`) vs actual SQL (`unified_sales, EXCLUDED`)
+- All 4418 unit tests pass — no behaviour changes
+
+## Phase: UI Review (Phase 5) — COMPLETED
+
+### Result
+- Changed UI file: `src/components/scheduling/ShiftPlanner/StaffingOverlay.tsx`
+- Changes were functional only (added `sold_at` to SELECT, passed `tz` to `aggregateHourlySales`, imported `useRestaurantContext`)
+- Full Apple/Notion guidelines audit: PASS
+  - Typography scale: all text sizes use correct `text-[Npx]` tokens
+  - Semantic color tokens: no hardcoded `bg-white`/`text-black` — all semantic tokens
+  - Three-state rendering: isLoading → Skeleton, error → AlertCircle + retry, data — correct
+  - Accessibility: aria-labels on all icon-only buttons, keyboard accessible
+  - Borders/containers: `border-border/40`, `bg-muted/30`, `rounded-xl` patterns used correctly
+- No violations found; no fixes needed; no commit required
+
 ## Phase: Preflight — COMPLETED
 
 ### Environment Check Results

@@ -21,6 +21,26 @@
 
 ## Phase: Build (TDD) — IN PROGRESS
 
+### Task 9 (orchestration task 9/10): generate-schedule edge fn — add sold_at to SELECT, resolve restaurant timezone, replace hour derivation with hourFromSale via Intl.DateTimeFormat h23, fix day-of-week bug — COMPLETED (GREEN)
+- Commit: `23b81f90`
+- Created `supabase/functions/_shared/sales-hour-utils.ts` — pure TS, no Deno imports, vitest-compatible:
+  - `hourFromSale(sale, timeZone)`: prefers `sold_at` (Intl.DateTimeFormat h23, tz-aware) over `sale_time` (legacy local parse); returns -1 when no time data
+  - `dayOfWeekFromSaleDate(saleDate)`: noon-anchored parse (`YYYY-MM-DDT12:00:00`) to prevent UTC midnight day-shift for timezones west of UTC
+- Updated `supabase/functions/generate-schedule/index.ts`:
+  - Added import of both helpers from `_shared/sales-hour-utils.ts`
+  - Added `sold_at` to the unified_sales SELECT column list (line 192)
+  - Replaced inline hour derivation with `hourFromSale(sale, restaurantTimezone)` — uses restaurant's IANA timezone (already resolved at line 215)
+  - Replaced `new Date(sale.sale_date).getDay()` with `dayOfWeekFromSaleDate(sale.sale_date)` — fixes the adjacent day-of-week bug
+  - Also noon-anchored the weekStart_ date used for week-tracking in the agg loop
+- Added `tests/unit/generate-schedule-sales-hour.test.ts` with 10 tests:
+  - sold_at preference over sale_time (CDT offset)
+  - sale_time fallback when sold_at null / undefined
+  - -1 returned when neither field present
+  - midnight correct: hour 0 not 24 (h23 hourCycle)
+  - DST spring-forward boundary correctness
+  - dayOfWeekFromSaleDate: Mon/Thu/Sun/Sat correctness
+- All 4418 unit tests pass; typecheck clean
+
 ### Task 8 (orchestration task 8/10): StaffingOverlay — resolve restaurant timezone from useRestaurantContext, pass tz into aggregateHourlySales — COMPLETED (GREEN)
 - Commit: `2b743c9f`
 - Implementation was already done in Task 7 commit (a65f6c52): useRestaurantContext used, tz resolved and passed to aggregateHourlySales

@@ -134,7 +134,7 @@ BEGIN
     pos_category = EXCLUDED.pos_category,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -180,7 +180,7 @@ BEGIN
     pos_category = EXCLUDED.pos_category,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -227,7 +227,7 @@ BEGIN
     pos_category = EXCLUDED.pos_category,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -268,7 +268,7 @@ BEGIN
     sale_time = EXCLUDED.sale_time,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -367,7 +367,8 @@ $$;
 COMMENT ON FUNCTION sync_toast_to_unified_sales(UUID) IS
   'Syncs ALL Toast orders to unified_sales. Derives sale_time from raw_json closedDate '
   'in restaurant timezone. Populates sold_at (absolute UTC instant) from openedDate '
-  '(fallback: closedDate) with regex guard; COALESCE on upsert preserves prior sold_at. '
+  '(fallback: closedDate) with regex guard; COALESCE(EXCLUDED.sold_at, unified_sales.sold_at) '
+  'on upsert prefers incoming openedDate-derived value, preserving prior only when EXCLUDED is NULL. '
   'Skips per-row triggers via GUC flag during bulk ops, then batch-categorizes and '
   'batch-aggregates after sync.';
 
@@ -494,7 +495,7 @@ BEGIN
     pos_category = EXCLUDED.pos_category,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -542,7 +543,7 @@ BEGIN
     pos_category = EXCLUDED.pos_category,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -591,7 +592,7 @@ BEGIN
     pos_category = EXCLUDED.pos_category,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -634,7 +635,7 @@ BEGIN
     sale_time = EXCLUDED.sale_time,
     raw_data = EXCLUDED.raw_data,
     synced_at = EXCLUDED.synced_at,
-    sold_at = COALESCE(unified_sales.sold_at, EXCLUDED.sold_at);
+    sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
 
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
   v_synced_count := v_synced_count + v_row_count;
@@ -739,8 +740,9 @@ $$;
 COMMENT ON FUNCTION sync_toast_to_unified_sales(UUID, DATE, DATE) IS
   'Syncs Toast orders within date range to unified_sales. Derives sale_time from '
   'raw_json closedDate in restaurant timezone. Populates sold_at (absolute UTC instant) '
-  'from openedDate (fallback: closedDate) with regex guard; COALESCE on upsert '
-  'preserves prior sold_at. Skips per-row triggers via GUC flag during bulk ops, '
+  'from openedDate (fallback: closedDate) with regex guard; COALESCE(EXCLUDED.sold_at, unified_sales.sold_at) '
+  'on upsert prefers incoming openedDate-derived value, preserving prior only when EXCLUDED is NULL. '
+  'Skips per-row triggers via GUC flag during bulk ops, '
   'then batch-categorizes and batch-aggregates after sync.';
 
 -- =============================================================================

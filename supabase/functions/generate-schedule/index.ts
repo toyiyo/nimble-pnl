@@ -216,11 +216,11 @@ serve(async (req) => {
     const restaurantTimezone: string =
       restaurantResult.data?.timezone && typeof restaurantResult.data.timezone === "string"
         ? restaurantResult.data.timezone
-        : "UTC";
+        : "America/Chicago";
     if (!restaurantResult.data?.timezone) {
       console.warn(
-        `[generate-schedule] No timezone for restaurant ${restaurant_id}; defaulting to UTC. ` +
-          `Availability conversion is a no-op for this run.`,
+        `[generate-schedule] No timezone for restaurant ${restaurant_id}; defaulting to America/Chicago. ` +
+          `Hour bucketing will use America/Chicago for sales aggregation.`,
       );
     }
 

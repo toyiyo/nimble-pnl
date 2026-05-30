@@ -24,16 +24,31 @@ export interface AggregatedSalesResult {
 }
 
 /**
+ * Module-level cache: reuse Intl.DateTimeFormat instances across rows.
+ * Keyed by IANA timezone string. Constructing an ICU formatter is expensive;
+ * caching eliminates per-row allocation when processing large result sets.
+ */
+const _fmtCache = new Map<string, Intl.DateTimeFormat>();
+
+function getFormatter(tz: string): Intl.DateTimeFormat {
+  let fmt = _fmtCache.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    });
+    _fmtCache.set(tz, fmt);
+  }
+  return fmt;
+}
+
+/**
  * Convert a UTC ISO string to the local hour (0–23) in the given IANA timezone.
  * Uses Intl.DateTimeFormat with hourCycle:'h23' so midnight = 0 (not 24).
  */
 function hourInTz(iso: string, tz: string): number {
-  const s = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hour: '2-digit',
-    hourCycle: 'h23',
-  }).format(new Date(iso));
-  return parseInt(s, 10);
+  return parseInt(getFormatter(tz).format(new Date(iso)), 10);
 }
 
 /**
@@ -113,14 +128,20 @@ export function aggregateHourlySales(
 /**
  * Fetches unified_sales for a specific day-of-week over the last N weeks,
  * then aggregates into hourly averages.
+ *
+ * @param restaurantId  Restaurant UUID or null (query disabled when null)
+ * @param dayOfWeek     0 = Sunday … 6 = Saturday
+ * @param lookbackWeeks Number of past weeks to include (default 4)
+ * @param timeZone      IANA timezone for hour bucketing (default 'America/Chicago')
  */
 export function useHourlySalesPattern(
   restaurantId: string | null,
   dayOfWeek: number,
   lookbackWeeks: number = 4,
+  timeZone: string = 'America/Chicago',
 ) {
   return useQuery({
-    queryKey: ['hourly-sales-pattern', restaurantId, dayOfWeek, lookbackWeeks],
+    queryKey: ['hourly-sales-pattern', restaurantId, dayOfWeek, lookbackWeeks, timeZone],
     queryFn: async (): Promise<HourlySalesData[]> => {
       if (!restaurantId) return [];
 
@@ -149,7 +170,7 @@ export function useHourlySalesPattern(
         return d.getDay() === dayOfWeek;
       });
 
-      return aggregateHourlySales(filtered).data;
+      return aggregateHourlySales(filtered, timeZone).data;
     },
     enabled: !!restaurantId,
     staleTime: 60000,

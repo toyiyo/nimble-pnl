@@ -273,8 +273,9 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST 11: ON CONFLICT — re-sync does NOT null-out a good sold_at
--- Simulate re-sync where openedDate is now missing from raw_json
+-- TEST 11: ON CONFLICT — COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+-- Re-sync with only closedDate: EXCLUDED.sold_at = closedDate (non-NULL) → it wins.
+-- This verifies the upsert picks the best available timestamp from the incoming sync.
 -- ============================================================
 UPDATE toast_orders
 SET raw_json = '{"closedDate":"2026-05-30T04:15:00+0000"}'::jsonb
@@ -287,14 +288,14 @@ SELECT sync_toast_to_unified_sales(
   '2026-05-29'::DATE
 );
 
--- sold_at should still be the original openedDate value
+-- EXCLUDED.sold_at = closedDate (non-NULL) → COALESCE picks it; sold_at = closedDate
 SELECT is(
   (SELECT us.sold_at FROM unified_sales us
    WHERE us.restaurant_id = '00000000-0000-0000-0000-390000000011'
      AND us.external_item_id = 'sold-at-item-A'
      AND us.item_type = 'sale'),
-  '2026-05-30T01:30:00+00'::timestamptz,
-  'Re-sync: sold_at preserved (COALESCE(unified_sales.sold_at, EXCLUDED.sold_at) keeps prior value)'
+  '2026-05-30T04:15:00+00'::timestamptz,
+  'Re-sync: COALESCE(EXCLUDED.sold_at, ...) picks incoming closedDate when openedDate absent'
 );
 
 -- ============================================================

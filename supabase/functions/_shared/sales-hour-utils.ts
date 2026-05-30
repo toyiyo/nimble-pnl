@@ -11,6 +11,26 @@ export interface SaleRow {
 }
 
 /**
+ * Module-level cache: reuse Intl.DateTimeFormat instances across rows.
+ * Keyed by IANA timezone string. Constructing an ICU formatter is expensive;
+ * caching eliminates per-row allocation when processing large result sets.
+ */
+const _fmtCache = new Map<string, Intl.DateTimeFormat>();
+
+function getFormatter(timeZone: string): Intl.DateTimeFormat {
+  let fmt = _fmtCache.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      hourCycle: "h23",
+    });
+    _fmtCache.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
+/**
  * Returns the local hour (0-23) for a sale, preferring `sold_at` (timezone-aware)
  * over `sale_time` (legacy local parse). Returns -1 when no time data is available.
  *
@@ -19,11 +39,7 @@ export interface SaleRow {
  */
 export function hourFromSale(sale: SaleRow, timeZone: string): number {
   if (sale.sold_at) {
-    const formatted = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hour: "2-digit",
-      hourCycle: "h23",
-    }).format(new Date(sale.sold_at));
+    const formatted = getFormatter(timeZone).format(new Date(sale.sold_at));
     const h = parseInt(formatted, 10);
     if (!isNaN(h) && h >= 0 && h <= 23) return h;
   }

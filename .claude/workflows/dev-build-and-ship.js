@@ -451,7 +451,7 @@ const triage = await agent(
         },
         pushedFix: { type: 'boolean' },
       },
-      ['openCriticalOrMajor', 'actionableCommentCount'],
+      ['openCriticalOrMajor', 'actionableCommentCount', 'triagedCount'],
     ),
   },
 )
@@ -459,11 +459,21 @@ const triage = await agent(
 
 // Severity-fidelity gate: a Major/P1 must never be silently downgraded, and the
 // number triaged must cover every actionable comment the bots reported.
-if (typeof triage.triagedCount === 'number' && triage.triagedCount < triage.actionableCommentCount) {
+// triagedCount is schema-required — a missing/NaN value is treated as a hard
+// failure so the gate can never be silently skipped.
+const triagedCount = typeof triage.triagedCount === 'number' && Number.isFinite(triage.triagedCount) ? triage.triagedCount : -1
+if (triagedCount < 0) {
   return {
     stopped: true,
     phase: 'Triage',
-    reason: `Triage under-reported: triaged ${triage.triagedCount} but bots reported ${triage.actionableCommentCount} actionable comments. Re-run 9d and account for every comment by its own severity badge.`,
+    reason: 'Triage agent did not return a valid triagedCount (schema-required field). Re-run 9d ensuring every comment is classified and the count is reported.',
+  }
+}
+if (triagedCount < triage.actionableCommentCount) {
+  return {
+    stopped: true,
+    phase: 'Triage',
+    reason: `Triage under-reported: triaged ${triagedCount} but bots reported ${triage.actionableCommentCount} actionable comments. Re-run 9d and account for every comment by its own severity badge.`,
   }
 }
 

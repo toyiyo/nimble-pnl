@@ -6,12 +6,12 @@
 -- Depends on migration: 20260528120000_shift_templates_idempotent_apply.sql
 -- which creates:
 --   CREATE UNIQUE INDEX uq_shift_templates_active_slot
---     ON public.shift_templates (restaurant_id, position, start_time, end_time, days)
+--     ON public.shift_templates (restaurant_id, position, start_time, end_time, days, (COALESCE(area, '')))
 --     WHERE is_active = true;
 
 BEGIN;
 
-SELECT plan(4);
+SELECT plan(5);
 
 -- ============================================================
 -- Setup: disable RLS so the test can insert without auth context
@@ -81,9 +81,9 @@ SELECT lives_ok(
       2,
       true
     )
-    ON CONFLICT (restaurant_id, position, start_time, end_time, days) WHERE is_active = true DO NOTHING
+    ON CONFLICT DO NOTHING
   $$,
-  'ON CONFLICT DO NOTHING re-apply is a no-op'
+  'ON CONFLICT DO NOTHING re-apply is a no-op (bare target, mirrors the hook)'
 );
 
 -- ============================================================
@@ -129,6 +129,32 @@ SELECT lives_ok(
     )
   $$,
   'same slot on a different day inserts (days is part of the key)'
+);
+
+-- ============================================================
+-- Test 5: Same role/time/days in a DIFFERENT area does NOT collide
+-- (regression guard: area must be part of the key — food-court operators run
+-- e.g. "Cold Stone" and "Wetzel's" with identical role/time/days). The seed
+-- template has NULL area (COALESCE -> ''); this one has 'Patio'.
+-- ============================================================
+
+SELECT lives_ok(
+  $$
+    INSERT INTO shift_templates (restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area)
+    VALUES (
+      '00000000-0000-0000-0000-0000000000aa',
+      'Server 17:00-22:00 (Patio)',
+      '{5}',
+      '17:00:00',
+      '22:00:00',
+      0,
+      'Server',
+      2,
+      true,
+      'Patio'
+    )
+  $$,
+  'same role/time/day in a different area inserts (area is part of the key)'
 );
 
 SELECT * FROM finish();

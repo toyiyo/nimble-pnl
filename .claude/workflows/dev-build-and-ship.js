@@ -26,6 +26,10 @@ export const meta = {
 //   * Human gates are IMPOSSIBLE mid-run. Any phase that would "pause and ask"
 //     instead returns status:'needs_human'; the script halts and returns a
 //     structured stop so the launching session can notify the user.
+//   * `node --check` will report "Illegal return statement" for this file —
+//     that is EXPECTED. The workflow runtime wraps the body in an async
+//     function where top-level `return` is legal; standalone Node parsing is
+//     not the contract. Do not "fix" the returns to satisfy `node --check`.
 //
 // DELIBERATE DESIGN DECISIONS (see chat for rationale):
 //   1. Phase 4 TDD is SEQUENTIAL (one agent per plan task, in dependency
@@ -37,12 +41,22 @@ export const meta = {
 //      (the runtime has no sleep primitive for script-level polling).
 //   3. Phase 9e "done" is verified via on-disk ARTIFACTS, not transcript
 //      visibility (which does not exist across fresh-context agents).
-//   4. Commits NEVER use `git add -A`, `git add .`, or `git add --all`.
-//      Agents must stage only the explicit file paths they changed. Before
-//      any commit the agent must verify that progress.md and dev-tools/ are
-//      NOT in `git diff --cached --name-only` (both are gitignored, but the
-//      guard catches accidental force-adds). Any agent that would include
-//      them must unstage them with `git restore --staged <path>` first.
+//
+// ARTIFACT / COMMIT HYGIENE (fixes recurring bugs from PRs #525/#529/#530):
+//   * Agents must NEVER `git add -A` / `git add .` / `git add --all` — blanket
+//     staging dragged ephemeral artifacts (progress.md, dev-tools/9d-triage-*)
+//     and even a prior branch's triage log into feature PRs. Stage explicit
+//     paths only. The COMMIT HYGIENE block in envelope() enforces this in every
+//     agent prompt.
+//   * The Phase 9d triage artifact is written to a gitignored path
+//     (dev-tools/9d-triage-<branch>.md) and left UNTRACKED — never committed.
+//   * Branch names are sanitized (sanitizeBranch) before use in any filesystem
+//     path, so a `fix/foo` branch can't turn `9d-triage-<branch>.md` into a
+//     `fix/` subdirectory.
+//   * Phase 9a renumbers any branch-new migration whose timestamp is <= the
+//     latest migration already on origin/main, BEFORE pushing, so a parallel
+//     branch merging first can't leave us with an out-of-order migration that
+//     `supabase db push` rejects in prod.
 // ---------------------------------------------------------------------------
 
 // ---- Inputs (passed via args by the /dev skill after Phase 3) ----
@@ -64,14 +78,12 @@ if (missingArgs.length) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Branch sanitization helper — replaces every '/' with '-' so branch names
-// are safe to embed in file paths (e.g. 9d triage artifact filenames).
-// Applied to EVERY place a branch name appears in a path.
-// ---------------------------------------------------------------------------
-function sanitizeBranch(branch) {
-  return branch.replace(/\//g, '-')
-}
+// Sanitize a branch name for safe use inside a filesystem path. A branch like
+// `fix/foo` would otherwise turn `dev-tools/9d-triage-fix/foo.md` into a nested
+// path (creating a `fix/` directory) instead of a single file. Replace every
+// path separator with a dash. Use ONLY for file paths — git operations still
+// need the real branch name (ctx.branch).
+const sanitizeBranch = (b) => String(b || '').replace(/[/\\]/g, '-')
 const SAFE_BRANCH = sanitizeBranch(ctx.branch)
 
 // Shared schema fragment: every phase agent reports a status so the script can
@@ -96,7 +108,6 @@ const statusSchema = (extraProps = {}, extraRequired = []) => ({
 })
 
 // Orientation block injected into EVERY agent prompt (fresh context).
-// The commit-hygiene rule is included here so every agent gets it.
 function envelope(body) {
   return [
     'WORKING CONTEXT (you have fresh context — this block is all you start with):',
@@ -107,11 +118,16 @@ function envelope(body) {
     `- progress.md: ${ctx.worktreePath}/progress.md — read it for prior-phase state; update it when you finish your phase.`,
     `- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`,
     '',
-    'COMMIT HYGIENE (mandatory for every commit you make):',
-    '  - NEVER use `git add -A`, `git add .`, or `git add --all`. Stage only the explicit file paths you changed.',
-    '  - Before committing, run `git diff --cached --name-only` and confirm that progress.md and anything under dev-tools/ are NOT listed.',
-    '  - If they appear (e.g. due to a force-add), run `git restore --staged progress.md dev-tools/` before committing.',
-    '  - Both paths are gitignored — they must never enter a commit.',
+    'COMMIT HYGIENE (MANDATORY for every commit you make):',
+    '- NEVER run `git add -A`, `git add .`, or `git add --all`. Stage only the',
+    '  explicit file paths your task changed (e.g. `git add src/foo.ts`).',
+    '- progress.md and dev-tools/9d-triage-* are gitignored ephemeral artifacts.',
+    '  They must NEVER appear in a commit. Immediately before each commit run:',
+    '    git restore --staged progress.md dev-tools/ 2>/dev/null || true',
+    '  then confirm `git diff --cached --name-only` lists no progress.md and',
+    '  nothing under dev-tools/ before you commit.',
+    '- If you spot a stray ephemeral artifact already staged (even one a prior',
+    '  step or branch added), unstage it; do not commit it.',
     '',
     body,
   ].join('\n')
@@ -170,7 +186,7 @@ for (let i = 0; i < planRead.tasks.length; i++) {
   const r = await agent(
     envelope(
       `PHASE 4 (Build, strict TDD) — task ${i + 1}/${planRead.tasks.length}: "${t.title}" (id ${t.id}).\n` +
-        'Cycle: RED (write a failing test) -> GREEN (minimal code to pass) -> REFACTOR (tests stay green) -> COMMIT (descriptive message, stage explicit paths only). ' +
+        'Cycle: RED (write a failing test) -> GREEN (minimal code to pass) -> REFACTOR (tests stay green) -> COMMIT (descriptive message, explicit paths only — see COMMIT HYGIENE). ' +
         'Use the repo test stack (vitest / pgTAP / playwright as appropriate). After committing, update progress.md with the task and its commit SHA. ' +
         'If implementing this task correctly would require changing the approved design, do NOT improvise — return status=needs_human with specifics.',
     ),
@@ -188,7 +204,7 @@ const ui = await agent(
   envelope(
     'PHASE 5 (UI Review). Run: git diff origin/main...HEAD --name-only. ' +
       'If NO UI/component files changed (src/components, src/pages, *.tsx UI), return status=completed, reason="skipped: no UI changes". ' +
-      'Otherwise use the frontend-design skill to review changed UI against the CLAUDE.md Apple/Notion guidelines (typography scale, semantic tokens, three-state rendering, accessibility), fix violations, and commit (stage explicit paths only).',
+      'Otherwise use the frontend-design skill to review changed UI against the CLAUDE.md Apple/Notion guidelines (typography scale, semantic tokens, three-state rendering, accessibility), fix violations, and commit (explicit paths only).',
   ),
   { label: 'ui-review', phase: 'UI Review', schema: statusSchema() },
 )
@@ -199,7 +215,7 @@ const ui = await agent(
 // ===========================================================================
 phase('Simplify')
 const simp = await agent(
-  envelope('PHASE 6 (Simplify). Run: git diff origin/main...HEAD --name-only to scope recently-changed files. Use the code-simplifier skill to improve clarity/consistency/maintainability WITHOUT changing behavior. Commit any simplifications (stage explicit paths only).'),
+  envelope('PHASE 6 (Simplify). Run: git diff origin/main...HEAD --name-only to scope recently-changed files. Use the code-simplifier skill to improve clarity/consistency/maintainability WITHOUT changing behavior. Commit any simplifications (explicit paths only).'),
   { label: 'simplify', phase: 'Simplify', schema: statusSchema() },
 )
 { const g = gate(simp, 'Simplify'); if (g.halt) return g.out }
@@ -274,7 +290,7 @@ const foldInput = JSON.stringify(
 )
 const fold = await agent(
   envelope(
-    'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (4 Claude + Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>", staging explicit paths only). Style/nits -> skip (CodeRabbit catches them in 7c). ' +
+    'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (4 Claude + Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>", explicit paths only). Style/nits -> skip (CodeRabbit catches them in 7c). ' +
       'If a critical/major fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human with details — do NOT improvise. After fixing, re-verify critical/security findings only. Also read dev-tools/codex-review-output.md if it exists.\n\n' +
       '=== findings JSON ===\n' + foldInput,
   ),
@@ -287,7 +303,7 @@ let crClean = false
 for (let it = 1; it <= 3 && !crClean; it++) {
   const cr = await agent(
     envelope(
-      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --plain --type committed (in the worktree). Fix ONLY actionable findings and commit them (stage explicit paths only). ` +
+      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --plain --type committed (in the worktree). Fix ONLY actionable findings and commit them (explicit paths only). ` +
         'Return clean=true if there were NO actionable findings this run; clean=false if you fixed some (we re-run). On iteration 3 with findings still remaining, return clean=false and list the remaining items in reason — the script will escalate. ' +
         'BEST-EFFORT: if the CodeRabbit CLI is not installed, not authenticated, or returns a billing/credits/quota error (e.g. "run out of usage credits"), treat 7c as skipped — return status=completed, clean=true, and note "CodeRabbit skipped (unavailable/credits)" in reason. Do NOT return needs_human for environment/billing problems; the CodeRabbit GitHub bot still reviews the PR and is triaged in Phase 9d. Reserve needs_human only for genuinely ambiguous findings.',
     ),
@@ -305,7 +321,7 @@ phase('Verify')
 const verify = await agent(
   envelope(
     'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build. ' +
-      'If anything fails, fix + commit (stage explicit paths only) and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.',
+      'If anything fails, fix + commit (explicit paths only) and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.',
   ),
   { label: 'verify', phase: 'Verify', schema: statusSchema({ allPass: { type: 'boolean' } }, ['allPass']) },
 )
@@ -313,32 +329,48 @@ const verify = await agent(
 if (!verify.allPass) return { stopped: true, phase: 'Verify', reason: 'local verification did not pass after 5 iterations' }
 
 // ===========================================================================
-// PHASE 9a: Ship — migration renumber + push + open PR.
-// Migration renumber MUST happen before push so timestamps don't collide with main.
+// PHASE 9a: Ship — renumber out-of-order migrations, push, open PR.
+// The migration timestamp is chosen at CREATION time relative to then-current
+// main, but a parallel branch can merge first and leapfrog it; `supabase db
+// push` then rejects the older timestamp and the prod deploy fails. So before
+// pushing, renumber any branch-new migration whose timestamp is <= the latest
+// migration already on origin/main. (--include-all in deploy is the net; this
+// stops us creating the out-of-order migration in the first place.)
 // ===========================================================================
 phase('Ship')
 const ship = await agent(
   envelope(
-    'PHASE 9a (Ship). Before pushing, perform migration timestamp renumber:\n' +
-      '  1. Run: git fetch origin main\n' +
-      '  2. Identify NEW migrations on this branch (not on origin/main):\n' +
-      '       git diff --name-only origin/main...HEAD -- supabase/migrations/\n' +
-      '     These are the only files eligible for renumbering — NEVER touch files already on origin/main.\n' +
-      '  3. Find the max timestamp already on origin/main:\n' +
-      '       git show origin/main:supabase/migrations/ | grep -oE "^[0-9]{14}" | sort | tail -1\n' +
-      '  4. If any branch-new migration has a timestamp <= that max, renumber it to max+1, max+2, … (preserving relative order among the new files):\n' +
-      '       - Rename the file: git mv supabase/migrations/<old>.sql supabase/migrations/<new>.sql\n' +
-      '       - Stage the rename explicitly (both old removal and new addition).\n' +
-      '  5. If renaming happened, commit the renames: `chore(migrations): renumber branch migrations to avoid timestamp collision`\n' +
-      '     Stage ONLY the renamed migration files — no other files.\n' +
-      '  6. Push the branch: git push -u origin ' + ctx.branch + '.\n' +
-      '  7. Open a PR with gh pr create: concise title (<70 chars), body with ## Summary (bullets from the plan), ## Test plan, and a link to the design doc. ' +
-      'Return the PR number as prNumber and migrationRenamed (true if any rename happened). Update progress.md with PR number.',
+    'PHASE 9a (Ship). Do these steps IN ORDER:\n' +
+      '\n' +
+      'STEP 1 — Guard against out-of-order migrations (run BEFORE pushing):\n' +
+      '  a. git fetch origin main\n' +
+      '  b. List migration files already on origin/main and take the MAX leading\n' +
+      '     timestamp (the numeric YYYYMMDDHHMMSS filename prefix) as MAIN_MAX_TS:\n' +
+      "       git ls-tree -r --name-only origin/main -- supabase/migrations/ | grep -E '\\.sql$'\n" +
+      '  c. List THIS branch\'s NEW migrations (added vs origin/main) — only these may be renumbered,\n' +
+      '     never a migration already on main:\n' +
+      '       git diff --name-only --diff-filter=A origin/main...HEAD -- supabase/migrations/\n' +
+      '  d. For each NEW migration whose leading timestamp is <= MAIN_MAX_TS, RENUMBER it: rename to a\n' +
+      '     timestamp greater than MAIN_MAX_TS, preserving the branch migrations\' relative order\n' +
+      '     (first colliding migration -> MAIN_MAX_TS+1s, next -> +2s, ...). Keep the descriptive slug\n' +
+      '     after the timestamp. Use `git mv OLD NEW` so the rename is tracked. If a migration references\n' +
+      '     its own filename/timestamp internally, update those references too.\n' +
+      '  e. If you renamed any file, commit ONLY those renames with an explicit path list\n' +
+      '     (git add supabase/migrations/<each-file>): "fix(migrations): renumber to avoid out-of-order push".\n' +
+      '     NEVER use git add -A. If nothing collided, skip this commit.\n' +
+      '\n' +
+      'STEP 2 — Push the branch: git push -u origin ' + ctx.branch + '.\n' +
+      'STEP 3 — Open a PR with gh pr create: concise title (<70 chars), body with ## Summary (bullets from the plan), ## Test plan, and a link to the design doc.\n' +
+      'Report renumberedMigrations as a list of "OLD -> NEW" strings (may be empty). ' +
+      'Return the PR number as prNumber. Update progress.md with it.',
   ),
-  { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' }, migrationRenamed: { type: 'boolean' } }, ['prNumber']) },
+  { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' }, renumberedMigrations: { type: 'array', items: { type: 'string' } } }, ['prNumber']) },
 )
 { const g = gate(ship, 'Ship'); if (g.halt) return g.out }
 const PR = ship.prNumber
+if (ship.renumberedMigrations && ship.renumberedMigrations.length) {
+  log(`Ship: renumbered ${ship.renumberedMigrations.length} out-of-order migration(s): ${ship.renumberedMigrations.join('; ')}`)
+}
 
 // ===========================================================================
 // PHASE 9b: CI loop (script-level counter, max 5). Agent blocks on --watch.
@@ -350,7 +382,7 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
     envelope(
       `PHASE 9b (CI) iteration ${it}/5 for PR #${PR}. Run: gh pr checks ${PR} --watch (blocks until checks finish). Then run dev-tools/refresh-queue.sh --pr ${PR} --skip-tests and check the SonarCloud quality gate (poll up to 3x with 60s gaps if Sonar lags CI).\n` +
         '- If all checks pass AND the Sonar gate passes (or Sonar is unconfigured — note it), return ciGreen=true.\n' +
-        '- If checks fail, fix the actionable failures, commit (stage explicit paths only), push, and return ciGreen=false (we re-run).\n' +
+        '- If checks fail, fix the actionable failures, commit (explicit paths only), push, and return ciGreen=false (we re-run).\n' +
         '- If a review item genuinely needs human clarification, return status=needs_human with the items.',
     ),
     { label: `ci:${it}`, phase: 'CI Loop', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
@@ -362,12 +394,13 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
 if (!ciGreen) return { stopped: true, phase: 'CI Loop', reason: 'CI not green after 5 iterations — escalating to human' }
 
 // ===========================================================================
-// PHASE 9d: Review-comment triage (NON-SKIPPABLE). Writes a disk artifact.
-// Triage artifact path uses sanitized branch name (slashes -> dashes) so
-// the filename is always valid: dev-tools/9d-triage-<safeBranch>.md
+// PHASE 9d: Review-comment triage (NON-SKIPPABLE). Writes a gitignored artifact.
+// Severity is recorded using each bot's OWN badge (CodeRabbit critical/major/
+// minor/nitpick; Codex P1/P2/P3) — NEVER collapsed to "informational" — and the
+// raw "Actionable comments posted: N" count is surfaced so the done gate can
+// assert nothing Major/P1 was silently dropped.
 // ===========================================================================
 phase('Triage')
-const TRIAGE_ARTIFACT = `dev-tools/9d-triage-${SAFE_BRANCH}.md`
 const triage = await agent(
   envelope(
     `PHASE 9d (Review-comment triage) for PR #${PR} — NON-SKIPPABLE. CI green is NOT done.\n` +
@@ -377,16 +410,20 @@ const triage = await agent(
       `   - gh api repos/{owner}/{repo}/pulls/${PR}/comments --paginate   (inline review comments — Codex posts here)\n` +
       `   - gh api repos/{owner}/{repo}/issues/${PR}/comments --paginate  (PR conversation)\n` +
       `   - gh pr view ${PR} --json reviews                               (PR-level reviews)\n` +
-      '4. For CodeRabbit comments: parse "Actionable comments posted: N" from the summary to get actionableCommentCount.\n' +
-      '   Classify EVERY comment using the bot\'s OWN severity badge verbatim:\n' +
-      '   - CodeRabbit badges: "critical", "major", "minor", "nitpick" — DO NOT collapse major into "informational".\n' +
-      '   - Codex badges: "P1", "P2", "P3" — treat P1/P2 as blocking; DO NOT collapse P1/P2 into lower severity.\n' +
-      '   For each comment record severityBadge as the bot\'s original verbatim label.\n' +
-      '   Action rules: critical/major/P1/P2 bug+correctness -> fix + commit + push (set pushedFix=true); refactor/suggestion -> implement OR reply declining with a reason; nitpick/minor/P3 -> read only.\n' +
-      `5. Write the full classified list to ${TRIAGE_ARTIFACT} (persistent artifact for the done gate).\n` +
-      '   This file is gitignored — do NOT commit it; just write it to disk.\n' +
-      'Return: latestSha, fixesCommitted, declinedWithReply, informational, openCriticalOrMajor (count of unresolved critical/major/P1/P2), actionableCommentCount (from CodeRabbit summary line), severityBadges (array of verbatim badge strings). ' +
-      'If triaged comment count < actionableCommentCount OR any critical/major/P1/P2 is unresolved, set openCriticalOrMajor > 0. ' +
+      '4. For EACH comment, record the bot\'s OWN severity badge VERBATIM — do NOT invent, normalize, or downgrade it:\n' +
+      '     - CodeRabbit: critical / major / minor / nitpick (preserve the 🔴/🟠/🟡 prefix if present).\n' +
+      '     - Codex: P1 / P2 / P3.\n' +
+      '     - Human / other: record "human" or the tool name.\n' +
+      '     It is FORBIDDEN to collapse a Major or a P1 down to "informational" or "nit". Keep the badge as-is.\n' +
+      '5. ALSO capture the raw actionable-comment count the bots report VERBATIM — e.g. CodeRabbit\'s\n' +
+      '     "Actionable comments posted: N" line (and any Codex equivalent). Sum them into actionableCommentCount.\n' +
+      '6. Classify EVERY row by ACTION: bug/correctness -> fix + commit (explicit paths only) + push (set pushedFix=true); ' +
+      'refactor/suggestion -> implement OR reply on the PR declining with a reason; nit/info -> read only.\n' +
+      `7. Write the full classified list (each row WITH its verbatim severity badge) to dev-tools/9d-triage-${SAFE_BRANCH}.md.\n` +
+      '   That path is gitignored — leave it UNTRACKED, never commit it.\n' +
+      'Return latestSha, the per-row severityBadges array, actionableCommentCount, and the action counts. ' +
+      'openCriticalOrMajor MUST equal the number of CodeRabbit critical/major PLUS Codex P1/P2 comments that are NOT yet ' +
+      'resolved (fixed-with-commit or replied-with-reason) — do not under-report it. ' +
       'If there are genuinely ambiguous comments you cannot resolve, return status=needs_human with them.',
   ),
   {
@@ -399,8 +436,19 @@ const triage = await agent(
         declinedWithReply: { type: 'number' },
         informational: { type: 'number' },
         openCriticalOrMajor: { type: 'number' },
-        actionableCommentCount: { type: 'number' },
-        severityBadges: { type: 'array', items: { type: 'string' } },
+        actionableCommentCount: {
+          type: 'number',
+          description: 'Raw count the bots reported verbatim (e.g. CodeRabbit "Actionable comments posted: N"), summed across bots. Used by the done gate to detect silent drops.',
+        },
+        triagedCount: {
+          type: 'number',
+          description: 'Total number of comments actually triaged (classified + acted on). Must be >= actionableCommentCount.',
+        },
+        severityBadges: {
+          type: 'array',
+          description: 'Per-comment verbatim severity badges, e.g. ["CodeRabbit major", "Codex P1", "CodeRabbit nitpick"]. Never collapse Major/P1 to informational.',
+          items: { type: 'string' },
+        },
         pushedFix: { type: 'boolean' },
       },
       ['openCriticalOrMajor', 'actionableCommentCount'],
@@ -409,14 +457,13 @@ const triage = await agent(
 )
 { const g = gate(triage, 'Triage'); if (g.halt) return g.out }
 
-// Done-gate pre-check: block if any critical/major/P1/P2 is unresolved OR
-// if the number of classified comments is less than the actionable count
-// (which would mean some comments were silently skipped).
-if (triage.openCriticalOrMajor > 0) {
+// Severity-fidelity gate: a Major/P1 must never be silently downgraded, and the
+// number triaged must cover every actionable comment the bots reported.
+if (typeof triage.triagedCount === 'number' && triage.triagedCount < triage.actionableCommentCount) {
   return {
     stopped: true,
     phase: 'Triage',
-    reason: `Triage done gate blocked: ${triage.openCriticalOrMajor} critical/major/P1/P2 comment(s) still open. All must be fixed or explicitly declined before proceeding.`,
+    reason: `Triage under-reported: triaged ${triage.triagedCount} but bots reported ${triage.actionableCommentCount} actionable comments. Re-run 9d and account for every comment by its own severity badge.`,
   }
 }
 
@@ -439,26 +486,36 @@ const done = await agent(
     `PHASE 9e (Done gate) for PR #${PR}. Verify against the LATEST commit (git rev-parse HEAD):\n` +
       `- gh pr checks ${PR} : all passing.\n` +
       '- SonarCloud quality gate: PASS (or explicitly note it is unconfigured).\n' +
-      `- ${TRIAGE_ARTIFACT} exists and every row is fixed / replied / classified-as-nit.\n` +
+      `- dev-tools/9d-triage-${SAFE_BRANCH}.md exists and every row is fixed / replied / classified-as-nit, with each row carrying its bot\'s own severity badge.\n` +
+      '- The artifact shows NO unresolved CodeRabbit critical/major and NO unresolved Codex P1/P2 (these must never be downgraded to informational).\n' +
       '- dev-tools/review_queue.json: zero OPEN critical or major items.\n' +
-      `- Confirm no critical/major/P1/P2 comments remain open (openCriticalOrMajor from triage = ${triage.openCriticalOrMajor}).\n` +
       'Return donePassed=true ONLY if ALL hold; otherwise donePassed=false with what failed in reason. Then update progress.md: ## Status: Ready for merge (only if donePassed).',
   ),
   { label: 'done-gate', phase: 'Done Gate', schema: statusSchema({ donePassed: { type: 'boolean' } }, ['donePassed']) },
 )
 { const g = gate(done, 'Done Gate'); if (g.halt) return g.out }
+// Belt-and-suspenders: even if the agent reported donePassed, the structured
+// triage counts must agree — no open Major/P1 may remain.
+if (done.donePassed && triage.openCriticalOrMajor > 0) {
+  return {
+    stopped: true,
+    phase: 'Done Gate',
+    reason: `Done gate blocked: ${triage.openCriticalOrMajor} unresolved critical/major (CodeRabbit) or P1/P2 (Codex) comment(s) remain. Resolve or reply to each before claiming ready-for-merge.`,
+  }
+}
 
 return {
   stopped: false,
   prNumber: PR,
   done: done.donePassed,
   buildTasks: planRead.tasks.length,
+  renumberedMigrations: ship.renumberedMigrations || [],
   triage: {
     fixesCommitted: triage.fixesCommitted || 0,
     declinedWithReply: triage.declinedWithReply || 0,
     informational: triage.informational || 0,
-    openCriticalOrMajor: triage.openCriticalOrMajor || 0,
     actionableCommentCount: triage.actionableCommentCount || 0,
+    openCriticalOrMajor: triage.openCriticalOrMajor || 0,
   },
   note: done.donePassed
     ? `PR #${PR} green AND all review comments triaged — ready for review/merge.`

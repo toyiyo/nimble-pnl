@@ -10067,6 +10067,7 @@ export type Database = {
         Args: { p_restaurant_id: string; p_tombstone_id: string }
         Returns: Json
       }
+      safe_cast_timestamptz: { Args: { p_text: string }; Returns: string }
       save_schedule_plan_template: {
         Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
         Returns: Json

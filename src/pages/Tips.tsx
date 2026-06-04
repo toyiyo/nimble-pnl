@@ -426,8 +426,11 @@ export function Tips() {
     setTipAmount(split.total_amount);
     // Parse date as local noon to avoid timezone shifting the day
     setSelectedDate(new Date(split.split_date + 'T12:00:00'));
+    // Clear stale manual-edit flags from any prior date's session so Effect 2
+    // cannot treat the previous session's flag state as belonging to this draft.
+    setAutoCalculatedHours({});
     setShareMethod(split.share_method || 'hours');
-    
+
     // Populate hours from items
     const hours: Record<string, string> = {};
     split.items?.forEach(item => {
@@ -435,7 +438,7 @@ export function Tips() {
         hours[item.employee_id] = item.hours_worked.toString();
       }
     });
-    
+
     // Set flag to prevent hours recalculation from overwriting saved hours
     setIsResumingDraft(true);
     setHoursByEmployee(hours);

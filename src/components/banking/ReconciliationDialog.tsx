@@ -5,10 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSetReconciliationBoundary, useReconciliationBoundary } from "@/hooks/useBankReconciliation";
 import { format } from "date-fns";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CheckCircle2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { CheckCircle2 } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 interface ReconciliationDialogProps {
   isOpen: boolean;
@@ -61,29 +59,12 @@ export function ReconciliationDialog({ isOpen, onClose }: ReconciliationDialogPr
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="date">Starting Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !date && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <Label>Starting Date</Label>
+            <DatePicker
+              value={date}
+              onChange={setDate}
+              aria-label="Select statement date"
+            />
           </div>
 
           <div className="space-y-2">

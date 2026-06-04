@@ -164,6 +164,7 @@ export function Tips() {
   // tracking so hours re-derive from the newly-selected date's punches.
   const handleSelectDate = (date: Date) => {
     setSelectedDate(date);
+    setIsResumingDraft(false);   // Allow Effect 2 to repopulate from the new date's punches
     setAutoCalculatedHours({});
     setHoursByEmployee({});
   };
@@ -282,17 +283,27 @@ export function Tips() {
     });
 
     if (Object.keys(calculatedHours).length > 0) {
+      // Track which entries are actually written vs preserved (manual).
+      // Must be computed inside the updater so it reflects the same prev snapshot.
+      const writtenFlags: Record<string, boolean> = {};
       setHoursByEmployee(prev => {
         const updated = { ...prev };
         // Only update values that haven't been manually edited
         Object.keys(calculatedHours).forEach(empId => {
           if (!prev[empId] || prev[empId] === '0') {
             updated[empId] = calculatedHours[empId];
+            writtenFlags[empId] = true;
           }
+          // If autoCalculated[empId] is already explicitly false (manual edit),
+          // do NOT promote it back to true — respect the user's override.
         });
         return updated;
       });
-      setAutoCalculatedHours(prev => ({ ...prev, ...autoFlags }));
+      // Only mark entries that were actually written as auto-calculated;
+      // preserve any existing explicit-false (manually edited) flags.
+      if (Object.keys(writtenFlags).length > 0) {
+        setAutoCalculatedHours(prev => ({ ...prev, ...writtenFlags }));
+      }
     }
   }, [punches, shareMethod, selectedDate, eligibleEmployees]);
 

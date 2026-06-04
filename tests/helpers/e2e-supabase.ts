@@ -656,7 +656,8 @@ export async function exposeSupabaseHelpers(page: Page) {
  * entry rather than three assertions later.
  */
 export async function fillHours(page: Page, employeeName: string, hours: string) {
-  const input = page.getByRole('spinbutton', { name: new RegExp(employeeName, 'i') });
+  const escapedName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const input = page.getByRole('spinbutton', { name: new RegExp(escapedName, 'i') });
   await input.fill(hours);
   await expect(input).toHaveValue(hours);
 }

@@ -160,9 +160,17 @@ export function Tips() {
   }, [periodSplits, periodStart, periodEnd]);
 
   // ============ Handlers ============
+  // A user-initiated date change starts the new date fresh: drop manual-edit
+  // tracking so hours re-derive from the newly-selected date's punches.
+  const handleSelectDate = (date: Date) => {
+    setSelectedDate(date);
+    setAutoCalculatedHours({});
+    setHoursByEmployee({});
+  };
+
   // Navigate to Daily Entry for a specific day (from Overview timeline click)
   const handleDayClick = (date: Date) => {
-    setSelectedDate(date);
+    handleSelectDate(date);
     setViewMode('daily');
   };
 
@@ -880,7 +888,7 @@ export function Tips() {
         <>
           <TipHistoricalEntry 
             currentDate={selectedDate} 
-            onDateSelected={setSelectedDate} 
+            onDateSelected={handleSelectDate}
           />
 
           {/* Saved drafts section */}

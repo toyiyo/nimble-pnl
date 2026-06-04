@@ -28,16 +28,18 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 
 // EmployeeSelector uses supabase queries — stub them out.
 vi.mock('@/integrations/supabase/client', () => {
-  // any: required to build a fluent Supabase query mock chain dynamically
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function makeChain(): any {
-    // any: chain methods are added at runtime via forEach
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const chain: any = {};
     ['select', 'eq', 'not', 'is', 'order', 'limit'].forEach(
       (m) => (chain[m] = () => makeChain()),
     );
     chain.single = () => Promise.resolve({ data: null, error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chain.then = (res: (v: { data: any[]; error: null }) => any) =>
       Promise.resolve({ data: [], error: null }).then(res);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chain.catch = (rej: (e: unknown) => any) =>
       Promise.resolve({ data: [], error: null }).catch(rej);
     return chain;

@@ -33,14 +33,13 @@ export function DateRangePicker({ from, to, onSelect, className }: DateRangePick
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            id="date"
             variant={"outline"}
             className={cn(
               "w-[280px] justify-start text-left font-normal",
               !date && "text-muted-foreground"
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-2 h-4 w-4" aria-hidden="true" />
             {date?.from ? (
               date.to ? (
                 <>

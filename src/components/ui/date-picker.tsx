@@ -76,7 +76,7 @@ export function DatePicker({
               triggerClassName,
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-2 h-4 w-4" aria-hidden="true" />
             {value ? format(value, dateFormat) : placeholder}
           </Button>
         )}

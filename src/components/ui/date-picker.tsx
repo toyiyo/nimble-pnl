@@ -45,7 +45,7 @@ export function DatePicker({
   children,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledby,
-}: DatePickerProps) {
+}: Readonly<DatePickerProps>) {
   const [open, setOpen] = React.useState(false);
 
   const handleSelect = (date: Date | undefined) => {

@@ -157,8 +157,6 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     // Format the date in the restaurant's timezone to ensure it stays as the selected date
     const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
     
-    const countWithoutDate = editableSales.filter(s => !s.saleDate).length;
-    
     // Apply the date to all sales
     setEditableSales(prev =>
       prev.map(sale => ({

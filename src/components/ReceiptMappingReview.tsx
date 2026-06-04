@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { buildReceiptReferencePattern } from '@/utils/receiptImportUtils';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 const normalizeDate = (d: string | null): string | null =>
   d ? String(d).split('T')[0] : null;
@@ -594,7 +595,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                 Purchase Date
               </label>
               <DatePicker
-                value={receiptDetails?.purchase_date ? new Date(receiptDetails.purchase_date) : undefined}
+                value={receiptDetails?.purchase_date ? parseDateOnly(receiptDetails.purchase_date) : undefined}
                 onChange={handlePurchaseDateChange}
                 disabled={(date) => date > new Date() || date < new Date("2000-01-01")}
               >
@@ -607,7 +608,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
                   )}
                 >
                   {receiptDetails?.purchase_date
-                    ? format(new Date(receiptDetails.purchase_date), 'PPP')
+                    ? format(parseDateOnly(receiptDetails.purchase_date), 'PPP')
                     : 'Pick a date'}
                   {receiptDetails?.purchase_date && (
                     <CheckCircle className="ml-auto h-4 w-4 text-green-600" aria-hidden="true" />

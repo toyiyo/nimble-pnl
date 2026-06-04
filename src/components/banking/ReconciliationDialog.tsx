@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSetReconciliationBoundary, useReconciliationBoundary } from "@/hooks/useBankReconciliation";
 import { format } from "date-fns";
+import { parseDateOnly } from "@/lib/dateOnly";
 import { CheckCircle2 } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 
@@ -51,7 +52,7 @@ export function ReconciliationDialog({ isOpen, onClose }: ReconciliationDialogPr
               <span className="font-medium">Current Boundary</span>
             </div>
             <div className="mt-2 text-sm text-muted-foreground">
-              <div>Date: {format(new Date(boundary.balance_start_date), 'MMM dd, yyyy')}</div>
+              <div>Date: {format(parseDateOnly(boundary.balance_start_date), 'MMM dd, yyyy')}</div>
               <div>Opening Balance: ${boundary.opening_balance.toFixed(2)}</div>
             </div>
           </div>

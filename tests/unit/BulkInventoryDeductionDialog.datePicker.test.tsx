@@ -95,4 +95,33 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     // After migration: controlled DatePicker closes on a real pick.
     expect(endTrigger).toHaveAttribute('aria-expanded', 'false');
   });
+
+  it('end-date: days before the selected start date are disabled', async () => {
+    const user = userEvent.setup();
+    render(<BulkInventoryDeductionDialog />);
+    await openDialog(user);
+
+    // Pick day 15 in the start-date picker.
+    const startTrigger = screen.getByRole('button', { name: /select start date/i });
+    await user.click(startTrigger);
+    let grid = await screen.findByRole('grid');
+    await user.click(within(grid).getByRole('gridcell', { name: '15' }));
+    // Start picker closes after selection.
+    expect(startTrigger).toHaveAttribute('aria-expanded', 'false');
+
+    // Now open the end-date picker — it should show the same month.
+    const endTrigger = screen.getByRole('button', { name: /select end date/i });
+    await user.click(endTrigger);
+    grid = await screen.findByRole('grid');
+
+    // Day 5 is before the start (day 15) → it must be disabled.
+    // react-day-picker renders each day as a <button role="gridcell">;
+    // disabled days carry the HTML `disabled` attribute directly on the button.
+    const day5Cell = within(grid).getByRole('gridcell', { name: '5' });
+    expect(day5Cell).toBeDisabled();
+
+    // Day 20 is after the start (day 15) → it must NOT be disabled.
+    const day20Cell = within(grid).getByRole('gridcell', { name: '20' });
+    expect(day20Cell).not.toBeDisabled();
+  });
 });

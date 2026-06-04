@@ -28,7 +28,9 @@ vi.mock('@/contexts/RestaurantContext', () => ({
 
 // EmployeeSelector uses supabase queries — stub them out.
 vi.mock('@/integrations/supabase/client', () => {
+  // any: required to build a fluent Supabase query mock chain dynamically
   function makeChain(): any {
+    // any: chain methods are added at runtime via forEach
     const chain: any = {};
     ['select', 'eq', 'not', 'is', 'order', 'limit'].forEach(
       (m) => (chain[m] = () => makeChain()),

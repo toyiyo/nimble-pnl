@@ -108,6 +108,28 @@ overwritten; auto-calculated and untouched hours still refresh from punches
 exactly as today (Effect 2 keeps computing `hoursFromPunches` and keeps its
 `setSelectedEmployees` responsibility unchanged).
 
+**Required companion change — reset manual flags on user date change.** Today,
+Effect 2's *unconditional* overwrite is what gives a clean slate when the user
+switches `selectedDate` (a new date refetches the date-scoped `punches`
+(`Tips.tsx:105`), re-running Effect 2). Once Effect 2 preserves manual edits,
+that clean-slate behavior is lost: a value typed for date A would carry over to
+date B. To avoid trading one bug for another, the **user-initiated** date-change
+paths must reset the manual-edit tracking so the new date derives hours fresh:
+
+```ts
+const handleSelectDate = (date: Date) => {
+  setSelectedDate(date);
+  setAutoCalculatedHours({}); // new date → re-derive from that date's punches
+  setHoursByEmployee({});
+};
+```
+
+Wire `handleSelectDate` into the two user paths — `handleDayClick`
+(`Tips.tsx:163`, which also sets `viewMode`) and the date picker's
+`onDateSelected` (`Tips.tsx:871`). The **draft-resume** path (`Tips.tsx:408`)
+keeps calling `setSelectedDate` directly so its saved hours are preserved (it
+already sets `isResumingDraft`, which Effect 2 honors at line 290).
+
 ### Part B — E2E test hardening (defense-in-depth)
 
 These make the specs robust even if a similar timing issue recurs; with Part A
@@ -143,7 +165,9 @@ they should pass deterministically.
   - refreshes entries flagged `true` (auto-calculated) from punch-derived;
   - refreshes entries with no flag (undefined) from punch-derived;
   - the exact bug scenario: prev `{a:'8'}` manual, punchDerived `{a:'0.00', b:'0.00'}`
-    → result keeps `a:'8'`;
+    → result keeps `a:'8'`, takes `b:'0.00'`;
+  - flag **absent** (undefined, the normal state for a freshly-computed employee):
+    `autoCalculated = {a:false}`, `b` absent → `b` takes punch-derived;
   - empty inputs / disjoint keys.
 - **Integration:** the three hardened E2E specs exercise the real Effect 2 path
   against a live Supabase + browser, validating that manual hours survive to an
@@ -162,6 +186,24 @@ they should pass deterministically.
   render-synced ref (not the dep array) is deliberate: adding it as a dependency
   would re-run Effect 2 (and its `setSelectedEmployees`) on every keystroke,
   reintroducing exactly the kind of churn we are removing.
+- **Ref-mutation-during-render is Strict Mode safe here.** Assigning
+  `ref.current = autoCalculatedHours` in the render body is the established
+  "latest ref" idiom. It is read-only data; React 18 Strict Mode's double-render
+  just writes the same value twice (harmless), and Effect 2 stays side-effect-free
+  except for its two `setState` calls (no cleanup), so the StrictMode mount/unmount/
+  remount cycle is safe. A code comment will state this.
+- **Functional updater reads the ref at execution time.** The ref is read inside
+  the `setHoursByEmployee(prev => …)` updater, which runs post-paint when Effect 2
+  fires — so it always observes the latest committed flag state, never a stale
+  snapshot from when the effect was scheduled. If the user types between the
+  effect trigger and the updater running, the just-set `false` flag is already
+  reflected. This is the desired ordering.
+- **Predicate asymmetry with Effect 1 is intentional.** Effect 1 uses a
+  value-based bootstrap guard (`!prev[id] || prev[id] === '0'` — fill only
+  empty/zero slots); Effect 2 (post-fix) uses the flag-based guard
+  (`autoCalculated[id] === false` — respect explicit manual edits). They are not
+  equivalent (a user-typed `'0'` is preserved by Effect 2 but re-fillable by
+  Effect 1); a code comment will explain why each guard is correct for its role.
 - **Pre-existing duplication left in place.** Effect 1 and Effect 2 both derive
   hours from punches (Effect 2 via an inline, break-ignoring reimplementation).
   Consolidating them would change punch-based auto-hours semantics (breaks), which
@@ -173,12 +215,20 @@ they should pass deterministically.
 |------|--------|
 | `src/utils/tipHours.ts` | **new** — `mergeManualHours` pure helper |
 | `tests/unit/tipHours.test.ts` | **new** — unit tests (TDD) |
-| `src/pages/Tips.tsx` | latest-ref + use `mergeManualHours` in Effect 2 |
-| `tests/e2e/tip-payouts.spec.ts` | `fillHours` helper, positive-amount seed, load timeouts |
-| `tests/e2e/tip-sharing.spec.ts` | `fillHours` helper |
+| `src/pages/Tips.tsx` | latest-ref + `mergeManualHours` in Effect 2; `handleSelectDate` resets manual flags on user date change |
+| `tests/helpers/e2e-supabase.ts` | **new export** — shared `fillHours(page, name, hours)` (verify-commit) |
+| `tests/e2e/tip-payouts.spec.ts` | use `fillHours`, positive-amount seed, load timeouts |
+| `tests/e2e/tip-sharing.spec.ts` | use `fillHours` |
 
 ## Out of scope
 
+- **Manual employee de-selection is also wiped by Effect 2.** The same effect
+  calls `setSelectedEmployees(new Set(eligibleEmployees…))` (`Tips.tsx:286`)
+  whenever `eligibleEmployees` changes, so a manual de-select can be reset by a
+  background refetch when `settings.enabled_employee_ids` is empty. This is the
+  same *class* of bug but needs new "selection touched" state to fix, does not
+  affect the four failing tests, and is left as a **separate follow-up** (a task
+  is spawned). This PR preserves manual *hours* only.
 - Consolidating the two punch-hours effects / unifying on `calculateWorkedHours`.
 - Adding per-share positivity validation to the approve gate
   (`TipReviewScreen` currently validates only `remaining === 0`).

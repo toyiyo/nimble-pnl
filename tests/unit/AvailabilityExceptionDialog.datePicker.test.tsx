@@ -8,23 +8,11 @@
  * <DatePicker>.
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AvailabilityExceptionDialog } from '../../src/components/AvailabilityExceptionDialog';
-
-// Radix Popover needs pointer-capture stubs in jsdom.
-beforeAll(() => {
-  if (!Element.prototype.hasPointerCapture)
-    Element.prototype.hasPointerCapture = () => false;
-  if (!Element.prototype.setPointerCapture)
-    Element.prototype.setPointerCapture = () => {};
-  if (!Element.prototype.releasePointerCapture)
-    Element.prototype.releasePointerCapture = () => {};
-  if (!Element.prototype.scrollIntoView)
-    Element.prototype.scrollIntoView = () => {};
-});
 
 // ── Mock hooks ──────────────────────────────────────────────────────────────
 vi.mock('@/hooks/useAvailability', () => ({

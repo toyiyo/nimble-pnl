@@ -1,15 +1,8 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DateRangePicker } from '../../src/components/ui/date-range-picker';
-
-beforeAll(() => {
-  if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
-  if (!Element.prototype.setPointerCapture) Element.prototype.setPointerCapture = () => {};
-  if (!Element.prototype.releasePointerCapture) Element.prototype.releasePointerCapture = () => {};
-  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
-});
 
 describe('DateRangePicker', () => {
   it('closes the popover only once the range is complete (both ends picked)', async () => {

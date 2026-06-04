@@ -12,22 +12,10 @@
  *  - aria-hidden="true" added to the decorative <CheckCircle>
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ReceiptMappingReview } from '../../src/components/ReceiptMappingReview';
-
-// Radix Popover needs pointer-capture stubs in jsdom.
-beforeAll(() => {
-  if (!Element.prototype.hasPointerCapture)
-    Element.prototype.hasPointerCapture = () => false;
-  if (!Element.prototype.setPointerCapture)
-    Element.prototype.setPointerCapture = () => {};
-  if (!Element.prototype.releasePointerCapture)
-    Element.prototype.releasePointerCapture = () => {};
-  if (!Element.prototype.scrollIntoView)
-    Element.prototype.scrollIntoView = () => {};
-});
 
 vi.mock('@/components/ui/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),

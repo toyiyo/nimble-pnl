@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, type PercentageAllocationResult } from '@/utils/tipPooling';
+import { mergeManualHours } from '@/utils/tipHours';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
 import { useTipContributionPools } from '@/hooks/useTipContributionPools';
@@ -225,6 +226,12 @@ export function Tips() {
   const [hoursByEmployee, setHoursByEmployee] = useState<Record<string, string>>({});
   const [isResumingDraft, setIsResumingDraft] = useState(false);
   const [autoCalculatedHours, setAutoCalculatedHours] = useState<Record<string, boolean>>({}); // Track which hours are auto-calculated
+  // Latest autoCalculatedHours, read inside Effect 2's setState updater WITHOUT adding
+  // it as an effect dependency (which would re-run the effect on every keystroke).
+  // Mutating a ref in the render body is the standard "latest ref" idiom and is
+  // StrictMode-safe for read-only data.
+  const autoCalculatedHoursRef = useRef(autoCalculatedHours);
+  autoCalculatedHoursRef.current = autoCalculatedHours;
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [showReview, setShowReview] = useState(false);
@@ -318,7 +325,12 @@ export function Tips() {
       hoursFromPunches[emp.id] = (totalMinutes / 60).toFixed(2);
     });
     
-    setHoursByEmployee(hoursFromPunches);
+    // Refresh punch-derived hours but NEVER clobber a value the manager typed.
+    // (Effect 1 uses a value-based bootstrap guard; this flag-based guard is the
+    // full-refresh equivalent — intentionally different predicates.)
+    setHoursByEmployee(prev =>
+      mergeManualHours(hoursFromPunches, prev, autoCalculatedHoursRef.current),
+    );
   }, [eligibleEmployees, settings, punches, isResumingDraft]);
 
   const shareMethodLabels: Record<ShareMethod, string> = {

@@ -471,17 +471,15 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               <AlertDescription>
                 <div className="flex items-center gap-4 mt-2">
                   <span className="text-sm font-medium text-orange-900">⚠️ This file doesn't contain date information. Please select the sale date for all rows:</span>
+                  {/* Rendered only in the `!selectedDate` branch, so the trigger is always in the empty state. */}
                   <DatePicker value={selectedDate} onChange={handleApplyDate}>
                     <Button
                       variant="outline"
                       aria-label="Select sales date"
-                      className={cn(
-                        "w-[240px] justify-start text-left font-normal border-orange-300",
-                        !selectedDate && "text-muted-foreground",
-                      )}
+                      className="w-[240px] justify-start text-left font-normal border-orange-300 text-muted-foreground"
                     >
-                      <Calendar className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                      <Calendar className="mr-2 h-4 w-4" aria-hidden="true" />
+                      <span>Pick a date</span>
                     </Button>
                   </DatePicker>
                 </div>
@@ -496,7 +494,7 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
                   <span className="text-sm font-medium text-green-900">✓ Date applied to all rows: {format(selectedDate, "PPP")}</span>
                   <DatePicker value={selectedDate} onChange={handleApplyDate}>
                     <Button variant="outline" size="sm" className="border-green-300">
-                      <Calendar className="mr-2 h-4 w-4" />
+                      <Calendar className="mr-2 h-4 w-4" aria-hidden="true" />
                       Change Date
                     </Button>
                   </DatePicker>

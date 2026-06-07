@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, type PercentageAllocationResult } from '@/utils/tipPooling';
+import { mergeManualHours } from '@/utils/tipHours';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
 import { useTipContributionPools } from '@/hooks/useTipContributionPools';
@@ -159,9 +160,18 @@ export function Tips() {
   }, [periodSplits, periodStart, periodEnd]);
 
   // ============ Handlers ============
+  // A user-initiated date change starts the new date fresh: drop manual-edit
+  // tracking so hours re-derive from the newly-selected date's punches.
+  const handleSelectDate = (date: Date) => {
+    setSelectedDate(date);
+    setIsResumingDraft(false);   // Allow Effect 2 to repopulate from the new date's punches
+    setAutoCalculatedHours({});
+    setHoursByEmployee({});
+  };
+
   // Navigate to Daily Entry for a specific day (from Overview timeline click)
   const handleDayClick = (date: Date) => {
-    setSelectedDate(date);
+    handleSelectDate(date);
     setViewMode('daily');
   };
 
@@ -225,6 +235,12 @@ export function Tips() {
   const [hoursByEmployee, setHoursByEmployee] = useState<Record<string, string>>({});
   const [isResumingDraft, setIsResumingDraft] = useState(false);
   const [autoCalculatedHours, setAutoCalculatedHours] = useState<Record<string, boolean>>({}); // Track which hours are auto-calculated
+  // Latest autoCalculatedHours, read inside Effect 2's setState updater WITHOUT adding
+  // it as an effect dependency (which would re-run the effect on every keystroke).
+  // Mutating a ref in the render body is the standard "latest ref" idiom and is
+  // StrictMode-safe for read-only data.
+  const autoCalculatedHoursRef = useRef(autoCalculatedHours);
+  autoCalculatedHoursRef.current = autoCalculatedHours;
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [showReview, setShowReview] = useState(false);
@@ -267,17 +283,27 @@ export function Tips() {
     });
 
     if (Object.keys(calculatedHours).length > 0) {
+      // Track which entries are actually written vs preserved (manual).
+      // Must be computed inside the updater so it reflects the same prev snapshot.
+      const writtenFlags: Record<string, boolean> = {};
       setHoursByEmployee(prev => {
         const updated = { ...prev };
         // Only update values that haven't been manually edited
         Object.keys(calculatedHours).forEach(empId => {
           if (!prev[empId] || prev[empId] === '0') {
             updated[empId] = calculatedHours[empId];
+            writtenFlags[empId] = true;
           }
+          // If autoCalculated[empId] is already explicitly false (manual edit),
+          // do NOT promote it back to true — respect the user's override.
         });
         return updated;
       });
-      setAutoCalculatedHours(prev => ({ ...prev, ...autoFlags }));
+      // Only mark entries that were actually written as auto-calculated;
+      // preserve any existing explicit-false (manually edited) flags.
+      if (Object.keys(writtenFlags).length > 0) {
+        setAutoCalculatedHours(prev => ({ ...prev, ...writtenFlags }));
+      }
     }
   }, [punches, shareMethod, selectedDate, eligibleEmployees]);
 
@@ -318,7 +344,12 @@ export function Tips() {
       hoursFromPunches[emp.id] = (totalMinutes / 60).toFixed(2);
     });
     
-    setHoursByEmployee(hoursFromPunches);
+    // Refresh punch-derived hours but NEVER clobber a value the manager typed.
+    // (Effect 1 uses a value-based bootstrap guard; this flag-based guard is the
+    // full-refresh equivalent — intentionally different predicates.)
+    setHoursByEmployee(prev =>
+      mergeManualHours(hoursFromPunches, prev, autoCalculatedHoursRef.current),
+    );
   }, [eligibleEmployees, settings, punches, isResumingDraft]);
 
   const shareMethodLabels: Record<ShareMethod, string> = {
@@ -406,8 +437,11 @@ export function Tips() {
     setTipAmount(split.total_amount);
     // Parse date as local noon to avoid timezone shifting the day
     setSelectedDate(new Date(split.split_date + 'T12:00:00'));
+    // Clear stale manual-edit flags from any prior date's session so Effect 2
+    // cannot treat the previous session's flag state as belonging to this draft.
+    setAutoCalculatedHours({});
     setShareMethod(split.share_method || 'hours');
-    
+
     // Populate hours from items
     const hours: Record<string, string> = {};
     split.items?.forEach(item => {
@@ -415,7 +449,7 @@ export function Tips() {
         hours[item.employee_id] = item.hours_worked.toString();
       }
     });
-    
+
     // Set flag to prevent hours recalculation from overwriting saved hours
     setIsResumingDraft(true);
     setHoursByEmployee(hours);
@@ -868,7 +902,7 @@ export function Tips() {
         <>
           <TipHistoricalEntry 
             currentDate={selectedDate} 
-            onDateSelected={setSelectedDate} 
+            onDateSelected={handleSelectDate}
           />
 
           {/* Saved drafts section */}

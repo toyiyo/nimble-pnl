@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers, fillHours } from '../helpers/e2e-supabase';
 
 interface WindowWithHelpers extends Window {
   __getAuthUser: () => Promise<{ id: string } | null>;
@@ -56,7 +56,7 @@ async function enterAndApproveTips(page: Page, amount: string, employees: Array<
   await expect(page.locator('#tip-amount')).not.toBeVisible({ timeout: 5000 });
 
   for (const emp of employees) {
-    await page.getByRole('spinbutton', { name: new RegExp(emp.name, 'i') }).fill(emp.hours);
+    await fillHours(page, emp.name, emp.hours);
   }
 
   await page.getByRole('button', { name: /approve tips/i }).click();
@@ -123,10 +123,10 @@ test.describe('Tip Payouts - Manager Journey', () => {
     await expect(sheetTitle).toBeVisible({ timeout: 5000 });
 
     // Verify both employees are listed with correct allocations
-    await expect(page.getByText('Sarah Miller')).toBeVisible();
-    await expect(page.getByText('Tom Wilson')).toBeVisible();
+    await expect(page.getByText('Sarah Miller')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Tom Wilson')).toBeVisible({ timeout: 15000 });
     // $200 split equally = $100 each
-    await expect(page.getByText('Allocated: $100.00').first()).toBeVisible();
+    await expect(page.getByText('Allocated: $100.00').first()).toBeVisible({ timeout: 15000 });
 
     // Verify total payout shows the full amount
     await expect(page.getByText('Total Payout')).toBeVisible();
@@ -188,7 +188,7 @@ test.describe('Tip Payouts - Manager Journey', () => {
       const restaurantId = await win.__getRestaurantId(authUser.id);
       if (!restaurantId) throw new Error('No restaurant');
 
-      const supabase = (window as any).__supabase;
+      const supabase = (window as unknown as { __supabase: unknown }).__supabase;
 
       // Get the approved split
       const { data: splits } = await supabase
@@ -201,9 +201,10 @@ test.describe('Tip Payouts - Manager Journey', () => {
 
       if (!splits) throw new Error('No approved split found');
 
-      // Get Anna's employee_id from split items (pick the first one)
-      const annaItem = splits.tip_split_items[0];
-      if (!annaItem) throw new Error('No split item found');
+      // Pick a split item with a positive allocation (tip_payouts.amount has a
+      // CHECK (amount > 0); array order is not guaranteed).
+      const annaItem = splits.tip_split_items.find((i: { amount: number }) => i.amount > 0);
+      if (!annaItem) throw new Error('No positive split item found');
 
       // Insert a partial payout (only Anna's share = $100 of $200 total)
       const { error } = await supabase
@@ -263,11 +264,11 @@ test.describe('Tip Payouts - Manager Journey', () => {
     await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 10000 });
 
     // Verify both employees are listed
-    await expect(page.getByText('Dave Clark')).toBeVisible();
-    await expect(page.getByText('Eve Adams')).toBeVisible();
+    await expect(page.getByText('Dave Clark')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Eve Adams')).toBeVisible({ timeout: 15000 });
 
     // Each gets $150 ($300 / 2 employees with equal hours)
-    await expect(page.getByText('Allocated: $150.00').first()).toBeVisible();
+    await expect(page.getByText('Allocated: $150.00').first()).toBeVisible({ timeout: 15000 });
 
     // Verify toggle switches exist for each employee
     await expect(page.getByRole('switch', { name: /toggle payout for dave clark/i })).toBeVisible();

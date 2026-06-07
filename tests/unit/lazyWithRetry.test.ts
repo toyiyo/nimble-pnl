@@ -7,7 +7,6 @@ function makeStorage() {
     getItem: (k: string) => (m.has(k) ? m.get(k)! : null),
     setItem: (k: string, v: string) => void m.set(k, v),
     removeItem: (k: string) => void m.delete(k),
-    _map: m,
   };
 }
 const mod = { default: () => null };
@@ -51,6 +50,14 @@ describe('loadModuleWithRetry', () => {
     const factory = vi.fn().mockRejectedValue(new Error('gone'));
     await expect(
       loadModuleWithRetry(factory, { retries: 0, retryDelayMs: 0, storage, reload, isNative: false }),
+    ).rejects.toThrow('gone');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('storage unavailable (null) — rethrows without reloading to prevent infinite loop', async () => {
+    const factory = vi.fn().mockRejectedValue(new Error('gone'));
+    await expect(
+      loadModuleWithRetry(factory, { retries: 0, retryDelayMs: 0, storage: null, reload, isNative: false }),
     ).rejects.toThrow('gone');
     expect(reload).not.toHaveBeenCalled();
   });

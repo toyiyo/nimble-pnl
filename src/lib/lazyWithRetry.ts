@@ -11,7 +11,11 @@ export interface LoadOptions {
   retries?: number;
   retryDelayMs?: number;
   reloadOnFail?: boolean;
-  storage?: GuardStorage;
+  /**
+   * Override the guard storage. Pass `null` to explicitly simulate unavailable
+   * storage (e.g., private browsing in tests); omit to use sessionStorage.
+   */
+  storage?: GuardStorage | null;
   reload?: () => void;
   isNative?: boolean;
 }
@@ -38,13 +42,17 @@ export async function loadModuleWithRetry<T extends ComponentType<unknown>>(
   const {
     retries = 1,
     retryDelayMs = 300,
-    storage = safeSessionStorage(),
     reload = () => window.location.reload(),
     isNative = detectNative(),
     // Native (Capacitor) ships the bundle in-app; sessionStorage clears on cold
     // launch, so an auto-reload would loop forever. Surface to the error boundary.
     reloadOnFail = !isNative,
   } = options;
+
+  // Resolve storage: explicit null means "no storage available" (e.g., tests
+  // simulating private browsing); undefined (default) means "use sessionStorage".
+  const storage: GuardStorage | null =
+    'storage' in options ? (options.storage ?? null) : (safeSessionStorage() ?? null);
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -58,9 +66,14 @@ export async function loadModuleWithRetry<T extends ComponentType<unknown>>(
     }
   }
 
-  const alreadyReloaded = storage?.getItem(RELOAD_GUARD_KEY) === '1';
+  // When sessionStorage is unavailable (private browsing, restricted WebViews,
+  // corporate policies), `storage` is null and the guard key can never be written.
+  // Treating unavailable storage as "already reloaded" prevents an infinite reload
+  // loop: without a writable guard, reload() would fire on every boot after a
+  // persistent failure.
+  const alreadyReloaded = storage === null || storage.getItem(RELOAD_GUARD_KEY) === '1';
   if (reloadOnFail && !alreadyReloaded) {
-    storage?.setItem(RELOAD_GUARD_KEY, '1');
+    storage.setItem(RELOAD_GUARD_KEY, '1');
     reload();
     // Hang so React keeps the Suspense fallback until the reload swaps the page.
     return new Promise<ModuleDefault<T>>(() => {});

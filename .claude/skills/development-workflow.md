@@ -21,8 +21,9 @@ A **Stop-hook backstop** (`.claude/hooks/dev-phase-guard.sh`, wired in `settings
   inspect the design doc against best-practice skills before any code is
   written. Catching a design mistake here is roughly 10× cheaper than
   catching it in PR review.
-- **Phase 7 — Multi-Model Code Review:** Four Claude reviewers (security,
-  performance, maintainability, sound-logic) and one Codex adversarial
+- **Phase 7 — Multi-Model Code Review:** Five Claude reviewers (security,
+  performance, maintainability, sound-logic, and the non-skippable
+  ocr-rules rulebook enforcer) and one best-effort Codex adversarial
   reviewer fan out in parallel against the branch diff. CodeRabbit local
   CLI is the final gate, not the only gate — this avoids "Claude grading
   its own homework" and reduces dependence on one third-party reviewer.
@@ -293,7 +294,8 @@ Phase 7a  Multi-model fan-out (PARALLEL)
    ├─ Agent: performance-reviewer
    ├─ Agent: maintainability-reviewer
    ├─ Agent: sound-logic-reviewer
-   └─ Bash:  dev-tools/codex-adversarial-review.sh
+   ├─ Agent: ocr-rules-reviewer          ← NON-SKIPPABLE (deterministic rulebook)
+   └─ Bash:  dev-tools/codex-adversarial-review.sh   (best-effort)
    │
    ▼
 Phase 7b  Fold findings: classify, fix actionable, commit
@@ -313,17 +315,27 @@ Inputs handed to every reviewer:
 - `git log origin/main..HEAD --oneline`
 - The Phase 2 design doc.
 
-**Four Claude reviewers.** Each is an `Agent` call with
+**Five Claude reviewers.** Each is an `Agent` call with
 `subagent_type=feature-dev:code-reviewer` and the prompt loaded from
-`.claude/agents/<name>.md`. Launch them in a **single message with four
+`.claude/agents/<name>.md`. Launch them in a **single message with five
 tool calls** so they run concurrently.
 
-| Reviewer | Skills | Severity tag |
-|---|---|---|
-| `security-reviewer` | `security-best-practices`, `supabase-audit-rls` | `security:<level>` |
-| `performance-reviewer` | `performance`, `vercel-react-best-practices` | `performance:<level>` |
-| `maintainability-reviewer` | `typescript-react-reviewer`, `shadcn` | `maintainability:<level>` |
-| `sound-logic-reviewer` | `vercel-react-best-practices`, `requesting-code-review` | `logic:<level>` |
+| Reviewer | Skills | Severity tag | Skip If |
+|---|---|---|---|
+| `security-reviewer` | `security-best-practices`, `supabase-audit-rls` | `security:<level>` | Never |
+| `performance-reviewer` | `performance`, `vercel-react-best-practices` | `performance:<level>` | Never |
+| `maintainability-reviewer` | `typescript-react-reviewer`, `shadcn` | `maintainability:<level>` | Never |
+| `sound-logic-reviewer` | `vercel-react-best-practices`, `requesting-code-review` | `logic:<level>` | Never |
+| `ocr-rules-reviewer` | ocr deterministic rule catalog (CLAUDE.md conventions as fallback) | `ocr:<level>` | **Never** — runs on every code-producing /dev invocation |
+
+The `ocr-rules-reviewer` runs the deterministic shell helper
+`dev-tools/ocr-rules-review.sh origin/main` (falling back to `main`)
+to build a REVIEW BRIEF of matched rule packs + the diff, then applies
+every rule strictly against the added lines. It is the **rulebook
+enforcement** dimension — other reviewers handle judgment-based concerns
+(logic, security, performance). The two are complementary: ocr's strict
+catalog catches rule violations that judgment-based reviewers are
+trained to tolerate as minor. Runs on the Max subscription at $0.
 
 **One Codex adversarial reviewer.** Shell out via `Bash`:
 
@@ -335,14 +347,13 @@ The script writes its output to `dev-tools/codex-review-output.md`.
 
 **Codex prerequisite:** `codex` CLI must be on PATH and the binary must
 launch (`codex --version`). If either fails, the script emits a
-`::skip::` line and exits 0. Adversarial review is **best-effort** —
-the four Claude reviewers still run.
+`::skip::` line and exits 0. Adversarial review is **best-effort and
+intermittent** on ChatGPT Plus plans — the five Claude reviewers
+(including the reliable ocr-rules reviewer) still run unconditionally.
 
 ```bash
 # Install / repair if missing
-brew install --cask codex && codex login
-# If the symlink is dangling:
-brew reinstall --cask codex
+npm i -g @openai/codex && codex login
 ```
 
 ### 7b — Fold findings
@@ -713,7 +724,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 4. Build | `superpowers:test-driven-development` | Never |
 | 5. UI Review | `frontend-design:frontend-design` | No UI changes |
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
-| 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic` + `dev-tools/codex-adversarial-review.sh` (parallel) | Workflow/doc-only changes (no code diff) |
+| 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
 | 7c CodeRabbit | `coderabbit review --plain --type committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |

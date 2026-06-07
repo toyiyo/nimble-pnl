@@ -217,6 +217,7 @@ const REVIEWERS = [
   { key: 'performance', promptFile: '.claude/agents/performance-reviewer.md' },
   { key: 'maintainability', promptFile: '.claude/agents/maintainability-reviewer.md' },
   { key: 'sound-logic', promptFile: '.claude/agents/sound-logic-reviewer.md' },
+  { key: 'ocr-rules', promptFile: '.claude/agents/ocr-rules-reviewer.md' },
 ]
 function reviewerPrompt(d) {
   return envelope(
@@ -227,8 +228,9 @@ function reviewerPrompt(d) {
   )
 }
 
-// 7a: four Claude reviewers (retry-once on null — a missing security review is unsafe)
-// plus the best-effort Codex adversarial reviewer.
+// 7a: five Claude reviewers (retry-once on null — a missing review is unsafe),
+// including the non-skippable ocr-rules reviewer, plus the best-effort Codex
+// adversarial reviewer.
 async function runReviewer(d) {
   let r = await agent(reviewerPrompt(d), { label: `review:${d.key}`, phase: 'Review', agentType: 'feature-dev:code-reviewer', schema: FINDINGS })
   if (!r) r = await agent(reviewerPrompt(d), { label: `review:${d.key}:retry`, phase: 'Review', agentType: 'feature-dev:code-reviewer', schema: FINDINGS })
@@ -251,7 +253,7 @@ const foldInput = JSON.stringify(
 )
 const fold = await agent(
   envelope(
-    'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (4 Claude + Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>"). Style/nits -> skip (CodeRabbit catches them in 7c). ' +
+    'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (5 Claude — security, performance, maintainability, sound-logic, ocr-rules — plus Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>"). Style/nits -> skip (CodeRabbit catches them in 7c). ' +
       'If a critical/major fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human with details — do NOT improvise. After fixing, re-verify critical/security findings only. Also read dev-tools/codex-review-output.md if it exists.\n\n' +
       '=== findings JSON ===\n' + foldInput,
   ),

@@ -599,3 +599,35 @@
 - **Mistake:** A new `fillHours(page, employeeName, hours)` E2E helper located the input with `page.getByRole('spinbutton', { name: new RegExp(employeeName, 'i') })`. Interpolating raw display text into a `RegExp` is unsafe: a name containing regex metacharacters (`.`, `(`, `+`, `[`, …) changes the pattern's meaning and can match unintended rows or throw. CodeRabbit flagged it during PR #538 triage.
 - **Correction:** Escape first: `const escapedName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');` then `new RegExp(escapedName, 'i')`.
 - **Rule:** Never build a Playwright (or any) name-`RegExp` from interpolated dynamic text without escaping regex special chars — use the standard `replace(/[.*+?^${}()|[\]\\]/g, '\\$&')` escape, or pass an exact string where the API accepts one. Grep for `new RegExp(` with a variable argument when reviewing test helpers.
+
+---
+
+## Category: Development Workflow (continued)
+
+### [2026-06-07] Third-party API-key CLIs cannot authenticate against a Claude or ChatGPT subscription
+- **Mistake:** Tried to run `open-code-review` (OCR) by forwarding Claude Code's session OAuth bearer token as `x-api-key`. The Anthropic subscription endpoint only authorizes the official Claude Code agent — any third-party CLI sending the same token gets a 401. Same problem applies to ChatGPT Plus: the Plus session token only unlocks the ChatGPT web/Codex agents, not arbitrary callers.
+- **Correction:** Either use the official agent (invoke OCR's deterministic parts — `ocr review --preview`, `ocr rules check` — at $0, then hand off to a Claude subagent on the Max subscription for LLM reasoning), or obtain a separate metered API key from Anthropic Console (`sk-ant-*`) or OpenAI for tools that must call an LLM directly.
+- **Rule:** Subscriptions authenticate the *official agent*, not third-party CLIs. When a tool needs its own LLM call, either (a) split its deterministic logic from the LLM call and supply the LLM via the agent substrate, or (b) use a pay-as-you-go key from the provider's console. Never assume a subscription token is reusable as a raw API key.
+
+### [2026-06-07] Install codex via `npm i -g @openai/codex`, not `brew install --cask codex`
+- **Mistake:** The Homebrew cask `codex` installed and then left a dangling `/opt/homebrew/bin/codex` symlink pointing at a path that no longer existed. Any workflow that invoked `codex` via that PATH entry would fail or silently no-op.
+- **Correction:** Uninstall the cask (`brew uninstall --cask codex`) or remove the dangling symlink (`rm -f /opt/homebrew/bin/codex`). Install the real CLI with `npm i -g @openai/codex`. The npm binary lands on PATH earlier (via `~/.npm-global/bin` or `~/.nvm/*/bin`) and is kept current by npm.
+- **Rule:** For CLIs distributed as npm packages, prefer `npm i -g` over a Homebrew cask. The cask may be a wrapper or stub that points at an external location that can disappear. Verify installation with both `command -v codex` AND `codex --version` — a symlink that resolves but points to a nonexistent file passes `command -v` but fails `--version`.
+
+### [2026-06-07] Codex on ChatGPT Plus is throttled and its default model is API-tier only
+- **Mistake:** OCR was wired to call codex as a required reviewer. A first run succeeded; subsequent runs returned `model not supported` for the default model `gpt-5.3-codex`. The Plus tier throttles the Codex endpoint aggressively, and `gpt-5.3-codex` is gated to OpenAI API-tier customers, not Plus subscribers.
+- **Correction:** Treat codex as an optional, best-effort cross-family bonus reviewer only. Pin a Plus-compatible model (e.g. `gpt-5.2-codex`) in the runner script. Emit a `::skip:: <reason>` line and `exit 0` if codex returns `model not supported` or any non-zero exit from the model selection step. Never make codex a blocking gate on PR creation.
+- **Rule:** On ChatGPT Plus, codex is best-effort — pin `gpt-5.2-codex` (not the default `gpt-5.3-codex`) and always guard with a `::skip::` path. Any workflow step that depends on codex must be marked optional and never block the workflow if codex is throttled or unavailable.
+
+### [2026-06-07] `codex exec` in a script hangs forever without `< /dev/null`
+- **Mistake:** A runner script called `codex exec "…prompt…"` and the process blocked indefinitely with "Reading additional input from stdin…". The script was waiting for the user to close stdin, which never happens in a non-interactive pipe.
+- **Correction:** Redirect stdin from /dev/null: `codex exec "…prompt…" < /dev/null`. This closes stdin immediately so codex does not wait for interactive input.
+- **Rule:** Any `codex exec` call inside a non-interactive script (CI, workflow runner, cron) must redirect `< /dev/null`. Omitting it causes the script to hang silently — with no timeout, it blocks the entire workflow stage. Apply the same rule to any CLI that reads from stdin interactively when no TTY is present.
+
+---
+
+## Category: Code Review Process (continued)
+
+### [2026-06-07] OCR's deterministic rules are separable from its LLM call — exploit this to get $0 review
+- **Observation:** `ocr review --preview` and `ocr rules check` run entirely locally — they apply rule-based selection and file filtering with no model call. The LLM call is a separate, optional step that any caller can supply. This means OCR's selection logic can be combined with any subscription-backed LLM (e.g. a Claude subagent on Max) instead of a metered API key.
+- **Rule:** When a review CLI "requires" an LLM API key, check whether it has a `--preview`, `--dry-run`, or `rules check` mode that produces structured output without a model call. If so, run that stage at $0 and pipe its output to a subscription-backed agent. The result is identical review coverage with no metered cost. Document this split in the design doc so future contributors understand why no API key is configured.

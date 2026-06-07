@@ -19,8 +19,7 @@ import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar, Info } from
 import { format, parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface ParsedSale {
   itemName: string;
@@ -157,8 +156,6 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     const timezone = selectedRestaurant?.restaurant?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     // Format the date in the restaurant's timezone to ensure it stays as the selected date
     const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
-    
-    const countWithoutDate = editableSales.filter(s => !s.saleDate).length;
     
     // Apply the date to all sales
     setEditableSales(prev =>
@@ -474,29 +471,17 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               <AlertDescription>
                 <div className="flex items-center gap-4 mt-2">
                   <span className="text-sm font-medium text-orange-900">⚠️ This file doesn't contain date information. Please select the sale date for all rows:</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-[240px] justify-start text-left font-normal border-orange-300",
-                          !selectedDate && "text-muted-foreground"
-                        )}
-                      >
-                        <Calendar className="mr-2 h-4 w-4" />
-                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={handleApplyDate}
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  {/* Rendered only in the `!selectedDate` branch, so the trigger is always in the empty state. */}
+                  <DatePicker value={selectedDate} onChange={handleApplyDate}>
+                    <Button
+                      variant="outline"
+                      aria-label="Select sales date"
+                      className="w-[240px] justify-start text-left font-normal border-orange-300 text-muted-foreground"
+                    >
+                      <Calendar className="mr-2 h-4 w-4" aria-hidden="true" />
+                      <span>Pick a date</span>
+                    </Button>
+                  </DatePicker>
                 </div>
               </AlertDescription>
             </Alert>
@@ -507,27 +492,12 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
               <AlertDescription>
                 <div className="flex items-center gap-4 mt-2">
                   <span className="text-sm font-medium text-green-900">✓ Date applied to all rows: {format(selectedDate, "PPP")}</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-green-300"
-                      >
-                        <Calendar className="mr-2 h-4 w-4" />
-                        Change Date
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={handleApplyDate}
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker value={selectedDate} onChange={handleApplyDate}>
+                    <Button variant="outline" size="sm" className="border-green-300">
+                      <Calendar className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Change Date
+                    </Button>
+                  </DatePicker>
                 </div>
               </AlertDescription>
             </Alert>

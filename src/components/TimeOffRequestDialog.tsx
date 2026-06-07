@@ -3,11 +3,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
-import { format } from 'date-fns';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { AlertCircle } from 'lucide-react';
+import { DatePicker } from '@/components/ui/date-picker';
 import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
 import { useCreateTimeOffRequest, useUpdateTimeOffRequest } from '@/hooks/useTimeOffRequests';
 import { TimeOffRequest } from '@/types/scheduling';
@@ -108,60 +105,26 @@ export const TimeOffRequestDialog = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="start-date">Start Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="start-date"
-                    variant="outline"
-                    className={cn(
-                      'w-full justify-start text-left font-normal',
-                      !startDate && 'text-muted-foreground'
-                    )}
-                    aria-label="Select start date"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, 'MMM d, yyyy') : 'Pick date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label>Start Date *</Label>
+              <DatePicker
+                value={startDate}
+                onChange={setStartDate}
+                dateFormat="MMM d, yyyy"
+                placeholder="Pick date"
+                aria-label="Select start date"
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="end-date">End Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="end-date"
-                    variant="outline"
-                    className={cn(
-                      'w-full justify-start text-left font-normal',
-                      !endDate && 'text-muted-foreground'
-                    )}
-                    aria-label="Select end date"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, 'MMM d, yyyy') : 'Pick date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    disabled={(date) => startDate ? date < startDate : false}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+              <Label>End Date *</Label>
+              <DatePicker
+                value={endDate}
+                onChange={setEndDate}
+                dateFormat="MMM d, yyyy"
+                placeholder="Pick date"
+                aria-label="Select end date"
+                disabled={(date) => (startDate ? date < startDate : false)}
+              />
             </div>
           </div>
 

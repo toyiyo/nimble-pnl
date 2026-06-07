@@ -3,7 +3,7 @@
  * These functions run in Node.js context and can be exposed to browser via page.exposeFunction()
  */
 
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 /**
  * Expose Supabase helper functions to browser context
@@ -647,6 +647,19 @@ export async function exposeSupabaseHelpers(page: Page) {
   // Ensure helpers exist now and on future navigations
   await page.addInitScript(injectHelpers);
   await page.evaluate(injectHelpers);
+}
+
+/**
+ * Fill an employee's hours spinbutton on the Tips daily-entry screen and assert
+ * the value committed. Verifying the commit catches the (now-fixed) case where a
+ * background re-render could drop a just-typed value, and fails at the point of
+ * entry rather than three assertions later.
+ */
+export async function fillHours(page: Page, employeeName: string, hours: string) {
+  const escapedName = employeeName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const input = page.getByRole('spinbutton', { name: new RegExp(escapedName, 'i') });
+  await input.fill(hours);
+  await expect(input).toHaveValue(hours);
 }
 
 /**

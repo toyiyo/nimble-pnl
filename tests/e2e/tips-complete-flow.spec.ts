@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { format, subDays } from 'date-fns';
-import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers, fillHours } from '../helpers/e2e-supabase';
 
 interface WindowWithHelpers extends Window {
   __getAuthUser: () => Promise<{ id: string } | null>;
@@ -114,8 +114,8 @@ test.describe('Tips - Complete Customer Journey', () => {
     await expect(page.locator('#tip-amount')).not.toBeVisible({ timeout: 5000 });
 
     // Enter hours
-    await page.getByRole('spinbutton', { name: /maria garcia/i }).fill('8');
-    await page.getByRole('spinbutton', { name: /juan martinez/i }).fill('8');
+    await fillHours(page, 'maria garcia', '8');
+    await fillHours(page, 'juan martinez', '8');
 
     // Verify live preview shows equal split (amount buttons per employee)
     await expect(page.getByRole('button', { name: /maria garcia/i })).toBeVisible({ timeout: 5000 });
@@ -221,7 +221,7 @@ test.describe('Tips - Complete Customer Journey', () => {
     await expect(page.locator('#tip-amount')).toBeVisible({ timeout: 10000 });
     await page.locator('#tip-amount').fill('200');
     await page.getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('spinbutton', { name: /carlos rodriguez/i }).fill('8');
+    await fillHours(page, 'carlos rodriguez', '8');
 
     // Approve
     await page.getByRole('button', { name: /approve tips/i }).click();
@@ -273,7 +273,7 @@ test.describe('Tips - Complete Customer Journey', () => {
     // Wait for dialog to close before proceeding
     await expect(page.locator('#tip-amount')).not.toBeVisible({ timeout: 5000 });
 
-    await page.getByRole('spinbutton', { name: /lisa chen/i }).fill('8');
+    await fillHours(page, 'lisa chen', '8');
     await page.getByRole('button', { name: /approve tips/i }).click();
     await expect(page.getByText(/tips approved/i).first()).toBeVisible({ timeout: 5000 });
 
@@ -394,8 +394,8 @@ test.describe('Tips - Complete Customer Journey', () => {
     await page.locator('#tip-amount').fill('1000'); // $1000 for the week
     await page.getByRole('button', { name: /continue/i }).click();
 
-    await page.getByRole('spinbutton', { name: /server 1/i }).fill('40'); // Full-time
-    await page.getByRole('spinbutton', { name: /server 2/i }).fill('20'); // Part-time
+    await fillHours(page, 'server 1', '40'); // Full-time
+    await fillHours(page, 'server 2', '20'); // Part-time
 
     // Server 1 should get ~$666.67, Server 2 ~$333.33
     await expect(page.getByText(/\$666/).first()).toBeVisible({ timeout: 5000 });
@@ -478,8 +478,8 @@ test.describe('Tips - Complete Customer Journey', () => {
     await page.getByRole('button', { name: /continue/i }).click();
 
     // Enter hours (equal split initially)
-    await page.getByRole('spinbutton', { name: /alice manual/i }).fill('8');
-    await page.getByRole('spinbutton', { name: /bob manual/i }).fill('8');
+    await fillHours(page, 'alice manual', '8');
+    await fillHours(page, 'bob manual', '8');
 
     // Should preview $100 each - amounts are shown in TipReviewScreen
     await expect(page.getByText(/\$100\.00/).first()).toBeVisible({ timeout: 5000 });

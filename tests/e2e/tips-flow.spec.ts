@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers, fillHours } from '../helpers/e2e-supabase';
 
 async function createEmployeesViaAPI(page: Page, names: string[]) {
   await page.evaluate(async ({ employees }) => {
@@ -58,8 +58,8 @@ test.describe('Tip pooling flow', () => {
 
     await page.locator('#tip-amount').fill('100');
     await page.getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('spinbutton', { name: /alice tips/i }).fill('5');
-    await page.getByRole('spinbutton', { name: /bob tips/i }).fill('3');
+    await fillHours(page, 'alice tips', '5');
+    await fillHours(page, 'bob tips', '3');
 
     await expect(page.getByText('$62.50')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('$37.50')).toBeVisible({ timeout: 5000 });

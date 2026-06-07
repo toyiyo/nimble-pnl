@@ -3,6 +3,7 @@ import {
   signUpAndCreateRestaurant,
   generateTestUser,
   exposeSupabaseHelpers,
+  fillHours,
 } from '../helpers/e2e-supabase';
 
 interface WindowHelpers {
@@ -84,9 +85,9 @@ test.describe('Tip sharing', () => {
 
     // Enter hours: Ana=6, Ben=4, Cal=2 (total 12 hours)
     // Expected split: Ana=$150, Ben=$100, Cal=$50
-    await page.getByRole('spinbutton', { name: /ana server/i }).fill('6');
-    await page.getByRole('spinbutton', { name: /ben bartender/i }).fill('4');
-    await page.getByRole('spinbutton', { name: /cal runner/i }).fill('2');
+    await fillHours(page, 'ana server', '6');
+    await fillHours(page, 'ben bartender', '4');
+    await fillHours(page, 'cal runner', '2');
 
     // Verify live preview shows correct proportional amounts
     await expect(page.getByText('$150.00').first()).toBeVisible({ timeout: 5000 });

@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { MEASUREMENT_UNITS, type IngredientUnit } from '@/lib/recipeUnits';
+import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
 
 export interface Recipe {
   id: string;
@@ -362,9 +363,6 @@ export const useRecipes = (restaurantId: string | null) => {
 
       if (error) throw error;
       if (!ingredients || ingredients.length === 0) return 0;
-
-      // Import the calculation logic and helper
-      const { calculateInventoryImpact, getProductUnitInfo } = await import('@/lib/enhancedUnitConversion');
 
       console.log(`[calculateRecipeCost] Starting calculation for recipe ${recipeId}`);
       console.log(`[calculateRecipeCost] Found ${ingredients.length} ingredients`);

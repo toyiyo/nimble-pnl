@@ -11,7 +11,7 @@ import Papa from 'papaparse';
 import { ColumnMappingDialog, ColumnMapping } from './ColumnMappingDialog';
 import { suggestColumnMappings, isSummaryRow } from '@/utils/csvColumnMapping';
 import { extractDateFromFilename } from '@/utils/filenameDateExtraction';
-import { loadMappingTemplates, findBestMatchingTemplate, applyTemplate } from '@/utils/mappingTemplates';
+import { loadMappingTemplates, findBestMatchingTemplate, applyTemplate, saveMappingTemplate } from '@/utils/mappingTemplates';
 
 interface POSSalesFileUploadProps {
   onFileProcessed: (data: ParsedSale[]) => void;
@@ -309,7 +309,6 @@ export const POSSalesFileUpload: React.FC<POSSalesFileUploadProps> = ({ onFilePr
 
       // Save template if requested
       if (templateName && selectedRestaurant?.restaurant_id) {
-        const { saveMappingTemplate } = await import('@/utils/mappingTemplates');
         const result = await saveMappingTemplate(
           selectedRestaurant.restaurant_id,
           templateName,

@@ -8,15 +8,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useBankTransactions, BankTransaction } from "@/hooks/useBankTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useConnectedBanks } from "@/hooks/useConnectedBanks";
 import { useOpeningBalance } from "@/hooks/useOpeningBalance";
 import { useReconcileTransactions } from "@/hooks/useReconcileTransactions";
 import { format } from "date-fns";
-import { CalendarIcon, CheckCircle2, AlertCircle, Loader2, FileText } from "lucide-react";
+import { CheckCircle2, AlertCircle, Loader2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateInTimezone } from "@/lib/timezone";
 import { toast } from "sonner";
@@ -269,30 +268,12 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="ending-date">Statement Ending Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          id="ending-date"
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !endingDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {endingDate ? format(endingDate, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={endingDate}
-                          onSelect={setEndingDate}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <Label>Statement Ending Date</Label>
+                    <DatePicker
+                      value={endingDate}
+                      onChange={setEndingDate}
+                      aria-label="Select statement ending date"
+                    />
                   </div>
 
                   <div className="space-y-2">

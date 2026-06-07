@@ -22,6 +22,7 @@ export function DateRangePicker({ from, to, onSelect, className }: DateRangePick
     from,
     to,
   })
+  const [open, setOpen] = React.useState(false)
 
   React.useEffect(() => {
     setDate({ from, to })
@@ -29,17 +30,16 @@ export function DateRangePicker({ from, to, onSelect, className }: DateRangePick
 
   return (
     <div className={cn("grid gap-2", className)}>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            id="date"
             variant={"outline"}
             className={cn(
               "w-[280px] justify-start text-left font-normal",
               !date && "text-muted-foreground"
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-2 h-4 w-4" aria-hidden="true" />
             {date?.from ? (
               date.to ? (
                 <>
@@ -56,7 +56,6 @@ export function DateRangePicker({ from, to, onSelect, className }: DateRangePick
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
           <Calendar
-            initialFocus
             mode="range"
             defaultMonth={date?.from}
             selected={{ from: date.from, to: date.to }}
@@ -64,6 +63,7 @@ export function DateRangePicker({ from, to, onSelect, className }: DateRangePick
               setDate({ from: range?.from, to: range?.to })
               if (range?.from && range?.to) {
                 onSelect({ from: range.from, to: range.to })
+                setOpen(false)
               }
             }}
             numberOfMonths={2}

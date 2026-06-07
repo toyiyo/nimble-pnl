@@ -22,7 +22,7 @@ export interface LoadOptions {
 
 function safeSessionStorage(): GuardStorage | undefined {
   try {
-    return window.sessionStorage;
+    return globalThis.sessionStorage;
   } catch {
     return undefined;
   }
@@ -42,7 +42,7 @@ export async function loadModuleWithRetry<T extends ComponentType<unknown>>(
   const {
     retries = 1,
     retryDelayMs = 300,
-    reload = () => window.location.reload(),
+    reload = () => globalThis.location.reload(),
     isNative = detectNative(),
     // Native (Capacitor) ships the bundle in-app; sessionStorage clears on cold
     // launch, so an auto-reload would loop forever. Surface to the error boundary.

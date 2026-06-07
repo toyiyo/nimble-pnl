@@ -15,7 +15,7 @@ import { Component, createRef, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
-  /** Injectable reload function; defaults to window.location.reload() for testability. */
+  /** Injectable reload function; defaults to globalThis.location.reload() for testability. */
   onReload?: () => void;
   /**
    * Pass the current route pathname so the boundary resets when the user
@@ -34,7 +34,7 @@ interface State {
 
 export class RouteErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, location: undefined };
-  private containerRef = createRef<HTMLDivElement>();
+  private readonly containerRef = createRef<HTMLDivElement>();
 
   static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
     // Reset the error boundary whenever the user navigates to a new route.
@@ -60,8 +60,8 @@ export class RouteErrorBoundary extends Component<Props, State> {
     }
   }
 
-  private handleReload = () => {
-    (this.props.onReload ?? (() => window.location.reload()))();
+  private readonly handleReload = () => {
+    (this.props.onReload ?? (() => globalThis.location.reload()))();
   };
 
   render() {

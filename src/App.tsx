@@ -248,7 +248,7 @@ function StaffRoleChecker({
 
 // Thin wrapper that forwards the current pathname to RouteErrorBoundary so the
 // boundary resets when the user navigates away from a failed route.
-function LocationKeyedErrorBoundary({ children }: { children: React.ReactNode }) {
+function LocationKeyedErrorBoundary({ children }: Readonly<{ children: React.ReactNode }>) {
   const { pathname } = useLocation();
   return <RouteErrorBoundary location={pathname}>{children}</RouteErrorBoundary>;
 }

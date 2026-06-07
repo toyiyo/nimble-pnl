@@ -44,3 +44,5 @@ export function RouteFallback() {
     </div>
   );
 }
+
+export default RouteFallback;

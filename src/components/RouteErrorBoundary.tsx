@@ -17,15 +17,32 @@ interface Props {
   children: ReactNode;
   /** Injectable reload function; defaults to window.location.reload() for testability. */
   onReload?: () => void;
+  /**
+   * Pass the current route pathname so the boundary resets when the user
+   * navigates to a different route. Without this, a prior chunk-load error
+   * blocks all subsequent navigations for the entire session.
+   * In App.tsx this is supplied by the LocationKeyedErrorBoundary wrapper.
+   */
+  location?: string;
 }
 
 interface State {
   hasError: boolean;
+  /** Mirrors props.location so getDerivedStateFromProps can detect changes. */
+  location?: string;
 }
 
 export class RouteErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false };
+  state: State = { hasError: false, location: undefined };
   private containerRef = createRef<HTMLDivElement>();
+
+  static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+    // Reset the error boundary whenever the user navigates to a new route.
+    if (props.location !== state.location) {
+      return { hasError: false, location: props.location };
+    }
+    return null;
+  }
 
   static getDerivedStateFromError(): State {
     return { hasError: true };

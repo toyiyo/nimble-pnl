@@ -246,6 +246,13 @@ function StaffRoleChecker({
   return <>{children}</>;
 }
 
+// Thin wrapper that forwards the current pathname to RouteErrorBoundary so the
+// boundary resets when the user navigates away from a failed route.
+function LocationKeyedErrorBoundary({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return <RouteErrorBoundary location={pathname}>{children}</RouteErrorBoundary>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -256,7 +263,7 @@ const App = () => (
         {enableSpeedInsights && <SpeedInsights />}
         <BrowserRouter future={{ v7_startTransition: true }}>
           <InstallBanner />
-          <RouteErrorBoundary>
+          <LocationKeyedErrorBoundary>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
@@ -321,7 +328,7 @@ const App = () => (
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
-          </RouteErrorBoundary>
+          </LocationKeyedErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

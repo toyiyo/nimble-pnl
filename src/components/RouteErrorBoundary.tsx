@@ -62,7 +62,7 @@ export class RouteErrorBoundary extends Component<Props, State> {
           tabIndex={-1}
           className="w-full max-w-md rounded-xl border border-border/40 bg-background p-6 text-center outline-none"
         >
-          <h2 className="text-[14px] font-medium text-foreground">
+          <h2 className="text-[17px] font-semibold text-foreground">
             Couldn&apos;t load this page
           </h2>
           <p className="mt-1 text-[13px] text-muted-foreground">
@@ -70,7 +70,7 @@ export class RouteErrorBoundary extends Component<Props, State> {
           </p>
           <button
             onClick={this.handleReload}
-            className="mt-4 h-9 rounded-lg bg-foreground px-4 text-[13px] font-medium text-background hover:bg-foreground/90"
+            className="mt-4 h-9 rounded-lg bg-foreground px-4 text-[13px] font-medium text-background transition-colors hover:bg-foreground/90"
           >
             Reload page
           </button>

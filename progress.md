@@ -64,11 +64,12 @@ Phase 4–9 relaunching (autonomous) after rebasing onto latest main.
       - npm run lint:          1441 pre-existing errors (none in our new files; confirmed 0 errors in lazyWithRetry.ts, RouteFallback.tsx, RouteErrorBoundary.tsx, test files) ✓
       - npm run build:         PASS in 19.37s; entry chunk 954 KB raw / 290 KB gzip ✓
       - .env.local symlink:    present → /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local ✓
-- [ ] Phase 9 — ship & CI loop + comment triage
+- [x] Phase 9a — push branch + open PR #540
+- [ ] Phase 9b — CI feedback loop + comment triage
 - [ ] Phase 10 — retrospective
 
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/540
 
 ## Key Decisions
 - Scope: PR1 = route code-splitting only.

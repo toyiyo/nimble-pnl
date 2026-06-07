@@ -55,7 +55,15 @@ Phase 4–9 relaunching (autonomous) after rebasing onto latest main.
         • 2f2f9ecc: fix(review): aria-live=polite on RouteFallback — ocr-rules
           Explicit aria-live per approved plan spec
         Skipped (style/nits for CodeRabbit): import order in App.tsx, WHAT comment in App.tsx
-- [ ] Phase 8 — verify (test/typecheck/lint/build + CAPACITOR build)
+- [x] Phase 8 — verify (test/typecheck/lint/build + CAPACITOR build)
+      Phase 8 results (2026-06-07):
+      - npm run test:          4484 passed / 2 skipped (341 test files). PASS ✓
+      - npm run test:db:       1373 passed / 1 failed (pre-existing: 32_weekly_brief_queue.sql test 9 assumes no restaurants in DB; our branch touches no supabase/ files). PRE-EXISTING ✓
+      - npm run test:e2e:      142 passed / 12 skipped / 2 failed (scheduling-conflicts.spec.ts tests 284+366; pre-existing, untouched by our branch). PRE-EXISTING ✓
+      - npm run typecheck:     PASS (no errors) ✓
+      - npm run lint:          1441 pre-existing errors (none in our new files; confirmed 0 errors in lazyWithRetry.ts, RouteFallback.tsx, RouteErrorBoundary.tsx, test files) ✓
+      - npm run build:         PASS in 19.37s; entry chunk 954 KB raw / 290 KB gzip ✓
+      - .env.local symlink:    present → /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local ✓
 - [ ] Phase 9 — ship & CI loop + comment triage
 - [ ] Phase 10 — retrospective
 

@@ -28,6 +28,19 @@ if (typeof Blob !== 'undefined' && typeof Blob.prototype.arrayBuffer === 'undefi
 
 // Global test utilities can be added here as needed
 
+// Radix UI Popover (and other Floating-UI primitives) call setPointerCapture /
+// hasPointerCapture in jsdom, which doesn't implement the Pointer Events API.
+// Stubbing once here prevents "not a function" errors across every test file.
+if (!Element.prototype.hasPointerCapture)
+  Element.prototype.hasPointerCapture = () => false;
+if (!Element.prototype.setPointerCapture)
+  Element.prototype.setPointerCapture = () => {};
+if (!Element.prototype.releasePointerCapture)
+  Element.prototype.releasePointerCapture = () => {};
+// react-day-picker and Radix ScrollArea call scrollIntoView on focus.
+if (!Element.prototype.scrollIntoView)
+  Element.prototype.scrollIntoView = () => {};
+
 class ResizeObserver {
   observe() {}
   unobserve() {}

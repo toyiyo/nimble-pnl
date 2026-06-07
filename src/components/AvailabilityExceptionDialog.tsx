@@ -2,16 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { utcTimeToLocalTime, localTimeToUtcTime } from '@/lib/availabilityTimeUtils';
 import { parseDateOnly, toDateOnlyString } from '@/lib/dateOnly';
-import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useCreateAvailabilityException, useUpdateAvailabilityException } from '@/hooks/useAvailability';
 import { AvailabilityException } from '@/types/scheduling';
 import { EmployeeSelector } from './scheduling/EmployeeSelector';
@@ -128,31 +124,14 @@ export const AvailabilityExceptionDialog = ({
           />
 
           <div className="space-y-2">
-            <Label htmlFor="date">Date *</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  id="date"
-                  variant="outline"
-                  className={cn(
-                    'w-full justify-start text-left font-normal',
-                    !date && 'text-muted-foreground'
-                  )}
-                  aria-label="Select date"
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, 'MMM d, yyyy') : 'Pick a date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <Label>Date *</Label>
+            <DatePicker
+              value={date}
+              onChange={setDate}
+              dateFormat="MMM d, yyyy"
+              placeholder="Pick a date"
+              aria-label="Select date"
+            />
           </div>
 
           <div className="flex items-center justify-between space-x-2">

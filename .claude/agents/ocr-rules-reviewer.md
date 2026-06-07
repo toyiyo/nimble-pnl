@@ -1,7 +1,7 @@
 ---
 name: ocr-rules-reviewer
 description: Phase 7a reviewer that enforces ocr (open-code-review) rule packs against the branch diff. Runs on every /dev invocation — non-skippable. Reports every violation including style/convention ones; faithful rulebook enforcement is the whole point.
-subagent_type: feature-dev:code-reviewer
+subagent_type: general-purpose
 ---
 
 # OCR Rules Reviewer (Phase 7a)

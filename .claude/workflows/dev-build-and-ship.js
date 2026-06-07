@@ -232,8 +232,14 @@ function reviewerPrompt(d) {
 // including the non-skippable ocr-rules reviewer, plus the best-effort Codex
 // adversarial reviewer.
 async function runReviewer(d) {
-  let r = await agent(reviewerPrompt(d), { label: `review:${d.key}`, phase: 'Review', agentType: 'feature-dev:code-reviewer', schema: FINDINGS })
-  if (!r) r = await agent(reviewerPrompt(d), { label: `review:${d.key}:retry`, phase: 'Review', agentType: 'feature-dev:code-reviewer', schema: FINDINGS })
+  // ocr-rules enforces a strict rulebook (style violations included), so it must
+  // NOT run as feature-dev:code-reviewer, whose purpose is confidence-based
+  // filtering of low-priority findings — that would suppress exactly what this
+  // reviewer exists to catch. Use a faithful general-purpose reviewer for it;
+  // the judgment-based dimensions keep the bug-hunting reviewer.
+  const agentType = d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer'
+  let r = await agent(reviewerPrompt(d), { label: `review:${d.key}`, phase: 'Review', agentType, schema: FINDINGS })
+  if (!r) r = await agent(reviewerPrompt(d), { label: `review:${d.key}:retry`, phase: 'Review', agentType, schema: FINDINGS })
   return r
 }
 const reviewResults = await parallel([
@@ -247,9 +253,20 @@ const reviewResults = await parallel([
       : Promise.resolve({ status: 'completed', findings: [] }),
 ])
 
+// Visibility: a non-skippable Claude reviewer that returned null (both attempts
+// failed) is otherwise silently dropped by the fold's filter below. Surface it so
+// a missing reviewer — especially the ocr-rules one, which must run on every
+// invocation — is never invisible.
+REVIEWERS.forEach((d, i) => {
+  if (!reviewResults[i]) log(`⚠️ Phase 7a reviewer "${d.key}" returned no result (both attempts failed) — findings absent this run`)
+})
+
 // 7b: fold findings (single agent holds all results) -> fix actionable critical/major.
+const reviewerNames = [...REVIEWERS.map((d) => d.key), 'codex']
 const foldInput = JSON.stringify(
-  reviewResults.filter(Boolean).map((r, i) => ({ reviewer: i, status: r.status, findings: r.findings || [] })),
+  reviewResults
+    .map((r, i) => (r ? { reviewer: reviewerNames[i] || `#${i}`, status: r.status, findings: r.findings || [] } : null))
+    .filter(Boolean),
 )
 const fold = await agent(
   envelope(

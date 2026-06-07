@@ -39,6 +39,7 @@ This is not a regression (last deploy was 6 days before the incident); it is a l
    - The 3 **named-export** pages — `Inventory` (`./pages/Inventory`), `ReceiptImport` (`@/pages/ReceiptImport`), `AcceptInvitation` (`./pages/AcceptInvitation`) — use `lazyWithRetry(() => import('./pages/X').then(m => ({ default: m.X })))`.
 2. Wrap `<Routes>` in a single top-level `<Suspense fallback={<RouteFallback />}>`. On first visit to a route the loader shows briefly; repeat visits are instant (chunk cached). On first load this is the win — the device paints a loader fast instead of freezing on 5.8 MB of JS.
 3. Wrap the Suspense in a new `<RouteErrorBoundary>` so a failed chunk load shows a recoverable "Couldn't load — reload" UI instead of a white screen.
+4. Enable React Router's `v7_startTransition` future flag on `<BrowserRouter>` so route-change state updates run inside `React.startTransition`. Effect: **only the initial load shows the full-screen fallback**; subsequent inter-route navigations keep the current page (and its chrome) visible until the next chunk is ready, instead of blanking to the fallback. (Verify the installed `react-router-dom` version supports the flag — it is a documented v6.4+ future flag; if unavailable, fall back to documenting the inter-route loader as accepted.) A global top-of-page pending indicator is a follow-up, not part of PR1.
 
 ### Alternatives considered
 
@@ -56,20 +57,27 @@ Resilient wrapper around `React.lazy`. Dependencies (`storage`, `reload`) are in
   - On failure: retry up to `retries` times (covers transient network blips).
   - On persistent failure: if the reload-guard key is **not** set → set it and call `reload()` once (recovers from **stale chunks after a web deploy** — the classic SPA `ChunkLoadError`), returning a non-resolving promise so React keeps showing the fallback until the reload happens; if the key **is** set (already reloaded) → clear it and rethrow, surfacing to `RouteErrorBoundary`.
 - `lazyWithRetry(factory, opts?) = React.lazy(() => loadModuleWithRetry(factory, opts))`.
+- **Native (Capacitor) guard:** default `reloadOnFail` to `false` when running in the native shell (detect via `window.Capacitor?.isNativePlatform?.()`). In native, `sessionStorage` is cleared on cold WebView launch, so a genuinely missing/corrupt chunk would loop forever (fail → set guard → reload → guard cleared → repeat). Native failures must surface straight to `RouteErrorBoundary` instead. Web keeps `reloadOnFail = true` (recovers from stale chunks after a Vercel deploy).
+- **DevTools names:** assign each lazy page to a named variable (e.g. `const InventoryPage = lazyWithRetry(...)`) and/or set `displayName`, so React DevTools and error stacks show the page name instead of `<Unknown>`.
 
 Rationale: code-splitting introduces a **new** failure mode (chunk fetch can fail) that did not exist with a single bundle. The "Failed to fetch" / "Load failed" errors already in RUM mean we must not amplify them — retry + one-shot reload + error boundary keeps a flaky load recoverable.
 
 ### New: `src/components/RouteErrorBoundary.tsx`
 
 Class component (`getDerivedStateFromError` + `componentDidCatch`). No error boundary exists in the app today.
-- On error: render an accessible fallback (`role="alert"`, semantic tokens, Apple/Notion styling) with a **Reload** button (`window.location.reload()`, injectable for tests).
+- On error: render an accessible fallback region with `role="alert"`, and **move keyboard focus to it** — give the container `tabIndex={-1}` and call `.focus()` via a `ref` in `componentDidUpdate` when `hasError` flips false→true (WCAG 2.4.3, so keyboard users reach the recovery action in one Tab).
+- Recovery action is a **Reload** button with a descriptive visible label ("Reload page", not icon-only; WCAG 2.4.6/4.1.2), `window.location.reload()` injectable for tests.
+- Styling per CLAUDE.md tokens: container `bg-background border border-border/40 rounded-xl p-6`, heading `text-[14px] text-foreground`, secondary note `text-[13px] text-muted-foreground`, button uses the shadcn `Button` (usable in class render) or the documented primary button className (`h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium`).
 - Logs the error to `console.error` (Faro captures console errors) for observability.
 - Renders `children` normally when no error.
 
 ### New: `src/components/RouteFallback.tsx`
 
-Presentational full-screen loader matching the existing `ProtectedRoute` loading state (lines 120–128 of `App.tsx`).
-- `role="status"`, accessible name "Loading", semantic tokens (`bg-background`, `text-muted-foreground`), centered.
+Presentational full-screen loader, centered, structurally similar to the existing `ProtectedRoute` loading state but **CLAUDE.md-compliant** (the existing one uses a non-compliant `text-xl` — do not mirror it verbatim).
+- `role="status"` with a **non-empty text child** so the live-region announcement is meaningful: a visually-hidden (or visible) `Loading…` span. `role="status"` is a live region, not a labelled landmark — it needs text content, not `aria-label`.
+- Any spinner SVG carries `aria-hidden="true"` and only animates under `motion-safe:` (e.g. `motion-safe:animate-spin`), honoring `prefers-reduced-motion` (WCAG 2.3.3 + CLAUDE.md). A static "Loading…" with no animation is also acceptable.
+- Typography per CLAUDE.md scale: label uses `text-[14px] text-muted-foreground`; container uses `bg-background`.
+- Transient state only — never persists beyond chunk load, so no skip-link infrastructure is required.
 
 ### Modified: `src/App.tsx`
 
@@ -103,22 +111,23 @@ The product ships a **Capacitor 7 native app** (`capacitor.config.ts`, `webDir: 
 
 ## Testing strategy
 
-- `src/lib/lazyWithRetry.ts` (TDD): success returns module + clears guard; transient failure then success returns module; persistent failure with no guard → calls `reload` + sets guard; persistent failure with guard set → rethrows (no reload). Inject `storage`/`reload` mocks.
+- `src/lib/lazyWithRetry.ts` (TDD): success returns module + clears guard; transient failure then success returns module; persistent failure with no guard → calls `reload` + sets guard; persistent failure with guard set → rethrows (no reload); **native mode (`reloadOnFail=false`) → rethrows immediately without calling `reload`** (no loop). Inject `storage`/`reload` mocks.
 - `src/components/RouteErrorBoundary.tsx` (RTL): renders children normally; on child throw renders `role="alert"` + Reload button; clicking Reload calls injected reload. Assert by **role**, not text (per lessons).
 - `src/components/RouteFallback.tsx` (RTL): renders `role="status"` with accessible name.
-- `src/services/ocrService.ts`: update tests to mock `import('tesseract.js')`; assert worker creation still works.
+- `src/services/ocrService.ts`: update tests to mock the dynamic import with a hoisted factory — `vi.mock('tesseract.js', () => ({ createWorker: vi.fn().mockResolvedValue({ /* worker stub */ }) }))` (Vitest hoists `vi.mock` and intercepts both static and dynamic imports of the same specifier); assert worker creation still works via the dynamic path.
 - `App.tsx`: covered by existing Playwright E2E route suite + the production build; coverage-excluded.
 
 ## Verification & success metrics (Phase 8)
 
 - `npm run build`: capture entry-chunk size before/after (target entry ~5.8 MB → ~1–2 MB raw; each route a small on-demand chunk).
+- Combined **compressed** JS loaded on the `/auth` route (entry + vendor + auth chunk) < 300 KB gzip (perf budget); record the figure even if not fully met, since the entry-chunk reduction is the primary win.
 - `npm run typecheck && npm run lint && npm run test && npm run build` all green.
 - `CAPACITOR_BUILD=true npm run build` green with correct relative refs.
 - Post-deploy: re-check `feo11y:lcp_p75{service_name="easyshifthq"}` by `browser_mobile` — target mobile p75 < 2.5 s.
 
 ## Decided trade-offs
 
-- **Single top-level Suspense (A) over chrome-preserving Suspense (B):** A delivers the entire first-load (root-cause) win with minimal diff/risk; B is UX polish for inter-route nav and is deferred. Accepted: a brief loader on first visit to each route (replaces a 15–47 s frozen screen).
+- **Single top-level Suspense + `v7_startTransition` (A+) over chrome-preserving per-content Suspense (B):** A+ delivers the entire first-load (root-cause) win with minimal diff/risk. The `v7_startTransition` flag keeps the outgoing route visible during inter-route navigation, so the chrome-blanking concern is largely resolved without B's complexity. Accepted: a brief full-screen loader on the **initial** load only (replaces a 15–47 s frozen screen). Full per-content Suspense + a navigation pending indicator remain deferred follow-ups.
 - **tesseract dynamic import included; `xlsx`/`jspdf` deferred:** tesseract is one file and the heaviest single lib; `xlsx`/`jspdf` span several files and are already removed from the *entry* chunk by route-splitting, so their click-time deferral is lower-value follow-up.
 
 ## Risks & mitigations

@@ -37,11 +37,9 @@ const RestaurantSettings = lazyWithRetry(() => import("./pages/RestaurantSetting
 const SquareCallback = lazyWithRetry(() => import("./pages/SquareCallback"));
 const CloverCallback = lazyWithRetry(() => import("./pages/CloverCallback"));
 const ToastCallback = lazyWithRetry(() => import("./pages/ToastCallback"));
-// Named-export pages
 const AcceptInvitation = lazyWithRetry(() => import("./pages/AcceptInvitation").then(m => ({ default: m.AcceptInvitation })));
 const Inventory = lazyWithRetry(() => import("./pages/Inventory").then(m => ({ default: m.Inventory })));
 const ReceiptImport = lazyWithRetry(() => import("@/pages/ReceiptImport").then(m => ({ default: m.ReceiptImport })));
-// Default-export pages (continued)
 const InventoryAudit = lazyWithRetry(() => import("./pages/InventoryAudit"));
 const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 const ForgotPassword = lazyWithRetry(() => import("./pages/ForgotPassword"));

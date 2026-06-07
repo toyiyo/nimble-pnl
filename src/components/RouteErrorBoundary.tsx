@@ -44,11 +44,7 @@ export class RouteErrorBoundary extends Component<Props, State> {
   }
 
   private handleReload = () => {
-    if (this.props.onReload) {
-      this.props.onReload();
-    } else {
-      window.location.reload();
-    }
+    (this.props.onReload ?? (() => window.location.reload()))();
   };
 
   render() {

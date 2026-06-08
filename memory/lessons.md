@@ -631,3 +631,40 @@
 ### [2026-06-07] OCR's deterministic rules are separable from its LLM call — exploit this to get $0 review
 - **Observation:** `ocr review --preview` and `ocr rules check` run entirely locally — they apply rule-based selection and file filtering with no model call. The LLM call is a separate, optional step that any caller can supply. This means OCR's selection logic can be combined with any subscription-backed LLM (e.g. a Claude subagent on Max) instead of a metered API key.
 - **Rule:** When a review CLI "requires" an LLM API key, check whether it has a `--preview`, `--dry-run`, or `rules check` mode that produces structured output without a model call. If so, run that stage at $0 and pipe its output to a subscription-backed agent. The result is identical review coverage with no metered cost. Document this split in the design doc so future contributors understand why no API key is configured.
+
+---
+
+## Category: Code Splitting / Lazy Loading
+
+### [2026-06-07] reload-once-after-chunk-failure must handle unavailable storage AND native shells
+- **Mistake:** `lazyWithRetry` recovers from a stale-chunk failure (common after a web deploy) by setting a `sessionStorage` guard key then calling `location.reload()` once. The first version always reloaded when the guard was unset — but when `sessionStorage` is unavailable (private browsing, restricted WebViews, corporate policy) the guard can NEVER persist, so every boot after a persistent failure reloads again → infinite reload loop. Caught by the Codex adversarial reviewer in Phase 7a.
+- **Correction:** Treat `storage === null` (and any storage-access throw, caught in `safeSessionStorage`) as "already reloaded" → rethrow to the `RouteErrorBoundary` instead of reloading. Also default `reloadOnFail=false` in native (Capacitor) builds, where `sessionStorage` clears on cold launch — same loop risk.
+- **Rule:** Any "reload once after failure" recovery guarded by web storage MUST treat unavailable/throwing storage as "do not reload" (surface to an error boundary), and must disable the auto-reload entirely in native shells. A reload guard you can't persist is not a guard.
+
+### [2026-06-07] A caller-supplied retry count must be clamped to >= 0
+- **Mistake:** `for (let attempt = 0; attempt <= retries; attempt++)` with a negative `retries` skips the loop entirely, leaves `lastError` unset, and the trailing `throw lastError` throws `undefined` (factory never even called). Flagged by CodeRabbit.
+- **Correction:** `const maxAttempts = Math.max(0, retries)` so at least one attempt always runs.
+- **Rule:** When a loop bound comes from a caller-supplied count, clamp it (`Math.max(0, n)`) so a negative value can't silently skip all iterations and throw an `undefined` error.
+
+---
+
+## Category: SonarCloud / Coverage (continued)
+
+### [2026-06-07] Dependency injection for testability can hide default-path lines from Sonar new-code coverage
+- **Mistake:** A new `src/lib` util exposed injectable deps (`storage`, `reload`, `isNative`) so tests could control them. Every test injected them, so the REAL default code paths — `safeSessionStorage()`, `detectNative()`, the default `reload` arrow, and the `lazyWithRetry()` `React.lazy` wrapper — were never executed. The behavior was thoroughly tested, but those default lines counted as uncovered NEW code → Sonar `new_coverage` 74.1% < 80% → quality gate red (CI otherwise fully green).
+- **Correction:** Added tests that OMIT the injectable deps to exercise the real defaults (no Capacitor → web; no storage → `safeSessionStorage`; throwing-storage → catch; default `reload` via `vi.stubGlobal('location', …)`; and the wrapper via a `Suspense` render). `lazyWithRetry.ts` 72% → 100%.
+- **Rule:** When a unit takes injectable dependencies for testability, also write tests that run with the REAL defaults. Sonar measures every changed line in non-excluded files (`src/lib`, `src/services`); default-value expressions and thin wrappers are coverable lines that injection-only tests skip. `src/components/**`, `src/pages/**`, `src/hooks/use*.tsx`, and `src/App.tsx` are coverage-excluded, but `src/lib`/`src/services` are not.
+
+---
+
+## Category: Development Workflow (continued)
+
+### [2026-06-07] progress.md must never be committed — even when an autonomous agent stages it
+- **Mistake:** A `/dev` Phase-4 agent `git add`ed the ephemeral, gitignored `progress.md` into the feature branch, so it shipped in the PR; CodeRabbit then flagged a stale test-count inside it. `.gitignore` only ignores UNtracked files — once force-added, it stays tracked.
+- **Correction:** `git rm --cached progress.md` (keeps it on disk, removes it from the PR). The flagged content discrepancy is moot once the file is out of the diff.
+- **Rule:** `progress.md` is ephemeral and gitignored — never commit it. Workflow/TDD agents must add files by explicit path, never `git add -A`/`git add -f progress.md`. Before opening the PR (Phase 9a), assert `git ls-files progress.md` is empty.
+
+### [2026-06-07] Recovering a stalled background /dev workflow: resume from journal, then finish the tail inline
+- **Mistake/situation:** The `dev-build-and-ship` background workflow stalled three times mid-run during MCP-server/app instability — detectable by (a) no recent `agent-*.jsonl` mtime in the run's transcript dir, (b) no `vite`/`vitest`/`supabase` build processes alive, and (c) the background task ID returning "No task found" from `TaskStop`.
+- **Correction:** Re-invoked `Workflow({scriptPath, resumeFromRunId})` — the journal's completed `agent()` calls replay from cache (Preflight + plan-read + Build tasks), and the run continues from the first incomplete phase. When it kept dying on environment flaps, finished the Phase 9 tail (9b CI-fix, 9d comment triage, 9e done gate) inline in the stable main session, following the phase prose as the reference contract.
+- **Rule:** Don't relaunch a whole orchestrator for a stalled tail. Diagnose liveness (transcript mtime + processes + task presence); resume via `resumeFromRunId` for cache reuse; and if the background runtime is unstable, complete the remaining phases inline per `development-workflow.md` — especially the non-skippable Phase 9d comment triage, which is what catches issues `gh pr checks` never shows.

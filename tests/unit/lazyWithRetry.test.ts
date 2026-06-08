@@ -71,6 +71,14 @@ describe('loadModuleWithRetry', () => {
     ).rejects.toThrow('gone');
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it('negative retries still runs one attempt and throws the real error (not undefined)', async () => {
+    const factory = vi.fn().mockRejectedValue(new Error('boom'));
+    await expect(
+      loadModuleWithRetry(factory, { retries: -3, retryDelayMs: 0, storage: null, reload, isNative: false }),
+    ).rejects.toThrow('boom');
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('default dependency wiring (real defaults, no injection)', () => {

@@ -54,8 +54,12 @@ export async function loadModuleWithRetry<T extends ComponentType<unknown>>(
   const storage: GuardStorage | null =
     'storage' in options ? (options.storage ?? null) : (safeSessionStorage() ?? null);
 
+  // A negative `retries` would skip the loop entirely, leaving `lastError` unset
+  // so the final `throw lastError` would throw `undefined`. Clamp to >= 0 so at
+  // least one attempt always runs.
+  const maxAttempts = Math.max(0, retries);
   let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  for (let attempt = 0; attempt <= maxAttempts; attempt++) {
     try {
       const mod = await factory();
       storage?.removeItem(RELOAD_GUARD_KEY);

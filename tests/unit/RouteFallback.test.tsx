@@ -17,9 +17,10 @@ describe('RouteFallback', () => {
     expect(status.textContent?.trim().length).toBeGreaterThan(0);
   });
 
-  it('any spinner SVG carries aria-hidden="true"', () => {
+  it('renders a decorative spinner SVG that carries aria-hidden="true"', () => {
     render(<RouteFallback />);
     const svgs = document.querySelectorAll('svg');
+    expect(svgs.length).toBeGreaterThan(0); // non-vacuous: a spinner must actually render
     svgs.forEach((svg) => {
       expect(svg.getAttribute('aria-hidden')).toBe('true');
     });

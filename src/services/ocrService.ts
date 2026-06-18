@@ -1,4 +1,4 @@
-import { createWorker } from 'tesseract.js';
+import { supabase } from '@/integrations/supabase/client';
 
 interface OCRResult {
   text: string;
@@ -19,6 +19,7 @@ class OCRService {
 
     try {
       console.log('🔧 Initializing OCR worker...');
+      const { createWorker } = await import('tesseract.js');
       // Use the simplified modern API
       this.worker = await createWorker('eng', 1, {
         logger: m => {
@@ -107,10 +108,7 @@ class OCRService {
           ctx.drawImage(img, 0, 0);
           
           const imageData = canvas.toDataURL('image/png');
-          
-          // Import supabase client
-          const { supabase } = await import('@/integrations/supabase/client');
-          
+
           console.log('🚀 Trying Grok OCR via OpenRouter...');
           const response = await supabase.functions.invoke('grok-ocr', {
             body: { imageData }

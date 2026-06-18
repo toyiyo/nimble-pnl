@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,64 +17,72 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileLayout } from '@/components/employee/MobileLayout';
-import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import Team from "./pages/Team";
-import Integrations from "./pages/Integrations";
-import Recipes from "./pages/Recipes";
-import POSSales from "./pages/POSSales";
-import Reports from "./pages/Reports";
-import RestaurantSettings from "./pages/RestaurantSettings";
-import SquareCallback from "./pages/SquareCallback";
-import CloverCallback from "./pages/CloverCallback";
-import ToastCallback from "./pages/ToastCallback";
-import { AcceptInvitation } from "./pages/AcceptInvitation";
-import { Inventory } from "./pages/Inventory";
-import InventoryAudit from "./pages/InventoryAudit";
-import NotFound from "./pages/NotFound";
-import { ReceiptImport } from "@/pages/ReceiptImport";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Unsubscribe from "./pages/Unsubscribe";
-import Transactions from "./pages/Transactions";
-import ChartOfAccounts from "./pages/ChartOfAccounts";
-import FinancialStatements from "./pages/FinancialStatements";
-import Accounting from "./pages/Accounting";
-import Banking from "./pages/Banking";
-import FinancialIntelligence from "./pages/FinancialIntelligence";
-import Scheduling from "./pages/Scheduling";
-import Employees from "./pages/Employees";
-import EmployeeClock from "./pages/EmployeeClock";
-import EmployeePortal from "./pages/EmployeePortal";
-import EmployeeTimecard from "./pages/EmployeeTimecard";
-import EmployeePin from "./pages/EmployeePin";
-import EmployeePay from "./pages/EmployeePay";
-import EmployeeSchedule from "./pages/EmployeeSchedule";
-import AvailableShiftsPage from "./pages/AvailableShiftsPage";
-import PrepRecipesEnhanced from "./pages/PrepRecipesEnhanced";
-import TimePunchesManager from "./pages/TimePunchesManager";
-import Payroll from "./pages/Payroll";
-import Expenses from "./pages/Expenses";
-import PrintChecks from "./pages/PrintChecks";
-import PurchaseOrders from "./pages/PurchaseOrders";
-import PurchaseOrderEditor from "./pages/PurchaseOrderEditor";
-import KioskMode from "./pages/KioskMode";
-import Tips from "./pages/Tips";
-import EmployeeTips from "./pages/EmployeeTips";
-import EmployeeMore from "./pages/EmployeeMore";
-import Customers from "./pages/Customers";
-import Invoices from "./pages/Invoices";
-import InvoiceForm from "./pages/InvoiceForm";
-import InvoiceDetail from "./pages/InvoiceDetail";
-import StripeAccountManagement from "./pages/StripeAccountManagement";
-import PayrollCalculationsHelp from "./pages/Help/PayrollCalculations";
-import HelpCenter from "./pages/Help/HelpCenter";
-import HelpArticle from "./pages/Help/HelpArticle";
-import Assets from "./pages/Assets";
-import BudgetRunRate from "./pages/BudgetRunRate";
-import OpsInbox from "./pages/OpsInbox";
-import WeeklyBrief from "./pages/WeeklyBrief";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import RouteFallback from "@/components/RouteFallback";
+import RouteErrorBoundary from "@/components/RouteErrorBoundary";
 import { queryClientConfig } from "@/lib/react-query-config";
+
+// ---------------------------------------------------------------------------
+// Lazy page imports — each page becomes an on-demand chunk.
+// Named-export pages use .then(m => ({ default: m.X })) to satisfy React.lazy.
+// ---------------------------------------------------------------------------
+const Index = lazyWithRetry(() => import("./pages/Index"));
+const Auth = lazyWithRetry(() => import("./pages/Auth"));
+const Team = lazyWithRetry(() => import("./pages/Team"));
+const Integrations = lazyWithRetry(() => import("./pages/Integrations"));
+const Recipes = lazyWithRetry(() => import("./pages/Recipes"));
+const POSSales = lazyWithRetry(() => import("./pages/POSSales"));
+const Reports = lazyWithRetry(() => import("./pages/Reports"));
+const RestaurantSettings = lazyWithRetry(() => import("./pages/RestaurantSettings"));
+const SquareCallback = lazyWithRetry(() => import("./pages/SquareCallback"));
+const CloverCallback = lazyWithRetry(() => import("./pages/CloverCallback"));
+const ToastCallback = lazyWithRetry(() => import("./pages/ToastCallback"));
+const AcceptInvitation = lazyWithRetry(() => import("./pages/AcceptInvitation").then(m => ({ default: m.AcceptInvitation })));
+const Inventory = lazyWithRetry(() => import("./pages/Inventory").then(m => ({ default: m.Inventory })));
+const ReceiptImport = lazyWithRetry(() => import("@/pages/ReceiptImport").then(m => ({ default: m.ReceiptImport })));
+const InventoryAudit = lazyWithRetry(() => import("./pages/InventoryAudit"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
+const ForgotPassword = lazyWithRetry(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazyWithRetry(() => import("./pages/ResetPassword"));
+const Unsubscribe = lazyWithRetry(() => import("./pages/Unsubscribe"));
+const Transactions = lazyWithRetry(() => import("./pages/Transactions"));
+const ChartOfAccounts = lazyWithRetry(() => import("./pages/ChartOfAccounts"));
+const FinancialStatements = lazyWithRetry(() => import("./pages/FinancialStatements"));
+const Accounting = lazyWithRetry(() => import("./pages/Accounting"));
+const Banking = lazyWithRetry(() => import("./pages/Banking"));
+const FinancialIntelligence = lazyWithRetry(() => import("./pages/FinancialIntelligence"));
+const Scheduling = lazyWithRetry(() => import("./pages/Scheduling"));
+const Employees = lazyWithRetry(() => import("./pages/Employees"));
+const EmployeeClock = lazyWithRetry(() => import("./pages/EmployeeClock"));
+const EmployeePortal = lazyWithRetry(() => import("./pages/EmployeePortal"));
+const EmployeeTimecard = lazyWithRetry(() => import("./pages/EmployeeTimecard"));
+const EmployeePin = lazyWithRetry(() => import("./pages/EmployeePin"));
+const EmployeePay = lazyWithRetry(() => import("./pages/EmployeePay"));
+const EmployeeSchedule = lazyWithRetry(() => import("./pages/EmployeeSchedule"));
+const AvailableShiftsPage = lazyWithRetry(() => import("./pages/AvailableShiftsPage"));
+const PrepRecipesEnhanced = lazyWithRetry(() => import("./pages/PrepRecipesEnhanced"));
+const TimePunchesManager = lazyWithRetry(() => import("./pages/TimePunchesManager"));
+const Payroll = lazyWithRetry(() => import("./pages/Payroll"));
+const Expenses = lazyWithRetry(() => import("./pages/Expenses"));
+const PrintChecks = lazyWithRetry(() => import("./pages/PrintChecks"));
+const PurchaseOrders = lazyWithRetry(() => import("./pages/PurchaseOrders"));
+const PurchaseOrderEditor = lazyWithRetry(() => import("./pages/PurchaseOrderEditor"));
+const KioskMode = lazyWithRetry(() => import("./pages/KioskMode"));
+const Tips = lazyWithRetry(() => import("./pages/Tips"));
+const EmployeeTips = lazyWithRetry(() => import("./pages/EmployeeTips"));
+const EmployeeMore = lazyWithRetry(() => import("./pages/EmployeeMore"));
+const Customers = lazyWithRetry(() => import("./pages/Customers"));
+const Invoices = lazyWithRetry(() => import("./pages/Invoices"));
+const InvoiceForm = lazyWithRetry(() => import("./pages/InvoiceForm"));
+const InvoiceDetail = lazyWithRetry(() => import("./pages/InvoiceDetail"));
+const StripeAccountManagement = lazyWithRetry(() => import("./pages/StripeAccountManagement"));
+const PayrollCalculationsHelp = lazyWithRetry(() => import("./pages/Help/PayrollCalculations"));
+const HelpCenter = lazyWithRetry(() => import("./pages/Help/HelpCenter"));
+const HelpArticle = lazyWithRetry(() => import("./pages/Help/HelpArticle"));
+const Assets = lazyWithRetry(() => import("./pages/Assets"));
+const BudgetRunRate = lazyWithRetry(() => import("./pages/BudgetRunRate"));
+const OpsInbox = lazyWithRetry(() => import("./pages/OpsInbox"));
+const WeeklyBrief = lazyWithRetry(() => import("./pages/WeeklyBrief"));
 
 const queryClient = new QueryClient(queryClientConfig);
 const enableSpeedInsights = import.meta.env.VITE_ENABLE_SPEED_INSIGHTS === "true";
@@ -237,6 +246,13 @@ function StaffRoleChecker({
   return <>{children}</>;
 }
 
+// Thin wrapper that forwards the current pathname to RouteErrorBoundary so the
+// boundary resets when the user navigates away from a failed route.
+function LocationKeyedErrorBoundary({ children }: Readonly<{ children: React.ReactNode }>) {
+  const { pathname } = useLocation();
+  return <RouteErrorBoundary location={pathname}>{children}</RouteErrorBoundary>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -245,70 +261,74 @@ const App = () => (
         <Sonner />
         <Analytics />
         {enableSpeedInsights && <SpeedInsights />}
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true }}>
           <InstallBanner />
-          <Routes>
-            <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/unsubscribe" element={<Unsubscribe />} />
-            <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
-            <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
-            <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
-          <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
-          <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
-          <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipesEnhanced /></ProtectedRoute>} />
-          <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
-          <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-          <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
-          <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
-          <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
-            <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
-            <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderEditor /></ProtectedRoute>} />
-          <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
-          <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
-          <Route path="/employee/portal" element={<ProtectedRoute allowStaff={true}><EmployeePortal /></ProtectedRoute>} />
-          <Route path="/employee/timecard" element={<ProtectedRoute allowStaff={true}><EmployeeTimecard /></ProtectedRoute>} />
-          <Route path="/employee/pin" element={<ProtectedRoute allowStaff={true}><EmployeePin /></ProtectedRoute>} />
-          <Route path="/employee/pay" element={<ProtectedRoute allowStaff={true}><EmployeePay /></ProtectedRoute>} />
-          <Route path="/employee/schedule" element={<ProtectedRoute allowStaff={true}><EmployeeSchedule /></ProtectedRoute>} />
-          <Route path="/employee/shifts" element={<ProtectedRoute allowStaff={true}><AvailableShiftsPage /></ProtectedRoute>} />
-          <Route path="/kiosk" element={<ProtectedRoute allowStaff={true} noChrome={true}><KioskMode /></ProtectedRoute>} />
-          <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
-          <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />
-          <Route path="/tips" element={<ProtectedRoute><Tips /></ProtectedRoute>} />
-          <Route path="/employee/tips" element={<ProtectedRoute allowStaff={true}><EmployeeTips /></ProtectedRoute>} />
-          <Route path="/employee/more" element={<ProtectedRoute allowStaff={true}><EmployeeMore /></ProtectedRoute>} />
-          <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
-          <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
-          <Route path="/invoices/new" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
-          <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetail /></ProtectedRoute>} />
-          <Route path="/invoices/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
-          <Route path="/stripe-account" element={<ProtectedRoute><StripeAccountManagement /></ProtectedRoute>} />
-          <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
-          <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
-          <Route path="/print-checks" element={<ProtectedRoute><PrintChecks /></ProtectedRoute>} />
-          <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
-          <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
-          <Route path="/accounting/banks" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
-          <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
-          <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
-          <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
-            <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
-            <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
-            <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
-            <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
-            <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
-            <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
-            <Route path="/help/:slug" element={<ProtectedRoute allowStaff={true}><HelpArticle /></ProtectedRoute>} />
-            <Route path="/square/callback" element={<SquareCallback />} />
-            <Route path="/clover/callback" element={<CloverCallback />} />
-            <Route path="/toast/callback" element={<ToastCallback />} />
-            <Route path="/accept-invitation" element={<AcceptInvitation />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <LocationKeyedErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/unsubscribe" element={<Unsubscribe />} />
+                <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
+                <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
+                <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
+                <Route path="/integrations" element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+                <Route path="/recipes" element={<ProtectedRoute><Recipes /></ProtectedRoute>} />
+                <Route path="/prep-recipes" element={<ProtectedRoute><PrepRecipesEnhanced /></ProtectedRoute>} />
+                <Route path="/pos-sales" element={<ProtectedRoute><POSSales /></ProtectedRoute>} />
+                <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+                <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+                <Route path="/inventory-audit" element={<ProtectedRoute><InventoryAudit /></ProtectedRoute>} />
+                <Route path="/receipt-import" element={<ProtectedRoute><ReceiptImport /></ProtectedRoute>} />
+                <Route path="/purchase-orders" element={<ProtectedRoute><PurchaseOrders /></ProtectedRoute>} />
+                <Route path="/purchase-orders/:id" element={<ProtectedRoute><PurchaseOrderEditor /></ProtectedRoute>} />
+                <Route path="/scheduling" element={<ProtectedRoute><Scheduling /></ProtectedRoute>} />
+                <Route path="/employee/clock" element={<ProtectedRoute allowStaff={true}><EmployeeClock /></ProtectedRoute>} />
+                <Route path="/employee/portal" element={<ProtectedRoute allowStaff={true}><EmployeePortal /></ProtectedRoute>} />
+                <Route path="/employee/timecard" element={<ProtectedRoute allowStaff={true}><EmployeeTimecard /></ProtectedRoute>} />
+                <Route path="/employee/pin" element={<ProtectedRoute allowStaff={true}><EmployeePin /></ProtectedRoute>} />
+                <Route path="/employee/pay" element={<ProtectedRoute allowStaff={true}><EmployeePay /></ProtectedRoute>} />
+                <Route path="/employee/schedule" element={<ProtectedRoute allowStaff={true}><EmployeeSchedule /></ProtectedRoute>} />
+                <Route path="/employee/shifts" element={<ProtectedRoute allowStaff={true}><AvailableShiftsPage /></ProtectedRoute>} />
+                <Route path="/kiosk" element={<ProtectedRoute allowStaff={true} noChrome={true}><KioskMode /></ProtectedRoute>} />
+                <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
+                <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />
+                <Route path="/tips" element={<ProtectedRoute><Tips /></ProtectedRoute>} />
+                <Route path="/employee/tips" element={<ProtectedRoute allowStaff={true}><EmployeeTips /></ProtectedRoute>} />
+                <Route path="/employee/more" element={<ProtectedRoute allowStaff={true}><EmployeeMore /></ProtectedRoute>} />
+                <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+                <Route path="/invoices" element={<ProtectedRoute><Invoices /></ProtectedRoute>} />
+                <Route path="/invoices/new" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
+                <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetail /></ProtectedRoute>} />
+                <Route path="/invoices/:id/edit" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
+                <Route path="/stripe-account" element={<ProtectedRoute><StripeAccountManagement /></ProtectedRoute>} />
+                <Route path="/banking" element={<ProtectedRoute><Banking /></ProtectedRoute>} />
+                <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
+                <Route path="/print-checks" element={<ProtectedRoute><PrintChecks /></ProtectedRoute>} />
+                <Route path="/financial-intelligence" element={<ProtectedRoute><FinancialIntelligence /></ProtectedRoute>} />
+                <Route path="/accounting" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
+                <Route path="/accounting/banks" element={<ProtectedRoute><Accounting /></ProtectedRoute>} />
+                <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
+                <Route path="/chart-of-accounts" element={<ProtectedRoute><ChartOfAccounts /></ProtectedRoute>} />
+                <Route path="/financial-statements" element={<ProtectedRoute><FinancialStatements /></ProtectedRoute>} />
+                <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
+                <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
+                <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
+                <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
+                <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
+                <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />
+                <Route path="/help/:slug" element={<ProtectedRoute allowStaff={true}><HelpArticle /></ProtectedRoute>} />
+                <Route path="/square/callback" element={<SquareCallback />} />
+                <Route path="/clover/callback" element={<CloverCallback />} />
+                <Route path="/toast/callback" element={<ToastCallback />} />
+                <Route path="/accept-invitation" element={<AcceptInvitation />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </LocationKeyedErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

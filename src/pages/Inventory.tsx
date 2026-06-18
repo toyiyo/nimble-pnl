@@ -379,8 +379,6 @@ export const Inventory: React.FC = () => {
       console.log('🚀 Starting enhanced product identification...');
       
       // Step 1: Use Grok OCR to extract text
-      const { supabase } = await import('@/integrations/supabase/client');
-      
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
       const img = new Image();
@@ -553,8 +551,6 @@ export const Inventory: React.FC = () => {
   };
 
   const uploadImageToStorage = async (imageBlob: Blob): Promise<string> => {
-    const { supabase } = await import('@/integrations/supabase/client');
-    
     const fileExt = 'jpg';
     const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
     const filePath = `${selectedRestaurant?.restaurant_id}/${fileName}`;

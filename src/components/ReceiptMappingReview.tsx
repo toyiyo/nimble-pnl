@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { buildReceiptReferencePattern } from '@/utils/receiptImportUtils';
 import { parseDateOnly } from '@/lib/dateOnly';
+import { supabase } from '@/integrations/supabase/client';
 
 const normalizeDate = (d: string | null): string | null =>
   d ? String(d).split('T')[0] : null;
@@ -201,7 +202,6 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     // Fetch receipt file with auth
     if (details?.raw_file_url) {
       try {
-        const { supabase } = await import('@/integrations/supabase/client');
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.access_token) {
@@ -398,7 +398,6 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handleSupplierChange = async (supplierIdOrName: string, isNew: boolean) => {
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
       let supplierId: string;
       let supplierName: string;
 
@@ -438,7 +437,6 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
     if (!date) return;
 
     try {
-      const { supabase } = await import('@/integrations/supabase/client');
       const dateString = format(date, 'yyyy-MM-dd');
 
       const { error } = await supabase

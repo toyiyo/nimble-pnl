@@ -57,14 +57,16 @@ arrive from other sources and payroll depends on them.
    - Not clocked in → single **Clock In** button.
    - Clocked in → single **Clock Out** button.
    - Delete the `onBreak` button branch (Start Break / End Break).
-   - Because there is now always exactly one action, collapse the
-     `grid grid-cols-1 md:grid-cols-2 gap-4` wrapper into a single full-width
-     button (avoids an awkward half-width button on desktop).
+   - Because there is now always exactly one action, **drop the
+     `grid grid-cols-1 md:grid-cols-2 gap-4` wrapper entirely** and apply `w-full`
+     directly to the single `Button` (avoids both an awkward half-width button on
+     desktop and an empty grid container).
 
 2. **Status badge → two states.**
    - **Clocked In** (default/green) / **Clocked Out** (outline).
-   - Delete the "On Break" (Coffee) badge branch and the now-unused `onBreak`
-     local variable.
+   - Delete the "On Break" (Coffee) badge branch **and** the now-unused `onBreak`
+     local variable (line 270). The variable MUST be removed, not merely left
+     unreferenced — ESLint `no-unused-vars` would otherwise fail CI.
 
 3. **Type / dead-code cleanup.**
    - Narrow `pendingPunchType` state and `handleInitiatePunch`'s parameter from
@@ -106,18 +108,31 @@ break punches. Accepted trade-off per product direction.
 ## Testing
 
 New `tests/unit/EmployeeClock.test.tsx`, mirroring the hook-mocking pattern in
-`tests/unit/EmployeePin.test.tsx` (mock `useRestaurantContext`,
-`useCurrentEmployee` / `useEmployeePunchStatus` / `useCreateTimePunch` /
-`useTimePunches` from `@/hooks/useTimePunches`, `useGeofenceCheck`, `use-toast`).
+`tests/unit/EmployeePin.test.tsx`. Mocks required:
 
-Assertions across three mocked `status` states (clocked-out, clocked-in,
-`on_break: true`):
+- `@/contexts/RestaurantContext` → `useRestaurantContext` returning a selected
+  restaurant.
+- `@/hooks/useTimePunches` → partial mock overriding `useCurrentEmployee`
+  (returns an employee), `useEmployeePunchStatus` (returns the per-test `status`),
+  `useCreateTimePunch` (`{ mutate: vi.fn(), isPending: false }`), and
+  `useTimePunches` (`{ punches: [] }`).
+- `@/hooks/useGeofenceCheck` → `useGeofenceCheck` returning
+  `{ checkLocation: vi.fn().mockResolvedValue({ action: 'allow', checked: false }), checking: false }`
+  so firing Clock In does not hit the async geofence path (prevents flakiness /
+  throws).
+- `@/hooks/use-toast` → `useToast` returning `{ toast: vi.fn() }`.
 
-1. **No** element with text "Start Break" renders in any state.
-2. **No** element with text "End Break" renders in any state.
-3. **No** "On Break" badge renders, even when `status.on_break === true`.
-4. Clocked-out state shows a **Clock In** button; clocked-in state shows a
-   **Clock Out** button.
+Assertions across three mocked `status` states:
+
+1. **Clocked out** (`is_clocked_in: false, on_break: false`): a **Clock In**
+   button renders; no "Start Break" / "End Break" / "On Break" text anywhere.
+2. **Clocked in** (`is_clocked_in: true, on_break: false`): a **Clock Out** button
+   renders; no "Start Break" / "End Break" / "On Break" text anywhere.
+3. **External break edge case** (`is_clocked_in: false, on_break: true`):
+   **positively** assert a **Clock In** button renders (per the RPC semantics the
+   employee reads as clocked-out), and assert no "Start Break" / "End Break" /
+   "On Break" text renders. This pins the deliberate edge-case behavior, not just
+   the absence of break affordances.
 
 This gives real behavioral coverage on the changed component (important for the
 SonarCloud new-code coverage gate) and pins the requirement against regression.
@@ -136,6 +151,27 @@ SonarCloud new-code coverage gate) and pins the requirement against regression.
   manager tooling are untouched and continue to process break punches.
 
 ## Out-of-scope follow-ups (not done here)
+
+Acknowledged pre-existing issues in `EmployeeClock.tsx`, intentionally left
+untouched to keep this change tightly scoped to "remove breaks" (no surprise
+restyling the user did not request):
+
+- **Raw color tokens** violating the CLAUDE.md "no direct colors" rule:
+  - The surviving "Clocked In" badge (`bg-green-500/10 text-green-700
+    border-green-500/20`). Removing the yellow "On Break" badge is a net
+    reduction in raw-color usage, but the green badge remains.
+  - The "Today's Activity" history-row icons (`text-green-600`, `text-red-600`,
+    `text-yellow-600`, `text-blue-600`).
+- **History-row icons** use `aria-label` on bare Lucide `<svg>` elements
+  (lines 444-445), which most screen readers ignore on non-interactive nodes;
+  should be `aria-hidden` + visually-hidden text.
+- The camera `DialogContent` (`sm:max-w-md`) lacks `max-h-[80vh] overflow-y-auto`,
+  which can overflow on very small viewports.
+- `CardTitle` / `CardDescription` use shadcn default sizes rather than the
+  CLAUDE.md typography scale.
+
+These are tracked as a separate cleanup task (spun off via the background-task
+chip) rather than bundled here.
 
 - Whether to eventually drop `break_*` punch types entirely or stop Sling from
   syncing breaks is a larger product/data decision and is intentionally deferred.

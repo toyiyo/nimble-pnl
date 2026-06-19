@@ -21,7 +21,7 @@ Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (p
 - Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
 
 ## Current Phase
-Phase 6: Simplify — complete. Phase 7 (CodeRabbit review) is next.
+Phase 7b complete (commit 344551f8). Phase 7c (CodeRabbit) is next.
 
 ## Completed
 - [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)
@@ -32,7 +32,9 @@ Phase 6: Simplify — complete. Phase 7 (CodeRabbit review) is next.
 - [x] Phase 4: TDD Build — all 6 plan tasks + 19/19 tests green; commits 6d2081b1, 38b26cd5, 26e8d3bf, f50e5dec.
 - [x] Phase 5: UI Review — replaced all hardcoded colors with semantic tokens, emoji icons with Lucide, aligned typography to project scale; commit a14b9ec7. 4491 tests still green.
 - [x] Phase 6: Simplify — dispose() delegates to reset() (commit bde29db0); no other actionable findings
-- [ ] Phase 7-9: CodeRabbit review → verify → PR
+- [x] Phase 7a: Codex adversarial review — 1 major finding: stale DOM input.value on rejected idle buffer (src/components/KeyboardBarcodeScanner.tsx line 45)
+- [x] Phase 7b: Fold review findings — 4 fixes: stale DOM (onReject callback), Enter guard ordering, refocus timer leak, dead onError prop; commit 344551f8. 4493/4493 tests green.
+- [ ] Phase 7c-9: CodeRabbit review → verify → PR
 
 ## Plan tasks
 1. [x] parseScannedBarcode pure helper (src/lib/barcodeScanInput.ts) — commit 6d2081b1

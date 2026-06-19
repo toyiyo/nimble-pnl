@@ -23,7 +23,7 @@ describe('Scheduling roster context — wiring', () => {
 describe('Scheduling roster context — identity cell', () => {
   it('renders the amber Minor pill from isMinor', () => {
     expect(SRC).toMatch(/isMinorEmployee && \(/);
-    expect(SRC).toMatch(/bg-amber-500\/10 text-amber-600/);
+    expect(SRC).toMatch(/bg-warning\/10 text-warning/);
     expect(SRC).toContain('Minor');
   });
   it('renders the FT/PT tag with muted styling', () => {

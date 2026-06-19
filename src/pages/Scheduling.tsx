@@ -1605,7 +1605,7 @@ const Scheduling = () => {
                                         </Badge>
                                       )}
                                       {isMinorEmployee && (
-                                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium shrink-0">
+                                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-warning/10 text-warning font-medium shrink-0">
                                           Minor
                                         </span>
                                       )}
@@ -1672,7 +1672,7 @@ const Scheduling = () => {
                                           {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                                         </button>
                                         {isMinorEmployee && (
-                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-amber-500 ring-1 ring-background" />
+                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-warning ring-1 ring-background" />
                                         )}
                                         {off && (
                                           <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-info ring-1 ring-background" />

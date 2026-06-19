@@ -2,7 +2,7 @@
 
 ## Spec
 - Design: docs/superpowers/specs/2026-06-18-schedule-roster-context-layer-design.md
-- Plan: docs/superpowers/plans/2026-06-18-schedule-roster-context-layer-plan.md (pending)
+- Plan: docs/superpowers/plans/2026-06-18-schedule-roster-context-layer-plan.md
 
 ## Current Phase
 Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
@@ -23,7 +23,8 @@ Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
 - [x] Phase 4, Task 7: Mobile degradation: avatar dots, extended aria-label, tooltip line in Scheduling.tsx (extend classes test) — commit 9ad35a7a
 - [x] Phase 5: UI Review — no violations in branch diff; amber Minor pill, info Off chip, FT/PT tag, day-cell bands all comply with CLAUDE.md guidelines; no fixes needed
 - [x] Phase 6: Simplify — 3 cleanups in Scheduling.tsx: dayKey reuse (×3 format calls), aria-label dedup; cn duplication skipped (source-text test contract). commit 59d30363
-- [ ] Phases 7-9: dev-build-and-ship workflow (in progress)
+- [x] Phase 7a: Codex adversarial review — 1 major finding: weekDays not memoized, defeats weekDayKeys/weekTimeOff memos (src/pages/Scheduling.tsx line 374)
+- [x] Phase 7b: Fold findings — 5 reviewers + Codex all flagged same root cause (weekDays/weekEnd unmemoized). Fixed: wrapped both in useMemo([currentWeekStart]). 340/340 tests pass. commit e177c5d5
 
 ## CI Status
 - PR: not yet created

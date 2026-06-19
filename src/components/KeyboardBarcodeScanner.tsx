@@ -47,6 +47,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
         setBuffer('');
         onScanRef.current(code, format);
         // Allow the DOM to settle before refocusing the capture input.
+        if (refocusTimerId !== null) window.clearTimeout(refocusTimerId);
         refocusTimerId = window.setTimeout(() => { refocusTimerId = null; input?.focus(); }, 100);
       },
       schedule: (cb, ms) => window.setTimeout(cb, ms),
@@ -216,7 +217,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
           autoCorrect="off"
           spellCheck={false}
           className="opacity-0 absolute -left-[10000px] pointer-events-none"
-          aria-hidden="true"
+          aria-label="Barcode scanner capture input"
           tabIndex={-1}
         />
 

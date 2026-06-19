@@ -106,6 +106,15 @@ describe('createScanAssembler', () => {
     expect(onReject).toHaveBeenCalledTimes(1);
   });
 
+  it('does NOT call onReject when enter() is called on an empty buffer', () => {
+    // Regression: onReject is idle-timeout only; explicit Enter with no buffer must NOT reject.
+    const onReject = vi.fn();
+    const { onScan, assembler } = makeAssembler({ onReject });
+    assembler.enter();
+    expect(onScan).not.toHaveBeenCalled();
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
   it('does NOT call onReject when idle timeout emits a valid barcode', () => {
     const onReject = vi.fn();
     const { onScan, assembler } = makeAssembler({ onReject });

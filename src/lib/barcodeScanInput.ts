@@ -84,15 +84,16 @@ export function createScanAssembler(opts: ScanAssemblerOptions): ScanAssembler {
     composing = false;
   };
 
-  const emit = (minLength: number): void => {
+  const emit = (minLength: number, reason: 'enter' | 'idle'): void => {
     const code = parseScannedBarcode(buffer, minLength);
     // Reset before firing so a re-entrant feed (focus/refocus) starts from a clean buffer.
     reset();
     if (code !== null) {
       opts.onScan(code, SCAN_FORMAT);
-    } else {
+    } else if (reason === 'idle') {
       // Buffer was rejected (too short). Notify the caller so it can clear the DOM input;
       // otherwise the stale text would be prepended to the next real barcode scan.
+      // onReject is intentionally NOT called for explicit Enter with an empty buffer.
       opts.onReject?.();
     }
   };
@@ -102,7 +103,7 @@ export function createScanAssembler(opts: ScanAssemblerOptions): ScanAssembler {
     if (composing || buffer.length === 0) return;
     timerId = opts.schedule(() => {
       timerId = null;
-      emit(minTimeoutLength);
+      emit(minTimeoutLength, 'idle');
     }, idleMs);
   };
 
@@ -120,7 +121,7 @@ export function createScanAssembler(opts: ScanAssemblerOptions): ScanAssembler {
       }
     },
     enter(): void {
-      emit(1);
+      emit(1, 'enter');
     },
     reset,
     dispose(): void {

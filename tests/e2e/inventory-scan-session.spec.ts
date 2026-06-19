@@ -71,17 +71,22 @@ test.describe('Inventory scan session', () => {
     await fullForm.getByRole('button', { name: /update product/i }).click();
 
     // ── Step 4: Confirm beat appears after successful save ─────────────────
-    // Note: singular "item" for 1 item, plural "items" for 2+; regex matches both.
-    await expect(page.getByText(/items? this session/i)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(new RegExp(esc(productName), 'i'))).toBeVisible({
-      timeout: 10000,
+    // Wait for the "Scan next item" button, which only appears on the confirm-beat overlay.
+    const scanNextBtn = page.getByRole('button', { name: /scan next item/i });
+    await expect(scanNextBtn).toBeVisible({ timeout: 15000 });
+    // The visible badge in the overlay shows "{N} item[s] this session".
+    // Use .first() since the sr-only aria-live region also contains this text.
+    await expect(page.getByText(/items? this session/i).first()).toBeVisible({ timeout: 5000 });
+    // Product name also appears in toast notifications; use .first() to avoid strict-mode violation.
+    await expect(page.getByText(new RegExp(esc(productName), 'i')).first()).toBeVisible({
+      timeout: 5000,
     });
 
     // ── Step 5: "Scan next item" returns to scanning state ─────────────────
-    await page.getByRole('button', { name: /scan next item/i }).click();
+    await scanNextBtn.click();
 
-    // The confirm beat overlay is gone
-    await expect(page.getByText(/items? this session/i)).not.toBeVisible({ timeout: 5000 });
+    // The confirm beat overlay is gone — "Scan next item" button should no longer be visible
+    await expect(scanNextBtn).not.toBeVisible({ timeout: 5000 });
 
     // The bridge must still be live (the session is back in scanning state)
     await expect(
@@ -116,9 +121,13 @@ test.describe('Inventory scan session', () => {
     await dialog1.getByLabel(/product name \*/i).fill(`E2E Item A ${rand1}`);
     await dialog1.getByRole('button', { name: /update product/i }).click();
 
-    // Confirm beat shows 1 item (singular "item" for first scan)
-    await expect(page.getByText(/1 items? this session/i)).toBeVisible({ timeout: 15000 });
-    await page.getByRole('button', { name: /scan next item/i }).click();
+    // Confirm beat shows 1 item — "Scan next item" button is the unique confirm-beat indicator.
+    // The sr-only aria-live region also contains "1 item this session", so use .first() for
+    // the badge, and wait for the button separately to avoid strict-mode violations.
+    const scanNextBtn1 = page.getByRole('button', { name: /scan next item/i });
+    await expect(scanNextBtn1).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/1 items? this session/i).first()).toBeVisible({ timeout: 5000 });
+    await scanNextBtn1.click();
 
     // Badge updates to 1 added
     await expect(page.getByText(/1 added/i)).toBeVisible({ timeout: 5000 });

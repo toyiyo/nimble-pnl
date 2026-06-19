@@ -26,7 +26,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Task 3: `SmartBarcodeScanner` — add controlled `active` prop (pass-through) — 64a31416
   - [x] Task 4: `NativeBarcodeScanner` — `activeRef`-gated loop + freeze + semantic badges — 335f1bc3
   - [x] Task 5: `Html5QrcodeScanner` — `.stop()`/`.start()` on `active` + snapshot freeze + semantic badges — fb0bd21f
-  - [ ] Task 6: `MLKitBarcodeScanner` — scan only while `active`, re-scan only on re-arm
+  - [x] Task 6: `MLKitBarcodeScanner` — scan only while `active`, re-scan only on re-arm — 4fe665cc
   - [ ] Task 7: `QuickInventoryDialog` accessibility (DialogDescription + aria-labels)
   - [ ] Task 8: `ScanSessionView` component
   - [ ] Task 9: Rewire `Inventory.tsx` camera path → `ScanSessionView`

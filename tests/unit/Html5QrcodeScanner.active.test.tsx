@@ -13,7 +13,7 @@
  * The gradient-absence tests are GREEN after implementation and RED before (gradient classes exist in source).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import React from 'react';
 
 // ---------------------------------------------------------------------------

@@ -65,6 +65,7 @@ export function useScanSession(deps: UseScanSessionDeps): ScanSession {
     if (stateRef.current !== 'scanning') return;            // only one capture in flight
     if (!gateRef.current.shouldAccept(gtin)) return;        // suppress lingering same code
     lastGtinRef.current = gtin;
+    stateRef.current = 'lookingUp';            // synchronous guard — prevents second scan racing in before React commits
     setState('lookingUp');
 
     let existing: Product | null = null;

@@ -70,6 +70,9 @@ export const Inventory: React.FC = () => {
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
   const [currentMode, setCurrentMode] = useState<'scanner' | 'image'>('scanner');
   const [scannerType, setScannerType] = useState<'camera' | 'ai-ocr' | 'keyboard'>('camera');
+  // Incrementing this key forces ScanSessionView to remount after endSession(), giving the user
+  // a fresh scanning session without needing to switch scanner types or leave the page.
+  const [scanSessionKey, setScanSessionKey] = useState(0);
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -1193,13 +1196,14 @@ export const Inventory: React.FC = () => {
                 <div>
                   {scannerType === 'camera' ? (
                     <ScanSessionView
+                      key={scanSessionKey}
                       restaurantId={selectedRestaurant?.restaurant_id ?? null}
                       findProductByGtin={findProductByGtin}
                       resolveNewProduct={resolveNewProduct}
                       onAddQuantity={handleSessionAddQuantity}
                       onUpdateProduct={handleSessionUpdateProduct}
                       onEnhance={handleEnhanceProduct}
-                      onExit={() => { /* session counter resets internally; stay on the scanner tab */ }}
+                      onExit={() => setScanSessionKey((k) => k + 1)}
                     />
                   ) : scannerType === 'ai-ocr' ? (
                     <OCRBarcodeScanner

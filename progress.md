@@ -25,6 +25,7 @@ Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
 - [x] Phase 6: Simplify — 3 cleanups in Scheduling.tsx: dayKey reuse (×3 format calls), aria-label dedup; cn duplication skipped (source-text test contract). commit 59d30363
 - [x] Phase 7a: Codex adversarial review — 1 major finding: weekDays not memoized, defeats weekDayKeys/weekTimeOff memos (src/pages/Scheduling.tsx line 374)
 - [x] Phase 7b: Fold findings — 5 reviewers + Codex all flagged same root cause (weekDays/weekEnd unmemoized). Fixed: wrapped both in useMemo([currentWeekStart]). 340/340 tests pass. commit e177c5d5
+- [x] Phase 7c iter 1: CodeRabbit — 2 findings: (1) stale "(pending)" in progress.md [minor], (2) direct amber colors in Minor pill violate semantic-token rule [major]. Both fixed; warning token used for Minor pill + mobile dot; test updated. 340/340 tests pass. commit dc292215
 
 ## CI Status
 - PR: not yet created

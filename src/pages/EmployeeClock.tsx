@@ -267,7 +267,6 @@ const EmployeeClock = () => {
   }
 
   const isClockedIn = status?.is_clocked_in || false;
-  const onBreak = status?.on_break || false;
 
   return (
     <div className="space-y-6">
@@ -304,17 +303,10 @@ const EmployeeClock = () => {
               {statusLoading ? (
                 <Skeleton className="h-8 w-32" />
               ) : isClockedIn ? (
-                onBreak ? (
-                  <Badge variant="outline" className="text-lg px-4 py-2 bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
-                    <Coffee className="w-4 h-4 mr-2" />
-                    On Break
-                  </Badge>
-                ) : (
-                  <Badge variant="default" className="text-lg px-4 py-2 bg-green-500/10 text-green-700 border-green-500/20">
-                    <PlayCircle className="w-4 h-4 mr-2" />
-                    Clocked In
-                  </Badge>
-                )
+                <Badge variant="default" className="text-lg px-4 py-2 bg-green-500/10 text-green-700 border-green-500/20">
+                  <PlayCircle className="w-4 h-4 mr-2" />
+                  Clocked In
+                </Badge>
               ) : (
                 <Badge variant="outline" className="text-lg px-4 py-2">
                   Clocked Out
@@ -339,65 +331,28 @@ const EmployeeClock = () => {
           <CardDescription>Verify your identity for accurate time tracking</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {!isClockedIn ? (
-              <Button
-                size="lg"
-                className="h-24 text-xl"
-                onClick={() => handleInitiatePunch('clock_in')}
-                disabled={createPunch.isPending || geofenceChecking}
-              >
-                <LogIn className="mr-2 h-6 w-6" />
-                Clock In
-              </Button>
-            ) : onBreak ? (
-              <>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('break_end')}
-                  disabled={createPunch.isPending}
-                >
-                  <PlayCircle className="mr-2 h-6 w-6" />
-                  End Break
-                </Button>
-                <Button
-                  size="lg"
-                  variant="destructive"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('clock_out')}
-                  disabled={createPunch.isPending}
-                >
-                  <LogOut className="mr-2 h-6 w-6" />
-                  Clock Out
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('break_start')}
-                  disabled={createPunch.isPending}
-                >
-                  <Coffee className="mr-2 h-6 w-6" />
-                  Start Break
-                </Button>
-                <Button
-                  size="lg"
-                  variant="destructive"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('clock_out')}
-                  disabled={createPunch.isPending}
-                >
-                  <LogOut className="mr-2 h-6 w-6" />
-                  Clock Out
-                </Button>
-              </>
-            )}
-          </div>
+          {!isClockedIn ? (
+            <Button
+              size="lg"
+              className="h-24 text-xl w-full"
+              onClick={() => handleInitiatePunch('clock_in')}
+              disabled={createPunch.isPending || geofenceChecking}
+            >
+              <LogIn className="mr-2 h-6 w-6" />
+              Clock In
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              variant="destructive"
+              className="h-24 text-xl w-full"
+              onClick={() => handleInitiatePunch('clock_out')}
+              disabled={createPunch.isPending}
+            >
+              <LogOut className="mr-2 h-6 w-6" />
+              Clock Out
+            </Button>
+          )}
 
           {/* Info about verification */}
           <Alert className="mt-4 bg-primary/5 border-primary/20">

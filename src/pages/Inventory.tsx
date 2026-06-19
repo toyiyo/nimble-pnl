@@ -240,7 +240,7 @@ export const Inventory: React.FC = () => {
     }
     return {
       id: '',
-      restaurant_id: selectedRestaurant?.restaurant?.id ?? '',
+      restaurant_id: selectedRestaurant?.restaurant_id ?? '',
       gtin,
       sku: gtin,
       name: result?.product_name || 'New Product',
@@ -1193,7 +1193,7 @@ export const Inventory: React.FC = () => {
                 <div>
                   {scannerType === 'camera' ? (
                     <ScanSessionView
-                      restaurantId={selectedRestaurant?.restaurant?.id ?? null}
+                      restaurantId={selectedRestaurant?.restaurant_id ?? null}
                       findProductByGtin={findProductByGtin}
                       resolveNewProduct={resolveNewProduct}
                       onAddQuantity={handleSessionAddQuantity}

@@ -2,7 +2,7 @@
 
 ## Spec
 Design: docs/superpowers/specs/2026-06-18-inventory-scan-session-redesign-design.md
-Plan: (Phase 3 — not yet written)
+Plan: docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (committed 3ec7b07d)
 
 ## Current Phase
 Phase 4–9: dev-build-and-ship workflow RUNNING (background).
@@ -19,7 +19,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
 - [x] Phase 1: Worktree `.claude/worktrees/inventory-scan-session` on `feature/inventory-scan-session`
 - [x] Phase 2: Design spec written + committed (a919b469)
 - [x] Phase 2.5: Design review — frontend reviewer (supabase N/A); 3 critical + 6 major + 6 minor folded into spec (4212af61)
-- [ ] Phase 3: Plan (in-progress)
+- [x] Phase 3: Plan (committed 3ec7b07d)
 - [ ] Phase 4–9: Build → ship (via dev-build-and-ship workflow)
   - [x] Task 1: `createScanGate()` identity-suppression utility — dc5528e8
   - [x] Task 2: `useScanSession` state-machine hook — c522684e
@@ -35,6 +35,8 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Phase 6: Simplify — dead state/wrappers/logs removed, SmartBarcodeScanner unified, ScanSessionView stable dep — 4e5984be
 - [x] Phase 7a: Codex adversarial review — 1 major finding (Html5QrcodeScanner auto-start race on first mount)
 - [x] Phase 7b: Fold findings — all critical/major fixed in dcc1780d
+- [x] Phase 7c: CodeRabbit review (iteration 1) — 1 minor a11y finding fixed in 14ba7ddb (aria-hidden on operator icons)
+  - Phase 7c iteration 2: 2 major + 1 minor; fixed restaurant_id inconsistency (Inventory.tsx lines 243, 1196) + progress.md doc fix
   - Security: compile-time PROD guard on test bridge (tree-shaken from bundle)
   - Correctness: init-race fix in NativeBarcodeScanner + Html5QrcodeScanner; resolveNewProduct try/catch
   - OCR rules: strict equality, no nested ternary, no component-in-component, any comments, unknown over any

@@ -24,7 +24,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Task 1: `createScanGate()` identity-suppression utility — dc5528e8
   - [x] Task 2: `useScanSession` state-machine hook — c522684e
   - [x] Task 3: `SmartBarcodeScanner` — add controlled `active` prop (pass-through) — 64a31416
-  - [ ] Task 4: `NativeBarcodeScanner` — `activeRef`-gated loop + freeze + semantic badges
+  - [x] Task 4: `NativeBarcodeScanner` — `activeRef`-gated loop + freeze + semantic badges — 335f1bc3
   - [ ] Task 5: `Html5QrcodeScanner` — `.stop()`/`.start()` on `active` + snapshot freeze + semantic badges
   - [ ] Task 6: `MLKitBarcodeScanner` — scan only while `active`, re-scan only on re-arm
   - [ ] Task 7: `QuickInventoryDialog` accessibility (DialogDescription + aria-labels)

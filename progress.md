@@ -5,7 +5,7 @@
 - Plan: docs/superpowers/plans/2026-06-18-schedule-roster-context-layer-plan.md
 
 ## Current Phase
-Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
+Phase 9a complete — PR #542 opened 2026-06-18
 
 ## Completed Tasks
 - [x] Phase 0: Consulted memory/lessons.md (time-off overlap, pure-helper testing, single breakpoint, semantic tokens)
@@ -37,8 +37,8 @@ Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
   - test:e2e: 140/156 pass, 4 pre-existing failures (employee-payroll, inventory-create-with-image, manual-sale-tip, scheduling-conflicts — none in our diff)
 
 ## CI Status
-- PR: not yet created
-- Checks: n/a
+- PR: https://github.com/toyiyo/nimble-pnl/pull/542 (#542)
+- Checks: pending (just opened)
 - Iteration: 0/5
 
 ## Blockers

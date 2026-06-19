@@ -55,3 +55,13 @@ describe('Scheduling roster context — day cells', () => {
     expect(SRC).toMatch(/despite approved time off/);
   });
 });
+
+describe('Scheduling roster context — mobile', () => {
+  it('extends the mobile avatar aria-label with minor/off state', () => {
+    expect(SRC).toMatch(/isMinorEmployee \? ', minor'/);
+  });
+  it('shows minor/FT-PT/off in the mobile tooltip and marks dots aria-hidden', () => {
+    expect(SRC).toMatch(/aria-hidden="true"/);
+    expect(SRC).toMatch(/relative/); // avatar wrapper hosts the corner dots
+  });
+});

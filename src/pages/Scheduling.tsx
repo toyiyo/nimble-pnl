@@ -1650,18 +1650,26 @@ const Scheduling = () => {
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <button
-                                        onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
-                                        className={cn(
-                                          "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
-                                          employee.is_active
-                                            ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                            : "bg-muted text-muted-foreground"
+                                      <span className="relative">
+                                        <button
+                                          onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
+                                          className={cn(
+                                            "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
+                                            employee.is_active
+                                              ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
+                                              : "bg-muted text-muted-foreground"
+                                          )}
+                                          aria-label={`${employee.name}, ${employee.position}${isMinorEmployee ? ', minor' : ''}${off ? `, ${off.label.toLowerCase()}` : ''}`}
+                                        >
+                                          {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                        </button>
+                                        {isMinorEmployee && (
+                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-amber-500 ring-1 ring-background" />
                                         )}
-                                        aria-label={`${employee.name}, ${employee.position}`}
-                                      >
-                                        {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                      </button>
+                                        {off && (
+                                          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-info ring-1 ring-background" />
+                                        )}
+                                      </span>
                                     </TooltipTrigger>
                                     <TooltipContent side="right" className="text-xs">
                                       <div className="font-medium">
@@ -1671,6 +1679,9 @@ const Scheduling = () => {
                                         )}
                                       </div>
                                       <div className="text-muted-foreground">{employee.position}</div>
+                                      <div className="text-muted-foreground">
+                                        {isMinorEmployee ? 'Minor · ' : ''}{employee.employment_type === 'part_time' ? 'Part-time' : 'Full-time'}{off ? ` · ${off.label}` : ''}
+                                      </div>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>

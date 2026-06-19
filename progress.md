@@ -32,6 +32,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Task 9: Rewire `Inventory.tsx` camera path → `ScanSessionView` — 1c74646e
   - [x] Task 10: E2E — scan → enter → resume with no duplicate dialogs — 9d299310
   - [x] Phase 5: UI Review — Apple/Notion guidelines applied (typography, semantic tokens, a11y, no emojis) — 1334ef53
+  - [x] Phase 6: Simplify — dead state/wrappers/logs removed, SmartBarcodeScanner unified, ScanSessionView stable dep — 4e5984be
 - [ ] Phase 10: Retrospective
 
 ## CI Status

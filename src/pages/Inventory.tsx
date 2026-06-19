@@ -341,8 +341,7 @@ export const Inventory: React.FC = () => {
         return true;
       }
 
-      // Update existing product
-      if (!selectedRestaurant) return false;
+      // Update existing product (selectedRestaurant already guarded at the top of this function)
       const currentStock = product.current_stock || 0;
       const finalStock = updates.current_stock ?? currentStock;
       const difference = finalStock - currentStock;

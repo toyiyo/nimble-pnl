@@ -1613,13 +1613,16 @@ const Scheduling = () => {
                                         <TooltipProvider>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
-                                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0">
+                                              <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                              >
                                                 <CalendarOff className="h-3 w-3" aria-hidden="true" />
                                                 {off.label}
                                                 <span className="sr-only">
                                                   {` — approved time off${off.reasons.length ? `: ${off.reasons.join(', ')}` : ''}`}
                                                 </span>
-                                              </span>
+                                              </button>
                                             </TooltipTrigger>
                                             <TooltipContent side="top" className="text-xs">
                                               {off.reasons.length ? off.reasons.join(', ') : 'Approved time off'}
@@ -1763,7 +1766,7 @@ const Scheduling = () => {
                                         size="sm"
                                         className={cn(
                                           "w-full h-8 text-xs border border-dashed",
-                                          "opacity-0 group-hover:opacity-100 transition-all duration-200",
+                                          "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all duration-200",
                                           isOff
                                             ? "border-warning/50 text-warning hover:bg-warning/10"
                                             : "border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary",

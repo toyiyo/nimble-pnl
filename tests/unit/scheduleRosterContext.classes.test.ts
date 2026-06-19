@@ -68,3 +68,14 @@ describe('Scheduling roster context — mobile', () => {
     expect(SRC).toMatch(/relative/); // avatar wrapper hosts the corner dots
   });
 });
+
+describe('Scheduling roster context — keyboard accessibility', () => {
+  it('makes the Off chip tooltip trigger a focusable button with a focus ring', () => {
+    // a <span> trigger is not keyboard-focusable (CodeRabbit) — must be a button w/ focus ring
+    expect(SRC).toMatch(/bg-info\/10 text-info[^"]*focus-visible:ring-ring/);
+  });
+  it('reveals the per-day add button on keyboard focus, not hover-only', () => {
+    expect(SRC).toMatch(/group-focus-within:opacity-100/);
+    expect(SRC).toMatch(/focus-visible:opacity-100/);
+  });
+});

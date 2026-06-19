@@ -1703,9 +1703,9 @@ const Scheduling = () => {
                                 <DroppableDayCell
                                   key={day.toISOString()}
                                   employeeId={employee.id}
-                                  day={format(day, 'yyyy-MM-dd')}
+                                  day={dayKey}
                                   isToday={dayIsToday}
-                                  isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
+                                  isHighlighted={highlightedCellId === `${employee.id}:${dayKey}`}
                                 >
                                   <div className={cn(
                                     "space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]",
@@ -1739,7 +1739,7 @@ const Scheduling = () => {
                                           key={shift.id}
                                           shift={shift}
                                           employeeId={employee.id}
-                                          day={format(day, 'yyyy-MM-dd')}
+                                          day={dayKey}
                                         >
                                           <ShiftCard
                                             shift={shift}
@@ -1760,11 +1760,7 @@ const Scheduling = () => {
                                             ? "border-warning/50 text-warning hover:bg-warning/10"
                                             : "border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary",
                                         )}
-                                        aria-label={
-                                          isOff
-                                            ? `Add shift for ${employee.name} on ${format(day, 'EEE MMM d')} despite approved time off`
-                                            : `Add shift for ${employee.name} on ${format(day, 'EEE MMM d')}`
-                                        }
+                                        aria-label={`Add shift for ${employee.name} on ${format(day, 'EEE MMM d')}${isOff ? ' despite approved time off' : ''}`}
                                         onClick={() => handleAddShift(day, employee)}
                                       >
                                         <Plus className="h-3 w-3 mr-1" />

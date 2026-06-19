@@ -21,7 +21,7 @@ Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (p
 - Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
 
 ## Current Phase
-Phase 4: TDD Build — All 6 plan tasks completed (orchestrator task 10/cross-platform copy text replacements confirmed complete: 26e8d3bf, 5/5 tests + 19/19 total green). Phase 5 (UI review) is next.
+Phase 5: UI Review — complete. Phase 6 (code-simplify) is next.
 
 ## Completed
 - [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)
@@ -29,7 +29,9 @@ Phase 4: TDD Build — All 6 plan tasks completed (orchestrator task 10/cross-pl
 - [x] Phase 2: Design doc committed a40bca7c
 - [x] Phase 2.5: frontend-design-reviewer ran; 2 critical + 3 major folded in (stable onScan ref, dispose lifecycle, IME composition guard, input-event, aria-live); commit d66591d1. Supabase reviewer skipped (no DB surface).
 - [x] Phase 3: Plan committed 39a8609b (4 TDD tasks). Self-review passed; edit anchors verified.
-- [ ] Phase 4-9: dev-build-and-ship workflow (after plan approval)
+- [x] Phase 4: TDD Build — all 6 plan tasks + 19/19 tests green; commits 6d2081b1, 38b26cd5, 26e8d3bf, f50e5dec.
+- [x] Phase 5: UI Review — replaced all hardcoded colors with semantic tokens, emoji icons with Lucide, aligned typography to project scale; commit a14b9ec7. 4491 tests still green.
+- [ ] Phase 6-9: simplify → CodeRabbit review → verify → PR
 
 ## Plan tasks
 1. [x] parseScannedBarcode pure helper (src/lib/barcodeScanInput.ts) — commit 6d2081b1

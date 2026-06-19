@@ -21,7 +21,7 @@ Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (p
 - Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
 
 ## Current Phase
-Phase 4: TDD Build — All 6 plan tasks completed. Phase 5 (UI review) is next.
+Phase 4: TDD Build — All 6 plan tasks completed (orchestrator task 8/aria-live a11y test confirmed complete: f50e5dec, 5/5 tests green). Phase 5 (UI review) is next.
 
 ## Completed
 - [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)

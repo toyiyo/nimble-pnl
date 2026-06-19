@@ -38,3 +38,20 @@ describe('Scheduling roster context — identity cell', () => {
     expect(SRC).not.toMatch(/bg-blue-/);
   });
 });
+
+describe('Scheduling roster context — day cells', () => {
+  it('computes per-day off state and run-start', () => {
+    expect(SRC).toMatch(/offDayKeys\.has\(/);
+    expect(SRC).toMatch(/isRunStart/);
+  });
+  it('renders accent bars (info normally, destructive on conflict) and sr-only state', () => {
+    expect(SRC).toMatch(/border-l-2 border-info/);
+    expect(SRC).toMatch(/border-l-2 border-destructive/);
+    expect(SRC).toMatch(/Approved time off/);
+    expect(SRC).toMatch(/Scheduling conflict/);
+  });
+  it('soft-blocks add on off-days with a contextual aria-label', () => {
+    expect(SRC).toMatch(/Add anyway/);
+    expect(SRC).toMatch(/despite approved time off/);
+  });
+});

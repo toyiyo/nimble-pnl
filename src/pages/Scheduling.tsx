@@ -1684,6 +1684,10 @@ const Scheduling = () => {
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
                               const dayIsToday = isToday(day);
+                              const dayKey = format(day, 'yyyy-MM-dd');
+                              const isOff = !!empOff?.offDayKeys.has(dayKey);
+                              const hasShift = dayShifts.length > 0;
+                              const isRunStart = !!empOff?.spans.some((s) => s.startKey === dayKey);
                               return (
                                 <DroppableDayCell
                                   key={day.toISOString()}
@@ -1692,7 +1696,22 @@ const Scheduling = () => {
                                   isToday={dayIsToday}
                                   isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
                                 >
-                                  <div className="space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]">
+                                  <div className={cn(
+                                    "space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]",
+                                    isOff && hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-destructive",
+                                    isOff && !hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-info",
+                                  )}>
+                                    {isOff && (
+                                      <span className="sr-only">
+                                        {hasShift ? 'Scheduling conflict: shift scheduled during approved time off' : 'Approved time off'}
+                                      </span>
+                                    )}
+                                    {isOff && isRunStart && (
+                                      <div className="flex items-center gap-1 text-[11px] text-info font-medium">
+                                        <CalendarOff className="h-3 w-3" aria-hidden="true" />
+                                        Time off
+                                      </div>
+                                    )}
                                     {dayShifts.map((shift) => (
                                       selectionMode ? (
                                         <ShiftCard
@@ -1724,14 +1743,21 @@ const Scheduling = () => {
                                         variant="ghost"
                                         size="sm"
                                         className={cn(
-                                          "w-full h-8 text-xs border border-dashed border-border/50",
+                                          "w-full h-8 text-xs border border-dashed",
                                           "opacity-0 group-hover:opacity-100 transition-all duration-200",
-                                          "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                                          isOff
+                                            ? "border-warning/50 text-warning hover:bg-warning/10"
+                                            : "border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary",
                                         )}
+                                        aria-label={
+                                          isOff
+                                            ? `Add shift for ${employee.name} on ${format(day, 'EEE MMM d')} despite approved time off`
+                                            : `Add shift for ${employee.name} on ${format(day, 'EEE MMM d')}`
+                                        }
                                         onClick={() => handleAddShift(day, employee)}
                                       >
                                         <Plus className="h-3 w-3 mr-1" />
-                                        Add
+                                        {isOff ? 'Add anyway' : 'Add'}
                                       </Button>
                                     )}
                                   </div>

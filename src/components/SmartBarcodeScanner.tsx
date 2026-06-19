@@ -63,25 +63,6 @@ export function SmartBarcodeScanner({
     checkNativeSupport();
   }, [scannerType]);
 
-  if (scannerType === 'mlkit') {
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-center">
-          <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
-            <Sparkles className="w-3 h-3 mr-1" />
-            ML Kit Native Scanner
-          </Badge>
-        </div>
-        <MLKitBarcodeScanner
-          onScan={onScan}
-          onError={onError}
-          className={className}
-          active={active}
-        />
-      </div>
-    );
-  }
-
   if (scannerType === 'checking') {
     return (
       <Card className={className}>
@@ -93,23 +74,36 @@ export function SmartBarcodeScanner({
     );
   }
 
+  const badge =
+    scannerType === 'mlkit' ? (
+      <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
+        <Sparkles className="w-3 h-3 mr-1" />
+        ML Kit Native Scanner
+      </Badge>
+    ) : scannerType === 'native' ? (
+      <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
+        <Sparkles className="w-3 h-3 mr-1" />
+        Native Scanner
+      </Badge>
+    ) : (
+      <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
+        <Camera className="w-3 h-3 mr-1" />
+        HTML5 Scanner
+      </Badge>
+    );
+
   return (
     <div className="space-y-2">
-      <div className="flex justify-center">
-        {scannerType === 'native' ? (
-          <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
-            <Sparkles className="w-3 h-3 mr-1" />
-            Native Scanner
-          </Badge>
-        ) : (
-          <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
-            <Camera className="w-3 h-3 mr-1" />
-            HTML5 Scanner
-          </Badge>
-        )}
-      </div>
+      <div className="flex justify-center">{badge}</div>
 
-      {scannerType === 'native' ? (
+      {scannerType === 'mlkit' ? (
+        <MLKitBarcodeScanner
+          onScan={onScan}
+          onError={onError}
+          className={className}
+          active={active}
+        />
+      ) : scannerType === 'native' ? (
         <NativeBarcodeScanner
           onScan={onScan}
           onError={onError}

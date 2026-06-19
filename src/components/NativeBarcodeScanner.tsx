@@ -48,11 +48,7 @@ export const NativeBarcodeScanner = ({
     const initDetector = async () => {
       try {
         const formats = await (window as any).BarcodeDetector.getSupportedFormats();
-        console.log('✅ Native BarcodeDetector supported formats:', formats);
-
-        detectorRef.current = new (window as any).BarcodeDetector({
-          formats: formats, // Use all supported formats
-        });
+        detectorRef.current = new (window as any).BarcodeDetector({ formats });
         isDetectorReady.current = true;
       } catch (error) {
         console.error('Failed to initialize BarcodeDetector:', error);
@@ -175,10 +171,7 @@ export const NativeBarcodeScanner = ({
           let barcodeValue = barcode.rawValue;
           if (barcode.format === 'ean_13' && barcode.rawValue.startsWith('0')) {
             barcodeValue = barcode.rawValue.slice(1);
-            console.log('🔄 Converted EAN-13 to UPC-A:', barcode.rawValue, '→', barcodeValue);
           }
-
-          console.log('✅ Barcode detected:', barcodeValue, barcode.format);
           lastScanRef.current = { value: barcodeValue, time: now };
           setLastScanned(barcodeValue);
 
@@ -195,10 +188,6 @@ export const NativeBarcodeScanner = ({
 
     // Re-schedule only if still active; otherwise exit cleanly.
     animationFrameRef.current = activeRef.current ? requestAnimationFrame(scanLoop) : null;
-  };
-
-  const stopScanning = () => {
-    cleanup();
   };
 
   return (
@@ -251,7 +240,7 @@ export const NativeBarcodeScanner = ({
                 Start Scanning
               </Button>
             ) : (
-              <Button onClick={stopScanning} variant="destructive" size="lg">
+              <Button onClick={cleanup} variant="destructive" size="lg">
                 <X className="w-4 h-4 mr-2" />
                 Stop
               </Button>

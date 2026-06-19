@@ -43,12 +43,13 @@ export function ScanSessionView(props: ScanSessionViewProps) {
   const session = useScanSession({ findProductByGtin, resolveNewProduct, onExit });
   const { state, isScanning, itemsThisSession, activeProduct } = session;
 
+  const { capture } = session;
   const handleScan = useCallback(
     (gtin: string, format: string) => {
       vibrate();
-      void session.capture(gtin, format);
+      void capture(gtin, format);
     },
-    [session],
+    [capture],
   );
 
   // Test bridge: allow E2E / test harnesses to emit synthetic scans

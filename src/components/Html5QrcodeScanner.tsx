@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,9 +44,6 @@ export const Html5QrcodeScanner = ({
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
-  const [iOSDebugMode, setIOSDebugMode] = useState(false);
-  const [scanAttempts, setScanAttempts] = useState(0);
-  const [lastFrameTime, setLastFrameTime] = useState<number>(0);
 
   // Enhanced initialization with camera enumeration
   useEffect(() => {
@@ -79,7 +76,6 @@ export const Html5QrcodeScanner = ({
           );
           
           setCameraId(backCamera?.id || cameras[0]?.id || '');
-          console.log('📷 Available cameras:', cameras.length, 'Selected:', backCamera?.label || cameras[0]?.label);
         } catch (cameraError) {
           console.warn('Camera enumeration failed:', cameraError);
           setScannerError('Camera access required for scanning');
@@ -211,16 +207,11 @@ export const Html5QrcodeScanner = ({
 
             // Normalize the value first (e.g., EAN-13 → UPC-A) so dedupe compares apples-to-apples
             const processedValue = processEAN13ToUPCA(decodedText, formatName);
-            if (processedValue !== decodedText) {
-              console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
-            }
 
             // Check if we should deduplicate this scan
             if (shouldDeduplicateScan(lastScanRef.current, processedValue, 1500)) {
               return; // Skip duplicate scan
             }
-
-            console.log('✅ Barcode detected:', processedValue, formatName);
 
             // Update state
             const now = Date.now();
@@ -289,14 +280,14 @@ export const Html5QrcodeScanner = ({
   };
 
   // Torch/flashlight control
-  const checkTorchSupport = useCallback(() => {
+  const checkTorchSupport = () => {
     try {
       const caps = scannerRef.current?.getRunningTrackCapabilities() as any;
       setTorchSupported(!!(caps?.torch));
-    } catch (error) {
+    } catch {
       setTorchSupported(false);
     }
-  }, []);
+  };
 
   const toggleTorch = async () => {
     if (!torchSupported || !isScanning) return;
@@ -311,10 +302,6 @@ export const Html5QrcodeScanner = ({
       console.log('Torch not supported on this device');
       setTorchSupported(false);
     }
-  };
-
-  const stopScanning = async () => {
-    await cleanup();
   };
 
   return (
@@ -452,7 +439,7 @@ export const Html5QrcodeScanner = ({
 
                 {/* Stop button */}
                 <Button
-                  onClick={stopScanning}
+                  onClick={cleanup}
                   variant="ghost"
                   aria-label="Stop scanning"
                   className="h-9 px-4 rounded-lg text-[13px] font-medium text-destructive hover:text-destructive/80 bg-background/80 backdrop-blur-sm"

@@ -37,8 +37,9 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (background)
 ## Plan tasks
 1. [x] parseScannedBarcode pure helper (src/lib/barcodeScanInput.ts) — commit 6d2081b1
 2. [x] createScanAssembler (idle + composition + dispose terminators) — commit 38b26cd5
-3. Rewire KeyboardBarcodeScanner.tsx (value capture + idle, focus-gated Enter, dispose lifecycle, stable onScan ref)
-4. aria-live scan announcement + cross-platform copy
+3. [x] Append createScanAssembler unit tests (7 cases: iOS path, Android idle, re-arm, short buffer, composition guard, dispose, no double-emit) to tests/unit/barcodeScanInput.test.ts — commit 38b26cd5 (tests bundled with implementation)
+4. Rewire KeyboardBarcodeScanner.tsx (value capture + idle, focus-gated Enter, dispose lifecycle, stable onScan ref)
+5. aria-live scan announcement + cross-platform copy
 
 ## CI Status
 - PR: not yet created

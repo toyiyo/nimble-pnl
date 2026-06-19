@@ -10,7 +10,7 @@
 
 **Design doc:** `docs/superpowers/specs/2026-06-18-keyboard-scanner-android-ime-design.md`
 
-**Run all commands from the worktree root:** `/Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/fix+barcode-scanner-android-ime`
+**Run all commands from the worktree root:** the `fix+barcode-scanner-android-ime` worktree directory (e.g. `$(git worktree list | grep fix+barcode | awk '{print $1}')`)
 
 ---
 

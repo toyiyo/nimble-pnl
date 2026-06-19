@@ -1,8 +1,8 @@
 # Progress: Fix Android keyboard-scanner input (IME masks keydown e.key)
 
 ## Spec
-Design: docs/superpowers/specs/2026-06-18-keyboard-scanner-android-ime-design.md (pending Phase 2)
-Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (pending Phase 3)
+Design: docs/superpowers/specs/2026-06-18-keyboard-scanner-android-ime-design.md (complete — Phase 2)
+Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (complete — Phase 3)
 
 ## Root cause (confirmed via PostHog, conversation)
 - KeyboardBarcodeScanner.tsx detects barcodes via `document` keydown reading `e.key`.
@@ -21,7 +21,7 @@ Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (p
 - Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
 
 ## Current Phase
-Phase 7b complete (commit 344551f8). Phase 7c (CodeRabbit) is next.
+Phase 7c in progress (CodeRabbit iteration 1 — 2 minor doc findings, fixing).
 
 ## Completed
 - [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)

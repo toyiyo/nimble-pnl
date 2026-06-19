@@ -631,3 +631,40 @@
 ### [2026-06-07] OCR's deterministic rules are separable from its LLM call — exploit this to get $0 review
 - **Observation:** `ocr review --preview` and `ocr rules check` run entirely locally — they apply rule-based selection and file filtering with no model call. The LLM call is a separate, optional step that any caller can supply. This means OCR's selection logic can be combined with any subscription-backed LLM (e.g. a Claude subagent on Max) instead of a metered API key.
 - **Rule:** When a review CLI "requires" an LLM API key, check whether it has a `--preview`, `--dry-run`, or `rules check` mode that produces structured output without a model call. If so, run that stage at $0 and pipe its output to a subscription-backed agent. The result is identical review coverage with no metered cost. Document this split in the design doc so future contributors understand why no API key is configured.
+
+---
+
+## Category: React / Media & Controlled Capture
+
+### [2026-06-19] Pause a continuous-capture loop by gating on a synchronous ref, not "self-suspend on fire"
+- **Mistake:** PR #545's first design for pausing the inventory barcode scanner was "the engine fires `onScan` once, then suspends itself; re-arm only on an `active` false→true edge." This hangs: a session-level identity gate (suppressing a barcode still lingering in the frame) rejects the re-scan WITHOUT changing `active`, so there is no re-arm edge — the self-suspended loop never resumes and the scanner is dead until the component remounts.
+- **Correction:** Gate the `requestAnimationFrame` loop on a synchronously-updated `activeRef` (`activeRef.current = active` inside the `active` effect, checked at the top of the loop and before every `onScan`). The session sets `active=false` the instant it captures (the `scanning→lookingUp` transition), which cancels the pending frame and `video.pause()`-freezes the last frame before the next tick. The existing same-value cooldown plus the session gate absorb the single in-flight frame. A gate-rejected scan leaves `active` true, so the loop simply keeps running.
+- **Rule:** To pause a self-driving capture loop (camera rAF, audio worklet, websocket poller) under React control, gate it on a ref mirrored from a boolean prop and cancel/resume inside that prop's effect — do NOT make the loop disarm itself on emit. Self-disarm needs an explicit re-arm for EVERY consumer outcome (including "ignored/rejected"), which is easy to miss and produces a silent permanent hang.
+
+### [2026-06-19] A long-lived loop must call its prop callback through a render-synced ref
+- **Mistake:** The original scanner captured `onScan` at loop start; the parent's `handleBarcodeScanned` was recreated each render, so the rAF loop held a stale closure whose `dialog-open` guard always read `false` — the root cause of the background-rescan bug being fixed.
+- **Correction:** Store the handler in a ref refreshed every render (`onScanRef.current = onScan`) and call `onScanRef.current(...)` from the loop. With `activeRef` gating added too, correctness no longer depends on React's async state-commit timing.
+- **Rule:** Any loop/listener started once (rAF, `addEventListener`, a library success-callback) that invokes a prop callback must call it through a render-synced ref, never the value captured at start. Pair with a synchronous enable-ref when the call must also be gated.
+
+---
+
+## Category: Radix / shadcn
+
+### [2026-06-19] Reusing a component that already provides its own Dialog/Sheet — never double-wrap
+- **Mistake:** PR #545's plan to present the existing `ProductUpdateDialog` "as a bottom sheet" would have wrapped it inside another Radix `Sheet`. But the component already imports `Sheet`/`SheetContent` and exports a `ProductUpdateSheet` variant; nesting a Radix Dialog inside a Radix Sheet collides on the shared focus-trap and portal stack — focus escapes, overlays layer wrong, `Esc` becomes unpredictable. Caught in Phase 2.5 design review (M1).
+- **Correction:** Reuse the component's existing single-portal presentation — render `ProductUpdateSheet` (mobile) / `ProductUpdateDialog` (desktop), both of which render the shared inner `ProductUpdateContent`, and let the session control only their `open` prop. No outer wrapper.
+- **Rule:** Before wrapping a reused component in a `Dialog`/`Sheet`, grep its imports for `Dialog`/`Sheet`. If it already renders one, reuse its existing variant or extract its inner content — never nest one Radix overlay primitive inside another. Two stacked focus traps is the tell.
+
+---
+
+## Category: React / State management (continued)
+
+### [2026-06-19] A dispatcher's new control prop must reach EVERY branch — including the modal one-shot
+- **Mistake:** Adding a controlled `active` pause prop to `SmartBarcodeScanner` (which dispatches to `NativeBarcodeScanner`, `Html5QrcodeScanner`, and the Capacitor `MLKitBarcodeScanner`) was nearly applied only to the two continuous-camera engines. `MLKitBarcodeScanner` is a modal one-shot that auto-starts on mount — without the prop it relaunches the native scanner behind an open entry sheet on iOS/Android. Phase 2.5 caught it (M6).
+- **Correction:** Thread `active` through all three engines; for the modal one-shot, launch `scan()` only on an `active` false→true edge (and initial active mount), never auto-relaunch.
+- **Rule:** When adding a cross-cutting control prop to a component that dispatches to N implementations, enumerate ALL N branches — the differently-shaped one (modal vs. continuous, native vs. web) is the one most likely to be missed and the one whose omission ships a platform-specific bug. Grep the dispatcher's JSX for every child it can render.
+
+### [2026-06-19] A controlled overlay's onOpenChange-cancel reads stale state and clobbers the next machine state
+- **Mistake:** A single-instance entry sheet was wired `open={state==='fullEntry'}` with `onOpenChange={(o)=>{ if(!o && state==='fullEntry') cancelEntry() }}`. After a successful save the machine moves `fullEntry → confirmed`; the dialog's own programmatic close then fires `onOpenChange(false)`, but `state` in that closure was stale (`'fullEntry'`), so `cancelEntry()` ran and wiped the just-shown confirm beat. Found in Phase 8 verification.
+- **Correction:** Guard the cancel on a synchronously-mirrored `stateRef.current === 'fullEntry'` (updated in render), so once the machine has advanced the trailing close is a no-op. (Same stale-closure family as the scanner fix above.)
+- **Rule:** When a state machine drives a controlled Radix overlay's `open`, its `onOpenChange(false)` fires on BOTH user-cancel and programmatic-close-after-transition. Distinguish them with a ref-read of the current state, not the closed-over value — otherwise the post-transition close undoes the transition you just made.

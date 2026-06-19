@@ -370,8 +370,16 @@ const Scheduling = () => {
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
-  const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
+  // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
+  // and weekDayKeys/weekTimeOff memos are stable across drag/hover/selection re-renders.
+  const weekEnd = useMemo(
+    () => endOfWeek(currentWeekStart, { weekStartsOn: 1 }),
+    [currentWeekStart],
+  );
+  const weekDays = useMemo(
+    () => eachDayOfInterval({ start: currentWeekStart, end: weekEnd }),
+    [currentWeekStart, weekEnd],
+  );
 
   // Fetch ALL employees (including inactive) to show historical shifts
   const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });

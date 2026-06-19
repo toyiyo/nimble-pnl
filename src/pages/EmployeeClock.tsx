@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,7 @@ const EmployeeClock = () => {
   const [showCameraDialog, setShowCameraDialog] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-  const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | 'break_start' | 'break_end' | null>(null);
+  const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | null>(null);
   const [pendingGeofenceResult, setPendingGeofenceResult] = useState<{ distanceMeters?: number; within?: boolean } | undefined>(undefined);
   const [geofenceWarning, setGeofenceWarning] = useState<{
     type: 'outside' | 'unavailable';
@@ -49,20 +49,18 @@ const EmployeeClock = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Cleanup camera stream when dialog closes or component unmounts
-  useEffect(() => {
-    if (cameraStream && !showCameraDialog) {
+  const stopCamera = useCallback(() => {
+    if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
+  }, [cameraStream]);
 
-    return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        setCameraStream(null);
-      }
-    };
-  }, [cameraStream, showCameraDialog]);
+  // Cleanup camera stream when dialog closes or component unmounts
+  useEffect(() => {
+    if (cameraStream && !showCameraDialog) stopCamera();
+    return stopCamera;
+  }, [cameraStream, showCameraDialog, stopCamera]);
 
   const startCamera = async () => {
     try {
@@ -107,7 +105,7 @@ const EmployeeClock = () => {
     setCapturedPhoto(null);
   };
 
-  const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+  const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out') => {
     // Run geofence check before allowing clock-in
     if (punchType === 'clock_in') {
       const geofenceResult = await checkLocation();
@@ -181,10 +179,7 @@ const EmployeeClock = () => {
     setCapturedPhoto(null);
     setPendingGeofenceResult(undefined);
     setPendingLocationUnavailable(false);
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-    }
+    stopCamera();
 
     const contextPromise = collectPunchContext(3000);
 
@@ -267,7 +262,12 @@ const EmployeeClock = () => {
   }
 
   const isClockedIn = status?.is_clocked_in || false;
-  const onBreak = status?.on_break || false;
+
+  const formatDistance = (meters: number | undefined): string => {
+    if (meters === null || meters === undefined) return 'some distance';
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${Math.round(meters / 10) * 10} meters`;
+  };
 
   return (
     <div className="space-y-6">
@@ -304,17 +304,10 @@ const EmployeeClock = () => {
               {statusLoading ? (
                 <Skeleton className="h-8 w-32" />
               ) : isClockedIn ? (
-                onBreak ? (
-                  <Badge variant="outline" className="text-lg px-4 py-2 bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
-                    <Coffee className="w-4 h-4 mr-2" />
-                    On Break
-                  </Badge>
-                ) : (
-                  <Badge variant="default" className="text-lg px-4 py-2 bg-green-500/10 text-green-700 border-green-500/20">
-                    <PlayCircle className="w-4 h-4 mr-2" />
-                    Clocked In
-                  </Badge>
-                )
+                <Badge variant="default" className="text-lg px-4 py-2 bg-green-500/10 text-green-700 border-green-500/20">
+                  <PlayCircle className="w-4 h-4 mr-2" />
+                  Clocked In
+                </Badge>
               ) : (
                 <Badge variant="outline" className="text-lg px-4 py-2">
                   Clocked Out
@@ -339,65 +332,28 @@ const EmployeeClock = () => {
           <CardDescription>Verify your identity for accurate time tracking</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {!isClockedIn ? (
-              <Button
-                size="lg"
-                className="h-24 text-xl"
-                onClick={() => handleInitiatePunch('clock_in')}
-                disabled={createPunch.isPending || geofenceChecking}
-              >
-                <LogIn className="mr-2 h-6 w-6" />
-                Clock In
-              </Button>
-            ) : onBreak ? (
-              <>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('break_end')}
-                  disabled={createPunch.isPending}
-                >
-                  <PlayCircle className="mr-2 h-6 w-6" />
-                  End Break
-                </Button>
-                <Button
-                  size="lg"
-                  variant="destructive"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('clock_out')}
-                  disabled={createPunch.isPending}
-                >
-                  <LogOut className="mr-2 h-6 w-6" />
-                  Clock Out
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('break_start')}
-                  disabled={createPunch.isPending}
-                >
-                  <Coffee className="mr-2 h-6 w-6" />
-                  Start Break
-                </Button>
-                <Button
-                  size="lg"
-                  variant="destructive"
-                  className="h-24 text-xl"
-                  onClick={() => handleInitiatePunch('clock_out')}
-                  disabled={createPunch.isPending}
-                >
-                  <LogOut className="mr-2 h-6 w-6" />
-                  Clock Out
-                </Button>
-              </>
-            )}
-          </div>
+          {!isClockedIn ? (
+            <Button
+              size="lg"
+              className="h-24 text-xl w-full"
+              onClick={() => handleInitiatePunch('clock_in')}
+              disabled={createPunch.isPending || geofenceChecking}
+            >
+              <LogIn className="mr-2 h-6 w-6" />
+              Clock In
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              variant="destructive"
+              className="h-24 text-xl w-full"
+              onClick={() => handleInitiatePunch('clock_out')}
+              disabled={createPunch.isPending}
+            >
+              <LogOut className="mr-2 h-6 w-6" />
+              Clock Out
+            </Button>
+          )}
 
           {/* Info about verification */}
           <Alert className="mt-4 bg-primary/5 border-primary/20">
@@ -454,11 +410,7 @@ const EmployeeClock = () => {
       {/* Camera Verification Dialog */}
       <Dialog open={showCameraDialog} onOpenChange={(open) => {
         if (!open) {
-          // Cleanup when closing
-          if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-            setCameraStream(null);
-          }
+          stopCamera();
           setShowCameraDialog(false);
           setPendingPunchType(null);
           setCapturedPhoto(null);
@@ -553,9 +505,7 @@ const EmployeeClock = () => {
                     className="w-full sm:w-auto"
                   >
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    {pendingPunchType === 'clock_out' ? 'Confirm & Clock Out' : 
-                     pendingPunchType === 'break_start' ? 'Confirm & Start Break' :
-                     pendingPunchType === 'break_end' ? 'Confirm & End Break' : 'Confirm & Clock In'}
+                    {pendingPunchType === 'clock_out' ? 'Confirm & Clock Out' : 'Confirm & Clock In'}
                   </Button>
                 </>
               )}
@@ -587,7 +537,7 @@ const EmployeeClock = () => {
           <AlertDialogDescription className="text-[14px] text-muted-foreground">
             {geofenceWarning?.type === 'unavailable'
               ? "We couldn't verify your location. You can still clock in, but this will be flagged for manager review."
-              : `You appear to be about ${geofenceWarning?.distanceMeters != null ? (geofenceWarning.distanceMeters >= 1000 ? `${(geofenceWarning.distanceMeters / 1000).toFixed(1)} km` : `${Math.round(geofenceWarning.distanceMeters / 10) * 10} meters`) : 'some distance'} from the restaurant. Do you want to continue clocking in?`
+              : `You appear to be about ${formatDistance(geofenceWarning?.distanceMeters)} from the restaurant. Do you want to continue clocking in?`
             }
           </AlertDialogDescription>
           <AlertDialogFooter>

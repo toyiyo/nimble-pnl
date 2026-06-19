@@ -52,6 +52,13 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (runId wf_c944a6cb-7b7) — plan 
 - Codex read EmployeeClock.tsx and tests in full; specifically checked the stopCamera useEffect lifecycle refactor; no bugs found
 - No findings to address; no new commit needed
 
+## Phase 7b (Fold Review Findings): COMPLETED 2026-06-18
+- Critical: loose equality `== null` in formatDistance → replaced with `=== null || === undefined` (cff92abf)
+- Major: `eslint-disable-next-line react-hooks/exhaustive-deps` suppressing stopCamera dep → wrapped stopCamera in `useCallback([cameraStream])`, added to useEffect dep array, removed suppress comment (cff92abf)
+- Minor/info findings: skipped (style nits, pre-existing color violations tracked under task_83598b07, informational observations)
+- Re-verified: typecheck 0 errors, ESLint 0 warnings, all 3 unit tests GREEN
+- Commit: cff92abf
+
 ## CI Status
 - PR: not yet created
 

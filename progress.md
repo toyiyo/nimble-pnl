@@ -20,7 +20,8 @@ Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
 - [x] Phase 4, Task 4: Wire imports + weekDayKeys/weekTimeOff memos + employee row block body into Scheduling.tsx (+ scheduleRosterContext.classes.test.ts) — commit 9e0d8c7c
 - [x] Phase 4, Task 5: Desktop identity cell — Minor pill, FT/PT tag, Off chip in Scheduling.tsx (extend classes test) — commit abfd520c
 - [x] Phase 4, Task 6: Day-cell time-off bands, soft-block, conflict escalation in Scheduling.tsx (extend classes test) — commit b668e403
-- [ ] Phases 4-9: dev-build-and-ship workflow (in progress)
+- [x] Phase 4, Task 7: Mobile degradation: avatar dots, extended aria-label, tooltip line in Scheduling.tsx (extend classes test) — commit 9ad35a7a
+- [ ] Phases 5-9: dev-build-and-ship workflow (in progress)
 
 ## CI Status
 - PR: not yet created

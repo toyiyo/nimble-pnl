@@ -115,6 +115,10 @@ describe('EmployeeClock — break UI removed', () => {
       screen.getByRole('button', { name: /clock in/i })
     ).toBeInTheDocument();
 
+    // Status badge: "Clocked Out" must render; "Clocked In" must not
+    expect(screen.getByText(/clocked out/i)).toBeInTheDocument();
+    expect(screen.queryByText(/clocked in/i)).toBeNull();
+
     // Break affordances must not exist
     expect(screen.queryByRole('button', { name: /start break/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /end break/i })).toBeNull();
@@ -136,6 +140,10 @@ describe('EmployeeClock — break UI removed', () => {
     expect(
       screen.getByRole('button', { name: /clock out/i })
     ).toBeInTheDocument();
+
+    // Status badge: "Clocked In" must render; "Clocked Out" must not
+    expect(screen.getByText(/clocked in/i)).toBeInTheDocument();
+    expect(screen.queryByText(/clocked out/i)).toBeNull();
 
     // Break affordances must not exist
     expect(screen.queryByRole('button', { name: /start break/i })).toBeNull();
@@ -162,6 +170,9 @@ describe('EmployeeClock — break UI removed', () => {
     expect(
       screen.getByRole('button', { name: /clock in/i })
     ).toBeInTheDocument();
+
+    // Status badge must show "Clocked Out" (edge-case treated as clocked-out)
+    expect(screen.getByText(/clocked out/i)).toBeInTheDocument();
 
     // Break affordances must still not exist
     expect(screen.queryByRole('button', { name: /start break/i })).toBeNull();

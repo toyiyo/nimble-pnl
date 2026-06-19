@@ -46,6 +46,12 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (runId wf_c944a6cb-7b7) — plan 
 - All 3 unit tests GREEN; typecheck 0 errors; ESLint 0 warnings
 - Commit: see below
 
+## Phase 7a (Codex Adversarial Review): COMPLETED 2026-06-18
+- Ran: `bash dev-tools/codex-adversarial-review.sh main`
+- Output: dev-tools/codex-review-output.md → "No adversarial finding."
+- Codex read EmployeeClock.tsx and tests in full; specifically checked the stopCamera useEffect lifecycle refactor; no bugs found
+- No findings to address; no new commit needed
+
 ## CI Status
 - PR: not yet created
 

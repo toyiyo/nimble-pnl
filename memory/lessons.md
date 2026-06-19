@@ -634,6 +634,43 @@
 
 ---
 
+## Category: React / Media & Controlled Capture
+
+### [2026-06-19] Pause a continuous-capture loop by gating on a synchronous ref, not "self-suspend on fire"
+- **Mistake:** PR #545's first design for pausing the inventory barcode scanner was "the engine fires `onScan` once, then suspends itself; re-arm only on an `active` false→true edge." This hangs: a session-level identity gate (suppressing a barcode still lingering in the frame) rejects the re-scan WITHOUT changing `active`, so there is no re-arm edge — the self-suspended loop never resumes and the scanner is dead until the component remounts.
+- **Correction:** Gate the `requestAnimationFrame` loop on a synchronously-updated `activeRef` (`activeRef.current = active` inside the `active` effect, checked at the top of the loop and before every `onScan`). The session sets `active=false` the instant it captures (the `scanning→lookingUp` transition), which cancels the pending frame and `video.pause()`-freezes the last frame before the next tick. The existing same-value cooldown plus the session gate absorb the single in-flight frame. A gate-rejected scan leaves `active` true, so the loop simply keeps running.
+- **Rule:** To pause a self-driving capture loop (camera rAF, audio worklet, websocket poller) under React control, gate it on a ref mirrored from a boolean prop and cancel/resume inside that prop's effect — do NOT make the loop disarm itself on emit. Self-disarm needs an explicit re-arm for EVERY consumer outcome (including "ignored/rejected"), which is easy to miss and produces a silent permanent hang.
+
+### [2026-06-19] A long-lived loop must call its prop callback through a render-synced ref
+- **Mistake:** The original scanner captured `onScan` at loop start; the parent's `handleBarcodeScanned` was recreated each render, so the rAF loop held a stale closure whose `dialog-open` guard always read `false` — the root cause of the background-rescan bug being fixed.
+- **Correction:** Store the handler in a ref refreshed every render (`onScanRef.current = onScan`) and call `onScanRef.current(...)` from the loop. With `activeRef` gating added too, correctness no longer depends on React's async state-commit timing.
+- **Rule:** Any loop/listener started once (rAF, `addEventListener`, a library success-callback) that invokes a prop callback must call it through a render-synced ref, never the value captured at start. Pair with a synchronous enable-ref when the call must also be gated.
+
+---
+
+## Category: Radix / shadcn
+
+### [2026-06-19] Reusing a component that already provides its own Dialog/Sheet — never double-wrap
+- **Mistake:** PR #545's plan to present the existing `ProductUpdateDialog` "as a bottom sheet" would have wrapped it inside another Radix `Sheet`. But the component already imports `Sheet`/`SheetContent` and exports a `ProductUpdateSheet` variant; nesting a Radix Dialog inside a Radix Sheet collides on the shared focus-trap and portal stack — focus escapes, overlays layer wrong, `Esc` becomes unpredictable. Caught in Phase 2.5 design review (M1).
+- **Correction:** Reuse the component's existing single-portal presentation — render `ProductUpdateSheet` (mobile) / `ProductUpdateDialog` (desktop), both of which render the shared inner `ProductUpdateContent`, and let the session control only their `open` prop. No outer wrapper.
+- **Rule:** Before wrapping a reused component in a `Dialog`/`Sheet`, grep its imports for `Dialog`/`Sheet`. If it already renders one, reuse its existing variant or extract its inner content — never nest one Radix overlay primitive inside another. Two stacked focus traps is the tell.
+
+---
+
+## Category: React / State management (continued)
+
+### [2026-06-19] A dispatcher's new control prop must reach EVERY branch — including the modal one-shot
+- **Mistake:** Adding a controlled `active` pause prop to `SmartBarcodeScanner` (which dispatches to `NativeBarcodeScanner`, `Html5QrcodeScanner`, and the Capacitor `MLKitBarcodeScanner`) was nearly applied only to the two continuous-camera engines. `MLKitBarcodeScanner` is a modal one-shot that auto-starts on mount — without the prop it relaunches the native scanner behind an open entry sheet on iOS/Android. Phase 2.5 caught it (M6).
+- **Correction:** Thread `active` through all three engines; for the modal one-shot, launch `scan()` only on an `active` false→true edge (and initial active mount), never auto-relaunch.
+- **Rule:** When adding a cross-cutting control prop to a component that dispatches to N implementations, enumerate ALL N branches — the differently-shaped one (modal vs. continuous, native vs. web) is the one most likely to be missed and the one whose omission ships a platform-specific bug. Grep the dispatcher's JSX for every child it can render.
+
+### [2026-06-19] A controlled overlay's onOpenChange-cancel reads stale state and clobbers the next machine state
+- **Mistake:** A single-instance entry sheet was wired `open={state==='fullEntry'}` with `onOpenChange={(o)=>{ if(!o && state==='fullEntry') cancelEntry() }}`. After a successful save the machine moves `fullEntry → confirmed`; the dialog's own programmatic close then fires `onOpenChange(false)`, but `state` in that closure was stale (`'fullEntry'`), so `cancelEntry()` ran and wiped the just-shown confirm beat. Found in Phase 8 verification.
+- **Correction:** Guard the cancel on a synchronously-mirrored `stateRef.current === 'fullEntry'` (updated in render), so once the machine has advanced the trailing close is a no-op. (Same stale-closure family as the scanner fix above.)
+- **Rule:** When a state machine drives a controlled Radix overlay's `open`, its `onOpenChange(false)` fires on BOTH user-cancel and programmatic-close-after-transition. Distinguish them with a ref-read of the current state, not the closed-over value — otherwise the post-transition close undoes the transition you just made.
+
+---
+
 ## Category: Development Workflow (continued)
 
 ### [2026-06-19] The dev-build-and-ship workflow force-committed the gitignored `progress.md` into the feature PR
@@ -654,3 +691,12 @@
 - **Mistake:** `buildWeekTimeOff` (PR #542) iterated requests × week-days and inline-built a `Map<employee, Map<day, Set<reason>>>` with nested `if (!days) {...}` / `if (!reasons) {...}` get-or-create blocks plus the overlap and reason guards. That nesting hit SonarQube Cognitive Complexity 24 (limit 15) → a `critical` code-smell. All five Phase 7a Claude reviewers AND Codex flagged a *different* issue (unmemoized `weekDays`) but none flagged the complexity; only SonarCloud's CI analysis did, after the PR was open — tripping the 9e gate.
 - **Correction:** Extracted the get-or-create into `reasonSetFor(map, employeeId, dayKey)` and the per-request day loop into `collectRequestOffDays(...)`, so `buildWeekTimeOff` became two flat loops (complexity ~4). Also rewrote a sibling `buildSpans` accumulator with a typed `RunAccumulator` + `finalizeRun` helper, which removed a `current!` non-null assertion SonarQube separately flagged (closures re-widen a mutable `let`; a captured const or extracted function avoids the `!`). 13/13 unit tests passed unchanged → pure refactor.
 - **Rule:** When writing get-or-create-nested-collection logic inside one or more loops, extract the upsert into a named helper from the start — `getOrCreate(map, key, () => new X())` or a typed `fooFor(...)`. SonarQube counts each nested `if` with a steep nesting multiplier; two nested loops + two get-or-create guards + two domain guards is already ~complexity 15+. Judgment-based reviewers (Claude/Codex) systematically under-flag cognitive complexity because the code "reads fine" locally — treat SonarQube's ≤15 threshold as a design constraint when authoring new pure helpers, not a post-hoc fix. Bonus: extracting the upsert usually also kills non-null assertions, since the helper returns a definitely-non-null value.
+
+---
+
+## Category: Development Workflow (continued)
+
+### [2026-06-19] The autonomous build/ship workflow can report `done:true` with triage fixes left uncommitted
+- **Mistake:** On PR #545 the `dev-build-and-ship` workflow returned `{done:true, prNumber:545}` with green CI. But the Phase 9d triage agent had edited the working tree to fix two Codex P2 bugs (a synchronous `stateRef` latch before lookup; a `scanSessionKey` remount on Done) and **never committed them** — then reported them "already fixed in prior commits." The green PR still contained both bugs. A plain `git status` in the launching session surfaced the uncommitted edits. Separately, the 9d re-fetch on the latest SHA showed CodeRabbit (rate-limited on its first pass) had re-reviewed out-of-band and posted 11 new inline comments — two of them real source bugs (`MLKitBarcodeScanner` could relaunch the native scanner while paused; the `products` UPDATE was not scoped by `restaurant_id`).
+- **Correction:** Before trusting the done report, ran `git status`/`git diff`, found the uncommitted fixes, re-verified (typecheck/tests/build), and committed them. Re-ran the 9d `gh api .../comments` + `.../reviews` fetch against the **latest pushed SHA** and triaged the new CodeRabbit findings. Confirmed `gh pr view --json mergeable` (it had drifted to CONFLICTING as `main` advanced — merged `origin/main` back in and re-verified).
+- **Rule:** A workflow's `done:true` is a claim, not proof. After any autonomous build/ship run, in the launching session: (1) `git status` — assert a clean tree, because an agent that "fixed" something in the working tree but didn't commit leaves a green PR that still has the bug; (2) re-run the 9d inline-comment + PR-review `gh api` fetch against the **latest** SHA — a "review completed" status check does NOT mean its comments were read, and bots (esp. CodeRabbit when rate-limited) re-review out-of-band minutes-to-hours later; (3) `gh pr view --json mergeable,mergeStateStatus` — a long-running branch drifts and conflicts with `main`. Trust the artifacts (git tree, `gh api`), not the summary line.

@@ -16,6 +16,7 @@ interface NativeBarcodeScannerProps {
   onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 export const NativeBarcodeScanner = ({
@@ -23,6 +24,7 @@ export const NativeBarcodeScanner = ({
   onError,
   className = '',
   autoStart = false,
+  active = true,
 }: NativeBarcodeScannerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -31,6 +33,13 @@ export const NativeBarcodeScanner = ({
   const animationFrameRef = useRef<number | null>(null);
   const lastScanRef = useRef<{ value: string; time: number } | null>(null);
 
+  // Synchronously-updated ref so the rAF loop always reads the latest active value
+  // without depending on React's async state update cycle (kills the stale-closure root cause).
+  const activeRef = useRef(active);
+  // Latest onScan handler via ref — prevents stale closure from holding the first render's callback.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan; // refreshed every render
+
   const [isScanning, setIsScanning] = useState(false);
   const [lastScanned, setLastScanned] = useState<string | null>(null);
 
@@ -38,13 +47,18 @@ export const NativeBarcodeScanner = ({
   useEffect(() => {
     const initDetector = async () => {
       try {
-        const formats = await (window as any).BarcodeDetector.getSupportedFormats();
-        console.log('✅ Native BarcodeDetector supported formats:', formats);
-        
-        detectorRef.current = new (window as any).BarcodeDetector({
-          formats: formats, // Use all supported formats
-        });
+        // BarcodeDetector is a draft API not yet in TS lib — cast is required
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const formats = await (window as any /* BarcodeDetector not in TS lib */).BarcodeDetector.getSupportedFormats();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        detectorRef.current = new (window as any /* BarcodeDetector not in TS lib */).BarcodeDetector({ formats });
         isDetectorReady.current = true;
+        // Initialization-race fix: if active=true arrived before init completed,
+        // the active effect would have found isDetectorReady=false and done nothing.
+        // Start now that the detector is ready.
+        if (activeRef.current && !streamRef.current) {
+          startScanning();
+        }
       } catch (error) {
         console.error('Failed to initialize BarcodeDetector:', error);
         isDetectorReady.current = false;
@@ -64,11 +78,31 @@ export const NativeBarcodeScanner = ({
     };
   }, []);
 
+  // Drive start/pause/resume from the `active` prop.
+  // Mirrors activeRef synchronously so the rAF loop reads the correct value
+  // even if it fires between the prop change and the next React render.
   useEffect(() => {
-    if (autoStart && isDetectorReady.current && !isScanning) {
-      startScanning();
+    activeRef.current = active;
+    if (active) {
+      if (!streamRef.current && isDetectorReady.current) {
+        // First start: acquire the camera stream, set isScanning, kick scanLoop
+        startScanning();
+      } else if (streamRef.current && videoRef.current) {
+        // Resume: unfreeze the last frame and reschedule the loop
+        videoRef.current.play().catch(() => {});
+        if (animationFrameRef.current === null) {
+          animationFrameRef.current = requestAnimationFrame(scanLoop);
+        }
+      }
+    } else {
+      // Pause: cancel the pending frame and freeze the last camera frame behind the overlay
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      videoRef.current?.pause();
     }
-  }, [autoStart]);
+  }, [active]);
 
   const cleanup = () => {
     if (animationFrameRef.current) {
@@ -109,7 +143,11 @@ export const NativeBarcodeScanner = ({
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
         setIsScanning(true);
-        scanLoop();
+        // Only start the loop if still active (guard against a race where active became
+        // false between the async camera acquisition and this callback).
+        if (activeRef.current) {
+          scanLoop();
+        }
       }
     } catch (error) {
       console.error('Camera access error:', error);
@@ -118,12 +156,17 @@ export const NativeBarcodeScanner = ({
   };
 
   const scanLoop = async () => {
-    if (!isScanning && !videoRef.current) return;
+    // Guard: exit and clear the frame ref if paused or video is gone.
+    if (!activeRef.current || !videoRef.current) {
+      animationFrameRef.current = null;
+      return;
+    }
 
     try {
       const barcodes = await detectorRef.current!.detect(videoRef.current!);
 
-      if (barcodes.length > 0) {
+      // Re-check activeRef after the await: the prop may have flipped while detect() ran.
+      if (barcodes.length > 0 && activeRef.current) {
         const barcode = barcodes[0];
         const now = Date.now();
 
@@ -137,14 +180,12 @@ export const NativeBarcodeScanner = ({
           let barcodeValue = barcode.rawValue;
           if (barcode.format === 'ean_13' && barcode.rawValue.startsWith('0')) {
             barcodeValue = barcode.rawValue.slice(1);
-            console.log('🔄 Converted EAN-13 to UPC-A:', barcode.rawValue, '→', barcodeValue);
           }
-          
-          console.log('✅ Barcode detected:', barcodeValue, barcode.format);
           lastScanRef.current = { value: barcodeValue, time: now };
           setLastScanned(barcodeValue);
 
-          onScan(barcodeValue, barcode.format);
+          // Use onScanRef so the current handler is called, not the stale closure from mount.
+          onScanRef.current(barcodeValue, barcode.format);
 
           // Clear after 2 seconds
           setTimeout(() => setLastScanned(null), 2000);
@@ -154,12 +195,8 @@ export const NativeBarcodeScanner = ({
       console.error('Detection error:', error);
     }
 
-    // Continue scanning
-    animationFrameRef.current = requestAnimationFrame(scanLoop);
-  };
-
-  const stopScanning = () => {
-    cleanup();
+    // Re-schedule only if still active; otherwise exit cleanly.
+    animationFrameRef.current = activeRef.current ? requestAnimationFrame(scanLoop) : null;
   };
 
   return (
@@ -180,7 +217,7 @@ export const NativeBarcodeScanner = ({
             <>
               {/* Scanning reticle */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-64 h-64 border-2 border-primary rounded-lg relative">
+                <div className="w-[65%] aspect-square border-2 border-primary rounded-lg relative">
                   <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg" />
                   <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg" />
                   <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg" />
@@ -188,14 +225,14 @@ export const NativeBarcodeScanner = ({
                 </div>
               </div>
 
-              {/* Status badges */}
+              {/* Status badges — semantic tokens (no hard-coded gradients) */}
               <div className="absolute top-4 left-4 flex gap-2">
-                <Badge className="bg-gradient-to-r from-primary to-accent">
+                <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
                   <Zap className="w-3 h-3 mr-1" />
                   Native API
                 </Badge>
                 {lastScanned && (
-                  <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 animate-in fade-in">
+                  <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background animate-in fade-in">
                     <Scan className="w-3 h-3 mr-1" />
                     Scanned
                   </Badge>
@@ -212,7 +249,7 @@ export const NativeBarcodeScanner = ({
                 Start Scanning
               </Button>
             ) : (
-              <Button onClick={stopScanning} variant="destructive" size="lg">
+              <Button onClick={cleanup} variant="destructive" size="lg">
                 <X className="w-4 h-4 mr-2" />
                 Stop
               </Button>

@@ -12,6 +12,7 @@ interface SmartBarcodeScannerProps {
   onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 type ScannerType = 'mlkit' | 'native' | 'fallback' | 'checking';
@@ -26,6 +27,7 @@ export function SmartBarcodeScanner({
   onError,
   className = '',
   autoStart = false,
+  active = true,
 }: SmartBarcodeScannerProps) {
   const [scannerType, setScannerType] = useState<ScannerType>(detectInitialScannerType);
 
@@ -61,57 +63,53 @@ export function SmartBarcodeScanner({
     checkNativeSupport();
   }, [scannerType]);
 
-  if (scannerType === 'mlkit') {
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-center">
-          <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
-            <Sparkles className="w-3 h-3 mr-1" />
-            ML Kit Native Scanner
-          </Badge>
-        </div>
-        <MLKitBarcodeScanner
-          onScan={onScan}
-          onError={onError}
-          className={className}
-        />
-      </div>
-    );
-  }
-
   if (scannerType === 'checking') {
     return (
       <Card className={className}>
         <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <Loader2 className="w-8 h-8 text-foreground animate-spin" />
           <p className="text-[13px] text-muted-foreground">Initializing scanner...</p>
         </CardContent>
       </Card>
     );
   }
 
+  const badge =
+    scannerType === 'mlkit' ? (
+      <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
+        <Sparkles className="w-3 h-3 mr-1" />
+        ML Kit Native Scanner
+      </Badge>
+    ) : scannerType === 'native' ? (
+      <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
+        <Sparkles className="w-3 h-3 mr-1" />
+        Native Scanner
+      </Badge>
+    ) : (
+      <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
+        <Camera className="w-3 h-3 mr-1" />
+        HTML5 Scanner
+      </Badge>
+    );
+
   return (
     <div className="space-y-2">
-      <div className="flex justify-center">
-        {scannerType === 'native' ? (
-          <Badge className="bg-gradient-to-r from-primary to-accent">
-            <Sparkles className="w-3 h-3 mr-1" />
-            Native Scanner
-          </Badge>
-        ) : (
-          <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
-            <Camera className="w-3 h-3 mr-1" />
-            HTML5 Scanner
-          </Badge>
-        )}
-      </div>
+      <div className="flex justify-center">{badge}</div>
 
-      {scannerType === 'native' ? (
+      {scannerType === 'mlkit' ? (
+        <MLKitBarcodeScanner
+          onScan={onScan}
+          onError={onError}
+          className={className}
+          active={active}
+        />
+      ) : scannerType === 'native' ? (
         <NativeBarcodeScanner
           onScan={onScan}
           onError={onError}
           className={className}
           autoStart={autoStart}
+          active={active}
         />
       ) : (
         <Html5QrcodeScanner
@@ -119,6 +117,7 @@ export function SmartBarcodeScanner({
           onError={onError}
           className={className}
           autoStart={autoStart}
+          active={active}
         />
       )}
     </div>

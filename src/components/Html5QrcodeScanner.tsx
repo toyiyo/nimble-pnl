@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,19 @@ import {
   isIOSDevice 
 } from '@/utils/scannerConfig';
 
+/** Returns a stable platform label string without nested ternaries. */
+function getPlatformLabel(): string {
+  if (isIOSDevice()) return 'iOS Optimized';
+  if (/Android/.test(navigator.userAgent)) return 'Android Optimized';
+  return 'Desktop Mode';
+}
+
 interface Html5QrcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
   onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 export const Html5QrcodeScanner = ({
@@ -23,21 +31,26 @@ export const Html5QrcodeScanner = ({
   onError,
   className = '',
   autoStart = false,
+  active = true,
 }: Html5QrcodeScannerProps) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const elementId = useRef(`html5-qrcode-${Date.now()}`);
   const lastScanRef = useRef<{ value: string; time: number } | null>(null);
 
+  // Synchronously-updated ref so the success callback always reads the latest active value.
+  const activeRef = useRef(active);
+  // Latest onScan handler via ref — prevents stale closure from holding the first render's callback.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan; // refreshed every render
+
   const [isScanning, setIsScanning] = useState(false);
+  const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const [cameraId, setCameraId] = useState<string>('');
   const [availableCameras, setAvailableCameras] = useState<any[]>([]);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
-  const [iOSDebugMode, setIOSDebugMode] = useState(false);
-  const [scanAttempts, setScanAttempts] = useState(0);
-  const [lastFrameTime, setLastFrameTime] = useState<number>(0);
 
   // Enhanced initialization with camera enumeration
   useEffect(() => {
@@ -70,13 +83,17 @@ export const Html5QrcodeScanner = ({
           );
           
           setCameraId(backCamera?.id || cameras[0]?.id || '');
-          console.log('📷 Available cameras:', cameras.length, 'Selected:', backCamera?.label || cameras[0]?.label);
         } catch (cameraError) {
           console.warn('Camera enumeration failed:', cameraError);
           setScannerError('Camera access required for scanning');
         }
 
-        if (autoStart) {
+        // `active` is the single source of truth for start/stop; `autoStart` is now a no-op
+        // kept only for API backward-compat (it no longer calls startScanning() here).
+
+        // Initialization-race fix: if active=true arrived before this async init completed,
+        // the active effect would have returned early (scannerRef.current was null). Start now.
+        if (activeRef.current) {
           startScanning();
         }
       } catch (error) {
@@ -90,7 +107,7 @@ export const Html5QrcodeScanner = ({
     return () => {
       cleanup();
     };
-  }, [autoStart]);
+  }, []);
 
   const cleanup = async () => {
     if (scannerRef.current?.isScanning) {
@@ -104,6 +121,36 @@ export const Html5QrcodeScanner = ({
     setTorchOn(false);
     setScannerError(null);
   };
+
+  // Snapshot the live video frame to a dataURL so we can freeze the display while paused.
+  const snapshotFrame = (): string | null => {
+    const video = document.getElementById(elementId.current)?.querySelector('video') as HTMLVideoElement | null;
+    if (!video || !video.videoWidth) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0);
+    try { return canvas.toDataURL('image/jpeg', 0.6); } catch { return null; }
+  };
+
+  // Drive start/pause/resume from the `active` prop.
+  // Mirrors activeRef synchronously so the success callback reads the correct value.
+  useEffect(() => {
+    activeRef.current = active;
+    if (!scannerRef.current) return; // scanner not yet initialized
+    if (active) {
+      setFrozenFrame(null); // clear freeze backdrop
+      if (!scannerRef.current.isScanning) {
+        startScanning(); // re-acquire + resume
+      }
+    } else if (scannerRef.current.isScanning) {
+      setFrozenFrame(snapshotFrame()); // freeze backdrop, then stop
+      void cleanup();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   // Simplified iOS optimizations that work reliably
   const startScanning = async () => {
@@ -165,26 +212,26 @@ export const Html5QrcodeScanner = ({
           cameraConstraints,
           config,
           (decodedText, decodedResult) => {
+            // Guard: ignore scans fired after the scanner was paused (race between
+            // the library's async frame decode and the active prop flip).
+            if (!activeRef.current) return;
+
             const formatName = decodedResult.result.format.formatName;
 
             // Normalize the value first (e.g., EAN-13 → UPC-A) so dedupe compares apples-to-apples
             const processedValue = processEAN13ToUPCA(decodedText, formatName);
-            if (processedValue !== decodedText) {
-              console.log('🔄 Converted EAN-13 to UPC-A:', decodedText, '→', processedValue);
-            }
 
             // Check if we should deduplicate this scan
             if (shouldDeduplicateScan(lastScanRef.current, processedValue, 1500)) {
               return; // Skip duplicate scan
             }
 
-            console.log('✅ Barcode detected:', processedValue, formatName);
-
             // Update state
             const now = Date.now();
             lastScanRef.current = { value: processedValue, time: now };
             setLastScanned(processedValue);
-            onScan(processedValue, formatName);
+            // Use onScanRef so the current handler is always called (kills stale-closure bug).
+            onScanRef.current(processedValue, formatName);
 
             // Clear visual indicator after 2 seconds
             setTimeout(() => setLastScanned(null), 2000);
@@ -246,14 +293,14 @@ export const Html5QrcodeScanner = ({
   };
 
   // Torch/flashlight control
-  const checkTorchSupport = useCallback(() => {
+  const checkTorchSupport = () => {
     try {
       const caps = scannerRef.current?.getRunningTrackCapabilities() as any;
       setTorchSupported(!!(caps?.torch));
-    } catch (error) {
+    } catch {
       setTorchSupported(false);
     }
-  }, []);
+  };
 
   const toggleTorch = async () => {
     if (!torchSupported || !isScanning) return;
@@ -270,10 +317,6 @@ export const Html5QrcodeScanner = ({
     }
   };
 
-  const stopScanning = async () => {
-    await cleanup();
-  };
-
   return (
     <Card className={`relative overflow-hidden ${className}`}>
       <CardContent className="p-0">
@@ -281,12 +324,26 @@ export const Html5QrcodeScanner = ({
           {/* Scanner container */}
           <div id={elementId.current} className="w-full min-h-[300px]" />
 
+          {/* Freeze-frame backdrop — shown while the session is paused (active=false).
+              Displays the last captured video frame with a dim overlay so the user
+              sees where the camera was pointing rather than a blank/black view. */}
+          {frozenFrame && (
+            <div className="absolute inset-0">
+              <img src={frozenFrame} alt="" aria-hidden="true" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-background/90 backdrop-blur-sm" />
+            </div>
+          )}
+
           {/* Error state */}
           {scannerError && !isScanning && (
             <div className="absolute inset-0 bg-background/95 flex items-center justify-center">
               <div className="text-center space-y-4 p-6">
-                <div className="text-destructive text-lg font-medium">{scannerError}</div>
-                <Button onClick={startScanning} variant="outline">
+                <div className="text-[14px] font-medium text-destructive">{scannerError}</div>
+                <Button
+                  onClick={startScanning}
+                  variant="outline"
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium border-border/40"
+                >
                   <Scan className="w-4 h-4 mr-2" />
                   Try Again
                 </Button>
@@ -294,60 +351,58 @@ export const Html5QrcodeScanner = ({
             </div>
           )}
 
-          {/* Status badges */}
+          {/* Status badges — semantic tokens (M4) */}
           {isScanning && (
             <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
               <div className="flex gap-2">
-                <Badge className="bg-gradient-to-r from-blue-500 to-cyan-600">
+                <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
                   <Camera className="w-3 h-3 mr-1" />
                   Enhanced Scanner
                 </Badge>
                 {lastScanned && (
-                  <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 animate-in fade-in">
+                  <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background animate-in fade-in">
                     <Scan className="w-3 h-3 mr-1" />
-                    Scanned: {lastScanned.slice(0, 8)}...
+                    Scanned
                   </Badge>
                 )}
               </div>
-              
+
               {/* Platform indicator */}
-              <Badge variant="secondary" className="text-xs">
-                {isIOSDevice() ? 'iOS Optimized' : 
-                 /Android/.test(navigator.userAgent) ? 'Android Optimized' : 
-                 'Desktop Mode'}
+              <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+                {getPlatformLabel()}
               </Badge>
             </div>
           )}
 
-          {/* Enhanced scanning guidelines for iPhone */}
+          {/* Scanning guidelines */}
           {isScanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="text-center text-white bg-black/60 rounded-lg p-4 max-w-sm mx-4">
-                <p className="text-sm mb-2 font-medium">
-                  {isIOSDevice() ? '📱 iPhone Scanning Tips:' : 'Scanning Tips:'}
+              <div className="text-center text-background bg-foreground/80 rounded-xl p-4 max-w-sm mx-4">
+                <p className="text-[13px] mb-2 font-medium">
+                  {isIOSDevice() ? 'iPhone Scanning Tips:' : 'Scanning Tips:'}
                 </p>
-                <ul className="text-xs space-y-1 text-left">
+                <ul className="text-[12px] space-y-1 text-left">
                   {isIOSDevice() ? (
                     <>
-                      <li>• Hold iPhone steady with both hands</li>
-                      <li>• Move closer/farther to focus</li>
-                      <li>• Ensure good lighting (use flashlight if dark)</li>
-                      <li>• Keep barcode flat and centered</li>
-                      <li>• Clean camera lens if blurry</li>
-                      <li>• Try rotating barcode 90° if not scanning</li>
+                      <li>Hold iPhone steady with both hands</li>
+                      <li>Move closer/farther to focus</li>
+                      <li>Ensure good lighting</li>
+                      <li>Keep barcode flat and centered</li>
+                      <li>Clean camera lens if blurry</li>
+                      <li>Try rotating barcode 90° if not scanning</li>
                     </>
                   ) : (
                     <>
-                      <li>• Hold steady, avoid shaking</li>
-                      <li>• Ensure good lighting</li>
-                      <li>• Keep barcode in center box</li>
-                      <li>• Try different angles if needed</li>
+                      <li>Hold steady, avoid shaking</li>
+                      <li>Ensure good lighting</li>
+                      <li>Keep barcode in center box</li>
+                      <li>Try different angles if needed</li>
                     </>
                   )}
                 </ul>
                 {isIOSDevice() && (
-                  <p className="text-xs mt-2 opacity-80">
-                    📈 Using iOS optimized scanner
+                  <p className="text-[12px] mt-2 opacity-80">
+                    Using iOS optimized scanner
                   </p>
                 )}
               </div>
@@ -357,7 +412,11 @@ export const Html5QrcodeScanner = ({
           {/* Enhanced Controls */}
           <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 px-4 z-10">
             {!isScanning ? (
-              <Button onClick={startScanning} size="lg" aria-label="Start scanning">
+              <Button
+                onClick={startScanning}
+                aria-label="Start scanning"
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              >
                 <Scan className="w-4 h-4 mr-2" />
                 Start Enhanced Scanner
               </Button>
@@ -365,25 +424,37 @@ export const Html5QrcodeScanner = ({
               <div className="flex gap-2">
                 {/* Camera switch button */}
                 {availableCameras.length > 1 && (
-                  <Button onClick={switchCamera} variant="outline" size="lg" aria-label="Switch camera">
+                  <Button
+                    onClick={switchCamera}
+                    variant="ghost"
+                    aria-label="Switch camera"
+                    className="h-9 px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground bg-background/80 backdrop-blur-sm"
+                  >
                     <RotateCcw className="w-4 h-4" />
                   </Button>
                 )}
-                
+
                 {/* Torch button (Android Chrome mainly) */}
                 {torchSupported && (
-                  <Button 
-                    onClick={toggleTorch} 
-                    variant={torchOn ? "default" : "outline"} 
-                    size="lg" 
+                  <Button
+                    onClick={toggleTorch}
+                    variant="ghost"
                     aria-label={torchOn ? "Turn off torch" : "Turn on torch"}
+                    className={`h-9 px-3 rounded-lg text-[13px] font-medium bg-background/80 backdrop-blur-sm transition-colors ${
+                      torchOn ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    }`}
                   >
                     {torchOn ? <FlashlightOff className="w-4 h-4" /> : <Flashlight className="w-4 h-4" />}
                   </Button>
                 )}
-                
+
                 {/* Stop button */}
-                <Button onClick={stopScanning} variant="destructive" size="lg" aria-label="Stop scanning">
+                <Button
+                  onClick={cleanup}
+                  variant="ghost"
+                  aria-label="Stop scanning"
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium text-destructive hover:text-destructive/80 bg-background/80 backdrop-blur-sm"
+                >
                   <X className="w-4 h-4 mr-2" />
                   Stop
                 </Button>

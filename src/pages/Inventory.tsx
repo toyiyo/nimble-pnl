@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Search, Package, AlertTriangle, Edit, Trash2, ArrowRightLeft, Trash, Download, X, ArrowUpDown, FileSpreadsheet, FileText, Zap, Camera, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import { useReconciliation } from '@/hooks/useReconciliation';
 import { InventorySettings } from '@/components/InventorySettings';
 import { InventoryValueBadge } from '@/components/InventoryValueBadge';
 import { VirtualizedProductGrid } from '@/components/inventory/VirtualizedProductGrid';
+import { ScanSessionView } from '@/components/inventory/ScanSessionView';
 import { useProducts, CreateProductData, Product } from '@/hooks/useProducts';
 import { useInventoryAudit } from '@/hooks/useInventoryAudit';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -69,6 +70,9 @@ export const Inventory: React.FC = () => {
   const [lastScannedGtin, setLastScannedGtin] = useState<string>('');
   const [currentMode, setCurrentMode] = useState<'scanner' | 'image'>('scanner');
   const [scannerType, setScannerType] = useState<'camera' | 'ai-ocr' | 'keyboard'>('camera');
+  // Incrementing this key forces ScanSessionView to remount after endSession(), giving the user
+  // a fresh scanning session without needing to switch scanner types or leave the page.
+  const [scanSessionKey, setScanSessionKey] = useState(0);
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; url: string } | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -223,6 +227,189 @@ export const Inventory: React.FC = () => {
     setSelectedRestaurant(restaurant);
   };
 
+  // ─── ScanSession helpers (must be before any early return — hooks rules) ──────
+
+  /**
+   * Builds a prefilled new-product shell from GTIN catalog data.
+   * Called by ScanSessionView when a barcode resolves to a product NOT yet in inventory.
+   * Never throws — returns a blank product on failure so the session can still open the form.
+   */
+  const resolveNewProduct = useCallback(async (gtin: string): Promise<Product> => {
+    let result: Awaited<ReturnType<typeof productLookupService.lookupProduct>> | null = null;
+    try {
+      result = await productLookupService.lookupProduct(gtin, findProductByGtin);
+    } catch {
+      result = null;
+    }
+    return {
+      id: '',
+      restaurant_id: selectedRestaurant?.restaurant_id ?? '',
+      gtin,
+      sku: gtin,
+      name: result?.product_name || 'New Product',
+      description: null,
+      brand: result?.brand || '',
+      category: result?.category || '',
+      size_value: result?.package_size_value || null,
+      size_unit: result?.package_size_unit || null,
+      package_qty: result?.package_qty || 1,
+      uom_purchase: null,
+      uom_recipe: null,
+      cost_per_unit: null,
+      current_stock: 0,
+      par_level_min: 0,
+      par_level_max: 0,
+      reorder_point: 0,
+      supplier_name: null,
+      supplier_sku: null,
+      barcode_data: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as Product;
+  }, [selectedRestaurant, findProductByGtin]);
+
+  /**
+   * Pure mutation helper: adds `quantity` to `product.current_stock` via the audit trail.
+   * Returns true on success. No dialog state side-effects.
+   */
+  const persistQuickAdd = useCallback(async (product: Product, quantity: number): Promise<boolean> => {
+    if (!selectedRestaurant) return false;
+    const currentStock = product.current_stock || 0;
+    const ok = await updateProductStockWithAudit(
+      selectedRestaurant.restaurant_id,
+      product.id,
+      currentStock + quantity,
+      currentStock,
+      product.cost_per_unit || 0,
+      'adjustment',
+      `Adjustment - Added ${quantity} via quick scan`,
+      `quick_scan_${Date.now()}`,
+    );
+    if (ok) {
+      // Fire-and-forget: do NOT await refetch so the camera can re-arm immediately.
+      // React Query updates in the background while the next scan is already possible.
+      void refetchProducts();
+      toast({
+        title: 'Inventory updated',
+        description: `Added ${quantity.toFixed(2)} to ${product.name}`,
+        duration: 800,
+      });
+    }
+    return !!ok;
+  }, [selectedRestaurant, updateProductStockWithAudit, refetchProducts, toast]);
+
+  /**
+   * Pure mutation helper: creates or updates `product` with the supplied field `updates`.
+   * Returns true on success. No dialog state side-effects.
+   */
+  const persistProductUpsert = useCallback(
+    async (product: Product, updates: Partial<Product>, quantityToAdd: number): Promise<boolean> => {
+      if (!selectedRestaurant) return false;
+
+      if (!product.id) {
+        // Create new product
+        const productData: CreateProductData = {
+          restaurant_id: product.restaurant_id,
+          gtin: product.gtin,
+          sku: updates.sku || product.sku,
+          name: updates.name || product.name,
+          description: updates.description || product.description,
+          brand: updates.brand || product.brand,
+          category: updates.category || product.category,
+          size_value: updates.size_value || product.size_value,
+          size_unit: updates.size_unit || product.size_unit,
+          package_qty: updates.package_qty || product.package_qty,
+          uom_purchase: updates.uom_purchase || product.uom_purchase,
+          uom_recipe: updates.uom_recipe || product.uom_recipe,
+          image_url: updates.image_url ?? product.image_url ?? null,
+          cost_per_unit: updates.cost_per_unit ?? product.cost_per_unit ?? null,
+          current_stock: quantityToAdd,
+          par_level_min: updates.par_level_min || product.par_level_min,
+          par_level_max: updates.par_level_max || product.par_level_max,
+          reorder_point: updates.reorder_point || product.reorder_point,
+          supplier_name: updates.supplier_name || product.supplier_name,
+          supplier_sku: updates.supplier_sku || product.supplier_sku,
+          supplier_id: updates.supplier_id ?? product.supplier_id ?? null,
+          barcode_data: product.barcode_data,
+        };
+        const created = await createProduct(productData);
+        if (!created) return false;
+        toast({
+          title: 'Product created',
+          description: `${created.name} added to inventory${quantityToAdd > 0 ? ` with ${quantityToAdd.toFixed(2)} units` : ''}`,
+        });
+        return true;
+      }
+
+      // Update existing product (selectedRestaurant already guarded at the top of this function)
+      const currentStock = product.current_stock || 0;
+      const finalStock = updates.current_stock ?? currentStock;
+      const difference = finalStock - currentStock;
+      try {
+        const { error } = await supabase
+          .from('products')
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq('id', product.id)
+          .eq('restaurant_id', selectedRestaurant.restaurant_id);
+        if (error) throw error;
+
+        if (difference !== 0) {
+          const reason = difference === quantityToAdd && quantityToAdd > 0
+            ? 'Adjustment - Inventory addition'
+            : difference >= 0
+              ? 'Adjustment - Manual correction (count increase)'
+              : 'Adjustment - Manual correction (count decrease)';
+          await updateProductStockWithAudit(
+            selectedRestaurant.restaurant_id,
+            product.id,
+            finalStock,
+            currentStock,
+            updates.cost_per_unit || product.cost_per_unit || 0,
+            'adjustment',
+            reason,
+            `adjustment_${product.id}_${Date.now()}`,
+          );
+        }
+
+        const diff = Math.round((finalStock - currentStock) * 100) / 100;
+        if (diff !== 0) {
+          toast({
+            title: 'Inventory updated',
+            description: `Adjustment: ${diff >= 0 ? '+' : ''}${diff.toFixed(2)} units. New total: ${finalStock.toFixed(2)}`,
+            duration: 800,
+          });
+        } else {
+          toast({ title: 'Product updated', description: 'Product information has been updated', duration: 800 });
+        }
+
+        refetchProducts();
+        return true;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Could not save changes';
+        toast({ title: 'Update failed', description: msg, variant: 'destructive' });
+        return false;
+      }
+    },
+    [selectedRestaurant, createProduct, updateProductStockWithAudit, refetchProducts, toast],
+  );
+
+  /** Session callback: throws on failure so ScanSessionView keeps the form open (M3). */
+  const handleSessionAddQuantity = useCallback(async (product: Product, quantity: number) => {
+    const ok = await persistQuickAdd(product, quantity);
+    if (!ok) throw new Error('Save failed');
+  }, [persistQuickAdd]);
+
+  /** Session callback: throws on failure so ScanSessionView keeps the form open (M3). */
+  const handleSessionUpdateProduct = useCallback(
+    async (product: Product, updates: Partial<Product>, quantityToAdd: number) => {
+      const ok = await persistProductUpsert(product, updates, quantityToAdd);
+      if (!ok) throw new Error('Save failed');
+    },
+    [persistProductUpsert],
+  );
+
+  // ─── End ScanSession helpers ──────────────────────────────────────────────────
+
   if (!selectedRestaurant) {
     return (
       <div className="space-y-6">
@@ -245,7 +432,6 @@ export const Inventory: React.FC = () => {
   }
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
-    console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
 
     // Prevent scan spam while we are looking up / editing a newly-scanned product
     if (isLookingUp || showUpdateDialog || showQuickInventoryDialog) {
@@ -367,7 +553,6 @@ export const Inventory: React.FC = () => {
   };
 
   const handleImageCaptured = async (imageBlob: Blob, imageUrl: string) => {
-    console.log('📸 Image captured for analysis');
     setCapturedImage({ blob: imageBlob, url: imageUrl });
     setIsLookingUp(true);
 
@@ -376,8 +561,7 @@ export const Inventory: React.FC = () => {
       const uploadedImageUrl = await uploadImageToStorage(imageBlob);
       
       // Enhanced flow: Grok OCR → Web Search → AI Enhancement
-      console.log('🚀 Starting enhanced product identification...');
-      
+
       // Step 1: Use Grok OCR to extract text
       const { supabase } = await import('@/integrations/supabase/client');
       
@@ -392,8 +576,7 @@ export const Inventory: React.FC = () => {
           ctx.drawImage(img, 0, 0);
           
           const imageData = canvas.toDataURL('image/png');
-          
-          console.log('🔍 Processing with Grok OCR...');
+
           const response = await supabase.functions.invoke('grok-ocr', {
             body: { imageData }
           });
@@ -410,8 +593,6 @@ export const Inventory: React.FC = () => {
         img.src = imageUrl;
       });
       
-      console.log('✅ Grok OCR completed:', grokOCRResult);
-      
       // Use structured data from OCR if available
       const ocrData = (grokOCRResult as any).structuredData;
       
@@ -421,7 +602,6 @@ export const Inventory: React.FC = () => {
       
       if (searchQuery && !ocrData) {
         // Only do web search if we didn't get structured data from OCR
-        console.log('🌐 Searching for product information...');
         const searchResponse = await supabase.functions.invoke('web-search', {
           body: { 
             query: `${searchQuery} product information nutrition ingredients`,
@@ -431,7 +611,6 @@ export const Inventory: React.FC = () => {
         
         if (!searchResponse.error && searchResponse.data?.results?.length > 0) {
           // Step 3: Use AI to enhance product data with search results
-          console.log('🤖 Enhancing product data with AI...');
           const enhanceResponse = await supabase.functions.invoke('enhance-product-ai', {
             body: {
               searchText: searchResponse.data.results.map((r: any) => r.content).join('\n\n'),
@@ -444,7 +623,6 @@ export const Inventory: React.FC = () => {
           
           if (!enhanceResponse.error) {
             enhancedData = enhanceResponse.data;
-            console.log('✅ AI enhancement completed:', enhancedData);
           }
         }
       }
@@ -1018,14 +1196,15 @@ export const Inventory: React.FC = () => {
               <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-8 lg:space-y-0">
                 <div>
                   {scannerType === 'camera' ? (
-                    <SmartBarcodeScanner
-                      onScan={handleBarcodeScanned}
-                      onError={(error) => toast({
-                        title: "Scanner Error",
-                        description: error,
-                        variant: "destructive",
-                      })}
-                      autoStart={true}
+                    <ScanSessionView
+                      key={scanSessionKey}
+                      restaurantId={selectedRestaurant?.restaurant_id ?? null}
+                      findProductByGtin={findProductByGtin}
+                      resolveNewProduct={resolveNewProduct}
+                      onAddQuantity={handleSessionAddQuantity}
+                      onUpdateProduct={handleSessionUpdateProduct}
+                      onEnhance={handleEnhanceProduct}
+                      onExit={() => setScanSessionKey((k) => k + 1)}
                     />
                   ) : scannerType === 'ai-ocr' ? (
                     <OCRBarcodeScanner

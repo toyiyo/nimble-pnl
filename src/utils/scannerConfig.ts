@@ -63,3 +63,35 @@ export const processEAN13ToUPCA = (value: string, format: string): string => {
   }
   return value;
 };
+
+export interface ScanGate {
+  /** True if `value` may be handled now; a value different from the suppressed one clears suppression. */
+  shouldAccept: (value: string) => boolean;
+  /** Suppress `value` until a different value is seen (or reset). */
+  markAccepted: (value: string) => void;
+  /** Clear any suppression. */
+  reset: () => void;
+}
+
+/**
+ * Identity-suppression gate. After a scan is accepted and handled, the SAME code is
+ * suppressed until a genuinely different code appears — so an item still sitting in the
+ * camera frame after save cannot double-add. Unlike `shouldDeduplicateScan`, this has no
+ * time component; it is cleared by a new value or `reset()`.
+ */
+export const createScanGate = (): ScanGate => {
+  let suppressed: string | null = null;
+  return {
+    shouldAccept(value: string): boolean {
+      if (suppressed !== null && value === suppressed) return false;
+      suppressed = null; // a new/different value clears suppression
+      return true;
+    },
+    markAccepted(value: string): void {
+      suppressed = value;
+    },
+    reset(): void {
+      suppressed = null;
+    },
+  };
+};

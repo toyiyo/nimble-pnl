@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Package, Check, Plus, Minus, X, Divide } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
@@ -43,10 +42,10 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   const quickButtons = [6, 10, 20, 24];
   const numpadButtons = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const operatorButtons = [
-    { label: '+', value: '+', icon: Plus },
-    { label: '-', value: '-', icon: Minus },
-    { label: '×', value: '*', icon: X },
-    { label: '÷', value: '/', icon: Divide },
+    { label: '+', value: '+', icon: Plus, ariaLabel: 'Add' },
+    { label: '-', value: '-', icon: Minus, ariaLabel: 'Subtract' },
+    { label: '×', value: '*', icon: X, ariaLabel: 'Multiply' },
+    { label: '÷', value: '/', icon: Divide, ariaLabel: 'Divide' },
   ];
 
   const handleQuickSelect = (value: number) => {
@@ -84,69 +83,78 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Quick Inventory
-          </DialogTitle>
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Package className="h-5 w-5 text-foreground" aria-hidden="true" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">Quick Inventory</DialogTitle>
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                {[product.brand, product.uom_purchase]
+                  .filter(Boolean)
+                  .join(' · ') || 'Enter quantity'}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="px-6 py-5 space-y-4">
           {/* Product Info */}
-          <div className="bg-muted p-4 rounded-lg space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-lg leading-tight break-words">
+          <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+            <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-[14px] font-medium text-foreground leading-tight break-words">
                   {product.name}
                 </h3>
-                {product.brand && (
-                  <p className="text-sm text-muted-foreground">{product.brand}</p>
-                )}
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                  {mode === 'add' ? 'Add' : 'Reconcile'}
+                </span>
               </div>
-              <Badge variant={mode === 'add' ? 'default' : 'secondary'}>
-                {mode === 'add' ? 'Add' : 'Reconcile'}
-              </Badge>
+              {product.brand && (
+                <p className="text-[13px] text-muted-foreground mt-0.5">{product.brand}</p>
+              )}
             </div>
             {product.current_stock !== null && product.current_stock !== undefined && (
-              <div className="text-sm">
+              <div className="px-4 py-2.5 text-[13px]">
                 <span className="text-muted-foreground">Current: </span>
-                <span className="font-medium">{product.current_stock} {product.uom_purchase || 'units'}</span>
+                <span className="font-medium text-foreground">{product.current_stock} {product.uom_purchase || 'units'}</span>
               </div>
             )}
           </div>
 
           {/* Current Total (if adding finds) */}
           {mode === 'add' && currentTotal !== undefined && (
-            <div className="bg-muted p-3 rounded-lg">
-              <span className="text-sm text-muted-foreground">Current Total: </span>
-              <span className="font-semibold">{currentTotal} {product.uom_purchase || 'units'}</span>
+            <div className="rounded-lg border border-border/40 bg-muted/30 px-4 py-2.5 text-[13px]">
+              <span className="text-muted-foreground">Current Total: </span>
+              <span className="font-medium text-foreground">{currentTotal} {product.uom_purchase || 'units'}</span>
             </div>
           )}
 
           {/* Quantity Display */}
-          <div className="bg-primary/5 border-2 border-primary/20 rounded-lg p-4">
+          <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
             <div className="text-center">
-              <div className="text-sm text-muted-foreground mb-1">
+              <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
                 {mode === 'add' ? 'Quantity to Add' : 'Total Quantity'}
               </div>
               {quantity && quantity !== displayResult ? (
                 <>
-                  <div className="text-lg text-muted-foreground font-mono mb-1">
+                  <div className="text-[15px] text-muted-foreground font-mono mb-1">
                     {displayValue}
                   </div>
-                  <div className="text-4xl font-bold text-primary">
+                  <div className="text-[40px] font-semibold text-foreground leading-none">
                     = {displayResult}
                   </div>
                 </>
               ) : (
-                <div className="text-4xl font-bold text-primary">
+                <div className="text-[40px] font-semibold text-foreground leading-none">
                   {displayValue}
                 </div>
               )}
               {mode === 'add' && currentTotal !== undefined && calculatedValue !== null && (
-                <div className="text-sm text-muted-foreground mt-2">
-                  New total: <span className="font-semibold text-foreground">
+                <div className="text-[13px] text-muted-foreground mt-2">
+                  New total: <span className="font-medium text-foreground">
                     {formatCalculatorResult(currentTotal + calculatedValue)}
                   </span> {product.uom_purchase || 'units'}
                 </div>
@@ -155,8 +163,10 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
           </div>
 
           {/* Location Input */}
-          <div className="space-y-2">
-            <Label htmlFor="location">Location (optional)</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="location" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              Location (optional)
+            </Label>
             <LocationCombobox
               restaurantId={restaurantId}
               value={location}
@@ -167,15 +177,14 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
 
           {/* Quick Buttons */}
           <div className="space-y-2">
-            <div className="text-sm font-medium">Quick Select</div>
+            <div className="text-[13px] font-semibold text-foreground">Quick Select</div>
             <div className="grid grid-cols-4 gap-2">
               {quickButtons.map((num) => (
                 <Button
                   key={num}
                   variant="outline"
-                  size="lg"
                   onClick={() => handleQuickSelect(num)}
-                  className="text-lg font-semibold h-14"
+                  className="h-14 rounded-lg text-[15px] font-semibold border-border/40 bg-muted/30 hover:bg-muted/60 text-foreground transition-colors"
                 >
                   {num}
                 </Button>
@@ -185,97 +194,90 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
 
           {/* Number Pad */}
           <div className="space-y-2">
-            <div className="text-sm font-medium">Custom Amount</div>
+            <div className="text-[13px] font-semibold text-foreground">Custom Amount</div>
             <div className="grid grid-cols-4 gap-2">
               {/* Numpad digits - 3 columns */}
               <div className="col-span-3 grid grid-cols-3 gap-2">
                 {numpadButtons.map((digit) => (
                   <Button
                     key={digit}
-                    variant="secondary"
-                    size="lg"
+                    variant="ghost"
                     onClick={() => handleNumpadClick(digit.toString())}
-                    className="text-xl font-semibold h-16"
+                    className="h-16 rounded-lg text-[17px] font-semibold bg-muted/30 hover:bg-muted/60 text-foreground border border-border/40 transition-colors"
                   >
                     {digit}
                   </Button>
                 ))}
                 <Button
-                  variant="secondary"
-                  size="lg"
+                  variant="ghost"
                   onClick={() => handleNumpadClick('.')}
-                  className="text-xl font-semibold h-16"
+                  className="h-16 rounded-lg text-[17px] font-semibold bg-muted/30 hover:bg-muted/60 text-foreground border border-border/40 transition-colors"
                 >
                   .
                 </Button>
                 <Button
-                  variant="secondary"
-                  size="lg"
+                  variant="ghost"
                   onClick={() => handleNumpadClick('0')}
-                  className="text-xl font-semibold h-16"
+                  className="h-16 rounded-lg text-[17px] font-semibold bg-muted/30 hover:bg-muted/60 text-foreground border border-border/40 transition-colors"
                 >
                   0
                 </Button>
                 <Button
-                  variant="secondary"
-                  size="lg"
+                  variant="ghost"
                   onClick={handleBackspace}
-                  className="text-base h-16"
+                  aria-label="Backspace"
+                  className="h-16 rounded-lg text-[15px] bg-muted/30 hover:bg-muted/60 text-foreground border border-border/40 transition-colors"
                 >
                   ⌫
                 </Button>
               </div>
-              
+
               {/* Operator buttons - 1 column */}
               <div className="col-span-1 grid grid-cols-1 gap-2">
                 {operatorButtons.map((op) => (
                   <Button
                     key={op.value}
-                    variant="outline"
-                    size="lg"
+                    variant="ghost"
                     onClick={() => handleNumpadClick(op.value)}
-                    className="text-xl font-semibold h-16"
-                    title={`${op.label} (${op.value === '*' ? 'multiply' : op.value === '/' ? 'divide' : op.value})`}
+                    className="h-16 rounded-lg bg-muted/50 hover:bg-muted text-foreground border border-border/40 transition-colors"
+                    aria-label={op.ariaLabel}
                   >
-                    <op.icon className="h-5 w-5" />
+                    <op.icon className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 ))}
               </div>
             </div>
             <Button
-              variant="secondary"
-              size="lg"
+              variant="ghost"
               onClick={handleClear}
-              className="text-base h-16 w-full"
+              className="h-10 w-full rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground border border-border/40 bg-muted/30 hover:bg-muted/60 transition-colors"
             >
               Clear
             </Button>
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3 pt-2">
+          <div className="grid grid-cols-2 gap-3 pt-1">
             <Button
-              variant="outline"
-              size="lg"
+              variant="ghost"
               onClick={() => onOpenChange(false)}
               disabled={saving}
-              className="h-14"
+              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
             >
               Cancel
             </Button>
             <Button
-              size="lg"
               onClick={handleSave}
               disabled={!isValidExpression || saving}
-              className="h-14 text-lg font-semibold"
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
-              <Check className="h-5 w-5 mr-2" />
+              <Check className="h-4 w-4 mr-1.5" aria-hidden="true" />
               {saving ? 'Saving...' : mode === 'add' ? `Add ${displayResult}` : `Set to ${displayResult}`}
             </Button>
           </div>
 
           {mode === 'reconcile' && (
-            <p className="text-xs text-center text-muted-foreground">
+            <p className="text-[12px] text-center text-muted-foreground">
               This will set the total inventory to {displayResult} {product.uom_purchase || 'units'}
             </p>
           )}

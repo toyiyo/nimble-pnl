@@ -10,6 +10,7 @@ interface MLKitBarcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
   onError?: (error: string) => void;
   className?: string;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 const SUPPORTED_FORMATS = [
@@ -28,13 +29,23 @@ export function MLKitBarcodeScanner({
   onScan,
   onError,
   className = '',
+  active = true,
 }: MLKitBarcodeScannerProps) {
   const [status, setStatus] = useState<'ready' | 'scanning' | 'error'>('ready');
   const [errorMessage, setErrorMessage] = useState('');
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const lastScanRef = useRef<{ value: string; time: number } | null>(null);
 
+  // Latest-ref pattern: always call the current onScan callback, even if it changes identity
+  // between renders (eliminates stale-closure root cause).
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+
+  // Track the previous active value so we only launch on a false→true edge.
+  const prevActiveRef = useRef(false);
+
   const handleScan = useCallback(async () => {
+    if (!active) return;
     setStatus('scanning');
     try {
       const permResult = await BarcodeScanner.requestPermissions();
@@ -60,9 +71,12 @@ export function MLKitBarcodeScanner({
         if (!shouldDeduplicateScan(lastScanRef.current, processedValue)) {
           lastScanRef.current = { value: processedValue, time: Date.now() };
           setLastScanned(processedValue);
-          onScan(processedValue, normalizedFormat);
+          // Use ref so the latest callback is always invoked, not the one captured at creation.
+          onScanRef.current(processedValue, normalizedFormat);
         }
       }
+      // After scan resolves (success or empty result), do NOT auto-relaunch.
+      // The session re-arms us via an active false→true transition.
     } catch (err) {
       setStatus('ready');
       // User cancelled the scanner — not an error
@@ -72,12 +86,19 @@ export function MLKitBarcodeScanner({
       setStatus('error');
       onError?.(msg);
     }
-  }, [onScan, onError]);
+  }, [active, onError]);
 
-  // Auto-start scanning on mount
+  // Launch the native scanner only on a false→true transition of active.
+  // This replaces the unconditional mount auto-start and closes all three root causes:
+  //   1. scan() only fires while armed (active=true)
+  //   2. no auto-relaunch after scan completes (session controls re-arm)
+  //   3. stale-closure eliminated via onScanRef
   useEffect(() => {
-    handleScan();
-  }, []);
+    if (active && !prevActiveRef.current) {
+      handleScan();
+    }
+    prevActiveRef.current = active;
+  }, [active, handleScan]);
 
   if (status === 'error') {
     return (
@@ -85,7 +106,12 @@ export function MLKitBarcodeScanner({
         <CardContent className="flex flex-col items-center justify-center py-8 space-y-3">
           <AlertCircle className="w-8 h-8 text-destructive" />
           <p className="text-[13px] text-muted-foreground">{errorMessage}</p>
-          <Button variant="outline" size="sm" onClick={handleScan}>
+          <Button
+            variant="ghost"
+            onClick={handleScan}
+            disabled={!active}
+            className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
             Try Again
           </Button>
         </CardContent>
@@ -98,7 +124,7 @@ export function MLKitBarcodeScanner({
       <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
         {status === 'scanning' ? (
           <>
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            <Loader2 className="w-8 h-8 text-foreground animate-spin" />
             <p className="text-[13px] text-muted-foreground">Native scanner open...</p>
           </>
         ) : (
@@ -114,7 +140,11 @@ export function MLKitBarcodeScanner({
                 Last scanned: <span className="font-mono font-medium text-foreground">{lastScanned}</span>
               </p>
             )}
-            <Button onClick={handleScan} className="gap-2">
+            <Button
+              onClick={handleScan}
+              disabled={!active}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium gap-2"
+            >
               <Camera className="w-4 h-4" />
               Scan Barcode
             </Button>

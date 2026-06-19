@@ -21,7 +21,7 @@ Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (c
 - Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
 
 ## Current Phase
-Phase 8 complete. Phase 9 (PR) is next.
+Phase 9d complete. 3 fixes committed (eac25431). CI re-triggered.
 
 ## Completed
 - [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)
@@ -36,6 +36,7 @@ Phase 8 complete. Phase 9 (PR) is next.
 - [x] Phase 7b: Fold review findings — 4 fixes: stale DOM (onReject callback), Enter guard ordering, refocus timer leak, dead onError prop; commit 344551f8. 4493/4493 tests green.
 - [x] Phase 7c: CodeRabbit review — 2 minor doc findings fixed (commit 60acd836)
 - [x] Phase 8: verify — all checks pass; 3 pre-existing failures confirmed not caused by this branch
+- [x] Phase 9d: review-comment triage — 3 fixes (refocusTimerId leak, aria-hidden→aria-label, onReject idle-only) + regression test; commit eac25431. Codex P2 suggestion declined with PR reply. 22/22 tests green.
 
 ## Plan tasks
 1. [x] parseScannedBarcode pure helper (src/lib/barcodeScanInput.ts) — commit 6d2081b1
@@ -47,7 +48,18 @@ Phase 8 complete. Phase 9 (PR) is next.
 7. [x] Replace hidden <Input> element with onInput/onCompositionStart/onCompositionEnd wired to assembler — commit 26e8d3bf (done in plan task 4; 19/19 tests green)
 
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/544
+- Phase 9b iteration 1: ALL CHECKS PASS (2026-06-19)
+  - Unit Tests: pass (4m46s)
+  - Database Tests (pgTAP): pass (4m57s)
+  - E2E Tests (Shard 1-4): pass
+  - Merge E2E Reports: pass
+  - SonarCloud Code Analysis: pass
+  - Analyze (actions/javascript-typescript): pass
+  - CodeQL: pass
+  - CodeRabbit: pass (review completed)
+  - Vercel/Netlify: pass
+  - Supabase Preview: skipping (unconfigured)
 
 ## Key Decisions
 - Pure logic in src/lib/ for coverage (src/components/** excluded from Sonar coverage).

@@ -1596,9 +1596,35 @@ const Scheduling = () => {
                                           Inactive
                                         </Badge>
                                       )}
+                                      {isMinorEmployee && (
+                                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium shrink-0">
+                                          Minor
+                                        </span>
+                                      )}
+                                      {off && (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0">
+                                                <CalendarOff className="h-3 w-3" aria-hidden="true" />
+                                                {off.label}
+                                                <span className="sr-only">
+                                                  {` — approved time off${off.reasons.length ? `: ${off.reasons.join(', ')}` : ''}`}
+                                                </span>
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="top" className="text-xs">
+                                              {off.reasons.length ? off.reasons.join(', ') : 'Approved time off'}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                                       {employee.position}
+                                      <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                                        {employee.employment_type === 'part_time' ? 'PT' : 'FT'}
+                                      </span>
                                       {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
                                         <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
                                           {hoursPerEmployee.get(employee.id)}h

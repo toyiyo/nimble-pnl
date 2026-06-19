@@ -59,6 +59,21 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (runId wf_c944a6cb-7b7) — plan 
 - Re-verified: typecheck 0 errors, ESLint 0 warnings, all 3 unit tests GREEN
 - Commit: cff92abf
 
+## Phase 8 (Verify): COMPLETED 2026-06-19
+
+All checks ran against the full suite. Pre-existing failures (NOT introduced by this branch) noted below.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `npm run test` | PASS | 338 test files, 4475 tests passed, 2 skipped |
+| `npm run test:db` | 1 pre-existing FAIL | `32_weekly_brief_queue.sql` test 9 — `enqueue_weekly_brief_jobs` returns 693 instead of 0 (seeded DB has restaurants; not our files) |
+| `npm run test:e2e` | 1 pre-existing FAIL | `scheduling-conflicts.spec.ts:366` `dragAndAssign` / `this day only` button not visible — not our file; 143 passed, 12 skipped |
+| `npm run typecheck` | PASS | 0 errors |
+| `npm run lint` | Pre-existing 1345 errors in codebase | Our changed files (EmployeeClock.tsx + test) = 0 errors/warnings |
+| `npm run build` | PASS | Built in 1m 1s; chunk-size warnings are pre-existing |
+
+Branch changes: src/pages/EmployeeClock.tsx, tests/unit/EmployeeClock.test.tsx — no regressions introduced.
+
 ## CI Status
 - PR: not yet created
 

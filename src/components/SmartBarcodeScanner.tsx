@@ -86,7 +86,7 @@ export function SmartBarcodeScanner({
     return (
       <Card className={className}>
         <CardContent className="flex flex-col items-center justify-center py-12 space-y-4">
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <Loader2 className="w-8 h-8 text-foreground animate-spin" />
           <p className="text-[13px] text-muted-foreground">Initializing scanner...</p>
         </CardContent>
       </Card>
@@ -97,7 +97,7 @@ export function SmartBarcodeScanner({
     <div className="space-y-2">
       <div className="flex justify-center">
         {scannerType === 'native' ? (
-          <Badge className="bg-gradient-to-r from-primary to-accent">
+          <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
             <Sparkles className="w-3 h-3 mr-1" />
             Native Scanner
           </Badge>

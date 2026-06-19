@@ -105,7 +105,11 @@ export function MLKitBarcodeScanner({
         <CardContent className="flex flex-col items-center justify-center py-8 space-y-3">
           <AlertCircle className="w-8 h-8 text-destructive" />
           <p className="text-[13px] text-muted-foreground">{errorMessage}</p>
-          <Button variant="outline" size="sm" onClick={handleScan}>
+          <Button
+            variant="ghost"
+            onClick={handleScan}
+            className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
             Try Again
           </Button>
         </CardContent>
@@ -118,7 +122,7 @@ export function MLKitBarcodeScanner({
       <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
         {status === 'scanning' ? (
           <>
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            <Loader2 className="w-8 h-8 text-foreground animate-spin" />
             <p className="text-[13px] text-muted-foreground">Native scanner open...</p>
           </>
         ) : (
@@ -134,7 +138,10 @@ export function MLKitBarcodeScanner({
                 Last scanned: <span className="font-mono font-medium text-foreground">{lastScanned}</span>
               </p>
             )}
-            <Button onClick={handleScan} className="gap-2">
+            <Button
+              onClick={handleScan}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium gap-2"
+            >
               <Camera className="w-4 h-4" />
               Scan Barcode
             </Button>

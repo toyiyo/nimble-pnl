@@ -338,8 +338,12 @@ export const Html5QrcodeScanner = ({
           {scannerError && !isScanning && (
             <div className="absolute inset-0 bg-background/95 flex items-center justify-center">
               <div className="text-center space-y-4 p-6">
-                <div className="text-destructive text-lg font-medium">{scannerError}</div>
-                <Button onClick={startScanning} variant="outline">
+                <div className="text-[14px] font-medium text-destructive">{scannerError}</div>
+                <Button
+                  onClick={startScanning}
+                  variant="outline"
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium border-border/40"
+                >
                   <Scan className="w-4 h-4 mr-2" />
                   Try Again
                 </Button>
@@ -364,7 +368,7 @@ export const Html5QrcodeScanner = ({
               </div>
 
               {/* Platform indicator */}
-              <Badge variant="secondary" className="text-xs">
+              <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                 {isIOSDevice() ? 'iOS Optimized' :
                  /Android/.test(navigator.userAgent) ? 'Android Optimized' :
                  'Desktop Mode'}
@@ -372,35 +376,35 @@ export const Html5QrcodeScanner = ({
             </div>
           )}
 
-          {/* Enhanced scanning guidelines for iPhone */}
+          {/* Scanning guidelines */}
           {isScanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="text-center text-background bg-foreground/80 rounded-lg p-4 max-w-sm mx-4">
-                <p className="text-sm mb-2 font-medium">
-                  {isIOSDevice() ? '📱 iPhone Scanning Tips:' : 'Scanning Tips:'}
+              <div className="text-center text-background bg-foreground/80 rounded-xl p-4 max-w-sm mx-4">
+                <p className="text-[13px] mb-2 font-medium">
+                  {isIOSDevice() ? 'iPhone Scanning Tips:' : 'Scanning Tips:'}
                 </p>
-                <ul className="text-xs space-y-1 text-left">
+                <ul className="text-[12px] space-y-1 text-left">
                   {isIOSDevice() ? (
                     <>
-                      <li>• Hold iPhone steady with both hands</li>
-                      <li>• Move closer/farther to focus</li>
-                      <li>• Ensure good lighting (use flashlight if dark)</li>
-                      <li>• Keep barcode flat and centered</li>
-                      <li>• Clean camera lens if blurry</li>
-                      <li>• Try rotating barcode 90° if not scanning</li>
+                      <li>Hold iPhone steady with both hands</li>
+                      <li>Move closer/farther to focus</li>
+                      <li>Ensure good lighting</li>
+                      <li>Keep barcode flat and centered</li>
+                      <li>Clean camera lens if blurry</li>
+                      <li>Try rotating barcode 90° if not scanning</li>
                     </>
                   ) : (
                     <>
-                      <li>• Hold steady, avoid shaking</li>
-                      <li>• Ensure good lighting</li>
-                      <li>• Keep barcode in center box</li>
-                      <li>• Try different angles if needed</li>
+                      <li>Hold steady, avoid shaking</li>
+                      <li>Ensure good lighting</li>
+                      <li>Keep barcode in center box</li>
+                      <li>Try different angles if needed</li>
                     </>
                   )}
                 </ul>
                 {isIOSDevice() && (
-                  <p className="text-xs mt-2 opacity-80">
-                    📈 Using iOS optimized scanner
+                  <p className="text-[12px] mt-2 opacity-80">
+                    Using iOS optimized scanner
                   </p>
                 )}
               </div>
@@ -410,7 +414,11 @@ export const Html5QrcodeScanner = ({
           {/* Enhanced Controls */}
           <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 px-4 z-10">
             {!isScanning ? (
-              <Button onClick={startScanning} size="lg" aria-label="Start scanning">
+              <Button
+                onClick={startScanning}
+                aria-label="Start scanning"
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              >
                 <Scan className="w-4 h-4 mr-2" />
                 Start Enhanced Scanner
               </Button>
@@ -418,25 +426,37 @@ export const Html5QrcodeScanner = ({
               <div className="flex gap-2">
                 {/* Camera switch button */}
                 {availableCameras.length > 1 && (
-                  <Button onClick={switchCamera} variant="outline" size="lg" aria-label="Switch camera">
+                  <Button
+                    onClick={switchCamera}
+                    variant="ghost"
+                    aria-label="Switch camera"
+                    className="h-9 px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground bg-background/80 backdrop-blur-sm"
+                  >
                     <RotateCcw className="w-4 h-4" />
                   </Button>
                 )}
-                
+
                 {/* Torch button (Android Chrome mainly) */}
                 {torchSupported && (
-                  <Button 
-                    onClick={toggleTorch} 
-                    variant={torchOn ? "default" : "outline"} 
-                    size="lg" 
+                  <Button
+                    onClick={toggleTorch}
+                    variant="ghost"
                     aria-label={torchOn ? "Turn off torch" : "Turn on torch"}
+                    className={`h-9 px-3 rounded-lg text-[13px] font-medium bg-background/80 backdrop-blur-sm transition-colors ${
+                      torchOn ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    }`}
                   >
                     {torchOn ? <FlashlightOff className="w-4 h-4" /> : <Flashlight className="w-4 h-4" />}
                   </Button>
                 )}
-                
+
                 {/* Stop button */}
-                <Button onClick={stopScanning} variant="destructive" size="lg" aria-label="Stop scanning">
+                <Button
+                  onClick={stopScanning}
+                  variant="ghost"
+                  aria-label="Stop scanning"
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium text-destructive hover:text-destructive/80 bg-background/80 backdrop-blur-sm"
+                >
                   <X className="w-4 h-4 mr-2" />
                   Stop
                 </Button>

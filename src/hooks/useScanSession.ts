@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import type { Product } from '@/hooks/useProducts';
 import { createScanGate } from '@/utils/scannerConfig';
 
@@ -22,6 +23,8 @@ export interface UseScanSessionDeps {
 
 export interface ScanSession {
   state: ScanSessionState;
+  /** Synchronously-mirrored state ref — safe to read in stale-closure callbacks. */
+  stateRef: RefObject<ScanSessionState>;
   isScanning: boolean;
   itemsThisSession: number;
   activeProduct: Product | null;
@@ -106,11 +109,16 @@ export function useScanSession(deps: UseScanSessionDeps): ScanSession {
     if (lastGtinRef.current) gateRef.current.markAccepted(lastGtinRef.current);
     setItems((n) => n + 1);
     setActiveProduct(null);
+    stateRef.current = 'scanning';
     setState('scanning');
   }, []);
 
   const commitFull = useCallback(() => {
     setItems((n) => n + 1);
+    // Synchronously update stateRef BEFORE setState so that any synchronous code
+    // running after commitFull() (e.g. Radix onOpenChange(false) in the same microtask)
+    // reads 'confirmed' from stateRef.current rather than the stale 'fullEntry'.
+    stateRef.current = 'confirmed';
     setState('confirmed');                                  // gate marked on scanNext
   }, []);
 
@@ -136,6 +144,7 @@ export function useScanSession(deps: UseScanSessionDeps): ScanSession {
 
   return {
     state,
+    stateRef,
     isScanning: state === 'scanning',
     itemsThisSession,
     activeProduct,

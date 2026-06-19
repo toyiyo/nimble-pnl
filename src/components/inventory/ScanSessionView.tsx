@@ -41,7 +41,7 @@ export function ScanSessionView(props: ScanSessionViewProps) {
   } = props;
 
   const session = useScanSession({ findProductByGtin, resolveNewProduct, onExit });
-  const { state, isScanning, itemsThisSession, activeProduct } = session;
+  const { state, stateRef, isScanning, itemsThisSession, activeProduct } = session;
 
   const { capture } = session;
   const handleScan = useCallback(
@@ -177,7 +177,9 @@ export function ScanSessionView(props: ScanSessionViewProps) {
         <QuickInventoryDialog
           open={state === 'quickEntry'}
           onOpenChange={(open) => {
-            if (!open && state === 'quickEntry') session.cancelEntry();
+            // Use stateRef.current to avoid stale-closure: when onSave calls commitQuick()
+            // and then the dialog fires onOpenChange(false), state may not have re-rendered yet.
+            if (!open && stateRef.current === 'quickEntry') session.cancelEntry();
           }}
           product={activeProduct}
           mode="add"
@@ -200,7 +202,12 @@ export function ScanSessionView(props: ScanSessionViewProps) {
         <FullEntryForm
           open={state === 'fullEntry'}
           onOpenChange={(open) => {
-            if (!open && state === 'fullEntry') session.cancelEntry();
+            // Use stateRef.current to avoid stale-closure: when onUpdate calls commitFull()
+            // and ProductUpdateDialog then calls onOpenChange(false), React has not yet
+            // re-rendered so `state` in this closure still reads 'fullEntry'. Reading
+            // stateRef.current gives the synchronously-updated value ('confirmed') so we
+            // don't erroneously call cancelEntry() and kill the confirm beat.
+            if (!open && stateRef.current === 'fullEntry') session.cancelEntry();
           }}
           product={activeProduct}
           onEnhance={onEnhance}

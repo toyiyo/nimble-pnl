@@ -71,7 +71,8 @@ test.describe('Inventory scan session', () => {
     await fullForm.getByRole('button', { name: /update product/i }).click();
 
     // ── Step 4: Confirm beat appears after successful save ─────────────────
-    await expect(page.getByText(/items this session/i)).toBeVisible({ timeout: 15000 });
+    // Note: singular "item" for 1 item, plural "items" for 2+; regex matches both.
+    await expect(page.getByText(/items? this session/i)).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(new RegExp(esc(productName), 'i'))).toBeVisible({
       timeout: 10000,
     });
@@ -80,7 +81,7 @@ test.describe('Inventory scan session', () => {
     await page.getByRole('button', { name: /scan next item/i }).click();
 
     // The confirm beat overlay is gone
-    await expect(page.getByText(/items this session/i)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/items? this session/i)).not.toBeVisible({ timeout: 5000 });
 
     // The bridge must still be live (the session is back in scanning state)
     await expect(
@@ -115,8 +116,8 @@ test.describe('Inventory scan session', () => {
     await dialog1.getByLabel(/product name \*/i).fill(`E2E Item A ${rand1}`);
     await dialog1.getByRole('button', { name: /update product/i }).click();
 
-    // Confirm beat shows 1 item
-    await expect(page.getByText(/1 items this session/i)).toBeVisible({ timeout: 15000 });
+    // Confirm beat shows 1 item (singular "item" for first scan)
+    await expect(page.getByText(/1 items? this session/i)).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /scan next item/i }).click();
 
     // Badge updates to 1 added

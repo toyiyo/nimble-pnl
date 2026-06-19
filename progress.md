@@ -21,10 +21,7 @@ Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (p
 - Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
 
 ## Current Phase
-Phase 4-9: dev-build-and-ship workflow RUNNING (background)
-- Run ID: wf_dabc3d15-609  | Task ID: w6aotz32b
-- Plan approved by user. Launched autonomous build.
-- On halt ({stopped:true}): surface phase+reason, fix, resume with resumeFromRunId.
+Phase 4: TDD Build — Tasks 5 completed (component tests + component rewrite committed 26e8d3bf). Next: task 6 (aria-live + copy) if it exists, else Phase 5 (UI review).
 
 ## Completed
 - [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)
@@ -38,8 +35,9 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (background)
 1. [x] parseScannedBarcode pure helper (src/lib/barcodeScanInput.ts) — commit 6d2081b1
 2. [x] createScanAssembler (idle + composition + dispose terminators) — commit 38b26cd5
 3. [x] Append createScanAssembler unit tests (7 cases: iOS path, Android idle, re-arm, short buffer, composition guard, dispose, no double-emit) to tests/unit/barcodeScanInput.test.ts — commit 38b26cd5 (tests bundled with implementation)
-4. Rewire KeyboardBarcodeScanner.tsx (value capture + idle, focus-gated Enter, dispose lifecycle, stable onScan ref)
-5. aria-live scan announcement + cross-platform copy
+4. [x] Rewire KeyboardBarcodeScanner.tsx (value capture + idle, focus-gated Enter, dispose lifecycle, stable onScan ref) — commit 26e8d3bf
+5. [x] tests/unit/KeyboardBarcodeScanner.test.tsx: 4 component tests (iOS Enter, Android idle, stop-scanner dispose, stable onScan ref) — commit 26e8d3bf
+6. aria-live scan announcement + cross-platform copy
 
 ## CI Status
 - PR: not yet created

@@ -65,10 +65,11 @@ export const MIN_TIMEOUT_BARCODE_LENGTH = 3;
 export function parseScannedBarcode(raw: string, minLength: number): string | null;
 
 export interface ScanAssembler {
-  feed(value: string): void;   // latest input value; (re)arms idle timer
-  enter(): void;               // explicit terminator (Enter keydown)
-  reset(): void;               // clear buffer + cancel timer
-  dispose(): void;             // teardown (cancel timer)
+  feed(value: string): void;            // latest input value; (re)arms idle timer unless composing
+  setComposing(active: boolean): void;  // IME guard: suppress idle arm while composing; arm on end
+  enter(): void;                        // explicit terminator (Enter keydown)
+  reset(): void;                        // clear buffer + cancel timer
+  dispose(): void;                      // teardown (cancel timer)
 }
 
 export function createScanAssembler(opts: {
@@ -88,15 +89,44 @@ export function createScanAssembler(opts: {
 - Emit always `reset()`s (clears buffer + cancels timer) → a single scan can't double-emit; Enter
   cancels any pending idle flush.
 
+**IME composition guard (`setComposing`):** Android Chrome may deliver scanner keystrokes as IME
+composition. To avoid the idle timer firing *mid-barcode* (splitting one scan in two),
+`setComposing(true)` suppresses idle-timer arming inside `feed()`; `setComposing(false)` re-arms
+the timer from the latest fed value. If a browser/IME never fires composition events, the flag
+stays `false` and behavior is the pure idle-timer path — i.e., this degrades gracefully and is
+strictly safer when composition *does* occur.
+
 ### Changed: `src/components/KeyboardBarcodeScanner.tsx` (thin adapter)
 
-- Keep the hidden input, focus management, and start/stop UI exactly as-is.
-- Build a `createScanAssembler` with `schedule = window.setTimeout`, `clearScheduled = window.clearTimeout`.
-- `onInput` on the hidden input → `assembler.feed(e.currentTarget.value)` and mirror to the
-  `buffer` display state.
-- `document` `keydown` → only handle Enter: `if (e.key === 'Enter' || e.keyCode === 13) { assembler.enter(); e.preventDefault(); }`. Character keys are **not** `preventDefault`ed (so the value populates). Backspace is handled natively by the input.
+- Keep the hidden input, focus management, and start/stop UI exactly as-is. The hidden input stays
+  **uncontrolled** (no React `value` prop) — its native `.value` is the capture buffer.
+- **Stable `onScan` ref (avoids stale closure — review critical #1):**
+  `const onScanRef = useRef(onScan); useEffect(() => { onScanRef.current = onScan; }, [onScan]);`
+  The assembler is built with `(code, fmt) => onScanRef.current(code, fmt)`, so a changing `onScan`
+  prop does not require recreating the assembler or re-registering listeners.
+- **Assembler lifecycle (avoids timer leak / post-stop emit — review critical #2):** create the
+  assembler once per active session inside the `isActive`-gated `useEffect` (`schedule = window.setTimeout`,
+  `clearScheduled = window.clearTimeout`); the effect cleanup calls `assembler.dispose()`. This
+  single cleanup covers both unmount and the `isActive → false` transition, so a pending idle timer
+  can never fire `onScan` after the scanner is stopped.
+- **Capture:** attach a DOM **`input`** listener (React `onInput`, *not* `onChange`) on the hidden
+  input → `assembler.feed(e.currentTarget.value)` + mirror to the `buffer` display state. `input`
+  fires per keystroke (so the idle timer re-arms correctly); `change` would only fire on blur.
+- **IME composition (review major #1):** wire `compositionstart` → `assembler.setComposing(true)`
+  and `compositionend` → `assembler.setComposing(false)` on the hidden input.
+- **Enter handling (review minors #1/#2):** the `document` `keydown` listener is registered only
+  while `isActive`. Handle Enter only when the hidden input owns focus:
+  `if ((e.key === 'Enter' || e.keyCode === 13) && document.activeElement === hiddenInputRef.current) { assembler.enter(); e.preventDefault(); }`.
+  This avoids swallowing Enter for other focused elements. Character keys are **not**
+  `preventDefault`ed (so the value populates). Backspace is handled natively by the input.
 - On scan: clear the hidden input's `value`, update `lastScan`/`scanCount`, refocus (as today).
-- Replace the `e.key`-accumulation branch; remove the now-redundant manual Backspace handling.
+- Remove the `e.key`-accumulation branch and the now-redundant manual Backspace handling.
+- **Accessibility (review major #3):** add an `aria-live="polite" className="sr-only"` region that
+  announces the last scanned code, so screen-reader users get scan confirmation (today it is
+  visual-only). Inventory scanning is error-costly; this is a cheap, correct uplift.
+- **UI copy (review minor #3):** the component title (`"Keyboard Scanner (iOS Compatible)"`) and the
+  setup blurb claim iOS-only support. Update copy to reflect that it now works on Android too (e.g.
+  drop "(iOS Compatible)", generalize "Works on all iOS devices" / "Pair scanner in iOS Settings").
 
 ## Edge Cases & Decided Trade-offs
 
@@ -105,8 +135,14 @@ export function createScanAssembler(opts: {
 - **Slow scanner (inter-char gap > idleMs):** would split a barcode. Mitigated by re-arming the
   timer on each keystroke (only fires after `idleMs` of silence) and a generous 80 ms default.
   `SCAN_IDLE_MS` is a named constant for real-device tuning.
+- **Mid-barcode IME composition gap:** if Android commits the barcode in batches with a gap
+  > `idleMs`, the idle timer could split it. Guarded by `setComposing` — while composing, the idle
+  timer is suppressed and only armed at `compositionend`.
 - **Trailing IME commit after Enter:** input value already cleared on reset → trailing fragment is
   short → below min-length → no spurious emit.
+- **`idleMs` as a prop:** *deferred.* `createScanAssembler` accepts `idleMs`, but it is not plumbed
+  through `KeyboardBarcodeScannerProps` (no caller needs per-instance tuning yet). The named
+  `SCAN_IDLE_MS` constant is the single edit point until a caller requires device-specific tuning.
 
 ## Testing
 
@@ -118,10 +154,16 @@ export function createScanAssembler(opts: {
     - Android path: `feed` chars → advance `idleMs` → one emit.
     - No-double-emit; stray short buffer rejected on timeout but emitted on explicit enter;
       re-arm resets the idle window.
+    - Composition guard: `setComposing(true)` → `feed` → advancing time does **not** emit;
+      `setComposing(false)` arms the idle flush → one emit.
+    - `dispose()` cancels a pending idle timer → advancing time emits nothing (no post-stop emit).
 - **`tests/unit/KeyboardBarcodeScanner.test.tsx`** (component integration; excluded from coverage):
   - iOS sim: dispatch `keydown` `Enter` after setting input value → `onScan` once with the code.
   - Android sim: fire `input` events (value set) with `keydown` `{key:'Unidentified', keyCode:229}`
     and **no** Enter → advance timers → `onScan` once.
+  - Lifecycle: stopping the scanner (`isActive → false`) before the idle timer fires → no `onScan`
+    (asserts dispose-on-stop). Changing the `onScan` prop mid-session → the new callback is invoked
+    (asserts the stable-ref pattern, review critical #1).
   - **Caveat (lesson 2026-05-26):** jsdom cannot reproduce the real Android IME; these tests
     *simulate* it. Ground truth remains the PostHog evidence and a real-device check.
 

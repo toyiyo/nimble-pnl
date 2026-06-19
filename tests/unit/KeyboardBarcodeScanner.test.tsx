@@ -76,4 +76,18 @@ describe('KeyboardBarcodeScanner', () => {
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledWith('012345678905', 'KeyboardHID');
   });
+
+  it('announces the last scan to screen readers via an aria-live region', () => {
+    const onScan = vi.fn();
+    const { container } = render(<KeyboardBarcodeScanner onScan={onScan} autoStart />);
+    const input = getHiddenInput(container);
+    act(() => {
+      input.focus();
+      fireEvent.input(input, { target: { value: '012345678905' } });
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 13 });
+    });
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live?.textContent).toContain('012345678905');
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildWeekTimeOff } from '@/lib/scheduleTimeOff';
+import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import type { TimeOffRequest } from '@/types/scheduling';
 
 // Mon 2026-06-22 .. Sun 2026-06-28
@@ -82,5 +82,34 @@ describe('buildWeekTimeOff', () => {
     // weekDayKeys are arbitrary plain strings; overlap is lexicographic.
     const map = buildWeekTimeOff([makeReq({ start_date: '2026-06-23', end_date: '2026-06-25' })], WEEK);
     expect([...map.get('e1')!.offDayKeys]).toEqual(['2026-06-23','2026-06-24','2026-06-25']);
+  });
+});
+
+describe('summarizeOff', () => {
+  it('labels a single off-day with the weekday abbr', () => {
+    const map = buildWeekTimeOff([makeReq({ start_date: '2026-06-22', end_date: '2026-06-22' })], WEEK);
+    expect(summarizeOff(map.get('e1')!).label).toBe('Off Mon');
+  });
+
+  it('labels a contiguous run as first–last', () => {
+    const map = buildWeekTimeOff([makeReq({ start_date: '2026-06-24', end_date: '2026-06-26' })], WEEK);
+    expect(summarizeOff(map.get('e1')!).label).toBe('Off Wed–Fri');
+  });
+
+  it('labels non-contiguous off-days by total count', () => {
+    const map = buildWeekTimeOff([
+      makeReq({ id: 'a', start_date: '2026-06-22', end_date: '2026-06-22' }),
+      makeReq({ id: 'b', start_date: '2026-06-25', end_date: '2026-06-26' }),
+    ], WEEK);
+    expect(summarizeOff(map.get('e1')!).label).toBe('Off 3 days');
+  });
+
+  it('collects distinct reasons across spans', () => {
+    const map = buildWeekTimeOff([
+      makeReq({ id: 'a', start_date: '2026-06-22', end_date: '2026-06-22', reason: 'Personal' }),
+      makeReq({ id: 'b', start_date: '2026-06-25', end_date: '2026-06-25', reason: 'Personal' }),
+      makeReq({ id: 'c', start_date: '2026-06-26', end_date: '2026-06-26', reason: 'Family' }),
+    ], WEEK);
+    expect(summarizeOff(map.get('e1')!).reasons.sort()).toEqual(['Family', 'Personal']);
   });
 });

@@ -1218,11 +1218,6 @@ export const Inventory: React.FC = () => {
                   ) : (
                     <KeyboardBarcodeScanner
                       onScan={handleBarcodeScanned}
-                      onError={(error) => toast({
-                        title: "Scanner Error",
-                        description: error,
-                        variant: "destructive",
-                      })}
                       autoStart={true}
                     />
                   )}

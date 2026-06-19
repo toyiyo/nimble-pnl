@@ -44,6 +44,9 @@ describe('Scheduling roster context — day cells', () => {
     expect(SRC).toMatch(/offDayKeys\.has\(/);
     expect(SRC).toMatch(/isRunStart/);
   });
+  it('excludes cancelled shifts when computing the conflict state for a time-off day', () => {
+    expect(SRC).toMatch(/dayShifts\.some\(s => s\.status !== 'cancelled'\)/);
+  });
   it('renders accent bars (info normally, destructive on conflict) and sr-only state', () => {
     expect(SRC).toMatch(/border-l-2 border-info/);
     expect(SRC).toMatch(/border-l-2 border-destructive/);

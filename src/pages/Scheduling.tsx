@@ -1705,7 +1705,7 @@ const Scheduling = () => {
                               const dayIsToday = isToday(day);
                               const dayKey = format(day, 'yyyy-MM-dd');
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
-                              const hasShift = dayShifts.length > 0;
+                              const hasShift = dayShifts.some(s => s.status !== 'cancelled');
                               const isRunStart = !!empOff?.spans.some((s) => s.startKey === dayKey);
                               return (
                                 <DroppableDayCell

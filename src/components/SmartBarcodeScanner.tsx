@@ -12,6 +12,7 @@ interface SmartBarcodeScannerProps {
   onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 type ScannerType = 'mlkit' | 'native' | 'fallback' | 'checking';
@@ -26,6 +27,7 @@ export function SmartBarcodeScanner({
   onError,
   className = '',
   autoStart = false,
+  active = true,
 }: SmartBarcodeScannerProps) {
   const [scannerType, setScannerType] = useState<ScannerType>(detectInitialScannerType);
 
@@ -74,6 +76,7 @@ export function SmartBarcodeScanner({
           onScan={onScan}
           onError={onError}
           className={className}
+          active={active}
         />
       </div>
     );
@@ -112,6 +115,7 @@ export function SmartBarcodeScanner({
           onError={onError}
           className={className}
           autoStart={autoStart}
+          active={active}
         />
       ) : (
         <Html5QrcodeScanner
@@ -119,6 +123,7 @@ export function SmartBarcodeScanner({
           onError={onError}
           className={className}
           autoStart={autoStart}
+          active={active}
         />
       )}
     </div>

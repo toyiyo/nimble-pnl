@@ -38,6 +38,7 @@ Phase 4: TDD Build — All 6 plan tasks completed. Phase 5 (UI review) is next.
 4. [x] Rewire KeyboardBarcodeScanner.tsx (value capture + idle, focus-gated Enter, dispose lifecycle, stable onScan ref) — commit 26e8d3bf
 5. [x] tests/unit/KeyboardBarcodeScanner.test.tsx: 4 component tests (iOS Enter, Android idle, stop-scanner dispose, stable onScan ref) — commit 26e8d3bf
 6. [x] aria-live scan announcement + cross-platform copy — commit f50e5dec
+7. [x] Replace hidden <Input> element with onInput/onCompositionStart/onCompositionEnd wired to assembler — commit 26e8d3bf (done in plan task 4; 19/19 tests green)
 
 ## CI Status
 - PR: not yet created

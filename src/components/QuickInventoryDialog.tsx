@@ -242,7 +242,7 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
                     className="h-16 rounded-lg bg-muted/50 hover:bg-muted text-foreground border border-border/40 transition-colors"
                     aria-label={op.ariaLabel}
                   >
-                    <op.icon className="h-4 w-4" />
+                    <op.icon className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 ))}
               </div>

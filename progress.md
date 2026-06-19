@@ -75,7 +75,8 @@ All checks ran against the full suite. Pre-existing failures (NOT introduced by 
 Branch changes: src/pages/EmployeeClock.tsx, tests/unit/EmployeeClock.test.tsx — no regressions introduced.
 
 ## CI Status
-- PR: not yet created
+- PR: #543 — https://github.com/toyiyo/nimble-pnl/pull/543 (opened 2026-06-19)
+- Phase 9a (Ship): COMPLETED — branch pushed, PR created
 
 ## Key Decisions
 - Scope: edit src/pages/EmployeeClock.tsx ONLY. Clock becomes Clock In / Clock Out.

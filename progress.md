@@ -5,7 +5,7 @@ Design: docs/superpowers/specs/2026-06-18-inventory-scan-session-redesign-design
 Plan: docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (committed 3ec7b07d)
 
 ## Current Phase
-Phase 8: Verify — COMPLETE (iteration 1)
+Phase 9a: Ship — COMPLETE (PR #545 opened)
 - Unit tests: 344 files, 4524 tests PASS
 - DB tests: 1374 tests pass (1 pre-existing failure: enqueue_weekly_brief_jobs data-state issue)
 - E2E tests: 145 pass, 1 pre-existing failure (scheduling-conflicts drag), 12 skipped
@@ -55,7 +55,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
 - [ ] Phase 10: Retrospective
 
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/545 (open)
 
 ## Blockers
 - none

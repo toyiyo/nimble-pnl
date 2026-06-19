@@ -10,7 +10,7 @@ interface MLKitBarcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
   onError?: (error: string) => void;
   className?: string;
-  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat (full impl in Task 6)
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 const SUPPORTED_FORMATS = [
@@ -29,12 +29,20 @@ export function MLKitBarcodeScanner({
   onScan,
   onError,
   className = '',
-  active: _active = true,  
+  active = true,
 }: MLKitBarcodeScannerProps) {
   const [status, setStatus] = useState<'ready' | 'scanning' | 'error'>('ready');
   const [errorMessage, setErrorMessage] = useState('');
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const lastScanRef = useRef<{ value: string; time: number } | null>(null);
+
+  // Latest-ref pattern: always call the current onScan callback, even if it changes identity
+  // between renders (eliminates stale-closure root cause).
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+
+  // Track the previous active value so we only launch on a false→true edge.
+  const prevActiveRef = useRef(false);
 
   const handleScan = useCallback(async () => {
     setStatus('scanning');
@@ -62,9 +70,12 @@ export function MLKitBarcodeScanner({
         if (!shouldDeduplicateScan(lastScanRef.current, processedValue)) {
           lastScanRef.current = { value: processedValue, time: Date.now() };
           setLastScanned(processedValue);
-          onScan(processedValue, normalizedFormat);
+          // Use ref so the latest callback is always invoked, not the one captured at creation.
+          onScanRef.current(processedValue, normalizedFormat);
         }
       }
+      // After scan resolves (success or empty result), do NOT auto-relaunch.
+      // The session re-arms us via an active false→true transition.
     } catch (err) {
       setStatus('ready');
       // User cancelled the scanner — not an error
@@ -74,12 +85,19 @@ export function MLKitBarcodeScanner({
       setStatus('error');
       onError?.(msg);
     }
-  }, [onScan, onError]);
+  }, [onError]);
 
-  // Auto-start scanning on mount
+  // Launch the native scanner only on a false→true transition of active.
+  // This replaces the unconditional mount auto-start and closes all three root causes:
+  //   1. scan() only fires while armed (active=true)
+  //   2. no auto-relaunch after scan completes (session controls re-arm)
+  //   3. stale-closure eliminated via onScanRef
   useEffect(() => {
-    handleScan();
-  }, []);
+    if (active && !prevActiveRef.current) {
+      handleScan();
+    }
+    prevActiveRef.current = active;
+  }, [active, handleScan]);
 
   if (status === 'error') {
     return (

@@ -454,11 +454,6 @@ export function ReconciliationSession({ restaurantId, onComplete, onCancel }: Re
           ) : (
             <KeyboardBarcodeScanner
               onScan={(barcode) => handleBarcodeScan(barcode)}
-              onError={(error) => toast({ 
-                title: 'Scanner error', 
-                description: error, 
-                variant: 'destructive' 
-              })}
               autoStart={true}
             />
           )}

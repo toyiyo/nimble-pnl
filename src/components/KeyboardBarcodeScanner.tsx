@@ -37,7 +37,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
     const input = hiddenInputRef.current;
 
     // Track the post-scan refocus timer so the effect cleanup can cancel it.
-    let refocusTimerId: ReturnType<typeof window.setTimeout> | null = null;
+    let refocusTimerId: number | null = null;
 
     const assembler = createScanAssembler({
       onScan: (code, format) => {
@@ -49,7 +49,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
         // Allow the DOM to settle before refocusing the capture input.
         refocusTimerId = window.setTimeout(() => { refocusTimerId = null; input?.focus(); }, 100);
       },
-      schedule: (cb, ms) => window.setTimeout(cb, ms) as unknown as number,
+      schedule: (cb, ms) => window.setTimeout(cb, ms),
       clearScheduled: (id) => window.clearTimeout(id),
       onReject: () => {
         // Clear the hidden input when an idle-timeout buffer is rejected (too short).

@@ -18,6 +18,43 @@ export interface EmployeeWeekTimeOff {
 /** Normalize a DB date (DATE or accidental datetime) to 'yyyy-MM-dd'. */
 const dayPart = (d: string): string => d.slice(0, 10);
 
+/** Get-or-create the reason set for an (employee, day) pair. */
+function reasonSetFor(
+  offByEmployee: Map<string, Map<string, Set<string>>>,
+  employeeId: string,
+  dayKey: string,
+): Set<string> {
+  let days = offByEmployee.get(employeeId);
+  if (!days) {
+    days = new Map();
+    offByEmployee.set(employeeId, days);
+  }
+  let reasons = days.get(dayKey);
+  if (!reasons) {
+    reasons = new Set();
+    days.set(dayKey, reasons);
+  }
+  return reasons;
+}
+
+/** Record every in-week day covered by one approved request. */
+function collectRequestOffDays(
+  offByEmployee: Map<string, Map<string, Set<string>>>,
+  req: TimeOffRequest,
+  weekDayKeys: string[],
+): void {
+  const start = dayPart(req.start_date);
+  const end = dayPart(req.end_date);
+  if (start > end) return; // defensive; DB CHECK enforces end >= start
+  const reason = req.reason?.trim();
+  for (const dayKey of weekDayKeys) {
+    if (start <= dayKey && dayKey <= end) {
+      const reasons = reasonSetFor(offByEmployee, req.employee_id, dayKey);
+      if (reason) reasons.add(reason);
+    }
+  }
+}
+
 /**
  * Build per-employee approved-time-off context for the visualized week.
  *
@@ -38,25 +75,8 @@ export function buildWeekTimeOff(
   const offByEmployee = new Map<string, Map<string, Set<string>>>();
 
   for (const req of requests) {
-    if (req.status !== 'approved') continue;
-    const start = dayPart(req.start_date);
-    const end = dayPart(req.end_date);
-    if (start > end) continue; // defensive; DB CHECK enforces end >= start
-    for (const dayKey of weekDayKeys) {
-      if (start <= dayKey && dayKey <= end) {
-        let days = offByEmployee.get(req.employee_id);
-        if (!days) {
-          days = new Map();
-          offByEmployee.set(req.employee_id, days);
-        }
-        let reasons = days.get(dayKey);
-        if (!reasons) {
-          reasons = new Set();
-          days.set(dayKey, reasons);
-        }
-        const reason = req.reason?.trim();
-        if (reason) reasons.add(reason);
-      }
+    if (req.status === 'approved') {
+      collectRequestOffDays(offByEmployee, req, weekDayKeys);
     }
   }
 
@@ -70,37 +90,42 @@ export function buildWeekTimeOff(
   return result;
 }
 
+interface RunAccumulator {
+  startKey: string;
+  endKey: string;
+  dayCount: number;
+  reasons: Set<string>;
+}
+
+function finalizeRun(run: RunAccumulator): TimeOffSpan {
+  return {
+    startKey: run.startKey,
+    endKey: run.endKey,
+    dayCount: run.dayCount,
+    reasons: [...run.reasons],
+  };
+}
+
 function buildSpans(weekDayKeys: string[], days: Map<string, Set<string>>): TimeOffSpan[] {
   const spans: TimeOffSpan[] = [];
-  let current: { startKey: string; endKey: string; dayCount: number; reasons: Set<string> } | null = null;
-
-  const flush = () => {
-    if (current) {
-      spans.push({
-        startKey: current.startKey,
-        endKey: current.endKey,
-        dayCount: current.dayCount,
-        reasons: [...current.reasons],
-      });
-      current = null;
-    }
-  };
+  let run: RunAccumulator | null = null;
 
   for (const dayKey of weekDayKeys) {
     const reasons = days.get(dayKey);
-    if (reasons) {
-      if (current) {
-        current.endKey = dayKey;
-        current.dayCount += 1;
-        reasons.forEach((r) => current!.reasons.add(r));
-      } else {
-        current = { startKey: dayKey, endKey: dayKey, dayCount: 1, reasons: new Set(reasons) };
-      }
+    if (!reasons) {
+      if (run) spans.push(finalizeRun(run));
+      run = null;
+      continue;
+    }
+    if (run) {
+      run.endKey = dayKey;
+      run.dayCount += 1;
+      for (const r of reasons) run.reasons.add(r);
     } else {
-      flush();
+      run = { startKey: dayKey, endKey: dayKey, dayCount: 1, reasons: new Set(reasons) };
     }
   }
-  flush();
+  if (run) spans.push(finalizeRun(run));
   return spans;
 }
 

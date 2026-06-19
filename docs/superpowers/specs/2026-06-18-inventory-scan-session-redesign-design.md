@@ -59,11 +59,13 @@ There are three compounding root causes:
 `MLKitBarcodeScanner`** gain a controlled boolean prop **`active`**:
 
 - While `active === true`, the engine scans.
-- On the first detection, the engine calls `onScan` **exactly once**, then **suspends itself**
-  (native: `cancelAnimationFrame` + stop the loop; html5: `.stop()`). It will not emit again
-  until re-armed.
-- **Re-arming** = a `false → true` transition of `active`. The session sets `active=false` on
-  capture and `active=true` when it returns to `scanning`, so the edge always re-arms.
+- The loop is gated on a synchronously-updated `activeRef`. The session sets `active=false` the
+  moment a barcode is captured (the `scanning → lookingUp` transition), which cancels the loop
+  before the next animation frame and freezes the last camera frame. The engine does **not**
+  self-disarm on fire — that would deadlock when the gate rejects a lingering barcode (see
+  memory/lessons.md 2026-06-19). Instead, the session externally gates the loop via `activeRef`.
+- **Re-arming** = a `false → true` transition of `active`. The session sets `active=true` when it
+  returns to `scanning` state, so the edge always re-arms cleanly.
 - **`MLKitBarcodeScanner` (Capacitor native) must join the contract (M6).** It is a modal
   one-shot today and **auto-starts on mount** (`useEffect` → `handleScan()`). Under the contract
   it initiates `BarcodeScanner.scan()` only while `active`, emits once, and re-scans only on a
@@ -79,8 +81,9 @@ There are three compounding root causes:
 - `autoStart` is retained for backward compatibility, but the session drives `active`
   explicitly.
 
-This makes correctness independent of React's async state-update timing: even with an
-in-flight animation frame, self-suspend-on-fire guarantees at most one emission per armed cycle.
+This makes correctness independent of React's async state-update timing: the `activeRef` is
+updated synchronously on capture, so even an in-flight animation frame sees the gate closed
+before it can emit again. At most one emission fires per armed cycle.
 It closes all three root causes at the source.
 
 ## State machine (`useScanSession`)

@@ -12,18 +12,18 @@ import type { Product } from '@/hooks/useProducts';
 // Dialog primitives — render with the correct ARIA roles so we can assert
 // aria-describedby / aria-label on the real DOM.
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children, open }: any) =>
+  Dialog: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
     open
       ? React.createElement('div', { role: 'dialog' }, children)
       : null,
-  DialogContent: ({ children }: any) =>
+  DialogContent: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', { 'data-testid': 'dialog-content' }, children),
-  DialogHeader: ({ children }: any) =>
+  DialogHeader: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', { 'data-testid': 'dialog-header' }, children),
-  DialogTitle: ({ children }: any) =>
+  DialogTitle: ({ children }: { children: React.ReactNode }) =>
     React.createElement('h2', { id: 'dialog-title' }, children),
   // DialogDescription must be rendered with the correct id so aria-describedby works
-  DialogDescription: ({ children, className }: any) =>
+  DialogDescription: ({ children, className }: { children: React.ReactNode; className?: string }) =>
     React.createElement(
       'p',
       { id: 'dialog-description', 'data-testid': 'dialog-description', className },
@@ -32,7 +32,14 @@ vi.mock('@/components/ui/dialog', () => ({
 }));
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, disabled, title, 'aria-label': ariaLabel, className }: any) =>
+  Button: ({ children, onClick, disabled, title, 'aria-label': ariaLabel, className }: {
+    children: React.ReactNode;
+    onClick?: React.MouseEventHandler<HTMLButtonElement>;
+    disabled?: boolean;
+    title?: string;
+    'aria-label'?: string;
+    className?: string;
+  }) =>
     React.createElement(
       'button',
       { onClick, disabled, title, 'aria-label': ariaLabel, className },
@@ -41,21 +48,25 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 vi.mock('@/components/ui/badge', () => ({
-  Badge: ({ children }: any) => React.createElement('span', { 'data-testid': 'badge' }, children),
+  Badge: ({ children }: { children: React.ReactNode }) => React.createElement('span', { 'data-testid': 'badge' }, children),
 }));
 
 vi.mock('@/components/ui/label', () => ({
-  Label: ({ children, htmlFor }: any) =>
+  Label: ({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) =>
     React.createElement('label', { htmlFor }, children),
 }));
 
 vi.mock('@/components/LocationCombobox', () => ({
-  LocationCombobox: ({ value, onValueChange, placeholder }: any) =>
+  LocationCombobox: ({ value, onValueChange, placeholder }: {
+    value?: string;
+    onValueChange?: (v: string) => void;
+    placeholder?: string;
+  }) =>
     React.createElement('input', {
       'data-testid': 'location-combobox',
       value: value ?? '',
       placeholder,
-      onChange: (e: any) => onValueChange?.(e.target.value),
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => onValueChange?.(e.target.value),
     }),
 }));
 

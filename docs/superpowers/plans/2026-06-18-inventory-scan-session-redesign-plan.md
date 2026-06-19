@@ -1222,20 +1222,20 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **Files:**
 - Create: `tests/e2e/inventory-scan-session.spec.ts`
 
-Real cameras aren't available in CI, so stub `SmartBarcodeScanner` emissions via a test hook. The app already gates the camera path behind a scanner-type selector; this test drives the session by dispatching synthetic scans through a `window.__emitScan` test bridge added under `import.meta.env.MODE === 'test'`.
+Real cameras aren't available in CI, so stub `SmartBarcodeScanner` emissions via a test hook. The app already gates the camera path behind a scanner-type selector; this test drives the session by dispatching synthetic scans through a `window.__emitScan` test bridge added under a compile-time `import.meta.env.PROD` guard (Vite replaces this with `true` at build time, so the bridge is tree-shaken out of the production bundle entirely).
 
 - [ ] **Step 1: Add a test-only emit bridge in `ScanSessionView`**
 
 ```tsx
   // inside ScanSessionView, after `session` is created
   useEffect(() => {
-    if (import.meta.env.MODE !== 'test' && !(window as any).Cypress && !(window as any).__E2E__) return;
-    (window as any).__emitScan = (gtin: string) => handleScan(gtin, 'EAN_13');
-    return () => { delete (window as any).__emitScan; };
+    if (import.meta.env.PROD) return;
+    (window as any).__emitScan = (gtin: string) => handleScan(gtin, 'EAN_13'); // test-only bridge
+    return () => { delete (window as any).__emitScan; }; // test-only cleanup
   }, [handleScan]);
 ```
 
-> Guard it so the bridge never ships in production. Set `window.__E2E__ = true` from the Playwright fixture.
+> The compile-time `import.meta.env.PROD` guard is used (not a runtime `MODE === 'test'` check) so the bridge body is dead-code-eliminated from production builds by Vite. No Playwright fixture flag is needed to activate it — the bridge is simply absent in prod.
 
 - [ ] **Step 2: Write the E2E spec**
 

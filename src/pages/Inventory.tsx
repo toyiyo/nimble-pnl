@@ -342,6 +342,7 @@ export const Inventory: React.FC = () => {
       }
 
       // Update existing product
+      if (!selectedRestaurant) return false;
       const currentStock = product.current_stock || 0;
       const finalStock = updates.current_stock ?? currentStock;
       const difference = finalStock - currentStock;
@@ -349,7 +350,8 @@ export const Inventory: React.FC = () => {
         const { error } = await supabase
           .from('products')
           .update({ ...updates, updated_at: new Date().toISOString() })
-          .eq('id', product.id);
+          .eq('id', product.id)
+          .eq('restaurant_id', selectedRestaurant.restaurant_id);
         if (error) throw error;
 
         if (difference !== 0) {

@@ -32,7 +32,7 @@ beforeAll(() => {
 // Mock the scanner: expose buttons that fire onScan, and reflect `active` for
 // assertions via a data attribute.
 vi.mock('@/components/SmartBarcodeScanner', () => ({
-  SmartBarcodeScanner: ({ onScan, active }: any) => (
+  SmartBarcodeScanner: ({ onScan, active }: { onScan: (gtin: string, format: string) => void; active?: boolean }) => (
     <div data-testid="scanner" data-active={String(active)}>
       <button onClick={() => onScan('111', 'EAN_13')}>emit-known</button>
       <button onClick={() => onScan('999', 'EAN_13')}>emit-new</button>
@@ -42,7 +42,12 @@ vi.mock('@/components/SmartBarcodeScanner', () => ({
 
 // QuickInventoryDialog — a minimal fake that shows "Quick Inventory" when open
 vi.mock('@/components/QuickInventoryDialog', () => ({
-  QuickInventoryDialog: ({ open, onOpenChange, product, onSave }: any) =>
+  QuickInventoryDialog: ({ open, onOpenChange, product, onSave }: {
+    open?: boolean;
+    onOpenChange: (open: boolean) => void;
+    product?: { name?: string };
+    onSave: (qty: number) => Promise<void>;
+  }) =>
     open ? (
       <div data-testid="quick-dialog" role="dialog">
         <p>Quick Inventory</p>
@@ -61,7 +66,12 @@ vi.mock('@/components/QuickInventoryDialog', () => ({
 
 // ProductUpdateDialog and ProductUpdateSheet — minimal fakes
 vi.mock('@/components/ProductUpdateDialog', () => ({
-  ProductUpdateDialog: ({ open, onOpenChange, product, onUpdate }: any) =>
+  ProductUpdateDialog: ({ open, onOpenChange, product, onUpdate }: {
+    open?: boolean;
+    onOpenChange: (open: boolean) => void;
+    product?: { name?: string };
+    onUpdate: (updates: Record<string, unknown>, qty: number) => Promise<void>;
+  }) =>
     open ? (
       <div data-testid="update-dialog" role="dialog">
         <p>Product Update Dialog</p>
@@ -76,7 +86,12 @@ vi.mock('@/components/ProductUpdateDialog', () => ({
         <button onClick={() => onOpenChange(false)}>cancel-update</button>
       </div>
     ) : null,
-  ProductUpdateSheet: ({ open, onOpenChange, product, onUpdate }: any) =>
+  ProductUpdateSheet: ({ open, onOpenChange, product, onUpdate }: {
+    open?: boolean;
+    onOpenChange: (open: boolean) => void;
+    product?: { name?: string };
+    onUpdate: (updates: Record<string, unknown>, qty: number) => Promise<void>;
+  }) =>
     open ? (
       <div data-testid="update-sheet" role="dialog">
         <p>Product Update Sheet</p>
@@ -95,7 +110,7 @@ vi.mock('@/components/ProductUpdateDialog', () => ({
 
 // lucide-react icons — simple stubs
 vi.mock('lucide-react', () => {
-  const icon = (name: string) => ({ className, 'aria-hidden': ariaHidden }: any) =>
+  const icon = (name: string) => ({ className, 'aria-hidden': ariaHidden }: { className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }) =>
     React.createElement('svg', { 'data-testid': `icon-${name}`, 'aria-hidden': ariaHidden, className });
   return {
     Package: icon('package'),

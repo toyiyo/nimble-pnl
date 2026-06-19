@@ -45,6 +45,7 @@ export function MLKitBarcodeScanner({
   const prevActiveRef = useRef(false);
 
   const handleScan = useCallback(async () => {
+    if (!active) return;
     setStatus('scanning');
     try {
       const permResult = await BarcodeScanner.requestPermissions();
@@ -85,7 +86,7 @@ export function MLKitBarcodeScanner({
       setStatus('error');
       onError?.(msg);
     }
-  }, [onError]);
+  }, [active, onError]);
 
   // Launch the native scanner only on a false→true transition of active.
   // This replaces the unconditional mount auto-start and closes all three root causes:
@@ -108,6 +109,7 @@ export function MLKitBarcodeScanner({
           <Button
             variant="ghost"
             onClick={handleScan}
+            disabled={!active}
             className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
           >
             Try Again
@@ -140,6 +142,7 @@ export function MLKitBarcodeScanner({
             )}
             <Button
               onClick={handleScan}
+              disabled={!active}
               className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium gap-2"
             >
               <Camera className="w-4 h-4" />

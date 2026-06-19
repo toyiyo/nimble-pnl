@@ -37,6 +37,11 @@ test.describe('Inventory scan session', () => {
   test('scan new item → fill form → confirm beat → scan next, no duplicate dialogs', async ({
     page,
   }) => {
+    // Clear any stale auth state from a previous test run before enabling the bridge
+    await page.context().clearCookies();
+    await page.goto('/');
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+
     // Enable the E2E bridge before any page code runs
     await page.addInitScript(() => {
       (window as any).__E2E__ = true;
@@ -97,6 +102,11 @@ test.describe('Inventory scan session', () => {
   });
 
   test('session counter increments on each save and Done cleans up', async ({ page }) => {
+    // Clear any stale auth state from a previous test run before enabling the bridge
+    await page.context().clearCookies();
+    await page.goto('/');
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+
     await page.addInitScript(() => {
       (window as any).__E2E__ = true;
     });

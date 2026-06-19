@@ -6,7 +6,7 @@ import type { Product } from '@/hooks/useProducts';
 afterEach(() => vi.useRealTimers());
 
 const product = (over: Partial<Product> = {}): Product =>
-  ({ id: 'p1', name: 'Roma Tomatoes', gtin: '111', sku: '111', restaurant_id: 'r1', created_at: '', updated_at: '' } as Product);
+  ({ id: 'p1', name: 'Roma Tomatoes', gtin: '111', sku: '111', restaurant_id: 'r1', created_at: '', updated_at: '', ...over } as Product);
 
 function makeDeps(over: Partial<Parameters<typeof useScanSession>[0]> = {}) {
   return {
@@ -117,7 +117,11 @@ describe('useScanSession', () => {
     expect(deps.onError).toHaveBeenCalledWith('resolve fail');
   });
 
-  it('gate is cleared after endSession so a new capture is accepted', async () => {
+  // This test verifies that a fresh post-remount session (the real-world flow is a component
+  // remount via scanSessionKey in Inventory.tsx) accepts a previously-handled code after
+  // endSession() reset the gate. Note: createScanGate().reset() itself is unit-tested
+  // directly in tests/unit/scannerConfig.scanGate.test.ts.
+  it('a fresh hook instance after endSession accepts a previously-handled code', async () => {
     const deps = makeDeps({ findProductByGtin: vi.fn(async () => product()) });
     const { result } = renderHook(() => useScanSession(deps));
     await act(async () => { await result.current.capture('111'); });
@@ -126,12 +130,10 @@ describe('useScanSession', () => {
     await act(async () => { await result.current.capture('111'); });
     expect(result.current.state).toBe('scanning'); // suppressed
 
-    // End session resets the gate
+    // End session resets the gate; state transitions to 'ended' so capture is correctly a no-op.
     act(() => result.current.endSession());
-    // Restart by resetting state to 'scanning' internally is done by endSession;
-    // but state is now 'ended'. The gate was reset, so on a fresh mount/instance
-    // the same code would be accepted. We can verify gate.reset() was called by
-    // confirming a subsequent capture on a fresh hook instance is accepted:
+    // The real-world flow after endSession() is a component remount (via scanSessionKey).
+    // Simulate that by mounting a fresh hook instance — it should accept '111' again:
     const deps2 = makeDeps({ findProductByGtin: vi.fn(async () => product()) });
     const { result: result2 } = renderHook(() => useScanSession(deps2));
     await act(async () => { await result2.current.capture('111'); });

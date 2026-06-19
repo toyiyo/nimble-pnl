@@ -3,15 +3,14 @@
  *
  * Verifies that:
  * 1. The camera scanner branch renders ScanSessionView (not SmartBarcodeScanner directly)
- * 2. resolveNewProduct builds a prefilled Product from productLookupService
- * 3. persistQuickAdd delegates to updateProductStockWithAudit with the correct args
- * 4. persistProductUpsert creates or updates via the products hook
+ * 2. The restaurantId prop is passed through to ScanSessionView
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import type { ScanSessionViewProps } from '@/components/inventory/ScanSessionView';
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -26,7 +25,7 @@ vi.mock('@/components/SmartBarcodeScanner', () => ({
 
 // Mock ScanSessionView — we just need to confirm it renders
 vi.mock('@/components/inventory/ScanSessionView', () => ({
-  ScanSessionView: (props: any) => (
+  ScanSessionView: (props: ScanSessionViewProps) => (
     <div data-testid="scan-session-view" data-restaurant-id={props.restaurantId}>
       scan-session-view
     </div>

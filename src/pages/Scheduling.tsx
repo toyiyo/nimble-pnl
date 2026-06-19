@@ -62,6 +62,8 @@ import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDial
 import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { isMinor } from '@/lib/employeeUtils';
+import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
   Calendar,
   Plus,
@@ -92,6 +94,7 @@ import {
   Check,
   Pencil,
   Volume2,
+  CalendarOff,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -367,8 +370,16 @@ const Scheduling = () => {
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
   const [isBulkOperating, setIsBulkOperating] = useState(false);
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 });
-  const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
+  // Memoized so downstream hook deps (useShifts, useWeekPublicationStatus, etc.)
+  // and weekDayKeys/weekTimeOff memos are stable across drag/hover/selection re-renders.
+  const weekEnd = useMemo(
+    () => endOfWeek(currentWeekStart, { weekStartsOn: 1 }),
+    [currentWeekStart],
+  );
+  const weekDays = useMemo(
+    () => eachDayOfInterval({ start: currentWeekStart, end: weekEnd }),
+    [currentWeekStart, weekEnd],
+  );
 
   // Fetch ALL employees (including inactive) to show historical shifts
   const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
@@ -377,6 +388,18 @@ const Scheduling = () => {
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
   const pendingTimeOffCount = timeOffRequests.filter((r) => r.status === 'pending').length;
+
+  // stable 'yyyy-MM-dd' keys for the 7 visualized days
+  const weekDayKeys = useMemo(
+    () => weekDays.map((d) => format(d, 'yyyy-MM-dd')),
+    [weekDays],
+  );
+  // per-employee approved-time-off context for the week
+  const weekTimeOff = useMemo(
+    () => buildWeekTimeOff(timeOffRequests, weekDayKeys),
+    [timeOffRequests, weekDayKeys],
+  );
+
   const deleteShift = useDeleteShift();
   const deleteShiftSeries = useDeleteShiftSeries();
   const updateShiftSeries = useUpdateShiftSeries();
@@ -1539,7 +1562,11 @@ const Scheduling = () => {
                         )}
 
                         {/* Employee rows */}
-                        {!isCollapsed && group.employees.map((employee, idx) => (
+                        {!isCollapsed && group.employees.map((employee, idx) => {
+                          const empOff = weekTimeOff.get(employee.id);
+                          const off = empOff ? summarizeOff(empOff) : null;
+                          const isMinorEmployee = isMinor(employee.date_of_birth);
+                          return (
                           <tr
                             key={employee.id}
                             className={cn(
@@ -1577,9 +1604,38 @@ const Scheduling = () => {
                                           Inactive
                                         </Badge>
                                       )}
+                                      {isMinorEmployee && (
+                                        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-warning/10 text-warning font-medium shrink-0">
+                                          Minor
+                                        </span>
+                                      )}
+                                      {off && (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                              >
+                                                <CalendarOff className="h-3 w-3" aria-hidden="true" />
+                                                {off.label}
+                                                <span className="sr-only">
+                                                  {` — approved time off${off.reasons.length ? `: ${off.reasons.join(', ')}` : ''}`}
+                                                </span>
+                                              </button>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="top" className="text-xs">
+                                              {off.reasons.length ? off.reasons.join(', ') : 'Approved time off'}
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                                       {employee.position}
+                                      <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                                        {employee.employment_type === 'part_time' ? 'PT' : 'FT'}
+                                      </span>
                                       {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
                                         <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
                                           {hoursPerEmployee.get(employee.id)}h
@@ -1605,18 +1661,26 @@ const Scheduling = () => {
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <button
-                                        onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
-                                        className={cn(
-                                          "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
-                                          employee.is_active
-                                            ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                            : "bg-muted text-muted-foreground"
+                                      <span className="relative">
+                                        <button
+                                          onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
+                                          className={cn(
+                                            "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
+                                            employee.is_active
+                                              ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
+                                              : "bg-muted text-muted-foreground"
+                                          )}
+                                          aria-label={`${employee.name}, ${employee.position}${isMinorEmployee ? ', minor' : ''}${off ? `, ${off.label.toLowerCase()}` : ''}`}
+                                        >
+                                          {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                        </button>
+                                        {isMinorEmployee && (
+                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-warning ring-1 ring-background" />
                                         )}
-                                        aria-label={`${employee.name}, ${employee.position}`}
-                                      >
-                                        {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                      </button>
+                                        {off && (
+                                          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-info ring-1 ring-background" />
+                                        )}
+                                      </span>
                                     </TooltipTrigger>
                                     <TooltipContent side="right" className="text-xs">
                                       <div className="font-medium">
@@ -1626,6 +1690,9 @@ const Scheduling = () => {
                                         )}
                                       </div>
                                       <div className="text-muted-foreground">{employee.position}</div>
+                                      <div className="text-muted-foreground">
+                                        {isMinorEmployee ? 'Minor · ' : ''}{employee.employment_type === 'part_time' ? 'Part-time' : 'Full-time'}{off ? ` · ${off.label}` : ''}
+                                      </div>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
@@ -1639,15 +1706,34 @@ const Scheduling = () => {
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
                               const dayIsToday = isToday(day);
+                              const dayKey = format(day, 'yyyy-MM-dd');
+                              const isOff = !!empOff?.offDayKeys.has(dayKey);
+                              const hasShift = dayShifts.some(s => s.status !== 'cancelled');
+                              const isRunStart = !!empOff?.spans.some((s) => s.startKey === dayKey);
                               return (
                                 <DroppableDayCell
                                   key={day.toISOString()}
                                   employeeId={employee.id}
-                                  day={format(day, 'yyyy-MM-dd')}
+                                  day={dayKey}
                                   isToday={dayIsToday}
-                                  isHighlighted={highlightedCellId === `${employee.id}:${format(day, 'yyyy-MM-dd')}`}
+                                  isHighlighted={highlightedCellId === `${employee.id}:${dayKey}`}
                                 >
-                                  <div className="space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]">
+                                  <div className={cn(
+                                    "space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]",
+                                    isOff && hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-destructive",
+                                    isOff && !hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-info",
+                                  )}>
+                                    {isOff && (
+                                      <span className="sr-only">
+                                        {hasShift ? 'Scheduling conflict: shift scheduled during approved time off' : 'Approved time off'}
+                                      </span>
+                                    )}
+                                    {isOff && isRunStart && (
+                                      <div className="flex items-center gap-1 text-[11px] text-info font-medium">
+                                        <CalendarOff className="h-3 w-3" aria-hidden="true" />
+                                        Time off
+                                      </div>
+                                    )}
                                     {dayShifts.map((shift) => (
                                       selectionMode ? (
                                         <ShiftCard
@@ -1664,7 +1750,7 @@ const Scheduling = () => {
                                           key={shift.id}
                                           shift={shift}
                                           employeeId={employee.id}
-                                          day={format(day, 'yyyy-MM-dd')}
+                                          day={dayKey}
                                         >
                                           <ShiftCard
                                             shift={shift}
@@ -1679,14 +1765,17 @@ const Scheduling = () => {
                                         variant="ghost"
                                         size="sm"
                                         className={cn(
-                                          "w-full h-8 text-xs border border-dashed border-border/50",
-                                          "opacity-0 group-hover:opacity-100 transition-all duration-200",
-                                          "hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
+                                          "w-full h-8 text-xs border border-dashed",
+                                          "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all duration-200",
+                                          isOff
+                                            ? "border-warning/50 text-warning hover:bg-warning/10"
+                                            : "border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary",
                                         )}
+                                        aria-label={`Add shift for ${employee.name} on ${format(day, 'EEE MMM d')}${isOff ? ' despite approved time off' : ''}`}
                                         onClick={() => handleAddShift(day, employee)}
                                       >
                                         <Plus className="h-3 w-3 mr-1" />
-                                        Add
+                                        {isOff ? 'Add anyway' : 'Add'}
                                       </Button>
                                     )}
                                   </div>
@@ -1694,7 +1783,8 @@ const Scheduling = () => {
                               );
                             })}
                           </tr>
-                        ))}
+                          );
+                        })}
                       </React.Fragment>
                     );
                   })}

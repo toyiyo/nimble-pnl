@@ -62,6 +62,8 @@ import { BulkEditShiftsDialog } from '@/components/scheduling/BulkEditShiftsDial
 import { useBulkShiftActions } from '@/hooks/useBulkShiftActions';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { isMinor } from '@/lib/employeeUtils';
+import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
   Calendar,
   Plus,
@@ -92,6 +94,7 @@ import {
   Check,
   Pencil,
   Volume2,
+  CalendarOff,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
@@ -377,6 +380,18 @@ const Scheduling = () => {
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
   const pendingTimeOffCount = timeOffRequests.filter((r) => r.status === 'pending').length;
+
+  // stable 'yyyy-MM-dd' keys for the 7 visualized days
+  const weekDayKeys = useMemo(
+    () => weekDays.map((d) => format(d, 'yyyy-MM-dd')),
+    [weekDays],
+  );
+  // per-employee approved-time-off context for the week
+  const weekTimeOff = useMemo(
+    () => buildWeekTimeOff(timeOffRequests, weekDayKeys),
+    [timeOffRequests, weekDayKeys],
+  );
+
   const deleteShift = useDeleteShift();
   const deleteShiftSeries = useDeleteShiftSeries();
   const updateShiftSeries = useUpdateShiftSeries();
@@ -1539,7 +1554,11 @@ const Scheduling = () => {
                         )}
 
                         {/* Employee rows */}
-                        {!isCollapsed && group.employees.map((employee, idx) => (
+                        {!isCollapsed && group.employees.map((employee, idx) => {
+                          const empOff = weekTimeOff.get(employee.id);
+                          const off = empOff ? summarizeOff(empOff) : null;
+                          const isMinorEmployee = isMinor(employee.date_of_birth);
+                          return (
                           <tr
                             key={employee.id}
                             className={cn(
@@ -1694,7 +1713,8 @@ const Scheduling = () => {
                               );
                             })}
                           </tr>
-                        ))}
+                          );
+                        })}
                       </React.Fragment>
                     );
                   })}

@@ -21,7 +21,7 @@ const EmployeeClock = () => {
   const [showCameraDialog, setShowCameraDialog] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-  const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | 'break_start' | 'break_end' | null>(null);
+  const [pendingPunchType, setPendingPunchType] = useState<'clock_in' | 'clock_out' | null>(null);
   const [pendingGeofenceResult, setPendingGeofenceResult] = useState<{ distanceMeters?: number; within?: boolean } | undefined>(undefined);
   const [geofenceWarning, setGeofenceWarning] = useState<{
     type: 'outside' | 'unavailable';
@@ -107,7 +107,7 @@ const EmployeeClock = () => {
     setCapturedPhoto(null);
   };
 
-  const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out' | 'break_start' | 'break_end') => {
+  const handleInitiatePunch = async (punchType: 'clock_in' | 'clock_out') => {
     // Run geofence check before allowing clock-in
     if (punchType === 'clock_in') {
       const geofenceResult = await checkLocation();
@@ -553,9 +553,7 @@ const EmployeeClock = () => {
                     className="w-full sm:w-auto"
                   >
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    {pendingPunchType === 'clock_out' ? 'Confirm & Clock Out' : 
-                     pendingPunchType === 'break_start' ? 'Confirm & Start Break' :
-                     pendingPunchType === 'break_end' ? 'Confirm & End Break' : 'Confirm & Clock In'}
+                    {pendingPunchType === 'clock_out' ? 'Confirm & Clock Out' : 'Confirm & Clock In'}
                   </Button>
                 </>
               )}

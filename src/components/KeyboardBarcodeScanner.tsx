@@ -9,14 +9,12 @@ import { createScanAssembler, type ScanAssembler } from '@/lib/barcodeScanInput'
 
 interface KeyboardBarcodeScannerProps {
   onScan: (result: string, format: string) => void;
-  onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
 }
 
 export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
   onScan,
-  onError,
   className,
   autoStart = false,
 }) => {
@@ -38,6 +36,9 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
     if (!isActive) return;
     const input = hiddenInputRef.current;
 
+    // Track the post-scan refocus timer so the effect cleanup can cancel it.
+    let refocusTimerId: ReturnType<typeof window.setTimeout> | null = null;
+
     const assembler = createScanAssembler({
       onScan: (code, format) => {
         setLastScan(code);
@@ -45,19 +46,31 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
         if (input) input.value = '';
         setBuffer('');
         onScanRef.current(code, format);
-        window.setTimeout(() => input?.focus(), 100);
+        // Allow the DOM to settle before refocusing the capture input.
+        refocusTimerId = window.setTimeout(() => { refocusTimerId = null; input?.focus(); }, 100);
       },
       schedule: (cb, ms) => window.setTimeout(cb, ms) as unknown as number,
       clearScheduled: (id) => window.clearTimeout(id),
+      onReject: () => {
+        // Clear the hidden input when an idle-timeout buffer is rejected (too short).
+        // Without this, stale text accumulates and the next scan reads a corrupted string.
+        if (input) input.value = '';
+        setBuffer('');
+      },
     });
     assemblerRef.current = assembler;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement !== input) input?.focus();
+      // Check Enter guard first — only flush when the hidden input already owns focus.
+      // Moving focus() *after* the check avoids unconditionally stealing Enter from
+      // overlapping form elements or modal dialogs.
       if ((e.key === 'Enter' || e.keyCode === 13) && document.activeElement === input) {
         assembler.enter();
         e.preventDefault();
+        return;
       }
+      // For all other keys, steal focus back to the hidden capture input.
+      if (document.activeElement !== input) input?.focus();
     };
     const refocus = () => input?.focus();
     const handleVisibility = () => {
@@ -73,6 +86,7 @@ export const KeyboardBarcodeScanner: React.FC<KeyboardBarcodeScannerProps> = ({
     return () => {
       assembler.dispose();
       assemblerRef.current = null;
+      if (refocusTimerId !== null) window.clearTimeout(refocusTimerId);
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('pointerdown', refocus);
       window.removeEventListener('focus', refocus);

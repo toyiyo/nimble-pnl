@@ -43,10 +43,11 @@ describe('createScanAssembler', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  function makeAssembler() {
+  function makeAssembler(extra?: { onReject?: () => void }) {
     const onScan = vi.fn();
     const assembler = createScanAssembler({
       onScan,
+      onReject: extra?.onReject,
       schedule: (cb, ms) => window.setTimeout(cb, ms) as unknown as number,
       clearScheduled: (id) => window.clearTimeout(id),
     });
@@ -93,6 +94,25 @@ describe('createScanAssembler', () => {
     b.assembler.feed('a');
     b.assembler.enter();
     expect(b.onScan).toHaveBeenCalledWith('a', SCAN_FORMAT);
+  });
+
+  it('calls onReject when idle timeout fires with a too-short buffer', () => {
+    const onReject = vi.fn();
+    const { onScan, assembler } = makeAssembler({ onReject });
+    // Feed a 1-char buffer — below MIN_TIMEOUT_BARCODE_LENGTH (3).
+    assembler.feed('x');
+    vi.advanceTimersByTime(SCAN_IDLE_MS);
+    expect(onScan).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT call onReject when idle timeout emits a valid barcode', () => {
+    const onReject = vi.fn();
+    const { onScan, assembler } = makeAssembler({ onReject });
+    assembler.feed('012345678905');
+    vi.advanceTimersByTime(SCAN_IDLE_MS);
+    expect(onScan).toHaveBeenCalledTimes(1);
+    expect(onReject).not.toHaveBeenCalled();
   });
 
   it('suppresses idle flush while composing, then emits after compositionend', () => {

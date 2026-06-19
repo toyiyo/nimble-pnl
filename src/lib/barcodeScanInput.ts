@@ -43,6 +43,12 @@ export interface ScanAssembler {
 
 export interface ScanAssemblerOptions {
   onScan: (code: string, format: string) => void;
+  /**
+   * Called when an idle-timeout fires but the buffer is rejected as too short (below
+   * minTimeoutLength). The caller should clear the DOM input value so the next real scan
+   * starts from a clean buffer rather than appending to stale text.
+   */
+  onReject?: () => void;
   /** Injected timer scheduler (e.g. window.setTimeout). */
   schedule: (cb: () => void, ms: number) => number;
   /** Injected timer canceller (e.g. window.clearTimeout). */
@@ -84,6 +90,10 @@ export function createScanAssembler(opts: ScanAssemblerOptions): ScanAssembler {
     reset();
     if (code !== null) {
       opts.onScan(code, SCAN_FORMAT);
+    } else {
+      // Buffer was rejected (too short). Notify the caller so it can clear the DOM input;
+      // otherwise the stale text would be prepended to the next real barcode scan.
+      opts.onReject?.();
     }
   };
 

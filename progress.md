@@ -28,7 +28,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Task 5: `Html5QrcodeScanner` — `.stop()`/`.start()` on `active` + snapshot freeze + semantic badges — fb0bd21f
   - [x] Task 6: `MLKitBarcodeScanner` — scan only while `active`, re-scan only on re-arm — 4fe665cc
   - [x] Task 7: `QuickInventoryDialog` accessibility (DialogDescription + aria-labels) — 952cc0f1
-  - [ ] Task 8: `ScanSessionView` component
+  - [x] Task 8: `ScanSessionView` component — 0dfe6a72
   - [ ] Task 9: Rewire `Inventory.tsx` camera path → `ScanSessionView`
   - [ ] Task 10: E2E — scan → enter → resume with no duplicate dialogs
 - [ ] Phase 10: Retrospective

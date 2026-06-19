@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,19 +49,18 @@ const EmployeeClock = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
-  };
+  }, [cameraStream]);
 
   // Cleanup camera stream when dialog closes or component unmounts
   useEffect(() => {
     if (cameraStream && !showCameraDialog) stopCamera();
     return stopCamera;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraStream, showCameraDialog]);
+  }, [cameraStream, showCameraDialog, stopCamera]);
 
   const startCamera = async () => {
     try {
@@ -265,7 +264,7 @@ const EmployeeClock = () => {
   const isClockedIn = status?.is_clocked_in || false;
 
   const formatDistance = (meters: number | undefined): string => {
-    if (meters == null) return 'some distance';
+    if (meters === null || meters === undefined) return 'some distance';
     if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
     return `${Math.round(meters / 10) * 10} meters`;
   };

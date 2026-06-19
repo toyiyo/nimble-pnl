@@ -114,9 +114,7 @@ export function createScanAssembler(opts: ScanAssemblerOptions): ScanAssembler {
     },
     reset,
     dispose(): void {
-      cancelTimer();
-      buffer = '';
-      composing = false;
+      reset();
     },
   };
 }

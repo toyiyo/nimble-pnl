@@ -65,11 +65,18 @@ every write-site. The duplication being removed is the per-site, hand-coded
 
 ### Changes
 
-1. **New helper** in `src/utils/employeeFilters.ts` (co-located with the existing
+1. **Canonical `EmployeeStatus` type.** Export
+   `EmployeeStatus = 'active' | 'inactive' | 'terminated'` from
+   `src/types/scheduling.ts` and use it for `Employee.status` (replacing the
+   inlined union). Import it wherever the status union is needed. Keeps
+   TypeScript the single source of truth for the status domain — avoids a
+   parallel union (both design reviewers flagged this).
+
+2. **New helper** in `src/utils/employeeFilters.ts` (co-located with the existing
    activation utilities, already covered by `employeeActivation.test.ts`):
 
    ```ts
-   export type EmployeeStatus = 'active' | 'inactive' | 'terminated';
+   import type { EmployeeStatus } from '@/types/scheduling';
 
    /**
     * Single source of truth for the is_active ↔ status invariant enforced by the
@@ -80,28 +87,38 @@ every write-site. The duplication being removed is the per-site, hand-coded
    }
    ```
 
-2. **`EmployeeDialog.tsx`** — `is_active: isActiveForStatus(status)` replaces
-   `is_active: employee?.is_active ?? true`. Fixes create, update, and
-   comp-change paths at once (they share the `employeeData` object).
+3. **`EmployeeDialog.tsx` `proceedWithSubmit`** — set
+   `is_active: isActiveForStatus(status)` in the `employeeData` object (replaces
+   `is_active: employee?.is_active ?? true`). Fixes create, update, and the
+   deferred comp-change path at once (they share the `employeeData` object).
 
-3. **`useEmployees.tsx` deactivate fallback** — add `status: 'inactive'` next to
-   `is_active: false` (mirrors the RPC).
-
-4. **`useEmployees.tsx` reactivate fallback** — add `status: 'active'` next to
-   `is_active: true` (mirrors the RPC).
+4. **`useEmployees.tsx` — remove both RPC fallbacks.** `useDeactivateEmployee`
+   and `useReactivateEmployee` currently fall back to a raw `.update()` when the
+   RPC errors. That fallback (a) duplicates RPC logic incompletely (no shift
+   cancellation, no `deactivated_by`, no audit), (b) fires silently in
+   production, and (c) was the source of the secondary desync. Remove it: on RPC
+   error, throw so the existing `onError` toast surfaces the failure. The
+   deployed `deactivate_employee`/`reactivate_employee` RPCs set both fields
+   atomically, so the happy path is unchanged. (Resolves the supabase reviewer's
+   `critical`; also serves the "avoid duplication" goal.)
 
 ## Testing
 
 - **Unit** (`tests/unit/employeeActivation.test.ts`): `isActiveForStatus` →
   `active=true`, `inactive=false`, `terminated=false`.
-- **Hook** (same file): when the RPC returns an error, the deactivate fallback
-  `.update(...)` payload contains `status:'inactive'` **and** `is_active:false`;
-  the reactivate fallback contains `status:'active'` **and** `is_active:true`.
-- **Component** (extend `tests/unit/EmployeeDialog.*.test.tsx` or add one):
-  editing an active employee and changing status to `inactive` / `terminated`
-  submits an update payload with `is_active:false` (and matching `status`);
-  leaving status `active` yields `is_active:true`. This is the direct regression
-  test for the user-facing bug.
+- **Component** (extend an `EmployeeDialog` test): editing an existing active
+  employee and changing status to `inactive` and to `terminated` submits an
+  update payload with `is_active:false` and the matching `status`; leaving status
+  `active` yields `is_active:true`. Cover all three write paths:
+  - direct update (`updateEmployee.mutateAsync` payload),
+  - deferred comp-change path (`pendingCompChange.updatePayload` applied by
+    `handleApplyCompChange` when compensation also changed),
+  - create (`createEmployeeWithHistory` payload).
+  This is the direct regression test for the user-facing bug.
+- **Hook** (`tests/unit/employeeActivation.test.ts`): when the RPC returns an
+  error, `useDeactivateEmployee`/`useReactivateEmployee` reject (surface the
+  error) and do **not** call `supabase.from('employees').update(...)` — i.e., no
+  silent fallback. Happy-path tests (RPC success) remain unchanged.
 
 ## Decided trade-offs / out of scope
 
@@ -109,7 +126,19 @@ every write-site. The duplication being removed is the per-site, hand-coded
   future shifts — that remains the dedicated Deactivate dialog's responsibility.
   Accepted: the edit form is a lightweight profile editor.
 - `'terminated'` remains settable only via the edit dialog (unchanged behaviour).
-  Giving it a dedicated RPC-backed flow is a separate product decision.
+  Note: running the Deactivate dialog on an already-`terminated` employee resets
+  their status to `inactive` (the RPC hardcodes `'inactive'`). Pre-existing; out
+  of scope.
+- Removing the RPC fallbacks means deactivate/reactivate now require the RPC to
+  be present. Supabase preview/branch DBs apply migrations and unit tests mock
+  the RPC, so this is safe; failures now surface loudly rather than silently
+  writing a partial row.
+- **Deferred (pre-existing, unrelated to this bug; candidate follow-ups):**
+  missing `DialogDescription` on `EmployeeDialog`; raw colors in
+  `DeactivateEmployeeDialog`; the RPCs' `SECURITY DEFINER` functions not pinning
+  `search_path`; the `canReactivate` (false for `terminated`) vs. edit-dialog
+  ability to set `status='active'` tension; no inline UX hint distinguishing the
+  status dropdown from the dedicated Deactivate flow.
 - No production data is modified. The existing duplicate employee row is cleaned
   up separately by the user through the now-fixed UI.
 

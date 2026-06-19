@@ -26,6 +26,15 @@ Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
 - [x] Phase 7a: Codex adversarial review — 1 major finding: weekDays not memoized, defeats weekDayKeys/weekTimeOff memos (src/pages/Scheduling.tsx line 374)
 - [x] Phase 7b: Fold findings — 5 reviewers + Codex all flagged same root cause (weekDays/weekEnd unmemoized). Fixed: wrapped both in useMemo([currentWeekStart]). 340/340 tests pass. commit e177c5d5
 - [x] Phase 7c iter 1: CodeRabbit — 2 findings: (1) stale "(pending)" in progress.md [minor], (2) direct amber colors in Minor pill violate semantic-token rule [major]. Both fixed; warning token used for Minor pill + mobile dot; test updated. 340/340 tests pass. commit dc292215
+- [x] Phase 7c iter 2: CodeRabbit — No findings. Clean.
+
+- [x] Phase 8: Verify — All checks pass (pre-existing failures confirmed not from this branch):
+  - unit tests: 340/341 files pass, 4497/4499 tests pass (2 intentionally skipped)
+  - typecheck: clean (0 errors)
+  - build: clean (✓ built in 32.34s)
+  - lint: 0 errors in branch-modified files (7 warnings, all pre-existing in Scheduling.tsx base)
+  - test:db: 1373/1374 pass (1 pre-existing failure in 32_weekly_brief_queue.sql — not in our diff)
+  - test:e2e: 140/156 pass, 4 pre-existing failures (employee-payroll, inventory-create-with-image, manual-sale-tip, scheduling-conflicts — none in our diff)
 
 ## CI Status
 - PR: not yet created

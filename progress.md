@@ -33,6 +33,14 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Task 10: E2E — scan → enter → resume with no duplicate dialogs — 9d299310
   - [x] Phase 5: UI Review — Apple/Notion guidelines applied (typography, semantic tokens, a11y, no emojis) — 1334ef53
   - [x] Phase 6: Simplify — dead state/wrappers/logs removed, SmartBarcodeScanner unified, ScanSessionView stable dep — 4e5984be
+- [x] Phase 7a: Codex adversarial review — 1 major finding (Html5QrcodeScanner auto-start race on first mount)
+- [x] Phase 7b: Fold findings — all critical/major fixed in dcc1780d
+  - Security: compile-time PROD guard on test bridge (tree-shaken from bundle)
+  - Correctness: init-race fix in NativeBarcodeScanner + Html5QrcodeScanner; resolveNewProduct try/catch
+  - OCR rules: strict equality, no nested ternary, no component-in-component, any comments, unknown over any
+  - Performance: persistQuickAdd fires refetch non-blocking (void, not await)
+  - Logs: all bare console.log removed from handleBarcodeScanned / handleImageCaptured
+  - Tests: commit-error path M3, resolveNewProduct failure, gate-reset, lookingUp/confirmed active=false
 - [ ] Phase 10: Retrospective
 
 ## CI Status

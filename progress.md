@@ -21,6 +21,7 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (runId wf_c944a6cb-7b7) — plan 
   - [x] Task 3 — Narrow pendingPunchType union to 'clock_in' | 'clock_out' | null; narrow handleInitiatePunch param; simplify camera-dialog confirm label — commit a52646de (tests still 1 fail/2 pass as expected — TS errors now surface in dead break JSX call sites, to be removed in task 4)
   - [x] Task 4 — Remove dead break JSX call sites (onBreak variable, On Break badge branch, break button grid → single full-width Clock In/Clock Out); all 3 tests GREEN, typecheck clean, lint clean — commit d8949f63
   - [x] Task 5 — Remove unused onBreak variable (already completed within task 4 commit d8949f63; grep confirms zero references remain)
+  - [x] Task 6 — Simplify status badge: added positive assertions in EmployeeClock.test.tsx that "Clocked Out" renders when not clocked in and "Clocked In" renders when clocked in (badge implementation was already correct from task 4; these close the spec-coverage gap) — commit 21e44de4
 
 ## CI Status
 - PR: not yet created

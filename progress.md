@@ -1,0 +1,65 @@
+# Progress: Fix Android keyboard-scanner input (IME masks keydown e.key)
+
+## Spec
+Design: docs/superpowers/specs/2026-06-18-keyboard-scanner-android-ime-design.md (complete — Phase 2)
+Plan:  docs/superpowers/plans/2026-06-18-keyboard-scanner-android-ime-plan.md (complete — Phase 3)
+
+## Root cause (confirmed via PostHog, conversation)
+- KeyboardBarcodeScanner.tsx detects barcodes via `document` keydown reading `e.key`.
+- Android (Chrome): on-screen keyboard/IME routes HID scanner keystrokes through composition
+  → keydown arrives as keyCode 229 / e.key 'Unidentified', Enter swallowed → e.key.length===1
+  filter drops everything → buffer never assembles → no scan. Text DOES land in hidden input value
+  (proven: PostHog `change` events on the hidden input on Android session 019ecf81...).
+- iOS (WebKit, all browsers): hardware keyboard suppresses soft keyboard/IME → clean keydown e.key
+  → works. Confirmed by control session 019ecf98 (iPhone) right after Android: 5 errors vs 98,
+  post-scan dialog opened.
+
+## Fix approach (user-approved direction)
+- Read barcode from hidden input `.value` (correct on BOTH platforms) instead of keydown `e.key`.
+- Terminators: keep Enter keydown (iOS path) + add idle-timeout flush (~Xms) for Android (Enter swallowed).
+- Additive → iOS cannot regress (value is empirically present on iOS too).
+- Extract state machine to pure `src/lib/` module (coverage-included; component is excluded).
+
+## Current Phase
+Phase 9d complete. 3 fixes committed (eac25431). CI re-triggered.
+
+## Completed
+- [x] Phase 0: Lessons consulted (fake timers, jsdom-can't-repro-IME, worktree npm install, sonar coverage, 9d gate)
+- [x] Phase 1: Worktree .claude/worktrees/fix+barcode-scanner-android-ime, branch fix/barcode-scanner-android-ime, npm install, .env.local symlinked, baseline barcode tests green (8/8)
+- [x] Phase 2: Design doc committed a40bca7c
+- [x] Phase 2.5: frontend-design-reviewer ran; 2 critical + 3 major folded in (stable onScan ref, dispose lifecycle, IME composition guard, input-event, aria-live); commit d66591d1. Supabase reviewer skipped (no DB surface).
+- [x] Phase 3: Plan committed 39a8609b (4 TDD tasks). Self-review passed; edit anchors verified.
+- [x] Phase 4: TDD Build — all 6 plan tasks + 19/19 tests green; commits 6d2081b1, 38b26cd5, 26e8d3bf, f50e5dec.
+- [x] Phase 5: UI Review — replaced all hardcoded colors with semantic tokens, emoji icons with Lucide, aligned typography to project scale; commit a14b9ec7. 4491 tests still green.
+- [x] Phase 6: Simplify — dispose() delegates to reset() (commit bde29db0); no other actionable findings
+- [x] Phase 7a: Codex adversarial review — 1 major finding: stale DOM input.value on rejected idle buffer (src/components/KeyboardBarcodeScanner.tsx line 45)
+- [x] Phase 7b: Fold review findings — 4 fixes: stale DOM (onReject callback), Enter guard ordering, refocus timer leak, dead onError prop; commit 344551f8. 4493/4493 tests green.
+- [x] Phase 7c: CodeRabbit review — 2 minor doc findings fixed (commit 60acd836)
+- [x] Phase 8: verify — all checks pass; 3 pre-existing failures confirmed not caused by this branch
+- [x] Phase 9d: review-comment triage — 3 fixes (refocusTimerId leak, aria-hidden→aria-label, onReject idle-only) + regression test; commit eac25431. Codex P2 suggestion declined with PR reply. 22/22 tests green.
+
+## Plan tasks
+1. [x] parseScannedBarcode pure helper (src/lib/barcodeScanInput.ts) — commit 6d2081b1
+2. [x] createScanAssembler (idle + composition + dispose terminators) — commit 38b26cd5
+3. [x] Append createScanAssembler unit tests (7 cases: iOS path, Android idle, re-arm, short buffer, composition guard, dispose, no double-emit) to tests/unit/barcodeScanInput.test.ts — commit 38b26cd5 (tests bundled with implementation)
+4. [x] Rewire KeyboardBarcodeScanner.tsx (value capture + idle, focus-gated Enter, dispose lifecycle, stable onScan ref) — commit 26e8d3bf
+5. [x] tests/unit/KeyboardBarcodeScanner.test.tsx: 4 component tests (iOS Enter, Android idle, stop-scanner dispose, stable onScan ref) — commit 26e8d3bf
+6. [x] aria-live scan announcement + cross-platform copy — commit f50e5dec
+7. [x] Replace hidden <Input> element with onInput/onCompositionStart/onCompositionEnd wired to assembler — commit 26e8d3bf (done in plan task 4; 19/19 tests green)
+
+## CI Status
+- PR: https://github.com/toyiyo/nimble-pnl/pull/544
+- Phase 9b iteration 1: ALL CHECKS PASS (2026-06-19)
+  - Unit Tests: pass (4m46s)
+  - Database Tests (pgTAP): pass (4m57s)
+  - E2E Tests (Shard 1-4): pass
+  - Merge E2E Reports: pass
+  - SonarCloud Code Analysis: pass
+  - Analyze (actions/javascript-typescript): pass
+  - CodeQL: pass
+  - CodeRabbit: pass (review completed)
+  - Vercel/Netlify: pass
+  - Supabase Preview: skipping (unconfigured)
+
+## Key Decisions
+- Pure logic in src/lib/ for coverage (src/components/** excluded from Sonar coverage).

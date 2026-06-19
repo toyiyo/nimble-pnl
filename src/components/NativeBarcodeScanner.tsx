@@ -47,9 +47,16 @@ export const NativeBarcodeScanner = ({
   useEffect(() => {
     const initDetector = async () => {
       try {
-        const formats = await (window as any).BarcodeDetector.getSupportedFormats();
-        detectorRef.current = new (window as any).BarcodeDetector({ formats });
+        // BarcodeDetector is a draft API not yet in TS lib — cast is required
+        const formats = await (window as any /* BarcodeDetector not in TS lib */).BarcodeDetector.getSupportedFormats();
+        detectorRef.current = new (window as any /* BarcodeDetector not in TS lib */).BarcodeDetector({ formats });
         isDetectorReady.current = true;
+        // Initialization-race fix: if active=true arrived before init completed,
+        // the active effect would have found isDetectorReady=false and done nothing.
+        // Start now that the detector is ready.
+        if (activeRef.current && !streamRef.current) {
+          startScanning();
+        }
       } catch (error) {
         console.error('Failed to initialize BarcodeDetector:', error);
         isDetectorReady.current = false;
@@ -81,13 +88,13 @@ export const NativeBarcodeScanner = ({
       } else if (streamRef.current && videoRef.current) {
         // Resume: unfreeze the last frame and reschedule the loop
         videoRef.current.play().catch(() => {});
-        if (animationFrameRef.current == null) {
+        if (animationFrameRef.current === null) {
           animationFrameRef.current = requestAnimationFrame(scanLoop);
         }
       }
     } else {
       // Pause: cancel the pending frame and freeze the last camera frame behind the overlay
-      if (animationFrameRef.current != null) {
+      if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }

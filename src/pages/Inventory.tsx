@@ -283,7 +283,9 @@ export const Inventory: React.FC = () => {
       `quick_scan_${Date.now()}`,
     );
     if (ok) {
-      await refetchProducts();
+      // Fire-and-forget: do NOT await refetch so the camera can re-arm immediately.
+      // React Query updates in the background while the next scan is already possible.
+      void refetchProducts();
       toast({
         title: 'Inventory updated',
         description: `Added ${quantity.toFixed(2)} to ${product.name}`,
@@ -378,8 +380,9 @@ export const Inventory: React.FC = () => {
 
         refetchProducts();
         return true;
-      } catch (e: any) {
-        toast({ title: 'Update failed', description: e?.message || 'Could not save changes', variant: 'destructive' });
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Could not save changes';
+        toast({ title: 'Update failed', description: msg, variant: 'destructive' });
         return false;
       }
     },
@@ -425,7 +428,6 @@ export const Inventory: React.FC = () => {
   }
 
   const handleBarcodeScanned = async (gtin: string, format: string, aiData?: string) => {
-    console.log('📱 Barcode scanned:', gtin, format, aiData ? 'with AI data' : '');
 
     // Prevent scan spam while we are looking up / editing a newly-scanned product
     if (isLookingUp || showUpdateDialog || showQuickInventoryDialog) {
@@ -547,7 +549,6 @@ export const Inventory: React.FC = () => {
   };
 
   const handleImageCaptured = async (imageBlob: Blob, imageUrl: string) => {
-    console.log('📸 Image captured for analysis');
     setCapturedImage({ blob: imageBlob, url: imageUrl });
     setIsLookingUp(true);
 
@@ -556,8 +557,7 @@ export const Inventory: React.FC = () => {
       const uploadedImageUrl = await uploadImageToStorage(imageBlob);
       
       // Enhanced flow: Grok OCR → Web Search → AI Enhancement
-      console.log('🚀 Starting enhanced product identification...');
-      
+
       // Step 1: Use Grok OCR to extract text
       const { supabase } = await import('@/integrations/supabase/client');
       
@@ -572,8 +572,7 @@ export const Inventory: React.FC = () => {
           ctx.drawImage(img, 0, 0);
           
           const imageData = canvas.toDataURL('image/png');
-          
-          console.log('🔍 Processing with Grok OCR...');
+
           const response = await supabase.functions.invoke('grok-ocr', {
             body: { imageData }
           });
@@ -590,8 +589,6 @@ export const Inventory: React.FC = () => {
         img.src = imageUrl;
       });
       
-      console.log('✅ Grok OCR completed:', grokOCRResult);
-      
       // Use structured data from OCR if available
       const ocrData = (grokOCRResult as any).structuredData;
       
@@ -601,7 +598,6 @@ export const Inventory: React.FC = () => {
       
       if (searchQuery && !ocrData) {
         // Only do web search if we didn't get structured data from OCR
-        console.log('🌐 Searching for product information...');
         const searchResponse = await supabase.functions.invoke('web-search', {
           body: { 
             query: `${searchQuery} product information nutrition ingredients`,
@@ -611,7 +607,6 @@ export const Inventory: React.FC = () => {
         
         if (!searchResponse.error && searchResponse.data?.results?.length > 0) {
           // Step 3: Use AI to enhance product data with search results
-          console.log('🤖 Enhancing product data with AI...');
           const enhanceResponse = await supabase.functions.invoke('enhance-product-ai', {
             body: {
               searchText: searchResponse.data.results.map((r: any) => r.content).join('\n\n'),
@@ -624,7 +619,6 @@ export const Inventory: React.FC = () => {
           
           if (!enhanceResponse.error) {
             enhancedData = enhanceResponse.data;
-            console.log('✅ AI enhancement completed:', enhancedData);
           }
         }
       }

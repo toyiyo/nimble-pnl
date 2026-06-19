@@ -79,7 +79,17 @@ export function useScanSession(deps: UseScanSessionDeps): ScanSession {
       return;
     }
 
-    const created = await resolveNewProduct(gtin);          // never throws (blank fallback)
+    let created: Product;
+    try {
+      created = await resolveNewProduct(gtin);
+    } catch (err) {
+      // resolveNewProduct contract says it must not throw, but guard anyway.
+      // On failure return to scanning so the camera re-arms (no stuck state).
+      if (!mountedRef.current) return;
+      onError?.(err instanceof Error ? err.message : 'Failed to resolve product');
+      setState('scanning');
+      return;
+    }
     if (!mountedRef.current) return;
     setActiveProduct(created);
     setState('fullEntry');

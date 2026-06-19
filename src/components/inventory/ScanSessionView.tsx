@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { Package, Loader2, Check, ScanLine } from 'lucide-react';
@@ -14,7 +14,7 @@ export interface ScanSessionViewProps {
   resolveNewProduct: (gtin: string) => Promise<Product>;
   onAddQuantity: (product: Product, quantity: number, location?: string) => Promise<void>;
   onUpdateProduct: (product: Product, updates: Partial<Product>, quantityToAdd: number) => Promise<void>;
-  onEnhance?: (product: Product) => Promise<any>;
+  onEnhance?: (product: Product) => Promise<unknown>; // return shape varies by enhancement provider
   onExit: () => void;
 }
 
@@ -52,36 +52,39 @@ export function ScanSessionView(props: ScanSessionViewProps) {
     [capture],
   );
 
-  // Test bridge: allow E2E / test harnesses to emit synthetic scans
+  // Test bridge: allow E2E / test harnesses to emit synthetic scans.
+  // Guarded by a compile-time dead-code check so the function body is
+  // tree-shaken out of the production bundle entirely (Vite replaces
+  // import.meta.env.PROD with `true` at build time).
   useEffect(() => {
-    if (
-      import.meta.env.MODE !== 'test' &&
-      !(window as any).Cypress &&
-      !(window as any).__E2E__
-    )
-      return;
-    (window as any).__emitScan = (gtin: string) => handleScan(gtin, 'EAN_13');
+    if (import.meta.env.PROD) return;
+    (window as any).__emitScan = (gtin: string) => handleScan(gtin, 'EAN_13'); // test-only bridge
     return () => {
-      delete (window as any).__emitScan;
+      delete (window as any).__emitScan; // test-only cleanup
     };
   }, [handleScan]);
 
-  const isMobile =
-    Capacitor.isNativePlatform() ||
-    (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches);
+  // Stable for the session lifetime — matchMedia result does not change while mounted.
+  const isMobile = useMemo(
+    () =>
+      Capacitor.isNativePlatform() ||
+      (typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches),
+    [],
+  );
 
   // An entry overlay is open in quickEntry or fullEntry states
   const entryOpen = state === 'quickEntry' || state === 'fullEntry';
 
-  // The full-entry component: Sheet on mobile (no double-wrap, M1), Dialog on desktop
-  const FullEntry = isMobile ? ProductUpdateSheet : ProductUpdateDialog;
+  // Resolve at component level (not inside render) to avoid treating an uppercase variable
+  // assigned inside a function body as a dynamic component reference.
+  const FullEntryForm = isMobile ? ProductUpdateSheet : ProductUpdateDialog;
 
   return (
     <div className="relative">
       {/* Visually-hidden live region for VoiceOver (m2) */}
       <div aria-live="polite" className="sr-only">
         {state === 'confirmed' && activeProduct
-          ? `Added ${activeProduct.name}. ${itemsThisSession} items this session.`
+          ? `Added ${activeProduct.name}. ${itemsThisSession} ${itemsThisSession === 1 ? 'item' : 'items'} this session.`
           : ''}
       </div>
 
@@ -92,7 +95,7 @@ export function ScanSessionView(props: ScanSessionViewProps) {
         open dialog.
       */}
       <div
-        {...(entryOpen ? { inert: '' as any, 'aria-hidden': true } : {})}
+        {...(entryOpen ? { inert: '' as any /* HTMLElement.inert not in all TS versions */, 'aria-hidden': true } : {})}
         className="relative rounded-xl overflow-hidden"
       >
         {/* Top bar: session counter + Done — safe-area aware (M2) */}
@@ -135,7 +138,7 @@ export function ScanSessionView(props: ScanSessionViewProps) {
               <p className="text-[17px] font-semibold text-foreground">{activeProduct.name}</p>
             </div>
             <span className="text-[12px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-              {itemsThisSession} items this session
+              {itemsThisSession} {itemsThisSession === 1 ? 'item' : 'items'} this session
             </span>
             <div className="w-full max-w-xs space-y-2">
               <Button
@@ -186,7 +189,7 @@ export function ScanSessionView(props: ScanSessionViewProps) {
         both render the shared ProductUpdateContent through a Radix Sheet/Dialog.
       */}
       {activeProduct && (
-        <FullEntry
+        <FullEntryForm
           open={state === 'fullEntry'}
           onOpenChange={(open) => {
             if (!open && state === 'fullEntry') session.cancelEntry();
@@ -200,6 +203,7 @@ export function ScanSessionView(props: ScanSessionViewProps) {
           }}
         />
       )}
+
     </div>
   );
 }

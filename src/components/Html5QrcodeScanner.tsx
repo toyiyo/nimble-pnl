@@ -11,6 +11,13 @@ import {
   isIOSDevice 
 } from '@/utils/scannerConfig';
 
+/** Returns a stable platform label string without nested ternaries. */
+function getPlatformLabel(): string {
+  if (isIOSDevice()) return 'iOS Optimized';
+  if (/Android/.test(navigator.userAgent)) return 'Android Optimized';
+  return 'Desktop Mode';
+}
+
 interface Html5QrcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
   onError?: (error: string) => void;
@@ -83,6 +90,12 @@ export const Html5QrcodeScanner = ({
 
         // `active` is the single source of truth for start/stop; `autoStart` is now a no-op
         // kept only for API backward-compat (it no longer calls startScanning() here).
+
+        // Initialization-race fix: if active=true arrived before this async init completed,
+        // the active effect would have returned early (scannerRef.current was null). Start now.
+        if (activeRef.current) {
+          startScanning();
+        }
       } catch (error) {
         console.error('Scanner initialization failed:', error);
         setScannerError('Failed to initialize scanner');
@@ -356,9 +369,7 @@ export const Html5QrcodeScanner = ({
 
               {/* Platform indicator */}
               <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-                {isIOSDevice() ? 'iOS Optimized' :
-                 /Android/.test(navigator.userAgent) ? 'Android Optimized' :
-                 'Desktop Mode'}
+                {getPlatformLabel()}
               </Badge>
             </div>
           )}

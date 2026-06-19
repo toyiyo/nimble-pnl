@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ScanSessionView } from '@/components/inventory/ScanSessionView';
 import type { Product } from '@/hooks/useProducts';
 
@@ -231,5 +231,37 @@ describe('ScanSessionView', () => {
     // The camera wrapper should be inert while an entry overlay is open
     const cameraLayer = screen.getByTestId('scanner').parentElement;
     expect(cameraLayer).toHaveAttribute('inert');
+  });
+
+  it('scanner is inactive in lookingUp state', async () => {
+    // findProductByGtin is controlled — defer resolution to observe mid-flight state
+    let resolveFind!: (v: Product | null) => void;
+    const findProductByGtin = vi.fn(
+      () => new Promise<Product | null>((res) => { resolveFind = res; }),
+    );
+    setup({ findProductByGtin });
+    fireEvent.click(screen.getByText('emit-known'));
+    // Before resolve: state is lookingUp → scanner must be inactive
+    await waitFor(() =>
+      expect(screen.getByTestId('scanner')).toHaveAttribute('data-active', 'false'),
+    );
+    // Resolve inside act so the subsequent state update is flushed cleanly
+    await act(async () => { resolveFind(null); });
+  });
+
+  it('scanner is inactive in confirmed state', async () => {
+    setup();
+    // Get to fullEntry → confirmed
+    fireEvent.click(screen.getByText('emit-new'));
+    await waitFor(() =>
+      expect(screen.getByTestId('scanner')).toHaveAttribute('data-active', 'false'),
+    );
+    fireEvent.click(screen.getByText('save-update'));
+    // After commitFull, state is confirmed — scanner must still be inactive
+    await waitFor(() =>
+      expect(screen.getByTestId('scanner')).toHaveAttribute('data-active', 'false'),
+    );
+    // The confirm beat overlay should appear
+    await screen.findByText('Scan next item');
   });
 });

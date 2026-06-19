@@ -77,9 +77,6 @@ vi.mock('@/components/InventorySettings', () => ({
 vi.mock('@/components/RestaurantSelector', () => ({
   RestaurantSelector: () => null,
 }));
-vi.mock('@/components/ReconciliationSession', () => ({
-  ReconciliationSession: () => null,
-}));
 
 // Mock hooks
 vi.mock('@/hooks/useProducts', () => ({

@@ -16,6 +16,7 @@ interface Html5QrcodeScannerProps {
   onError?: (error: string) => void;
   className?: string;
   autoStart?: boolean;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat
 }
 
 export const Html5QrcodeScanner = ({
@@ -23,12 +24,20 @@ export const Html5QrcodeScanner = ({
   onError,
   className = '',
   autoStart = false,
+  active = true,
 }: Html5QrcodeScannerProps) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const elementId = useRef(`html5-qrcode-${Date.now()}`);
   const lastScanRef = useRef<{ value: string; time: number } | null>(null);
 
+  // Synchronously-updated ref so the success callback always reads the latest active value.
+  const activeRef = useRef(active);
+  // Latest onScan handler via ref — prevents stale closure from holding the first render's callback.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan; // refreshed every render
+
   const [isScanning, setIsScanning] = useState(false);
+  const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const [cameraId, setCameraId] = useState<string>('');
   const [availableCameras, setAvailableCameras] = useState<any[]>([]);
@@ -76,9 +85,8 @@ export const Html5QrcodeScanner = ({
           setScannerError('Camera access required for scanning');
         }
 
-        if (autoStart) {
-          startScanning();
-        }
+        // `active` is the single source of truth for start/stop; `autoStart` is now a no-op
+        // kept only for API backward-compat (it no longer calls startScanning() here).
       } catch (error) {
         console.error('Scanner initialization failed:', error);
         setScannerError('Failed to initialize scanner');
@@ -90,7 +98,7 @@ export const Html5QrcodeScanner = ({
     return () => {
       cleanup();
     };
-  }, [autoStart]);
+  }, []);
 
   const cleanup = async () => {
     if (scannerRef.current?.isScanning) {
@@ -104,6 +112,36 @@ export const Html5QrcodeScanner = ({
     setTorchOn(false);
     setScannerError(null);
   };
+
+  // Snapshot the live video frame to a dataURL so we can freeze the display while paused.
+  const snapshotFrame = (): string | null => {
+    const video = document.getElementById(elementId.current)?.querySelector('video') as HTMLVideoElement | null;
+    if (!video || !video.videoWidth) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0);
+    try { return canvas.toDataURL('image/jpeg', 0.6); } catch { return null; }
+  };
+
+  // Drive start/pause/resume from the `active` prop.
+  // Mirrors activeRef synchronously so the success callback reads the correct value.
+  useEffect(() => {
+    activeRef.current = active;
+    if (!scannerRef.current) return; // scanner not yet initialized
+    if (active) {
+      setFrozenFrame(null); // clear freeze backdrop
+      if (!scannerRef.current.isScanning) {
+        startScanning(); // re-acquire + resume
+      }
+    } else if (scannerRef.current.isScanning) {
+      setFrozenFrame(snapshotFrame()); // freeze backdrop, then stop
+      void cleanup();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   // Simplified iOS optimizations that work reliably
   const startScanning = async () => {
@@ -165,6 +203,10 @@ export const Html5QrcodeScanner = ({
           cameraConstraints,
           config,
           (decodedText, decodedResult) => {
+            // Guard: ignore scans fired after the scanner was paused (race between
+            // the library's async frame decode and the active prop flip).
+            if (!activeRef.current) return;
+
             const formatName = decodedResult.result.format.formatName;
 
             // Normalize the value first (e.g., EAN-13 → UPC-A) so dedupe compares apples-to-apples
@@ -184,7 +226,8 @@ export const Html5QrcodeScanner = ({
             const now = Date.now();
             lastScanRef.current = { value: processedValue, time: now };
             setLastScanned(processedValue);
-            onScan(processedValue, formatName);
+            // Use onScanRef so the current handler is always called (kills stale-closure bug).
+            onScanRef.current(processedValue, formatName);
 
             // Clear visual indicator after 2 seconds
             setTimeout(() => setLastScanned(null), 2000);
@@ -281,6 +324,16 @@ export const Html5QrcodeScanner = ({
           {/* Scanner container */}
           <div id={elementId.current} className="w-full min-h-[300px]" />
 
+          {/* Freeze-frame backdrop — shown while the session is paused (active=false).
+              Displays the last captured video frame with a dim overlay so the user
+              sees where the camera was pointing rather than a blank/black view. */}
+          {frozenFrame && (
+            <div className="absolute inset-0">
+              <img src={frozenFrame} alt="" aria-hidden="true" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-background/90 backdrop-blur-sm" />
+            </div>
+          )}
+
           {/* Error state */}
           {scannerError && !isScanning && (
             <div className="absolute inset-0 bg-background/95 flex items-center justify-center">
@@ -294,26 +347,26 @@ export const Html5QrcodeScanner = ({
             </div>
           )}
 
-          {/* Status badges */}
+          {/* Status badges — semantic tokens (M4) */}
           {isScanning && (
             <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
               <div className="flex gap-2">
-                <Badge className="bg-gradient-to-r from-blue-500 to-cyan-600">
+                <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background">
                   <Camera className="w-3 h-3 mr-1" />
                   Enhanced Scanner
                 </Badge>
                 {lastScanned && (
-                  <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 animate-in fade-in">
+                  <Badge className="text-[11px] px-1.5 py-0.5 rounded-md bg-foreground text-background animate-in fade-in">
                     <Scan className="w-3 h-3 mr-1" />
-                    Scanned: {lastScanned.slice(0, 8)}...
+                    Scanned
                   </Badge>
                 )}
               </div>
-              
+
               {/* Platform indicator */}
               <Badge variant="secondary" className="text-xs">
-                {isIOSDevice() ? 'iOS Optimized' : 
-                 /Android/.test(navigator.userAgent) ? 'Android Optimized' : 
+                {isIOSDevice() ? 'iOS Optimized' :
+                 /Android/.test(navigator.userAgent) ? 'Android Optimized' :
                  'Desktop Mode'}
               </Badge>
             </div>
@@ -322,7 +375,7 @@ export const Html5QrcodeScanner = ({
           {/* Enhanced scanning guidelines for iPhone */}
           {isScanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="text-center text-white bg-black/60 rounded-lg p-4 max-w-sm mx-4">
+              <div className="text-center text-background bg-foreground/80 rounded-lg p-4 max-w-sm mx-4">
                 <p className="text-sm mb-2 font-medium">
                   {isIOSDevice() ? '📱 iPhone Scanning Tips:' : 'Scanning Tips:'}
                 </p>

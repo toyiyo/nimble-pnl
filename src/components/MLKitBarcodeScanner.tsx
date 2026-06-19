@@ -10,6 +10,7 @@ interface MLKitBarcodeScannerProps {
   onScan: (barcode: string, format: string) => void;
   onError?: (error: string) => void;
   className?: string;
+  active?: boolean; // controlled scan enable/disable; defaults to true for backward compat (full impl in Task 6)
 }
 
 const SUPPORTED_FORMATS = [
@@ -28,6 +29,7 @@ export function MLKitBarcodeScanner({
   onScan,
   onError,
   className = '',
+  active: _active = true,  
 }: MLKitBarcodeScannerProps) {
   const [status, setStatus] = useState<'ready' | 'scanning' | 'error'>('ready');
   const [errorMessage, setErrorMessage] = useState('');

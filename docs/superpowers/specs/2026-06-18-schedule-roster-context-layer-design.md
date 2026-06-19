@@ -114,9 +114,42 @@ export function buildWeekTimeOff(
   weekDayKeys: string[],
 ): Map<string, EmployeeWeekTimeOff>;
 
-/** Convenience: distinct reasons for an employee's whole-week off set, for the chip tooltip. */
+/**
+ * Summary for the name-cell chip + its tooltip/AT text.
+ * label format:
+ *   - single off-day  → "Off Mon"            (weekday abbr of the only off-day)
+ *   - contiguous run  → "Off Wed–Fri"        (first–last weekday abbr, en dash)
+ *   - non-contiguous  → "Off 3 days"         (>1 span: total in-week off-day count)
+ * Weekday abbr derived from the dayKey via date-fns format(parseISO(key),'EEE');
+ * parseISO of a 'yyyy-MM-dd' is safe here — it is only used to pick a label, never
+ * for overlap math. reasons = distinct non-empty reasons across all in-week spans.
+ */
 export function summarizeOff(off: EmployeeWeekTimeOff): { label: string; reasons: string[] };
 ```
+
+### Memoization (required — perf review)
+
+`Scheduling.tsx` re-renders on drag/hover/selection state, so the derived
+structures MUST be memoized (lessons: derived state via `useMemo`, never recompute
+in the render body):
+
+```ts
+// stable 'yyyy-MM-dd' keys for the 7 visualized days
+const weekDayKeys = useMemo(
+  () => weekDays.map((d) => format(d, 'yyyy-MM-dd')),
+  [weekDays],
+);
+// per-employee approved-time-off context for the week
+const weekTimeOff = useMemo(
+  () => buildWeekTimeOff(timeOffRequests, weekDayKeys),
+  [timeOffRequests, weekDayKeys],
+);
+```
+
+Per employee row, read `const empOff = weekTimeOff.get(employee.id)` once, and
+`const off = empOff ? summarizeOff(empOff) : null` once (destructure `off.label` /
+`off.reasons` — do not call `summarizeOff` twice). Per cell, `offDayKeys.has(dayKey)`
+is an O(1) lookup.
 
 **Overlap math = date-string comparison, NOT Date objects.** All of
 `start_date`, `end_date` (DB DATE → `'yyyy-MM-dd'`) and `weekDayKeys` are ISO
@@ -153,46 +186,120 @@ Enables `bg-info/10`, `text-info`, `border-info/20`.
 
 - **Name line (1562):** after the Inactive badge, add the **Minor pill** (amber,
   `isMinor(employee.date_of_birth)`) and the **Off summary chip** when the employee
-  has any off-day this week:
+  has any off-day this week. The chip uses a shadcn `<Tooltip>` for the mouse-hover
+  reason (NOT the `title` attribute — `title` is inaccessible to keyboard/SR/touch)
+  plus an `sr-only` reason for AT, and `text-[11px]` to match the row scale:
   ```tsx
-  {empOff && (
-    <span title={summarizeOff(empOff).reasons.join(', ') || 'Approved time off'}
-          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0">
-      <CalendarOff className="h-3 w-3" aria-hidden="true" />
-      {summarizeOff(empOff).label}   {/* e.g. "Off Wed–Fri" or "Off Sat" */}
-    </span>
+  {off && (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0">
+            <CalendarOff className="h-3 w-3" aria-hidden="true" />
+            {off.label}                              {/* "Off Wed–Fri" — text, not color-alone */}
+            <span className="sr-only">
+              — approved time off{off.reasons.length ? `: ${off.reasons.join(', ')}` : ''}
+            </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {off.reasons.length ? off.reasons.join(', ') : 'Approved time off'}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )}
   ```
 - **Meta line (1581):** add the **FT/PT tag** beside the hours pill (mirror
-  `EmployeeList.tsx:291`).
+  `EmployeeList.tsx:291`), pinning `text-muted-foreground` so it renders identically
+  regardless of which line it sits on:
+  ```tsx
+  <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+    {employee.employment_type === 'part_time' ? 'PT' : 'FT'}
+  </span>
+  ```
 
 ### 2. Day cells (~1639-1695)
 
 Inside the `weekDays.map`, compute `dayKey = format(day, 'yyyy-MM-dd')` (already
-present) and `isOff = empOff?.offDayKeys.has(dayKey)`.
+present) and `isOff = !!empOff?.offDayKeys.has(dayKey)`, plus
+`isRunStart = empOff?.spans.some((s) => s.startKey === dayKey)`.
 
-- **Off + no shift:** render the cell with a blue band fill (`bg-info/10`); show
-  `CalendarOff` + label only on the run's first day (`dayKey === span.startKey`) so
-  consecutive days read as one band; suppress the default one-click "Add" and
-  replace with a warning-styled **"Add anyway"** affordance (still routes through
-  the existing `handleAddShift` / ShiftDialog). Per-day cells are preserved (no
-  `colspan`) so `DroppableDayCell` drag-and-drop keeps working.
-- **Off + has shift (conflict):** keep the shift card(s) (their existing
-  `useCheckConflicts` AlertTriangle already fires — it calls the
-  `check_timeoff_conflict` RPC), add the blue band tint, and escalate the cell with
-  a `ring-1 ring-destructive/40` so the double-book is unmistakable.
+**Non-color signal on EVERY off-day cell (WCAG 1.4.1).** Color tint alone is not a
+sufficient signal, and interior days of a multi-day run would otherwise be
+color-only. So every off-day cell carries, in addition to the `bg-info/10` tint:
+- a left accent bar — `border-l-2 border-info` (or `border-destructive` on a
+  conflict day, see below): a position/shape cue that survives color-blind modes,
+- an `sr-only` text node announcing the state for AT (announced as the cell is
+  entered in the table), and
+- the `CalendarOff` icon + visible label rendered **only on the run's first day**
+  (`isRunStart`) so consecutive days still read as one band.
+
+```tsx
+// inside the cell content wrapper, when isOff:
+<span className="sr-only">
+  {hasShift ? 'Scheduling conflict: shift scheduled during approved time off' : 'Approved time off'}
+</span>
+{isRunStart && (
+  <div className="flex items-center gap-1 text-[11px] text-info font-medium">
+    <CalendarOff className="h-3 w-3" aria-hidden="true" />
+    Time off
+  </div>
+)}
+```
+
+- **Off + no shift:** `bg-info/10` + `border-l-2 border-info` + sr-only "Approved
+  time off" + first-day label. Suppress the default one-click "Add" and replace
+  with a warning-styled **"Add anyway"** affordance that still routes through the
+  existing `handleAddShift(day, employee)` (→ ShiftDialog). It MUST carry a
+  contextual `aria-label` (the bare "Add" text is identical across every cell):
+  ```tsx
+  <Button variant="ghost" size="sm"
+    className="w-full h-8 text-xs border border-dashed border-warning/50 text-warning hover:bg-warning/10 opacity-0 group-hover:opacity-100 transition-all"
+    aria-label={`Add shift for ${employee.name} on ${format(day, 'EEE MMM d')} despite approved time off`}
+    onClick={() => handleAddShift(day, employee)}>
+    <Plus className="h-3 w-3 mr-1" /> Add anyway
+  </Button>
+  ```
+  Per-day cells are preserved (no `colspan`) so `DroppableDayCell` drag-and-drop
+  keeps working.
+- **Off + has shift (conflict):** keep the shift card(s) — their existing
+  `useCheckConflicts` AlertTriangle already fires (it calls the
+  `check_timeoff_conflict` RPC) and is the authoritative conflict signal for sighted
+  + AT users. Escalate the SAME accent bar to `border-l-2 border-destructive` (no
+  separate `ring`, to avoid redundant noise) and switch the sr-only text to the
+  conflict wording above. The blue tint stays so the day still reads as time off.
 - **Not off:** unchanged.
 
 ### 3. Identity cell — mobile (~1604-1637)
 
 Avatar-only column degrades to small corner dots on the avatar: amber dot when
-minor, blue dot when off this week. FT/PT stays in the existing tooltip. Day-cell
-bands still render (cells exist on mobile). Keep the existing `md:` breakpoint —
-do not introduce `sm:`/`lg:` (lessons 2026-05-17, single-breakpoint policy).
+minor, blue dot when off this week. The dots are decorative (`aria-hidden="true"`);
+the state reaches AT through the avatar button's `aria-label` and the tooltip:
+
+- Extend the avatar button `aria-label` (currently `"{name}, {position}"`) to:
+  ```tsx
+  aria-label={`${employee.name}, ${employee.position}${isMinorEmployee ? ', minor' : ''}${off ? `, ${off.label.toLowerCase()}` : ''}`}
+  ```
+- Add a line to the existing `<TooltipContent>` (currently name + position) showing
+  `{isMinorEmployee ? 'Minor · ' : ''}{ft/pt label}{off ? ` · ${off.label}` : ''}`.
+
+Day-cell bands still render (cells exist on mobile). Keep the existing `md:`
+breakpoint — do not introduce `sm:`/`lg:` (lessons 2026-05-17, single-breakpoint
+policy).
 
 ### 4. Icon import
 
 Add `CalendarOff` to the lucide import block (`AlertTriangle` already imported).
+Confirmed exported by the installed `lucide-react@0.462.0`, so no fallback needed.
+
+### 5. Component primitive — raw `<span>` (decided)
+
+All three tags (Minor, FT/PT, Off chip) use raw `<span>` elements, matching
+`EmployeeList.tsx:291-298`, because the custom sizing (`text-[11px]`, `px-1.5
+py-0.5`) already departs from shadcn `<Badge>` defaults and a span keeps the markup
+identical to the established roster pattern. The existing Inactive `<Badge
+variant="outline">` on the schedule row (line 1576) is left as-is. This is a
+deliberate consistency choice over swapping everything to `<Badge>`.
 
 ## Testing
 
@@ -205,9 +312,27 @@ Add `CalendarOff` to the lucide import block (`AlertTriangle` already imported).
     running an off-day at a month/DST boundary).
 - `tests/unit/scheduleRosterContext.classes.test.ts` — source-text guard
   (lessons 2026-05-17): assert the schedule identity cell contains the FT/PT tag
-  expression, the amber Minor pill class string, and the `bg-info/10`/`CalendarOff`
-  time-off markers; negative-assert no hardcoded blue (`bg-blue-`) leaked in.
+  expression, the amber Minor pill class string, the `bg-info/10` + `CalendarOff`
+  time-off markers, the `border-l-2 border-info` / `border-destructive` accent bars,
+  the `sr-only` time-off/conflict text, and the contextual `aria-label` on the "Add
+  anyway" control; negative-assert no hardcoded blue (`bg-blue-`) and no `title=`
+  tooltip on the Off chip leaked in.
 - No new DB tests (no SQL surface).
+
+## Phase 2.5 review — folded changes
+
+Frontend design review (approve-with-changes) accepted in full:
+- **a11y (critical):** every off-day cell gets a `border-l-2` accent bar + `sr-only`
+  text (not color-alone); "Add anyway" gets a contextual `aria-label`.
+- **a11y (major):** Off chip uses shadcn `<Tooltip>` + `sr-only` reason instead of
+  `title`; mobile avatar `aria-label` + tooltip carry minor/FT-PT/off; dots are
+  `aria-hidden`.
+- **perf (major):** `weekDayKeys` and `weekTimeOff` are `useMemo`'d; `summarizeOff`
+  is called once per row.
+- **consistency (minor):** chips use `text-[11px]` (not `10px`); FT/PT pins
+  `text-muted-foreground`; conflict reuses the existing AlertTriangle and escalates
+  the accent bar to `border-destructive` (no redundant ring); raw `<span>` chosen
+  over `<Badge>` and documented.
 
 ## Decided trade-offs
 

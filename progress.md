@@ -29,6 +29,23 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (runId wf_c944a6cb-7b7) — plan 
   - [x] Task 11 — ESLint: ran `npx eslint src/pages/EmployeeClock.tsx tests/unit/EmployeeClock.test.tsx`; exit code 0, zero errors/warnings. No unused-vars (onBreak removed in task 4), no unused-import errors (Coffee and PlayCircle remain used by history list and Clocked-In badge). No new commit (verification only).
   - [x] Task 12 — Commit staged changes with prescribed commit message: all implementation commits already landed (2dd1d326, a52646de, d8949f63, 21e44de4); this commit records tasks 7-12 completion in progress.md — see this commit SHA.
 
+## Phase 5 (UI Review): COMPLETED 2026-06-18
+- Reviewed src/pages/EmployeeClock.tsx diff against CLAUDE.md Apple/Notion guidelines
+- Zero violations introduced by this branch
+- Green badge (text-green-700/bg-green-500/10) pre-existed on main; already tracked by task_83598b07
+- Branch actually reduced direct-color violations by removing the yellow "On Break" badge
+- Three-state rendering correct; action buttons have visible text (no aria-label gap)
+- No fixes needed; no new commit required
+
+## Phase 6 (Simplify): COMPLETED 2026-06-18
+- Extracted `stopCamera()` helper to eliminate 4× repeated `getTracks().forEach(...stop())` + `setCameraStream(null)` pattern
+- Extracted `formatDistance()` helper to replace long inline ternary inside geofence warning JSX
+- useEffect cleanup now returns `stopCamera` directly (idiomatic pattern)
+- onOpenChange camera-dialog handler uses `stopCamera()` (was 3-line inline)
+- handleConfirmPunch uses `stopCamera()` (was 3-line inline)
+- All 3 unit tests GREEN; typecheck 0 errors; ESLint 0 warnings
+- Commit: see below
+
 ## CI Status
 - PR: not yet created
 

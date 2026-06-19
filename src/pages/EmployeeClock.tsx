@@ -49,19 +49,18 @@ const EmployeeClock = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Cleanup camera stream when dialog closes or component unmounts
-  useEffect(() => {
-    if (cameraStream && !showCameraDialog) {
+  const stopCamera = () => {
+    if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
       setCameraStream(null);
     }
+  };
 
-    return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        setCameraStream(null);
-      }
-    };
+  // Cleanup camera stream when dialog closes or component unmounts
+  useEffect(() => {
+    if (cameraStream && !showCameraDialog) stopCamera();
+    return stopCamera;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraStream, showCameraDialog]);
 
   const startCamera = async () => {
@@ -181,10 +180,7 @@ const EmployeeClock = () => {
     setCapturedPhoto(null);
     setPendingGeofenceResult(undefined);
     setPendingLocationUnavailable(false);
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-    }
+    stopCamera();
 
     const contextPromise = collectPunchContext(3000);
 
@@ -267,6 +263,12 @@ const EmployeeClock = () => {
   }
 
   const isClockedIn = status?.is_clocked_in || false;
+
+  const formatDistance = (meters: number | undefined): string => {
+    if (meters == null) return 'some distance';
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${Math.round(meters / 10) * 10} meters`;
+  };
 
   return (
     <div className="space-y-6">
@@ -409,11 +411,7 @@ const EmployeeClock = () => {
       {/* Camera Verification Dialog */}
       <Dialog open={showCameraDialog} onOpenChange={(open) => {
         if (!open) {
-          // Cleanup when closing
-          if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-            setCameraStream(null);
-          }
+          stopCamera();
           setShowCameraDialog(false);
           setPendingPunchType(null);
           setCapturedPhoto(null);
@@ -540,7 +538,7 @@ const EmployeeClock = () => {
           <AlertDialogDescription className="text-[14px] text-muted-foreground">
             {geofenceWarning?.type === 'unavailable'
               ? "We couldn't verify your location. You can still clock in, but this will be flagged for manager review."
-              : `You appear to be about ${geofenceWarning?.distanceMeters != null ? (geofenceWarning.distanceMeters >= 1000 ? `${(geofenceWarning.distanceMeters / 1000).toFixed(1)} km` : `${Math.round(geofenceWarning.distanceMeters / 10) * 10} meters`) : 'some distance'} from the restaurant. Do you want to continue clocking in?`
+              : `You appear to be about ${formatDistance(geofenceWarning?.distanceMeters)} from the restaurant. Do you want to continue clocking in?`
             }
           </AlertDialogDescription>
           <AlertDialogFooter>

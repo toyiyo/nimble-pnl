@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
@@ -43,10 +43,10 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   const quickButtons = [6, 10, 20, 24];
   const numpadButtons = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const operatorButtons = [
-    { label: '+', value: '+', icon: Plus },
-    { label: '-', value: '-', icon: Minus },
-    { label: '×', value: '*', icon: X },
-    { label: '÷', value: '/', icon: Divide },
+    { label: '+', value: '+', icon: Plus, ariaLabel: 'Add' },
+    { label: '-', value: '-', icon: Minus, ariaLabel: 'Subtract' },
+    { label: '×', value: '*', icon: X, ariaLabel: 'Multiply' },
+    { label: '÷', value: '/', icon: Divide, ariaLabel: 'Divide' },
   ];
 
   const handleQuickSelect = (value: number) => {
@@ -90,6 +90,11 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
             <Package className="h-5 w-5" />
             Quick Inventory
           </DialogTitle>
+          <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+            {[product.brand, product.uom_purchase]
+              .filter(Boolean)
+              .join(' · ') || 'Enter quantity'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -235,7 +240,8 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
                     size="lg"
                     onClick={() => handleNumpadClick(op.value)}
                     className="text-xl font-semibold h-16"
-                    title={`${op.label} (${op.value === '*' ? 'multiply' : op.value === '/' ? 'divide' : op.value})`}
+                    title={op.ariaLabel}
+                    aria-label={op.ariaLabel}
                   >
                     <op.icon className="h-5 w-5" />
                   </Button>

@@ -30,7 +30,7 @@ docs/superpowers/plans/2026-06-18-inventory-scan-session-redesign-plan.md (commi
   - [x] Task 7: `QuickInventoryDialog` accessibility (DialogDescription + aria-labels) — 952cc0f1
   - [x] Task 8: `ScanSessionView` component — 0dfe6a72
   - [x] Task 9: Rewire `Inventory.tsx` camera path → `ScanSessionView` — 1c74646e
-  - [ ] Task 10: E2E — scan → enter → resume with no duplicate dialogs
+  - [x] Task 10: E2E — scan → enter → resume with no duplicate dialogs — 9d299310
 - [ ] Phase 10: Retrospective
 
 ## CI Status

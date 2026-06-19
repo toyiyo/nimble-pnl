@@ -22,6 +22,12 @@ Phase 4-9: dev-build-and-ship workflow RUNNING (runId wf_c944a6cb-7b7) — plan 
   - [x] Task 4 — Remove dead break JSX call sites (onBreak variable, On Break badge branch, break button grid → single full-width Clock In/Clock Out); all 3 tests GREEN, typecheck clean, lint clean — commit d8949f63
   - [x] Task 5 — Remove unused onBreak variable (already completed within task 4 commit d8949f63; grep confirms zero references remain)
   - [x] Task 6 — Simplify status badge: added positive assertions in EmployeeClock.test.tsx that "Clocked Out" renders when not clocked in and "Clocked In" renders when clocked in (badge implementation was already correct from task 4; these close the spec-coverage gap) — commit 21e44de4
+  - [x] Task 7 — Replace action-button grid with single full-width Clock In or Clock Out button: already fully implemented in task 4 commit d8949f63 (grid wrapper removed, `w-full` applied to each single button, no break branches remain). All 3 tests GREEN, no new commit needed.
+  - [x] Task 8 — Simplify camera-dialog confirm-button label to two-branch ternary: already fully implemented in task 3 commit a52646de (`pendingPunchType === 'clock_out' ? 'Confirm & Clock Out' : 'Confirm & Clock In'`). All 3 tests GREEN, no new commit needed.
+  - [x] Task 9 — GREEN verification: ran `npm run test -- tests/unit/EmployeeClock.test.tsx --reporter=verbose`; all 3 cases PASS: clocked-out (Clock In, no break affordances), clocked-in (Clock Out, no break affordances), external-break edge case (Clock In, no break affordances). No new commit (verification only).
+  - [x] Task 10 — TypeScript typecheck: ran `npm run typecheck` (tsc -p tsconfig.app.json --noEmit); exit code 0, zero errors. No new commit (verification only). Only remaining break_start/break_end references are in the read-only history rows (in-scope per design spec).
+  - [x] Task 11 — ESLint: ran `npx eslint src/pages/EmployeeClock.tsx tests/unit/EmployeeClock.test.tsx`; exit code 0, zero errors/warnings. No unused-vars (onBreak removed in task 4), no unused-import errors (Coffee and PlayCircle remain used by history list and Clocked-In badge). No new commit (verification only).
+  - [x] Task 12 — Commit staged changes with prescribed commit message: all implementation commits already landed (2dd1d326, a52646de, d8949f63, 21e44de4); this commit records tasks 7-12 completion in progress.md — see this commit SHA.
 
 ## CI Status
 - PR: not yet created

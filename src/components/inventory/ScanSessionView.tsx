@@ -58,8 +58,10 @@ export function ScanSessionView(props: ScanSessionViewProps) {
   // import.meta.env.PROD with `true` at build time).
   useEffect(() => {
     if (import.meta.env.PROD) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__emitScan = (gtin: string) => handleScan(gtin, 'EAN_13'); // test-only bridge
     return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (window as any).__emitScan; // test-only cleanup
     };
   }, [handleScan]);
@@ -95,7 +97,13 @@ export function ScanSessionView(props: ScanSessionViewProps) {
         open dialog.
       */}
       <div
-        {...(entryOpen ? { inert: '' as any /* HTMLElement.inert not in all TS versions */, 'aria-hidden': true } : {})}
+        {...(entryOpen
+          ? {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              inert: '' as any /* HTMLElement.inert not in all TS versions */,
+              'aria-hidden': true,
+            }
+          : {})}
         className="relative rounded-xl overflow-hidden"
       >
         {/* Top bar: session counter + Done — safe-area aware (M2) */}

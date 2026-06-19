@@ -48,7 +48,9 @@ export const NativeBarcodeScanner = ({
     const initDetector = async () => {
       try {
         // BarcodeDetector is a draft API not yet in TS lib — cast is required
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const formats = await (window as any /* BarcodeDetector not in TS lib */).BarcodeDetector.getSupportedFormats();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         detectorRef.current = new (window as any /* BarcodeDetector not in TS lib */).BarcodeDetector({ formats });
         isDetectorReady.current = true;
         // Initialization-race fix: if active=true arrived before init completed,

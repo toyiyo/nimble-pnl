@@ -22,7 +22,7 @@ Phases 4-9: dev-build-and-ship workflow — Preflight PASSED 2026-06-18
 - [x] Phase 4, Task 6: Day-cell time-off bands, soft-block, conflict escalation in Scheduling.tsx (extend classes test) — commit b668e403
 - [x] Phase 4, Task 7: Mobile degradation: avatar dots, extended aria-label, tooltip line in Scheduling.tsx (extend classes test) — commit 9ad35a7a
 - [x] Phase 5: UI Review — no violations in branch diff; amber Minor pill, info Off chip, FT/PT tag, day-cell bands all comply with CLAUDE.md guidelines; no fixes needed
-- [x] Phase 6: Simplify — 3 cleanups in Scheduling.tsx: dayKey reuse (×3 format calls), aria-label dedup; cn duplication skipped (source-text test contract). commit TBD
+- [x] Phase 6: Simplify — 3 cleanups in Scheduling.tsx: dayKey reuse (×3 format calls), aria-label dedup; cn duplication skipped (source-text test contract). commit 59d30363
 - [ ] Phases 7-9: dev-build-and-ship workflow (in progress)
 
 ## CI Status

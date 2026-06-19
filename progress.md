@@ -5,7 +5,7 @@
 - Plan: docs/superpowers/plans/2026-06-18-schedule-roster-context-layer-plan.md
 
 ## Current Phase
-Phase 9a complete — PR #542 opened 2026-06-18
+Phase 9d complete — review triage done 2026-06-19
 
 ## Completed Tasks
 - [x] Phase 0: Consulted memory/lessons.md (time-off overlap, pure-helper testing, single breakpoint, semantic tokens)
@@ -36,10 +36,14 @@ Phase 9a complete — PR #542 opened 2026-06-18
   - test:db: 1373/1374 pass (1 pre-existing failure in 32_weekly_brief_queue.sql — not in our diff)
   - test:e2e: 140/156 pass, 4 pre-existing failures (employee-payroll, inventory-create-with-image, manual-sale-tip, scheduling-conflicts — none in our diff)
 
+- [x] Phase 9d: Review triage — 1 bug fixed (cancelled shifts false conflict, commit 2928ea86 pushed), 5 info comments read-only, 0 open critical/major issues; triage artifact at dev-tools/9d-triage-feature/schedule-roster-context-layer.md
+
 ## CI Status
 - PR: https://github.com/toyiyo/nimble-pnl/pull/542 (#542)
-- Checks: pending (just opened)
-- Iteration: 0/5
+- Checks: ALL PASS (2026-06-18, iteration 1/5)
+- SonarCloud: pass
+- Iteration: 1/5 — ciGreen=true
+- Post-9d push: 2928ea86 — awaiting new CI run
 
 ## Blockers
 - none

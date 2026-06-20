@@ -33,6 +33,26 @@ const overviewDays: OverviewDay[] = [
 const coverageByDay = new Map<string, number[]>();
 
 describe('<ScheduleOverviewPanel>', () => {
+  it('shows empty state when overviewDays is empty', () => {
+    const { container } = render(
+      <ScheduleOverviewPanel
+        overviewDays={[]}
+        coverageByDay={new Map<string, number[]>()}
+        isMobile={false}
+      />,
+    );
+
+    // Expand the panel first (empty state lives inside CollapsibleContent)
+    const trigger = screen.getByRole('button', { expanded: false });
+    fireEvent.click(trigger);
+
+    // Empty-state message is shown
+    expect(screen.getByText(/No schedule data for this week\./i)).toBeTruthy();
+
+    // No day cards
+    expect(container.querySelectorAll('[data-overview-day]')).toHaveLength(0);
+  });
+
   it('is collapsed by default: no day cards visible, teaser shows 5/7 days staffed', () => {
     const { container } = render(
       <ScheduleOverviewPanel

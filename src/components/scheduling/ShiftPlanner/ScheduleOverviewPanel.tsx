@@ -25,6 +25,11 @@ function shortLabel(day: string): string {
   return `${weekday} ${date.getDate()}`;
 }
 
+/**
+ * Collapsible weekly schedule overview panel.
+ * Collapsed by default; shows a staffed-day rollup teaser.
+ * Expanding reveals one OverviewDayCard per day in the week.
+ */
 export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
   overviewDays,
   coverageByDay,

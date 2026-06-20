@@ -18,12 +18,11 @@ interface ScheduleOverviewPanelProps {
   isMobile: boolean;
 }
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
+/** Returns e.g. "Mon 16" from an ISO date string "2026-06-16". */
 function shortLabel(day: string): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return `${DAY_LABELS[date.getDay()]} ${d}`;
+  const date = new Date(day + 'T00:00:00');
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
+  return `${weekday} ${date.getDate()}`;
 }
 
 export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({

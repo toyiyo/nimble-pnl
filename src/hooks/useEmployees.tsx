@@ -185,7 +185,7 @@ export const useDeactivateEmployee = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       // Invalidate all employee queries for this restaurant
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast({
@@ -228,7 +228,7 @@ export const useReactivateEmployee = () => {
       if (error) throw error;
       return data;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       // Invalidate all employee queries
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       toast({

@@ -86,11 +86,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [dailyRateStandardDays, setDailyRateStandardDays] = useState('6');
 
   // Calculate derived daily rate (preview)
+  const standardDays = parseInt(dailyRateStandardDays) || 1;
   const derivedDailyRate = useMemo(() => {
     const weekly = parseFloat(dailyRateWeekly) || 0;
-    const days = parseInt(dailyRateStandardDays) || 1;
-    return weekly / days;
-  }, [dailyRateWeekly, dailyRateStandardDays]);
+    return weekly / standardDays;
+  }, [dailyRateWeekly, standardDays]);
 
   const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -416,7 +416,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       : undefined;
     
     const dailyRateDays = compensationType === 'daily_rate' && dailyRateStandardDays
-      ? parseInt(dailyRateStandardDays)
+      ? standardDays
       : undefined;
     
     const dailyRateAmountInCents = dailyRateWeeklyInCents && dailyRateDays
@@ -991,7 +991,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         </div>
                         <div className="flex justify-between">
                           <span>7 days worked:</span>
-                          <span className={`font-medium ${parseInt(dailyRateStandardDays) < 7 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                          <span className={`font-medium ${standardDays < 7 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
                             ${(derivedDailyRate * 7).toFixed(2)}
                           </span>
                         </div>
@@ -1000,7 +1000,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   )}
 
                   {/* Warn about 7-day scenario */}
-                  {parseInt(dailyRateStandardDays) < 7 && (
+                  {standardDays < 7 && (
                     <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
                       <Info className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
                       <p className="text-amber-700 dark:text-amber-400">
@@ -1043,7 +1043,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
-                  <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
+                  <Select value={status} onValueChange={(value) => setStatus(value as EmployeeStatus)}>
                     <SelectTrigger id="status" aria-label="Employee status" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                       <SelectValue />
                     </SelectTrigger>
@@ -1204,7 +1204,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
               Apply New Compensation Rate
             </DialogTitle>
             <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
-              We’ll keep your historical records intact. This change only applies to shifts worked on or after the effective date.
+              We'll keep your historical records intact. This change only applies to shifts worked on or after the effective date.
             </DialogDescription>
           </DialogHeader>
           <div className="px-6 py-5 space-y-4">
@@ -1236,7 +1236,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
               disabled={savingCompHistory || updateEmployee.isPending || !effectiveDate}
               className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
-              {savingCompHistory ? ‘Saving...’ : ‘Save New Rate’}
+              {savingCompHistory ? 'Saving...' : 'Save New Rate'}
             </Button>
           </DialogFooter>
         </DialogContent>

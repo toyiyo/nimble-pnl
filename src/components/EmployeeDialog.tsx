@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Employee, EmployeeStatus, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
-import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -42,6 +41,7 @@ import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
+import { isActiveForStatus } from '@/utils/employeeFilters';
 
 interface EmployeeDialogProps {
   open: boolean;

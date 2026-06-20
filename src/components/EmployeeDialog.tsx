@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
-import { Employee, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
+import { Employee, EmployeeStatus, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -41,6 +41,7 @@ import { useShiftTemplates } from '@/hooks/useShiftTemplates';
 import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
+import { isActiveForStatus } from '@/utils/employeeFilters';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -57,7 +58,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [area, setArea] = useState('');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('full_time');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive' | 'terminated'>('active');
+  const [status, setStatus] = useState<EmployeeStatus>('active');
   const [hireDate, setHireDate] = useState('');
   const [terminationDate, setTerminationDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -85,11 +86,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [dailyRateStandardDays, setDailyRateStandardDays] = useState('6');
 
   // Calculate derived daily rate (preview)
+  const standardDays = Number.parseInt(dailyRateStandardDays) || 1;
   const derivedDailyRate = useMemo(() => {
     const weekly = parseFloat(dailyRateWeekly) || 0;
-    const days = parseInt(dailyRateStandardDays) || 1;
-    return weekly / days;
-  }, [dailyRateWeekly, dailyRateStandardDays]);
+    return weekly / standardDays;
+  }, [dailyRateWeekly, standardDays]);
 
   const getToday = () => new Date().toISOString().split('T')[0];
 
@@ -415,7 +416,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       : undefined;
     
     const dailyRateDays = compensationType === 'daily_rate' && dailyRateStandardDays
-      ? parseInt(dailyRateStandardDays)
+      ? standardDays
       : undefined;
     
     const dailyRateAmountInCents = dailyRateWeeklyInCents && dailyRateDays
@@ -476,7 +477,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         ? terminationDate 
         : null,
       notes: notes || undefined,
-      is_active: employee?.is_active ?? true,
+      is_active: isActiveForStatus(status),
       compensation_type: compensationType,
       is_exempt: isExempt,
       hourly_rate: hourlyRateInCents,
@@ -577,9 +578,14 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[500px] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>{employee ? 'Edit Employee' : 'Add New Employee'}</DialogTitle>
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">
+              {employee ? 'Edit Employee' : 'Add New Employee'}
+            </DialogTitle>
+            <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+              {employee ? 'Update employee details and compensation.' : 'Add a new team member to your restaurant.'}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
             <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -595,6 +601,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   placeholder="John Doe"
                   required
                   aria-label="Employee name"
+                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                 />
               </div>
 
@@ -675,7 +682,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     if (newType !== 'hourly') setIsExempt(false);
                   }}
                 >
-                  <SelectTrigger id="compensationType" aria-label="Compensation type">
+                  <SelectTrigger id="compensationType" aria-label="Compensation type" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -714,6 +721,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       placeholder="15.00"
                       required
                       aria-label="Hourly rate in dollars"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
 
@@ -777,6 +785,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       placeholder="52000.00"
                       required
                       aria-label="Salary amount in dollars"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
                   <div className="space-y-2">
@@ -802,7 +811,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={payPeriodType} 
                       onValueChange={(value) => setPayPeriodType(value as PayPeriodType)}
                     >
-                      <SelectTrigger id="payPeriodType" aria-label="Pay period">
+                      <SelectTrigger id="payPeriodType" aria-label="Pay period" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -873,6 +882,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       placeholder="2500.00"
                       required
                       aria-label="Payment amount in dollars"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
                   <div className="space-y-2">
@@ -883,7 +893,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={contractorPaymentInterval} 
                       onValueChange={(value) => setContractorPaymentInterval(value as ContractorPaymentInterval)}
                     >
-                      <SelectTrigger id="contractorPaymentInterval" aria-label="Payment interval">
+                      <SelectTrigger id="contractorPaymentInterval" aria-label="Payment interval" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -934,6 +944,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         placeholder="1000.00"
                         required
                         aria-label="Weekly reference amount"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                       <span className="text-sm text-muted-foreground whitespace-nowrap">per week</span>
                     </div>
@@ -947,7 +958,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       value={dailyRateStandardDays} 
                       onValueChange={setDailyRateStandardDays}
                     >
-                      <SelectTrigger id="dailyRateStandardDays" aria-label="Standard work days per week">
+                      <SelectTrigger id="dailyRateStandardDays" aria-label="Standard work days per week" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -960,10 +971,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
                   {/* CRITICAL: Show the derived rate */}
                   {dailyRateWeekly && parseFloat(dailyRateWeekly) > 0 && (
-                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-md">
+                    <div className="p-3 rounded-xl border border-border/40 bg-muted/30">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Daily Rate</span>
-                        <span className="text-lg font-bold text-primary">
+                        <span className="text-[13px] font-medium text-muted-foreground">Daily Rate</span>
+                        <span className="text-[15px] font-semibold text-foreground">
                           ${derivedDailyRate.toFixed(2)} / day
                         </span>
                       </div>
@@ -980,7 +991,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                         </div>
                         <div className="flex justify-between">
                           <span>7 days worked:</span>
-                          <span className={`font-medium ${parseInt(dailyRateStandardDays) < 7 ? 'text-orange-600' : ''}`}>
+                          <span className={`font-medium ${standardDays < 7 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
                             ${(derivedDailyRate * 7).toFixed(2)}
                           </span>
                         </div>
@@ -989,10 +1000,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   )}
 
                   {/* Warn about 7-day scenario */}
-                  {parseInt(dailyRateStandardDays) < 7 && (
-                    <div className="flex items-start gap-2 p-2 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded text-xs">
-                      <Info className="h-3.5 w-3.5 text-orange-600 mt-0.5 flex-shrink-0" />
-                      <p className="text-orange-800 dark:text-orange-300">
+                  {standardDays < 7 && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+                      <Info className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-amber-700 dark:text-amber-400">
                         If this employee works 7 days, they'll earn <strong>${(derivedDailyRate * 7).toFixed(2)}</strong>,
                         which is more than the weekly reference amount.
                       </p>
@@ -1011,6 +1022,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="john@example.com"
                     aria-label="Employee email"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
 
@@ -1023,6 +1035,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="(555) 123-4567"
                     aria-label="Employee phone number"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
               </div>
@@ -1030,8 +1043,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
-                  <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
-                    <SelectTrigger id="status" aria-label="Employee status">
+                  <Select value={status} onValueChange={(value) => setStatus(value as EmployeeStatus)}>
+                    <SelectTrigger id="status" aria-label="Employee status" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1050,6 +1063,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     value={hireDate}
                     onChange={(e) => setHireDate(e.target.value)}
                     aria-label="Hire date"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                 </div>
 
@@ -1061,6 +1075,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     value={dateOfBirth}
                     onChange={(e) => setDateOfBirth(e.target.value)}
                     aria-label="Date of birth"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                   {dateOfBirth && isMinor(dateOfBirth) && (
                     <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium inline-block">
@@ -1083,6 +1098,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     onChange={(e) => setTerminationDate(e.target.value)}
                     required={status === 'terminated'}
                     aria-label="Termination date"
+                    className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                   />
                   <p className="text-xs text-muted-foreground">
                     Payroll allocations will stop being generated after this date
@@ -1099,6 +1115,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   placeholder="Additional information about this employee..."
                   rows={3}
                   aria-label="Employee notes"
+                  className="text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border resize-none"
                 />
               </div>
             </div>
@@ -1146,13 +1163,19 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
             )}
             </div>
 
-            <DialogFooter className="px-6 py-4 border-t border-border/40">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <DialogFooter className="px-6 py-4 border-t border-border/40 shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+              >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={createEmployee.isPending || updateEmployee.isPending}
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >
                 {(() => {
                   if (createEmployee.isPending || updateEmployee.isPending) return 'Saving...';
@@ -1175,16 +1198,18 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
           }
         }}
       >
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Apply New Compensation Rate</DialogTitle>
-            <DialogDescription>
-              We’ll keep your historical records intact. This change only applies to shifts worked on or after the effective date.
+        <DialogContent className="sm:max-w-[425px] p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">
+              Apply New Compensation Rate
+            </DialogTitle>
+            <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+              We'll keep your historical records intact. This change only applies to shifts worked on or after the effective date.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="px-6 py-5 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="effectiveDate">
+              <Label htmlFor="effectiveDate" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                 Effective Date <span className="text-destructive">*</span>
               </Label>
               <Input
@@ -1194,19 +1219,22 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 onChange={(e) => setEffectiveDate(e.target.value)}
                 required
                 aria-label="Effective date for new compensation rate"
+                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
               />
             </div>
-            <p className="text-sm text-muted-foreground">
-              This change only applies to shifts worked on or after the effective date.
-            </p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEffectiveDateModalOpen(false)}>
+          <DialogFooter className="px-6 py-4 border-t border-border/40">
+            <Button
+              variant="ghost"
+              onClick={() => setIsEffectiveDateModalOpen(false)}
+              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            >
               Cancel
             </Button>
             <Button
               onClick={handleApplyCompChange}
               disabled={savingCompHistory || updateEmployee.isPending || !effectiveDate}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
               {savingCompHistory ? 'Saving...' : 'Save New Rate'}
             </Button>

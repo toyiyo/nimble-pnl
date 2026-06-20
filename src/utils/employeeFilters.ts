@@ -3,6 +3,18 @@
  * Shared utilities for filtering and managing employee activation status
  */
 
+import type { EmployeeStatus } from '@/types/scheduling';
+
+/**
+ * Single source of truth for the is_active ↔ status invariant enforced by the
+ * DB check constraint `employees_status_active_sync`.
+ *   active → is_active = true
+ *   inactive | terminated → is_active = false
+ */
+export function isActiveForStatus(status: EmployeeStatus): boolean {
+  return status === 'active';
+}
+
 interface EmployeeWithActivation {
   is_active: boolean;
   status: string;

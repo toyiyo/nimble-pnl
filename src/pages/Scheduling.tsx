@@ -1421,7 +1421,7 @@ const Scheduling = () => {
                 </div>
               ))}
             </div>
-          ) : activeEmployees.length === 0 ? (
+          ) : allEmployees.length === 0 ? (
             <div className="text-center py-16 px-6">
               <div className="relative inline-block">
                 <div className="absolute inset-0 bg-primary/10 rounded-full blur-xl animate-pulse" />

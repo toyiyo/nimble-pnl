@@ -182,22 +182,8 @@ export const useDeactivateEmployee = () => {
         p_termination_date: terminationDate,
       });
 
-      if (!error && data) return data;
-
-      // Fallback: direct update when RPC is unavailable in test/preview environments
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('employees')
-        .update({
-          is_active: false,
-          deactivated_at: terminationDate,
-          deactivation_reason: reason || null,
-        })
-        .eq('id', employeeId)
-        .select('restaurant_id')
-        .single();
-
-      if (fallbackError) throw fallbackError;
-      return fallbackData;
+      if (error) throw error;
+      return data;
     },
     onSuccess: (data, variables) => {
       // Invalidate all employee queries for this restaurant

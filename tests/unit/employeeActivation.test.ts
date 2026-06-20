@@ -292,13 +292,13 @@ describe('Employee Activation Status', () => {
         termination_date: futureDate,
       };
 
-      const mockRpc = vi.fn().mockResolvedValue({ 
-        data: mockDeactivatedEmployee, 
-        error: null 
+      const mockRpc = vi.fn().mockResolvedValue({
+        data: mockDeactivatedEmployee,
+        error: null
       });
 
       mockSupabase.rpc = mockRpc;
-      
+
       mockSupabase.auth.getUser.mockResolvedValue({
         data: { user: { id: 'user-123' } },
         error: null,
@@ -333,6 +333,22 @@ describe('Employee Activation Status', () => {
           })
         );
       });
+    });
+
+    it('surfaces the RPC error and does NOT fall back to a direct update', async () => {
+      mockSupabase.rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'rpc unavailable' } });
+      mockSupabase.from = vi.fn(); // must never be called
+      mockSupabase.auth.getUser.mockResolvedValue({ data: { user: { id: 'user-123' } }, error: null });
+
+      const { useDeactivateEmployee } = await import('@/hooks/useEmployees');
+      const { result } = renderHook(() => useDeactivateEmployee(), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current).toBeDefined());
+
+      await expect(
+        result.current.mutateAsync({ employeeId: 'emp-1', removeFromSchedules: true, terminationDate: '2026-06-19' }),
+      ).rejects.toBeTruthy();
+
+      expect(mockSupabase.from).not.toHaveBeenCalled();
     });
   });
 

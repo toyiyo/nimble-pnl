@@ -7,7 +7,9 @@ import {
   filterInactiveEmployees,
   getLastActiveDate,
   canReactivate,
+  isActiveForStatus,
 } from '@/utils/employeeFilters';
+import type { EmployeeStatus } from '@/types/scheduling';
 
 /**
  * Unit Tests for Employee Activation/Deactivation Logic
@@ -486,6 +488,29 @@ describe('Employee Activation Status', () => {
       expect(
         canReactivate({ is_active: false, status: 'terminated' })
       ).toBe(false);
+    });
+  });
+
+  describe('isActiveForStatus — DB constraint mirror', () => {
+    it('should return true for active status', () => {
+      const status: EmployeeStatus = 'active';
+      expect(isActiveForStatus(status)).toBe(true);
+    });
+
+    it('should return false for inactive status', () => {
+      const status: EmployeeStatus = 'inactive';
+      expect(isActiveForStatus(status)).toBe(false);
+    });
+
+    it('should return false for terminated status', () => {
+      const status: EmployeeStatus = 'terminated';
+      expect(isActiveForStatus(status)).toBe(false);
+    });
+
+    it('should be exhaustive: only active yields true', () => {
+      const allStatuses: EmployeeStatus[] = ['active', 'inactive', 'terminated'];
+      const active = allStatuses.filter((s) => isActiveForStatus(s));
+      expect(active).toEqual(['active']);
     });
   });
 });

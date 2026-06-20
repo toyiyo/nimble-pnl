@@ -5,6 +5,14 @@ export type ContractorPaymentInterval = 'weekly' | 'bi-weekly' | 'monthly' | 'pe
 export type DeactivationReason = 'seasonal' | 'left_company' | 'on_leave' | 'other';
 export type EmploymentType = 'full_time' | 'part_time';
 
+/**
+ * Canonical employee status type.
+ * Mirrors the DB constraint `employees_status_active_sync`:
+ *   active → is_active = true
+ *   inactive | terminated → is_active = false
+ */
+export type EmployeeStatus = 'active' | 'inactive' | 'terminated';
+
 export interface CompensationHistoryEntry {
   id: string;
   employee_id: string;
@@ -24,7 +32,7 @@ export interface Employee {
   phone?: string;
   position: string;
   area?: string;
-  status: 'active' | 'inactive' | 'terminated';
+  status: EmployeeStatus;
   hire_date?: string;
   termination_date?: string; // Date when employee was terminated/inactivated
   notes?: string;

@@ -67,22 +67,28 @@ export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <div
-            className={cn(
-              'p-3',
-              isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',
-            )}
-          >
-            {overviewDays.map((d) => (
-              <OverviewDayCard
-                key={d.day}
-                data={d}
-                dayLabel={shortLabel(d.day)}
-                variant={isMobile ? 'mobile' : 'desktop'}
-                coverage={isMobile ? coverageByDay.get(d.day) : undefined}
-              />
-            ))}
-          </div>
+          {overviewDays.length === 0 ? (
+            <div className="px-4 py-6 text-center">
+              <p className="text-[13px] text-muted-foreground">No schedule data for this week.</p>
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'p-3',
+                isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',
+              )}
+            >
+              {overviewDays.map((d) => (
+                <OverviewDayCard
+                  key={d.day}
+                  data={d}
+                  dayLabel={shortLabel(d.day)}
+                  variant={isMobile ? 'mobile' : 'desktop'}
+                  coverage={isMobile ? coverageByDay.get(d.day) : undefined}
+                />
+              ))}
+            </div>
+          )}
         </CollapsibleContent>
       </section>
     </Collapsible>

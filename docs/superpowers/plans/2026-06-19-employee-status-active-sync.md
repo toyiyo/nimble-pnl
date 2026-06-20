@@ -100,7 +100,7 @@ export function isActiveForStatus(status: EmployeeStatus): boolean {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/unit/employeeActivation.test.ts`
-Expected: PASS (all prior 12 tests + the 2 new ones).
+Expected: PASS (20 tests total).
 
 - [ ] **Step 5: Typecheck (the `Employee.status` change is type-only)**
 

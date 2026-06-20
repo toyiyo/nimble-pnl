@@ -9,13 +9,13 @@
 Managers cannot deactivate (or otherwise change the status of) an employee from
 the UI. Saving a status change to `inactive`/`terminated` fails with:
 
-```
+```sql
 new row for relation "employees" violates check constraint "employees_status_active_sync"
 (Postgres 23514)
 ```
 
 Real-world trigger: a duplicated employee (`alexavaldez.1105@gmail.com`) could
-not be deactivated. Reproduced by the user "without a scheduled [shift]", which
+not be deactivated. Reproduced by the user "without a scheduled [shift]," which
 confirms the failure is unrelated to shifts/FKs — it is purely the
 `status` ↔ `is_active` pairing.
 

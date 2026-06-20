@@ -1,7 +1,12 @@
-import { memo, useId, useState } from 'react';
+import { memo, useState } from 'react';
 
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CalendarRange, ChevronDown } from 'lucide-react';
 
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 
 import { OverviewDayCard } from './OverviewDayCard';
@@ -13,69 +18,83 @@ interface ScheduleOverviewPanelProps {
   isMobile: boolean;
 }
 
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
+/** Returns e.g. "Mon 16" from an ISO date string "2026-06-16". */
 function shortLabel(day: string): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return `${DAY_LABELS[date.getDay()]} ${d}`;
+  const date = new Date(day + 'T00:00:00');
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
+  return `${weekday} ${date.getDate()}`;
 }
 
+/**
+ * Collapsible weekly schedule overview panel.
+ * Collapsed by default; shows a staffed-day rollup teaser.
+ * Expanding reveals one OverviewDayCard per day in the week.
+ */
 export const ScheduleOverviewPanel = memo(function ScheduleOverviewPanel({
   overviewDays,
   coverageByDay,
   isMobile,
 }: Readonly<ScheduleOverviewPanelProps>) {
-  const [expanded, setExpanded] = useState(true);
-  const bodyId = useId();
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const staffedCount = overviewDays.filter((d) => !d.unstaffed).length;
 
   return (
-    <section
-      aria-label="Weekly schedule overview"
-      className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden"
-    >
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-        aria-controls={bodyId}
-        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/50 transition-colors"
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <section
+        aria-label="Weekly schedule overview"
+        className="rounded-xl border border-border/40 bg-background overflow-hidden"
       >
-        <span className="flex items-center gap-2">
-          {expanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          )}
-          <span className="text-[13px] font-semibold text-foreground">Schedule overview</span>
-        </span>
-        <span className="text-[12px] text-muted-foreground">
-          {overviewDays.filter((d) => !d.unstaffed).length}/{overviewDays.length} days staffed
-        </span>
-      </button>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <span className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center">
+                <CalendarRange className="h-3.5 w-3.5 text-foreground" />
+              </span>
+              <span className="text-[14px] font-medium text-foreground">Schedule overview</span>
+              {!isExpanded && overviewDays.length > 0 && (
+                <span className="text-[12px] text-muted-foreground ml-2">
+                  {staffedCount}/{overviewDays.length} days staffed
+                </span>
+              )}
+            </span>
+            <ChevronDown
+              className={cn(
+                'h-4 w-4 text-muted-foreground transition-transform',
+                isExpanded && 'rotate-180',
+              )}
+            />
+          </button>
+        </CollapsibleTrigger>
 
-      <div
-        id={bodyId}
-        aria-hidden={!expanded}
-        className={cn(
-          'p-3',
-          expanded
-            ? isMobile
-              ? 'flex flex-col gap-2'
-              : 'grid grid-cols-7 gap-2'
-            : 'hidden',
-        )}
-      >
-        {overviewDays.map((d) => (
-          <OverviewDayCard
-            key={d.day}
-            data={d}
-            dayLabel={shortLabel(d.day)}
-            variant={isMobile ? 'mobile' : 'desktop'}
-            coverage={isMobile ? coverageByDay.get(d.day) : undefined}
-          />
-        ))}
-      </div>
-    </section>
+        <CollapsibleContent>
+          {overviewDays.length === 0 ? (
+            <div className="px-4 py-6 text-center">
+              <p className="text-[13px] text-muted-foreground">No schedule data for this week.</p>
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'p-3',
+                isMobile ? 'flex flex-col gap-2' : 'grid grid-cols-7 gap-2',
+              )}
+            >
+              {overviewDays.map((d) => (
+                <OverviewDayCard
+                  key={d.day}
+                  data={d}
+                  dayLabel={shortLabel(d.day)}
+                  variant={isMobile ? 'mobile' : 'desktop'}
+                  coverage={isMobile ? coverageByDay.get(d.day) : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   );
 });

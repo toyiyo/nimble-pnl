@@ -78,13 +78,28 @@ Mirror `StaffingOverlay`'s header exactly:
 
 ## Accessibility
 
-- Keep the `<section aria-label="Weekly schedule overview">` landmark.
-- Radix `CollapsibleTrigger` wires `aria-expanded` + `aria-controls`
-  automatically; the trigger button keeps a dynamic `aria-label`
-  ("Collapse/Expand schedule overview").
+- Keep the `<section aria-label="Weekly schedule overview">` landmark. The
+  `rounded-xl border bg-background` classes live on this `<section>` (which
+  sits inside the Radix `Collapsible` root `<div>`); the Radix wrapper is
+  unstyled, so there is no duplicated border/box.
+- **`CollapsibleTrigger` MUST use `asChild`** with a single `<button>` child
+  (exactly as `StaffingOverlay` does at lines 278–279). This makes Radix
+  inject `aria-expanded` + `aria-controls` onto the `<button>` directly and
+  avoids a nested-`<button>` violation that would silently drop the ARIA
+  wiring. (Phase 2.5 major finding.)
+- **No `aria-label` on the trigger.** The visible "Schedule overview" text is
+  the accessible name, and Radix supplies `aria-expanded` for state. This is
+  the WAI-ARIA disclosure pattern and matches the *current* file's approach
+  (visible-text-as-name + `aria-expanded`, no `aria-label`). It is a
+  deliberate, small improvement over the sibling, whose
+  `aria-label={isExpanded ? 'Collapse…' : 'Expand…'}` overrides its visible
+  title+teaser — so screen-reader users there never hear the teaser. By
+  dropping the `aria-label`, the collapsed "N/M days staffed" teaser becomes
+  part of the button's accessible name and IS announced. (Phase 2.5 major
+  finding.)
 - Trigger is a real `<button>` → keyboard accessible.
-- Decorative icons (`CalendarRange`, `ChevronDown`) carry no standalone
-  meaning; the visible "Schedule overview" label is the accessible name.
+- Decorative icons (`CalendarRange`, `ChevronDown`) are bare lucide `<svg>`
+  with no role/text, so they do not pollute the accessible name.
 
 ## Scope / blast radius
 
@@ -112,3 +127,15 @@ New component test `tests/unit/ScheduleOverviewPanel.test.tsx`:
 - **Teaser hidden when expanded.** The `N/M days staffed` rollup disappears
   on expand (the day cards convey per-day status). Chosen for strict parity
   with the sibling rather than keeping a persistent right-side stat.
+- **Hover at `hover:bg-muted/30`,** matching the sibling — do NOT carry over
+  the current file's heavier `hover:bg-muted/50`.
+
+## Retrospective notes (carry to Phase 10)
+
+- `StaffingOverlay` uses literal palette colors on its icon
+  (`text-blue-600 dark:text-blue-400`), a minor CLAUDE.md "no direct colors"
+  deviation. The new panel deliberately does NOT replicate it (uses
+  `text-foreground`). Aligning the sibling is out of scope here.
+- `StaffingOverlay`'s trigger `aria-label` overrides its visible
+  title+teaser; the new panel's no-`aria-label` approach is more correct.
+  Candidate for a future sibling cleanup.

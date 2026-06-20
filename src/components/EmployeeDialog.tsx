@@ -86,7 +86,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [dailyRateStandardDays, setDailyRateStandardDays] = useState('6');
 
   // Calculate derived daily rate (preview)
-  const standardDays = parseInt(dailyRateStandardDays) || 1;
+  const standardDays = Number.parseInt(dailyRateStandardDays) || 1;
   const derivedDailyRate = useMemo(() => {
     const weekly = parseFloat(dailyRateWeekly) || 0;
     return weekly / standardDays;

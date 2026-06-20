@@ -183,6 +183,7 @@ export const useDeactivateEmployee = () => {
       });
 
       if (error) throw error;
+      if (!data) throw new Error('deactivate_employee returned no employee row');
       return data;
     },
     onSuccess: () => {
@@ -226,6 +227,7 @@ export const useReactivateEmployee = () => {
       });
 
       if (error) throw error;
+      if (!data) throw new Error('reactivate_employee returned no employee row');
       return data;
     },
     onSuccess: () => {

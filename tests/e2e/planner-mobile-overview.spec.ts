@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 test.describe('Planner mobile layout', () => {
-  test('overview panel renders stacked with visible day cards', async ({ page }) => {
+  test('overview panel is collapsed by default; expanding shows day cards', async ({ page }) => {
     // Do signup at desktop viewport — OnboardingDrawer's SheetContent is
     // wider than a 390px mobile viewport and would intercept the "Add
     // Restaurant" click. Switch to mobile once we're ready to exercise the
@@ -25,17 +25,17 @@ test.describe('Planner mobile layout', () => {
     await page.goto('/scheduling');
     await page.getByRole('tab', { name: /planner/i }).click();
 
-    // Overview panel expanded by default
+    // Panel must be present but collapsed by default — no day cards yet.
     await expect(page.getByRole('region', { name: /weekly schedule overview/i })).toBeVisible();
-
-    // 7 day cards are rendered
     const dayCards = page.locator('[data-overview-day]');
+    await expect(dayCards).toHaveCount(0);
+
+    // Expanding the panel reveals 7 stacked day cards (mobile layout).
+    await page.getByRole('button', { expanded: false, name: /schedule overview/i }).click();
     await expect(dayCards).toHaveCount(7);
 
-    // Collapsing hides the cards. The panel body stays mounted (with the
-    // `hidden` HTML attribute) so `aria-controls` always resolves to an
-    // element, but the cards become non-visible.
+    // Collapsing hides the cards again.
     await page.getByRole('button', { expanded: true, name: /schedule overview/i }).click();
-    await expect(dayCards.first()).not.toBeVisible();
+    await expect(dayCards).toHaveCount(0);
   });
 });

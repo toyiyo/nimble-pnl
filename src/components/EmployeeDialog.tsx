@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
-import { Employee, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
+import { Employee, EmployeeStatus, CompensationType, PayPeriodType, ContractorPaymentInterval, EmploymentType } from '@/types/scheduling';
+import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useCreateEmployee, useUpdateEmployee } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -57,7 +58,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [area, setArea] = useState('');
   const [employmentType, setEmploymentType] = useState<EmploymentType>('full_time');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive' | 'terminated'>('active');
+  const [status, setStatus] = useState<EmployeeStatus>('active');
   const [hireDate, setHireDate] = useState('');
   const [terminationDate, setTerminationDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -476,7 +477,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         ? terminationDate 
         : null,
       notes: notes || undefined,
-      is_active: employee?.is_active ?? true,
+      is_active: isActiveForStatus(status),
       compensation_type: compensationType,
       is_exempt: isExempt,
       hourly_rate: hourlyRateInCents,

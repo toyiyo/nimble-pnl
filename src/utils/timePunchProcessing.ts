@@ -186,13 +186,10 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
   }
 
   const result: ProcessedPunch[] = [];
-  for (const [, bucket] of buckets) {
+  for (const bucket of buckets.values()) {
     // Sort each employee's punches chronologically before normalizing
     bucket.sort((a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime());
-    const normalized = normalizeEmployeePunches(bucket);
-    for (const p of normalized) {
-      result.push(p);
-    }
+    result.push(...normalizeEmployeePunches(bucket));
   }
 
   return result;
@@ -204,24 +201,27 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
 export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSession[] {
   // Filter out noise punches
   const validPunches = processedPunches.filter(p => !p.is_noise);
-  
+
   // Group by employee
   const employeeGroups = new Map<string, ProcessedPunch[]>();
-  validPunches.forEach(punch => {
-    const existing = employeeGroups.get(punch.employee_id) || [];
-    existing.push(punch);
-    employeeGroups.set(punch.employee_id, existing);
-  });
+  for (const punch of validPunches) {
+    const group = employeeGroups.get(punch.employee_id);
+    if (group) {
+      group.push(punch);
+    } else {
+      employeeGroups.set(punch.employee_id, [punch]);
+    }
+  }
 
   const sessions: WorkSession[] = [];
 
   // Process each employee's punches
-  employeeGroups.forEach((punches, employeeId) => {
+  for (const [employeeId, punches] of employeeGroups) {
     let i = 0;
-    
+
     while (i < punches.length) {
       const punch = punches[i];
-      
+
       // Sessions must start with clock_in
       if (punch.punch_type === 'clock_in') {
         const session: WorkSession = {
@@ -311,7 +311,7 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
             session.anomalies.push('Missing clock out');
             break;
           }
-          
+
           j++;
         }
 
@@ -347,7 +347,7 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
         i++;
       }
     }
-  });
+  }
 
   return sessions;
 }
@@ -358,15 +358,15 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
 export function calculateDailyHours(sessions: WorkSession[], date: Date): Map<string, DailyHoursData> {
   const dailyData = new Map<string, DailyHoursData>();
 
-  sessions.forEach(session => {
+  for (const session of sessions) {
     // Only include sessions from the specified date
     const sessionDate = new Date(session.clock_in);
     if (sessionDate.toDateString() !== date.toDateString()) {
-      return;
+      continue;
     }
 
     const existing = dailyData.get(session.employee_id);
-    
+
     if (existing) {
       existing.sessions.push(session);
       existing.total_worked_hours += session.worked_minutes / 60;
@@ -386,7 +386,7 @@ export function calculateDailyHours(sessions: WorkSession[], date: Date): Map<st
         punch_count: 2 + (session.breaks.length * 2),
       });
     }
-  });
+  }
 
   return dailyData;
 }
@@ -402,7 +402,7 @@ export function processPunchesForPeriod(punches: TimePunch[]): {
 } {
   const processedPunches = normalizePunches(punches);
   const sessions = identifyWorkSessions(processedPunches);
-  
+
   const totalNoisePunches = processedPunches.filter(p => p.is_noise).length;
   const totalAnomalies = sessions.filter(s => s.has_anomalies).length;
 

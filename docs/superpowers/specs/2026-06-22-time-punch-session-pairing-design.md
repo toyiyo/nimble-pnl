@@ -8,9 +8,8 @@
 
 Managers see employees flagged as having an **open session** (never clocked
 out) on the Time Clock page even though the employee has a clock-in *and* a
-clock-out for the day. Reported for Carolina Sanchez, then reproduced live for
-6 employees at once (Quentin Jones, Armanii Gonzalez, Alexia Hernandez, Colby
-Mullaley, Josiah Gonzalez, zachary hernandez).
+clock-out for the day. Reported for one employee (Employee A), then reproduced
+live for 6 employees at once (Employees B–G).
 
 The "Open for Nh Mm" timer climbs all day, so a closed session looks like a
 runaway open one. A page refresh does **not** fix it.
@@ -38,11 +37,11 @@ employees' punches land in the same "noise group" and get dropped.
 
 On the live data this discarded **22 of 48 punches (46%)**, orphaning clock-ins
 (→ false "open session") and clock-outs (→ lost session). It is sort-order
-luck which survives, which is why **Alexia (open)** and **Colin (complete)**
+luck which survives, which is why **Employee C (open)** and **Employee D (complete)**
 have byte-identical punches (`clock_in 15:00:00`, `clock_out 19:00:00`) yet
 render differently.
 
-This is also why the original Carolina case looked "clean" when her punches
+This is also why the original Employee A case looked "clean" when their punches
 were tested in isolation but broke in the app — the bug only manifests when
 multiple employees are processed together.
 
@@ -53,7 +52,7 @@ After a session is closed, the per-employee loop advances with `i = j + 1`
 already points at that clock-in, so `i = j + 1` **skips it**, dropping the
 following session entirely.
 
-This is zachary's "12:00 AM" case: he has `[clock_in 00:00, clock_in 10:02,
+This is Employee G's "12:00 AM" case: they have `[clock_in 00:00, clock_in 10:02,
 clock_out 14:03]`. The stray midnight clock-in opens a session, then the real
 10:02–14:03 session is skipped and lost.
 
@@ -120,7 +119,7 @@ class of test the original investigation lacked:
   no `refetchInterval`) was wrong: the bug is deterministic in the pure
   function and reproduces on a fresh load. Polling would have masked nothing
   here. Out of scope.
-- **zachary's residual open session is correct.** His midnight clock-in has no
+- **Employee G's residual open session is correct.** Their midnight clock-in has no
   matching clock-out in the data — flagging it open is the right behaviour. The
   stray punch itself is a data-entry artifact for the manager to resolve
   (force-out/delete), not an algorithm bug.

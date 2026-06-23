@@ -45,12 +45,13 @@ export interface DailyHoursData {
 }
 
 /**
- * Step 1a: Normalize punch stream for a SINGLE employee.
+ * Step 1 (per-employee): Normalize punch stream for a SINGLE employee.
  * Removes per-employee noise (fat-finger double-taps, burst events).
  * Input punches must all belong to the same employee and be sorted
  * chronologically ascending — callers are responsible for both.
+ * Internal helper: always called via normalizePunches, never directly.
  */
-export function normalizeEmployeePunches(punches: TimePunch[]): ProcessedPunch[] {
+function normalizeEmployeePunches(punches: TimePunch[]): ProcessedPunch[] {
   const processed: ProcessedPunch[] = [];
   let i = 0;
 

@@ -44,33 +44,77 @@ export interface DailyHoursData {
   punch_count: number;
 }
 
-/**
- * Step 1: Normalize punch stream
- * Removes noise and prepares punches for session identification
- */
-export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
-  // Sort chronologically (oldest first for processing)
-  const sorted = [...punches].sort((a, b) => 
-    new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
-  );
+/** Create a ProcessedPunch record with is_noise=false */
+function toValidPunch(p: TimePunch): ProcessedPunch {
+  return {
+    id: p.id,
+    employee_id: p.employee_id,
+    punch_type: p.punch_type,
+    punch_time: new Date(p.punch_time),
+    is_noise: false,
+    original_punch: p,
+  };
+}
 
+/** Create a ProcessedPunch record marked as noise */
+function toNoisePunch(p: TimePunch, noise_reason: string): ProcessedPunch {
+  return {
+    id: p.id,
+    employee_id: p.employee_id,
+    punch_type: p.punch_type,
+    punch_time: new Date(p.punch_time),
+    is_noise: true,
+    noise_reason,
+    original_punch: p,
+  };
+}
+
+/**
+ * Analyse a group of 2+ punches that arrived within 60 s and emit
+ * ProcessedPunch records for them.  Called only from normalizeEmployeePunches.
+ */
+function processNoiseGroup(group: TimePunch[]): ProcessedPunch[] {
+  if (group.length >= 3) {
+    // Burst noise — keep first, mark the rest as noise
+    return [
+      toValidPunch(group[0]),
+      ...group.slice(1).map(p => toNoisePunch(p, 'Burst noise (>3 punches in 60s)')),
+    ];
+  }
+
+  // Exactly two punches close together
+  const [first, second] = group;
+
+  // Break Start → Clock In within 60 s = break canceled
+  if (first.punch_type === 'break_start' && second.punch_type === 'clock_in') {
+    return [toNoisePunch(first, 'Break canceled'), toValidPunch(second)];
+  }
+
+  // Keep first, mark second as a duplicate
+  return [toValidPunch(first), toNoisePunch(second, 'Duplicate punch within 60s')];
+}
+
+/**
+ * Step 1 (per-employee): Normalize punch stream for a SINGLE employee.
+ * Removes per-employee noise (fat-finger double-taps, burst events).
+ * Input punches must all belong to the same employee and be sorted
+ * chronologically ascending — callers are responsible for both.
+ * Internal helper: always called via normalizePunches, never directly.
+ */
+function normalizeEmployeePunches(punches: TimePunch[]): ProcessedPunch[] {
   const processed: ProcessedPunch[] = [];
   let i = 0;
 
-  while (i < sorted.length) {
-    const current = sorted[i];
+  while (i < punches.length) {
+    const current = punches[i];
     const currentTime = new Date(current.punch_time);
-    
-    // Look ahead for noise patterns
+
+    // Collect punches within 60 seconds (potential noise)
     const noiseGroup: TimePunch[] = [current];
     let j = i + 1;
-    
-    // Collect punches within 60 seconds (potential noise)
-    while (j < sorted.length) {
-      const next = sorted[j];
-      const nextTime = new Date(next.punch_time);
-      const secondsDiff = differenceInSeconds(nextTime, currentTime);
-      
+    while (j < punches.length) {
+      const next = punches[j];
+      const secondsDiff = differenceInSeconds(new Date(next.punch_time), currentTime);
       if (secondsDiff < 60) {
         noiseGroup.push(next);
         j++;
@@ -79,89 +123,11 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
       }
     }
 
-    // Analyze noise group
     if (noiseGroup.length > 1) {
-      // Multiple punches within 60 seconds
-      if (noiseGroup.length >= 3) {
-        // Burst noise - keep only the first meaningful punch
-        processed.push({
-          id: noiseGroup[0].id,
-          employee_id: noiseGroup[0].employee_id,
-          punch_type: noiseGroup[0].punch_type,
-          punch_time: new Date(noiseGroup[0].punch_time),
-          is_noise: false,
-          original_punch: noiseGroup[0],
-        });
-
-        // Mark others as noise
-        for (let k = 1; k < noiseGroup.length; k++) {
-          processed.push({
-            id: noiseGroup[k].id,
-            employee_id: noiseGroup[k].employee_id,
-            punch_type: noiseGroup[k].punch_type,
-            punch_time: new Date(noiseGroup[k].punch_time),
-            is_noise: true,
-            noise_reason: 'Burst noise (>3 punches in 60s)',
-            original_punch: noiseGroup[k],
-          });
-        }
-      } else {
-        // Two punches close together - keep both but analyze pattern
-        const first = noiseGroup[0];
-        const second = noiseGroup[1];
-        
-        // Break Start → Clock In within 2 minutes = break canceled
-        if (first.punch_type === 'break_start' && second.punch_type === 'clock_in') {
-          processed.push({
-            id: first.id,
-            employee_id: first.employee_id,
-            punch_type: first.punch_type,
-            punch_time: new Date(first.punch_time),
-            is_noise: true,
-            noise_reason: 'Break canceled',
-            original_punch: first,
-          });
-          processed.push({
-            id: second.id,
-            employee_id: second.employee_id,
-            punch_type: second.punch_type,
-            punch_time: new Date(second.punch_time),
-            is_noise: false,
-            original_punch: second,
-          });
-        } else {
-          // Keep both, mark second as potential duplicate
-          processed.push({
-            id: first.id,
-            employee_id: first.employee_id,
-            punch_type: first.punch_type,
-            punch_time: new Date(first.punch_time),
-            is_noise: false,
-            original_punch: first,
-          });
-          processed.push({
-            id: second.id,
-            employee_id: second.employee_id,
-            punch_type: second.punch_type,
-            punch_time: new Date(second.punch_time),
-            is_noise: true,
-            noise_reason: 'Duplicate punch within 60s',
-            original_punch: second,
-          });
-        }
-      }
-      
+      processed.push(...processNoiseGroup(noiseGroup));
       i = j;
     } else {
-      // Single punch, no noise
-      processed.push({
-        id: current.id,
-        employee_id: current.employee_id,
-        punch_type: current.punch_type,
-        punch_time: new Date(current.punch_time),
-        is_noise: false,
-        original_punch: current,
-      });
+      processed.push(toValidPunch(current));
       i++;
     }
   }
@@ -170,152 +136,204 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
 }
 
 /**
+ * Step 1: Normalize punch stream for ALL employees.
+ * Buckets punches by employee_id, runs normalizeEmployeePunches on each
+ * bucket, and concatenates results. This ensures the 60-second noise
+ * window never collapses punches belonging to different employees — which
+ * would happen if the whole restaurant stream were deduplicated globally.
+ */
+export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
+  // Bucket by employee, preserving insertion order for Map iteration
+  const buckets = new Map<string, TimePunch[]>();
+  for (const punch of punches) {
+    const bucket = buckets.get(punch.employee_id);
+    if (bucket) {
+      bucket.push(punch);
+    } else {
+      buckets.set(punch.employee_id, [punch]);
+    }
+  }
+
+  const result: ProcessedPunch[] = [];
+  for (const bucket of buckets.values()) {
+    // Sort each employee's punches chronologically before normalizing
+    bucket.sort((a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime());
+    result.push(...normalizeEmployeePunches(bucket));
+  }
+
+  return result;
+}
+
+/** Build an empty WorkSession anchored to the given clock_in punch */
+function startSession(punch: ProcessedPunch): WorkSession {
+  return {
+    sessionId: `${punch.employee_id}-${punch.punch_time.getTime()}`,
+    employee_id: punch.employee_id,
+    employee_name: punch.original_punch.employee?.name || 'Unknown',
+    clock_in: punch.punch_time,
+    clock_out: undefined,
+    breaks: [],
+    total_minutes: 0,
+    break_minutes: 0,
+    worked_minutes: 0,
+    is_complete: false,
+    has_anomalies: false,
+    anomalies: [],
+  };
+}
+
+/** Finalize time totals and add anomalies for a completed/incomplete session */
+function finalizeSession(session: WorkSession): void {
+  if (session.clock_out) {
+    session.total_minutes = differenceInMinutes(session.clock_out, session.clock_in);
+    session.break_minutes = session.breaks.reduce((sum, b) => sum + b.duration_minutes, 0);
+    session.worked_minutes = session.total_minutes - session.break_minutes;
+  } else {
+    session.has_anomalies = true;
+    session.anomalies.push('Incomplete session (missing clock out)');
+  }
+}
+
+/**
+ * Record a completed break on the session and return null to clear
+ * currentBreakStart.
+ */
+function closeBreak(session: WorkSession, breakStart: Date, breakEnd: Date): null {
+  session.breaks.push({
+    break_start: breakStart,
+    break_end: breakEnd,
+    duration_minutes: differenceInMinutes(breakEnd, breakStart),
+    is_complete: true,
+  });
+  return null;
+}
+
+/**
+ * Process one punch while the session is still open (no clock_out yet).
+ * Returns { continueLoop, breakLoop, newBreakStart }.
+ * Internal helper for fillSession.
+ */
+function handleOpenPunch(
+  session: WorkSession,
+  punch: ProcessedPunch,
+  currentBreakStart: Date | null,
+): { continueLoop: boolean; breakLoop: boolean; newBreakStart: Date | null } {
+  if (punch.punch_type === 'clock_out') {
+    session.clock_out = punch.punch_time;
+    session.is_complete = true;
+    const sessionMinutes = differenceInMinutes(punch.punch_time, session.clock_in);
+    if (sessionMinutes < 3) {
+      session.has_anomalies = true;
+      session.anomalies.push('Very short session (< 3 min) - possible error');
+    }
+    return { continueLoop: true, breakLoop: false, newBreakStart: currentBreakStart };
+  }
+
+  if (punch.punch_type === 'break_start') {
+    return { continueLoop: false, breakLoop: false, newBreakStart: punch.punch_time };
+  }
+
+  if (punch.punch_type === 'break_end' && currentBreakStart) {
+    return { continueLoop: false, breakLoop: false, newBreakStart: closeBreak(session, currentBreakStart, punch.punch_time) };
+  }
+
+  if (punch.punch_type === 'clock_in') {
+    if (currentBreakStart) {
+      // Some clients record break-end as a clock_in
+      return { continueLoop: true, breakLoop: false, newBreakStart: closeBreak(session, currentBreakStart, punch.punch_time) };
+    }
+    session.has_anomalies = true;
+    session.anomalies.push('Missing clock out');
+    return { continueLoop: false, breakLoop: true, newBreakStart: null };
+  }
+
+  return { continueLoop: false, breakLoop: false, newBreakStart: currentBreakStart };
+}
+
+/**
+ * Scan one employee's punches starting after a clock_in and fill the session.
+ * Returns the index j pointing at the next unprocessed punch.
+ */
+function fillSession(session: WorkSession, punches: ProcessedPunch[], startIndex: number): number {
+  let j = startIndex;
+  let currentBreakStart: Date | null = null;
+  let foundClockOut = false;
+
+  while (j < punches.length) {
+    const next = punches[j];
+
+    if (foundClockOut) {
+      if (next.punch_type === 'clock_in') break;
+      j++;
+      continue;
+    }
+
+    const { continueLoop, breakLoop, newBreakStart } = handleOpenPunch(session, next, currentBreakStart);
+    currentBreakStart = newBreakStart;
+
+    if (breakLoop) break;
+    if (continueLoop) {
+      // Check if we just set foundClockOut via session.is_complete
+      foundClockOut = session.is_complete;
+    }
+    j++;
+  }
+
+  // Handle an incomplete break still in progress at end-of-scan
+  if (currentBreakStart && session.clock_out) {
+    session.breaks.push({
+      break_start: currentBreakStart,
+      break_end: undefined,
+      duration_minutes: 0,
+      is_complete: false,
+    });
+    session.has_anomalies = true;
+    session.anomalies.push('Incomplete break (missing break end)');
+  }
+
+  return j;
+}
+
+/**
  * Step 2: Identify work sessions from normalized punches
  */
 export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSession[] {
   // Filter out noise punches
   const validPunches = processedPunches.filter(p => !p.is_noise);
-  
+
   // Group by employee
   const employeeGroups = new Map<string, ProcessedPunch[]>();
-  validPunches.forEach(punch => {
-    const existing = employeeGroups.get(punch.employee_id) || [];
-    existing.push(punch);
-    employeeGroups.set(punch.employee_id, existing);
-  });
+  for (const punch of validPunches) {
+    const group = employeeGroups.get(punch.employee_id);
+    if (group) {
+      group.push(punch);
+    } else {
+      employeeGroups.set(punch.employee_id, [punch]);
+    }
+  }
 
   const sessions: WorkSession[] = [];
 
-  // Process each employee's punches
-  employeeGroups.forEach((punches, employeeId) => {
+  for (const [, punches] of employeeGroups) {
     let i = 0;
-    
+
     while (i < punches.length) {
       const punch = punches[i];
-      
-      // Sessions must start with clock_in
+
       if (punch.punch_type === 'clock_in') {
-        const session: WorkSession = {
-          sessionId: `${employeeId}-${punch.punch_time.getTime()}`,
-          employee_id: employeeId,
-          employee_name: punch.original_punch.employee?.name || 'Unknown',
-          clock_in: punch.punch_time,
-          clock_out: undefined,
-          breaks: [],
-          total_minutes: 0,
-          break_minutes: 0,
-          worked_minutes: 0,
-          is_complete: false,
-          has_anomalies: false,
-          anomalies: [],
-        };
-
-        // Look for corresponding clock_out and breaks
-        let j = i + 1;
-        let currentBreakStart: Date | null = null;
-        // foundClockOut ensures we only accept the first clock_out that closes this session
-        let foundClockOut = false;
-
-        while (j < punches.length) {
-          const nextPunch = punches[j];
-
-          // If we've already closed the session with a clock_out, stop scanning —
-          // further clock_outs belong to either noise or a separate action and should not reopen this session.
-          if (foundClockOut) {
-            if (nextPunch.punch_type === 'clock_in') {
-              // next clock_in starts a new session — stop scanning for this one
-              break;
-            }
-            // ignore other punch types after a clock out for this session
-            j++;
-            continue;
-          }
-
-          if (nextPunch.punch_type === 'clock_out') {
-            session.clock_out = nextPunch.punch_time;
-            session.is_complete = true;
-            foundClockOut = true;
-
-            // Check for very short sessions (< 3 minutes)
-            const sessionMinutes = differenceInMinutes(session.clock_out, session.clock_in);
-            if (sessionMinutes < 3 && sessions.length > 0) {
-              session.has_anomalies = true;
-              session.anomalies.push('Very short session (< 3 min) - possible error');
-            }
-
-            // don't break immediately; keep loop semantics consistent — we will stop on next iteration
-            // or when a new clock_in is encountered (handled above)
-            j++;
-            continue;
-          } else if (nextPunch.punch_type === 'break_start') {
-            currentBreakStart = nextPunch.punch_time;
-          } else if (nextPunch.punch_type === 'break_end' && currentBreakStart) {
-            // Only record break if it's within this session
-            const breakDuration = differenceInMinutes(nextPunch.punch_time, currentBreakStart);
-            session.breaks.push({
-              break_start: currentBreakStart,
-              break_end: nextPunch.punch_time,
-              duration_minutes: breakDuration,
-              is_complete: true,
-            });
-            currentBreakStart = null;
-          } else if (nextPunch.punch_type === 'clock_in') {
-            // If we're currently tracking a break start, a subsequent 'clock_in'
-            // is often the break-ending action (some clients record break end as clock_in).
-            // Treat that as a break_end here rather than starting a new session.
-            if (currentBreakStart) {
-              const breakDuration = differenceInMinutes(nextPunch.punch_time, currentBreakStart);
-              session.breaks.push({
-                break_start: currentBreakStart,
-                break_end: nextPunch.punch_time,
-                duration_minutes: breakDuration,
-                is_complete: true,
-              });
-              currentBreakStart = null;
-              // continue scanning for a clock_out for the current session
-              j++;
-              continue;
-            }
-
-            // Otherwise this is a new clock_in and the previous session had no clock_out
-            session.has_anomalies = true;
-            session.anomalies.push('Missing clock out');
-            break;
-          }
-          
-          j++;
-        }
-
-        // Handle incomplete break
-        if (currentBreakStart && session.clock_out) {
-          session.breaks.push({
-            break_start: currentBreakStart,
-            break_end: undefined,
-            duration_minutes: 0,
-            is_complete: false,
-          });
-          session.has_anomalies = true;
-          session.anomalies.push('Incomplete break (missing break end)');
-        }
-
-        // Calculate totals
-        if (session.clock_out) {
-          session.total_minutes = differenceInMinutes(session.clock_out, session.clock_in);
-          session.break_minutes = session.breaks.reduce((sum, b) => sum + b.duration_minutes, 0);
-          session.worked_minutes = session.total_minutes - session.break_minutes;
-        } else {
-          session.has_anomalies = true;
-          session.anomalies.push('Incomplete session (missing clock out)');
-        }
-
+        const session = startSession(punch);
+        // Use i = j (not j + 1): when fillSession breaks, j already points
+        // at the next unprocessed punch (e.g. the next clock_in). Advancing
+        // with j + 1 would skip it, losing back-to-back sessions.
+        i = fillSession(session, punches, i + 1);
+        finalizeSession(session);
         sessions.push(session);
-        i = j + 1;
       } else {
         // Skip punches that don't start a session
         i++;
       }
     }
-  });
+  }
 
   return sessions;
 }
@@ -326,15 +344,15 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
 export function calculateDailyHours(sessions: WorkSession[], date: Date): Map<string, DailyHoursData> {
   const dailyData = new Map<string, DailyHoursData>();
 
-  sessions.forEach(session => {
+  for (const session of sessions) {
     // Only include sessions from the specified date
     const sessionDate = new Date(session.clock_in);
     if (sessionDate.toDateString() !== date.toDateString()) {
-      return;
+      continue;
     }
 
     const existing = dailyData.get(session.employee_id);
-    
+
     if (existing) {
       existing.sessions.push(session);
       existing.total_worked_hours += session.worked_minutes / 60;
@@ -354,7 +372,7 @@ export function calculateDailyHours(sessions: WorkSession[], date: Date): Map<st
         punch_count: 2 + (session.breaks.length * 2),
       });
     }
-  });
+  }
 
   return dailyData;
 }
@@ -370,7 +388,7 @@ export function processPunchesForPeriod(punches: TimePunch[]): {
 } {
   const processedPunches = normalizePunches(punches);
   const sessions = identifyWorkSessions(processedPunches);
-  
+
   const totalNoisePunches = processedPunches.filter(p => p.is_noise).length;
   const totalAnomalies = sessions.filter(s => s.has_anomalies).length;
 

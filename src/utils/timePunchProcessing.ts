@@ -45,32 +45,29 @@ export interface DailyHoursData {
 }
 
 /**
- * Step 1: Normalize punch stream
- * Removes noise and prepares punches for session identification
+ * Step 1a: Normalize punch stream for a SINGLE employee.
+ * Removes per-employee noise (fat-finger double-taps, burst events).
+ * Input punches must all belong to the same employee and be sorted
+ * chronologically ascending — callers are responsible for both.
  */
-export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
-  // Sort chronologically (oldest first for processing)
-  const sorted = [...punches].sort((a, b) => 
-    new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
-  );
-
+export function normalizeEmployeePunches(punches: TimePunch[]): ProcessedPunch[] {
   const processed: ProcessedPunch[] = [];
   let i = 0;
 
-  while (i < sorted.length) {
-    const current = sorted[i];
+  while (i < punches.length) {
+    const current = punches[i];
     const currentTime = new Date(current.punch_time);
-    
+
     // Look ahead for noise patterns
     const noiseGroup: TimePunch[] = [current];
     let j = i + 1;
-    
+
     // Collect punches within 60 seconds (potential noise)
-    while (j < sorted.length) {
-      const next = sorted[j];
+    while (j < punches.length) {
+      const next = punches[j];
       const nextTime = new Date(next.punch_time);
       const secondsDiff = differenceInSeconds(nextTime, currentTime);
-      
+
       if (secondsDiff < 60) {
         noiseGroup.push(next);
         j++;
@@ -109,7 +106,7 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
         // Two punches close together - keep both but analyze pattern
         const first = noiseGroup[0];
         const second = noiseGroup[1];
-        
+
         // Break Start → Clock In within 2 minutes = break canceled
         if (first.punch_type === 'break_start' && second.punch_type === 'clock_in') {
           processed.push({
@@ -150,7 +147,7 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
           });
         }
       }
-      
+
       i = j;
     } else {
       // Single punch, no noise
@@ -167,6 +164,38 @@ export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
   }
 
   return processed;
+}
+
+/**
+ * Step 1: Normalize punch stream for ALL employees.
+ * Buckets punches by employee_id, runs normalizeEmployeePunches on each
+ * bucket, and concatenates results. This ensures the 60-second noise
+ * window never collapses punches belonging to different employees — which
+ * would happen if the whole restaurant stream were deduplicated globally.
+ */
+export function normalizePunches(punches: TimePunch[]): ProcessedPunch[] {
+  // Bucket by employee, preserving insertion order for Map iteration
+  const buckets = new Map<string, TimePunch[]>();
+  for (const punch of punches) {
+    const bucket = buckets.get(punch.employee_id);
+    if (bucket) {
+      bucket.push(punch);
+    } else {
+      buckets.set(punch.employee_id, [punch]);
+    }
+  }
+
+  const result: ProcessedPunch[] = [];
+  for (const [, bucket] of buckets) {
+    // Sort each employee's punches chronologically before normalizing
+    bucket.sort((a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime());
+    const normalized = normalizeEmployeePunches(bucket);
+    for (const p of normalized) {
+      result.push(p);
+    }
+  }
+
+  return result;
 }
 
 /**

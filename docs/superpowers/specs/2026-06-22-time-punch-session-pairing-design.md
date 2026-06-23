@@ -82,8 +82,8 @@ chronologically).
 Change `i = j + 1` to `i = j` in `identifyWorkSessions`. The inner loop always
 advances `j` to at least `i + 1` before any break, so `i = j` still makes
 forward progress (no infinite loop) while no longer skipping the punch `j`
-points at. This recovers back-to-back sessions and zachary's real session;
-his genuine unclosed midnight clock-in correctly remains flagged as one open
+points at. This recovers back-to-back sessions and Employee G's real session;
+their genuine unclosed midnight clock-in correctly remains flagged as one open
 session.
 
 ### Proven effect
@@ -93,7 +93,7 @@ Re-running the real algorithm on the live cached punches with both fixes:
 | | Before | After |
 |---|---|---|
 | Punches dropped as noise | 22 / 48 | 3 / 48 |
-| False open sessions | 6 | 1 (zachary's genuine midnight orphan) |
+| False open sessions | 6 | 1 (Employee G's genuine midnight orphan) |
 | Sessions counted | 13 | 22 |
 
 ## Testing

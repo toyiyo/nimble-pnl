@@ -56,7 +56,7 @@ const open = (s: { is_complete: boolean }) => !s.is_complete;
 
 describe('normalizePunches — noise detection is per employee', () => {
   it('keeps both employees complete when they share identical in/out timestamps', () => {
-    // Mirrors the production "Alexia vs Colin" case: imported punches with
+    // Mirrors the production "Employee A vs Employee B" case: imported punches with
     // identical round timestamps must not collapse across employees.
     const punches = [
       mk('a-in', 'empA', 'clock_in', '2026-06-22T15:00:00Z'),
@@ -200,7 +200,7 @@ Append to `tests/unit/timePunchProcessing.test.ts`:
 ```ts
 describe('identifyWorkSessions — does not skip the next clock-in', () => {
   it('keeps the real session after an orphan leading clock-in', () => {
-    // zachary case: a stray midnight clock-in must not swallow the real
+    // Employee G case: a stray midnight clock-in must not swallow the real
     // 10:02–14:03 session that follows it.
     const punches = [
       mk('orphan', 'empZ', 'clock_in', '2026-06-22T00:00:00Z'),

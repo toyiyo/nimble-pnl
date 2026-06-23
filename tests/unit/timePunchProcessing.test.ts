@@ -76,3 +76,35 @@ describe('normalizePunches — noise detection is per employee', () => {
     expect(totalNoisePunches).toBe(1);
   });
 });
+
+describe('identifyWorkSessions — does not skip the next clock-in', () => {
+  it('keeps the real session after an orphan leading clock-in', () => {
+    // zachary case: a stray midnight clock-in must not swallow the real
+    // 10:02–14:03 session that follows it.
+    const punches = [
+      mk('orphan', 'empZ', 'clock_in', '2026-06-22T00:00:00Z'),
+      mk('in', 'empZ', 'clock_in', '2026-06-22T10:02:00Z'),
+      mk('out', 'empZ', 'clock_out', '2026-06-22T14:03:00Z'),
+    ];
+    const { sessions } = processPunchesForPeriod(punches);
+    expect(sessions).toHaveLength(2);
+    const complete = sessions.filter((s) => s.is_complete);
+    expect(complete).toHaveLength(1);
+    expect(complete[0].clock_in.toISOString()).toBe('2026-06-22T10:02:00.000Z');
+    expect(complete[0].clock_out?.toISOString()).toBe('2026-06-22T14:03:00.000Z');
+    // the orphan correctly remains a single open session
+    expect(sessions.filter((s) => !s.is_complete)).toHaveLength(1);
+  });
+
+  it('keeps both back-to-back complete sessions for one employee', () => {
+    const punches = [
+      mk('in1', 'empA', 'clock_in', '2026-06-22T09:00:00Z'),
+      mk('out1', 'empA', 'clock_out', '2026-06-22T12:00:00Z'),
+      mk('in2', 'empA', 'clock_in', '2026-06-22T13:00:00Z'),
+      mk('out2', 'empA', 'clock_out', '2026-06-22T17:00:00Z'),
+    ];
+    const { sessions } = processPunchesForPeriod(punches);
+    expect(sessions).toHaveLength(2);
+    expect(sessions.filter((s) => s.is_complete)).toHaveLength(2);
+  });
+});

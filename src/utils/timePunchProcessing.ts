@@ -74,15 +74,12 @@ function toNoisePunch(p: TimePunch, noise_reason: string): ProcessedPunch {
  * ProcessedPunch records for them.  Called only from normalizeEmployeePunches.
  */
 function processNoiseGroup(group: TimePunch[]): ProcessedPunch[] {
-  const result: ProcessedPunch[] = [];
-
   if (group.length >= 3) {
     // Burst noise — keep first, mark the rest as noise
-    result.push(toValidPunch(group[0]));
-    for (let k = 1; k < group.length; k++) {
-      result.push(toNoisePunch(group[k], 'Burst noise (>3 punches in 60s)'));
-    }
-    return result;
+    return [
+      toValidPunch(group[0]),
+      ...group.slice(1).map(p => toNoisePunch(p, 'Burst noise (>3 punches in 60s)')),
+    ];
   }
 
   // Exactly two punches close together
@@ -90,15 +87,11 @@ function processNoiseGroup(group: TimePunch[]): ProcessedPunch[] {
 
   // Break Start → Clock In within 60 s = break canceled
   if (first.punch_type === 'break_start' && second.punch_type === 'clock_in') {
-    result.push(toNoisePunch(first, 'Break canceled'));
-    result.push(toValidPunch(second));
-  } else {
-    // Keep first, mark second as a duplicate
-    result.push(toValidPunch(first));
-    result.push(toNoisePunch(second, 'Duplicate punch within 60s'));
+    return [toNoisePunch(first, 'Break canceled'), toValidPunch(second)];
   }
 
-  return result;
+  // Keep first, mark second as a duplicate
+  return [toValidPunch(first), toNoisePunch(second, 'Duplicate punch within 60s')];
 }
 
 /**
@@ -202,6 +195,62 @@ function finalizeSession(session: WorkSession): void {
 }
 
 /**
+ * Record a completed break on the session and return null to clear
+ * currentBreakStart.
+ */
+function closeBreak(session: WorkSession, breakStart: Date, breakEnd: Date): null {
+  session.breaks.push({
+    break_start: breakStart,
+    break_end: breakEnd,
+    duration_minutes: differenceInMinutes(breakEnd, breakStart),
+    is_complete: true,
+  });
+  return null;
+}
+
+/**
+ * Process one punch while the session is still open (no clock_out yet).
+ * Returns { continueLoop, breakLoop, newBreakStart }.
+ * Internal helper for fillSession.
+ */
+function handleOpenPunch(
+  session: WorkSession,
+  punch: ProcessedPunch,
+  currentBreakStart: Date | null,
+): { continueLoop: boolean; breakLoop: boolean; newBreakStart: Date | null } {
+  if (punch.punch_type === 'clock_out') {
+    session.clock_out = punch.punch_time;
+    session.is_complete = true;
+    const sessionMinutes = differenceInMinutes(punch.punch_time, session.clock_in);
+    if (sessionMinutes < 3) {
+      session.has_anomalies = true;
+      session.anomalies.push('Very short session (< 3 min) - possible error');
+    }
+    return { continueLoop: true, breakLoop: false, newBreakStart: currentBreakStart };
+  }
+
+  if (punch.punch_type === 'break_start') {
+    return { continueLoop: false, breakLoop: false, newBreakStart: punch.punch_time };
+  }
+
+  if (punch.punch_type === 'break_end' && currentBreakStart) {
+    return { continueLoop: false, breakLoop: false, newBreakStart: closeBreak(session, currentBreakStart, punch.punch_time) };
+  }
+
+  if (punch.punch_type === 'clock_in') {
+    if (currentBreakStart) {
+      // Some clients record break-end as a clock_in
+      return { continueLoop: true, breakLoop: false, newBreakStart: closeBreak(session, currentBreakStart, punch.punch_time) };
+    }
+    session.has_anomalies = true;
+    session.anomalies.push('Missing clock out');
+    return { continueLoop: false, breakLoop: true, newBreakStart: null };
+  }
+
+  return { continueLoop: false, breakLoop: false, newBreakStart: currentBreakStart };
+}
+
+/**
  * Scan one employee's punches starting after a clock_in and fill the session.
  * Returns the index j pointing at the next unprocessed punch.
  */
@@ -214,59 +263,19 @@ function fillSession(session: WorkSession, punches: ProcessedPunch[], startIndex
     const next = punches[j];
 
     if (foundClockOut) {
-      // Session is closed — a new clock_in starts a new session
       if (next.punch_type === 'clock_in') break;
       j++;
       continue;
     }
 
-    if (next.punch_type === 'clock_out') {
-      session.clock_out = next.punch_time;
-      session.is_complete = true;
-      foundClockOut = true;
+    const { continueLoop, breakLoop, newBreakStart } = handleOpenPunch(session, next, currentBreakStart);
+    currentBreakStart = newBreakStart;
 
-      // Flag very short sessions (< 3 minutes)
-      const sessionMinutes = differenceInMinutes(session.clock_out, session.clock_in);
-      if (sessionMinutes < 3) {
-        session.has_anomalies = true;
-        session.anomalies.push('Very short session (< 3 min) - possible error');
-      }
-
-      j++;
-      continue;
+    if (breakLoop) break;
+    if (continueLoop) {
+      // Check if we just set foundClockOut via session.is_complete
+      foundClockOut = session.is_complete;
     }
-
-    if (next.punch_type === 'break_start') {
-      currentBreakStart = next.punch_time;
-    } else if (next.punch_type === 'break_end' && currentBreakStart) {
-      const breakDuration = differenceInMinutes(next.punch_time, currentBreakStart);
-      session.breaks.push({
-        break_start: currentBreakStart,
-        break_end: next.punch_time,
-        duration_minutes: breakDuration,
-        is_complete: true,
-      });
-      currentBreakStart = null;
-    } else if (next.punch_type === 'clock_in') {
-      if (currentBreakStart) {
-        // Some clients record break-end as a clock_in — treat it that way
-        const breakDuration = differenceInMinutes(next.punch_time, currentBreakStart);
-        session.breaks.push({
-          break_start: currentBreakStart,
-          break_end: next.punch_time,
-          duration_minutes: breakDuration,
-          is_complete: true,
-        });
-        currentBreakStart = null;
-        j++;
-        continue;
-      }
-      // A new clock_in with no preceding break_start means the session lacked a clock_out
-      session.has_anomalies = true;
-      session.anomalies.push('Missing clock out');
-      break;
-    }
-
     j++;
   }
 

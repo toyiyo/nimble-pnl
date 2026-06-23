@@ -77,6 +77,71 @@ describe('normalizePunches — noise detection is per employee', () => {
   });
 });
 
+describe('normalizePunches — break_start→clock_in cancels the break', () => {
+  it('marks break_start as noise when followed by clock_in within 60s', () => {
+    // A break_start immediately cancelled by a clock_in within 60s (noise=break canceled).
+    // The standalone clock_in + clock_out produces one complete session.
+    const punches = [
+      mk('in', 'empA', 'clock_in', '2026-06-22T09:00:00Z'),
+      mk('out', 'empA', 'clock_out', '2026-06-22T10:00:00Z'),
+      mk('bs', 'empA', 'break_start', '2026-06-22T11:00:00Z'),
+      mk('ci', 'empA', 'clock_in', '2026-06-22T11:00:30Z'), // within 60s → break canceled
+      mk('out2', 'empA', 'clock_out', '2026-06-22T15:00:00Z'),
+    ];
+    const { processedPunches, sessions } = processPunchesForPeriod(punches);
+    const breakStartPunch = processedPunches.find(p => p.punch_type === 'break_start');
+    expect(breakStartPunch?.is_noise).toBe(true);
+    expect(breakStartPunch?.noise_reason).toBe('Break canceled');
+    // Two complete sessions (pre-break and post-break)
+    expect(sessions.filter(s => s.is_complete)).toHaveLength(2);
+  });
+});
+
+describe('identifyWorkSessions — break handling', () => {
+  it('records a complete break within a session', () => {
+    const punches = [
+      mk('in', 'empA', 'clock_in', '2026-06-22T09:00:00Z'),
+      mk('bs', 'empA', 'break_start', '2026-06-22T12:00:00Z'),
+      mk('be', 'empA', 'break_end', '2026-06-22T12:30:00Z'),
+      mk('out', 'empA', 'clock_out', '2026-06-22T17:00:00Z'),
+    ];
+    const { sessions } = processPunchesForPeriod(punches);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].is_complete).toBe(true);
+    expect(sessions[0].breaks).toHaveLength(1);
+    expect(sessions[0].breaks[0].duration_minutes).toBe(30);
+    expect(sessions[0].break_minutes).toBe(30);
+    expect(sessions[0].worked_minutes).toBe(sessions[0].total_minutes - 30);
+  });
+
+  it('flags very short sessions (< 3 minutes) as anomalies', () => {
+    const punches = [
+      mk('in', 'empA', 'clock_in', '2026-06-22T09:00:00Z'),
+      mk('out', 'empA', 'clock_out', '2026-06-22T09:01:00Z'), // only 1 minute
+    ];
+    const { sessions } = processPunchesForPeriod(punches);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].is_complete).toBe(true);
+    expect(sessions[0].has_anomalies).toBe(true);
+    expect(sessions[0].anomalies).toContain('Very short session (< 3 min) - possible error');
+  });
+
+  it('flags an incomplete break when session closes before break_end', () => {
+    const punches = [
+      mk('in', 'empA', 'clock_in', '2026-06-22T09:00:00Z'),
+      mk('bs', 'empA', 'break_start', '2026-06-22T12:00:00Z'),
+      // No break_end — session closes with a break still open
+      mk('out', 'empA', 'clock_out', '2026-06-22T17:00:00Z'),
+    ];
+    const { sessions } = processPunchesForPeriod(punches);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].has_anomalies).toBe(true);
+    expect(sessions[0].anomalies).toContain('Incomplete break (missing break end)');
+    expect(sessions[0].breaks).toHaveLength(1);
+    expect(sessions[0].breaks[0].is_complete).toBe(false);
+  });
+});
+
 describe('identifyWorkSessions — does not skip the next clock-in', () => {
   it('keeps the real session after an orphan leading clock-in', () => {
     // zachary case: a stray midnight clock-in must not swallow the real

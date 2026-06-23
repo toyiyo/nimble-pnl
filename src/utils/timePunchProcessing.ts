@@ -338,7 +338,10 @@ export function identifyWorkSessions(processedPunches: ProcessedPunch[]): WorkSe
         }
 
         sessions.push(session);
-        i = j + 1;
+        // Use i = j (not j + 1): when the inner loop breaks, j already points
+        // at the next unprocessed punch (e.g. the next clock_in). Advancing
+        // with j + 1 would skip it, losing back-to-back sessions.
+        i = j;
       } else {
         // Skip punches that don't start a session
         i++;

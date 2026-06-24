@@ -163,9 +163,11 @@ processor documents the assumed currency unit; if the real feed is in cents, the
 single extraction module is the only thing that changes.
 
 ### RLS
-Same as Toast: `SELECT` for any role in `user_restaurants` for the `restaurant_id`;
-`INSERT/UPDATE/DELETE` for `owner`/`manager`. Service role (edge functions) bypasses
-RLS. pgTAP test pins the policies.
+`SELECT` for any role in `user_restaurants` for the `restaurant_id`, plus a single
+`FOR ALL` policy for `owner`/`manager` (INSERT/UPDATE/DELETE). Edge functions use the
+**service-role client** for all write-backs (bypasses RLS). pgTAP pins the policies.
+**See R1/R9 in §17** for the exact policy shape and the user-client/service-client
+split that prevents the upsert-blocked-by-missing-UPDATE-policy footgun.
 
 ## 6. `unified_sales` normalization
 
@@ -273,6 +275,10 @@ The datafeed's exact field names are unknown until we have a license, so:
    the real schema arrives — only the extractor body does.
 3. The processor tolerates missing/None sections (config/menu/labor) and never
    throws on absent optional fields.
+4. The fetch **query date** (`?date=`) is passed to the processor as the
+   authoritative business date (R3), and a stable **per-line** item key is derived
+   even if `focus_item_guid` turns out to be a reused menu-catalog id (R12). The
+   fixture includes both a unique-per-line and a reused-GUID case.
 
 ## 11. Configuration & secrets
 
@@ -333,4 +339,124 @@ fixtures + unit tests + pgTAP tests; `public/logos/focus.png` (placeholder).
    (platform env) vs. per-merchant credentials (would need the encrypted-override
    path). Default: platform env (§3).
 2. **storeKey format** — confirm always numeric 4–6 digits (stored as text either way).
-3. **Logo asset** — use a placeholder `focus.png` now, or do you have brand art?
+3. **Logo asset** — v1 uses an **emoji fallback** (🖥️) in `IntegrationLogo` (no
+   image file → no broken `<img>`); swap to a real `focus.png` when brand art is
+   provided. (Resolved per design review — see §17.)
+
+## 17. Design-review resolutions (Phase 2.5)
+
+Both the Supabase and Frontend design reviewers ran against this doc. Accepted
+refinements (folded into the contract the plan implements):
+
+### Database / RLS / RPC (Supabase reviewer)
+
+- **R1 (critical) — RLS as a single `FOR ALL` policy + service-role write-backs.**
+  `focus_connections` gets a `FOR SELECT` policy (any role in `user_restaurants`)
+  **and** a single `FOR ALL` policy for `owner`/`manager` (covering
+  INSERT/UPDATE/DELETE) — never split INSERT/SELECT without UPDATE, or upserts and
+  the frontend `disconnect` (sets `is_active=false`) break. **All edge-function
+  write-backs** (`connection_status`, `last_sync_time`, `sync_cursor`,
+  `initial_sync_done`, `last_error`) go through the **service-role client**
+  (RLS-bypassing), exactly like the Toast functions — so `focus-test-connection`'s
+  status update never depends on the caller's UPDATE grant. The `FOR ALL` policy
+  exists for direct frontend writes (disconnect). Same `FOR SELECT`/`FOR ALL` pair
+  on `focus_orders`/`focus_order_items`/`focus_payments` (SELECT any role; writes
+  service-role only). pgTAP pins all policies.
+- **R2 (critical) — bound the 5-min aggregation cron.**
+  `sync_all_focus_to_unified_sales()` loops `WHERE is_active … ORDER BY
+  last_sync_time ASC NULLS FIRST LIMIT 10` (the Toast equivalent lacks this LIMIT —
+  we fix the latent bug here rather than copy it).
+- **R3 (major) — authoritative business date from the query param.**
+  `processDatafeed(... , businessDate)` receives the **`?date=YYYY-MM-DD` value used
+  to fetch the day** as a first-class argument and uses it as `business_date`
+  (yyyymmdd int) and `order_date` DATE — never a UTC-converted timestamp inside the
+  JSON (avoids the Toast `closedDate.toISOString()` midnight-drift class of bug).
+  Time-of-day, if needed, comes from the payload but the **date** is the query day.
+- **R4 (major) — composite item identity in `unified_sales`.**
+  `external_item_id` for sale/discount/void rows is `focus_check_guid || '_' ||
+  focus_item_guid` (+ the `_discount`/`_void` suffixes), so a void/stale-cleanup
+  DELETE can never match the same menu item on a different check. Stale-cleanup
+  joins on the composite, not the bare item GUID.
+- **R5 (major) — RPC hardening.** Both `sync_focus_to_unified_sales` overloads and
+  `sync_all_focus_to_unified_sales` are `SECURITY DEFINER` with
+  `SET search_path = public` and `SET statement_timeout = '120s'`. The
+  `set_updated_at` trigger function likewise pins `SET search_path = public`.
+- **R6 (major) — refund reads the first-class column.** The `refund` rows come from
+  `focus_payments WHERE refund_amount > 0` (negative amount), not from `raw_json`.
+- **R7 (major/minor) — indexes.** Add: partial `(last_sync_time ASC NULLS FIRST)
+  WHERE is_active` (round-robin sort), `(restaurant_id, order_date DESC)` on
+  `focus_orders`, `(restaurant_id, payment_date)` and `(restaurant_id,
+  payment_status)` on `focus_payments`.
+- **R8 (minor) — schema hardening.** `is_voided boolean NOT NULL DEFAULT false`
+  (NULL would dodge the `= true` cleanup filter). `mid` gets a `COMMENT` documenting
+  the expected numeric format (no hard CHECK — operators paste varied formats).
+- **R9 (minor) — two clients in `focus-sync-data`.** `userClient` (JWT) for the
+  auth/role check + RLS-scoped connection read; `serviceClient` for **all** writes
+  to `focus_*`. Listed explicitly so the implementer doesn't write through the JWT
+  client (which only has SELECT).
+- **R10 (minor) — config.toml.** Four explicit named stanzas:
+  `[functions.focus-save-connection]`, `[functions.focus-test-connection]`,
+  `[functions.focus-sync-data]`, `[functions.focus-bulk-sync]`, each
+  `verify_jwt = false`.
+- **R11 (trade-off) — 5-min cron stays SQL-level** (like Toast) with the LIMIT from
+  R2. If restaurant count grows enough to pressure DB connections, convert it to a
+  pg_net HTTP call to a `focus-aggregate` edge function (noted, not built in v1).
+
+### Unknown-schema note (folded into §10)
+
+- **R12 — `focus_item_guid` may be a menu-catalog id, not a per-line id.** If the
+  feed reuses one GUID for the same menu item across checks, the per-item unique
+  key must include a line sequence (`focus_line_number`) — the fixture covers both
+  shapes, and `external_item_id` already composites the check GUID (R4) so
+  normalization is safe either way. The processor extracts a stable per-line key.
+
+### Frontend / hook / a11y (Frontend reviewer)
+
+- **R13 (critical) — hook threads `restaurantId`.** `useFocusConnection(restaurantId?:
+  string | null)`; every mutation (`saveConnection`, `testConnection`, `disconnect`,
+  `triggerManualSync`) closes over that `restaurantId`. Query: `enabled:
+  !!restaurantId`, `staleTime: 30000`, `refetchOnWindowFocus: false`,
+  `refetchOnMount: true`; `maybeSingle()` read (avoids PGRST116). Instantiated
+  unconditionally in `IntegrationCard` like the other providers — the `enabled`
+  guard is the protection (we do **not** refactor the pre-existing all-providers
+  pattern; out of scope).
+- **R14 (critical) — wizard owns its dialog a11y.** `FocusSetupWizard` renders
+  `DialogHeader > DialogTitle + DialogDescription` itself (Radix wires
+  `aria-describedby`) — it does **not** delegate the accessible name to a `Card`
+  subtitle (the gap present in `ToastSetupWizard`). Every input has `id` +
+  `<Label htmlFor>` (`store-key`, `mid`, `environment`). `max-h-[80vh]` per CLAUDE.md.
+- **R15 (major) — environment control.** A labeled shadcn `RadioGroup` with two
+  options (Production default, Sandbox). Selecting **Sandbox** shows the amber
+  warning panel (`bg-amber-500/10 border-amber-500/20`) so an operator can't
+  silently point a live location at the test feed.
+- **R16 (major) — partial-failure flow.** Step 2 runs `saveConnection()` then
+  `testConnection()` under one `loading` boolean. If save succeeds but test fails:
+  the row persists with `connection_status='error'`, the user stays on step 2, and
+  a destructive inline error + toast explains the failure with a retry. Success
+  advances to step 3.
+- **R17 (major) — `FocusSync` is one-day-per-call, not paginated.** It must **not**
+  copy `ToastSync.executeSyncLoop`'s `nextPage` cursor (Focus has no page cursor).
+  Manual "Sync now" calls `focus-sync-data` once (advances `sync_cursor` by a day,
+  or re-fetches the last 2 business days when `initial_sync_done`). Initial-backfill
+  progress is shown via `InitialSyncPendingAlert`'s existing `syncCursor` prop
+  (days completed / 90), not an order count.
+- **R18 (major) — `POSConfig.recentWindowLabel`.** Add an optional
+  `recentWindowLabel?: string` to `POSConfig`; `getSyncDescription` in
+  `SyncComponents.tsx` uses it instead of the hardcoded "last 25 hours" string.
+  `FOCUS_CONFIG = { name: 'Focus POS', dataLabel: 'orders', dataLabelSingular:
+  'order', syncInterval: '6 hours', recentWindowLabel: 'last 2 business days' }`.
+  Toast/Shift4/Sling keep current copy (label optional, defaults to existing text).
+- **R19 (major/minor) — logo + alt text.** v1 adds `'focus-pos': '🖥️'` to
+  `IntegrationLogo`'s `emojiMap` (no image map entry → no broken `<img>`). Give
+  `IntegrationLogo` a small id→display-name lookup (or `altText` prop) so the image
+  path, when a real `focus.png` lands, renders `alt="Focus POS logo"` not
+  `alt="focus-pos logo"`.
+- **R20 (minor) — registration completeness.** `Integrations.tsx` imports/calls
+  `useFocusConnection` at page level and feeds `isConnected` into the `focus-pos`
+  registry entry's `connected:` field; `IntegrationCard` renders `<FocusSync>` in
+  the connected branch (`isFocusIntegration`) and `<FocusSetupWizard>` in a
+  `Dialog` toggled by `showFocusSetup`; step-3 "Sync now" / "Go to dashboard"
+  calls `onComplete()` (closes the dialog) — it does not navigate away mid-dialog.
+- **R21 (minor) — mailto + icon a11y.** The support address is
+  `<a href="mailto:fcesupport@shift4.com">`; any decorative `ExternalLink`/`Mail`
+  icon gets `aria-hidden="true"`.

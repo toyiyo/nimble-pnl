@@ -35,6 +35,12 @@ describe('regularPayDisplayValue', () => {
   it('uses contractorPay + manual for contractor', () => {
     expect(regularPayDisplayValue(row({ compensationType: 'contractor', contractorPay: 700, manualPaymentsTotal: 50 }))).toBe(750);
   });
+  it('uses dailyRatePay + manual for daily_rate (not contractorPay)', () => {
+    expect(regularPayDisplayValue(row({ compensationType: 'daily_rate', dailyRatePay: 800, manualPaymentsTotal: 25, contractorPay: 0 }))).toBe(825);
+  });
+  it('daily_rate with zero manualPaymentsTotal returns dailyRatePay, not 0', () => {
+    expect(regularPayDisplayValue(row({ compensationType: 'daily_rate', dailyRatePay: 600 }))).toBe(600);
+  });
 });
 
 describe('sortPayrollRows', () => {
@@ -123,6 +129,20 @@ describe('groupPayrollRows', () => {
   it('gives every group a non-empty stable key', () => {
     const groups = groupPayrollRows([row({ area: null }), row({ area: 'Bar' })], 'area');
     expect(groups.every(g => g.key.length > 0)).toBe(true);
+  });
+
+  it('null bucket key does not collide with a real area named "Unassigned"', () => {
+    // An employee with area: null and one with area: 'Unassigned' must produce two separate groups.
+    const rows = [
+      row({ employeeName: 'a', area: null }),
+      row({ employeeName: 'b', area: 'Unassigned' }),
+    ];
+    const groups = groupPayrollRows(rows, 'area');
+    expect(groups).toHaveLength(2);
+    // Both have label 'Unassigned' but different keys
+    expect(groups.every(g => g.label === UNASSIGNED_LABEL)).toBe(true);
+    const keys = groups.map(g => g.key);
+    expect(new Set(keys).size).toBe(2); // keys are distinct
   });
 });
 

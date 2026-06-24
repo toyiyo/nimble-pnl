@@ -15,7 +15,8 @@ export type SortDirection = 'asc' | 'desc';
 export function regularPayDisplayValue(row: EmployeePayroll): number {
   if (row.compensationType === 'hourly') return row.regularPay;
   if (row.compensationType === 'salary') return row.salaryPay;
-  return row.contractorPay + row.manualPaymentsTotal; // contractor / daily / per-job
+  if (row.compensationType === 'daily_rate') return row.dailyRatePay + row.manualPaymentsTotal;
+  return row.contractorPay + row.manualPaymentsTotal; // contractor / per-job
 }
 
 // String-valued sort keys → accessor. null area sorts as '' (clusters predictably,
@@ -74,7 +75,9 @@ export interface PayrollGroup {
   rows: EmployeePayroll[];
 }
 
-const UNASSIGNED_KEY = '';
+/** Sentinel key used in the internal map for null/blank group values. */
+const UNASSIGNED_BUCKET_KEY = '__unassigned__';
+/** Display label for the null/blank bucket. */
 export const UNASSIGNED_LABEL = 'Unassigned';
 
 /**
@@ -82,6 +85,9 @@ export const UNASSIGNED_LABEL = 'Unassigned';
  * group. Groups are ordered alphabetically by label with Unassigned last —
  * matching src/lib/scheduleGrouping.ts so the same data groups identically on
  * the schedule grid and the payroll table. 'none' returns one unlabeled group.
+ *
+ * The null/blank bucket always gets key === UNASSIGNED_BUCKET_KEY ('__unassigned__')
+ * so it never collides with a real area or position literally named "Unassigned".
  */
 export function groupPayrollRows(
   rows: EmployeePayroll[],
@@ -94,21 +100,21 @@ export function groupPayrollRows(
   const map = new Map<string, EmployeePayroll[]>();
   for (const r of rows) {
     const raw = (mode === 'area' ? r.area : r.position) || '';
-    const key = raw.trim() || UNASSIGNED_KEY;
+    const key = raw.trim() || UNASSIGNED_BUCKET_KEY;
     const bucket = map.get(key);
     if (bucket) bucket.push(r);
     else map.set(key, [r]);
   }
 
   const keys = Array.from(map.keys()).sort((a, b) => {
-    if (a === UNASSIGNED_KEY) return 1;
-    if (b === UNASSIGNED_KEY) return -1;
+    if (a === UNASSIGNED_BUCKET_KEY) return 1;
+    if (b === UNASSIGNED_BUCKET_KEY) return -1;
     return a.localeCompare(b);
   });
 
   return keys.map((key) => ({
-    key: key || UNASSIGNED_LABEL, // never '' so it's a valid Set/DOM id
-    label: key || UNASSIGNED_LABEL,
+    key, // stable, non-empty, never collides with real data
+    label: key === UNASSIGNED_BUCKET_KEY ? UNASSIGNED_LABEL : key,
     rows: map.get(key) ?? [],
   }));
 }

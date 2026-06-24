@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   sortPayrollRows,
   regularPayDisplayValue,
+  groupPayrollRows,
+  UNASSIGNED_LABEL,
   type PayrollSortKey,
+  type PayrollGroupMode,
 } from '@/utils/payrollTableView';
 import type { EmployeePayroll } from '@/utils/payrollCalculations';
 
@@ -71,5 +74,52 @@ describe('sortPayrollRows', () => {
     const snapshot = rows.map(r => r.employeeName);
     sortPayrollRows(rows, 'name', 'asc');
     expect(rows.map(r => r.employeeName)).toEqual(snapshot);
+  });
+});
+
+describe('groupPayrollRows', () => {
+  it('none → a single group containing all rows in input order', () => {
+    const rows = [row({ employeeName: 'b' }), row({ employeeName: 'a' })];
+    const groups = groupPayrollRows(rows, 'none');
+    expect(groups).toHaveLength(1);
+    expect(groups[0].rows.map(r => r.employeeName)).toEqual(['b', 'a']);
+  });
+
+  it('groups by area, alphabetically, Unassigned last', () => {
+    const rows = [
+      row({ employeeName: 'a', area: 'Front of House' }),
+      row({ employeeName: 'b', area: 'Bar' }),
+      row({ employeeName: 'c', area: null }),
+      row({ employeeName: 'd', area: 'Bar' }),
+    ];
+    const groups = groupPayrollRows(rows, 'area');
+    expect(groups.map(g => g.label)).toEqual(['Bar', 'Front of House', UNASSIGNED_LABEL]);
+    expect(groups[0].rows.map(r => r.employeeName)).toEqual(['b', 'd']);
+    expect(groups[2].label).toBe(UNASSIGNED_LABEL);
+  });
+
+  it('preserves the incoming (already-sorted) order within each group', () => {
+    const rows = [
+      row({ employeeName: 'Zoe', area: 'Bar' }),
+      row({ employeeName: 'Amy', area: 'Bar' }),
+    ];
+    const groups = groupPayrollRows(rows, 'area');
+    expect(groups[0].rows.map(r => r.employeeName)).toEqual(['Zoe', 'Amy']);
+  });
+
+  it('groups by position', () => {
+    const rows = [row({ employeeName: 'a', position: 'Server' }), row({ employeeName: 'b', position: 'Cook' })];
+    const groups = groupPayrollRows(rows, 'position');
+    expect(groups.map(g => g.label)).toEqual(['Cook', 'Server']);
+  });
+
+  it('buckets blank/whitespace area into Unassigned', () => {
+    const groups = groupPayrollRows([row({ employeeName: 'a', area: '   ' })], 'area');
+    expect(groups[0].label).toBe(UNASSIGNED_LABEL);
+  });
+
+  it('gives every group a non-empty stable key', () => {
+    const groups = groupPayrollRows([row({ area: null }), row({ area: 'Bar' })], 'area');
+    expect(groups.every(g => g.key.length > 0)).toBe(true);
   });
 });

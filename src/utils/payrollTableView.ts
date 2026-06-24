@@ -65,3 +65,50 @@ export function sortPayrollRows(
     })
     .map((d) => d.row);
 }
+
+export type PayrollGroupMode = 'none' | 'area' | 'position';
+
+export interface PayrollGroup {
+  key: string;   // stable, non-empty id (used for collapse Set + DOM aria)
+  label: string; // display label ('' for the 'none' group)
+  rows: EmployeePayroll[];
+}
+
+const UNASSIGNED_KEY = '';
+export const UNASSIGNED_LABEL = 'Unassigned';
+
+/**
+ * Buckets already-sorted rows into groups, preserving input order within each
+ * group. Groups are ordered alphabetically by label with Unassigned last —
+ * matching src/lib/scheduleGrouping.ts so the same data groups identically on
+ * the schedule grid and the payroll table. 'none' returns one unlabeled group.
+ */
+export function groupPayrollRows(
+  rows: EmployeePayroll[],
+  mode: PayrollGroupMode,
+): PayrollGroup[] {
+  if (mode === 'none') {
+    return [{ key: 'all', label: '', rows: [...rows] }];
+  }
+
+  const map = new Map<string, EmployeePayroll[]>();
+  for (const r of rows) {
+    const raw = (mode === 'area' ? r.area : r.position) || '';
+    const key = raw.trim() || UNASSIGNED_KEY;
+    const bucket = map.get(key);
+    if (bucket) bucket.push(r);
+    else map.set(key, [r]);
+  }
+
+  const keys = Array.from(map.keys()).sort((a, b) => {
+    if (a === UNASSIGNED_KEY) return 1;
+    if (b === UNASSIGNED_KEY) return -1;
+    return a.localeCompare(b);
+  });
+
+  return keys.map((key) => ({
+    key: key || UNASSIGNED_LABEL, // never '' so it's a valid Set/DOM id
+    label: key || UNASSIGNED_LABEL,
+    rows: map.get(key) ?? [],
+  }));
+}

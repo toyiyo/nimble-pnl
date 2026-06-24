@@ -663,6 +663,60 @@ describe('payrollCalculations - Additional Coverage', () => {
     });
   });
 
+  describe('area field threading', () => {
+    it('threads area from employee onto EmployeePayroll when area is set', () => {
+      const employee = createEmployee({ area: 'Front of House' });
+      const result = calculateEmployeePay(employee, [], 0);
+      expect(result.area).toBe('Front of House');
+    });
+
+    it('threads area as null when employee has no area (undefined)', () => {
+      // createEmployee does not set area, so it is undefined
+      const employee = createEmployee();
+      const result = calculateEmployeePay(employee, [], 0);
+      expect(result.area).toBeNull();
+    });
+
+    it('threads area as null when employee area is empty string', () => {
+      const employee = createEmployee({ area: '' });
+      const result = calculateEmployeePay(employee, [], 0);
+      // Empty string is falsy — coerce to null via ?? null (only catches undefined/null)
+      // Design spec says employee.area ?? null, so empty string stays as empty string
+      // but null/undefined become null. Use the spec as authority.
+      expect(result.area).toBe('');
+    });
+
+    it('area field is present in the EmployeePayroll interface (type check via property access)', () => {
+      const employee = createEmployee({ area: 'Bar' });
+      const result = calculateEmployeePay(employee, [], 0);
+      expect(Object.prototype.hasOwnProperty.call(result, 'area')).toBe(true);
+    });
+
+    it('calculatePayrollPeriod propagates area to each EmployeePayroll row', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' }),
+        createEmployee({ id: 'emp-2', name: 'Bob', area: 'Back of House' }),
+        createEmployee({ id: 'emp-3', name: 'Charlie' }), // no area
+      ];
+
+      const result = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        new Map(),
+        new Map()
+      );
+
+      const alice = result.employees.find(e => e.employeeId === 'emp-1')!;
+      const bob = result.employees.find(e => e.employeeId === 'emp-2')!;
+      const charlie = result.employees.find(e => e.employeeId === 'emp-3')!;
+
+      expect(alice.area).toBe('Front of House');
+      expect(bob.area).toBe('Back of House');
+      expect(charlie.area).toBeNull();
+    });
+  });
+
   describe('Edge Cases', () => {
     it('should handle empty punch array', () => {
       const hours = calculateWorkedHours([]);

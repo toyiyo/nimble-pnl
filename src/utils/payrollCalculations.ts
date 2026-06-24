@@ -45,6 +45,7 @@ export interface EmployeePayroll {
   employeeId: string;
   employeeName: string;
   position: string;
+  area: string | null; // Employee's work area (e.g. Front of House, Back of House)
   compensationType: CompensationType; // Type of compensation
   hourlyRate: number; // In cents (for hourly employees)
   regularHours: number;
@@ -521,6 +522,7 @@ export function calculateEmployeePay(
     employeeId: employee.id,
     employeeName: employee.name,
     position: employee.position,
+    area: employee.area ?? null,
     compensationType,
     hourlyRate: employee.hourly_rate,
     regularHours: Math.round(totalRegularHours * 100) / 100, // Round to 2 decimals

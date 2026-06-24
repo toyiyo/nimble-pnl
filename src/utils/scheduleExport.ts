@@ -80,15 +80,18 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   // Get days of the week
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
+  /** Returns the filter value when active, null when "all" or absent. */
+  const active = (f?: string) => (f && f !== "all" ? f : null);
+  const activePosition = active(positionFilter);
+  const activeArea = active(areaFilter);
+
   // Filter shifts by position and/or area if needed (AND semantics)
-  const activePositionFilter = positionFilter && positionFilter !== "all" ? positionFilter : null;
-  const activeAreaFilter = areaFilter && areaFilter !== "all" ? areaFilter : null;
-  const filteredShifts = (activePositionFilter || activeAreaFilter)
+  const filteredShifts = (activePosition || activeArea)
     ? shifts.filter(s => {
         const emp = employees.find(e => e.id === s.employee_id);
         if (!emp) return false;
-        if (activePositionFilter && emp.position !== activePositionFilter) return false;
-        if (activeAreaFilter && emp.area !== activeAreaFilter) return false;
+        if (activePosition && emp.position !== activePosition) return false;
+        if (activeArea && emp.area !== activeArea) return false;
         return true;
       })
     : shifts;
@@ -127,10 +130,7 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
 
   // Filter/grouping indicators
   let subtitleY = margin + 35;
-  const filterParts = [
-    areaFilter && areaFilter !== "all" ? areaFilter : null,
-    positionFilter && positionFilter !== "all" ? positionFilter : null,
-  ].filter(Boolean) as string[];
+  const filterParts = [active(areaFilter), active(positionFilter)].filter(Boolean) as string[];
   if (filterParts.length > 0) {
     doc.setFontSize(10);
     doc.setTextColor(100);

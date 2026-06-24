@@ -104,6 +104,11 @@ export const ScheduleExportDialog = ({
   const selectedCount = selectedEmployeeIds.size;
   const totalAvailable = allEmployeesWithShifts.length;
 
+  const activeFilterParts = [
+    areaFilter && areaFilter !== "all" ? areaFilter : null,
+    positionFilter && positionFilter !== "all" ? positionFilter : null,
+  ].filter(Boolean) as string[];
+
   const getShiftDisplay = (employeeId: string, day: Date): string => {
     const dayShifts = filteredShifts.filter(
       s => s.employee_id === employeeId && isSameDay(parseISO(s.start_time), day)
@@ -161,17 +166,11 @@ export const ScheduleExportDialog = ({
             <div className="text-xs text-muted-foreground">
               Week of {format(weekStart, "MMM d")} - {format(weekEnd, "MMM d, yyyy")}
             </div>
-            {(() => {
-              const parts = [
-                areaFilter && areaFilter !== "all" ? areaFilter : null,
-                positionFilter && positionFilter !== "all" ? positionFilter : null,
-              ].filter(Boolean);
-              return parts.length > 0 ? (
-                <div className="text-xs text-muted-foreground mt-1">
-                  Filtered: {parts.join(" · ")}
-                </div>
-              ) : null;
-            })()}
+            {activeFilterParts.length > 0 && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Filtered: {activeFilterParts.join(" · ")}
+              </div>
+            )}
             {groupBy !== 'none' && (
               <div className="text-xs text-muted-foreground mt-1">
                 Grouped by: {groupBy === 'area' ? 'Area' : 'Position'}

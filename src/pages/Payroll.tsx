@@ -61,6 +61,16 @@ import {
 
 type PayPeriodType = 'current_week' | 'last_week' | 'last_2_weeks' | 'custom';
 
+/** Total number of columns in the payroll table (used for group-section colSpan). */
+const PAYROLL_COLUMN_COUNT = 13;
+
+const SORT_LABELS: Record<PayrollSortKey, string> = {
+  name: 'Employee', position: 'Position', area: 'Area', rate: 'Rate',
+  regularHours: 'Regular Hours', overtimeHours: 'Overtime Hours',
+  regularPay: 'Regular Pay', overtimePay: 'Overtime Pay',
+  totalTips: 'Tips Earned', tipsPaidOut: 'Tips Paid', tipsOwed: 'Tips Owed', totalPay: 'Total Pay',
+};
+
 function SortableHeader({
   columnKey, label, align = 'left', sortKey, sortDir, onSort,
 }: {
@@ -72,11 +82,29 @@ function SortableHeader({
   onSort: (key: PayrollSortKey) => void;
 }) {
   const isActive = sortKey === columnKey;
-  const Icon = !isActive ? ArrowUpDown : sortDir === 'asc' ? ChevronUp : ChevronDown;
+
+  let Icon;
+  if (!isActive) {
+    Icon = ArrowUpDown;
+  } else if (sortDir === 'asc') {
+    Icon = ChevronUp;
+  } else {
+    Icon = ChevronDown;
+  }
+
+  let ariaSort: 'none' | 'ascending' | 'descending';
+  if (!isActive) {
+    ariaSort = 'none';
+  } else if (sortDir === 'asc') {
+    ariaSort = 'ascending';
+  } else {
+    ariaSort = 'descending';
+  }
+
   return (
     <TableHead
       className={align === 'right' ? 'text-right' : undefined}
-      aria-sort={isActive ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      aria-sort={ariaSort}
     >
       <button
         type="button"
@@ -239,6 +267,128 @@ const Payroll = () => {
   const formatRegularPayDisplay = (employee: EmployeePayroll): string =>
     formatCurrency(regularPayDisplayValue(employee));
 
+  const renderEmployeeRow = (employee: EmployeePayroll) => (
+    <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span>{employee.employeeName}</span>
+          {getCompensationBadge(employee)}
+          {employee.incompleteShifts && employee.incompleteShifts.length > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertTriangle className="h-4 w-4 text-amber-500" aria-label={`${employee.incompleteShifts.length} incomplete time punches`} />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs">
+                  <p className="font-medium mb-1">{employee.incompleteShifts.length} punch issue(s):</p>
+                  <ul className="text-xs space-y-0.5">
+                    {employee.incompleteShifts.slice(0, 5).map((shift) => (
+                      <li key={`${employee.employeeId}-${shift.punchTime}-${shift.type}`}>• {shift.message}</li>
+                    ))}
+                    {employee.incompleteShifts.length > 5 && (
+                      <li key="more">• ...and {employee.incompleteShifts.length - 5} more</li>
+                    )}
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {/* Show manual payment info if any */}
+          {employee.manualPaymentsTotal > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                    +{formatCurrency(employee.manualPaymentsTotal)}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs">
+                  <p className="font-medium mb-1">{employee.manualPayments.length} manual payment(s):</p>
+                  <ul className="text-xs space-y-0.5">
+                    {employee.manualPayments.map((payment) => (
+                      <li key={`${employee.employeeId}-${payment.date}-${payment.amount}`}>• {format(new Date(payment.date), 'MMM d')}: {formatCurrency(payment.amount)}{payment.description ? ` - ${payment.description}` : ''}</li>
+                    ))}
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>{employee.position}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {employee.area ?? (
+          <>
+            <span aria-hidden="true">—</span>
+            <span className="sr-only">No area assigned</span>
+          </>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        {formatRateDisplay(employee)}
+      </TableCell>
+      <TableCell className="text-right">
+        {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
+      </TableCell>
+      <TableCell className="text-right">
+        {employee.compensationType !== 'hourly' ? '-' : (
+          employee.overtimeHours > 0 ? (
+            <Badge variant="secondary">
+              {formatHours(employee.overtimeHours)}
+            </Badge>
+          ) : '0.00'
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        {formatRegularPayDisplay(employee)}
+      </TableCell>
+      <TableCell className="text-right">
+        {employee.overtimePay > 0 ? formatCurrency(employee.overtimePay) : '-'}
+      </TableCell>
+      <TableCell className="text-right">
+        {employee.totalTips > 0 ? formatCurrency(employee.totalTips) : '-'}
+      </TableCell>
+      <TableCell className="text-right">
+        {employee.tipsPaidOut > 0 ? formatCurrency(employee.tipsPaidOut) : '-'}
+      </TableCell>
+      <TableCell className="text-right font-medium">
+        {employee.tipsOwed > 0 ? formatCurrency(employee.tipsOwed) : '-'}
+      </TableCell>
+      <TableCell className="text-right font-semibold">
+        {formatCurrency(employee.totalPay)}
+      </TableCell>
+      <TableCell className="text-right space-x-2">
+        {employee.compensationType === 'hourly' && (employee.regularHours > 0 || employee.overtimeHours > 0) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleAdjustOT(
+              employee.employeeId,
+              employee.employeeName,
+              employee.regularHours,
+              employee.overtimeHours
+            )}
+            aria-label={`Adjust overtime for ${employee.employeeName}`}
+          >
+            <Clock className="h-4 w-4 mr-1" />
+            Adjust OT
+          </Button>
+        )}
+        {isEmployeePerJobContractor(employee.employeeId) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleAddPayment(employee.employeeId, employee.employeeName)}
+            aria-label={`Add payment for ${employee.employeeName}`}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Payment
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+
   const handleAddPayment = (employeeId: string, employeeName: string) => {
     setSelectedEmployee({ id: employeeId, name: employeeName });
     setPaymentDialogOpen(true);
@@ -282,7 +432,8 @@ const Payroll = () => {
     a.href = url;
     a.download = `payroll_${format(start, 'yyyy-MM-dd')}_to_${format(end, 'yyyy-MM-dd')}.csv`;
     a.click();
-    window.URL.revokeObjectURL(url);
+    // Revoke after a tick so the browser can schedule the download first.
+    setTimeout(() => window.URL.revokeObjectURL(url), 100);
   };
 
   const payrollGroups = useMemo(
@@ -290,12 +441,13 @@ const Payroll = () => {
     [payrollPeriod, sortKey, sortDir, groupBy],
   );
 
-  const SORT_LABELS: Record<PayrollSortKey, string> = {
-    name: 'Employee', position: 'Position', area: 'Area', rate: 'Rate',
-    regularHours: 'Regular Hours', overtimeHours: 'Overtime Hours',
-    regularPay: 'Regular Pay', overtimePay: 'Overtime Pay',
-    totalTips: 'Tips Earned', tipsPaidOut: 'Tips Paid', tipsOwed: 'Tips Owed', totalPay: 'Total Pay',
-  };
+  const grandTotals = useMemo(
+    () => (payrollPeriod ? computePayrollTotals(payrollPeriod.employees) : null),
+    [payrollPeriod],
+  );
+
+  const isGrouped = groupBy !== 'none';
+
   const sortAnnouncement = `Sorted by ${SORT_LABELS[sortKey]}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`;
 
   /** Columns that span the label cell in totals rows: Employee + Position + Area + Rate */
@@ -583,7 +735,7 @@ const Payroll = () => {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <label htmlFor="payroll-group-by" className="text-[13px] text-muted-foreground">Group</label>
-                <Select value={groupBy} onValueChange={(v) => setGroupBy(v as PayrollGroupMode)}>
+                <Select value={groupBy} onValueChange={(v) => { setGroupBy(v as PayrollGroupMode); setCollapsedGroups(new Set()); }}>
                   <SelectTrigger id="payroll-group-by" aria-label="Group by" className="h-9 w-[150px] text-[13px]">
                     <SelectValue />
                   </SelectTrigger>
@@ -632,143 +784,17 @@ const Payroll = () => {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                {payrollGroups.map((group, gi) => {
-                  const domId = `payroll-group-${gi}`;
+                {payrollGroups.map((group) => {
                   const collapsed = collapsedGroups.has(group.key);
-                  const grouped = groupBy !== 'none';
-
-                  const renderEmployeeRow = (employee: EmployeePayroll) => (
-                    <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span>{employee.employeeName}</span>
-                          {getCompensationBadge(employee)}
-                          {employee.incompleteShifts && employee.incompleteShifts.length > 0 && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <AlertTriangle className="h-4 w-4 text-amber-500" aria-label={`${employee.incompleteShifts.length} incomplete time punches`} />
-                                </TooltipTrigger>
-                                <TooltipContent side="right" className="max-w-xs">
-                                  <p className="font-medium mb-1">{employee.incompleteShifts.length} punch issue(s):</p>
-                                  <ul className="text-xs space-y-0.5">
-                                    {employee.incompleteShifts.slice(0, 5).map((shift) => (
-                                      <li key={`${employee.employeeId}-${shift.punchTime}-${shift.type}`}>• {shift.message}</li>
-                                    ))}
-                                    {employee.incompleteShifts.length > 5 && (
-                                      <li key="more">• ...and {employee.incompleteShifts.length - 5} more</li>
-                                    )}
-                                  </ul>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                          {/* Show manual payment info if any */}
-                          {employee.manualPaymentsTotal > 0 && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
-                                    +{formatCurrency(employee.manualPaymentsTotal)}
-                                  </Badge>
-                                </TooltipTrigger>
-                                <TooltipContent side="right" className="max-w-xs">
-                                  <p className="font-medium mb-1">{employee.manualPayments.length} manual payment(s):</p>
-                                  <ul className="text-xs space-y-0.5">
-                                    {employee.manualPayments.map((payment) => (
-                                      <li key={`${employee.employeeId}-${payment.date}-${payment.amount}`}>• {format(new Date(payment.date), 'MMM d')}: {formatCurrency(payment.amount)}{payment.description ? ` - ${payment.description}` : ''}</li>
-                                    ))}
-                                  </ul>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{employee.position}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {employee.area ?? (
-                          <>
-                            <span aria-hidden="true">—</span>
-                            <span className="sr-only">No area assigned</span>
-                          </>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatRateDisplay(employee)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {employee.compensationType === 'hourly' ? formatHours(employee.regularHours) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {employee.compensationType !== 'hourly' ? '-' : (
-                          employee.overtimeHours > 0 ? (
-                            <Badge variant="secondary">
-                              {formatHours(employee.overtimeHours)}
-                            </Badge>
-                          ) : '0.00'
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatRegularPayDisplay(employee)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {employee.overtimePay > 0 ? formatCurrency(employee.overtimePay) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {employee.totalTips > 0 ? formatCurrency(employee.totalTips) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {employee.tipsPaidOut > 0 ? formatCurrency(employee.tipsPaidOut) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {employee.tipsOwed > 0 ? formatCurrency(employee.tipsOwed) : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatCurrency(employee.totalPay)}
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        {employee.compensationType === 'hourly' && (employee.regularHours > 0 || employee.overtimeHours > 0) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleAdjustOT(
-                              employee.employeeId,
-                              employee.employeeName,
-                              employee.regularHours,
-                              employee.overtimeHours
-                            )}
-                            aria-label={`Adjust overtime for ${employee.employeeName}`}
-                          >
-                            <Clock className="h-4 w-4 mr-1" />
-                            Adjust OT
-                          </Button>
-                        )}
-                        {isEmployeePerJobContractor(employee.employeeId) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleAddPayment(employee.employeeId, employee.employeeName)}
-                            aria-label={`Add payment for ${employee.employeeName}`}
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Add Payment
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-
                   return (
-                    <TableBody key={group.key} id={domId}>
-                      {grouped && (
+                    <TableBody key={group.key}>
+                      {isGrouped && (
                         <TableRow className="bg-muted/30">
-                          <TableHead colSpan={13} scope="colgroup" className="py-2">
+                          <TableHead colSpan={PAYROLL_COLUMN_COUNT} scope="colgroup" className="py-2">
                             <button
                               type="button"
                               onClick={() => toggleGroup(group.key)}
                               aria-expanded={!collapsed}
-                              aria-controls={domId}
                               className="inline-flex items-center gap-2 min-h-[24px] font-semibold text-foreground"
                             >
                               {collapsed
@@ -783,7 +809,7 @@ const Payroll = () => {
                         </TableRow>
                       )}
                       {!collapsed && group.rows.map(renderEmployeeRow)}
-                      {grouped && renderTotalsRow(
+                      {isGrouped && !collapsed && renderTotalsRow(
                         computePayrollTotals(group.rows),
                         `${group.label} subtotal`,
                         { labelClassName: 'text-[12px] font-medium uppercase tracking-wider text-muted-foreground' },
@@ -793,7 +819,7 @@ const Payroll = () => {
                 })}
                 {/* Grand total row — always visible */}
                 <TableBody>
-                  {renderTotalsRow(computePayrollTotals(payrollPeriod.employees), 'TOTAL')}
+                  {grandTotals && renderTotalsRow(grandTotals, 'TOTAL')}
                 </TableBody>
               </Table>
             </div>

@@ -52,7 +52,20 @@ Confirmed via prod data (employee dff3beb5, America/Chicago, rows 03:00:00/03:30
   - test file: removed no-op `expect(true).toBe(true)` shell from caller-contract describe block;
     moved audit note into block-level comment; renamed remaining test to describe what it asserts
   - 21 tests remain, all pass (was 22; the removed test had no assertions)
-- [ ] Phase 7: CodeRabbit review (next)
+- [x] Phase 7a: Codex adversarial review — COMPLETE (2026-06-23)
+  - Finding (major): formatConflictLine uses today's DST anchor for exception conflicts, but
+    exceptions are written using the exception's own date. Cross-DST-period exceptions will
+    display 1h off (mirror of the original bug). Filed as out-of-scope spawn task.
+    Output: dev-tools/codex-review-output.md
+- [x] Phase 7b: Fold review findings — COMPLETE (2026-06-23, commit 79635265)
+  - Fixed (major/Codex): exception conflicts now use per-exception date anchor via
+    extractDateAnchor(); falls back to referenceDate when no ISO date in message.
+  - Fixed (minor): duplicate test removed (lines 137/165 had identical inputs); test
+    renamed ('handles 00:00:00' → 'handles midnight local (06:00 UTC → 12:00 AM CST)');
+    internal-task comment replaced with timeless grep-verified rationale.
+  - 23 tests pass; full suite 354 files / 4626 tests green (same pre-existing 2 skips).
+  - Security/performance findings: none. Maintainability/sound-logic findings: minor only (addressed).
+- [ ] Phase 7c: CodeRabbit review (next)
 
 ## CI Status
 - PR: not yet created

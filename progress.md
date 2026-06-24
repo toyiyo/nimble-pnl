@@ -5,7 +5,7 @@
 - Plan: docs/superpowers/plans/2026-06-23-schedule-print-area-filter-plan.md (committed 121a5e3a)
 
 ## Current Phase
-Phase 4 (Build, strict TDD) — task 1/4 COMPLETED; task 2/4 next
+Phase 4 (Build, strict TDD) — task 2/4 COMPLETED; task 3/4 next
 
 ## Completed Tasks
 - [x] Phase 0: Consult lessons
@@ -19,7 +19,13 @@ Phase 4 (Build, strict TDD) — task 1/4 COMPLETED; task 2/4 next
   - AND semantics: shift kept only when employee matches BOTH positionFilter AND areaFilter
   - Combined "Filtered: <area> · <position>" subtitle (area first)
   - 9 new unit tests (all green); 13 total passing
-- [ ] Phase 4, Task 2: ScheduleExportDialog.tsx — accept + apply areaFilter (queued)
+- [x] Phase 4, Task 2: ScheduleExportDialog.tsx — accept + apply areaFilter (d8ae21b6)
+  - Added `areaFilter?: string` to ScheduleExportDialogProps and destructured it
+  - Renamed `positionFilteredShifts` → `filteredShifts`; applied AND semantics (area + position)
+  - Updated both consumers: `allEmployeesWithShifts` memo and `getShiftDisplay`
+  - Preview header: combined "Filtered: <area> · <position>" label (area first)
+  - Passed `areaFilter` into `generateSchedulePDF` in handleExport
+  - Typecheck clean; 4612 unit tests passing
 - [ ] Phase 4, Task 3: Scheduling.tsx — forward areaFilter to dialog (queued)
 - [ ] Phase 4, Task 4: E2E — area filter narrows print dialog (queued)
 

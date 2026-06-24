@@ -38,7 +38,14 @@ Confirmed via prod data (employee dff3beb5, America/Chicago, rows 03:00:00/03:30
   - formatUTCTimeToLocal has zero external importers (only used inside conflictFormatUtils.ts)
   - TypeScript typecheck clean; full suite 4625/4627 green (2 pre-existing skips)
   - Added 2-test caller-contract describe block to conflictFormatUtils.test.ts (now 22 tests)
-- [ ] Phase 4 Task 4 — Local verification under TZ=UTC/LA/Tokyo (pending)
+- [x] Phase 4 Task 4 — Local verification under TZ=UTC/LA/Tokyo (no new commit — verification only)
+  - TZ=UTC: 22/22 pass
+  - TZ=America/Los_Angeles: 22/22 pass
+  - TZ=Asia/Tokyo: 22/22 pass
+  - npm run typecheck: clean
+  - npm run lint: 0 errors in changed files (pre-existing errors elsewhere, pre-existing)
+  - npm run build: success in 18.44s
+  - npm run test (full suite): 4625/4627 pass, 2 skipped (same pre-existing skips)
 - [ ] Phase 4-9: dev-build-and-ship workflow (running)
 
 ## CI Status

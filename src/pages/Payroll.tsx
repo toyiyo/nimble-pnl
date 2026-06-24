@@ -317,7 +317,7 @@ const Payroll = () => {
       </TableCell>
       <TableCell>{employee.position}</TableCell>
       <TableCell className="text-muted-foreground">
-        {employee.area ?? (
+        {employee.area?.trim() ? employee.area : (
           <>
             <span aria-hidden="true">—</span>
             <span className="sr-only">No area assigned</span>

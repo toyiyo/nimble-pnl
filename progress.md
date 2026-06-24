@@ -5,7 +5,7 @@
 - Plan: docs/superpowers/plans/2026-06-23-schedule-print-area-filter-plan.md (committed 121a5e3a)
 
 ## Current Phase
-Phase 4 (Build, strict TDD) — task 2/4 COMPLETED; task 3/4 next
+Phase 4 (Build, strict TDD) — ALL TASKS COMPLETE
 
 ## Completed Tasks
 - [x] Phase 0: Consult lessons
@@ -26,8 +26,16 @@ Phase 4 (Build, strict TDD) — task 2/4 COMPLETED; task 3/4 next
   - Preview header: combined "Filtered: <area> · <position>" label (area first)
   - Passed `areaFilter` into `generateSchedulePDF` in handleExport
   - Typecheck clean; 4612 unit tests passing
-- [ ] Phase 4, Task 3: Scheduling.tsx — forward areaFilter to dialog (queued)
-- [ ] Phase 4, Task 4: E2E — area filter narrows print dialog (queued)
+- [x] Phase 4, Task 3: Scheduling.tsx — forward areaFilter to dialog (e9e2aaf5)
+  - Added `areaFilter={areaFilter}` to `<ScheduleExportDialog>` (~line 2110)
+  - Typecheck clean (no output); all 31 unit tests green
+  - One-line change; completes the prop pipeline from grid state to PDF generator
+- [x] Phase 4, Task 4: E2E — area filter narrows print dialog (COMMIT_SHA_PLACEHOLDER)
+  - Added `area filter narrows the employee list in print dialog` test to schedule-print-export.spec.ts
+  - Seeds 4 employees across 2 areas (Front of House + Back of House) with shifts
+  - Sets #area-filter to "Back of House", opens Print, asserts only BOH employees in dialog
+  - Asserts "2 of 2" count and Front of House employees are absent
+  - Typecheck clean; 31 unit tests still passing
 
 ## CI Status
 - PR: not yet created

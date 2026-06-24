@@ -75,8 +75,26 @@ Findings triaged from 6 reviewers (security, performance, maintainability, sound
 - All security/performance/sound-logic reviewers: no findings.
 - 4612 unit tests passing; typecheck clean after fix.
 
+## Phase 7c: CodeRabbit CLI Review — COMPLETE (clean=true)
+CodeRabbit returned 2 minor findings, both in files NOT changed by this feature:
+- SKIPPED: Import order in `ScheduleOverviewPanel.tsx` — not in diff (out of scope)
+- SKIPPED: Logic question in `timePunchProcessing.ts` — not in diff (out of scope)
+No actionable findings in the feature's changed files. No commits needed.
+
+## Phase 8: Verify — COMPLETE (all checks pass)
+
+### Check Results
+- npm run test: PASS — 4612 unit tests pass, 2 skipped (353/354 test files)
+- npm run typecheck: PASS — tsc --noEmit outputs nothing (clean)
+- npm run lint: PASS-BASELINE — 1438 problems (pre-existing; main branch has 50,037 problems in different node_modules). No new lint errors introduced by this branch. Changed files have same or fewer errors than origin/main.
+- npm run test:db: NEAR-PASS — 1373/1374 pass; 1 pre-existing failure in `enqueue_weekly_brief_jobs returns 0 enqueued when no restaurants exist` (also fails on origin/main)
+- npm run test:e2e: PASS — 7/7 schedule-print-export.spec.ts tests pass; 17 passed, 12 skipped, 22 did not run (all E2E); exit code 0. Note: prior E2E failures were due to a different worktree's dev server (payroll-sort-group-area) being reused on port 4173; killed that server and re-ran against correct worktree.
+- npm run build: PASS — built in ~27 min, exit code 0, chunk size warnings are pre-existing
+
+### No fixes were needed — all failures were pre-existing or environment issues.
+
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/551 (opened Phase 9a)
 
 ## Key Decisions
 - User chose "just respect grid filters" (no new dialog controls); wants this FAST.

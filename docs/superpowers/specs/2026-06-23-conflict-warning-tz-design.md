@@ -33,8 +33,8 @@ is displayed by the conflict warning as 9:00/9:30 PM.
 
 ### Evidence
 
-- **Prod data:** employee `dff3beb5…`, restaurant "Wetzel's - Cold Stone - Alamo
-  Ranch" (`America/Chicago`), rows stored `03:00:00`/`03:30:00` — i.e. 10:00/10:30 PM
+- **Prod data:** employee `employee-123` (redacted), restaurant "Sample Restaurant"
+  (`America/Chicago`), rows stored `03:00:00`/`03:30:00` — i.e. 10:00/10:30 PM
   CDT, correctly written.
 - **Node repro:** the exact buggy line returns `9:00 PM` / `9:30 PM`; anchored to
   today it returns `10:00 PM` / `10:30 PM`.
@@ -115,7 +115,7 @@ old separator.
 
 ## Components & data flow
 
-```
+```text
 SQL check_availability_conflict (unchanged)
   → ConflictCheck { available_start, available_end: UTC "HH:MM:SS" }
     → formatConflictLine(conflict, timezone, referenceDate=today)

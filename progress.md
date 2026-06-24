@@ -1,8 +1,8 @@
 # Progress: Fix DST timezone display bug in scheduling availability warning
 
 ## Spec
-Design: docs/superpowers/specs/2026-06-23-conflict-warning-tz-design.md (pending)
-Plan:   docs/superpowers/plans/2026-06-23-conflict-warning-tz-plan.md (pending)
+Design: docs/superpowers/specs/2026-06-23-conflict-warning-tz-design.md (complete)
+Plan:   docs/superpowers/plans/2026-06-23-conflict-warning-tz-plan.md (complete)
 
 ## Current Phase
 Preflight: COMPLETE (2026-06-23). gh ✓ jq ✓ node ✓ coderabbit 0.6.1 ✓ codex 0.137.0 ✓ worktree on fix/conflict-warning-tz-anchor ✓ .env.local symlink ✓. Sonar NOT configured (warning only).
@@ -14,7 +14,7 @@ Phase 4-9: dev-build-and-ship workflow — launching (plan approved by user "go,
 `localTimeToUtcTime` and grid reader `utcTimeToLocalTime` (src/lib/availabilityTimeUtils.ts)
 anchor to "today". During DST the two differ by 1h → availability stored 03:00/03:30 UTC
 (=10:00/10:30 PM CDT) shows as "9:00–9:30 PM" in the conflict warning.
-Confirmed via prod data (employee dff3beb5, America/Chicago, rows 03:00:00/03:30:00) + Node repro.
+Confirmed via prod data (employee redacted, America/Chicago, rows 03:00:00/03:30:00) + Node repro.
 
 ## Completed Tasks
 - [x] Phase 0: lessons consulted (key: [2026-05-10] DST anchor, [Time/Timezone] CI=UTC)
@@ -65,10 +65,37 @@ Confirmed via prod data (employee dff3beb5, America/Chicago, rows 03:00:00/03:30
     internal-task comment replaced with timeless grep-verified rationale.
   - 23 tests pass; full suite 354 files / 4626 tests green (same pre-existing 2 skips).
   - Security/performance findings: none. Maintainability/sound-logic findings: minor only (addressed).
-- [ ] Phase 7c: CodeRabbit review (next)
+- [x] Phase 7c: CodeRabbit review — COMPLETE (2026-06-23, clean=true)
+  - 2 minor findings, both in src/utils/timePunchProcessing.ts (NOT in this branch's diff)
+  - Finding 1: break_start overwrites open break (pre-existing, out-of-scope)
+  - Finding 2: burst-noise reason text says ">3" but threshold is >=3 (spawned as task_a3ed6e1f)
+  - No actionable findings for this PR's changed files (conflictFormatUtils.ts + test)
+
+- [x] Phase 8: Verify — COMPLETE (2026-06-23)
+  - npm run test: 354 files / 4626 tests pass, 2 skipped (same pre-existing skips)
+  - npm run typecheck: clean
+  - npm run lint: 1438 pre-existing errors (0 in changed files: conflictFormatUtils.ts + test)
+  - npm run build: success in 17.81s
+  - npm run test:db: 1373/1374 pass; 1 failure (enqueue_weekly_brief_jobs, pre-existing, NOT in diff)
+  - npm run test:e2e: 145/158 passed, 12 skipped, 1 failed (manual-sale-tip-not-doubled.spec.ts,
+    pre-existing, NOT in diff — file last changed in PR #411, 0 changes in this branch)
+  - Dev server started on port 8081 (8080 in use), torn down after E2E
 
 ## CI Status
-- PR: not yet created
+- PR: #549 — https://github.com/toyiyo/nimble-pnl/pull/549 (opened 2026-06-23)
+- CI: GREEN (all checks passed 2026-06-23)
+
+- [x] Phase 9a: Ship — COMPLETE (2026-06-23)
+  - Pushed fix/conflict-warning-tz-anchor to origin
+  - PR #549 opened: https://github.com/toyiyo/nimble-pnl/pull/549
+
+- [x] Phase 9b: CI — COMPLETE (2026-06-23, ciGreen=true)
+  - All checks passed: Unit Tests (5m9s), Database Tests/pgTAP (4m38s),
+    E2E Shards 1-4 (all pass), Merge E2E Reports (pass),
+    Analyze (actions/JS-TS), CodeQL, CodeRabbit (clean), Vercel, Netlify
+  - SonarCloud Code Analysis: pass (gate green)
+  - Skipped (expected): Header rules, Pages changed, Supabase Preview
+  - dev-tools/refresh-queue.sh --pr 549 --skip-tests: Added 25, skipped 1419 duplicates
 
 ## Key Decisions
 - Anchor to "today" (consistent with writer + grid reader), NOT shift-date and NOT Jan 1.

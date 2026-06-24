@@ -14,8 +14,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatUTCTimeToLocal, formatConflictLine } from '@/lib/conflictFormatUtils';
 import type { ConflictCheck } from '@/types/scheduling';
+import { formatUTCTimeToLocal, formatConflictLine } from '@/lib/conflictFormatUtils';
 
 // ─── formatUTCTimeToLocal ─────────────────────────────────────────────────────
 

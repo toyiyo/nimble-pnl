@@ -112,3 +112,53 @@ export function groupPayrollRows(
     rows: map.get(key) ?? [],
   }));
 }
+
+/**
+ * Aggregated totals returned by computePayrollTotals.
+ * Used for per-group subtotal rows and the grand TOTAL row.
+ */
+export interface PayrollTotals {
+  regularHours: number;
+  overtimeHours: number;
+  /** Σ(regularPay + salaryPay + contractorPay + manualPaymentsTotal) — matches Payroll.tsx grand-total formula */
+  regularPay: number;
+  overtimePay: number;
+  totalTips: number;
+  tipsPaidOut: number;
+  tipsOwed: number;
+  /** Σ(totalPay) = Σ(grossPay + tipsOwed) — matches Payroll.tsx line 675 */
+  totalPay: number;
+}
+
+/**
+ * Aggregate a set of payroll rows into totals.
+ * Formulas are pinned equal to the legacy grand-total row in Payroll.tsx so
+ * per-group subtotals and the grand total are provably behavior-preserving.
+ *
+ * regularPay = Σ(regularPay + salaryPay + contractorPay + manualPaymentsTotal)
+ * overtimePay = Σ(overtimePay)
+ * totalPay = Σ(totalPay)  [= Σ(grossPay + tipsOwed) per employee]
+ * Hours and tips are straight sums.
+ */
+export function computePayrollTotals(rows: EmployeePayroll[]): PayrollTotals {
+  const zero: PayrollTotals = {
+    regularHours: 0,
+    overtimeHours: 0,
+    regularPay: 0,
+    overtimePay: 0,
+    totalTips: 0,
+    tipsPaidOut: 0,
+    tipsOwed: 0,
+    totalPay: 0,
+  };
+  return rows.reduce<PayrollTotals>((acc, r) => ({
+    regularHours: acc.regularHours + r.regularHours,
+    overtimeHours: acc.overtimeHours + r.overtimeHours,
+    regularPay: acc.regularPay + r.regularPay + r.salaryPay + r.contractorPay + r.manualPaymentsTotal,
+    overtimePay: acc.overtimePay + r.overtimePay,
+    totalTips: acc.totalTips + r.totalTips,
+    tipsPaidOut: acc.tipsPaidOut + r.tipsPaidOut,
+    tipsOwed: acc.tipsOwed + r.tipsOwed,
+    totalPay: acc.totalPay + r.totalPay,
+  }), zero);
+}

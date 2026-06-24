@@ -30,7 +30,7 @@ Phase 4 (Build, strict TDD) — ALL TASKS COMPLETE
   - Added `areaFilter={areaFilter}` to `<ScheduleExportDialog>` (~line 2110)
   - Typecheck clean (no output); all 31 unit tests green
   - One-line change; completes the prop pipeline from grid state to PDF generator
-- [x] Phase 4, Task 4: E2E — area filter narrows print dialog (COMMIT_SHA_PLACEHOLDER)
+- [x] Phase 4, Task 4: E2E — area filter narrows print dialog (b08c3920)
   - Added `area filter narrows the employee list in print dialog` test to schedule-print-export.spec.ts
   - Seeds 4 employees across 2 areas (Front of House + Back of House) with shifts
   - Sets #area-filter to "Back of House", opens Print, asserts only BOH employees in dialog

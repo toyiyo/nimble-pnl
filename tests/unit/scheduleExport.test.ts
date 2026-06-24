@@ -159,6 +159,7 @@ describe("generateSchedulePDF", () => {
 
       const body = mockAutoTable.mock.calls[0][1].body;
       expect(body).toHaveLength(2);
+      // jspdf-autotable body rows are untyped at the mock boundary
       const names = body.map((row: any[]) => row[0].content as string);
       expect(names.some(n => n.includes("Ana Garcia"))).toBe(true);
       expect(names.some(n => n.includes("Carlos Rivera"))).toBe(true);
@@ -176,6 +177,7 @@ describe("generateSchedulePDF", () => {
       const body = mockAutoTable.mock.calls[0][1].body;
       // Only Wetzel's Cooks: Ana Garcia and Carlos Rivera (both match area AND position)
       expect(body).toHaveLength(2);
+      // jspdf-autotable body rows are untyped at the mock boundary
       const names = body.map((row: any[]) => row[0].content as string);
       expect(names.some(n => n.includes("Ana Garcia"))).toBe(true);
       expect(names.some(n => n.includes("Carlos Rivera"))).toBe(true);
@@ -220,6 +222,7 @@ describe("generateSchedulePDF", () => {
 
       const body = mockAutoTable.mock.calls[0][1].body;
       expect(body).toHaveLength(1);
+      // jspdf-autotable body rows are untyped at the mock boundary
       const names = body.map((row: any[]) => row[0].content as string);
       expect(names.some(n => n.includes("Bob Smith"))).toBe(true);
       // Diana Prince (no area) must be excluded
@@ -233,6 +236,7 @@ describe("generateSchedulePDF", () => {
         positionFilter: "Cook",
       });
 
+      // jspdf text() call args are untyped at the mock boundary
       const filteredCall = mockText.mock.calls.find(
         (c: any[]) => typeof c[0] === "string" && c[0].startsWith("Filtered:")
       );
@@ -248,6 +252,7 @@ describe("generateSchedulePDF", () => {
         areaFilter: "Bar",
       });
 
+      // jspdf text() call args are untyped at the mock boundary
       const filteredCall = mockText.mock.calls.find(
         (c: any[]) => typeof c[0] === "string" && c[0].startsWith("Filtered:")
       );
@@ -262,6 +267,7 @@ describe("generateSchedulePDF", () => {
         positionFilter: "Cook",
       });
 
+      // jspdf text() call args are untyped at the mock boundary
       const filteredCall = mockText.mock.calls.find(
         (c: any[]) => typeof c[0] === "string" && c[0].startsWith("Filtered:")
       );

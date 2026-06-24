@@ -240,6 +240,8 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
     await signUpAndCreateRestaurant(page, testUser);
     await exposeSupabaseHelpers(page);
 
+    // page.evaluate crosses the browser boundary; helpers are injected at runtime so
+    // their return types are unknown — `any` is necessary here (same pattern as setupWithShifts).
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
@@ -256,6 +258,7 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
       },
     );
 
+    // employees is the serialised JSON returned by __insertEmployees — shape is any[]
     const frontAlice = (employees as any[]).find((e: any) => e.name === 'Front Alice');
     const frontBob = (employees as any[]).find((e: any) => e.name === 'Front Bob');
     const backCarlos = (employees as any[]).find((e: any) => e.name === 'Back Carlos');

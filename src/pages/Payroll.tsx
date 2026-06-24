@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +20,7 @@ import {
   exportPayrollToCSV,
   EmployeePayroll,
 } from '@/utils/payrollCalculations';
+import { sortPayrollRows, regularPayDisplayValue, type PayrollSortKey, type SortDirection } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
 import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
@@ -35,6 +36,9 @@ import {
   Plus,
   Briefcase,
   Banknote,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks, endOfDay } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
@@ -55,6 +59,37 @@ import {
 } from '@/components/ui/select';
 
 type PayPeriodType = 'current_week' | 'last_week' | 'last_2_weeks' | 'custom';
+
+function SortableHeader({
+  columnKey, label, align = 'left', sortKey, sortDir, onSort,
+}: {
+  columnKey: PayrollSortKey;
+  label: string;
+  align?: 'left' | 'right';
+  sortKey: PayrollSortKey;
+  sortDir: SortDirection;
+  onSort: (key: PayrollSortKey) => void;
+}) {
+  const isActive = sortKey === columnKey;
+  const Icon = !isActive ? ArrowUpDown : sortDir === 'asc' ? ChevronUp : ChevronDown;
+  return (
+    <TableHead
+      className={align === 'right' ? 'text-right' : undefined}
+      aria-sort={isActive ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(columnKey)}
+        className={`inline-flex items-center gap-1 min-h-[24px] hover:text-foreground transition-colors ${
+          align === 'right' ? 'flex-row-reverse ml-auto' : ''
+        } ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
+      >
+        <span>{label}</span>
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+    </TableHead>
+  );
+}
 
 const Payroll = () => {
   const { selectedRestaurant } = useRestaurantContext();
@@ -134,6 +169,19 @@ const Payroll = () => {
     overtimeHours: number;
   } | null>(null);
 
+  // Sort state
+  const [sortKey, setSortKey] = useState<PayrollSortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDirection>('asc');
+
+  const handleSort = (key: PayrollSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
   // Helper to check if an employee is a per-job contractor
   const isEmployeePerJobContractor = (employeeId: string) => {
     const employee = employees.find(e => e.id === employeeId);
@@ -178,16 +226,8 @@ const Payroll = () => {
   };
 
   // Helper to format regular pay based on compensation type
-  const formatRegularPayDisplay = (employee: EmployeePayroll): string => {
-    if (employee.compensationType === 'hourly') {
-      return formatCurrency(employee.regularPay);
-    }
-    if (employee.compensationType === 'salary') {
-      return formatCurrency(employee.salaryPay);
-    }
-    // Contractor
-    return formatCurrency(employee.contractorPay + employee.manualPaymentsTotal);
-  };
+  const formatRegularPayDisplay = (employee: EmployeePayroll): string =>
+    formatCurrency(regularPayDisplayValue(employee));
 
   const handleAddPayment = (employeeId: string, employeeName: string) => {
     setSelectedEmployee({ id: employeeId, name: employeeName });
@@ -234,6 +274,19 @@ const Payroll = () => {
     a.click();
     window.URL.revokeObjectURL(url);
   };
+
+  const sortedEmployees = useMemo(
+    () => (payrollPeriod ? sortPayrollRows(payrollPeriod.employees, sortKey, sortDir) : []),
+    [payrollPeriod, sortKey, sortDir],
+  );
+
+  const SORT_LABELS: Record<PayrollSortKey, string> = {
+    name: 'Employee', position: 'Position', area: 'Area', rate: 'Rate',
+    regularHours: 'Regular Hours', overtimeHours: 'Overtime Hours',
+    regularPay: 'Regular Pay', overtimePay: 'Overtime Pay',
+    totalTips: 'Tips Earned', tipsPaidOut: 'Tips Paid', tipsOwed: 'Tips Owed', totalPay: 'Total Pay',
+  };
+  const sortAnnouncement = `Sorted by ${SORT_LABELS[sortKey]}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`;
 
   const handlePreviousPeriod = () => {
     if (periodType === 'custom') {
@@ -511,25 +564,27 @@ const Payroll = () => {
             </div>
           ) : payrollPeriod && payrollPeriod.employees.length > 0 ? (
             <div className="rounded-md border">
+              <span className="sr-only" aria-live="polite">{sortAnnouncement}</span>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Position</TableHead>
-                    <TableHead className="text-right">Rate</TableHead>
-                    <TableHead className="text-right">Regular Hrs</TableHead>
-                    <TableHead className="text-right">OT Hrs</TableHead>
-                    <TableHead className="text-right">Regular Pay</TableHead>
-                    <TableHead className="text-right">OT Pay</TableHead>
-                    <TableHead className="text-right">Tips Earned</TableHead>
-                    <TableHead className="text-right">Tips Paid</TableHead>
-                    <TableHead className="text-right">Tips Owed</TableHead>
-                    <TableHead className="text-right font-semibold">Total Pay</TableHead>
+                    <SortableHeader columnKey="name" label="Employee" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="position" label="Position" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="area" label="Area" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="rate" label="Rate" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="regularHours" label="Regular Hrs" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="overtimeHours" label="OT Hrs" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="regularPay" label="Regular Pay" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="overtimePay" label="OT Pay" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="totalTips" label="Tips Earned" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="tipsPaidOut" label="Tips Paid" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="tipsOwed" label="Tips Owed" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    <SortableHeader columnKey="totalPay" label="Total Pay" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payrollPeriod.employees.map((employee) => (
+                  {sortedEmployees.map((employee) => (
                     <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -578,6 +633,9 @@ const Payroll = () => {
                         </div>
                       </TableCell>
                       <TableCell>{employee.position}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {employee.area || <span aria-hidden="true">—</span>}
+                      </TableCell>
                       <TableCell className="text-right">
                         {formatRateDisplay(employee)}
                       </TableCell>
@@ -644,7 +702,7 @@ const Payroll = () => {
                   ))}
                   {/* Total Row */}
                   <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell colSpan={3}>TOTAL</TableCell>
+                    <TableCell colSpan={4}>TOTAL</TableCell>
                     <TableCell className="text-right">
                       {formatHours(payrollPeriod.totalRegularHours)}
                     </TableCell>

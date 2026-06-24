@@ -20,7 +20,7 @@ import {
   exportPayrollToCSV,
   EmployeePayroll,
 } from '@/utils/payrollCalculations';
-import { sortPayrollRows, regularPayDisplayValue, type PayrollSortKey, type SortDirection } from '@/utils/payrollTableView';
+import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
 import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
@@ -39,6 +39,7 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, subWeeks, addWeeks, endOfDay } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
@@ -182,6 +183,18 @@ const Payroll = () => {
     }
   };
 
+  // Group state
+  const [groupBy, setGroupBy] = useState<PayrollGroupMode>('none');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   // Helper to check if an employee is a per-job contractor
   const isEmployeePerJobContractor = (employeeId: string) => {
     const employee = employees.find(e => e.id === employeeId);
@@ -264,8 +277,8 @@ const Payroll = () => {
 
   const handleExportCSV = () => {
     if (!payrollPeriod) return;
-
-    const csv = exportPayrollToCSV(payrollPeriod);
+    const orderedEmployees = payrollGroups.flatMap((g) => g.rows);
+    const csv = exportPayrollToCSV({ ...payrollPeriod, employees: orderedEmployees });
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -275,9 +288,9 @@ const Payroll = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  const sortedEmployees = useMemo(
-    () => (payrollPeriod ? sortPayrollRows(payrollPeriod.employees, sortKey, sortDir) : []),
-    [payrollPeriod, sortKey, sortDir],
+  const payrollGroups = useMemo(
+    () => (payrollPeriod ? groupPayrollRows(sortPayrollRows(payrollPeriod.employees, sortKey, sortDir), groupBy) : []),
+    [payrollPeriod, sortKey, sortDir, groupBy],
   );
 
   const SORT_LABELS: Record<PayrollSortKey, string> = {
@@ -546,13 +559,28 @@ const Payroll = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Employee Payroll Details</CardTitle>
-            <Button
-              onClick={handleExportCSV}
-              disabled={!payrollPeriod || payrollPeriod.employees.length === 0}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label htmlFor="payroll-group-by" className="text-[13px] text-muted-foreground">Group</label>
+                <Select value={groupBy} onValueChange={(v) => setGroupBy(v as PayrollGroupMode)}>
+                  <SelectTrigger id="payroll-group-by" aria-label="Group by" className="h-9 w-[150px] text-[13px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No grouping</SelectItem>
+                    <SelectItem value="area">By area</SelectItem>
+                    <SelectItem value="position">By position</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleExportCSV}
+                disabled={!payrollPeriod || payrollPeriod.employees.length === 0}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -583,8 +611,14 @@ const Payroll = () => {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {sortedEmployees.map((employee) => (
+                {/* renderEmployeeRow extracted to avoid duplicating the row JSX across groups */}
+                {payrollGroups.map((group, gi) => {
+                  const domId = `payroll-group-${gi}`;
+                  const collapsed = collapsedGroups.has(group.key);
+                  const grouped = groupBy !== 'none';
+                  const TOTAL_LABEL_COLSPAN = 4; // Employee + Position + Area + Rate
+
+                  const renderEmployeeRow = (employee: EmployeePayroll) => (
                     <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -699,42 +733,83 @@ const Payroll = () => {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
-                  {/* Total Row */}
-                  <TableRow className="bg-muted/50 font-semibold">
-                    <TableCell colSpan={4}>TOTAL</TableCell>
-                    <TableCell className="text-right">
-                      {formatHours(payrollPeriod.totalRegularHours)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatHours(payrollPeriod.totalOvertimeHours)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(
-                        payrollPeriod.employees.reduce((sum, e) => sum + e.regularPay + e.salaryPay + e.contractorPay + e.manualPaymentsTotal, 0)
+                  );
+
+                  const renderTotalsRow = (
+                    totals: ReturnType<typeof computePayrollTotals>,
+                    label: string,
+                    opts?: { labelClassName?: string },
+                  ) => (
+                    <TableRow className="bg-muted/50 font-semibold">
+                      <TableHead scope="row" colSpan={TOTAL_LABEL_COLSPAN} className={opts?.labelClassName}>
+                        {label}
+                      </TableHead>
+                      <TableCell className="text-right">{formatHours(totals.regularHours)}</TableCell>
+                      <TableCell className="text-right">{formatHours(totals.overtimeHours)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.regularPay)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.overtimePay)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.totalTips)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.tipsPaidOut)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.tipsOwed)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(totals.totalPay)}</TableCell>
+                      <TableCell />
+                    </TableRow>
+                  );
+
+                  return (
+                    <TableBody key={group.key} id={domId}>
+                      {grouped && (
+                        <TableRow className="bg-muted/30">
+                          <TableHead colSpan={13} scope="colgroup" className="py-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroup(group.key)}
+                              aria-expanded={!collapsed}
+                              aria-controls={domId}
+                              className="inline-flex items-center gap-2 min-h-[24px] font-semibold text-foreground"
+                            >
+                              {collapsed
+                                ? <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                                : <ChevronDown className="h-4 w-4" aria-hidden="true" />}
+                              <span>{group.label}</span>
+                              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-normal text-muted-foreground">
+                                {group.rows.length}
+                              </span>
+                            </button>
+                          </TableHead>
+                        </TableRow>
                       )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(
-                        payrollPeriod.employees.reduce((sum, e) => sum + e.overtimePay, 0)
+                      {!collapsed && group.rows.map(renderEmployeeRow)}
+                      {grouped && renderTotalsRow(
+                        computePayrollTotals(group.rows),
+                        `${group.label} subtotal`,
+                        { labelClassName: 'text-[12px] font-medium uppercase tracking-wider text-muted-foreground' },
                       )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(payrollPeriod.totalTips)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(payrollPeriod.totalTipsPaidOut)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(payrollPeriod.totalTipsOwed)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(
-                        payrollPeriod.totalGrossPay + payrollPeriod.totalTipsOwed
-                      )}
-                    </TableCell>
-                    <TableCell>{/* Actions column - empty for total row */}</TableCell>
-                  </TableRow>
+                    </TableBody>
+                  );
+                })}
+                {/* Grand total row — always visible */}
+                <TableBody>
+                  {(() => {
+                    const TOTAL_LABEL_COLSPAN = 4;
+                    const totals = computePayrollTotals(payrollPeriod.employees);
+                    return (
+                      <TableRow className="bg-muted/50 font-semibold">
+                        <TableHead scope="row" colSpan={TOTAL_LABEL_COLSPAN}>
+                          TOTAL
+                        </TableHead>
+                        <TableCell className="text-right">{formatHours(totals.regularHours)}</TableCell>
+                        <TableCell className="text-right">{formatHours(totals.overtimeHours)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.regularPay)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.overtimePay)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.totalTips)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.tipsPaidOut)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.tipsOwed)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.totalPay)}</TableCell>
+                        <TableCell />
+                      </TableRow>
+                    );
+                  })()}
                 </TableBody>
               </Table>
             </div>

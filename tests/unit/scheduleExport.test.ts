@@ -23,11 +23,12 @@ vi.mock("jspdf-autotable", () => ({ default: mockAutoTable }));
 import { generateSchedulePDF } from "@/utils/scheduleExport";
 import type { Shift, Employee } from "@/types/scheduling";
 
-const makeEmployee = (id: string, name: string, position = "Cook"): Employee =>
+const makeEmployee = (id: string, name: string, position = "Cook", area?: string): Employee =>
   ({
     id,
     name,
     position,
+    area,
     restaurant_id: "r1",
     status: "active",
     is_active: true,
@@ -125,5 +126,149 @@ describe("generateSchedulePDF", () => {
 
     const body = mockAutoTable.mock.calls[0][1].body;
     expect(body).toHaveLength(0);
+  });
+
+  describe("areaFilter", () => {
+    const areaEmployees = [
+      makeEmployee("e1", "Ana Garcia", "Cook", "Wetzel's"),
+      makeEmployee("e2", "Bob Smith", "Server", "Bar"),
+      makeEmployee("e3", "Carlos Rivera", "Cook", "Wetzel's"),
+      makeEmployee("e4", "Diana Prince", "Manager"),  // no area
+    ];
+
+    const areaShifts = [
+      makeShift("e1", 0),
+      makeShift("e2", 0),
+      makeShift("e3", 0),
+      makeShift("e4", 0),
+    ];
+
+    const areaBaseOptions = {
+      shifts: areaShifts,
+      employees: areaEmployees,
+      weekStart: new Date("2026-03-24"),
+      weekEnd: new Date("2026-03-30"),
+      restaurantName: "Test Restaurant",
+    };
+
+    it("narrows rows to employees in the specified area", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "Wetzel's",
+      });
+
+      const body = mockAutoTable.mock.calls[0][1].body;
+      expect(body).toHaveLength(2);
+      const names = body.map((row: any[]) => row[0].content as string);
+      expect(names.some(n => n.includes("Ana Garcia"))).toBe(true);
+      expect(names.some(n => n.includes("Carlos Rivera"))).toBe(true);
+      expect(names.some(n => n.includes("Bob Smith"))).toBe(false);
+      expect(names.some(n => n.includes("Diana Prince"))).toBe(false);
+    });
+
+    it("applies AND semantics when both areaFilter and positionFilter are active", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "Wetzel's",
+        positionFilter: "Cook",
+      });
+
+      const body = mockAutoTable.mock.calls[0][1].body;
+      // Only Wetzel's Cooks: Ana Garcia and Carlos Rivera (both match area AND position)
+      expect(body).toHaveLength(2);
+      const names = body.map((row: any[]) => row[0].content as string);
+      expect(names.some(n => n.includes("Ana Garcia"))).toBe(true);
+      expect(names.some(n => n.includes("Carlos Rivera"))).toBe(true);
+    });
+
+    it("AND semantics: area matches but position does not → excluded", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "Wetzel's",
+        positionFilter: "Server",  // no Wetzel's Servers
+      });
+
+      const body = mockAutoTable.mock.calls[0][1].body;
+      expect(body).toHaveLength(0);
+    });
+
+    it("treats areaFilter 'all' as no-op (all employees retained)", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "all",
+      });
+
+      const body = mockAutoTable.mock.calls[0][1].body;
+      expect(body).toHaveLength(4);
+    });
+
+    it("treats omitted areaFilter as no-op (all employees retained)", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        // no areaFilter key at all
+      });
+
+      const body = mockAutoTable.mock.calls[0][1].body;
+      expect(body).toHaveLength(4);
+    });
+
+    it("excludes employees with no area when an area filter is active", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "Bar",
+      });
+
+      const body = mockAutoTable.mock.calls[0][1].body;
+      expect(body).toHaveLength(1);
+      const names = body.map((row: any[]) => row[0].content as string);
+      expect(names.some(n => n.includes("Bob Smith"))).toBe(true);
+      // Diana Prince (no area) must be excluded
+      expect(names.some(n => n.includes("Diana Prince"))).toBe(false);
+    });
+
+    it("emits combined 'Filtered: <area> · <position>' subtitle when both filters active", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "Wetzel's",
+        positionFilter: "Cook",
+      });
+
+      const filteredCall = mockText.mock.calls.find(
+        (c: any[]) => typeof c[0] === "string" && c[0].startsWith("Filtered:")
+      );
+      expect(filteredCall).toBeDefined();
+      expect(filteredCall![0]).toContain("Wetzel's");
+      expect(filteredCall![0]).toContain("Cook");
+      expect(filteredCall![0]).toContain("·");
+    });
+
+    it("emits 'Filtered: <area>' subtitle when only areaFilter is active", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "Bar",
+      });
+
+      const filteredCall = mockText.mock.calls.find(
+        (c: any[]) => typeof c[0] === "string" && c[0].startsWith("Filtered:")
+      );
+      expect(filteredCall).toBeDefined();
+      expect(filteredCall![0]).toBe("Filtered: Bar");
+    });
+
+    it("emits no area in subtitle when areaFilter is 'all'", () => {
+      generateSchedulePDF({
+        ...areaBaseOptions,
+        areaFilter: "all",
+        positionFilter: "Cook",
+      });
+
+      const filteredCall = mockText.mock.calls.find(
+        (c: any[]) => typeof c[0] === "string" && c[0].startsWith("Filtered:")
+      );
+      expect(filteredCall).toBeDefined();
+      // Should only contain position, not 'all'
+      expect(filteredCall![0]).toBe("Filtered: Cook");
+      expect(filteredCall![0]).not.toContain("all");
+    });
   });
 });

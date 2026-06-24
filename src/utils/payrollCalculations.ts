@@ -650,6 +650,7 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
   const headers = [
     'Employee Name',
     'Position',
+    'Area',
     'Hourly Rate',
     'Regular Hours',
     'Overtime Hours',
@@ -669,6 +670,7 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
   const rows = payrollPeriod.employees.map(ep => [
     `"${ep.employeeName}"`,
     `"${ep.position}"`,
+    `"${ep.area ?? ''}"`,
     formatCurrency(ep.hourlyRate),
     formatHours(ep.regularHours),
     formatHours(ep.overtimeHours),
@@ -693,8 +695,9 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
 
   const totalRow = [
     '"TOTAL"',
-    '""',
-    '""',
+    '""', // Position — blank for TOTAL row
+    '""', // Area — blank for TOTAL row
+    '""', // Hourly Rate — blank for TOTAL row
     formatHours(payrollPeriod.totalRegularHours),
     formatHours(payrollPeriod.totalOvertimeHours),
     formatHours(payrollPeriod.totalDoubleTimeHours),

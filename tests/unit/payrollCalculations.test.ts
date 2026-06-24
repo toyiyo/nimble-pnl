@@ -597,6 +597,78 @@ describe('payrollCalculations - Additional Coverage', () => {
     });
   });
 
+  describe('exportPayrollToCSV — Area column', () => {
+    it('includes "Area" header after "Position" in the CSV header row', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' })],
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const headerLine = csv.split('\n')[0];
+      const headers = headerLine.split(',');
+      const posIdx = headers.indexOf('Position');
+      const areaIdx = headers.indexOf('Area');
+
+      expect(areaIdx).toBeGreaterThan(-1); // "Area" header exists
+      expect(areaIdx).toBe(posIdx + 1);    // immediately after "Position"
+    });
+
+    it('includes the employee area value in the data row', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' })],
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const dataRow = csv.split('\n')[1]; // Alice row
+      expect(dataRow).toContain('"Front of House"');
+    });
+
+    it('emits empty string for area when employee has no area', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Bob' })], // no area
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const lines = csv.split('\n');
+      const headerCols = lines[0].split(',');
+      const areaIdx = headerCols.indexOf('Area');
+      const dataCols = lines[1].split(',');
+      // area cell should be empty (null → '')
+      expect(dataCols[areaIdx]).toBe('""');
+    });
+
+    it('emits blank for Area in the TOTAL row', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Bar' })],
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const lines = csv.split('\n');
+      // last non-empty line is the TOTAL row
+      const totalLine = lines[lines.length - 1];
+      const headerCols = lines[0].split(',');
+      const areaIdx = headerCols.indexOf('Area');
+      const totalCols = totalLine.split(',');
+      expect(totalCols[areaIdx]).toBe('""');
+    });
+  });
+
   describe('exportPayrollToCSV with tip columns', () => {
     it('should include Tips Earned, Tips Paid, and Tips Owed headers', () => {
       const employees: Employee[] = [

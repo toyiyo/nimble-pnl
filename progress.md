@@ -37,6 +37,17 @@ Phase 4 (Build, strict TDD) — ALL TASKS COMPLETE
   - Asserts "2 of 2" count and Front of House employees are absent
   - Typecheck clean; 31 unit tests still passing
 
+## Phase 6: Simplify — COMPLETE (commit 94201885)
+- scheduleExport.ts: extracted `active(f)` helper; eliminated 3 duplicated `f && f !== "all"` ternaries and the redundant `activePositionFilter`/`activeAreaFilter` intermediates.
+- ScheduleExportDialog.tsx: replaced IIFE `{(() => { … })()}` in JSX with `const activeFilterParts` above the return.
+- No behaviour change; 31 unit tests passing; typecheck clean.
+
+## Phase 5: UI Review — COMPLETE (no violations in new code)
+- ScheduleExportDialog.tsx new code: semantic tokens only, no direct colors, no new a11y issues.
+- Scheduling.tsx change: single prop line, no styling.
+- Pre-existing `text-primary` on Printer icon and full dialog restyle (icon-box/p-0 pattern) are both deferred per design spec.
+- No commits needed.
+
 ## CI Status
 - PR: not yet created
 

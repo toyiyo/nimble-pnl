@@ -77,3 +77,29 @@ via the unit tests above. `ScheduleExportDialog.tsx` (`src/components/**/*.tsx`)
 Dedicated Area/Position selectors inside the print dialog (pre-filled from grid,
 overridable). More flexible but more UI surface and diverges from the single-select
 grid filters; the user opted for the simpler grid-respecting behavior.
+
+## Design review (Phase 2.5) — folded feedback
+Frontend reviewer: no critical issues; approach (mirror `positionFilter`) endorsed.
+
+- **Shift-level vs employee-level filtering (clarification).** The export path filters
+  at the **shift** level (`shifts.filter(s => emp?.area === areaFilter && …)`), then
+  derives the employee list from the surviving shifts. The grid helper
+  `filterEmployeesForScheduleView` filters at the **employee** level. The print dialog
+  only ever lists employees who have a shift this week, so the two converge; the area
+  predicate (`emp.area === areaFilter`) is identical in both. We deliberately keep the
+  existing shift-level approach to stay symmetric with the current `positionFilter`
+  path — `areaFilter` is added as a parallel clause in the same predicate.
+- **`area: undefined` test case (accepted).** Add an explicit unit case asserting an
+  employee with no `area` is excluded when an area filter is active.
+- **Rename `positionFilteredShifts` → `filteredShifts` (accepted).** Update BOTH
+  consumers — the `allEmployeesWithShifts` memo AND `getShiftDisplay` (line ~106).
+
+### Decided trade-offs (deferred, with rationale)
+- **Dialog restyle to the CLAUDE.md icon-box / `p-0 gap-0` pattern — DEFERRED.** The
+  reviewer noted `ScheduleExportDialog`'s `DialogContent` predates the current dialog
+  styling guide. Restyling the whole dialog is unrelated to area filtering and out of
+  scope for this fast, minimal change; tracked as separate polish.
+- **Long area-name overflow in the centered preview label — DEFERRED.** Pre-existing
+  for `positionFilter` too; cosmetic, not a regression.
+- **`colSpan={8}` hard-coded in the preview empty/overflow rows — NO ACTION.**
+  Pre-existing, static, untouched by this change.

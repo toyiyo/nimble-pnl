@@ -103,31 +103,55 @@ functions; keep `Payroll.tsx` declarative (state + `useMemo` + rendering).
   sortDir), groupBy), [rows, sortKey, sortDir, groupBy])`.
 - **Clickable sort headers**: extract a small `SortableHeader` helper (inside the
   page or a tiny local component) rendering a `<button>` with the label +
-  `ArrowUpDown` (inactive) / `ChevronUp` / `ChevronDown` (active asc/desc). The
-  enclosing `<th>` gets `aria-sort={active ? (dir==='asc'?'ascending':'descending')
-  : 'none'}`. All 12 data columns are sortable; **Actions** is not.
+  `ArrowUpDown` (inactive) / `ChevronUp` / `ChevronDown` (active asc/desc).
+  - The enclosing `<th>` (shadcn `TableHead`) **always** carries
+    `aria-sort={isActive ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}`
+    — never omitted on a sortable column (inactive ⇒ `"none"`).
+  - The button's accessible name is its visible text; **all sort icons get
+    `aria-hidden="true"`** so AT announces "Employee" not "chevron-up Employee".
+  - The button gets `min-h-[24px]` (WCAG 2.5.8 target size) and
+    `inline-flex items-center gap-1`; right-aligned numeric headers keep the
+    icon after the label.
+  - All 12 data columns are sortable; **Actions** is not.
+- **Sort-change announcement**: a visually-hidden polite live region
+  `<span className="sr-only" aria-live="polite">` whose text updates on every sort
+  change to e.g. `"Sorted by Name, ascending"`. One extra `useMemo`/derived string;
+  meaningful for VoiceOver/Safari where `aria-sort` changes are not surfaced.
 - **Area column**: new header "Area" after Position; cell shows `area` or a muted
   `—`. Column count becomes 13.
 - **Group control**: a shadcn `Select` (None / By area / By position) placed in the
-  card header next to Export CSV, styled per the Apple/Notion tokens.
-- **Grouped rendering** (`groupBy !== 'none'`): for each group render
-  - a **section-header `TableRow`** — single `TableCell colSpan={13}`, a `<button>`
-    with a `ChevronDown`/`ChevronRight`, the label, and a count badge;
-    `role` handled by the button, `aria-expanded` reflects collapse state,
-    keyboard-accessible. Clicking toggles `collapsedGroups`.
-  - the group's rows (hidden when collapsed)
-  - a **subtotal `TableRow`** (`computePayrollTotals(group.rows)`), label cell
-    `colSpan={4}` (Employee+Position+Area+Rate), numeric columns filled, empty
-    Actions cell.
-- **Flat rendering** (`groupBy === 'none'`): the single group's sorted rows, no
-  section headers/subtotals.
-- The grand **TOTAL** row always renders at the bottom (now via
-  `computePayrollTotals(payrollPeriod.employees)`), label `colSpan={4}`.
+  card header next to Export CSV, styled per the Apple/Notion tokens. It carries a
+  visible `"Group"` label (with `htmlFor`/id association) **and**
+  `aria-label="Group by"` on the `SelectTrigger` (WCAG 1.3.1 / 3.3.2).
+- **Grouped rendering** (`groupBy !== 'none'`): render **one `<TableBody>` per
+  group** (multiple `<tbody>` is valid HTML and gives each group a stable
+  container element), each with `id={`payroll-group-${group.key}`}`. For each group:
+  - a **section-header `TableRow`** whose single cell is a
+    `<TableHead colSpan={13} scope="colgroup" className="bg-muted/30">` containing a
+    `<button aria-expanded={!collapsed} aria-controls={`payroll-group-${group.key}`}>`
+    with a `ChevronDown`/`ChevronRight` (`aria-hidden`), the label, and a count
+    badge (`text-[11px] px-1.5 py-0.5 rounded-md bg-muted`). The **button is the
+    only toggle target** — no `onClick` on the `TableRow` (avoids double-activation).
+    Clicking toggles `collapsedGroups` (a `Set<string>` of group keys).
+  - the group's rows (omitted from render when collapsed)
+  - a **subtotal `TableRow className="bg-muted/50"`** (`computePayrollTotals(group.rows)`):
+    label cell `<TableHead scope="row" colSpan={4}>` (Employee+Position+Area+Rate)
+    styled `text-[12px] font-medium uppercase tracking-wider`, then the 8 numeric
+    columns filled, then an empty Actions cell (13 total).
+- **Flat rendering** (`groupBy === 'none'`): a single `<TableBody>` with the sorted
+  rows, no section headers/subtotals.
+- The grand **TOTAL** row always renders at the bottom (its own/last `<TableBody>`),
+  computed via `computePayrollTotals(payrollPeriod.employees)`. **Its label cell's
+  `colSpan` changes from the current `{3}` (Payroll.tsx line 647) to `{4}`** now that
+  Area is inserted (Employee+Position+Area+Rate), and becomes
+  `<TableHead scope="row" colSpan={4}>`. The 8 numeric cells + empty Actions cell
+  follow (13 total). Subtotal and grand-total label spans MUST both be 4.
 
 ### 4. CSV export
 
-- `exportPayrollToCSV` gains an **"Area"** column (after Position), value
-  `ep.area ?? ''`. The TOTAL row's Area cell is blank.
+- `exportPayrollToCSV` gains an **"Area"** column (CSV header string is exactly
+  `Area`, matching the UI column) after Position, value `ep.area ?? ''`. The TOTAL
+  row's Area cell is blank.
 - `handleExportCSV` passes the rows in **on-screen order** by flattening the
   computed groups: `exportPayrollToCSV({ ...payrollPeriod, employees: flatRows })`.
 
@@ -177,7 +201,16 @@ UI component tests are optional per CLAUDE.md; the page is coverage-excluded.
 - **"Rate" sort key = `hourlyRate`.** The Rate cell shows different units per
   compensation type (`$/hr`, `$/period`, "Per-Job"); a single numeric sort can't
   be perfectly meaningful across all of them. `hourlyRate` is predictable and
-  covers the hourly majority. Documented in code.
+  covers the hourly majority. Documented with an **inline comment on
+  `sortPayrollRows`** and asserted by a unit test (not only here in the spec).
+- **Group-key bucketing matches `scheduleGrouping` exactly: `raw.trim()`, no
+  lowercasing.** The frontend reviewer suggested `trim().toLowerCase()` so `"bar"`
+  and `"Bar"` merge. We deliberately match the existing scheduling convention
+  (trim only) so the SAME data groups identically on the schedule grid and the
+  payroll table — diverging would create a confusing cross-screen inconsistency.
+  Area values come from a shared `AreaCombobox` + `DEFAULT_AREAS`, so casing is
+  consistent in practice. Case/whitespace-insensitive bucketing, if wanted later,
+  should be a shared change to BOTH `scheduleGrouping` and `payrollTableView`.
 - **Group order is fixed alphabetical (Unassigned last), not sortable by subtotal.**
   Matches the scheduling convention and the request ("group by area"); sorting
   groups themselves is YAGNI.

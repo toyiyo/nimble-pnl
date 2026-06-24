@@ -80,7 +80,7 @@ describe('formatUTCTimeToLocal – edge formats', () => {
   // Use a fixed winter date so results are stable and predictable (CST = UTC-6)
   const winterDate = new Date(2026, 0, 15); // Jan 15 2026
 
-  it('handles 00:00:00 — midnight boundary', () => {
+  it('handles midnight local (06:00 UTC → 12:00 AM CST)', () => {
     // 06:00 UTC - 6 = 12:00 AM CST
     expect(formatUTCTimeToLocal('06:00:00', 'America/Chicago', winterDate)).toBe('12:00 AM');
   });
@@ -162,15 +162,57 @@ describe('formatConflictLine – availability conflict with time window', () => 
     expect(result).toMatch(/Jun 2[23]/);
   });
 
-  it('falls back to plain window string when no date in message', () => {
+});
+
+describe('formatConflictLine – exception conflict uses exception-date anchor', () => {
+  // The exception writer (AvailabilityExceptionDialog) anchors to the exception's own date.
+  // If today is CDT (summer) but the exception was written in CST (winter), the reader must
+  // use the exception date as the DST anchor — not today — to reproduce the stored local time.
+  it('uses winter CST offset for a January exception when today is summer CDT', () => {
+    // Exception written on Jan 15 2026 (CST, UTC-6): local 10 PM = 04:00:00 UTC
+    // If reader uses today (CDT, UTC-5): 04:00:00 UTC - 5 = 11 PM → wrong
+    // If reader uses Jan 15 (CST, UTC-6): 04:00:00 UTC - 6 = 10 PM → correct
+    const summerToday = new Date(2026, 5, 23); // June 23 — CDT reference passed as default
     const conflict: ConflictCheck = {
       has_conflict: true,
-      conflict_type: 'recurring',
+      conflict_type: 'exception',
+      message: 'Shift on 2026-01-15 is outside employee availability window (04:00:00 - 04:30:00)',
+      available_start: '04:00:00',
+      available_end: '04:30:00',
+    };
+    const result = formatConflictLine(conflict, 'America/Chicago', summerToday);
+    // Must show 10:00 PM / 10:30 PM (CST, Jan anchor), not 11:00 PM / 11:30 PM (CDT, today)
+    expect(result).toContain('10:00 PM – 10:30 PM');
+  });
+
+  it('uses summer CDT offset for a June exception when today is winter CST', () => {
+    // Exception written on Jun 23 2026 (CDT, UTC-5): local 10 PM = 03:00:00 UTC
+    // If reader uses today (CST, UTC-6): 03:00:00 UTC - 6 = 9 PM → wrong
+    // If reader uses Jun 23 (CDT, UTC-5): 03:00:00 UTC - 5 = 10 PM → correct
+    const winterToday = new Date(2026, 0, 15); // Jan 15 — CST reference passed as default
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'exception',
+      message: 'Shift on 2026-06-23 is outside employee availability window (03:00:00 - 03:30:00)',
+      available_start: '03:00:00',
+      available_end: '03:30:00',
+    };
+    const result = formatConflictLine(conflict, 'America/Chicago', winterToday);
+    // Must show 10:00 PM / 10:30 PM (CDT, Jun anchor), not 9:00 PM / 9:30 PM (CST, today)
+    expect(result).toContain('10:00 PM – 10:30 PM');
+  });
+
+  it('falls back to referenceDate when exception message has no ISO date', () => {
+    const summerDate = new Date(2026, 5, 23);
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'exception',
       available_start: '03:00:00',
       available_end: '03:30:00',
     };
     const result = formatConflictLine(conflict, 'America/Chicago', summerDate);
-    expect(result).toMatch(/Outside availability window \(available .+ – .+\)/);
+    // With summer anchor (CDT): 03:00 UTC = 10:00 PM
+    expect(result).toContain('10:00 PM – 10:30 PM');
   });
 });
 
@@ -200,9 +242,9 @@ describe('formatConflictLine – fallback cases', () => {
 // The referenceDate parameter must default to today so callers need not change.
 // If the signature ever breaks the 2-arg form this test will fail at compile time.
 //
-// External-importer note: formatUTCTimeToLocal has no external callers (confirmed
-// at Task 3 audit). Only conflictFormatUtils.ts uses it internally. Both production
-// callers import formatConflictLine only.
+// External-importer note: formatUTCTimeToLocal has no external callers (verified
+// by grepping src/ — zero external importers). Only conflictFormatUtils.ts uses it
+// internally. Both production callers import formatConflictLine only.
 
 describe('formatConflictLine – 2-arg caller contract (ShiftDialog / AvailabilityConflictDialog)', () => {
   it('accepts (conflict, timezone) without referenceDate and returns a non-empty string', () => {

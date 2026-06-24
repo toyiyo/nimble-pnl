@@ -32,6 +32,23 @@ function extractDayLabel(message: string | undefined, timezone: string): string 
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: timezone });
 }
 
+/**
+ * Extract an ISO date from a message and return it as a local-midnight Date object.
+ *
+ * Used to derive the DST anchor for exception conflicts: the exception writer
+ * (`AvailabilityExceptionDialog`) anchors the UTC→local conversion to the
+ * exception's specific date. The reader must use the same anchor, not today,
+ * to produce a faithful round-trip when the exception date and today fall in
+ * different DST periods.
+ */
+function extractDateAnchor(message: string | undefined): Date | null {
+  const dateMatch = message?.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!dateMatch) return null;
+  // Use local-midnight (new Date(y, m, d)) so the anchor is process-TZ-portable,
+  // matching the same pattern used throughout this file's tests.
+  return new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]));
+}
+
 export function formatConflictLine(
   conflict: ConflictCheck,
   timezone: string,
@@ -42,8 +59,15 @@ export function formatConflictLine(
   }
 
   if (conflict.available_start && conflict.available_end) {
-    const start = formatUTCTimeToLocal(conflict.available_start, timezone, referenceDate);
-    const end = formatUTCTimeToLocal(conflict.available_end, timezone, referenceDate);
+    // For exception conflicts the writer anchors to the exception's own date,
+    // not today. Extract that date from the message so the reader uses the
+    // same DST offset (mirrors the fix for recurring conflicts, but per-exception).
+    const anchor =
+      conflict.conflict_type === 'exception'
+        ? (extractDateAnchor(conflict.message) ?? referenceDate)
+        : referenceDate;
+    const start = formatUTCTimeToLocal(conflict.available_start, timezone, anchor);
+    const end = formatUTCTimeToLocal(conflict.available_end, timezone, anchor);
     const dayLabel = extractDayLabel(conflict.message, timezone);
     if (dayLabel) {
       return `Shift on ${dayLabel} is outside availability (available ${start} – ${end})`;

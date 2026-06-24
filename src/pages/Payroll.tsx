@@ -173,8 +173,10 @@ const Payroll = () => {
   // Sort state
   const [sortKey, setSortKey] = useState<PayrollSortKey>('name');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const [hasSorted, setHasSorted] = useState(false);
 
   const handleSort = (key: PayrollSortKey) => {
+    setHasSorted(true);
     if (key === sortKey) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -592,7 +594,7 @@ const Payroll = () => {
             </div>
           ) : payrollPeriod && payrollPeriod.employees.length > 0 ? (
             <div className="rounded-md border">
-              <span className="sr-only" aria-live="polite">{sortAnnouncement}</span>
+              <span className="sr-only" aria-live="polite">{hasSorted ? sortAnnouncement : ''}</span>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -668,7 +670,12 @@ const Payroll = () => {
                       </TableCell>
                       <TableCell>{employee.position}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {employee.area || <span aria-hidden="true">—</span>}
+                        {employee.area ?? (
+                          <>
+                            <span aria-hidden="true">—</span>
+                            <span className="sr-only">No area assigned</span>
+                          </>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatRateDisplay(employee)}

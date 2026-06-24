@@ -25,6 +25,7 @@ interface ScheduleExportDialogProps {
   weekEnd: Date;
   restaurantName?: string;
   positionFilter?: string;
+  areaFilter?: string;
   groupBy?: GroupByMode;
 }
 
@@ -37,6 +38,7 @@ export const ScheduleExportDialog = ({
   weekEnd,
   restaurantName = "Restaurant",
   positionFilter,
+  areaFilter,
   groupBy = 'none',
 }: ScheduleExportDialogProps) => {
   const [includePositions, setIncludePositions] = useState(true);
@@ -45,24 +47,24 @@ export const ScheduleExportDialog = ({
 
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Filter shifts by position
-  const positionFilteredShifts = useMemo(() =>
-    positionFilter && positionFilter !== "all"
-      ? shifts.filter(s => {
-          const emp = employees.find(e => e.id === s.employee_id);
-          return emp?.position === positionFilter;
-        })
-      : shifts,
-    [shifts, employees, positionFilter]
+  // Filter shifts by area and position (AND semantics)
+  const filteredShifts = useMemo(() =>
+    shifts.filter(s => {
+      const emp = employees.find(e => e.id === s.employee_id);
+      if (positionFilter && positionFilter !== "all" && emp?.position !== positionFilter) return false;
+      if (areaFilter && areaFilter !== "all" && emp?.area !== areaFilter) return false;
+      return true;
+    }),
+    [shifts, employees, positionFilter, areaFilter]
   );
 
-  // All employees who have shifts (after position filter)
+  // All employees who have shifts (after area + position filter)
   const allEmployeesWithShifts = useMemo(() => {
-    const ids = new Set(positionFilteredShifts.map(s => s.employee_id));
+    const ids = new Set(filteredShifts.map(s => s.employee_id));
     return employees
       .filter(emp => ids.has(emp.id))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [positionFilteredShifts, employees]);
+  }, [filteredShifts, employees]);
 
   // Initialize selection to all employees when dialog opens or list changes
   useEffect(() => {
@@ -103,7 +105,7 @@ export const ScheduleExportDialog = ({
   const totalAvailable = allEmployeesWithShifts.length;
 
   const getShiftDisplay = (employeeId: string, day: Date): string => {
-    const dayShifts = positionFilteredShifts.filter(
+    const dayShifts = filteredShifts.filter(
       s => s.employee_id === employeeId && isSameDay(parseISO(s.start_time), day)
     );
     if (dayShifts.length === 0) return "OFF";
@@ -132,6 +134,7 @@ export const ScheduleExportDialog = ({
       includePositions,
       includeHoursSummary,
       positionFilter,
+      areaFilter,
       groupBy,
       selectedEmployeeIds,
     });
@@ -158,11 +161,17 @@ export const ScheduleExportDialog = ({
             <div className="text-xs text-muted-foreground">
               Week of {format(weekStart, "MMM d")} - {format(weekEnd, "MMM d, yyyy")}
             </div>
-            {positionFilter && positionFilter !== "all" && (
-              <div className="text-xs text-muted-foreground mt-1">
-                Filtered: {positionFilter}
-              </div>
-            )}
+            {(() => {
+              const parts = [
+                areaFilter && areaFilter !== "all" ? areaFilter : null,
+                positionFilter && positionFilter !== "all" ? positionFilter : null,
+              ].filter(Boolean);
+              return parts.length > 0 ? (
+                <div className="text-xs text-muted-foreground mt-1">
+                  Filtered: {parts.join(" · ")}
+                </div>
+              ) : null;
+            })()}
             {groupBy !== 'none' && (
               <div className="text-xs text-muted-foreground mt-1">
                 Grouped by: {groupBy === 'area' ? 'Area' : 'Position'}

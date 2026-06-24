@@ -48,6 +48,33 @@ Phase 4 (Build, strict TDD) — ALL TASKS COMPLETE
 - Pre-existing `text-primary` on Printer icon and full dialog restyle (icon-box/p-0 pattern) are both deferred per design spec.
 - No commits needed.
 
+## Phase 7a: Codex Adversarial Review — COMPLETE
+Finding (minor, pre-existing pattern, out of scope for this change):
+- MINOR: `src/utils/scheduleExport.ts` line 265 — PDF footer totals hours from `filteredShifts` without applying `selectedEmployeeIds`. Employee deselection in ScheduleExportDialog produces an inconsistent PDF: the table and staff count only include selected employees, but the `Total: <hours>` footer still sums every shift matching the area/position filters. Trigger: open Print, deselect one employee, download PDF — their row is absent but their hours remain in the total. This is a pre-existing defect untouched by the area-filter change; not introduced by this diff.
+
+## Phase 7: PR Setup — COMPLETE
+- git diff origin/main...HEAD captured (30,774 chars, under 60K limit, not truncated)
+- git log origin/main..HEAD --oneline captured (11 commits)
+- Design doc contents captured
+- Ready for PR creation
+
+## Phase 7a: OCR Rules Review — COMPLETE
+Findings (DO NOT fix in 7a — Phase 7b handles fixes):
+- MAJOR: `any[]` without explanatory comment used in 3 new unit-test `body.map` calls (scheduleExport.test.ts lines ~162, 179, 213) — pre-existing pattern but new occurrences
+- MAJOR: `any[]`/`any` without explanatory comment in 7 new E2E lines (schedule-print-export.spec.ts lines ~243–269) — pre-existing pattern in file, new test inlines it instead of reusing `setupWithShifts` helper
+- MINOR: Duplicate filter-parts logic — `ScheduleExportDialog.tsx:107–110` evaluates `filter && filter !== "all" ? filter : null` inline for two props, while `scheduleExport.ts:84` centralizes this in `active()`. Dialog could call a shared helper but doesn't.
+- MINOR: New E2E test inlines its own setup (signUp + insertEmployees + insertShifts) instead of extracting or reusing the existing `setupWithShifts` helper — code duplication in test file.
+
+## Phase 7b: Fold Review Findings — COMPLETE (commit 126730b7)
+Findings triaged from 6 reviewers (security, performance, maintainability, sound-logic, ocr-rules, codex):
+- FIXED (MAJOR): Added explanatory `any` comments in scheduleExport.test.ts (×4) and schedule-print-export.spec.ts (×2 comment blocks) — OCR rule requires comment when `any` is necessary.
+- SKIPPED (MINOR): Redundant `active()` call on scheduleExport.ts:133 — style/nit, skipped per instructions.
+- SKIPPED (MINOR): Duplicate filter-active inline logic in ScheduleExportDialog.tsx:107–110 — style/nit.
+- SKIPPED (MINOR): E2E test setup duplication vs setupWithShifts — style/nit.
+- NOTED (MINOR, pre-existing): Footer total hours ignores selectedEmployeeIds — pre-existing defect, not introduced by this diff; flagged as spawn task if needed.
+- All security/performance/sound-logic reviewers: no findings.
+- 4612 unit tests passing; typecheck clean after fix.
+
 ## CI Status
 - PR: not yet created
 

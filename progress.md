@@ -90,12 +90,24 @@ Confirmed via prod data (employee redacted, America/Chicago, rows 03:00:00/03:30
   - PR #549 opened: https://github.com/toyiyo/nimble-pnl/pull/549
 
 - [x] Phase 9b: CI — COMPLETE (2026-06-23, ciGreen=true)
+
   - All checks passed: Unit Tests (5m9s), Database Tests/pgTAP (4m38s),
     E2E Shards 1-4 (all pass), Merge E2E Reports (pass),
     Analyze (actions/JS-TS), CodeQL, CodeRabbit (clean), Vercel, Netlify
   - SonarCloud Code Analysis: pass (gate green)
   - Skipped (expected): Header rules, Pages changed, Supabase Preview
   - dev-tools/refresh-queue.sh --pr 549 --skip-tests: Added 25, skipped 1419 duplicates
+
+- [x] Phase 9d: Review-comment triage — COMPLETE (2026-06-23, commit f5e06d32)
+  - 5 inline review comments (CodeRabbit + Codex) + 7 informational bot comments + 1 CR nitpick
+  - Fixed (security/major): redacted prod employee ID + restaurant name from design.md + progress.md
+  - Fixed (minor): added `text` lang tag to data-flow code fence (MD040)
+  - Fixed (minor): resolved `(pending)` status drift in progress.md header
+  - Fixed (trivial): reordered test imports to match project convention (vitest → Type → Utils)
+  - Declined (Codex P2): UTC date rollover on DST fall-back transition days — out of scope;
+    extractDateAnchor already handles cross-DST exceptions; full fix requires TIMESTAMPTZ schema change
+  - Triage artifact: dev-tools/9d-triage-fix/conflict-warning-tz-anchor.md (gitignored, ephemeral)
+  - PR reply posted: https://github.com/toyiyo/nimble-pnl/pull/549#issuecomment-4785284604
 
 ## Key Decisions
 - Anchor to "today" (consistent with writer + grid reader), NOT shift-date and NOT Jan 1.

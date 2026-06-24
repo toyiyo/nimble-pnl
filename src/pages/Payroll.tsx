@@ -132,11 +132,6 @@ const Payroll = () => {
           start: customStartDate,
           end: customEndDate,
         };
-      default:
-        return {
-          start: startOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
-          end: endOfWeek(today, { weekStartsOn: WEEK_STARTS_ON }),
-        };
     }
   };
 
@@ -302,6 +297,30 @@ const Payroll = () => {
     totalTips: 'Tips Earned', tipsPaidOut: 'Tips Paid', tipsOwed: 'Tips Owed', totalPay: 'Total Pay',
   };
   const sortAnnouncement = `Sorted by ${SORT_LABELS[sortKey]}, ${sortDir === 'asc' ? 'ascending' : 'descending'}`;
+
+  /** Columns that span the label cell in totals rows: Employee + Position + Area + Rate */
+  const TOTAL_LABEL_COLSPAN = 4;
+
+  const renderTotalsRow = (
+    totals: ReturnType<typeof computePayrollTotals>,
+    label: string,
+    opts?: { labelClassName?: string },
+  ) => (
+    <TableRow className="bg-muted/50 font-semibold">
+      <TableHead scope="row" colSpan={TOTAL_LABEL_COLSPAN} className={opts?.labelClassName}>
+        {label}
+      </TableHead>
+      <TableCell className="text-right">{formatHours(totals.regularHours)}</TableCell>
+      <TableCell className="text-right">{formatHours(totals.overtimeHours)}</TableCell>
+      <TableCell className="text-right">{formatCurrency(totals.regularPay)}</TableCell>
+      <TableCell className="text-right">{formatCurrency(totals.overtimePay)}</TableCell>
+      <TableCell className="text-right">{formatCurrency(totals.totalTips)}</TableCell>
+      <TableCell className="text-right">{formatCurrency(totals.tipsPaidOut)}</TableCell>
+      <TableCell className="text-right">{formatCurrency(totals.tipsOwed)}</TableCell>
+      <TableCell className="text-right">{formatCurrency(totals.totalPay)}</TableCell>
+      <TableCell />
+    </TableRow>
+  );
 
   const handlePreviousPeriod = () => {
     if (periodType === 'custom') {
@@ -613,12 +632,10 @@ const Payroll = () => {
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                {/* renderEmployeeRow extracted to avoid duplicating the row JSX across groups */}
                 {payrollGroups.map((group, gi) => {
                   const domId = `payroll-group-${gi}`;
                   const collapsed = collapsedGroups.has(group.key);
                   const grouped = groupBy !== 'none';
-                  const TOTAL_LABEL_COLSPAN = 4; // Employee + Position + Area + Rate
 
                   const renderEmployeeRow = (employee: EmployeePayroll) => (
                     <TableRow key={employee.employeeId} className={employee.incompleteShifts?.length ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''}>
@@ -742,27 +759,6 @@ const Payroll = () => {
                     </TableRow>
                   );
 
-                  const renderTotalsRow = (
-                    totals: ReturnType<typeof computePayrollTotals>,
-                    label: string,
-                    opts?: { labelClassName?: string },
-                  ) => (
-                    <TableRow className="bg-muted/50 font-semibold">
-                      <TableHead scope="row" colSpan={TOTAL_LABEL_COLSPAN} className={opts?.labelClassName}>
-                        {label}
-                      </TableHead>
-                      <TableCell className="text-right">{formatHours(totals.regularHours)}</TableCell>
-                      <TableCell className="text-right">{formatHours(totals.overtimeHours)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(totals.regularPay)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(totals.overtimePay)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(totals.totalTips)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(totals.tipsPaidOut)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(totals.tipsOwed)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(totals.totalPay)}</TableCell>
-                      <TableCell />
-                    </TableRow>
-                  );
-
                   return (
                     <TableBody key={group.key} id={domId}>
                       {grouped && (
@@ -797,26 +793,7 @@ const Payroll = () => {
                 })}
                 {/* Grand total row — always visible */}
                 <TableBody>
-                  {(() => {
-                    const TOTAL_LABEL_COLSPAN = 4;
-                    const totals = computePayrollTotals(payrollPeriod.employees);
-                    return (
-                      <TableRow className="bg-muted/50 font-semibold">
-                        <TableHead scope="row" colSpan={TOTAL_LABEL_COLSPAN}>
-                          TOTAL
-                        </TableHead>
-                        <TableCell className="text-right">{formatHours(totals.regularHours)}</TableCell>
-                        <TableCell className="text-right">{formatHours(totals.overtimeHours)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totals.regularPay)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totals.overtimePay)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totals.totalTips)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totals.tipsPaidOut)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totals.tipsOwed)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(totals.totalPay)}</TableCell>
-                        <TableCell />
-                      </TableRow>
-                    );
-                  })()}
+                  {renderTotalsRow(computePayrollTotals(payrollPeriod.employees), 'TOTAL')}
                 </TableBody>
               </Table>
             </div>

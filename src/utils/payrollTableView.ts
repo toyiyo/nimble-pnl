@@ -141,16 +141,6 @@ export interface PayrollTotals {
  * Hours and tips are straight sums.
  */
 export function computePayrollTotals(rows: EmployeePayroll[]): PayrollTotals {
-  const zero: PayrollTotals = {
-    regularHours: 0,
-    overtimeHours: 0,
-    regularPay: 0,
-    overtimePay: 0,
-    totalTips: 0,
-    tipsPaidOut: 0,
-    tipsOwed: 0,
-    totalPay: 0,
-  };
   return rows.reduce<PayrollTotals>((acc, r) => ({
     regularHours: acc.regularHours + r.regularHours,
     overtimeHours: acc.overtimeHours + r.overtimeHours,
@@ -160,5 +150,5 @@ export function computePayrollTotals(rows: EmployeePayroll[]): PayrollTotals {
     tipsPaidOut: acc.tipsPaidOut + r.tipsPaidOut,
     tipsOwed: acc.tipsOwed + r.tipsOwed,
     totalPay: acc.totalPay + r.totalPay,
-  }), zero);
+  }), { regularHours: 0, overtimeHours: 0, regularPay: 0, overtimePay: 0, totalTips: 0, tipsPaidOut: 0, tipsOwed: 0, totalPay: 0 });
 }

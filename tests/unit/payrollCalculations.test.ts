@@ -749,7 +749,7 @@ describe('payrollCalculations - Additional Coverage', () => {
       expect(result.area).toBeNull();
     });
 
-    it('threads area as null when employee area is empty string', () => {
+    it('preserves empty string area when employee area is empty string', () => {
       const employee = createEmployee({ area: '' });
       const result = calculateEmployeePay(employee, [], 0);
       // Empty string is falsy — coerce to null via ?? null (only catches undefined/null)

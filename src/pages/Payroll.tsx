@@ -110,7 +110,7 @@ function SortableHeader({
         type="button"
         onClick={() => onSort(columnKey)}
         className={`inline-flex items-center gap-1 min-h-[24px] hover:text-foreground transition-colors ${
-          align === 'right' ? 'flex-row-reverse ml-auto' : ''
+          align === 'right' ? 'ml-auto' : ''
         } ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
       >
         <span>{label}</span>

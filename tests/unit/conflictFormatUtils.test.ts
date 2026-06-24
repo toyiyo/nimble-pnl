@@ -199,31 +199,21 @@ describe('formatConflictLine – fallback cases', () => {
 // exactly as ShiftDialog.tsx and AvailabilityConflictDialog.tsx call it.
 // The referenceDate parameter must default to today so callers need not change.
 // If the signature ever breaks the 2-arg form this test will fail at compile time.
+//
+// External-importer note: formatUTCTimeToLocal has no external callers (confirmed
+// at Task 3 audit). Only conflictFormatUtils.ts uses it internally. Both production
+// callers import formatConflictLine only.
 
 describe('formatConflictLine – 2-arg caller contract (ShiftDialog / AvailabilityConflictDialog)', () => {
-  it('accepts only (conflict, timezone) with no referenceDate — defaults to today', () => {
-    // This is the exact call pattern used by both production callers.
-    // Compile error here ↓ means a caller-breaking signature change occurred.
+  it('accepts (conflict, timezone) without referenceDate and returns a non-empty string', () => {
+    // Compile error here means a caller-breaking signature change occurred.
     const conflict: ConflictCheck = {
       has_conflict: false,
       conflict_type: 'recurring',
       message: 'No availability set for this day',
     };
     const result = formatConflictLine(conflict, 'America/Chicago');
-    // Result is a non-empty string — the exact value depends on today's date
-    // but the caller contract is satisfied as long as it compiles and returns a string.
     expect(typeof result).toBe('string');
     expect(result.length).toBeGreaterThan(0);
-  });
-
-  it('formatUTCTimeToLocal is not consumed by any external module (only conflictFormatUtils internally)', () => {
-    // This is a documentation test: the grep evidence is captured here so it cannot
-    // silently regress.  If another file starts importing formatUTCTimeToLocal, the
-    // external-importer grep in Task 3 review will catch it and this comment serves as
-    // the recorded expectation.
-    //
-    // Confirmed at Task 3 audit: only conflictFormatUtils.ts uses formatUTCTimeToLocal.
-    // ShiftDialog.tsx and AvailabilityConflictDialog.tsx import formatConflictLine only.
-    expect(true).toBe(true); // intentional no-op; contract is enforced by TypeScript
   });
 });

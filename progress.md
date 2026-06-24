@@ -46,7 +46,13 @@ Confirmed via prod data (employee dff3beb5, America/Chicago, rows 03:00:00/03:30
   - npm run lint: 0 errors in changed files (pre-existing errors elsewhere, pre-existing)
   - npm run build: success in 18.44s
   - npm run test (full suite): 4625/4627 pass, 2 skipped (same pre-existing skips)
-- [ ] Phase 4-9: dev-build-and-ship workflow (running)
+- [x] Phase 5: UI review — N/A (no UI surface changed; pure lib + test)
+- [x] Phase 6: simplify (commit 20c14afa)
+  - conflictFormatUtils.ts: already minimal, no changes needed
+  - test file: removed no-op `expect(true).toBe(true)` shell from caller-contract describe block;
+    moved audit note into block-level comment; renamed remaining test to describe what it asserts
+  - 21 tests remain, all pass (was 22; the removed test had no assertions)
+- [ ] Phase 7: CodeRabbit review (next)
 
 ## CI Status
 - PR: not yet created

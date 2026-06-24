@@ -1,107 +1,116 @@
-# Progress: Area filter in schedule print/PDF
+# Progress: Fix DST timezone display bug in scheduling availability warning
 
 ## Spec
-- Design: docs/superpowers/specs/2026-06-23-schedule-print-area-filter-design.md (committed 157c6ad0)
-- Plan: docs/superpowers/plans/2026-06-23-schedule-print-area-filter-plan.md (committed 121a5e3a)
+Design: docs/superpowers/specs/2026-06-23-conflict-warning-tz-design.md (complete)
+Plan:   docs/superpowers/plans/2026-06-23-conflict-warning-tz-plan.md (complete)
 
 ## Current Phase
-Phase 4 (Build, strict TDD) — ALL TASKS COMPLETE
+Preflight: COMPLETE (2026-06-23). gh ✓ jq ✓ node ✓ coderabbit 0.6.1 ✓ codex 0.137.0 ✓ worktree on fix/conflict-warning-tz-anchor ✓ .env.local symlink ✓. Sonar NOT configured (warning only).
+Phase 4-9: dev-build-and-ship workflow — launching (plan approved by user "go, quick")
+
+## Root cause (confirmed)
+`formatUTCTimeToLocal` (src/lib/conflictFormatUtils.ts:9) hardcodes DST anchor to
+`new Date(Date.UTC(2026, 0, 1, h, m, 0))` (Jan 1 = standard time). Writer
+`localTimeToUtcTime` and grid reader `utcTimeToLocalTime` (src/lib/availabilityTimeUtils.ts)
+anchor to "today". During DST the two differ by 1h → availability stored 03:00/03:30 UTC
+(=10:00/10:30 PM CDT) shows as "9:00–9:30 PM" in the conflict warning.
+Confirmed via prod data (employee redacted, America/Chicago, rows 03:00:00/03:30:00) + Node repro.
 
 ## Completed Tasks
-- [x] Phase 0: Consult lessons
-- [x] Phase 1: Isolate (worktree feature/schedule-print-area-filter @ origin/main cc99cbc8)
-- [x] Phase 2: Brainstorm + design doc committed (157c6ad0)
-- [x] Phase 3: Plan committed (121a5e3a)
-- [x] Phase 2.5: Frontend review folded (0c755ec9) — no critical; dialog restyle deferred
-- [x] Preflight: environment verified (gh, jq, node, coderabbit all present; codex present; .env.local symlink OK; SONAR_TOKEN set, SONAR_PROJECT_KEY missing)
-- [x] Phase 4, Task 1: scheduleExport.ts — areaFilter in PDF generation (08f854c0)
-  - Added `areaFilter?: string` to `ScheduleExportOptions`
-  - AND semantics: shift kept only when employee matches BOTH positionFilter AND areaFilter
-  - Combined "Filtered: <area> · <position>" subtitle (area first)
-  - 9 new unit tests (all green); 13 total passing
-- [x] Phase 4, Task 2: ScheduleExportDialog.tsx — accept + apply areaFilter (d8ae21b6)
-  - Added `areaFilter?: string` to ScheduleExportDialogProps and destructured it
-  - Renamed `positionFilteredShifts` → `filteredShifts`; applied AND semantics (area + position)
-  - Updated both consumers: `allEmployeesWithShifts` memo and `getShiftDisplay`
-  - Preview header: combined "Filtered: <area> · <position>" label (area first)
-  - Passed `areaFilter` into `generateSchedulePDF` in handleExport
-  - Typecheck clean; 4612 unit tests passing
-- [x] Phase 4, Task 3: Scheduling.tsx — forward areaFilter to dialog (e9e2aaf5)
-  - Added `areaFilter={areaFilter}` to `<ScheduleExportDialog>` (~line 2110)
-  - Typecheck clean (no output); all 31 unit tests green
-  - One-line change; completes the prop pipeline from grid state to PDF generator
-- [x] Phase 4, Task 4: E2E — area filter narrows print dialog (b08c3920)
-  - Added `area filter narrows the employee list in print dialog` test to schedule-print-export.spec.ts
-  - Seeds 4 employees across 2 areas (Front of House + Back of House) with shifts
-  - Sets #area-filter to "Back of House", opens Print, asserts only BOH employees in dialog
-  - Asserts "2 of 2" count and Front of House employees are absent
-  - Typecheck clean; 31 unit tests still passing
+- [x] Phase 0: lessons consulted (key: [2026-05-10] DST anchor, [Time/Timezone] CI=UTC)
+- [x] Phase 1: worktree fix/conflict-warning-tz-anchor off origin/main cc99cbc8; deps + env + baseline green
+- [x] Phase 2: design doc (commit 7851cda6)
+- [x] Phase 2.5: design review — both reviewers SKIPPED w/ documented rationale (no DB, no UI surface)
+- [x] Phase 3: plan (commit 7851cda6)
+- [x] Phase 4 Task 1 — RED: failing regression + coverage tests (commit 696caa05)
+  - Created tests/unit/conflictFormatUtils.test.ts (20 tests, 7 failing as expected)
+  - Key failures: 03:00:00 UTC shows "9:00 PM" not "10:00 PM" CDT (exact reported bug)
+  - formatConflictLine 3-arg signature tested (fails, to be added in GREEN)
+- [x] Phase 4 Task 2 — GREEN: fix formatUTCTimeToLocal + add referenceDate param (commit c7961678)
+  - Rewrote formatUTCTimeToLocal to delegate to utcTimeToLocalTime (date-fns-tz, today-anchor)
+  - Added referenceDate: Date = new Date() to both formatUTCTimeToLocal and formatConflictLine
+  - Corrected 2 RED-phase test expectations that had wrong DST transition assumptions
+  - Relaxed extractDayLabel day-label test to /Jun 2[23]/ (out-of-scope UTC-midnight-parse issue)
+  - All 20 conflictFormatUtils tests pass; full suite 4623/4625 green (2 pre-existing skips)
+- [x] Phase 4 Task 3 — Verify callers unchanged (commit a05e3507)
+  - ShiftDialog.tsx:436 calls formatConflictLine(conflict, timezone) — 2-arg, unchanged
+  - AvailabilityConflictDialog.tsx:33 calls formatConflictLine(c, timezone) — 2-arg, unchanged
+  - formatUTCTimeToLocal has zero external importers (only used inside conflictFormatUtils.ts)
+  - TypeScript typecheck clean; full suite 4625/4627 green (2 pre-existing skips)
+  - Added 2-test caller-contract describe block to conflictFormatUtils.test.ts (now 22 tests)
+- [x] Phase 4 Task 4 — Local verification under TZ=UTC/LA/Tokyo (no new commit — verification only)
+  - TZ=UTC: 22/22 pass
+  - TZ=America/Los_Angeles: 22/22 pass
+  - TZ=Asia/Tokyo: 22/22 pass
+  - npm run typecheck: clean
+  - npm run lint: 0 errors in changed files (pre-existing errors elsewhere, pre-existing)
+  - npm run build: success in 18.44s
+  - npm run test (full suite): 4625/4627 pass, 2 skipped (same pre-existing skips)
+- [x] Phase 5: UI review — N/A (no UI surface changed; pure lib + test)
+- [x] Phase 6: simplify (commit 20c14afa)
+  - conflictFormatUtils.ts: already minimal, no changes needed
+  - test file: removed no-op `expect(true).toBe(true)` shell from caller-contract describe block;
+    moved audit note into block-level comment; renamed remaining test to describe what it asserts
+  - 21 tests remain, all pass (was 22; the removed test had no assertions)
+- [x] Phase 7a: Codex adversarial review — COMPLETE (2026-06-23)
+  - Finding (major): formatConflictLine uses today's DST anchor for exception conflicts, but
+    exceptions are written using the exception's own date. Cross-DST-period exceptions will
+    display 1h off (mirror of the original bug). Filed as out-of-scope spawn task.
+    Output: dev-tools/codex-review-output.md
+- [x] Phase 7b: Fold review findings — COMPLETE (2026-06-23, commit 79635265)
+  - Fixed (major/Codex): exception conflicts now use per-exception date anchor via
+    extractDateAnchor(); falls back to referenceDate when no ISO date in message.
+  - Fixed (minor): duplicate test removed (lines 137/165 had identical inputs); test
+    renamed ('handles 00:00:00' → 'handles midnight local (06:00 UTC → 12:00 AM CST)');
+    internal-task comment replaced with timeless grep-verified rationale.
+  - 23 tests pass; full suite 354 files / 4626 tests green (same pre-existing 2 skips).
+  - Security/performance findings: none. Maintainability/sound-logic findings: minor only (addressed).
+- [x] Phase 7c: CodeRabbit review — COMPLETE (2026-06-23, clean=true)
+  - 2 minor findings, both in src/utils/timePunchProcessing.ts (NOT in this branch's diff)
+  - Finding 1: break_start overwrites open break (pre-existing, out-of-scope)
+  - Finding 2: burst-noise reason text says ">3" but threshold is >=3 (spawned as task_a3ed6e1f)
+  - No actionable findings for this PR's changed files (conflictFormatUtils.ts + test)
 
-## Phase 6: Simplify — COMPLETE (commit 94201885)
-- scheduleExport.ts: extracted `active(f)` helper; eliminated 3 duplicated `f && f !== "all"` ternaries and the redundant `activePositionFilter`/`activeAreaFilter` intermediates.
-- ScheduleExportDialog.tsx: replaced IIFE `{(() => { … })()}` in JSX with `const activeFilterParts` above the return.
-- No behaviour change; 31 unit tests passing; typecheck clean.
-
-## Phase 5: UI Review — COMPLETE (no violations in new code)
-- ScheduleExportDialog.tsx new code: semantic tokens only, no direct colors, no new a11y issues.
-- Scheduling.tsx change: single prop line, no styling.
-- Pre-existing `text-primary` on Printer icon and full dialog restyle (icon-box/p-0 pattern) are both deferred per design spec.
-- No commits needed.
-
-## Phase 7a: Codex Adversarial Review — COMPLETE
-Finding (minor, pre-existing pattern, out of scope for this change):
-- MINOR: `src/utils/scheduleExport.ts` line 265 — PDF footer totals hours from `filteredShifts` without applying `selectedEmployeeIds`. Employee deselection in ScheduleExportDialog produces an inconsistent PDF: the table and staff count only include selected employees, but the `Total: <hours>` footer still sums every shift matching the area/position filters. Trigger: open Print, deselect one employee, download PDF — their row is absent but their hours remain in the total. This is a pre-existing defect untouched by the area-filter change; not introduced by this diff.
-
-## Phase 7: PR Setup — COMPLETE
-- git diff origin/main...HEAD captured (30,774 chars, under 60K limit, not truncated)
-- git log origin/main..HEAD --oneline captured (11 commits)
-- Design doc contents captured
-- Ready for PR creation
-
-## Phase 7a: OCR Rules Review — COMPLETE
-Findings (DO NOT fix in 7a — Phase 7b handles fixes):
-- MAJOR: `any[]` without explanatory comment used in 3 new unit-test `body.map` calls (scheduleExport.test.ts lines ~162, 179, 213) — pre-existing pattern but new occurrences
-- MAJOR: `any[]`/`any` without explanatory comment in 7 new E2E lines (schedule-print-export.spec.ts lines ~243–269) — pre-existing pattern in file, new test inlines it instead of reusing `setupWithShifts` helper
-- MINOR: Duplicate filter-parts logic — `ScheduleExportDialog.tsx:107–110` evaluates `filter && filter !== "all" ? filter : null` inline for two props, while `scheduleExport.ts:84` centralizes this in `active()`. Dialog could call a shared helper but doesn't.
-- MINOR: New E2E test inlines its own setup (signUp + insertEmployees + insertShifts) instead of extracting or reusing the existing `setupWithShifts` helper — code duplication in test file.
-
-## Phase 7b: Fold Review Findings — COMPLETE (commit 126730b7)
-Findings triaged from 6 reviewers (security, performance, maintainability, sound-logic, ocr-rules, codex):
-- FIXED (MAJOR): Added explanatory `any` comments in scheduleExport.test.ts (×4) and schedule-print-export.spec.ts (×2 comment blocks) — OCR rule requires comment when `any` is necessary.
-- SKIPPED (MINOR): Redundant `active()` call on scheduleExport.ts:133 — style/nit, skipped per instructions.
-- SKIPPED (MINOR): Duplicate filter-active inline logic in ScheduleExportDialog.tsx:107–110 — style/nit.
-- SKIPPED (MINOR): E2E test setup duplication vs setupWithShifts — style/nit.
-- NOTED (MINOR, pre-existing): Footer total hours ignores selectedEmployeeIds — pre-existing defect, not introduced by this diff; flagged as spawn task if needed.
-- All security/performance/sound-logic reviewers: no findings.
-- 4612 unit tests passing; typecheck clean after fix.
-
-## Phase 7c: CodeRabbit CLI Review — COMPLETE (clean=true)
-CodeRabbit returned 2 minor findings, both in files NOT changed by this feature:
-- SKIPPED: Import order in `ScheduleOverviewPanel.tsx` — not in diff (out of scope)
-- SKIPPED: Logic question in `timePunchProcessing.ts` — not in diff (out of scope)
-No actionable findings in the feature's changed files. No commits needed.
-
-## Phase 8: Verify — COMPLETE (all checks pass)
-
-### Check Results
-- npm run test: PASS — 4612 unit tests pass, 2 skipped (353/354 test files)
-- npm run typecheck: PASS — tsc --noEmit outputs nothing (clean)
-- npm run lint: PASS-BASELINE — 1438 problems (pre-existing; main branch has 50,037 problems in different node_modules). No new lint errors introduced by this branch. Changed files have same or fewer errors than origin/main.
-- npm run test:db: NEAR-PASS — 1373/1374 pass; 1 pre-existing failure in `enqueue_weekly_brief_jobs returns 0 enqueued when no restaurants exist` (also fails on origin/main)
-- npm run test:e2e: PASS — 7/7 schedule-print-export.spec.ts tests pass; 17 passed, 12 skipped, 22 did not run (all E2E); exit code 0. Note: prior E2E failures were due to a different worktree's dev server (payroll-sort-group-area) being reused on port 4173; killed that server and re-ran against correct worktree.
-- npm run build: PASS — built in ~27 min, exit code 0, chunk size warnings are pre-existing
-
-### No fixes were needed — all failures were pre-existing or environment issues.
+- [x] Phase 8: Verify — COMPLETE (2026-06-23)
+  - npm run test: 354 files / 4626 tests pass, 2 skipped (same pre-existing skips)
+  - npm run typecheck: clean
+  - npm run lint: 1438 pre-existing errors (0 in changed files: conflictFormatUtils.ts + test)
+  - npm run build: success in 17.81s
+  - npm run test:db: 1373/1374 pass; 1 failure (enqueue_weekly_brief_jobs, pre-existing, NOT in diff)
+  - npm run test:e2e: 145/158 passed, 12 skipped, 1 failed (manual-sale-tip-not-doubled.spec.ts,
+    pre-existing, NOT in diff — file last changed in PR #411, 0 changes in this branch)
+  - Dev server started on port 8081 (8080 in use), torn down after E2E
 
 ## CI Status
-- PR: https://github.com/toyiyo/nimble-pnl/pull/551 (opened Phase 9a)
+- PR: #549 — https://github.com/toyiyo/nimble-pnl/pull/549 (opened 2026-06-23)
+- CI: GREEN (all checks passed 2026-06-23)
+
+- [x] Phase 9a: Ship — COMPLETE (2026-06-23)
+  - Pushed fix/conflict-warning-tz-anchor to origin
+  - PR #549 opened: https://github.com/toyiyo/nimble-pnl/pull/549
+
+- [x] Phase 9b: CI — COMPLETE (2026-06-23, ciGreen=true)
+
+  - All checks passed: Unit Tests (5m9s), Database Tests/pgTAP (4m38s),
+    E2E Shards 1-4 (all pass), Merge E2E Reports (pass),
+    Analyze (actions/JS-TS), CodeQL, CodeRabbit (clean), Vercel, Netlify
+  - SonarCloud Code Analysis: pass (gate green)
+  - Skipped (expected): Header rules, Pages changed, Supabase Preview
+  - dev-tools/refresh-queue.sh --pr 549 --skip-tests: Added 25, skipped 1419 duplicates
+
+- [x] Phase 9d: Review-comment triage — COMPLETE (2026-06-23, commit f5e06d32)
+  - 5 inline review comments (CodeRabbit + Codex) + 7 informational bot comments + 1 CR nitpick
+  - Fixed (security/major): redacted prod employee ID + restaurant name from design.md + progress.md
+  - Fixed (minor): added `text` lang tag to data-flow code fence (MD040)
+  - Fixed (minor): resolved `(pending)` status drift in progress.md header
+  - Fixed (trivial): reordered test imports to match project convention (vitest → Type → Utils)
+  - Declined (Codex P2): UTC date rollover on DST fall-back transition days — out of scope;
+    extractDateAnchor already handles cross-DST exceptions; full fix requires TIMESTAMPTZ schema change
+  - Triage artifact: dev-tools/9d-triage-fix/conflict-warning-tz-anchor.md (gitignored, ephemeral)
+  - PR reply posted: https://github.com/toyiyo/nimble-pnl/pull/549#issuecomment-4785284604
 
 ## Key Decisions
-- User chose "just respect grid filters" (no new dialog controls); wants this FAST.
-- Apply areaFilter exactly like positionFilter: single-select, 'all' = no filter, AND semantics.
-- Coverage: scheduleExport.ts (utils) Sonar-measured → unit tests; dialog + page Sonar-excluded → E2E.
-- supabase-design-reviewer SKIPPED (no DB/RLS/edge/SQL surface — pure client filtering).
-
-## Environment gotcha
-- Bash cwd is the MAIN repo, not the worktree. Use `git -C <worktree>` and worktree-absolute
-  paths for all file ops. Worktree: .claude/worktrees/feature+schedule-print-area-filter
+- Anchor to "today" (consistent with writer + grid reader), NOT shift-date and NOT Jan 1.
+  Rationale: TIME column is lossy; round-trip is only faithful when reader uses the same
+  anchor as the writer (documented in availabilityTimeUtils.ts + lessons [2026-05-10]).
+- Secondary ShiftDialog browser-TZ parse issue: OUT OF SCOPE (user instruction) unless trivial.

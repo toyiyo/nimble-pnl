@@ -597,6 +597,78 @@ describe('payrollCalculations - Additional Coverage', () => {
     });
   });
 
+  describe('exportPayrollToCSV — Area column', () => {
+    it('includes "Area" header after "Position" in the CSV header row', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' })],
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const headerLine = csv.split('\n')[0];
+      const headers = headerLine.split(',');
+      const posIdx = headers.indexOf('Position');
+      const areaIdx = headers.indexOf('Area');
+
+      expect(areaIdx).toBeGreaterThan(-1); // "Area" header exists
+      expect(areaIdx).toBe(posIdx + 1);    // immediately after "Position"
+    });
+
+    it('includes the employee area value in the data row', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' })],
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const dataRow = csv.split('\n')[1]; // Alice row
+      expect(dataRow).toContain('"Front of House"');
+    });
+
+    it('emits empty string for area when employee has no area', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Bob' })], // no area
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const lines = csv.split('\n');
+      const headerCols = lines[0].split(',');
+      const areaIdx = headerCols.indexOf('Area');
+      const dataCols = lines[1].split(',');
+      // area cell should be empty (null → '')
+      expect(dataCols[areaIdx]).toBe('""');
+    });
+
+    it('emits blank for Area in the TOTAL row', () => {
+      const payroll = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Bar' })],
+        new Map(),
+        new Map()
+      );
+
+      const csv = exportPayrollToCSV(payroll);
+      const lines = csv.split('\n');
+      // last non-empty line is the TOTAL row
+      const totalLine = lines[lines.length - 1];
+      const headerCols = lines[0].split(',');
+      const areaIdx = headerCols.indexOf('Area');
+      const totalCols = totalLine.split(',');
+      expect(totalCols[areaIdx]).toBe('""');
+    });
+  });
+
   describe('exportPayrollToCSV with tip columns', () => {
     it('should include Tips Earned, Tips Paid, and Tips Owed headers', () => {
       const employees: Employee[] = [
@@ -660,6 +732,60 @@ describe('payrollCalculations - Additional Coverage', () => {
       expect(dataRow).toContain('$500.00');
       expect(dataRow).toContain('$200.00');
       expect(dataRow).toContain('$300.00');
+    });
+  });
+
+  describe('area field threading', () => {
+    it('threads area from employee onto EmployeePayroll when area is set', () => {
+      const employee = createEmployee({ area: 'Front of House' });
+      const result = calculateEmployeePay(employee, [], 0);
+      expect(result.area).toBe('Front of House');
+    });
+
+    it('threads area as null when employee has no area (undefined)', () => {
+      // createEmployee does not set area, so it is undefined
+      const employee = createEmployee();
+      const result = calculateEmployeePay(employee, [], 0);
+      expect(result.area).toBeNull();
+    });
+
+    it('preserves empty string area when employee area is empty string', () => {
+      const employee = createEmployee({ area: '' });
+      const result = calculateEmployeePay(employee, [], 0);
+      // Empty string is falsy — coerce to null via ?? null (only catches undefined/null)
+      // Design spec says employee.area ?? null, so empty string stays as empty string
+      // but null/undefined become null. Use the spec as authority.
+      expect(result.area).toBe('');
+    });
+
+    it('area field is present in the EmployeePayroll interface (type check via property access)', () => {
+      const employee = createEmployee({ area: 'Bar' });
+      const result = calculateEmployeePay(employee, [], 0);
+      expect(Object.prototype.hasOwnProperty.call(result, 'area')).toBe(true);
+    });
+
+    it('calculatePayrollPeriod propagates area to each EmployeePayroll row', () => {
+      const employees: Employee[] = [
+        createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' }),
+        createEmployee({ id: 'emp-2', name: 'Bob', area: 'Back of House' }),
+        createEmployee({ id: 'emp-3', name: 'Charlie' }), // no area
+      ];
+
+      const result = calculatePayrollPeriod(
+        new Date('2024-01-01'),
+        new Date('2024-01-07'),
+        employees,
+        new Map(),
+        new Map()
+      );
+
+      const alice = result.employees.find(e => e.employeeId === 'emp-1')!;
+      const bob = result.employees.find(e => e.employeeId === 'emp-2')!;
+      const charlie = result.employees.find(e => e.employeeId === 'emp-3')!;
+
+      expect(alice.area).toBe('Front of House');
+      expect(bob.area).toBe('Back of House');
+      expect(charlie.area).toBeNull();
     });
   });
 

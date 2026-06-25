@@ -2107,6 +2107,7 @@ const Scheduling = () => {
         weekEnd={weekEnd}
         restaurantName={selectedRestaurant?.restaurant?.name}
         positionFilter={positionFilter}
+        areaFilter={areaFilter}
         groupBy={groupBy}
       />
 

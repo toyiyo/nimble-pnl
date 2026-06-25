@@ -13,6 +13,7 @@ export interface ScheduleExportOptions {
   includePositions?: boolean;
   includeHoursSummary?: boolean;
   positionFilter?: string;
+  areaFilter?: string;
   groupBy?: GroupByMode;
   selectedEmployeeIds?: Set<string>;
 }
@@ -71,6 +72,7 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
     includePositions = true,
     includeHoursSummary = false,
     positionFilter,
+    areaFilter,
     groupBy = 'none',
     selectedEmployeeIds,
   } = options;
@@ -78,11 +80,19 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   // Get days of the week
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Filter shifts by position if needed
-  const filteredShifts = positionFilter && positionFilter !== "all"
+  /** Returns the filter value when active, null when "all" or absent. */
+  const active = (f?: string) => (f && f !== "all" ? f : null);
+  const activePosition = active(positionFilter);
+  const activeArea = active(areaFilter);
+
+  // Filter shifts by position and/or area if needed (AND semantics)
+  const filteredShifts = (activePosition || activeArea)
     ? shifts.filter(s => {
         const emp = employees.find(e => e.id === s.employee_id);
-        return emp?.position === positionFilter;
+        if (!emp) return false;
+        if (activePosition && emp.position !== activePosition) return false;
+        if (activeArea && emp.area !== activeArea) return false;
+        return true;
       })
     : shifts;
 
@@ -120,10 +130,11 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
 
   // Filter/grouping indicators
   let subtitleY = margin + 35;
-  if (positionFilter && positionFilter !== "all") {
+  const filterParts = [active(areaFilter), active(positionFilter)].filter(Boolean) as string[];
+  if (filterParts.length > 0) {
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Filtered: ${positionFilter}`, pageWidth / 2, subtitleY, { align: "center" });
+    doc.text(`Filtered: ${filterParts.join(" · ")}`, pageWidth / 2, subtitleY, { align: "center" });
     subtitleY += 14;
   }
   if (groupBy !== 'none') {

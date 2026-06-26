@@ -190,8 +190,9 @@ AS $$
 DECLARE
     v_tz TEXT;
 BEGIN
-    -- Look up the restaurant timezone
-    SELECT COALESCE(r.timezone, 'America/Chicago') INTO v_tz
+    -- Look up the restaurant timezone.
+    -- Fallback is 'UTC' to match the TypeScript computeOpenShiftCount path.
+    SELECT COALESCE(r.timezone, 'UTC') INTO v_tz
     FROM public.restaurants r WHERE r.id = p_restaurant_id;
 
     -- Check if open shifts are enabled for this restaurant
@@ -324,16 +325,25 @@ DECLARE
     v_shift_start       TIMESTAMPTZ;
     v_shift_end         TIMESTAMPTZ;
 BEGIN
-    -- Look up the restaurant timezone
-    SELECT COALESCE(r.timezone, 'America/Chicago') INTO v_tz
+    -- Look up the restaurant timezone.
+    -- Fallback is 'UTC' to match the TypeScript computeOpenShiftCount path.
+    SELECT COALESCE(r.timezone, 'UTC') INTO v_tz
     FROM public.restaurants r WHERE r.id = p_restaurant_id;
 
-    -- Lock and fetch the template
+    -- Acquire a per-slot advisory transaction lock before computing counts.
+    -- This serializes concurrent claims for the same (template, date) pair so
+    -- two transactions cannot both read the same v_assigned_count + v_pending_count
+    -- and both pass the capacity guard.  The lock is released automatically at
+    -- transaction end (no explicit unlock needed).
+    --
+    -- Key: hashtext(template_id || shift_date) fits in int4 advisory lock space.
+    PERFORM pg_advisory_xact_lock(hashtext(p_template_id::text || p_shift_date::text));
+
+    -- Fetch the template (after holding the slot lock).
     SELECT * INTO v_template
     FROM public.shift_templates
     WHERE id = p_template_id
-      AND restaurant_id = p_restaurant_id
-    FOR SHARE;
+      AND restaurant_id = p_restaurant_id;
 
     IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'error', 'Template not found');

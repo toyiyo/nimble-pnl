@@ -19,7 +19,27 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { ShiftCell } from '@/components/scheduling/ShiftPlanner/ShiftCell';
-import type { SlotCoverage } from '@/types/scheduling';
+import type { Shift, SlotCoverage } from '@/types/scheduling';
+
+// ── typed fixture helper ──────────────────────────────────────────────────────
+function makeShift(overrides?: Partial<Shift>): Shift {
+  return {
+    id: 's1',
+    restaurant_id: 'r1',
+    employee_id: 'e1',
+    start_time: '2026-06-27T15:00:00Z',
+    end_time: '2026-06-27T23:00:00Z',
+    break_duration: 0,
+    position: 'Server',
+    status: 'scheduled',
+    is_published: true,
+    locked: false,
+    source: 'manual',
+    created_at: '2026-06-27T00:00:00Z',
+    updated_at: '2026-06-27T00:00:00Z',
+    ...overrides,
+  };
+}
 
 vi.mock('@dnd-kit/core', () => ({
   useDroppable: () => ({ isOver: false, setNodeRef: () => {} }),
@@ -83,21 +103,22 @@ describe('ShiftCell coverage indicator — render tests', () => {
     expect(ariaHiddenChildren.length).toBeGreaterThan(0);
   });
 
-  it('does NOT render coverage indicator when coveragePct === 100 AND shifts.length <= 1', () => {
+  it('does NOT render coverage indicator when coveragePct === 100 AND shifts.length >= 1', () => {
     const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
-    // shifts is empty (length = 0) → suppress
-    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={[]} />);
+    // One placed shift → suppress (assignee chip already signals full coverage).
+    const shifts: Shift[] = [
+      makeShift({ id: 's1', employee_id: 'e1', employee: { name: 'Alice' } as Shift['employee'] }),
+    ];
+    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={shifts} />);
     const btns = screen.queryAllByRole('button', { name: /Coverage/i });
     expect(btns.length).toBe(0);
   });
 
-  it('DOES render coverage indicator when coveragePct === 100 AND shifts.length > 1', () => {
+  it('DOES render coverage indicator when coveragePct === 100 AND shifts.length === 0 (non-template fill-in)', () => {
     const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
-    const shifts = [
-      { id: 's1', employee_id: 'e1', start_time: '', end_time: '', position: 'Server', status: 'scheduled' as const, employee: { name: 'Alice' } },
-      { id: 's2', employee_id: 'e2', start_time: '', end_time: '', position: 'Server', status: 'scheduled' as const, employee: { name: 'Bob' } },
-    ] as any[];
-    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={shifts} />);
+    // No placed shift in this bucket but coverage engine says full → show indicator
+    // so the cell doesn't appear empty when it's actually covered by a fill-in.
+    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={[]} />);
     const btn = screen.getByRole('button', { name: /Coverage/i });
     expect(btn).toBeTruthy();
   });
@@ -139,12 +160,8 @@ describe('ShiftCell coverage indicator — render tests', () => {
 
   it('uses text-muted-foreground for fully-covered indicator (no hard-coded color)', () => {
     const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
-    // Need shifts > 1 so it's not suppressed
-    const shifts = [
-      { id: 's1', employee_id: 'e1', start_time: '', end_time: '', position: 'Server', status: 'scheduled' as const, employee: { name: 'Alice' } },
-      { id: 's2', employee_id: 'e2', start_time: '', end_time: '', position: 'Server', status: 'scheduled' as const, employee: { name: 'Bob' } },
-    ] as any[];
-    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={shifts} />);
+    // 0 shifts in bucket but fully covered (non-template fill-in) → indicator shows
+    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={[]} />);
     const btn = screen.getByRole('button', { name: /Coverage/i });
     expect(btn.className).toContain('text-muted-foreground');
     expect(btn.className).not.toMatch(/text-emerald-[0-9]/);

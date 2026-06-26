@@ -337,6 +337,18 @@ const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSel
  * shifts that overlap a template window without exactly matching it are
  * counted correctly.
  */
+/**
+ * Return the local calendar date (YYYY-MM-DD) for a UTC ISO timestamp in the
+ * given IANA timezone.  This mirrors SQL: (start_time AT TIME ZONE tz)::date.
+ */
+function localDateOf(isoUtc: string, tz: string): string {
+  const zoned = dateFnsTz.toZonedTime(new Date(isoUtc), tz);
+  const y = zoned.getFullYear();
+  const m = String(zoned.getMonth() + 1).padStart(2, '0');
+  const d = String(zoned.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function computeOpenShiftCount(
   templates: ShiftTemplate[],
   shifts: Shift[],
@@ -344,7 +356,7 @@ export function computeOpenShiftCount(
   restaurantTimezone: string,
 ): number {
   if (!templates.length || shifts === undefined) return 0;
-  const cov: CoverageShift[] = shifts.map((s) => ({
+  const allCov: CoverageShift[] = shifts.map((s) => ({
     employee_id: s.employee_id,
     employee_name: s.employee?.name ?? null,
     start_time: s.start_time,
@@ -356,6 +368,11 @@ export function computeOpenShiftCount(
   for (const t of templates) {
     for (const dayStr of weekDayStrings) {
       if (!templateAppliesToDay(t, dayStr)) continue;
+      // Mirror SQL's filter: only include shifts whose local start date = dayStr.
+      // This keeps overnight carry-over shifts (local start = previous day) from
+      // reducing the banner count for the carry-over day, matching the behaviour of
+      // shift_slot_min_concurrent and preventing UI/SQL divergence.
+      const cov = allCov.filter((s) => localDateOf(s.start_time, restaurantTimezone) === dayStr);
       total += computeSlotCoverage(
         t.start_time,
         t.end_time,

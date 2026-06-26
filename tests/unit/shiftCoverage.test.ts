@@ -44,9 +44,12 @@ describe('computeSlotCoverage — min-concurrent', () => {
   });
 
   it('mid-shift fill-in (non-matching window) covers the open template', () => {
-    // template 10:00-16:30 cap 1; fill-in works 10:00-16:30 (exactly covering window)
+    // template 10:00-16:30 cap 1.
+    // Fill-in: 08:30-18:00 CDT (starts before and ends after the template window).
+    // An exact-start/end matcher would fail here; sweep-line correctly sees
+    // the fill-in fully covers [10:00, 16:30].
     const shifts = [
-      mk('A', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z'), // 10:00-16:30 CDT
+      mk('A', '2026-06-27T13:30:00Z', '2026-06-27T23:00:00Z'), // 08:30-18:00 CDT
     ];
     const c = computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, 'Server', tz);
     expect(c.openSpots).toBe(0);

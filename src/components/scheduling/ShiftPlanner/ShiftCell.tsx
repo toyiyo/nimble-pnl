@@ -87,9 +87,14 @@ export const ShiftCell = memo(
       allocationStatus === 'available' && 'bg-primary/5',
     );
 
-    // Suppress coverage indicator when fully covered with 0 or 1 placed shifts (noise reduction).
+    // Suppress coverage indicator only when the cell already renders at least one placed shift
+    // AND coverage is 100% — in that case the chip is redundant noise because the assignee
+    // chip already signals the slot is filled.
+    // Do NOT suppress when shifts.length === 0 even if coverage === 100%, because the slot
+    // may be covered by a non-template fill-in that isn't bucketed here; hiding the indicator
+    // would make a covered cell look empty.
     const showCoverageIndicator = coverage !== undefined &&
-      !(coverage.coveragePct === 100 && shifts.length <= 1);
+      !(coverage.coveragePct === 100 && shifts.length >= 1);
 
     return (
       <div

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, type ReactNode } from 'react';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
-import type { ShiftTemplate, Shift } from '@/types/scheduling';
+import type { ShiftTemplate, Shift, SlotCoverage } from '@/types/scheduling';
 import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
@@ -40,6 +40,10 @@ interface TemplateGridProps {
   coverageSlot?: ReactNode;
   allocationStatuses?: Map<string, AllocationStatus>;
   pickedEmployeeName?: string;
+  /** Tab-level coverage map passed from ShiftPlannerTab (Task 8+). */
+  coverageByTemplateDay?: Map<string, Map<string, SlotCoverage>>;
+  /** Called when a cell's coverage indicator is clicked; lifted to tab level. */
+  onCoverageClick?: (templateId: string, day: string) => void;
 }
 
 export function TemplateGrid({
@@ -57,6 +61,8 @@ export function TemplateGrid({
   coverageSlot,
   allocationStatuses,
   pickedEmployeeName,
+  coverageByTemplateDay: _coverageByTemplateDay,
+  onCoverageClick: _onCoverageClick,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {

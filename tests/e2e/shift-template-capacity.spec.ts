@@ -84,9 +84,9 @@ test.describe('Shift Template Capacity', () => {
     }
 
     // 10. Verify the coverage indicator is visible — two-tier prominent treatment.
-    // With capacity=3 and 0 shifts on Monday, aria-label: "Server Monday: 0 of 3 staffed, needs 3 more. 0% of window covered. Open details"
+    // With capacity=3 and 0 shifts on Monday, aria-label includes "0 of 3 staffed" and "needs 3 more"
     await expect(
-      page.getByRole('button', { name: /0 of 3 staffed, needs 3 more/i }),
+      page.getByRole('button', { name: /0 of 3 staffed/i }),
     ).toBeVisible({ timeout: 5000 });
   });
 

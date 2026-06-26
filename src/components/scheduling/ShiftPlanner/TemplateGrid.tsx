@@ -61,8 +61,8 @@ export function TemplateGrid({
   coverageSlot,
   allocationStatuses,
   pickedEmployeeName,
-  coverageByTemplateDay: _coverageByTemplateDay,
-  onCoverageClick: _onCoverageClick,
+  coverageByTemplateDay,
+  onCoverageClick,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -166,6 +166,8 @@ export function TemplateGrid({
                           hasMobileSelection={hasMobileSelection}
                           allocationStatus={allocationStatuses?.get(`${template.id}:${day}`) ?? 'none'}
                           pickedEmployeeName={pickedEmployeeName}
+                          coverage={coverageByTemplateDay?.get(template.id)?.get(day)}
+                          onCoverageClick={onCoverageClick}
                         />
                       </div>
                     );

@@ -123,6 +123,10 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
     await setupWithShifts(page);
     const dialog = await openPrintDialog(page);
 
+    // This test asserts the grid preview's <table>; the dialog defaults to the Per-day
+    // roster layout (whose preview is not a table), so switch to the Weekly grid layout.
+    await dialog.getByRole('button', { name: 'Weekly grid' }).click();
+
     // Uncheck Alice and Bob
     await empCheckbox(dialog, 'Alice Johnson').click();
     await empCheckbox(dialog, 'Bob Smith').click();
@@ -168,6 +172,10 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
   test('Download button is disabled when no employees selected', async ({ page }) => {
     await setupWithShifts(page);
     const dialog = await openPrintDialog(page);
+
+    // "No employees selected" is the grid preview's empty state; the dialog defaults to
+    // the Per-day roster layout (empty state "No one scheduled"), so switch to Weekly grid.
+    await dialog.getByRole('button', { name: 'Weekly grid' }).click();
 
     // Deselect all
     await dialog.getByRole('button', { name: 'Deselect all employees' }).click();
@@ -229,8 +237,9 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
     await dialog.getByRole('button', { name: /download pdf/i }).click();
     const download = await downloadPromise;
 
-    // Verify filename pattern
-    expect(download.suggestedFilename()).toMatch(/^schedule_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.pdf$/);
+    // The dialog defaults to the Per-day roster layout, so the export is a roster PDF
+    // spanning the whole week (roster_<weekStart>_to_<weekEnd>.pdf).
+    expect(download.suggestedFilename()).toMatch(/^roster_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.pdf$/);
   });
 
   test('area filter narrows the employee list in print dialog', async ({ page }) => {

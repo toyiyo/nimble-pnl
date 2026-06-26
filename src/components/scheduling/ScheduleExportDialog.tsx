@@ -243,13 +243,13 @@ export const ScheduleExportDialog = ({
                           </span>
                           <span className="flex-1 truncate">{row.employee.name}</span>
                           {includePositions && (
-                            <span className="text-muted-foreground text-[10px] truncate">{row.shift.position}</span>
+                            <span className="text-muted-foreground text-[10px] truncate">{row.shift.position || row.employee.position || ''}</span>
                           )}
                         </div>
                       ))}
                     </div>
                   ))}
-                  {previewRosterDay.totalStaff > 6 && (
+                  {previewRosterDay.sections.some(s => s.rows.length > 6) && (
                     <div className="text-[11px] text-muted-foreground italic">… more on the PDF</div>
                   )}
                 </div>
@@ -465,7 +465,7 @@ export const ScheduleExportDialog = ({
               onCheckedChange={(checked) => setIncludeHoursSummary(checked === true)}
             />
             <Label htmlFor="include-hours" className="text-sm cursor-pointer">
-              Include hours summary per employee
+              {layout === 'roster' ? 'Include hours per shift' : 'Include hours summary per employee'}
             </Label>
           </div>
         </div>

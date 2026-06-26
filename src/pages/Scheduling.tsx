@@ -49,12 +49,13 @@ import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
-import { computeOpenSpots } from '@/lib/openShiftHelpers';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
+import { computeSlotCoverage } from '@/lib/shiftCoverage';
+import type { CoverageShift, ShiftTemplate } from '@/types/scheduling';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -327,6 +328,48 @@ const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSel
   );
 };
 
+/**
+ * Pure function extracted from the openShiftCount useMemo so it can be
+ * unit-tested independently of the Scheduling component.
+ *
+ * Uses the coverage engine (computeSlotCoverage) instead of the old
+ * buildTemplateGridData + computeOpenSpots exact-match path, so fill-in
+ * shifts that overlap a template window without exactly matching it are
+ * counted correctly.
+ */
+export function computeOpenShiftCount(
+  templates: ShiftTemplate[],
+  shifts: Shift[],
+  weekDayStrings: string[], // 'yyyy-MM-dd'
+  restaurantTimezone: string,
+): number {
+  if (!templates.length || shifts === undefined) return 0;
+  const cov: CoverageShift[] = shifts.map((s) => ({
+    employee_id: s.employee_id,
+    employee_name: s.employee?.name ?? null,
+    start_time: s.start_time,
+    end_time: s.end_time,
+    position: s.position,
+    status: s.status,
+  }));
+  let total = 0;
+  for (const t of templates) {
+    for (const dayStr of weekDayStrings) {
+      if (!templateAppliesToDay(t, dayStr)) continue;
+      total += computeSlotCoverage(
+        t.start_time,
+        t.end_time,
+        t.capacity ?? 1,
+        dayStr,
+        cov,
+        t.position,
+        restaurantTimezone,
+      ).openSpots;
+    }
+  }
+  return total;
+}
+
 const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
@@ -528,24 +571,10 @@ const Scheduling = () => {
 
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
 
-  const openShiftCount = useMemo(() => {
-    if (!templates.length || shifts === undefined) return 0;
-
-    const weekDayStrings = weekDays.map(formatLocalDate);
-
-    // Build the grid to count assigned shifts per template/day
-    const gridData = buildTemplateGridData(shifts, templates, weekDayStrings);
-
-    let total = 0;
-    for (const template of templates) {
-      for (const dayStr of weekDayStrings) {
-        if (!templateAppliesToDay(template, dayStr)) continue;
-        const assigned = gridData.get(template.id)?.get(dayStr)?.length ?? 0;
-        total += computeOpenSpots(template.capacity, assigned);
-      }
-    }
-    return total;
-  }, [templates, shifts, weekDays]);
+  const openShiftCount = useMemo(
+    () => computeOpenShiftCount(templates, shifts, weekDays.map(formatLocalDate), restaurantTimezone),
+    [templates, shifts, weekDays, restaurantTimezone],
+  );
 
   // Grouped employees for rendering
   const employeeGroups = useMemo(

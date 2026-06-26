@@ -140,10 +140,10 @@ export function ShiftPlannerTab({
   // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
   // Per-slot try/catch so one bad row never blanks the whole grid.
   const coverageByTemplateDay = useMemo(() => {
-    // Build an employee-id → area map so each shift inherits its employee's home area.
-    // This is used to scope coverage per template area (opt-in; back-compat: banner callers
-    // never pass options so the whole-restaurant behaviour is unchanged).
-    const empArea = new Map(employees.map((e) => [e.id, e.area ?? null]));
+    // Derive area directly from the already-joined shift.employee row so that
+    // shifts belonging to inactive/terminated employees still carry their area
+    // and are counted correctly. The active-only employees list is not used here
+    // because it excludes deactivated employees, causing false chip/indicator gaps.
     const cov: CoverageShift[] = shifts.map((s) => ({
       employee_id: s.employee_id,
       employee_name: s.employee?.name ?? null,
@@ -151,7 +151,7 @@ export function ShiftPlannerTab({
       end_time: s.end_time,
       position: s.position,
       status: s.status,
-      area: empArea.get(s.employee_id) ?? null,
+      area: s.employee?.area ?? null,
     }));
     const map = new Map<string, Map<string, SlotCoverage>>();
     for (const t of templates) {
@@ -161,7 +161,7 @@ export function ShiftPlannerTab({
         try {
           inner.set(
             day,
-            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, t.position, restaurantTimezone, { area: t.area ?? null }),
+            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, t.position, restaurantTimezone, { area: t.area || null }),
           );
         } catch {
           // one bad row never blanks the grid
@@ -170,7 +170,7 @@ export function ShiftPlannerTab({
       map.set(t.id, inner);
     }
     return map;
-  }, [shifts, templates, weekDays, restaurantTimezone, employees]);
+  }, [shifts, templates, weekDays, restaurantTimezone]);
 
   // Lifted coverage detail state — single Popover/Drawer instance (Single Dialog Pattern)
   const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string; anchorRect?: DOMRect } | null>(null);

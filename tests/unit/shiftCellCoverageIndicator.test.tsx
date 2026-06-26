@@ -270,8 +270,13 @@ describe('ShiftCell source-text invariants (Task 9)', () => {
     expect(SRC).toMatch(/aria-haspopup="dialog"/);
   });
 
-  it('has a sr-only span for screen reader summary', () => {
-    expect(SRC).toMatch(/sr-only/);
+  it('includes coverage percentage in the aria-label (not a dead sr-only span)', () => {
+    // The coverage percentage must be accessible to screen readers.
+    // It was previously in a sr-only span that was silently suppressed by the button's aria-label.
+    // The fix moves it directly into the aria-label string, so `sr-only` should not appear here
+    // (it would be a dead pattern overridden by aria-label per WAI-ARIA spec).
+    expect(SRC).toMatch(/coveragePct.*aria-label|aria-label.*coveragePct/s);
+    expect(SRC).not.toMatch(/sr-only/);
   });
 
   it('does NOT use hard-coded raw color classes in the coverage indicator button', () => {

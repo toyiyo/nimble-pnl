@@ -144,6 +144,18 @@ describe('computeSlotCoverage — area scope (opt-in)', () => {
     expect(computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, 'Server', tz, { area: null }).openSpots).toBe(0);
   });
 
+  it('options={} (empty bag) => no area filter, counts all areas', () => {
+    // Back-compat: callers that pass an empty options object should get whole-restaurant behaviour.
+    // options.area evaluates to undefined, which is != null → false → no filter applied.
+    const shifts = [
+      mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'),
+      mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
+    ];
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 2, D, shifts, 'Server', tz, {});
+    expect(c.coveringEmployees.length).toBe(2);
+    expect(c.openSpots).toBe(0);
+  });
+
   it('same-area half-shift fill-in => partial coverage + gap segment', () => {
     // cap 1, window 16:00-22:30 CDT; one Cold Stone person leaves at 19:30 => gap 19:30-22:30
     // CDT (UTC-5): 16:00=21:00Z, 19:30=00:30Z+1

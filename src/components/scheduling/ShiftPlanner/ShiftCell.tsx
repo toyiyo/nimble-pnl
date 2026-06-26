@@ -31,6 +31,9 @@ interface ShiftCellProps {
   /** Concise slot identity for the coverage indicator aria-label (e.g. "Cold Stone Server").
    *  Derived from template area + position in TemplateGrid. Falls back to "Coverage" when omitted. */
   slotName?: string;
+  /** Human-readable weekday name for the coverage indicator aria-label (e.g. "Monday").
+   *  When omitted, falls back to the ISO date string which is not screen-reader friendly. */
+  dayLabel?: string;
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */
@@ -69,6 +72,7 @@ export const ShiftCell = memo(
     coverage,
     onCoverageClick,
     slotName,
+    dayLabel,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -141,7 +145,7 @@ export const ShiftCell = memo(
               e.stopPropagation();
               onCoverageClick?.(templateId, day, e.currentTarget.getBoundingClientRect());
             }}
-            aria-label={`${slotName ?? 'Coverage'} ${day}: ${filledCount} of ${capacity} staffed${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
+            aria-label={`${slotName ?? 'Coverage'} ${dayLabel ?? day}: ${filledCount} of ${capacity} staffed${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. ${coverage.coveragePct}% of window covered. Open details`}
             aria-haspopup="dialog"
             className={cn(
               'mt-1 flex items-center gap-1',
@@ -172,12 +176,6 @@ export const ShiftCell = memo(
                 <span>{filledCount}/{capacity}</span>
               </>
             )}
-            <span className="sr-only">
-              {coverage.openSpots > 0
-                ? `Needs ${coverage.openSpots} more; `
-                : 'Fully covered; '}
-              {coverage.coveragePct}% of window covered
-            </span>
           </button>
         )}
 
@@ -202,5 +200,6 @@ export const ShiftCell = memo(
     prev.allocationStatus === next.allocationStatus &&
     prev.pickedEmployeeName === next.pickedEmployeeName &&
     prev.onCoverageClick === next.onCoverageClick &&
-    prev.slotName === next.slotName,
+    prev.slotName === next.slotName &&
+    prev.dayLabel === next.dayLabel,
 );

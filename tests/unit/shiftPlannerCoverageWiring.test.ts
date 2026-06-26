@@ -10,12 +10,11 @@
  * 2. A single `CoverageDetail` usage (ONE lifted detail — no per-cell popover).
  * 3. `coverageDetail` state for the lifted popover/Drawer is present.
  * 4. `try/catch` guard around per-slot coverage computation (one bad row never blanks the grid).
- * 5. (Task 2a) `employees` is in the coverageByTemplateDay useMemo dep array.
- * 6. (Task 2a) An employee→area map (empArea) is built from `employees` inside coverageByTemplateDay.
- * 7. (Task 2a) CoverageShift objects carry `area` field derived from empArea.
- * 8. (Task 2a) `computeSlotCoverage` is called with `{ area: ...}` options (threads t.area).
- * 9. (Task 2f) TemplateGrid.tsx assembles slotName from template.area + template.position and passes it to ShiftCell.
- * 10. (Task 2f) ShiftCell.tsx includes slotName in the memo comparator.
+ * 5. (Task 2a) CoverageShift objects carry `area` derived from the joined shift.employee data,
+ *    NOT from an active-only empArea map (fix: inactive-employee shifts must still count).
+ * 6. (Task 2a) `computeSlotCoverage` is called with `{ area: ...}` options (threads t.area).
+ * 7. (Task 2f) TemplateGrid.tsx assembles slotName from template.area + template.position and passes it to ShiftCell.
+ * 8. (Task 2f) ShiftCell.tsx includes slotName in the memo comparator.
  */
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -72,33 +71,29 @@ describe('ShiftPlannerTab — coverage wiring (source-text)', () => {
 });
 
 describe('ShiftPlannerTab — area-scope wiring (source-text, Task 2a)', () => {
-  it('`employees` is in the coverageByTemplateDay useMemo dependency array', () => {
-    // The useMemo dep array must include `employees` so the area map stays fresh.
-    // Strategy: find the coverageByTemplateDay memo block and assert the trailing
-    // dep-array (the last [...] before the closing paren of useMemo) contains `employees`.
-    // We look for the deps comment pattern or the trailing dep array right before the closing `);`
-    // The dep array is the second argument to useMemo: useMemo(() => { ... }, [deps]).
-    // Since the first `[` inside the callback is `employees.map(e => [e.id, ...])`,
-    // we look specifically for the pattern `}, [...]` (the second arg to useMemo).
-    expect(SRC).toMatch(/},\s*\[[^\]]*\bemployees\b[^\]]*\]/);
+  it('sets `area` field on CoverageShift objects from the joined shift.employee data', () => {
+    // Area must come from s.employee?.area (the already-joined row), NOT from an active-only
+    // empArea map. This ensures inactive/terminated employees' shifts still carry their area
+    // and are counted correctly — using the active-only list caused false chip/indicator gaps.
+    expect(SRC).toMatch(/area\s*:\s*s\.employee\?\.area/);
   });
 
-  it('builds an empArea Map from employees inside coverageByTemplateDay', () => {
-    // Must construct a Map keyed by employee id → area.
-    // The idiomatic form: new Map(employees.map(e => [e.id, ...])) or similar.
-    expect(SRC).toMatch(/empArea/);
-    expect(SRC).toMatch(/new Map\s*\(\s*employees/);
-  });
-
-  it('sets `area` field on CoverageShift objects using the empArea map', () => {
-    // The cov objects must carry area: empArea.get(s.employee_id) or similar.
-    expect(SRC).toMatch(/area\s*:\s*empArea/);
+  it('does NOT use an empArea map built from active-only employees for area derivation', () => {
+    // The active-only empArea pattern was replaced by s.employee?.area to fix the gap bug.
+    // If empArea reappears here, it risks reintroducing the inactive-employee exclusion issue.
+    expect(SRC).not.toMatch(/area\s*:\s*empArea/);
   });
 
   it('passes { area: t.area } (or equivalent) as options to computeSlotCoverage', () => {
     // computeSlotCoverage must receive an options object with the template area.
-    // Accept any of: { area: t.area }, { area: t.area ?? null }, { area: t.area ?? undefined }
+    // Accept any of: { area: t.area }, { area: t.area ?? null }, { area: t.area || null }
     expect(SRC).toMatch(/computeSlotCoverage\s*\([\s\S]*?\{[\s\S]*?area\s*:\s*t\.area/);
+  });
+
+  it('uses || null (not ?? null) for t.area to guard against empty-string templates', () => {
+    // t.area ?? null coerces undefined → null but leaves '' → '' (falsy empty-string key).
+    // t.area || null coerces both undefined and '' → null, disabling the area filter correctly.
+    expect(SRC).toMatch(/area\s*:\s*t\.area\s*\|\|\s*null/);
   });
 });
 

@@ -10,6 +10,10 @@
  * 2. A single `CoverageDetail` usage (ONE lifted detail — no per-cell popover).
  * 3. `coverageDetail` state for the lifted popover/Drawer is present.
  * 4. `try/catch` guard around per-slot coverage computation (one bad row never blanks the grid).
+ * 5. (Task 2a) `employees` is in the coverageByTemplateDay useMemo dep array.
+ * 6. (Task 2a) An employee→area map (empArea) is built from `employees` inside coverageByTemplateDay.
+ * 7. (Task 2a) CoverageShift objects carry `area` field derived from empArea.
+ * 8. (Task 2a) `computeSlotCoverage` is called with `{ area: ...}` options (threads t.area).
  */
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -52,5 +56,36 @@ describe('ShiftPlannerTab — coverage wiring (source-text)', () => {
 
   it('imports CoverageDetail component', () => {
     expect(SRC).toMatch(/import.*CoverageDetail/);
+  });
+});
+
+describe('ShiftPlannerTab — area-scope wiring (source-text, Task 2a)', () => {
+  it('`employees` is in the coverageByTemplateDay useMemo dependency array', () => {
+    // The useMemo dep array must include `employees` so the area map stays fresh.
+    // Strategy: find the coverageByTemplateDay memo block and assert the trailing
+    // dep-array (the last [...] before the closing paren of useMemo) contains `employees`.
+    // We look for the deps comment pattern or the trailing dep array right before the closing `);`
+    // The dep array is the second argument to useMemo: useMemo(() => { ... }, [deps]).
+    // Since the first `[` inside the callback is `employees.map(e => [e.id, ...])`,
+    // we look specifically for the pattern `}, [...]` (the second arg to useMemo).
+    expect(SRC).toMatch(/},\s*\[[^\]]*\bemployees\b[^\]]*\]/);
+  });
+
+  it('builds an empArea Map from employees inside coverageByTemplateDay', () => {
+    // Must construct a Map keyed by employee id → area.
+    // The idiomatic form: new Map(employees.map(e => [e.id, ...])) or similar.
+    expect(SRC).toMatch(/empArea/);
+    expect(SRC).toMatch(/new Map\s*\(\s*employees/);
+  });
+
+  it('sets `area` field on CoverageShift objects using the empArea map', () => {
+    // The cov objects must carry area: empArea.get(s.employee_id) or similar.
+    expect(SRC).toMatch(/area\s*:\s*empArea/);
+  });
+
+  it('passes { area: t.area } (or equivalent) as options to computeSlotCoverage', () => {
+    // computeSlotCoverage must receive an options object with the template area.
+    // Accept any of: { area: t.area }, { area: t.area ?? null }, { area: t.area ?? undefined }
+    expect(SRC).toMatch(/computeSlotCoverage\s*\([\s\S]*?\{[\s\S]*?area\s*:\s*t\.area/);
   });
 });
